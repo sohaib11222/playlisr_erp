@@ -418,6 +418,13 @@ class AdminSidebarMenu
                                 ['icon' => 'fa fas fa-file-invoice-dollar', 'active' => request()->segment(2) == 'profit-loss']
                             );
                         }
+                        if (auth()->user()->can('profit_loss_report.view')) {
+                            $sub->url(
+                                action('ReportController@categorySalesReport'),
+                               'Category Report',
+                                ['icon' => 'fa fas fa-file-invoice-dollar', 'active' => request()->segment(2) == 'profit-loss']
+                            );
+                        }
                         if (config('constants.show_report_606') == true) {
                             $sub->url(
                                 action('ReportController@purchaseReport'),
