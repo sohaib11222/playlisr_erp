@@ -253,9 +253,9 @@ class ProductController extends Controller
                             $html .=
                             '<li><a href="#" data-href="' . action('OpeningStockController@add', ['product_id' => $row->id]) . '" class="add-opening-stock"><i class="fa fa-database"></i> ' . __("lang_v1.add_edit_opening_stock") . '</a></li>';
                         }
-                        $html .='<li><a href="#" onclick="openAddStock(this)" data-pr="'.$row->id.'"  data-stock="1" data-vr="'.$row->vid.'" class="add-stock"><i class="fa fa-database"></i>  Add 1 Stock</a></li>';
-                        $html .='<li><a href="#" onclick="openAddStock(this)" data-pr="'.$row->id.'" data-vr="'.$row->vid.'" data-stock="2" class="add-stock"><i class="fa fa-database"></i>  Add 2 Stock</a></li>';
-                        $html .='<li><a href="#" onclick="openAddStock(this)" data-pr="'.$row->id.'" data-vr="'.$row->vid.'"  data-stock="3" class="add-stock"><i class="fa fa-database"></i>  Add 3 Stock</a></li>';
+                        $html .='<li><a href="#" onclick="openAddStock(this)" data-pr="'.$row->id.'"  data-stock="1" data-vr="'.$row->vid.'" class="add-stock"><i class="fa fa-database"></i>  Add 1 Stock and Print Label</a></li>';
+                        $html .='<li><a href="#" onclick="openAddStock(this)" data-pr="'.$row->id.'" data-vr="'.$row->vid.'" data-stock="2" class="add-stock"><i class="fa fa-database"></i>  Add 2 Stock and Print Label</a></li>';
+                        $html .='<li><a href="#" onclick="openAddStock(this)" data-pr="'.$row->id.'" data-vr="'.$row->vid.'"  data-stock="3" class="add-stock"><i class="fa fa-database"></i>  Add 3 Stock and Print Label</a></li>';
 
 
 

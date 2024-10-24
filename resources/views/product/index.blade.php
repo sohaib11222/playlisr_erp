@@ -112,13 +112,17 @@
                 </ul>
 
                 <div class="tab-content">
+
                     <div class="tab-pane active" id="product_list_tab">
+
+                        <div class="col-xs-6">
+                            <label for="location">Select Location</label>
                             <select class="form-control" id="location" >
                                 <option value="">Select Location</option>
                                 <option value="1">Pico</option>
                                 <option value="2">Hollywood</option>
                             </select>
-
+                        </div>
                         <button class="btn btn-success pull-right margin-left-10 downloadbarcodes">Download Barcodes</button>
                         @if($is_admin)
                          <a class="btn btn-success pull-right margin-left-10" href="{{url('import-products')}}"><i class="fa fa-download"></i>Import Products</a>
