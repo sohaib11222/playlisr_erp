@@ -100,6 +100,7 @@
            <!-- Custom Tabs -->
             <div class="nav-tabs-custom">
                 <ul class="nav nav-tabs">
+
                     <li class="active">
                         <a href="#product_list_tab" data-toggle="tab" aria-expanded="true"><i class="fa fa-cubes" aria-hidden="true"></i> @lang('lang_v1.all_products')</a>
                     </li>
@@ -112,6 +113,12 @@
 
                 <div class="tab-content">
                     <div class="tab-pane active" id="product_list_tab">
+                            <select class="form-control" id="location" >
+                                <option value="">Select Location</option>
+                                <option value="1">Pico</option>
+                                <option value="2">Hollywood</option>
+                            </select>
+
                         <button class="btn btn-success pull-right margin-left-10 downloadbarcodes">Download Barcodes</button>
                         @if($is_admin)
                          <a class="btn btn-success pull-right margin-left-10" href="{{url('import-products')}}"><i class="fa fa-download"></i>Import Products</a>
@@ -237,6 +244,10 @@
             });
             // Array to track the ids of the details displayed rows
             var detailRows = [];
+
+            $('.add-stock').on( 'click',  function () {
+                alert($(this).data('pr'))
+            })
 
             $('#product_table tbody').on( 'click', 'tr i.rack-details', function () {
                 var i = $(this);
@@ -657,5 +668,48 @@
             },
         });
     });
+
+        function openAddStock(elem) {
+            // Get the location value
+            var locationId = $('#location').val();
+
+            // Check if location is selected
+            if (!locationId) {
+                alert('Please select a location first.');
+                return;
+            }
+
+            // Get the product and variation IDs from the clicked element's data attributes
+            var productId = $(elem).data('pr');
+            var variationId = $(elem).data('vr');
+            var stockToAdd = $(elem).data('stock');
+
+
+
+            // Perform the AJAX request
+            $.ajax({
+                url: '/updateStock',  // Laravel route URL
+                type: 'POST',
+                data: {
+                    _token: '{{ csrf_token() }}',  // Ensure CSRF token is included
+                    location_id: locationId,
+                    product_id: productId,
+                    variation_id: variationId,
+                    stock: stockToAdd
+                },
+                success: function(response) {
+                    // Handle success response
+                    alert('Stock updated successfully!');
+                    let url = "{{url("labels/show?product_id=:id")}}";
+                    url = url.replace(":id" , productId)
+                    location = url
+                },
+                error: function(xhr) {
+                    // Handle error
+                    alert('An error occurred while updating stock.');
+                }
+            });
+        }
+
     </script>
 @endsection

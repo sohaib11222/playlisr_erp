@@ -438,3 +438,5 @@ Route::get('/download-barcode' , [\App\Http\Controllers\ProductController::class
 Route::get('/purchases-download-demo-excel', 'PurchaseController@downloadDemoExcel')->name('purchases.download-demo-excel');
 Route::post('store-purchase-excel', 'PurchaseController@importExcel')->name('purchases.store-excel');
 Route::get('/import-purchase-excel-file', 'PurchaseController@importExcelFile')->name('purchases.import-excel-file');
+
+Route::post('updateStock' , [\App\Http\Controllers\ProductController::class , 'updateStock']);

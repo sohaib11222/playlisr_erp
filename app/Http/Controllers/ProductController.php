@@ -132,6 +132,7 @@ class ProductController extends Controller
                 'products.product_custom_field3',
                 'products.created_by',
                 'products.product_custom_field4',
+                'v.id as vid',
                 'products.alert_quantity',
                 DB::raw('SUM(vld.qty_available) as current_stock'),
                 DB::raw('MAX(v.sell_price_inc_tax) as max_price'),
@@ -252,12 +253,15 @@ class ProductController extends Controller
                             $html .=
                             '<li><a href="#" data-href="' . action('OpeningStockController@add', ['product_id' => $row->id]) . '" class="add-opening-stock"><i class="fa fa-database"></i> ' . __("lang_v1.add_edit_opening_stock") . '</a></li>';
                         }
+                        $html .='<li><a href="#" onclick="openAddStock(this)" data-pr="'.$row->id.'"  data-stock="1" data-vr="'.$row->vid.'" class="add-stock"><i class="fa fa-database"></i>  Add 1 Stock</a></li>';
+                        $html .='<li><a href="#" onclick="openAddStock(this)" data-pr="'.$row->id.'" data-vr="'.$row->vid.'" data-stock="2" class="add-stock"><i class="fa fa-database"></i>  Add 2 Stock</a></li>';
+                        $html .='<li><a href="#" onclick="openAddStock(this)" data-pr="'.$row->id.'" data-vr="'.$row->vid.'"  data-stock="3" class="add-stock"><i class="fa fa-database"></i>  Add 3 Stock</a></li>';
 
 
 
                         $html .= '</ul></div>';
-
                         return $html;
+
                     }
                 )
                 ->editColumn('product', function ($row) use ($is_woocommerce) {
@@ -2434,5 +2438,10 @@ class ProductController extends Controller
 
         // If the ZIP file could not be created, return an error response
         return response()->json(['error' => 'Could not create ZIP file'], 500);
+    }
+
+    public function updateStock(Request $request)
+    {
+        $this->productUtil->updateProductQuantity($request->location_id, $request->product_id, $request->variation_id, $request->stock);
     }
 }
