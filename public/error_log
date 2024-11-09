@@ -1,0 +1,104 @@
+[27-Oct-2024 14:41:14 Asia/Kolkata] PHP Fatal error:  During inheritance of ArrayAccess: Uncaught ErrorException: Return type of Illuminate\Support\Collection::offsetExists($key) should either be compatible with ArrayAccess::offsetExists(mixed $offset): bool, or the #[\ReturnTypeWillChange] attribute should be used to temporarily suppress the notice in /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Support/Collection.php:2060
+Stack trace:
+#0 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Support/Collection.php(40): Illuminate\Foundation\Bootstrap\HandleExceptions->handleError()
+#1 /home/nivessac/playlist.nivessa.com/vendor/composer/ClassLoader.php(576): include('/home/nivessac/...')
+#2 /home/nivessac/playlist.nivessa.com/vendor/composer/ClassLoader.php(427): Composer\Autoload\{closure}()
+#3 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Support/helpers.php(471): Composer\Autoload\ClassLoader->loadClass()
+#4 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/PackageManifest.php(80): collect()
+#5 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/Bootstrap/RegisterFacades.php(26): Illuminate\Foundation\PackageManifest->aliases()
+#6 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/Application.php(210): Illuminate\Foundation\Bootstrap\RegisterFacades->bootstrap()
+#7 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/Http/Kernel.php(162): Illuminate\Foundation\Application->bootstrapWith()
+#8 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/Http/Kernel.php(146): Illuminate\Foundation\Http\Kernel->bootstrap()
+#9 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/Http/Kernel.php(116): Illuminate\Foundation\Http\Kernel->sendRequestThroughRouter()
+#10 /home/nivessac/playlist.nivessa.com/public/index.php(53): Illuminate\Foundation\Http\Kernel->handle()
+#11 {main} in /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Support/Collection.php on line 40
+[27-Oct-2024 14:41:16 Asia/Kolkata] PHP Fatal error:  During inheritance of ArrayAccess: Uncaught ErrorException: Return type of Illuminate\Support\Collection::offsetExists($key) should either be compatible with ArrayAccess::offsetExists(mixed $offset): bool, or the #[\ReturnTypeWillChange] attribute should be used to temporarily suppress the notice in /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Support/Collection.php:2060
+Stack trace:
+#0 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Support/Collection.php(40): Illuminate\Foundation\Bootstrap\HandleExceptions->handleError()
+#1 /home/nivessac/playlist.nivessa.com/vendor/composer/ClassLoader.php(576): include('/home/nivessac/...')
+#2 /home/nivessac/playlist.nivessa.com/vendor/composer/ClassLoader.php(427): Composer\Autoload\{closure}()
+#3 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Support/helpers.php(471): Composer\Autoload\ClassLoader->loadClass()
+#4 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/PackageManifest.php(80): collect()
+#5 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/Bootstrap/RegisterFacades.php(26): Illuminate\Foundation\PackageManifest->aliases()
+#6 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/Application.php(210): Illuminate\Foundation\Bootstrap\RegisterFacades->bootstrap()
+#7 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/Http/Kernel.php(162): Illuminate\Foundation\Application->bootstrapWith()
+#8 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/Http/Kernel.php(146): Illuminate\Foundation\Http\Kernel->bootstrap()
+#9 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/Http/Kernel.php(116): Illuminate\Foundation\Http\Kernel->sendRequestThroughRouter()
+#10 /home/nivessac/playlist.nivessa.com/public/index.php(53): Illuminate\Foundation\Http\Kernel->handle()
+#11 {main} in /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Support/Collection.php on line 40
+[27-Oct-2024 14:41:16 Asia/Kolkata] PHP Fatal error:  During inheritance of ArrayAccess: Uncaught ErrorException: Return type of Illuminate\Support\Collection::offsetExists($key) should either be compatible with ArrayAccess::offsetExists(mixed $offset): bool, or the #[\ReturnTypeWillChange] attribute should be used to temporarily suppress the notice in /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Support/Collection.php:2060
+Stack trace:
+#0 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Support/Collection.php(40): Illuminate\Foundation\Bootstrap\HandleExceptions->handleError()
+#1 /home/nivessac/playlist.nivessa.com/vendor/composer/ClassLoader.php(576): include('/home/nivessac/...')
+#2 /home/nivessac/playlist.nivessa.com/vendor/composer/ClassLoader.php(427): Composer\Autoload\{closure}()
+#3 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Support/helpers.php(471): Composer\Autoload\ClassLoader->loadClass()
+#4 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/PackageManifest.php(80): collect()
+#5 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/Bootstrap/RegisterFacades.php(26): Illuminate\Foundation\PackageManifest->aliases()
+#6 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/Application.php(210): Illuminate\Foundation\Bootstrap\RegisterFacades->bootstrap()
+#7 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/Http/Kernel.php(162): Illuminate\Foundation\Application->bootstrapWith()
+#8 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/Http/Kernel.php(146): Illuminate\Foundation\Http\Kernel->bootstrap()
+#9 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/Http/Kernel.php(116): Illuminate\Foundation\Http\Kernel->sendRequestThroughRouter()
+#10 /home/nivessac/playlist.nivessa.com/public/index.php(53): Illuminate\Foundation\Http\Kernel->handle()
+#11 {main} in /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Support/Collection.php on line 40
+[27-Oct-2024 14:41:16 Asia/Kolkata] PHP Fatal error:  During inheritance of ArrayAccess: Uncaught ErrorException: Return type of Illuminate\Support\Collection::offsetExists($key) should either be compatible with ArrayAccess::offsetExists(mixed $offset): bool, or the #[\ReturnTypeWillChange] attribute should be used to temporarily suppress the notice in /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Support/Collection.php:2060
+Stack trace:
+#0 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Support/Collection.php(40): Illuminate\Foundation\Bootstrap\HandleExceptions->handleError()
+#1 /home/nivessac/playlist.nivessa.com/vendor/composer/ClassLoader.php(576): include('/home/nivessac/...')
+#2 /home/nivessac/playlist.nivessa.com/vendor/composer/ClassLoader.php(427): Composer\Autoload\{closure}()
+#3 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Support/helpers.php(471): Composer\Autoload\ClassLoader->loadClass()
+#4 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/PackageManifest.php(80): collect()
+#5 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/Bootstrap/RegisterFacades.php(26): Illuminate\Foundation\PackageManifest->aliases()
+#6 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/Application.php(210): Illuminate\Foundation\Bootstrap\RegisterFacades->bootstrap()
+#7 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/Http/Kernel.php(162): Illuminate\Foundation\Application->bootstrapWith()
+#8 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/Http/Kernel.php(146): Illuminate\Foundation\Http\Kernel->bootstrap()
+#9 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/Http/Kernel.php(116): Illuminate\Foundation\Http\Kernel->sendRequestThroughRouter()
+#10 /home/nivessac/playlist.nivessa.com/public/index.php(53): Illuminate\Foundation\Http\Kernel->handle()
+#11 {main} in /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Support/Collection.php on line 40
+[30-Oct-2024 12:16:07 Asia/Kolkata] PHP Fatal error:  Uncaught ErrorException: Method ReflectionParameter::getClass() is deprecated in /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Container/Container.php:853
+Stack trace:
+#0 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Container/Container.php(853): Illuminate\Foundation\Bootstrap\HandleExceptions->handleError()
+#1 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Container/Container.php(816): Illuminate\Container\Container->resolveDependencies()
+#2 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Container/Container.php(667): Illuminate\Container\Container->build()
+#3 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Container/Container.php(265): Illuminate\Container\Container->resolve()
+#4 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Container/Container.php(785): Illuminate\Container\Container->Illuminate\Container\{closure}()
+#5 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Container/Container.php(667): Illuminate\Container\Container->build()
+#6 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Container/Container.php(615): Illuminate\Container\Container->resolve()
+#7 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/Application.php(767): Illuminate\Container\Container->make()
+#8 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/Bootstrap/HandleExceptions.php(170): Illuminate\Foundation\Application->make()
+#9 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/Bootstrap/HandleExceptions.php(123): Illuminate\Foundation\Bootstrap\HandleExceptions->getExceptionHandler()
+#10 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/Bootstrap/HandleExceptions.php(100): Illuminate\Foundation\Bootstrap\HandleExceptions->renderHttpResponse()
+#11 [internal function]: Illuminate\Foundation\Bootstrap\HandleExceptions->handleException()
+#12 {main}
+  thrown in /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Container/Container.php on line 853
+[30-Oct-2024 12:16:08 Asia/Kolkata] PHP Fatal error:  Uncaught ErrorException: Method ReflectionParameter::getClass() is deprecated in /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Container/Container.php:853
+Stack trace:
+#0 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Container/Container.php(853): Illuminate\Foundation\Bootstrap\HandleExceptions->handleError()
+#1 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Container/Container.php(816): Illuminate\Container\Container->resolveDependencies()
+#2 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Container/Container.php(667): Illuminate\Container\Container->build()
+#3 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Container/Container.php(265): Illuminate\Container\Container->resolve()
+#4 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Container/Container.php(785): Illuminate\Container\Container->Illuminate\Container\{closure}()
+#5 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Container/Container.php(667): Illuminate\Container\Container->build()
+#6 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Container/Container.php(615): Illuminate\Container\Container->resolve()
+#7 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/Application.php(767): Illuminate\Container\Container->make()
+#8 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/Bootstrap/HandleExceptions.php(170): Illuminate\Foundation\Application->make()
+#9 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/Bootstrap/HandleExceptions.php(123): Illuminate\Foundation\Bootstrap\HandleExceptions->getExceptionHandler()
+#10 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/Bootstrap/HandleExceptions.php(100): Illuminate\Foundation\Bootstrap\HandleExceptions->renderHttpResponse()
+#11 [internal function]: Illuminate\Foundation\Bootstrap\HandleExceptions->handleException()
+#12 {main}
+  thrown in /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Container/Container.php on line 853
+[30-Oct-2024 12:16:09 Asia/Kolkata] PHP Fatal error:  Uncaught ErrorException: Method ReflectionParameter::getClass() is deprecated in /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Container/Container.php:853
+Stack trace:
+#0 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Container/Container.php(853): Illuminate\Foundation\Bootstrap\HandleExceptions->handleError()
+#1 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Container/Container.php(816): Illuminate\Container\Container->resolveDependencies()
+#2 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Container/Container.php(667): Illuminate\Container\Container->build()
+#3 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Container/Container.php(265): Illuminate\Container\Container->resolve()
+#4 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Container/Container.php(785): Illuminate\Container\Container->Illuminate\Container\{closure}()
+#5 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Container/Container.php(667): Illuminate\Container\Container->build()
+#6 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Container/Container.php(615): Illuminate\Container\Container->resolve()
+#7 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/Application.php(767): Illuminate\Container\Container->make()
+#8 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/Bootstrap/HandleExceptions.php(170): Illuminate\Foundation\Application->make()
+#9 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/Bootstrap/HandleExceptions.php(123): Illuminate\Foundation\Bootstrap\HandleExceptions->getExceptionHandler()
+#10 /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Foundation/Bootstrap/HandleExceptions.php(100): Illuminate\Foundation\Bootstrap\HandleExceptions->renderHttpResponse()
+#11 [internal function]: Illuminate\Foundation\Bootstrap\HandleExceptions->handleException()
+#12 {main}
+  thrown in /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Container/Container.php on line 853
