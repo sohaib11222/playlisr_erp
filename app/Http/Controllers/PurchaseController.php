@@ -909,6 +909,11 @@ class PurchaseController extends Controller
                 'products.id',
                 '=',
                 'variations.product_id'
+            )->leftJoin(
+                'categories',
+                'products.category_id',
+                '=',
+                'categories.id'
             )
                 ->where(function ($query) use ($term) {
                     $query->where('products.name', 'like', '%' . $term .'%');
@@ -916,7 +921,7 @@ class PurchaseController extends Controller
                     $query->orWhere('sub_sku', 'like', '%' . $term .'%');
                 })
                 ->active()
-                ->where('business_id', $business_id)
+                ->where('products.business_id', $business_id)
                 ->whereNull('variations.deleted_at')
                 ->select(
                     'products.id as product_id',
@@ -925,6 +930,8 @@ class PurchaseController extends Controller
                     // 'products.sku as sku',
                     'variations.id as variation_id',
                     'variations.name as variation',
+                    'variations.sell_price_inc_tax as price',
+                    'categories.name as catname',
                     'variations.sub_sku as sub_sku'
                 )
                 ->groupBy('variation_id');
@@ -942,11 +949,14 @@ class PurchaseController extends Controller
                 $products_array[$product->product_id]['name'] = $product->name;
                 $products_array[$product->product_id]['sku'] = $product->sub_sku;
                 $products_array[$product->product_id]['type'] = $product->type;
+                $products_array[$product->product_id]['price'] = $product->price;
+                $products_array[$product->product_id]['catname'] = $product->catname;
                 $products_array[$product->product_id]['variations'][]
                 = [
                         'variation_id' => $product->variation_id,
                         'variation_name' => $product->variation,
-                        'sub_sku' => $product->sub_sku
+                        'sub_sku' => $product->sub_sku,
+                    'price' => $product->sell_price_inc_tax,
                         ];
             }
 
@@ -957,7 +967,7 @@ class PurchaseController extends Controller
                 foreach ($products_array as $key => $value) {
                     if ($no_of_records > 1 && $value['type'] != 'single' && !$only_variations) {
                         $result[] = [ 'id' => $i,
-                                    'text' => $value['name'] . ' - ' . $value['sku'],
+                                    'text' => $value['name'] . ' - ' . $value['sku']. ' - '.$value['price'].' - '. $value['catname'],
                                     'variation_id' => 0,
                                     'product_id' => $key
                                 ];
@@ -970,7 +980,7 @@ class PurchaseController extends Controller
                         }
                         $i++;
                         $result[] = [ 'id' => $i,
-                                            'text' => $text . ' - ' . $variation['sub_sku'],
+                                            'text' => $text . ' - ' . $variation['sub_sku']. ' - '.$value['price'].' - '. $value['catname'],
                                             'product_id' => $key ,
                                             'variation_id' => $variation['variation_id'],
                                         ];
