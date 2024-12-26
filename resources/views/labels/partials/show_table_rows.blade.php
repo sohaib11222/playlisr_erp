@@ -1,11 +1,13 @@
-@forelse ($products as $product)
+@forelse ($products as $product) 
+
     @php
+        
         $row_index = $loop->index + $index;
     @endphp
-    <tr>
+    <tr id="row_{{$row_index}}">
         <td>
-            {{$product->product_name}}
-
+            {{$product->product_name}} - {{$product->sub_sku}} - {{$product->price}} - {{$product->catname}}
+                
             @if($product->variation_name != "DUMMY")
                 <b>{{$product->variation_name}}</b>
             @endif
@@ -35,7 +37,14 @@
         <td>
             {!! Form::select('products[' . $row_index . '][price_group_id]', $price_groups, null, ['class' => 'form-control', 'placeholder' => __('lang_v1.none')]); !!}
         </td>
+        
+        <td>
+            <button type="button" class="btn btn-danger btn-sm delete-product" data-row-id="row_{{$row_index}}">
+                <i class="fa fa-trash"></i> Delete
+            </button>
+        </td>
     </tr>
 @empty
 
 @endforelse
+<!--<script src="https://code.jquery.com/jquery-3.6.4.min.js" crossorigin="anonymous"></script>-->

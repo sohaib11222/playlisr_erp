@@ -72,6 +72,15 @@ $(document).ready(function() {
     $(document).on('click', 'button#print_label', function() {
         window.print();
     });
+    
+    // Handle Delete Button Click
+    $(document).on('click', '.delete-product', function () {
+        // Get the row ID from the button's data attribute
+        var rowId = $(this).data('row-id');
+
+        // Remove the respective row
+        $('#' + rowId).remove();
+    });
 });
 
 function get_label_product_row(product_id, variation_id) {

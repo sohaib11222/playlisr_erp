@@ -84,8 +84,26 @@ class LabelsController extends Controller
             
             if (!empty($product_id)) {
                 $index = $request->input('row_count');
-                $products = $this->productUtil->getDetailsFromProduct($business_id, $product_id, $variation_id);
-
+                // $products = $this->productUtil->getDetailsFromProduct($business_id, $product_id, $variation_id);
+                $products = Product::leftJoin('variations', 'products.id', '=', 'variations.product_id')
+                    ->leftJoin('categories', 'products.category_id', '=', 'categories.id')
+                    ->where('products.business_id', $business_id)
+                    ->where('products.id', $product_id)
+                    ->where('variations.id', $variation_id)
+                    ->whereNull('variations.deleted_at')
+                    ->select(
+                        'products.id as product_id',
+                        'products.name as product_name',
+                        'products.type',
+                        'variations.id as variation_id',
+                        'variations.name as variation_name',
+                        'variations.sell_price_inc_tax as price',
+                        'categories.name as catname',
+                        'variations.sub_sku as sub_sku'
+                    )
+                    ->groupBy('variation_id')
+                    ->get();
+                // var_dump($products);die;
                 $price_groups = SellingPriceGroup::where('business_id', $business_id)
                                             ->active()
                                             ->pluck('name', 'id');

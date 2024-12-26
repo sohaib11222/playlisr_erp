@@ -45,6 +45,7 @@
 							@endif
 							<th>@lang('lang_v1.packing_date')</th>
 							<th>@lang('lang_v1.selling_price_group')</th>
+							<th>@lang('#')</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -71,14 +72,14 @@
       							<div class="input-group-addon"><b>@lang( 'lang_v1.size' )</b></div>
 								<input type="text" class="form-control" 
 									name="print[name_size]" 
-									value="15">
+									value="10">
 							</div>
 						</td>
 
 						<td>
 							<div class="checkbox">
 							    <label>
-							    	<input type="checkbox" checked name="print[variations]" value="1"> <b>@lang( 'barcode.print_variations' )</b>
+							    	<input type="checkbox" name="print[variations]" value="0"> <b>@lang( 'barcode.print_variations' )</b>
 							    </label>
 							</div>
 
@@ -127,7 +128,7 @@
 						<td>
 							<div class="checkbox">
 							    <label>
-							    	<input type="checkbox" checked name="print[business_name]" value="1"> <b>@lang( 'barcode.print_business_name' )</b>
+							    	<input type="checkbox" name="print[business_name]" value="0"> <b>@lang( 'barcode.print_business_name' )</b>
 							    </label>
 							</div>
 
@@ -142,7 +143,7 @@
 						<td>
 							<div class="checkbox">
 							    <label>
-							    	<input type="checkbox" checked name="print[packing_date]" value="1"> <b>@lang( 'lang_v1.print_packing_date' )</b>
+							    	<input type="checkbox" name="print[packing_date]" value="0"> <b>@lang( 'lang_v1.print_packing_date' )</b>
 							    </label>
 							</div>
 
@@ -207,7 +208,7 @@
 						<span class="input-group-addon">
 							<i class="fa fa-cog"></i>
 						</span>
-						{!! Form::select('barcode_setting', $barcode_settings, !empty($default) ? $default->id : null, ['class' => 'form-control']); !!}
+						{!! Form::select('barcode_setting', $barcode_settings, !empty($default) ? $default->id : 6, ['class' => 'form-control']); !!}
 					</div>
 				</div>
 			</div>
@@ -235,4 +236,5 @@
 @stop
 @section('javascript')
 	<script src="{{ asset('js/labels.js?v=' . $asset_v) }}"></script>
+
 @endsection
