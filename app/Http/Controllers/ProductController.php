@@ -21,6 +21,8 @@ use App\VariationGroupPrice;
 use App\VariationLocationDetails;
 use App\VariationTemplate;
 use App\Warranty;
+use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Log;
 use Milon\Barcode\DNS1D;
 use Illuminate\Support\Str;
 use Mpdf\Mpdf;
@@ -61,7 +63,7 @@ class ProductController extends Controller
     /**
      * Display a listing of the resource.
      *
-     * @return \Illuminate\Http\Response
+     * @return Response
      */
     public function index()
     {
@@ -361,7 +363,7 @@ class ProductController extends Controller
     /**
      * Show the form for creating a new resource.
      *
-     * @return \Illuminate\Http\Response
+     * @return Response
      */
     public function create()
     {
@@ -445,7 +447,7 @@ class ProductController extends Controller
      * Store a newly created resource in storage.
      *
      * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
+     * @return Response
      */
     public function store(Request $request)
     {
@@ -606,7 +608,7 @@ class ProductController extends Controller
      * Display the specified resource.
      *
      * @param  \App\Product  $product
-     * @return \Illuminate\Http\Response
+     * @return Response
      */
     public function show($id)
     {
@@ -624,7 +626,7 @@ class ProductController extends Controller
      * Show the form for editing the specified resource.
      *
      * @param  int  $id
-     * @return \Illuminate\Http\Response
+     * @return Response
      */
     public function edit($id)
     {
@@ -687,7 +689,7 @@ class ProductController extends Controller
      *
      * @param  \Illuminate\Http\Request  $request
      * @param  int  $id
-     * @return \Illuminate\Http\Response
+     * @return Response
      */
     public function update(Request $request, $id)
     {
@@ -906,7 +908,7 @@ class ProductController extends Controller
      * Remove the specified resource from storage.
      *
      * @param  \App\Product  $product
-     * @return \Illuminate\Http\Response
+     * @return Response
      */
     public function destroy($id)
     {
@@ -1023,7 +1025,7 @@ class ProductController extends Controller
      * Get subcategories list for a category.
      *
      * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
+     * @return Response
      */
     public function getSubCategories(Request $request)
     {
@@ -1049,7 +1051,7 @@ class ProductController extends Controller
      * Get product form parts.
      *
      * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
+     * @return Response
      */
     public function getProductVariationFormPart(Request $request)
     {
@@ -1106,7 +1108,7 @@ class ProductController extends Controller
      * Get product form parts.
      *
      * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
+     * @return Response
      */
     public function getVariationValueRow(Request $request)
     {
@@ -1127,7 +1129,7 @@ class ProductController extends Controller
      * Get product form parts.
      *
      * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
+     * @return Response
      */
     public function getProductVariationRow(Request $request)
     {
@@ -1150,7 +1152,7 @@ class ProductController extends Controller
      * Get product form parts.
      *
      * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
+     * @return Response
      */
     public function getVariationTemplate(Request $request)
     {
@@ -1171,7 +1173,7 @@ class ProductController extends Controller
      * Return the view for combo product row
      *
      * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
+     * @return Response
      */
     public function getComboProductEntryRow(Request $request)
     {
@@ -1288,7 +1290,7 @@ class ProductController extends Controller
      * Checks if product sku already exists.
      *
      * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
+     * @return Response
      */
     public function checkProductSku(Request $request)
     {
@@ -1372,7 +1374,7 @@ class ProductController extends Controller
     /**
      * Loads quick add product modal.
      *
-     * @return \Illuminate\Http\Response
+     * @return Response
      */
     public function quickAdd()
     {
@@ -1418,7 +1420,7 @@ class ProductController extends Controller
      * Store a newly created resource in storage.
      *
      * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
+     * @return Response
      */
     public function saveQuickProduct(Request $request)
     {
@@ -1531,7 +1533,7 @@ class ProductController extends Controller
      * Display the specified resource.
      *
      * @param  \App\Product  $product
-     * @return \Illuminate\Http\Response
+     * @return Response
      */
     public function view($id)
     {
@@ -1586,7 +1588,7 @@ class ProductController extends Controller
      * Mass deletes products.
      *
      * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
+     * @return Response
      */
     public function massDestroy(Request $request)
     {
@@ -1661,7 +1663,7 @@ class ProductController extends Controller
      * Shows form to add selling price group prices for a product.
      *
      * @param  int  $id
-     * @return \Illuminate\Http\Response
+     * @return Response
      */
     public function addSellingPrices($id)
     {
@@ -1690,7 +1692,7 @@ class ProductController extends Controller
      * Saves selling price group prices for a product.
      *
      * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
+     * @return Response
      */
     public function saveSellingPrices(Request $request)
     {
@@ -1795,7 +1797,7 @@ class ProductController extends Controller
      * Mass deactivates products.
      *
      * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
+     * @return Response
      */
     public function massDeactivate(Request $request)
     {
@@ -1836,7 +1838,7 @@ class ProductController extends Controller
      * Activates the specified resource from storage.
      *
      * @param  \App\Product  $product
-     * @return \Illuminate\Http\Response
+     * @return Response
      */
     public function activate($id)
     {
@@ -1999,7 +2001,7 @@ class ProductController extends Controller
      * Shows form to edit multiple products at once.
      *
      * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
+     * @return Response
      */
     public function bulkEdit(Request $request)
     {
@@ -2057,7 +2059,7 @@ class ProductController extends Controller
      * Updates multiple products at once.
      *
      * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
+     * @return Response
      */
     public function bulkUpdate(Request $request)
     {
@@ -2134,7 +2136,7 @@ class ProductController extends Controller
      * Adds product row to edit in bulk edit product form
      *
      * @param  int  $product_id
-     * @return \Illuminate\Http\Response
+     * @return Response
      */
     public function getProductToEdit($product_id)
     {
@@ -2184,7 +2186,7 @@ class ProductController extends Controller
      *
      * @param  \Illuminate\Http\Request  $request
      * @param  int  $unit_id
-     * @return \Illuminate\Http\Response
+     * @return Response
      */
     public function getSubUnits(Request $request)
     {
@@ -2299,7 +2301,7 @@ class ProductController extends Controller
      * Toggle WooComerce sync
      *
      * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
+     * @return Response
      */
     public function toggleWooCommerceSync(Request $request)
     {
@@ -2444,4 +2446,90 @@ class ProductController extends Controller
     {
         $this->productUtil->updateProductQuantity($request->location_id, $request->product_id, $request->variation_id, $request->stock);
     }
+
+    public function massCreate(Request $request)
+    {
+        $business_id = $request->session()->get('user.business_id');
+
+        $categories = Category::forDropdown($business_id, 'product');
+        $brands = Brands::forDropdown($business_id);
+        $taxes = TaxRate::forBusinessDropdown($business_id, false)['tax_rates'];
+        $business_locations = BusinessLocation::forDropdown($business_id);
+        $units = Unit::forDropdown($business_id);
+
+        return view('product.mass-create')->with(compact('categories', 'brands', 'taxes', 'business_locations', 'units'));
+    }
+
+
+    public function massStore(Request $request)
+    {
+        $products = $request->input('products');
+
+        DB::beginTransaction();
+
+        try {
+            foreach ($products as $productData) {
+                $product = Product::create([
+                    'name' => $productData['name'],
+                    'sku' => $productData['sku'],
+                    'brand_id' => $productData['brand_id'],
+                    'category_id' => $productData['category_id'],
+                    'tax' => $productData['tax'],
+                    'alert_quantity' => $productData['alert_quantity'],
+                    'business_id' => $request->session()->get('user.business_id'),
+                    'created_by' => auth()->user()->id,
+                ]);
+
+                $this->productUtil->createSingleProductVariation(
+                    $product->id,
+                    $productData['sku'],
+                    $productData['single_dpp_inc_tax'],
+                    $productData['single_dpp_inc_tax'],
+                    $productData['profit_percent'] ?? 0,
+                    $productData['single_dsp_inc_tax'],
+                    $productData['single_dsp_inc_tax']
+                );
+
+                $product->product_locations()->sync($productData['product_locations'] ?? []);
+            }
+
+            DB::commit();
+
+            return redirect()->route('products.index')->with('status', [
+                'success' => true,
+                'msg' => __('product.mass_create_success'),
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error($e->getMessage());
+            return redirect()->back()->with('status', [
+                'success' => false,
+                'msg' => __('messages.something_went_wrong'),
+            ]);
+        }
+    }
+
+
+    public function getMassProductRow(Request $request)
+    {
+        $index = $request->get('index', 0);
+
+        $business_id = $request->session()->get('user.business_id');
+
+        Log::error('business_id = ', $business_id);
+
+        $categories = Category::forDropdown($business_id, 'product');
+
+        $brands = Brands::forDropdown($business_id);
+
+        Log::error('brands = ', $brands);
+
+        $taxes = TaxRate::forBusinessDropdown($business_id, false)['tax_rates'];
+        $business_locations = BusinessLocation::forDropdown($business_id);
+
+        return view('product.partials.mass_product_row')
+            ->with(compact('index', 'categories', 'brands', 'taxes', 'business_locations'))
+            ->render();
+    }
+
 }

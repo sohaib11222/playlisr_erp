@@ -59,7 +59,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
 
     Route::resource('brands', 'BrandController');
     
-    Route::resource('payment-account', 'PaymentAccountController');
+    //Route::resource('payment-account', 'PaymentAccountController');
 
     Route::resource('tax-rates', 'TaxRateController');
 
@@ -402,7 +402,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
 
 Route::middleware(['EcomApi'])->prefix('api/ecom')->group(function () {
     Route::get('products/{id?}', 'ProductController@getProductsApi');
-    Route::get('categories', 'CategoryController@getCategoriesApi');
+    //Route::get('categories', 'CategoryController@getCategoriesApi');
     Route::get('brands', 'BrandController@getBrandsApi');
     Route::post('customers', 'ContactController@postCustomersApi');
     Route::get('settings', 'BusinessController@getEcomSettings');
@@ -440,3 +440,16 @@ Route::post('store-purchase-excel', 'PurchaseController@importExcel')->name('pur
 Route::get('/import-purchase-excel-file', 'PurchaseController@importExcelFile')->name('purchases.import-excel-file');
 
 Route::post('updateStock' , [\App\Http\Controllers\ProductController::class , 'updateStock']);
+
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\ProductController;
+
+
+Route::group(['middleware' => ['auth']], function () {
+    Route::get('/product/mass-create', [ProductController::class, 'massCreate'])->name('product.massCreate');
+    Route::get('/product/mass-create/row', [ProductController::class, 'getMassProductRow'])->name('product.getMassProductRow');
+    Route::post('/product/mass-store', [ProductController::class, 'massStore'])->name('product.massStore');
+});
+
+
+

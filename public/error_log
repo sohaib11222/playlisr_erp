@@ -3170,3 +3170,5 @@ Stack trace:
 #11 [internal function]: Illuminate\Foundation\Bootstrap\HandleExceptions->handleException()
 #12 {main}
   thrown in /home/nivessac/playlist.nivessa.com/vendor/laravel/framework/src/Illuminate/Container/Container.php on line 853
+[27-Dec-2024 14:14:13 UTC] PHP Fatal error:  require(): Failed opening required '/home/nivessac/playlist.nivessa.com/vendor/composer/../symfony/polyfill-php72/bootstrap.php' (include_path='.:/opt/cpanel/ea-php74/root/usr/share/pear') in /home/nivessac/playlist.nivessa.com/vendor/composer/autoload_real.php on line 41
+[27-Dec-2024 14:14:18 UTC] PHP Fatal error:  require(): Failed opening required '/home/nivessac/playlist.nivessa.com/vendor/composer/../symfony/polyfill-php72/bootstrap.php' (include_path='.:/opt/cpanel/ea-php74/root/usr/share/pear') in /home/nivessac/playlist.nivessa.com/vendor/composer/autoload_real.php on line 41

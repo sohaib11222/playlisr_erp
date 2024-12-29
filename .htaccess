@@ -4,6 +4,15 @@
     RewriteRule ^(.*)$ public/$1 [L]
 </IfModule>
 
+# Use custom php.ini for this subdomain
+# Use custom php.ini for this subdomain
+<IfModule mod_lsapi.c>
+    php_value auto_prepend_file none
+    php_value auto_append_file none
+    php_value include_path ".:/home/nivessac/playlist.nivessa.com"
+    php_value open_basedir "/home/nivessac/playlist.nivessa.com:/tmp"
+</IfModule>
+
 # php -- BEGIN cPanel-generated handler, do not edit
 # Set the “ea-php74” package as the default “PHP” programming language.
 <IfModule mime_module>

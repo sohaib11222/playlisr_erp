@@ -112,6 +112,14 @@ class AdminSidebarMenu
                                 ['icon' => 'fa fas fa-plus-circle', 'active' => request()->segment(1) == 'products' && request()->segment(2) == 'create']
                             );
                         }
+
+                        // Add new Mass Products menu item
+                        $sub->url(
+                            route('product.massCreate'),
+                            __('lang_v1.mass_add_products'),
+                            ['icon' => 'fa fas fa-layer-group', 'active' => request()->segment(1) == 'products' && request()->segment(2) == 'mass-create']
+                        );
+
                         if (auth()->user()->can('product.view')) {
                             $sub->url(
                                 action('LabelsController@show'),

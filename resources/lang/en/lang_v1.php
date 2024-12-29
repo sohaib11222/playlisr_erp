@@ -1477,4 +1477,5 @@ return [
     'quantity_in_second_unit' => 'Quantity in :unit',
     'login_as_username' => 'Login as :username',
     'back_to_username' => 'Back to :username',
+    'mass_add_products' => 'Mass Add Products',
 ];

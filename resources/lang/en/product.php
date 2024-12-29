@@ -15,6 +15,7 @@ return [
     'inc_of_tax' => 'Inc. tax',
     'profit_percent' => 'x Margin(%)',
     'add_new_product' => 'Add new product',
+    'mass_add_new_products' => 'Mass add new products',
     'add_product_for_labels' => 'Add products to generate Labels',
     'product_type' => 'Product Type',
     'category' => 'Category',
