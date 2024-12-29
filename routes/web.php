@@ -13,6 +13,10 @@
 
 include_once('install_r.php');
 
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\ProductController;
+
 Route::middleware(['setData'])->group(function () {
     Route::get('/', function () {
         return view('welcome');
@@ -116,6 +120,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/products/validate_variation_skus', 'ProductController@validateVaritionSkus'); //validates multiple skus at once
     Route::get('/products/quick_add', 'ProductController@quickAdd');
     Route::post('/products/save_quick_product', 'ProductController@saveQuickProduct');
+    Route::get('/product/mass-create', [ProductController::class, 'massCreate'])->name('product.massCreate');
+    Route::get('/product/mass-create/row', [ProductController::class, 'getMassProductRow'])->name('product.getMassProductRow');
+    Route::post('/product/mass-store', [ProductController::class, 'massStore'])->name('product.massStore');
     Route::get('/products/get-combo-product-entry-row', 'ProductController@getComboProductEntryRow');
     Route::post('/products/toggle-woocommerce-sync', 'ProductController@toggleWooCommerceSync');
     
@@ -440,16 +447,3 @@ Route::post('store-purchase-excel', 'PurchaseController@importExcel')->name('pur
 Route::get('/import-purchase-excel-file', 'PurchaseController@importExcelFile')->name('purchases.import-excel-file');
 
 Route::post('updateStock' , [\App\Http\Controllers\ProductController::class , 'updateStock']);
-
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\ProductController;
-
-
-Route::group(['middleware' => ['auth']], function () {
-    Route::get('/product/mass-create', [ProductController::class, 'massCreate'])->name('product.massCreate');
-    Route::get('/product/mass-create/row', [ProductController::class, 'getMassProductRow'])->name('product.getMassProductRow');
-    Route::post('/product/mass-store', [ProductController::class, 'massStore'])->name('product.massStore');
-});
-
-
-
