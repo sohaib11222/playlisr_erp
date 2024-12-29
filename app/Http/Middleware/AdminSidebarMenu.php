@@ -114,10 +114,11 @@ class AdminSidebarMenu
                         }
 
                         // Add new Mass Products menu item
+                        // Add new Mass Products menu item
                         $sub->url(
                             route('product.massCreate'),
                             __('lang_v1.mass_add_products'),
-                            ['icon' => 'fa fas fa-layer-group', 'active' => request()->segment(1) == 'products' && request()->segment(2) == 'mass-create']
+                            ['icon' => 'fa fas fa-layer-group', 'active' => \Route::currentRouteName() == 'product.massCreate']
                         );
 
                         if (auth()->user()->can('product.view')) {
