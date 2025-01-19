@@ -71,8 +71,15 @@
                         <div class="input-group">
                             {!! Form::select('brand_id', $brands, !empty($duplicate_product->brand_id) ? $duplicate_product->brand_id : null, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2']); !!}
                             <span class="input-group-btn">
-                <button type="button" @if(!auth()->user()->can('brand.create')) disabled @endif class="btn btn-default bg-white btn-flat btn-modal" data-href="{{action('BrandController@create', ['quick_add' => true])}}" title="@lang('brand.add_brand')" data-container=".view_modal"><i class="fa fa-plus-circle text-primary fa-lg"></i></button>
-              </span>
+                                    <button
+                                            type="button" @if(!auth()->user()->can('brand.create')) disabled @endif
+                                            class="btn btn-default bg-white btn-flat btn-modal"
+                                            data-href="{{action('BrandController@create', ['quick_add' => true])}}"
+                                            title="@lang('brand.add_brand')"
+                                            data-container=".view_modal">
+                                        <i class="fa fa-plus-circle text-primary fa-lg"></i>
+                                    </button>
+                            </span>
                         </div>
                     </div>
                 </div>

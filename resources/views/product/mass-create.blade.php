@@ -19,10 +19,17 @@
             <table class="table table-bordered table-striped" id="mass_create_table">
                 <thead>
                 <tr>
-                    <th>@lang('product.product_name')</th>
-                    <th>@lang('product.sku')</th>
-                    <th>@lang('product.brand')</th>
+                    <th>@lang('product.product_name')*</th>
+                    <th>
+                        {!! Form::label('sku', __('product.sku') . ':') !!} @show_tooltip(__('tooltip.sku'))
+                    </th>
+                    <th>
+                        @lang('product.brand')
+                        <i class="fa fa-info-circle" data-toggle="tooltip" title="@lang('tooltip.brand')"></i>
+                    </th>
                     <th>@lang('product.category')</th>
+                    <th>@lang('product.sub_category')</th>
+
                     <th>@lang('product.locations')</th>
                     <th>@lang('product.alert_quantity')</th>
                     <th>@lang('product.selling_price')</th>
@@ -52,24 +59,91 @@
     </section>
 @endsection
 
-@push('scripts')
-    <script>
-        let rowIndex = 1;
+@section('javascript')
+    @php $asset_v = env('APP_VERSION'); @endphp
+    <script src="{{ asset('js/product.js?v=' . $asset_v) }}"></script>
 
-        $('#add_row').on('click', function () {
-            $.ajax({
-                url: "{{ route('product.getMassProductRow') }}",
-                type: 'GET',
-                data: { index: rowIndex },
-                success: function (row) {
-                    $('#product_rows_container').append(row);
-                    rowIndex++;
-                }
-            });
+    <script type="text/javascript">
+        $(document).ready(function(){
+
+
+            alert('dom ready!');
+
+            let rowIndex = 1;
+
+
+
+                    // Добавление новой строки
+                    $('#add_row').on('click', function () {
+                        $.ajax({
+                            url: "{{ route('product.getMassProductRow') }}",
+                            type: 'GET',
+                            data: {index: rowIndex},
+                            success: function (row) {
+                                $('#product_rows_container').append(row);
+                                rowIndex++;
+
+                                // Реинициализируем Select2 только для новых элементов
+                                $('#product_rows_container .select2').last().select2();
+                            },
+                            error: function () {
+                                toastr.error('Failed to add a new row.');
+                            }
+                        });
+                    });
+
+
+                    // Удаление строки
+                    $(document).on('click', '.remove_row', function () {
+                        $(this).closest('tr').remove();
+                    });
+
+                    // Обработка изменения категории
+                    $(document).on('change', '.category-select', function () {
+                        const $this = $(this);
+                        const category_id = $this.val();
+                        const rowId = $this.closest('tr').index();
+                        const subCategorySelect = $this.closest('tr').find('.subcategory-select');
+
+                        console.log(`Category changed in row ${rowId}, category_id: ${category_id}`);
+
+                        if (category_id) {
+                            $.ajax({
+                                url: "{{ route('product.get_sub_categories') }}",
+                                type: 'POST',
+                                data: {cat_id: category_id},
+                                headers: {
+                                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                                },
+                                success: function (data) {
+                                    subCategorySelect.html(data);
+                                },
+                                error: function () {
+                                    toastr.error('Failed to fetch subcategories.');
+                                },
+                            });
+                        } else {
+                            subCategorySelect.html('<option value="">@lang("messages.please_select")</option>');
+                        }
+                    });
+
+
+                    // Реинициализация Select2 для уже существующих строк
+                    $('.select2').select2();
+
+                    // Tooltip для элементов
+                    $('[data-toggle="tooltip"]').tooltip();
+
+
+                    // Tooltip initialization for dynamically added elements
+                    $(document).on('mouseenter', '[data-toggle="tooltip"]', function () {
+                        $(this).tooltip('show');
+                    });
+
+
         });
 
-        $(document).on('click', '.remove_row', function () {
-            $(this).closest('tr').remove();
-        });
     </script>
-@endpush
+@endsection
+
+

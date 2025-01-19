@@ -111,6 +111,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/products/get-product-to-edit/{product_id}', 'ProductController@getProductToEdit');
     
     Route::post('/products/get_sub_categories', 'ProductController@getSubCategories');
+    Route::post('/products/get_sub_categories', [ProductController::class, 'getSubCategories'])->name('product.get_sub_categories');
+
     Route::get('/products/get_sub_units', 'ProductController@getSubUnits');
     Route::post('/products/product_form_part', 'ProductController@getProductVariationFormPart');
     Route::post('/products/get_product_variation_row', 'ProductController@getProductVariationRow');

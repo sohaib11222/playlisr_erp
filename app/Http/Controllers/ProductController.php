@@ -1036,6 +1036,7 @@ class ProductController extends Controller
                         ->where('parent_id', $category_id)
                         ->select(['name', 'id'])
                         ->get();
+
             $html = '<option value="">None</option>';
             if (!empty($sub_categories)) {
                 foreach ($sub_categories as $sub_category) {
@@ -2469,11 +2470,19 @@ class ProductController extends Controller
 
         try {
             foreach ($products as $productData) {
+
+                // Generate SKU if the field is empty
+                $sku = !empty($productData['sku'])
+                    ? $productData['sku']
+                    : $this->productUtil->generateProductSku();
+
+
                 $product = Product::create([
                     'name' => $productData['name'],
                     'sku' => $productData['sku'],
                     'brand_id' => $productData['brand_id'],
                     'category_id' => $productData['category_id'],
+                    'sub_category_id' => $productData['sub_category_id'],
                     'tax' => $productData['tax'],
                     'alert_quantity' => $productData['alert_quantity'],
                     'business_id' => $request->session()->get('user.business_id'),
@@ -2482,7 +2491,7 @@ class ProductController extends Controller
 
                 $this->productUtil->createSingleProductVariation(
                     $product->id,
-                    $productData['sku'],
+                    $sku,
                     $productData['single_dpp_inc_tax'],
                     $productData['single_dpp_inc_tax'],
                     $productData['profit_percent'] ?? 0,
@@ -2502,10 +2511,9 @@ class ProductController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             \Log::error($e->getMessage());
-            return redirect()->back()->with('status', [
-                'success' => false,
-                'msg' => __('messages.something_went_wrong'),
-            ]);
+            return redirect()
+                ->back()
+                ->with('status', ['success' => false, 'msg' => __('messages.something_went_wrong')]);
         }
     }
 
@@ -2516,15 +2524,12 @@ class ProductController extends Controller
 
         $business_id = $request->session()->get('user.business_id');
 
-        Log::error('business_id = ', $business_id);
-
         $categories = Category::forDropdown($business_id, 'product');
 
         $brands = Brands::forDropdown($business_id);
 
-        Log::error('brands = ', $brands);
-
         $taxes = TaxRate::forBusinessDropdown($business_id, false)['tax_rates'];
+
         $business_locations = BusinessLocation::forDropdown($business_id);
 
         return view('product.partials.mass_product_row')
