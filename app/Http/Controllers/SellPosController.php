@@ -62,6 +62,7 @@ use Razorpay\Api\Api;
 use App\TransactionPayment;
 use Stripe\Charge;
 use Stripe\Stripe;
+use App\VariationLocationDetails;
 
 class SellPosController extends Controller
 {
@@ -495,6 +496,7 @@ class SellPosController extends Controller
                     foreach ($input['products'] as $product) {
                         $decrease_qty = $this->productUtil
                                     ->num_uf($product['quantity']);
+                                    
                         if (!empty($product['base_unit_multiplier'])) {
                             $decrease_qty = $decrease_qty * $product['base_unit_multiplier'];
                         }
@@ -507,7 +509,23 @@ class SellPosController extends Controller
                                 $decrease_qty
                             );
                         }
-
+                        $variation_location_d = VariationLocationDetails
+                          ::where('variation_id', $product['variation_id'])
+                          ->where('product_id', $product['product_id'])
+                          ->where('location_id', $input['location_id'])
+                          ->first();
+                        //   var_dump($variation_location_d);die;
+                        if (!$product['enable_stock'] && (empty($variation_location_d) || $variation_location_d == 0)) {
+                            $this->productUtil->updateProductQuantity2(
+                                $input['location_id'],
+                                $product['product_id'],
+                                $product['variation_id'],
+                                $decrease_qty,
+                                0,
+                                null,
+                                false
+                            );
+                        }
                         if ($product['product_type'] == 'combo') {
                             //Decrease quantity of combo as well.
                             $this->productUtil
@@ -692,7 +710,7 @@ class SellPosController extends Controller
         }
         //Check if printing of invoice is enabled or not.
         //If enabled, get print type.
-        $output['is_enabled'] = true;
+        $output['is_enabled'] = false;
 
         $invoice_layout_id = !empty($invoice_layout_id) ? $invoice_layout_id : $location_details->invoice_layout_id;
         $invoice_layout = $this->businessUtil->invoiceLayout($business_id, $invoice_layout_id);

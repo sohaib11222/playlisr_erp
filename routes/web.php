@@ -176,7 +176,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::resource('invoice-schemes', 'InvoiceSchemeController');
 
     //Print Labels
-    Route::get('/labels/show', 'LabelsController@show');
+    Route::get('/labels/show', 'LabelsController@show')->name('labels.show');;
     Route::get('/labels/add-product-row', 'LabelsController@addProductRow');
     Route::get('/labels/preview', 'LabelsController@preview');
 

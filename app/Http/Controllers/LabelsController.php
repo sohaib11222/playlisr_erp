@@ -9,6 +9,7 @@ use App\Utils\TransactionUtil;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\SellingPriceGroup;
+use App\Category;
 
 class LabelsController extends Controller
 {
@@ -162,8 +163,12 @@ class LabelsController extends Controller
 
                     $details->sell_price_inc_tax = $group_prices['price_inc_tax'];
                     $details->default_sell_price = $group_prices['price_exc_tax'];
+                    
+                    
                 }
-
+                
+                
+                // print_r($details->sub_category);die;
                 for ($i=0; $i < $value['quantity']; $i++) {
 
                     $page = intdiv($total_qty, $barcode_details->stickers_in_one_sheet);
@@ -171,7 +176,9 @@ class LabelsController extends Controller
                     if($total_qty % $barcode_details->stickers_in_one_sheet == 0){
                         $product_details_page_wise[$page] = [];
                     }
-
+                    $sub_category_id = Product::where('id', $details->product_id)->value('sub_category_id');
+                    $details->sub_category = Category::where('id', $sub_category_id)->value('name');
+                    
                     $product_details_page_wise[$page][] = $details;
                     $total_qty++;
                 }
@@ -209,6 +216,7 @@ class LabelsController extends Controller
             //$original_aspect_ratio = 4;//(w/h)
             $factor = (($barcode_details->width / $barcode_details->height)) / ($barcode_details->is_continuous ? 2 : 4);
             $html = '';
+            // print_r($product_details_page_wise);die;
             foreach ($product_details_page_wise as $page => $page_products) {
 
                 if($i == 0){

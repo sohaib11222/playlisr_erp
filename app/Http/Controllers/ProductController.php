@@ -286,7 +286,7 @@ class ProductController extends Controller
                     return  '<input type="checkbox" class="row-select" value="' . $row->id .'">' ;
                 })
                 ->editColumn('current_stock', function($row){
-                    if ($row->enable_stock) {
+                    if ($this->productUtil->num_f($row->current_stock, false, null, true)) {
                         $stock = $this->productUtil->num_f($row->current_stock, false, null, true);
                         return $stock . ' ' . $row->unit;
                     } else {

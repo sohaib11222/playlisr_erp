@@ -552,6 +552,56 @@ class ProductUtil extends Util
         
         return true;
     }
+    
+    public function updateProductQuantity2($location_id, $product_id, $variation_id, $new_quantity, $old_quantity = 0, $number_format = null, $uf_data = true)
+    {
+        // var_dump('here');
+        if ($uf_data) {
+            $qty_difference = $this->num_uf($new_quantity, $number_format) - $this->num_uf($old_quantity, $number_format);
+        } else {
+            $qty_difference = $new_quantity - $old_quantity;
+        }
+
+        $product = Product::find($product_id);
+        // var_dump($product);
+        //Check if stock is enabled or not.
+        if ($qty_difference != 0) {
+            
+            $variation = Variation::where('id', $variation_id)
+                            ->where('product_id', $product_id)
+                            ->first();
+            
+            //Add quantity in VariationLocationDetails
+            $variation_location_d = VariationLocationDetails
+                          ::where('variation_id', $variation->id)
+                          ->where('product_id', $product_id)
+                          ->where('product_variation_id', $variation->product_variation_id)
+                          ->where('location_id', $location_id)
+                          ->first();
+
+            if (empty($variation_location_d)) {
+                $variation_location_d = new VariationLocationDetails();
+                $variation_location_d->variation_id = $variation->id;
+                $variation_location_d->product_id = $product_id;
+                $variation_location_d->location_id = $location_id;
+                $variation_location_d->product_variation_id = $variation->product_variation_id;
+                $variation_location_d->qty_available = 0;
+            }
+
+            $variation_location_d->qty_available += $qty_difference;
+            
+            $variation_location_d->save();
+            // $variation_location_d = VariationLocationDetails
+            //               ::where('variation_id', $variation->id)
+            //               ->where('product_id', $product_id)
+            //               ->where('product_variation_id', $variation->product_variation_id)
+            //               ->where('location_id', $location_id)
+            //               ->first();
+            // var_dump($variation_location_d);die;
+        }
+        
+        return true;
+    }
 
     /**
      * Checks if products has manage stock enabled then Decrease quantity for product and its variations

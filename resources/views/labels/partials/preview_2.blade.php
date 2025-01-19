@@ -36,6 +36,13 @@
 							{{$page_product->product_variation_name}}:<b>{{$page_product->variation_name}}</b>
 						</span>
 					@endif
+					
+					{{-- Genre --}}
+					@if(!empty($print['price']))
+						<span style="display: block !important; font-size: {{$print['name_size']}}px">
+							Genre:<b>{{$page_product->sub_category}}</b>
+						</span>
+					@endif
 
 					{{-- Price --}}
 					@if(!empty($print['price']))

@@ -20,17 +20,30 @@
                     @endif
                 </div>
         		<div class="col-md-8 col-xs-12">
-                    <div class="form-group pull-right">
-                          <div class="input-group">
+                    <div class="form-group pull-right d-flex justify-content-between">
+                        <div class="input-group">
                             <button type="button" class="btn btn-primary" id="dashboard_date_filter">
-                              <span>
-                                <i class="fa fa-calendar"></i> {{ __('messages.filter_by_date') }}
-                              </span>
-                              <i class="fa fa-caret-down"></i>
+                                <span>
+                                    <i class="fa fa-calendar"></i> {{ __('messages.filter_by_date') }}
+                                </span>
+                                <i class="fa fa-caret-down"></i>
                             </button>
-                          </div>
+                        </div>
+                        
                     </div>
-        		</div>
+                    <div class="input-group pull-center">
+                        <a href="{{ route('products.create') }}" class="btn btn-success">
+                            Add Product
+                        </a>
+                        <a href="{{ route('product.massCreate') }}" class="btn btn-success">
+                            Bulk Add Product
+                        </a>
+                        <a href="{{ route('labels.show') }}" class="btn btn-success">
+                            Print Labels
+                        </a>
+                    </div>
+                </div>
+
         	</div>
     	   <br>
     	   <div class="row row-custom">
