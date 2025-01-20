@@ -2471,24 +2471,48 @@ class ProductController extends Controller
         try {
             foreach ($products as $productData) {
 
-                // Generate SKU if the field is empty
-                $sku = !empty($productData['sku'])
-                    ? $productData['sku']
-                    : $this->productUtil->generateProductSku();
+                // Обработка загрузки изображения
+                $image = null;
+                if (isset($productData['image']) && $request->hasFile("products.{$productData['image']}")) {
+                    $image = $this->productUtil->uploadFile(
+                        $request,
+                        "products.{$productData['image']}",
+                        config('constants.product_img_path'),
+                        'image'
+                    );
+                }
 
+                $sku = !empty($productData['sku']) ? $productData['sku'] : null;
 
+                // Создание нового продукта с учётом новых полей
                 $product = Product::create([
-                    'name' => $productData['name'],
-                    'sku' => $productData['sku'],
-                    'brand_id' => $productData['brand_id'],
-                    'category_id' => $productData['category_id'],
-                    'sub_category_id' => $productData['sub_category_id'],
-                    'tax' => $productData['tax'],
-                    'alert_quantity' => $productData['alert_quantity'],
-                    'business_id' => $request->session()->get('user.business_id'),
-                    'created_by' => auth()->user()->id,
+                    'name'                => $productData['name'],
+                    'sku'                 => $productData['sku'],
+                    'brand_id'            => $productData['brand_id'],
+                    'category_id'         => $productData['category_id'],
+                    'sub_category_id'     => $productData['sub_category_id'],
+                    'tax'                 => $productData['tax'],
+                    'tax_type'            => $productData['tax_type'] ?? 'inclusive',
+                    'alert_quantity'      => $productData['alert_quantity'],
+                    'business_id'         => $request->session()->get('user.business_id'),
+                    'created_by'          => auth()->user()->id,
+                    'product_custom_field1' => $productData['image_url'] ?? null,
+                    'image'               => $image,
+                    'enable_stock'        => !empty($productData['enable_stock']) ? 1 : 0,
+                    'product_description' => $productData['description'] ?? null,
                 ]);
 
+                // Генерация SKU, если поле пустое
+                if (empty(trim($productData['sku']))) {
+                    $generatedSku = $this->productUtil->generateProductSku($product->id);
+                    $product->sku = $generatedSku;
+                    $product->save();
+                }
+
+                // Используйте SKU для создания вариации:
+                $sku = $product->sku;  // Теперь SKU определё
+
+                // Создание вариации для одиночного продукта
                 $this->productUtil->createSingleProductVariation(
                     $product->id,
                     $sku,
@@ -2516,6 +2540,7 @@ class ProductController extends Controller
                 ->with('status', ['success' => false, 'msg' => __('messages.something_went_wrong')]);
         }
     }
+
 
 
     public function getMassProductRow(Request $request)
