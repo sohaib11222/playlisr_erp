@@ -33,6 +33,7 @@ use Yajra\DataTables\Facades\DataTables;
 use App\Exports\ProductsExport;
 use Excel;
 use ZipArchive;
+use Illuminate\Support\Facades\Validator;
 
 class ProductController extends Controller
 {
@@ -2464,6 +2465,29 @@ class ProductController extends Controller
 
     public function massStore(Request $request)
     {
+
+        // Валидация входящих данных
+        $validator = Validator::make($request->all(), [
+            'products' => 'required|array|min:1',
+            'products.*.name' => 'required|string|max:255',
+            'products.*.brand_id' => 'required|numeric',
+            'products.*.category_id' => 'required|numeric',
+            // Добавьте другие правила валидации по необходимости, например:
+            // 'products.*.alert_quantity' => 'nullable|numeric',
+            // 'products.*.single_dsp_inc_tax' => 'required|numeric',
+            // 'products.*.single_dpp_inc_tax' => 'required|numeric',
+            // и т.д.
+        ]);
+
+        if ($validator->fails()) {
+            // Возвращаем ошибки в формате JSON для AJAX-запроса с кодом 422
+            return response()->json([
+                'success' => 0,
+                'errors' => $validator->errors()->all()
+            ], 422);
+        }
+
+
         $products = $request->input('products');
 
         DB::beginTransaction();
@@ -2487,18 +2511,18 @@ class ProductController extends Controller
                 // Создание нового продукта с учётом новых полей
                 $product = Product::create([
                     'name'                => $productData['name'],
-                    'sku'                 => $productData['sku'],
+                    'sku'                 => (!empty($productData['sku']) ? $productData['sku'] : 111),
                     'brand_id'            => $productData['brand_id'],
                     'category_id'         => $productData['category_id'],
                     'sub_category_id'     => $productData['sub_category_id'],
-                    'tax'                 => $productData['tax'],
-                    'tax_type'            => $productData['tax_type'] ?? 'inclusive',
-                    'alert_quantity'      => $productData['alert_quantity'],
+                    'tax'                 => 1,
+                    'tax_type'            => 'exclusive',
+                    'alert_quantity'      => 1,
                     'business_id'         => $request->session()->get('user.business_id'),
                     'created_by'          => auth()->user()->id,
                     'product_custom_field1' => $productData['image_url'] ?? null,
                     'image'               => $image,
-                    'enable_stock'        => !empty($productData['enable_stock']) ? 1 : 0,
+                    'enable_stock'        => 1,
                     'product_description' => $productData['description'] ?? null,
                 ]);
 
@@ -2528,17 +2552,37 @@ class ProductController extends Controller
 
             DB::commit();
 
-            return redirect()->route('products.index')->with('status', [
-                'success' => true,
-                'msg' => __('product.mass_create_success'),
-            ]);
+            $output = ['success' => 1, 'msg' => 'Products were created successfully!'];
         } catch (\Exception $e) {
             DB::rollBack();
             \Log::error($e->getMessage());
-            return redirect()
-                ->back()
-                ->with('status', ['success' => false, 'msg' => __('messages.something_went_wrong')]);
+            $output = ['success' => 0, 'msg' => 'Something went wrong during creating the products'];
         }
+
+        // Проверяем, если запрос AJAX, возвращаем JSON-ответ без редиректа
+    if ($request->ajax()) {
+        return response()->json($output);
+    }
+
+    // Для обычных запросов выполняем редирект как и было ранее
+    if ($request->input('submit_type') == 'submit_n_add_opening_stock') {
+        return redirect()->action(
+            'OpeningStockController@add',
+            ['product_id' => $product->id]
+        );
+    } elseif ($request->input('submit_type') == 'submit_n_add_selling_prices') {
+        return redirect()->action(
+            'ProductController@addSellingPrices',
+            [$product->id]
+        );
+    } elseif ($request->input('submit_type') == 'save_n_add_another') {
+        return redirect()->action(
+            'ProductController@create'
+        )->with('status', $output);
+    }
+
+    return redirect('products')->with('status', $output);
+
     }
 
 

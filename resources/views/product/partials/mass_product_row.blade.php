@@ -41,12 +41,6 @@
         ]) !!}
     </div>
     <div class="td">
-        {!! Form::text("products[{$index}][alert_quantity]", null, [
-            'class' => 'form-control',
-            'placeholder' => __('product.alert_quantity')
-        ]) !!}
-    </div>
-    <div class="td">
         {!! Form::text("products[{$index}][single_dsp_inc_tax]", null, [
             'class' => 'form-control',
             'placeholder' => __('product.selling_price')
@@ -56,13 +50,6 @@
         {!! Form::text("products[{$index}][single_dpp_inc_tax]", null, [
             'class' => 'form-control',
             'placeholder' => __('product.purchase_price')
-        ]) !!}
-    </div>
-    <div class="td">
-        {!! Form::select("products[{$index}][tax]", $taxes, null, [
-            'class' => 'form-control select2',
-            'placeholder' => __('messages.please_select'),
-            'id' => "products_{$index}_tax"
         ]) !!}
     </div>
     <!-- Add Image URL Field -->
@@ -80,13 +67,7 @@
         ]) !!}
     </div>
 
-    <!-- Новая колонка: Manage Stock -->
-    <div class="td">
-        <label>
-            {!! Form::checkbox("products[{$index}][enable_stock]", 1, true, ['class' => 'input-icheck']) !!}
-            @lang('product.manage_stock')
-        </label>
-    </div>
+
 
     <!-- Новая колонка: Description -->
     <div class="td">
@@ -97,16 +78,7 @@
         ]) !!}
     </div>
 
-    <!-- Новая колонка: Selling Price Tax Type -->
-    <div class="td">
-        {!! Form::select("products[{$index}][tax_type]", [
-            'inclusive' => __('product.inclusive'),
-            'exclusive' => __('product.exclusive')
-        ], 'inclusive', [
-            'class' => 'form-control select2',
-            'required' => true
-        ]) !!}
-    </div>
+
 
     <div class="td">
         <button type="button" class="btn btn-danger btn-xs remove_row">

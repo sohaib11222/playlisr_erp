@@ -124,6 +124,14 @@
             display: block;
         }
 
+        .is-invalid {
+            border-color: red;
+        }
+        .invalid-feedback {
+            color: red;
+            font-size: 0.9em;
+        }
+
         /* Адаптивный режим */
         @media (max-width: 768px) {
             .table-wrapper {
@@ -152,18 +160,11 @@
                     <div class="th">@lang('product.category')</div>
                     <div class="th">@lang('product.sub_category')</div>
                     <div class="th">@lang('business.business_locations')</div>
-                    <div class="th">@lang('product.alert_quantity')</div>
                     <div class="th">Product Selling Price</div>
                     <div class="th">Product Purchase Price</div>
-                    <div class="th">@lang('product.tax')</div>
                     <div class="th">Product Image Url</div>
                     <div class="th">Upload Product Image</div>
-
-                    <div class="th">@lang('product.manage_stock')</div>
                     <div class="th">Product Description</div>
-
-                    <div class="th">@lang('product.selling_price_tax_type')</div>
-
                     <div class="th">@lang('messages.action')</div>
                 </div>
             </div>
@@ -318,23 +319,51 @@
                         }
                     },
                     error: function(xhr, status, error) {
-                        let errorMsg = 'The product saving failed';
-                        if(xhr.responseText) {
-                            try {
-                                let resp = JSON.parse(xhr.responseText);
-                                if(resp.message) {
-                                    errorMsg += ': ' + resp.message;
-                                } else {
+                        if(xhr.status === 422) {
+                            let response = JSON.parse(xhr.responseText);
+                            if(response.errors) {
+                                // Убираем предыдущие пометки и сообщения об ошибках
+                                $('.is-invalid').removeClass('is-invalid');
+                                $('.invalid-feedback').remove();
+
+                                response.errors.forEach(function(message) {
+                                    // Извлекаем имя поля из сообщения об ошибке
+                                    let matches = message.match(/The (.+?) field/);
+                                    if(matches) {
+                                        let fieldKey = matches[1]; // Например, "products.0.name"
+                                        // Преобразуем в формат, соответствующий атрибуту name: "products[0][name]"
+                                        let fieldName = fieldKey.replace(/\.([^.]+)/g, '[$1]');
+                                        // Находим поле по имени
+                                        let $field = $('[name="'+ fieldName +'"]');
+                                        if($field.length) {
+                                            // Добавляем класс для красной границы
+                                            $field.addClass('is-invalid');
+                                            // Добавляем сообщение об ошибке под полем
+                                            let errorHtml = '<span class="invalid-feedback">' + message + '</span>';
+                                            $field.after(errorHtml);
+                                        }
+                                    }
+                                });
+                            }
+                        } else {
+                            let errorMsg = 'The product saving failed';
+                            if(xhr.responseText) {
+                                try {
+                                    let resp = JSON.parse(xhr.responseText);
+                                    if(resp.message) {
+                                        errorMsg += ': ' + resp.message;
+                                    } else {
+                                        errorMsg += ': ' + xhr.responseText;
+                                    }
+                                } catch(e) {
                                     errorMsg += ': ' + xhr.responseText;
                                 }
-                            } catch(e) {
-                                errorMsg += ': ' + xhr.responseText;
                             }
+                            toastr.error(errorMsg);
+                            document.getElementById('error-audio').play();
+                            console.log('AJAX error:', status, error);
+                            console.log('Response Text:', xhr.responseText);
                         }
-                        toastr.error(errorMsg);
-                        document.getElementById('error-audio').play();
-                        console.log('AJAX error:', status, error);
-                        console.log('Response Text:', xhr.responseText);
                     }
                 });
             });
