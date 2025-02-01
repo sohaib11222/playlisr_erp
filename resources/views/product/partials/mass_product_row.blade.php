@@ -14,12 +14,6 @@
         ]) !!}
     </div>
     <div class="td">
-        {!! Form::select("products[{$index}][brand_id]", $brands, null, [
-            'class' => 'form-control select2',
-            'placeholder' => __('messages.please_select')
-        ]) !!}
-    </div>
-    <div class="td">
         {!! Form::select("products[{$index}][category_id]", $categories, null, [
             'class' => 'form-control select2 category-select',
             'placeholder' => __('messages.please_select'),

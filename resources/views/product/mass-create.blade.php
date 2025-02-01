@@ -156,7 +156,6 @@
                 <div class="tr">
                     <div class="th">@lang('product.product_name')*</div>
                     <div class="th">@lang('product.sku')</div>
-                    <div class="th">@lang('product.brand')</div>
                     <div class="th">@lang('product.category')</div>
                     <div class="th">@lang('product.sub_category')</div>
                     <div class="th">@lang('business.business_locations')</div>

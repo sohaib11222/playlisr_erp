@@ -2470,8 +2470,6 @@ class ProductController extends Controller
         $validator = Validator::make($request->all(), [
             'products' => 'required|array|min:1',
             'products.*.name' => 'required|string|max:255',
-            'products.*.brand_id' => 'required|numeric',
-            'products.*.category_id' => 'required|numeric',
             // Добавьте другие правила валидации по необходимости, например:
             // 'products.*.alert_quantity' => 'nullable|numeric',
             // 'products.*.single_dsp_inc_tax' => 'required|numeric',
@@ -2512,9 +2510,9 @@ class ProductController extends Controller
                 $product = Product::create([
                     'name'                => $productData['name'],
                     'sku'                 => (!empty($productData['sku']) ? $productData['sku'] : 111),
-                    'brand_id'            => $productData['brand_id'],
-                    'category_id'         => $productData['category_id'],
-                    'sub_category_id'     => $productData['sub_category_id'],
+                    'brand_id'            => null,
+                    'category_id'         => $productData['category_id'] ?? null,
+                    'sub_category_id'     => $productData['sub_category_id'] ?? null,
                     'tax'                 => 1,
                     'tax_type'            => 'exclusive',
                     'alert_quantity'      => 1,
@@ -2524,6 +2522,9 @@ class ProductController extends Controller
                     'image'               => $image,
                     'enable_stock'        => 1,
                     'product_description' => $productData['description'] ?? null,
+                    'unit_id' => $productData['unit_id'] ?? 1,
+                    'secondary_unit_id' => $productData['secondary_unit_id'] ?? 1,
+                    'type' => $productData['type'] ?? 'single',
                 ]);
 
                 // Генерация SKU, если поле пустое
