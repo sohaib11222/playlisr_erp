@@ -24,9 +24,10 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule)
     {
+        /*
         $env = config('app.env');
         $email = config('mail.username');
-
+        
         if ($env === 'live') {
             //Scheduling backup, specify the time when the backup will get cleaned & time when it will run.
             $schedule->command('backup:run')->dailyAt('23:50');
@@ -41,10 +42,12 @@ class Kernel extends ConsoleKernel
         if ($env === 'demo' && !empty($email)) {
             //IMPORTANT NOTE: This command will delete all business details and create dummy business, run only in demo server.
             $schedule->command('pos:dummyBusiness')
-                    ->cron('0 */3 * * *')
-                    //->everyThirtyMinutes()
+                    ->cron('0 3 * * *')
                     ->emailOutputTo($email);
         }
+        */
+
+        $schedule->command('stock:refresh-cache')->dailyAt('23:50');
     }
 
     /**

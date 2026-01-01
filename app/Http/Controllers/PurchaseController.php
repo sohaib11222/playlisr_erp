@@ -916,7 +916,15 @@ class PurchaseController extends Controller
                 'categories.id'
             )
                 ->where(function ($query) use ($term) {
-                    $query->where('products.name', 'like', '%' . $term .'%');
+                    // Split search term into words
+                    $searchTerms = explode(' ', $term);
+                    
+                    $query->where(function($q) use ($searchTerms) {
+                        foreach($searchTerms as $term) {
+                            $q->where('products.name', 'like', '%' . $term . '%');
+                        }
+                    });
+                    
                     $query->orWhere('sku', 'like', '%' . $term .'%');
                     $query->orWhere('sub_sku', 'like', '%' . $term .'%');
                 })
@@ -925,7 +933,7 @@ class PurchaseController extends Controller
                 ->whereNull('variations.deleted_at')
                 ->select(
                     'products.id as product_id',
-                    'products.name',
+                    'products.name', 
                     'products.type',
                     // 'products.sku as sku',
                     'variations.id as variation_id',

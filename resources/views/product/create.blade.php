@@ -21,7 +21,7 @@
             'id' => 'product_add_form','class' => 'product_form ' . $form_class, 'files' => true ]) !!}
         @component('components.widget', ['class' => 'box-primary'])
             <div class="row">
-                <div class="col-sm-4">
+                <div class="col-sm-12">
                     <div class="form-group">
                         {!! Form::label('name', __('product.product_name') . ':*') !!}
                         {!! Form::text('name', !empty($duplicate_product->name) ? $duplicate_product->name : null, ['class' => 'form-control', 'required',
@@ -29,14 +29,14 @@
                     </div>
                 </div>
 
-                <div class="col-sm-4">
+                <div class="col-sm-12">
                     <div class="form-group">
                         {!! Form::label('sku', __('product.sku') . ':') !!} @show_tooltip(__('tooltip.sku'))
                         {!! Form::text('sku', null, ['class' => 'form-control',
                           'placeholder' => __('product.sku')]); !!}
                     </div>
                 </div>
-                <div class="col-sm-4" style="display: none">
+                <div class="col-sm-12" style="display: none">
                     <div class="form-group">
                         {!! Form::label('barcode_type', __('product.barcode_type') . ':*') !!}
                         {!! Form::select('barcode_type', $barcode_types, !empty($duplicate_product->barcode_type) ? $duplicate_product->barcode_type : $barcode_default, ['class' => 'form-control select2', 'required']); !!}
@@ -44,7 +44,7 @@
                 </div>
 
                 <div class="clearfix"></div>
-                <div class="col-sm-4" style="display: none">
+                <div class="col-sm-12" style="display: none">
                     <div class="form-group">
                         <label for="unit_id">{{ __('product.unit') }}:*</label>
                         <div class="input-group">
@@ -59,38 +59,41 @@
                     </div>
                 </div>
 
-
-
-
-
-
-
-                <div class="col-sm-4 @if(!session('business.enable_brand')) hide @endif">
+                <div class="col-sm-12 @if(!session('business.enable_brand')) hide @endif">
                     <div class="form-group">
                         {!! Form::label('brand_id', __('product.brand') . ':') !!}
                         <div class="input-group">
                             {!! Form::select('brand_id', $brands, !empty($duplicate_product->brand_id) ? $duplicate_product->brand_id : null, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2']); !!}
                             <span class="input-group-btn">
-                                    <button
-                                            type="button" @if(!auth()->user()->can('brand.create')) disabled @endif
-                                            class="btn btn-default bg-white btn-flat btn-modal"
-                                            data-href="{{action('BrandController@create', ['quick_add' => true])}}"
-                                            title="@lang('brand.add_brand')"
-                                            data-container=".view_modal">
-                                        <i class="fa fa-plus-circle text-primary fa-lg"></i>
-                                    </button>
+                                <button
+                                        type="button" @if(!auth()->user()->can('brand.create')) disabled @endif
+                                        class="btn btn-default bg-white btn-flat btn-modal"
+                                        data-href="{{action('BrandController@create', ['quick_add' => true])}}"
+                                        title="@lang('brand.add_brand')"
+                                        data-container=".view_modal">
+                                    <i class="fa fa-plus-circle text-primary fa-lg"></i>
+                                </button>
                             </span>
                         </div>
                     </div>
                 </div>
-                <div class="col-sm-4 @if(!session('business.enable_category')) hide @endif">
+
+                <div class="col-sm-12">
+                    <div class="form-group">
+                        {!! Form::label('artist', 'Artist' . ':') !!}
+                        {!! Form::text('artist', !empty($duplicate_product->artist) ? $duplicate_product->artist : null, ['class' => 'form-control',
+                        'placeholder' => 'Artist']); !!}
+                    </div>
+                </div>
+
+                <div class="col-sm-12 @if(!session('business.enable_category')) hide @endif">
                     <div class="form-group">
                         {!! Form::label('category_id', __('product.category') . ':') !!}
                         {!! Form::select('category_id', $categories, !empty($duplicate_product->category_id) ? $duplicate_product->category_id : null, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2']); !!}
                     </div>
                 </div>
 
-                <div class="col-sm-4 @if(!(session('business.enable_category') && session('business.enable_sub_category'))) hide @endif">
+                <div class="col-sm-12 @if(!(session('business.enable_category') && session('business.enable_sub_category'))) hide @endif">
                     <div class="form-group">
                         {!! Form::label('sub_category_id', __('product.sub_category') . ':') !!}
                         {!! Form::select('sub_category_id', $sub_categories, !empty($duplicate_product->sub_category_id) ? $duplicate_product->sub_category_id : null, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2']); !!}
@@ -103,7 +106,7 @@
                       $default_location = array_key_first($business_locations->toArray());
                     }
                 @endphp
-                <div class="col-sm-4">
+                <div class="col-sm-12">
                     <div class="form-group">
                         {!! Form::label('product_locations', __('business.business_locations') . ':') !!} @show_tooltip(__('lang_v1.product_location_help'))
                         {!! Form::select('product_locations[]', $business_locations, $default_location, ['class' => 'form-control select2', 'multiple', 'id' => 'product_locations']); !!}
@@ -111,7 +114,7 @@
                 </div>
 
 
-                <div class="col-sm-4">
+                <div class="col-sm-12">
                     <div class="form-group">
                         {!! Form::label('product_custom_field1', 'Image Url') !!}
                         {!! Form::text('product_custom_field1', !empty($duplicate_product->product_custom_field1) ? $duplicate_product->product_custom_field1 : null, ['class' => 'form-control',
@@ -122,7 +125,7 @@
 
                 <div class="clearfix"></div>
 
-                <div class="col-sm-4">
+                <div class="col-sm-12">
                     <div class="form-group">
                         <br>
                         <label>
@@ -140,13 +143,13 @@
                     @endforeach
                 @endif
                 <div class="clearfix"></div>
-                <div class="col-sm-8">
+                <div class="col-sm-12">
                     <div class="form-group">
                         {!! Form::label('product_description', __('lang_v1.product_description') . ':') !!}
                         {!! Form::textarea('product_description', !empty($duplicate_product->product_description) ? $duplicate_product->product_description : null, ['class' => 'form-control']); !!}
                     </div>
                 </div>
-                <div class="col-sm-4">
+                <div class="col-sm-12">
                     <div class="form-group">
                         {!! Form::label('image', __('lang_v1.product_image') . ':') !!}
                         {!! Form::file('image', ['id' => 'upload_image', 'accept' => 'image/*']); !!}

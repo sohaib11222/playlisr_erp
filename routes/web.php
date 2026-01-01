@@ -16,11 +16,19 @@ include_once('install_r.php');
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ProductController;
+use App\Http\Controllers\ReportController;
+use App\Http\Controllers\SellPosController;
+
+Route::get('/ebay/search-product-price', [ProductController::class, 'searchEbayProductPrice']);
+Route::get('/discogs/search-product-price', [ProductController::class, 'searchDiscogsProductPrice']);
+Route::get('/discogs/search-product-price-2', [ProductController::class, 'searchDiscogsProductPrice2']);
+
 
 Route::middleware(['setData'])->group(function () {
     Route::get('/', function () {
         return view('welcome');
     });
+
 
     Auth::routes();
 
@@ -42,6 +50,8 @@ Route::middleware(['setData'])->group(function () {
 
 //Routes for authenticated users only
 Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 'AdminSidebarMenu', 'CheckUserLogin'])->group(function () {
+
+    Route::get('testing-report', [ReportController::class, 'testingReport']);
 
     Route::get('/sign-in-as-user/{id}', 'ManageUserController@signInAsUser')->name('sign-in-as-user');
 
@@ -124,6 +134,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/products/save_quick_product', 'ProductController@saveQuickProduct');
     Route::get('/product/mass-create', [ProductController::class, 'massCreate'])->name('product.massCreate');
     Route::get('/product/mass-create/row', [ProductController::class, 'getMassProductRow'])->name('product.getMassProductRow');
+    Route::get('/product/mass-create/get-products', [ProductController::class, 'massProductGetProducts'])->name('product.massCreate.getProduct');
+    Route::get('/product/mass-create/get-product-price-recommendation', [ProductController::class, 'getProductPriceRecommendation']);
+    Route::get('/product/mass-create/get-discogs-prices', [ProductController::class, 'getDiscogsPrices']);
     Route::post('/product/mass-store', [ProductController::class, 'massStore'])->name('product.massStore');
     Route::get('/products/get-combo-product-entry-row', 'ProductController@getComboProductEntryRow');
     Route::post('/products/toggle-woocommerce-sync', 'ProductController@toggleWooCommerceSync');
@@ -155,6 +168,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/revert-sale-import/{batch}', 'ImportSalesController@revertSaleImport');
 
     Route::get('/sells/pos/get_product_row/{variation_id}/{location_id}', 'SellPosController@getProductRow');
+    Route::post('/sells/pos/get_manual_product_row', [SellPosController::class, 'getManualProductRow']);
+    Route::post('/sells/pos/get_manual_product_rows', [SellPosController::class, 'getManualProductRows']);
     Route::post('/sells/pos/get_payment_row', 'SellPosController@getPaymentRow');
     Route::post('/sells/pos/get-reward-details', 'SellPosController@getRewardDetails');
     Route::get('/sells/pos/get-recent-transactions', 'SellPosController@getRecentTransactions');

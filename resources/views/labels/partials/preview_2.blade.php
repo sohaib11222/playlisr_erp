@@ -42,6 +42,13 @@
 						<span style="display: block !important; font-size: {{$print['name_size']}}px">
 							Genre:<b>{{$page_product->sub_category}}</b>
 						</span>
+
+						{{-- Artist --}}
+						@if(!empty($page_product->artist))
+							<span style="display: block !important; font-size: {{$print['name_size']}}px">
+								Artist:<b>{{$page_product->artist}}</b>
+							</span>
+						@endif
 					@endif
 
 					{{-- Price --}}
@@ -78,10 +85,9 @@
 					<br>
 
 					{{-- Barcode --}}
-					<img style="max-width:90% !important;height: {{$barcode_details->height*0.24}}in !important; display: block;" src="data:image/png;base64,{{DNS1D::getBarcodePNG($page_product->sub_sku, $page_product->barcode_type, 1,30, array(0, 0, 0), false)}}">
-					
+					<img style="max-width:90% !important;height: {{ $barcode_details->height * 0.24 }}in !important; display: block;" src="data:image/png;base64,{{DNS1D::getBarcodePNG($page_product->sub_sku, $page_product->barcode_type, 1,30, array(0, 0, 0), false)}}">
 					<span style="font-size: 10px !important">
-						12347
+						{{ $page_product->sub_sku }}
 					</span>
 				</div>
 			</div>

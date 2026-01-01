@@ -226,11 +226,11 @@
                         { data: 'type', name: 'products.type'},
                         { data: 'category', name: 'c1.name'},
                         { data: 'brand', name: 'brands.name'},
+                        { data: 'artist', name: 'products.artist'},
                         { data: 'tax', name: 'tax_rates.name', searchable: false},
                         { data: 'sku', name: 'products.sku'},
                         { data: 'added_by', name: 'added_by'},
-
-                        
+                        { data: 'updated_at', name: 'updated_at'}
                     ],
                     createdRow: function( row, data, dataIndex ) {
                         if($('input#is_rack_enabled').val() == 1){

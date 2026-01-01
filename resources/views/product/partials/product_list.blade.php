@@ -1,5 +1,5 @@
 @php 
-    $colspan = 12;
+    $colspan = 13;
     $custom_labels = json_decode(session('business.custom_labels'), true);
 @endphp
 <table class="table table-bordered table-striped ajax_view hide-footer" id="product_table">
@@ -28,10 +28,11 @@
             <th>@lang('product.product_type')</th>
             <th>@lang('product.category')</th>
             <th>@lang('product.brand')</th>
+            <th>Artist</th>
             <th>@lang('product.tax')</th>
             <th>@lang('product.sku')</th>
             <th>Created By</th>
-
+            <th>Last updated at</th>
         </tr>
     </thead>
     <tfoot>

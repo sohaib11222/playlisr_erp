@@ -1,0 +1,92 @@
+<div class="modal fade" id="add_manual_product_modal" tabindex="-1" role="dialog" 
+	aria-labelledby="gridSystemModalLabel">
+	<div class="modal-dialog modal-lg" role="document">
+		<div class="modal-content">
+			<div class="modal-header">
+				<button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+
+				<h4 class="modal-title">
+					Add Manual Products
+				</h4>
+			</div>
+			<div class="modal-body">
+                <div class="table-responsive">
+                    <table class="table table-bordered" id="manual_products_table">
+                        <thead>
+                            <tr>
+                                <th width="5%">#</th>
+                                <th width="20%">Product Name *</th>
+                                <th width="15%">Artist</th>
+                                <th width="15%">Category</th>
+                                <th width="15%">Sub Category</th>
+                                <th width="10%">Price *</th>
+                                <th width="5%">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="manual_products_container">
+                            <tr class="manual_product_row" data-row="0">
+                                <td>1</td>
+                                <td>
+                                    <input type="text" 
+                                           name="products[0][name]" 
+                                           class="form-control" 
+                                           required 
+                                           placeholder="Product Name">
+                                </td>
+                                <td>
+                                    <input type="text" 
+                                           name="products[0][artist]" 
+                                           class="form-control" 
+                                           placeholder="Artist">
+                                </td>
+                                <td>
+                                    <select name="products[0][category_id]" 
+                                            class="form-control select2 manual_product_category" 
+                                            data-row="0">
+                                        <option value="">Please select</option>
+                                        @foreach($categoriesForDropdown as $key => $value)
+                                            <option value="{{ $key }}">{{ $value }}</option>
+                                        @endforeach
+                                    </select>
+                                </td>
+                                <td>
+                                    <select name="products[0][sub_category_id]" 
+                                            class="form-control select2 manual_product_sub_category" 
+                                            data-row="0">
+                                        <option value="">Please select</option>
+                                    </select>
+                                </td>
+                                <td>
+                                    <input type="text" 
+                                           name="products[0][price]" 
+                                           class="form-control input_number" 
+                                           required 
+                                           placeholder="0.00">
+                                </td>
+                                <td class="text-center">
+                                    <button type="button" class="btn btn-danger btn-sm remove_product_row" style="display: none;">
+                                        <i class="fa fa-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-12 text-center">
+                        <button type="button" class="btn btn-success" id="add_another_product">
+                            <i class="fa fa-plus"></i> Add Another Product
+                        </button>
+                    </div>
+                </div>
+			</div>
+			<div class="modal-footer">
+                <button type="button" class="btn btn-primary" id="add_manual_product_button">Add Products</button>
+			    <button type="button" class="btn btn-default" data-dismiss="modal">@lang('messages.close')</button>
+			</div>
+		</div>
+	</div>
+</div>

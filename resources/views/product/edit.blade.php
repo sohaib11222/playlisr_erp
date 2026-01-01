@@ -69,6 +69,15 @@
                 </div>
               </div>
             </div>
+            
+            <div class="col-sm-4">
+                <div class="form-group">
+                    {!! Form::label('artist', 'Artist' . ':') !!}
+                    {!! Form::text('artist', !empty($product->artist) ? $product->artist : null, ['class' => 'form-control',
+                    'placeholder' => 'Artist']); !!}
+                </div>
+            </div>
+
             <div class="col-sm-4 @if(!session('business.enable_category')) hide @endif">
               <div class="form-group">
                 {!! Form::label('category_id', __('product.category') . ':') !!}

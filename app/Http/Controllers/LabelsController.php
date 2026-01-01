@@ -42,6 +42,7 @@ class LabelsController extends Controller
         $business_id = $request->session()->get('user.business_id');
         $purchase_id = $request->get('purchase_id', false);
         $product_id = $request->get('product_id', false);
+        $product_ids = $request->get('product_ids', false);
 
         //Get products for the business
         $products = [];
@@ -50,6 +51,9 @@ class LabelsController extends Controller
             $products = $this->transactionUtil->getPurchaseProducts($business_id, $purchase_id);
         } elseif ($product_id) {
             $products = $this->productUtil->getDetailsFromProduct($business_id, $product_id);
+        } else if (!empty($product_ids)) {
+            $productIdsArray = explode(",", $product_ids);
+            $products = $this->productUtil->getDetailsFromProducts($business_id, $productIdsArray);
         }
 
         //get price groups

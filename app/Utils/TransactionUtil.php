@@ -293,6 +293,7 @@ class TransactionUtil extends Util
         $products_modified_combo = [];
         foreach ($products as $product) {
             $multiplier = 1;
+
             if (isset($product['sub_unit_id']) && $product['sub_unit_id'] == $product['product_unit_id']) {
                 unset($product['sub_unit_id']);
             }
@@ -366,8 +367,12 @@ class TransactionUtil extends Util
                 }
 
                 $line = [
-                    'product_id' => $product['product_id'],
-                    'variation_id' => $product['variation_id'],
+                    'product_id' => $product['product_id'] == 'manual' ? null : $product['product_id'],
+                    'product_name' => $product['product_name'] ?? null,
+                    'product_artist' => $product['product_artist'] ?? null,
+                    'variation_id' => $product['variation_id'] ?? null,
+                    'category_id' => $product['category_id'] ?? null,
+                    'sub_category_id' => $product['sub_category_id'] ?? null,
                     'quantity' =>  $uf_quantity * $multiplier,
                     'unit_price_before_discount' => $unit_price_before_discount,
                     'unit_price' => $unit_price,
@@ -1974,11 +1979,15 @@ class TransactionUtil extends Util
 
         foreach ($lines as $line) {
             $product = $line->product;
+            $productName = !empty($product) ? $product->name : $line->product_name;
             $variation = $line->variations;
-            $product_variation = $line->variations->product_variation;
-            $unit = $line->product->unit;
-            $brand = $line->product->brand;
-            $cat = $line->product->category;
+            $variationName = (!empty($variation) ? ((empty($variation->name) || $variation->name == 'DUMMY') ? '' : $variation->name) : '');
+            $product_variation = !empty($line->variations) ? $line->variations->product_variation : $line->product_variation;
+            $productVariationName = (!empty($product_variation) ? ((empty($product_variation->name) || $product_variation->name == 'DUMMY') ? '' : $product_variation->name) : '');
+            $unit = !empty($line->product) ? $line->product->unit : null;
+            $brand = !empty($line->product) ? $line->product->brand : null;
+            $brandName = !empty($brand) ? $brand->name : null;
+            $cat = !empty($line->category) ? $line->category : null;
             $tax_details = TaxRate::find($line->tax_id);
 
             $unit_name = !empty($unit->short_name) ? $unit->short_name : '';
@@ -1989,9 +1998,9 @@ class TransactionUtil extends Util
             }
             $line_array = [
                 //Field for 1st column
-                'name' => $product->name,
-                'variation' => (empty($variation->name) || $variation->name == 'DUMMY') ? '' : $variation->name,
-                'product_variation' => (empty($product_variation->name) || $product_variation->name == 'DUMMY') ? '' : $product_variation->name,
+                'name' => $productName,
+                'variation' => $variationName,
+                'product_variation' => $productVariationName,
                 //Field for 2nd column
                 'quantity' => $this->num_f($line->quantity, false, $business_details, true),
                 'quantity_uf' => $line->quantity,
@@ -2020,7 +2029,7 @@ class TransactionUtil extends Util
                 'line_total_uf' => $line->unit_price_inc_tax * $line->quantity,
                 'line_total_exc_tax' => $this->num_f($line->unit_price * $line->quantity, false, $business_details),
                 'line_total_exc_tax_uf' => $line->unit_price * $line->quantity,
-                'variation_id' => $variation->id
+                'variation_id' => !empty($variation) ? $variation->id : null,
             ];
 
             $temp = [];
@@ -3140,6 +3149,10 @@ class TransactionUtil extends Util
         foreach ($transaction_lines as $line) {
             //Check if stock is not enabled then no need to assign purchase & sell
             $product = Product::find($line->product_id);
+            if (empty($product)) {
+                continue;
+            }
+
             if ($product->enable_stock != 1) {
                 continue;
             }
@@ -3312,6 +3325,7 @@ class TransactionUtil extends Util
             if (!empty($purchase_adjustment_map)) {
                 TransactionSellLinesPurchaseLines::insert($purchase_adjustment_map);
             }
+
             if (!empty($purchase_sell_map)) {
                 TransactionSellLinesPurchaseLines::insert($purchase_sell_map);
             }
@@ -4185,32 +4199,34 @@ class TransactionUtil extends Util
     */
     public function recalculateSellLineTotals($business_id, $sell_line)
     {
-        $unit_details = $this->getSubUnits($business_id, $sell_line->product->unit->id);
+        if (!empty($sell_line->product)) {
+            $unit_details = $this->getSubUnits($business_id, $sell_line->product->unit->id);
 
-        $sub_unit = null;
-        $sub_unit_id = $sell_line->sub_unit_id;
-        foreach ($unit_details as $key => $value) {
-            if ($key == $sub_unit_id) {
-                $sub_unit = $value;
+            $sub_unit = null;
+            $sub_unit_id = $sell_line->sub_unit_id;
+            foreach ($unit_details as $key => $value) {
+                if ($key == $sub_unit_id) {
+                    $sub_unit = $value;
+                }
             }
-        }
 
-        if (!empty($sub_unit)) {
-            $multiplier = !empty($sub_unit['multiplier']) ? $sub_unit['multiplier'] : 1;
+            if (!empty($sub_unit)) {
+                $multiplier = !empty($sub_unit['multiplier']) ? $sub_unit['multiplier'] : 1;
 
-            if ($sell_line->line_discount_type == 'fixed') {
-                $sell_line->line_discount_amount = $sell_line->line_discount_amount * $multiplier;
+                if ($sell_line->line_discount_type == 'fixed') {
+                    $sell_line->line_discount_amount = $sell_line->line_discount_amount * $multiplier;
+                }
+                $sell_line->orig_quantity = $sell_line->quantity;
+                $sell_line->multiplier = $multiplier;
+                $sell_line->quantity = $sell_line->quantity / $multiplier;
+                $sell_line->unit_price_before_discount = $sell_line->unit_price_before_discount * $multiplier;
+                $sell_line->unit_price = $sell_line->unit_price * $multiplier;
+                $sell_line->unit_price_inc_tax = $sell_line->unit_price_inc_tax * $multiplier;
+                $sell_line->item_tax = $sell_line->item_tax * $multiplier;
+                $sell_line->quantity_returned = $sell_line->quantity_returned / $multiplier;
+
+                $sell_line->unit_details = $unit_details;
             }
-            $sell_line->orig_quantity = $sell_line->quantity;
-            $sell_line->multiplier = $multiplier;
-            $sell_line->quantity = $sell_line->quantity / $multiplier;
-            $sell_line->unit_price_before_discount = $sell_line->unit_price_before_discount * $multiplier;
-            $sell_line->unit_price = $sell_line->unit_price * $multiplier;
-            $sell_line->unit_price_inc_tax = $sell_line->unit_price_inc_tax * $multiplier;
-            $sell_line->item_tax = $sell_line->item_tax * $multiplier;
-            $sell_line->quantity_returned = $sell_line->quantity_returned / $multiplier;
-
-            $sell_line->unit_details = $unit_details;
         }
 
         return $sell_line;

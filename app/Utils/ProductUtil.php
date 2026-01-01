@@ -20,6 +20,7 @@ use App\VariationGroupPrice;
 use App\VariationLocationDetails;
 use App\VariationTemplate;
 use App\VariationValueTemplate;
+use App\ProductStockCache;
 use Illuminate\Support\Facades\DB;
 
 class ProductUtil extends Util
@@ -48,6 +49,7 @@ class ProductUtil extends Util
                                     'name' => 'DUMMY',
                                     'is_dummy' => 1
                                 ];
+
         $product_variation = $product->product_variations()->create($product_variation_data);
                 
         //create variations
@@ -68,6 +70,7 @@ class ProductUtil extends Util
 
         return true;
     }
+
     public function createSingleImportProductVariation($images , $product, $sku, $purchase_price, $dpp_inc_tax, $profit_percent, $selling_price, $selling_price_inc_tax, $combo_variations = [])
     {
         if (!is_object($product)) {
@@ -717,6 +720,7 @@ class ProductUtil extends Util
             'p.tax as tax_id',
             'p.enable_stock',
             'p.enable_sr_no',
+            'p.artist',
             'p.type as product_type',
             'p.name as product_actual_name',
             'p.warranty_id',
@@ -1007,8 +1011,38 @@ class ProductUtil extends Util
             'products.name as product_name',
             'v.id as variation_id',
             'v.name as variation_name'
-        )
-                    ->get();
+        )->get();
+
+        return $products;
+    }
+
+    /**
+     * Gives list of products based on products id and variation id
+     *
+     * @param int $business_id
+     * @param int $product_id
+     * @param int $variation_id = null
+     *
+     * @return Obj
+     */
+    public function getDetailsFromProducts($business_id, $product_ids, $variation_id = null)
+    {
+        $product = Product::leftjoin('variations as v', 'products.id', '=', 'v.product_id')
+                        ->whereNull('v.deleted_at')
+                        ->where('products.business_id', $business_id);
+
+        if (!is_null($variation_id) && $variation_id !== '0') {
+            $product->where('v.id', $variation_id);
+        }
+
+        $product->whereIn('products.id', $product_ids);
+
+        $products = $product->select(
+            'products.id as product_id',
+            'products.name as product_name',
+            'v.id as variation_id',
+            'v.name as variation_name'
+        )->get();
 
         return $products;
     }
@@ -1827,11 +1861,22 @@ class ProductUtil extends Util
                 $query->where(function ($query) use ($search_term, $search_fields) {
 
                     if (in_array('name', $search_fields)) {
-                        $query->where('products.name', 'like', '%' . $search_term .'%');
+                        // Split search term into words
+                        $searchTerms = explode(' ', $search_term);
+                        
+                        $query->where(function($q) use ($searchTerms) {
+                            foreach($searchTerms as $term) {
+                                $q->where('products.name', 'like', '%' . $term . '%');
+                            }
+                        });
                     }
                     
                     if (in_array('sku', $search_fields)) {
                         $query->orWhere('sku', 'like', '%' . $search_term .'%');
+                    }
+
+                    if (in_array('artist', $search_fields)) {
+                        $query->orWhere('artist', 'like', '%' . $search_term .'%');
                     }
 
                     if (in_array('sub_sku', $search_fields)) {
@@ -1914,6 +1959,107 @@ class ProductUtil extends Util
         $query->groupBy('variations.id');
         return $query->orderBy('VLD.qty_available', 'desc')
                         ->get();
+    }
+
+    public function getProductStockDetailsCache($business_id, $filters, $for)
+    {
+        // Use ProductStockCache for faster queries - completely flat table, no joins!
+        $query = ProductStockCache::where('business_id', $business_id);
+
+        // Apply user's permitted locations
+        $permitted_locations = auth()->user()->permitted_locations();
+        
+        if ($permitted_locations != 'all') {
+            $query->whereIn('location_id', $permitted_locations);
+        }
+
+        // Apply all filters directly on cache table (NO JOINS!)
+        if (!empty($filters['location_id'])) {
+            $query->where('location_id', $filters['location_id']);
+        }
+
+        if (!empty($filters['category_id'])) {
+            $query->where('category_id', $filters['category_id']);
+        }
+
+        if (!empty($filters['sub_category_id'])) {
+            $query->where('sub_category_id', $filters['sub_category_id']);
+        }
+
+        if (!empty($filters['brand_id'])) {
+            $query->where('brand_id', $filters['brand_id']);
+        }
+
+        if (!empty($filters['unit_id'])) {
+            $query->where('unit_id', $filters['unit_id']);
+        }
+
+        if (!empty($filters['type'])) {
+            $query->where('type', $filters['type']);
+        }
+
+        if (!empty($filters['tax_id'])) {
+            $query->where('tax_id', $filters['tax_id']);
+        }
+
+        if (!empty($filters['active_state'])) {
+            if ($filters['active_state'] == 'active') {
+                $query->where('is_inactive', 0);
+            } elseif ($filters['active_state'] == 'inactive') {
+                $query->where('is_inactive', 1);
+            }
+        }
+
+        if (!empty($filters['not_for_selling']) && $filters['not_for_selling'] == 1) {
+            $query->where('not_for_selling', 1);
+        }
+
+        if (!empty($filters['product_id'])) {
+            $query->where('product_id', $filters['product_id']);
+        }
+
+        // Select fields from cache
+        $select_fields = [
+            'total_sold',
+            'total_transfered',
+            'total_adjusted',
+            'stock_price',
+            'stock',
+            'sku',
+            'product',
+            'type',
+            'alert_quantity',
+            'product_id',
+            'unit',
+            'enable_stock',
+            'unit_price',
+            'product_variation',
+            'variation_name',
+            'location_name',
+            'location_id',
+            'variation_id',
+            'category_name',
+            'product_custom_field1',
+            'product_custom_field2',
+            'product_custom_field3',
+            'product_custom_field4',
+        ];
+
+        // Add manufacturing data if requested
+        if (!empty($filters['show_manufacturing_data']) && $filters['show_manufacturing_data']) {
+            $select_fields[] = 'total_mfg_stock';
+        }
+
+        $products = $query->select($select_fields);
+
+        // Return based on the request type
+        if ($for == 'view_product') {
+            return $products->get();
+        } else if ($for == 'api') {
+            return $products->paginate();
+        } else {
+            return $products;
+        }
     }
 
     public function getProductStockDetails($business_id, $filters, $for)

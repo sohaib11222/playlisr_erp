@@ -23,6 +23,16 @@ class TransactionSellLine extends Model
         return $this->belongsTo(\App\Product::class, 'product_id');
     }
 
+    public function category()
+    {
+        return $this->belongsTo(\App\Category::class, 'category_id');
+    }
+
+    public function sub_category()
+    {
+        return $this->belongsTo(\App\Category::class, 'sub_category_id');
+    }
+
     public function variations()
     {
         return $this->belongsTo(\App\Variation::class, 'variation_id');

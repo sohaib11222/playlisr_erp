@@ -1363,7 +1363,207 @@ $(document).ready(function() {
             $('span.curr_datetime').html(__current_datetime());
         }
     }, 60000);
+
+    // Add manual product
+    $(document).on('click', '.pos_add_manual_product', function() {
+        console.log("CLICK WORK");
+        // Open the modal
+        $('#add_manual_product_modal').modal('show');
+        
+        // Initialize select2 for existing selects
+        setTimeout(function() {
+            $('#add_manual_product_modal .select2').select2({
+                placeholder: "Please select",
+                allowClear: true
+            });
+        }, 300);
+
+        // $.ajax({
+        //     url: url + '?product_for=pos',
+        //     dataType: 'html',
+        //     success: function(result) {
+        //         $(container)
+        //             .html(result)
+        //             .modal('show');
+        //         $('.os_exp_date').datepicker({
+        //             autoclose: true,
+        //             format: 'dd-mm-yyyy',
+        //             clearBtn: true,
+        //         });
+        //     },
+        // });
+    });
+
+    $(document).on('click', '#add_manual_product_button', function() {
+        // Validate form first
+        var isValid = validateManualProductForm();
+        if (!isValid) {
+            return;
+        }
+
+        // Get all input names and values from the modal
+        var inputData = getManualProductModalInputs();
+
+        // Send AJAX request to get manual product rows
+        getManualProductRows(inputData);
+    });
+
+    // Add another product row
+    $(document).on('click', '#add_another_product', function() {
+        addManualProductRow();
+    });
+
+    // Remove product row
+    $(document).on('click', '.remove_product_row', function() {
+        $(this).closest('.manual_product_row').remove();
+        updateProductRowNumbers();
+    });
+
+    // Handle category change to populate sub-categories for dynamic rows
+    $(document).on('change', '.manual_product_category', function() {
+        var category_id = $(this).val();
+        var rowIndex = $(this).data('row');
+        var sub_category_select = $('.manual_product_sub_category[data-row="' + rowIndex + '"]');
+        
+        // Clear sub-category options
+        sub_category_select.empty();
+        sub_category_select.append('<option value="">Please select</option>');
+        
+        if(category_id) {
+            // Make AJAX request to get sub-categories
+            $.ajax({
+                url: '/products/get_sub_categories',
+                method: 'POST',
+                data: {
+                    cat_id: category_id
+                },
+                success: function(response) {
+                    sub_category_select.html(response);
+                },
+                error: function(xhr, status, error) {
+                    console.error('Error loading sub-categories:', error);
+                }
+            });
+        }
+    });
 });
+
+// Function to get all input names and values from the add_manual_product_modal
+function getManualProductModalInputs() {
+    var inputData = {};
+    $("#add_manual_product_modal").find('input, select, textarea').each(function() {
+        var $input = $(this);
+        var name = $input.attr('name');
+        var value = $input.val();
+        var type = $input.attr('type');
+        
+        if (name) {
+            // Handle array inputs like products[0][name]
+            if (name.includes('[') && name.includes(']')) {
+                var matches = name.match(/^(\w+)\[(\d+)\]\[(\w+)\]$/);
+                if (matches) {
+                    var arrayName = matches[1];
+                    var index = matches[2];
+                    var fieldName = matches[3];
+                    
+                    if (!inputData[arrayName]) {
+                        inputData[arrayName] = {};
+                    }
+                    if (!inputData[arrayName][index]) {
+                        inputData[arrayName][index] = {};
+                    }
+                    
+                    // Handle different input types
+                    if (type === 'checkbox' || type === 'radio') {
+                        inputData[arrayName][index][fieldName] = $input.is(':checked');
+                    } else {
+                        inputData[arrayName][index][fieldName] = value;
+                    }
+                }
+            } else {
+                // Handle different input types
+                if (type === 'checkbox' || type === 'radio') {
+                    inputData[name] = $input.is(':checked');
+                } else {
+                    inputData[name] = value;
+                }
+            }
+        }
+    });
+    
+    return inputData;
+}
+
+// Function to send AJAX request to get manual product rows
+function getManualProductRows(inputData) {
+    // Add CSRF token to the data
+    inputData._token = $('meta[name="csrf-token"]').attr('content');
+    
+    
+    $.ajax({
+        method: 'POST',
+        url: '/sells/pos/get_manual_product_rows',
+        data: inputData,
+        dataType: 'json',
+        beforeSend: function() {
+            // Show loading indicator if needed
+            $('#add_manual_product_button').prop('disabled', true).text('Adding Products...');
+        },
+        success: function(result) {
+            if (result.success) {
+                let htmlContent = result.html_content;
+                // Add the product rows to the POS table
+                if (htmlContent) {
+                    // If it's an array of HTML content (multiple products)
+                    if (Array.isArray(htmlContent)) {
+                        htmlContent.forEach(function(rowHtml) {
+                            $('#pos_table tbody').append(rowHtml);
+                        });
+                    } else {
+                        // Single product row
+                        $('#pos_table tbody').append(htmlContent);
+                    }
+
+                    // Initialize the new row calculations for all new rows
+                    var newRows = $('#pos_table tbody tr');
+                    if (newRows.length) {
+                        newRows.each(function() {
+                            pos_each_row($(this));
+                        });
+                    }
+
+                    // Close the modal
+                    $('#add_manual_product_modal').modal('hide');
+
+                    // Reset the modal form
+                    resetManualProductModal();
+
+                    // Show success message
+                    var productCount = Array.isArray(htmlContent) ? htmlContent.length : 1;
+                    // toastr.success(result.msg || productCount + ' product(s) added successfully');
+                    
+                    // Recalculate totals
+                    if (typeof pos_total_row == 'function') {
+                        pos_total_row();
+                    }
+                } else {
+                    toastr.error('Failed to add product rows');
+                }
+            } else {
+                toastr.error(result.msg || 'Failed to add products');
+            }
+        },
+        error: function(xhr, status, error) {
+            console.error('AJAX Error:', error);
+            console.error('Response:', xhr.responseText);
+            toastr.error('An error occurred while adding the product');
+        },
+        complete: function() {
+            // Re-enable the button
+            $('#add_manual_product_button').prop('disabled', false).text('Add Products');
+        }
+    });
+}
 
 function set_payment_type_dropdown() {
     var payment_settings = $('#location_id').data('default_payment_accounts');
@@ -2862,4 +3062,191 @@ $(document).on('click', '#send_for_sell_return', function(e) {
 
         
     }
-})
+});
+
+// Helper function to add a new manual product row
+function addManualProductRow() {
+    var currentRowCount = $('#manual_products_container .manual_product_row').length;
+    var newRowIndex = currentRowCount;
+    var newRowNumber = currentRowCount + 1;
+    
+    // Create new row HTML from scratch
+    var newRowHtml = `
+        <tr class="manual_product_row" data-row="${newRowIndex}">
+            <td>${newRowNumber}</td>
+            <td>
+                <input type="text" 
+                       name="products[${newRowIndex}][name]" 
+                       class="form-control" 
+                       required 
+                       placeholder="Product Name">
+            </td>
+            <td>
+                <input type="text" 
+                       name="products[${newRowIndex}][artist]" 
+                       class="form-control" 
+                       placeholder="Artist">
+            </td>
+            <td>
+                <select name="products[${newRowIndex}][category_id]" 
+                        class="form-control select2 manual_product_category" 
+                        data-row="${newRowIndex}">
+                    <option value="">Please select</option>
+                    ${getCategoryOptions()}
+                </select>
+            </td>
+            <td>
+                <select name="products[${newRowIndex}][sub_category_id]" 
+                        class="form-control select2 manual_product_sub_category" 
+                        data-row="${newRowIndex}">
+                    <option value="">Please select</option>
+                </select>
+            </td>
+            <td>
+                <input type="text" 
+                       name="products[${newRowIndex}][price]" 
+                       class="form-control input_number" 
+                       required 
+                       placeholder="0.00">
+            </td>
+            <td class="text-center">
+                <button type="button" class="btn btn-danger btn-sm remove_product_row">
+                    <i class="fa fa-trash"></i>
+                </button>
+            </td>
+        </tr>
+    `;
+    
+    // Add the new row to the container
+    $('#manual_products_container').append(newRowHtml);
+    
+    // Initialize select2 for the new selects
+    $('#manual_products_container tr:last .select2').select2({
+        placeholder: "Please select",
+        allowClear: true
+    });
+}
+
+// Helper function to get category options HTML
+function getCategoryOptions() {
+    var options = '';
+    $('#manual_products_container tr:first select[name*="[category_id]"] option').each(function() {
+        var value = $(this).attr('value');
+        var text = $(this).text();
+        if (value !== '') {
+            options += `<option value="${value}">${text}</option>`;
+        }
+    });
+    return options;
+}
+
+// Helper function to update product row numbers
+function updateProductRowNumbers() {
+    $('#manual_products_container .manual_product_row').each(function(index) {
+        var $row = $(this);
+        var rowNumber = index + 1;
+        
+        // Update the row number in the first column
+        $row.find('td:first').text(rowNumber);
+        
+        // Update data-row attribute
+        $row.attr('data-row', index);
+        
+        // Update all input names, IDs, and data attributes
+        $row.find('input, select').each(function() {
+            var $this = $(this);
+            var name = $this.attr('name');
+            var id = $this.attr('id');
+            
+            if (name && name.includes('[')) {
+                var newName = name.replace(/\[\d+\]/, '[' + index + ']');
+                $this.attr('name', newName);
+            }
+            
+            if (id && id.includes('[')) {
+                var newId = id.replace(/\[\d+\]/, '[' + index + ']');
+                $this.attr('id', newId);
+            }
+            
+            // Update data-row attributes
+            if ($this.hasClass('manual_product_category') || $this.hasClass('manual_product_sub_category')) {
+                $this.attr('data-row', index);
+            }
+        });
+        
+        // Hide remove button for first row
+        if (index === 0) {
+            $row.find('.remove_product_row').hide();
+        } else {
+            $row.find('.remove_product_row').show();
+        }
+    });
+}
+
+// Helper function to reset the manual product modal
+function resetManualProductModal() {
+    // Remove all rows except the first one
+    $('#manual_products_container .manual_product_row:not(:first)').remove();
+    
+    // Reset the first row - clear all input values
+    $('#manual_products_container .manual_product_row:first').find('input, select').each(function() {
+        var $this = $(this);
+        if ($this.attr('type') !== 'hidden') {
+            $this.val('');
+        }
+    });
+    
+    // Reinitialize select2 for the first row selects
+    $('#manual_products_container .manual_product_row:first .select2').each(function() {
+        if ($(this).hasClass('select2-hidden-accessible')) {
+            $(this).select2('destroy');
+        }
+        $(this).select2({
+            placeholder: "Please select",
+            allowClear: true
+        });
+    });
+    
+    // Update row numbers (should just be row 1 now)
+    updateProductRowNumbers();
+    
+    // Hide remove button for first row
+    $('#manual_products_container .manual_product_row:first .remove_product_row').hide();
+}
+
+// Helper function to validate manual product form
+function validateManualProductForm() {
+    var isValid = true;
+    var hasValidProduct = false;
+    
+    $('#manual_products_container .manual_product_row').each(function() {
+        var $row = $(this);
+        var productName = $row.find('input[name*="[name]"]').val();
+        var price = $row.find('input[name*="[price]"]').val();
+        
+        // Check if this row has any data
+        if (productName || price) {
+            hasValidProduct = true;
+            
+            // Validate required fields
+            if (!productName || productName.trim() === '') {
+                toastr.error('Product name is required for all products');
+                isValid = false;
+                return false;
+            }
+            
+            if (!price || price.trim() === '' || parseFloat(price) <= 0) {
+                toastr.error('Valid price is required for all products');
+                isValid = false;
+                return false;
+            }
+        }
+    });
+    
+    if (!hasValidProduct) {
+        toastr.error('Please enter at least one product');
+        isValid = false;
+    }
+    
+    return isValid;
+}

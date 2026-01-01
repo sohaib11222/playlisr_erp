@@ -50,37 +50,40 @@
 			</div>
 		</div>
 	</div>
+
 	@include('sale_pos.partials.pos_form_actions')
+
 	{!! Form::close() !!}
 </section>
 
 <!-- This will be printed -->
-<section class="invoice print_section" id="receipt_section">
-</section>
+<section class="invoice print_section" id="receipt_section"></section>
+
 <div class="modal fade contact_modal" tabindex="-1" role="dialog" aria-labelledby="gridSystemModalLabel">
 	@include('contact.create', ['quick_add' => true])
 </div>
+
 @if(empty($pos_settings['hide_product_suggestion']) && isMobile())
 	@include('sale_pos.partials.mobile_product_suggestions')
 @endif
+
 <!-- /.content -->
-<div class="modal fade register_details_modal" tabindex="-1" role="dialog"
-	aria-labelledby="gridSystemModalLabel">
-</div>
-<div class="modal fade close_register_modal" tabindex="-1" role="dialog"
-	aria-labelledby="gridSystemModalLabel">
-</div>
+<div class="modal fade register_details_modal" tabindex="-1" role="dialog" aria-labelledby="gridSystemModalLabel"></div>
+
+<div class="modal fade close_register_modal" tabindex="-1" role="dialog" aria-labelledby="gridSystemModalLabel"></div>
+
 <!-- quick product modal -->
 <div class="modal fade quick_add_product_modal" tabindex="-1" role="dialog" aria-labelledby="modalTitle"></div>
 
-<div class="modal fade" id="expense_modal" tabindex="-1" role="dialog" aria-labelledby="gridSystemModalLabel">
-</div>
+<div class="modal fade" id="expense_modal" tabindex="-1" role="dialog" aria-labelledby="gridSystemModalLabel"></div>
 
 @include('sale_pos.partials.configure_search_modal')
 
 @include('sale_pos.partials.recent_transactions_modal')
 
 @include('sale_pos.partials.weighing_scale_modal')
+
+@include('sale_pos.partials.add_manual_product_modal')
 
 @stop
 @section('css')

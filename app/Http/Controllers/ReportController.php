@@ -312,6 +312,33 @@ class ReportController extends Controller
         ->with(compact('customer_group', 'types', 'business_locations', 'contact_dropdown'));
     }
 
+    public function testingReport(Request $request)
+    {
+        if (!auth()->user()->can('stock_report.view')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = $request->session()->get('user.business_id');
+        $show_manufacturing_data = 0;
+
+        $filters = request()->only(['location_id', 'category_id', 'sub_category_id', 'brand_id', 'unit_id', 'tax_id', 'type', 
+            'only_mfg_products', 'active_state',  'not_for_selling', 'repair_model_id', 'product_id', 'active_state']);
+
+        $filters['not_for_selling'] = isset($filters['not_for_selling']) && $filters['not_for_selling'] == 'true' ? 1 : 0;
+
+        $filters['show_manufacturing_data'] = $show_manufacturing_data;
+
+        //Return the details in ajax call
+        $for = request()->input('for') == 'view_product' ? 'view_product' :'datatables';
+
+        $products = $this->productUtil->getProductStockDetailsTest($business_id, $filters, $for);
+        dd([
+            'sql' => $products->toSql(),
+            'bindings' => $products->getBindings()
+        ]);
+
+    }
+
     /**
      * Shows product stock report
      *
@@ -351,7 +378,7 @@ class ReportController extends Controller
             //Return the details in ajax call
             $for = request()->input('for') == 'view_product' ? 'view_product' :'datatables';
 
-            $products = $this->productUtil->getProductStockDetails($business_id, $filters, $for);
+            $products = $this->productUtil->getProductStockDetailsCache($business_id, $filters, $for);
             //To show stock details on view product modal
             if ($for == 'view_product' && !empty(request()->input('product_id'))) {
                 $product_stock_details = $products;
@@ -441,7 +468,11 @@ class ReportController extends Controller
                     return $row->enable_stock && $row->stock <= $row->alert_quantity ? 'bg-danger' : '';
                 })
                 ->filterColumn('variation', function ($query, $keyword) {
-                    $query->whereRaw("CONCAT(COALESCE(pv.name, ''), '-', COALESCE(variations.name, '')) like ?", ["%{$keyword}%"]);
+                    // Updated for flat cache table - search in product_variation and variation_name
+                    $query->where(function($q) use ($keyword) {
+                        $q->where('product_variation', 'like', "%{$keyword}%")
+                          ->orWhere('variation_name', 'like', "%{$keyword}%");
+                    });
                 })
                 ->removeColumn('enable_stock')
                 ->removeColumn('unit')

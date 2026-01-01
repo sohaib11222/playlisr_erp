@@ -1,13 +1,13 @@
 <?php return array (
   'aloha/twilio' => 
   array (
-    'providers' => 
-    array (
-      0 => 'Aloha\\Twilio\\Support\\Laravel\\ServiceProvider',
-    ),
     'aliases' => 
     array (
       'Twilio' => 'Aloha\\Twilio\\Support\\Laravel\\Facade',
+    ),
+    'providers' => 
+    array (
+      0 => 'Aloha\\Twilio\\Support\\Laravel\\ServiceProvider',
     ),
   ),
   'arcanedev/log-viewer' => 
@@ -19,24 +19,24 @@
   ),
   'barryvdh/laravel-debugbar' => 
   array (
-    'providers' => 
-    array (
-      0 => 'Barryvdh\\Debugbar\\ServiceProvider',
-    ),
     'aliases' => 
     array (
       'Debugbar' => 'Barryvdh\\Debugbar\\Facade',
     ),
+    'providers' => 
+    array (
+      0 => 'Barryvdh\\Debugbar\\ServiceProvider',
+    ),
   ),
   'barryvdh/laravel-dompdf' => 
   array (
-    'providers' => 
-    array (
-      0 => 'Barryvdh\\DomPDF\\ServiceProvider',
-    ),
     'aliases' => 
     array (
       'PDF' => 'Barryvdh\\DomPDF\\Facade',
+    ),
+    'providers' => 
+    array (
+      0 => 'Barryvdh\\DomPDF\\ServiceProvider',
     ),
   ),
   'beyondcode/laravel-dump-server' => 
@@ -62,13 +62,13 @@
   ),
   'knox/pesapal' => 
   array (
-    'providers' => 
-    array (
-      0 => 'Knox\\Pesapal\\PesapalServiceProvider',
-    ),
     'aliases' => 
     array (
       'Pesapal' => 'Knox\\Pesapal\\Facades\\Pesapal',
+    ),
+    'providers' => 
+    array (
+      0 => 'Knox\\Pesapal\\PesapalServiceProvider',
     ),
   ),
   'laravel/passport' => 
@@ -99,25 +99,25 @@
   ),
   'maatwebsite/excel' => 
   array (
-    'providers' => 
-    array (
-      0 => 'Maatwebsite\\Excel\\ExcelServiceProvider',
-    ),
     'aliases' => 
     array (
       'Excel' => 'Maatwebsite\\Excel\\Facades\\Excel',
     ),
+    'providers' => 
+    array (
+      0 => 'Maatwebsite\\Excel\\ExcelServiceProvider',
+    ),
   ),
   'milon/barcode' => 
   array (
-    'providers' => 
-    array (
-      0 => 'Milon\\Barcode\\BarcodeServiceProvider',
-    ),
     'aliases' => 
     array (
       'DNS1D' => 'Milon\\Barcode\\Facades\\DNS1DFacade',
       'DNS2D' => 'Milon\\Barcode\\Facades\\DNS2DFacade',
+    ),
+    'providers' => 
+    array (
+      0 => 'Milon\\Barcode\\BarcodeServiceProvider',
     ),
   ),
   'mpociot/laravel-apidoc-generator' => 
@@ -154,24 +154,24 @@
   ),
   'nwidart/laravel-menus' => 
   array (
-    'providers' => 
-    array (
-      0 => 'Nwidart\\Menus\\MenusServiceProvider',
-    ),
     'aliases' => 
     array (
       'Menu' => 'Nwidart\\Menus\\Facades\\Menu',
     ),
+    'providers' => 
+    array (
+      0 => 'Nwidart\\Menus\\MenusServiceProvider',
+    ),
   ),
   'nwidart/laravel-modules' => 
   array (
-    'providers' => 
-    array (
-      0 => 'Nwidart\\Modules\\LaravelModulesServiceProvider',
-    ),
     'aliases' => 
     array (
       'Module' => 'Nwidart\\Modules\\Facades\\Module',
+    ),
+    'providers' => 
+    array (
+      0 => 'Nwidart\\Modules\\LaravelModulesServiceProvider',
     ),
   ),
   'spatie/laravel-activitylog' => 
@@ -197,35 +197,35 @@
   ),
   'srmklive/paypal' => 
   array (
-    'providers' => 
-    array (
-      0 => 'Srmklive\\PayPal\\Providers\\PayPalServiceProvider',
-    ),
     'aliases' => 
     array (
       'PayPal' => 'Srmklive\\PayPal\\Facades\\PayPal',
     ),
+    'providers' => 
+    array (
+      0 => 'Srmklive\\PayPal\\Providers\\PayPalServiceProvider',
+    ),
   ),
   'unicodeveloper/laravel-paystack' => 
   array (
-    'providers' => 
-    array (
-      0 => 'Unicodeveloper\\Paystack\\PaystackServiceProvider',
-    ),
     'aliases' => 
     array (
       'Paystack' => 'Unicodeveloper\\Paystack\\Facades\\Paystack',
     ),
+    'providers' => 
+    array (
+      0 => 'Unicodeveloper\\Paystack\\PaystackServiceProvider',
+    ),
   ),
   'yajra/laravel-datatables-oracle' => 
   array (
-    'providers' => 
-    array (
-      0 => 'Yajra\\DataTables\\DataTablesServiceProvider',
-    ),
     'aliases' => 
     array (
       'DataTables' => 'Yajra\\DataTables\\Facades\\DataTables',
+    ),
+    'providers' => 
+    array (
+      0 => 'Yajra\\DataTables\\DataTablesServiceProvider',
     ),
   ),
 );

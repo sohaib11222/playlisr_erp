@@ -99,12 +99,12 @@ $(document).ready(function() {
     }
 
     var stock_report_cols = [
-            { data: 'sku', name: 'variations.sub_sku' },
-            { data: 'product', name: 'p.name' },
+            { data: 'sku', name: 'sku' },
+            { data: 'product', name: 'product' },
             { data: 'variation', name: 'variation' },
-            { data: 'category_name', name: 'c.name' },
-            { data: 'location_name', name: 'l.name' },
-            { data: 'unit_price', name: 'variations.sell_price_inc_tax' },
+            { data: 'category_name', name: 'category_name' },
+            { data: 'location_name', name: 'location_name' },
+            { data: 'unit_price', name: 'unit_price' },
             { data: 'stock', name: 'stock', searchable: false },
         ];
         if ($('th.stock_price').length) {
@@ -116,10 +116,10 @@ $(document).ready(function() {
         stock_report_cols.push({ data: 'total_sold', name: 'total_sold', searchable: false });
         stock_report_cols.push({ data: 'total_transfered', name: 'total_transfered', searchable: false });
         stock_report_cols.push({ data: 'total_adjusted', name: 'total_adjusted', searchable: false });
-        stock_report_cols.push({ data: 'product_custom_field1', name: 'p.product_custom_field1'});
-        stock_report_cols.push({ data: 'product_custom_field2', name: 'p.product_custom_field2'});
-        stock_report_cols.push({ data: 'product_custom_field3', name: 'p.product_custom_field3'});
-        stock_report_cols.push({ data: 'product_custom_field4', name: 'p.product_custom_field4'});
+        stock_report_cols.push({ data: 'product_custom_field1', name: 'product_custom_field1'});
+        stock_report_cols.push({ data: 'product_custom_field2', name: 'product_custom_field2'});
+        stock_report_cols.push({ data: 'product_custom_field3', name: 'product_custom_field3'});
+        stock_report_cols.push({ data: 'product_custom_field4', name: 'product_custom_field4'});
 
         if ($('th.current_stock_mfg').length) {
             stock_report_cols.push({ data: 'total_mfg_stock', name: 'total_mfg_stock', searchable: false });

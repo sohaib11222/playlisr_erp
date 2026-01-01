@@ -31,9 +31,12 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Yajra\DataTables\Facades\DataTables;
 use App\Exports\ProductsExport;
+use App\Services\DiscogsService;
+use App\Transaction;
 use Excel;
 use ZipArchive;
 use Illuminate\Support\Facades\Validator;
+use App\Services\EbayService;
 
 class ProductController extends Controller
 {
@@ -46,16 +49,21 @@ class ProductController extends Controller
 
     private $barcode_types;
 
+    private EbayService $ebayService;
+    private DiscogsService $discogsService;
+
     /**
      * Constructor
      *
      * @param ProductUtils $product
      * @return void
      */
-    public function __construct(ProductUtil $productUtil, ModuleUtil $moduleUtil)
+    public function __construct(ProductUtil $productUtil, ModuleUtil $moduleUtil, EbayService $ebayService, DiscogsService $discogsService)
     {
         $this->productUtil = $productUtil;
         $this->moduleUtil = $moduleUtil;
+        $this->ebayService = $ebayService;
+        $this->discogsService = $discogsService;
 
         //barcode types
         $this->barcode_types = $this->productUtil->barcode_types();
@@ -124,6 +132,7 @@ class ProductController extends Controller
                 'c2.name as sub_category',
                 'units.actual_name as unit',
                 'brands.name as brand',
+                'products.artist',
                 'tax_rates.name as tax',
                 'products.sku',
                 'products.image',
@@ -134,6 +143,7 @@ class ProductController extends Controller
                 'products.product_custom_field2',
                 'products.product_custom_field3',
                 'products.created_by',
+                'products.updated_at',
                 'products.product_custom_field4',
                 'v.id as vid',
                 'products.alert_quantity',
@@ -227,6 +237,9 @@ class ProductController extends Controller
 
                 })
                 ->editColumn('category', '{{$category}} @if(!empty($sub_category))<br/> -- {{$sub_category}}@endif')
+                ->editColumn('artist', function ($row) {
+                    return $row->artist ?? 'N/A';
+                })
                 ->addColumn(
                     'action',
                     function ($row) use ($selling_price_group_count) {
@@ -303,6 +316,9 @@ class ProductController extends Controller
                     'selling_price',
                     '<div style="white-space: nowrap;">@format_currency($min_price) @if($max_price != $min_price && $type == "variable") -  @format_currency($max_price)@endif </div>'
                 )
+                ->editColumn('updated_at', function($row) {
+                    return date('m/d/Y H:i', strtotime($row->updated_at));
+                })
                 ->filterColumn('products.sku', function ($query, $keyword) {
                     $query->whereHas('variations', function($q) use($keyword){
                             $q->where('sub_sku', 'like', "%{$keyword}%");
@@ -459,7 +475,7 @@ class ProductController extends Controller
 
         try {
             $business_id = $request->session()->get('user.business_id');
-            $form_fields = ['name', 'brand_id', 'unit_id', 'category_id', 'tax', 'type', 'barcode_type', 'sku', 'alert_quantity', 'tax_type', 'weight', 'product_custom_field1', 'product_custom_field2', 'product_custom_field3', 'product_custom_field4', 'product_description', 'sub_unit_ids'];
+            $form_fields = ['name', 'brand_id', 'artist', 'unit_id', 'category_id', 'tax', 'type', 'barcode_type', 'sku', 'alert_quantity', 'tax_type', 'weight', 'product_custom_field1', 'product_custom_field2', 'product_custom_field3', 'product_custom_field4', 'product_description', 'sub_unit_ids'];
 
             $module_form_fields = $this->moduleUtil->getModuleFormField('product_form_fields');
             if (!empty($module_form_fields)) {
@@ -700,7 +716,7 @@ class ProductController extends Controller
 
         try {
             $business_id = $request->session()->get('user.business_id');
-            $product_details = $request->only(['name', 'brand_id', 'unit_id', 'category_id', 'tax', 'barcode_type', 'sku', 'alert_quantity', 'tax_type', 'weight', 'product_custom_field1', 'product_custom_field2', 'product_custom_field3', 'product_custom_field4', 'product_description', 'sub_unit_ids']);
+            $product_details = $request->only(['name', 'brand_id', 'artist', 'unit_id', 'category_id', 'tax', 'barcode_type', 'sku', 'alert_quantity', 'tax_type', 'weight', 'product_custom_field1', 'product_custom_field2', 'product_custom_field3', 'product_custom_field4', 'product_description', 'sub_unit_ids']);
 
             DB::beginTransaction();
             
@@ -715,9 +731,10 @@ class ProductController extends Controller
                     $product->$column = $request->input($column);
                 }
             }
-            
+
             $product->name = $product_details['name'];
             $product->brand_id = $product_details['brand_id'];
+            $product->artist = $product_details['artist'];
             $product->unit_id = $product_details['unit_id'];
             $product->category_id = $product_details['category_id'];
             $product->tax = 1;
@@ -1229,6 +1246,7 @@ class ProductController extends Controller
             if (in_array('sku', $search_fields)) {
                 $search_fields[] = 'sub_sku';
             }
+            $search_fields[] = 'artist';
 
             $result = $this->productUtil->filterProduct($business_id, $search_term, $location_id, $not_for_selling, $price_group_id, $product_types, $search_fields, $check_qty);
 
@@ -2465,23 +2483,48 @@ class ProductController extends Controller
 
     public function massStore(Request $request)
     {
-
         // Валидация входящих данных
         $validator = Validator::make($request->all(), [
             'products' => 'required|array|min:1',
-            'products.*.name' => 'required|string|max:255',
-            // Добавьте другие правила валидации по необходимости, например:
-            // 'products.*.alert_quantity' => 'nullable|numeric',
-            // 'products.*.single_dsp_inc_tax' => 'required|numeric',
-            // 'products.*.single_dpp_inc_tax' => 'required|numeric',
-            // и т.д.
+            'products.*.name' => 'required_without:products.*.id|string|max:255',
+            'products.*.category_id' => 'required|integer|exists:categories,id',
+            'products.*.single_dsp_inc_tax' => 'required|numeric|min:0',
+            'products.*.business_locations' => 'required|array|min:1',
+            'products.*.stock_locations.*.stock' => 'required|integer|min:1',
+            'products.*.artist' => [
+                'required_if:products.*.category_id,11,15,55,104,111,174,175',
+            ],
+        ], [
+            'products.required' => 'At least one product is required',
+            'products.array' => 'Products must be an array',
+            'products.min' => 'At least one product is required',
+            
+            'products.*.name.required_without' => 'Product name is required when ID is not provided',
+            
+            'products.*.category_id.required' => 'Category is required for each product',
+            'products.*.category_id.integer' => 'Category ID must be an integer',
+            'products.*.category_id.exists' => 'Selected category does not exist',
+            
+            'products.*.single_dsp_inc_tax.required' => 'Selling Price is required for each product',
+            'products.*.single_dsp_inc_tax.numeric' => 'Selling Price must be a number',
+            'products.*.single_dsp_inc_tax.min' => 'Selling Price cannot be negative',
+            
+            'products.*.business_locations.required' => 'Business locations are required',
+            'products.*.business_locations.array' => 'Business locations must be an array',
+            'products.*.business_locations.min' => 'At least one business location is required',
+            
+            'products.*.stock_locations.*.stock.required' => 'Stock quantity is required for each location',
+            'products.*.stock_locations.*.stock.integer' => 'Stock quantity must be an integer',
+            'products.*.stock_locations.*.stock.min' => 'Stock quantity must be at least 1',
+
+            'products.*.artist.required_if' => 'Artist is required for this category',
         ]);
 
         if ($validator->fails()) {
-            // Возвращаем ошибки в формате JSON для AJAX-запроса с кодом 422
+            // Return field-specific validation errors in JSON format
             return response()->json([
                 'success' => 0,
-                'errors' => $validator->errors()->all()
+                'errors' => $validator->errors()->toArray()
             ], 422);
         }
 
@@ -2490,9 +2533,23 @@ class ProductController extends Controller
 
         DB::beginTransaction();
 
+        $businessId = $request->session()->get('user.business_id');
+        $userId = $request->session()->get('user.id');
+                
+        $transactionDate = $request->session()->get("financial_year.start");
+        $transactionDate = \Carbon::createFromFormat('Y-m-d', $transactionDate)->toDateTimeString();
+
+        $createdProducts = [];
         try {
             foreach ($products as $productData) {
+                // reset product
+                $product = null;
+                $productId = $productData['id'] ?? '';
+                $variationId = $productData['variation_id'] ?? '';
 
+                if (!empty($productData['id'])) {
+                    $product = Product::where('id', $productId)->first();
+                }
                 // Обработка загрузки изображения
                 $image = null;
                 if (isset($productData['image']) && $request->hasFile("products.{$productData['image']}")) {
@@ -2506,58 +2563,110 @@ class ProductController extends Controller
 
                 $sku = !empty($productData['sku']) ? $productData['sku'] : null;
 
-                // Создание нового продукта с учётом новых полей
-                $product = Product::create([
-                    'name'                => $productData['name'],
-                    'sku'                 => (!empty($productData['sku']) ? $productData['sku'] : 111),
-                    'brand_id'            => null,
-                    'category_id'         => $productData['category_id'] ?? null,
-                    'sub_category_id'     => $productData['sub_category_id'] ?? null,
-                    'tax'                 => 1,
-                    'tax_type'            => 'exclusive',
-                    'alert_quantity'      => 1,
-                    'business_id'         => $request->session()->get('user.business_id'),
-                    'created_by'          => auth()->user()->id,
-                    'product_custom_field1' => $productData['image_url'] ?? null,
-                    'image'               => $image,
-                    'enable_stock'        => 1,
-                    'product_description' => $productData['description'] ?? null,
-                    'unit_id' => $productData['unit_id'] ?? 1,
-                    'secondary_unit_id' => $productData['secondary_unit_id'] ?? 1,
-                    'type' => $productData['type'] ?? 'single',
-                ]);
+                // create product if no product id provided
+                if (empty($product)) {
+                    // Создание нового продукта с учётом новых полей
+                    $product = Product::create([
+                        'name'                => $productData['name'],
+                        'artist'              => $productData['artist'] ?? null,
+                        'sku'                 => (!empty($productData['sku']) ? $productData['sku'] : 111),
+                        'brand_id'            => null,
+                        'category_id'         => $productData['category_id'] ?? null,
+                        'sub_category_id'     => $productData['sub_category_id'] ?? null,
+                        'tax'                 => 1,
+                        'tax_type'            => 'exclusive',
+                        'alert_quantity'      => 1,
+                        'business_id'         => $businessId,
+                        'created_by'          => auth()->user()->id,
+                        'product_custom_field1' => $productData['image_url'] ?? null,
+                        'image'               => $image,
+                        'enable_stock'        => 1,
+                        'product_description' => $productData['description'] ?? null,
+                        'unit_id' => $productData['unit_id'] ?? 1,
+                        'secondary_unit_id' => $productData['secondary_unit_id'] ?? 1,
+                        'type' => $productData['type'] ?? 'single',
+                    ]);
 
-                // Генерация SKU, если поле пустое
-                if (empty(trim($productData['sku']))) {
-                    $generatedSku = $this->productUtil->generateProductSku($product->id);
-                    $product->sku = $generatedSku;
-                    $product->save();
+                    // Генерация SKU, если поле пустое
+                    if (empty(trim($productData['sku']))) {
+                        $generatedSku = $this->productUtil->generateProductSku($product->id);
+                        $product->sku = $generatedSku;
+                        $product->save();
+                    }
+
+                    // Используйте SKU для создания вариации:
+                    $sku = $product->sku;  // Теперь SKU определё
+
+                    // Создание вариации для одиночного продукта
+                    $this->productUtil->createSingleProductVariation(
+                        $product->id,
+                        $sku,
+                        $productData['single_dpp_inc_tax'],
+                        $productData['single_dpp_inc_tax'],
+                        $productData['profit_percent'] ?? 0,
+                        $productData['single_dsp_inc_tax'],
+                        $productData['single_dsp_inc_tax']
+                    );
                 }
 
-                // Используйте SKU для создания вариации:
-                $sku = $product->sku;  // Теперь SKU определё
+                $product->product_locations()->sync($productData['business_locations'] ?? []);
 
-                // Создание вариации для одиночного продукта
-                $this->productUtil->createSingleProductVariation(
-                    $product->id,
-                    $sku,
-                    $productData['single_dpp_inc_tax'],
-                    $productData['single_dpp_inc_tax'],
-                    $productData['profit_percent'] ?? 0,
-                    $productData['single_dsp_inc_tax'],
-                    $productData['single_dsp_inc_tax']
-                );
+                foreach($product->product_locations as $loc) {
+                    $openingStockInput = [];
 
-                $product->product_locations()->sync($productData['product_locations'] ?? []);
+                    $stock = $productData['stock_locations'][$loc->id]['stock'] ?? 0;
+
+                    $transaction = Transaction::where('opening_stock_product_id', $product->id)
+                                    ->where('type', 'opening_stock')
+                                    ->where('business_id', $businessId)
+                                    ->where('location_id', $loc->id)
+                                    ->first();
+
+                    if (empty($transaction)) {
+                        if (empty($stock)) {
+                            continue;
+                        }
+                        // No opening transaction exist, we create new one 
+                        $openingStockInput[$loc->id] = [
+                            'purchase_price' => $productData['single_dpp_inc_tax'],
+                            'quantity' => $stock,
+                            'exp_date' => '',
+                            'lot_number' => ''
+                        ];
+
+                        $this->productUtil->addSingleProductOpeningStock($businessId, $product, $openingStockInput, $transactionDate, $userId);
+                    } else {
+                        // There is existing opening stock, update the stock
+                        $pcLine = $transaction->purchase_lines()->where('product_id', $productId)->where('variation_id', $variationId)->first();
+                        if (!empty($pcLine)) {
+                            $difference = $stock - $pcLine->quantity;
+
+                            $pcLine->quantity = $stock;
+                            $pcLine->save();
+
+                            $transaction->total_before_tax = $pcLine->purchase_price * $stock;
+                            $transaction->final_total = $pcLine->purchase_price * $stock;
+                            $transaction->save();
+
+                            $this->productUtil->updateProductQuantity($loc->id, $productId, $variationId, $difference);
+                        }
+                    }
+                }
+
+                $createdProducts[] = $product->id;
             }
 
             DB::commit();
 
-            $output = ['success' => 1, 'msg' => 'Products were created successfully!'];
+            $output = [
+                'success' => 1,
+                'msg' => 'Products were created successfully!',
+                'product_ids' => $createdProducts
+            ];
         } catch (\Exception $e) {
             DB::rollBack();
             \Log::error($e->getMessage());
-            $output = ['success' => 0, 'msg' => 'Something went wrong during creating the products'];
+            $output = ['success' => 0, 'msg' => 'Something went wrong during creating the products', 'error' => $e->getMessage()." ".$e->getLine()];
         }
 
         // Проверяем, если запрос AJAX, возвращаем JSON-ответ без редиректа
@@ -2587,7 +2696,6 @@ class ProductController extends Controller
     }
 
 
-
     public function getMassProductRow(Request $request)
     {
         $index = $request->get('index', 0);
@@ -2605,6 +2713,240 @@ class ProductController extends Controller
         return view('product.partials.mass_product_row')
             ->with(compact('index', 'categories', 'brands', 'taxes', 'business_locations'))
             ->render();
+    }
+
+
+
+    /**
+     * Get Product on auto complete
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function massProductGetProducts()
+    {
+        if (request()->ajax()) {
+            $term = request()->term;
+
+            $check_enable_stock = true;
+            if (isset(request()->check_enable_stock)) {
+                $check_enable_stock = filter_var(request()->check_enable_stock, FILTER_VALIDATE_BOOLEAN);
+            }
+
+            $only_variations = false;
+            if (isset(request()->only_variations)) {
+                $only_variations = filter_var(request()->only_variations, FILTER_VALIDATE_BOOLEAN);
+            }
+
+            if (empty($term)) {
+                return json_encode([]);
+            }
+
+            $business_id = request()->session()->get('user.business_id');
+            $q = Product::leftJoin(
+                'variations',
+                'products.id',
+                '=',
+                'variations.product_id'
+            )->leftJoin(
+                'categories',
+                'products.category_id',
+                '=',
+                'categories.id'
+            )
+                ->where(function ($query) use ($term) {
+                    // Split search term into words
+                    $searchTerms = explode(' ', $term);
+                    
+                    $query->where(function($q) use ($searchTerms) {
+                        foreach($searchTerms as $term) {
+                            $q->where('products.name', 'like', '%' . $term . '%');
+                        }
+                    });
+                    $query->orWhere('sku', 'like', '%' . $term .'%');
+                    $query->orWhere('sub_sku', 'like', '%' . $term .'%');
+                })
+                ->active()
+                ->where('products.business_id', $business_id)
+                ->whereNull('variations.deleted_at')
+                ->select(
+                    'products.id as product_id',
+                    'products.name',
+                    'products.type',
+                    // 'products.sku as sku',
+                    'variations.id as variation_id',
+                    'variations.name as variation',
+                    'variations.sell_price_inc_tax as price',
+                    'categories.name as catname',
+                    'variations.sub_sku as sub_sku'
+                )
+                ->groupBy('variation_id');
+
+            if ($check_enable_stock) {
+                $q->where('enable_stock', 1);
+            }
+            if (!empty(request()->location_id)) {
+                $q->ForLocation(request()->location_id);
+            }
+            $products = $q->get();
+                
+            $products_array = [];
+            foreach ($products as $product) {
+                $products_array[$product->product_id]['name'] = $product->name;
+                $products_array[$product->product_id]['sku'] = $product->sub_sku;
+                $products_array[$product->product_id]['type'] = $product->type;
+                $products_array[$product->product_id]['price'] = $product->price;
+                $products_array[$product->product_id]['catname'] = $product->catname;
+                $products_array[$product->product_id]['variations'][] = [
+                    'variation_id' => $product->variation_id,
+                    'variation_name' => $product->variation,
+                    'sub_sku' => $product->sub_sku,
+                    'price' => $product->sell_price_inc_tax,
+                ];
+            }
+
+            $result = [];
+            $i = 1;
+            $no_of_records = $products->count();
+            if (!empty($products_array)) {
+                foreach ($products_array as $key => $value) {
+                    $product_id = $key;
+
+                    // Find opening stock 
+                    $transactions = Transaction::where('opening_stock_product_id', $product_id)
+                                    ->where('type', 'opening_stock')
+                                    ->where('business_id', $business_id)
+                                    ->get();
+
+                    if ($no_of_records > 1 && $value['type'] != 'single' && !$only_variations) {
+                        $result[] = [ 'id' => $i,
+                            'text' => $value['name'] . ' - ' . $value['sku']. ' - '.$value['price'].' - '. $value['catname'],
+                            'variation_id' => 0,
+                            'product_id' => $key
+                        ];
+                    }
+
+                    $name = $value['name'];
+
+                    foreach ($value['variations'] as $variation) {
+                        $openingLocations = [];
+
+                        foreach($transactions as $ts) {
+                            if (!in_array($ts->location_id, $openingLocations)) {
+                                $openingLocations[] = [
+                                    'id' => $ts->location_id,
+                                    'opening_stock' => $ts->purchase_lines()->where('product_id', $product_id)->where('variation_id', $variation['variation_id'])->first()->quantity ?? 0
+                                ];
+                            }
+                        }
+
+                        $text = $name;
+
+                        if ($value['type'] == 'variable') {
+                            $text = $text . ' (' . $variation['variation_name'] . ')';
+                        }
+
+                        $i++;
+                        $result[] = [ 'id' => $i,
+                            'text' => $text . ' - ' . $variation['sub_sku']. ' - '.$value['price'].' - '. $value['catname'],
+                            'product_id' => $key,
+                            'variation_id' => $variation['variation_id'],
+                            'opening_locations' => $openingLocations
+                        ];
+                    }
+                    $i++;
+                }
+            }
+            
+            return json_encode($result);
+        }
+    }
+
+
+    public function getProductPriceRecommendation(Request $request)
+    {
+        $query = $request->input('query') ?? '';
+        $categoryId = $request->input('category_id') ?? '';
+        $gtin = $request->input('gtin') ?? '';
+        $rowIndex = $request->input('row_index') ?? '';
+
+        if (empty($query)) {
+            return response()->json([
+                'error' => true,
+                'message' => 'Query is required'
+            ], 200);
+        }
+
+        $category = Category::find($categoryId);
+        if (!empty($categoryId) && empty($category)) {
+            return response()->json([
+                'error' => true,
+                'message' => 'Category not found'
+            ], 200);
+        }
+        
+        $ebayCategoryIds = $this->ebayService->getEbayCategoryIds($categoryId);
+        $priceRecommendation = $this->ebayService->getPriceRecommendations($query, $gtin, implode(',', $ebayCategoryIds));
+
+        if (!empty($category) && $category->use_discogs_api) {
+            $discogsReleases = $this->discogsService->getRelease($query);
+
+            $priceRecommendationDiscogs = $this->discogsService->searchProductPrice($query);
+        }
+
+        return response()->json([
+            'error' => false,
+            'price_recommendation' => $priceRecommendation,
+            'discogs_release_nn' => $discogsReleases ?? [],
+            'discogs_releases' => $discogsReleases['data'] ?? [],
+            'discogs_price_recommendation_sub_categories' => $priceRecommendationDiscogs['sub_categories'] ?? [],
+            'discogs_price_recommendation' => $priceRecommendationDiscogs['prices'] ?? [],
+            'row_index' => $rowIndex
+        ]);
+    }
+
+    public function getDiscogsPrices(Request $request)
+    {
+        $releaseId = $request->input('release_id');
+        $discogsPrices = $this->discogsService->getPriceSuggesions($releaseId);
+
+        if($discogsPrices['error']) {
+            return response()->json([
+                'success' => false,
+                'message' => $discogsPrices['message']
+            ]); 
+        }
+
+        $prices = [];
+        foreach ($discogsPrices['data'] as $key => $price) {
+            $prices[] = [
+                'condition' => $key,
+                'value' => number_format($price->value, 2),
+                'currency' => $price->currency,
+            ];
+        }
+
+        return response()->json([
+            'success' => true,
+            'prices' => $prices
+        ]); 
+    }
+
+    public function searchDiscogsProductPrice(Request $request)
+    {
+        $query = $request->input('query');
+        $discogsPrices = $this->discogsService->searchProductPrice($query);
+
+
+        $discogsReleases = $this->discogsService->getRelease($query);
+        dd($discogsPrices ?? [], $discogsReleases, 'testing');
+        
+    }
+
+    public function searchDiscogsProductPrice2(Request $request)
+    {
+        $query = $request->input('query');
+        $releases = $this->discogsService->getRelease($query);
+        dd($releases);
     }
 
 }

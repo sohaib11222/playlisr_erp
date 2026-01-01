@@ -212,6 +212,7 @@ class SellPosController extends Controller
 
         //If brands, category are enabled then send else false.
         $categories = (request()->session()->get('business.enable_category') == 1) ? Category::catAndSubCategories($business_id) : false;
+        $categoriesForDropdown = Category::forDropdown($business_id, 'product');
         $brands = (request()->session()->get('business.enable_brand') == 1) ? Brands::forDropdown($business_id)
                     ->prepend(__('lang_v1.all_brands'), 'all') : false;
 
@@ -288,7 +289,8 @@ class SellPosController extends Controller
                 'invoice_schemes',
                 'default_invoice_schemes',
                 'invoice_layouts',
-                'users'
+                'users',
+                'categoriesForDropdown'
             ));
     }
 
@@ -340,9 +342,11 @@ class SellPosController extends Controller
 
             if ($is_credit_limit_exeeded !== false) {
                 $credit_limit_amount = $this->transactionUtil->num_f($is_credit_limit_exeeded, true);
-                $output = ['success' => 0,
-                            'msg' => __('lang_v1.cutomer_credit_limit_exeeded', ['credit_limit' => $credit_limit_amount])
-                        ];
+                $output = [
+                    'success' => 0,
+                    'msg' => __('lang_v1.cutomer_credit_limit_exeeded', ['credit_limit' => $credit_limit_amount])
+                ];
+
                 if (!$is_direct_sale) {
                     return $output;
                 } else {
@@ -364,9 +368,11 @@ class SellPosController extends Controller
         
                 $user_id = $request->session()->get('user.id');
 
-                $discount = ['discount_type' => $input['discount_type'],
-                                'discount_amount' => $input['discount_amount']
-                            ];
+                $discount = [
+                    'discount_type' => $input['discount_type'],
+                    'discount_amount' => $input['discount_amount']
+                ];
+
                 $invoice_total = $this->productUtil->calculateInvoiceTotal($input['products'], $input['tax_rate_id'], $discount);
 
                 DB::beginTransaction();
@@ -376,11 +382,12 @@ class SellPosController extends Controller
                 } else {
                     $input['transaction_date'] = $this->productUtil->uf_date($request->input('transaction_date'), true);
                 }
+
                 if ($is_direct_sale) {
                     $input['is_direct_sale'] = 1;
                 }
 
-                //Set commission agent
+                // Set commission agent
                 $input['commission_agent'] = !empty($request->input('commission_agent')) ? $request->input('commission_agent') : null;
                 $commsn_agnt_setting = $request->session()->get('business.sales_cmsn_agnt');
                 if ($commsn_agnt_setting == 'logged_in_user') {
@@ -475,7 +482,6 @@ class SellPosController extends Controller
 
                 //Upload Shipping documents
                 Media::uploadMedia($business_id, $transaction, $request, 'shipping_documents', false, 'shipping_document');
-                
 
                 $this->transactionUtil->createOrUpdateSellLines($transaction, $input['products'], $input['location_id']);
                 
@@ -490,13 +496,16 @@ class SellPosController extends Controller
                     $this->transactionUtil->createOrUpdatePaymentLines($transaction, $input['payment']);
                 }
 
-                //Check for final and do some processing.
+                // Check for final and do some processing.
                 if ($input['status'] == 'final') {
-                    //update product stock
+                    // Update product stock
                     foreach ($input['products'] as $product) {
-                        $decrease_qty = $this->productUtil
-                                    ->num_uf($product['quantity']);
-                                    
+                        if ($product['product_id'] == 'manual') {
+                            continue;
+                        }
+
+                        $decrease_qty = $this->productUtil->num_uf($product['quantity']);
+
                         if (!empty($product['base_unit_multiplier'])) {
                             $decrease_qty = $decrease_qty * $product['base_unit_multiplier'];
                         }
@@ -509,12 +518,13 @@ class SellPosController extends Controller
                                 $decrease_qty
                             );
                         }
-                        $variation_location_d = VariationLocationDetails
-                          ::where('variation_id', $product['variation_id'])
-                          ->where('product_id', $product['product_id'])
-                          ->where('location_id', $input['location_id'])
-                          ->first();
-                        //   var_dump($variation_location_d);die;
+
+                        $variation_location_d = VariationLocationDetails::where('variation_id', $product['variation_id'])
+                            ->where('product_id', $product['product_id'])
+                            ->where('location_id', $input['location_id'])
+                            ->first();
+
+                        // var_dump($variation_location_d);die;
                         if (!$product['enable_stock'] && (empty($variation_location_d) || $variation_location_d == 0)) {
                             $this->productUtil->updateProductQuantity2(
                                 $input['location_id'],
@@ -526,22 +536,22 @@ class SellPosController extends Controller
                                 false
                             );
                         }
+
                         if ($product['product_type'] == 'combo') {
                             //Decrease quantity of combo as well.
-                            $this->productUtil
-                                ->decreaseProductQuantityCombo(
-                                    $product['combo'],
-                                    $input['location_id']
-                                );
+                            $this->productUtil->decreaseProductQuantityCombo(
+                                $product['combo'],
+                                $input['location_id']
+                            );
                         }
                     }
 
-                    //Add payments to Cash Register
+                    // Add payments to Cash Register
                     if (!$is_direct_sale && !$transaction->is_suspend && !empty($input['payment']) && !$is_credit_sale) {
                         $this->cashRegisterUtil->addSellPayments($transaction, $input['payment']);
                     }
 
-                    //Update payment status
+                    // Update payment status
                     $payment_status = $this->transactionUtil->updatePaymentStatus($transaction->id, $transaction->final_total);
 
                     $transaction->payment_status = $payment_status;
@@ -551,17 +561,19 @@ class SellPosController extends Controller
                         $this->transactionUtil->updateCustomerRewardPoints($contact_id, $transaction->rp_earned, 0, $redeemed);
                     }
 
-                    //Allocate the quantity from purchase and add mapping of
-                    //purchase & sell lines in
-                    //transaction_sell_lines_purchase_lines table
+                    // Allocate the quantity from purchase and add mapping of
+                    // Purchase & sell lines in
+                    // Transaction_sell_lines_purchase_lines table
                     $business_details = $this->businessUtil->getDetails($business_id);
                     $pos_settings = empty($business_details->pos_settings) ? $this->businessUtil->defaultPosSettings() : json_decode($business_details->pos_settings, true);
 
-                    $business = ['id' => $business_id,
-                                    'accounting_method' => $request->session()->get('business.accounting_method'),
-                                    'location_id' => $input['location_id'],
-                                    'pos_settings' => $pos_settings
-                                ];
+                    $business = [
+                        'id' => $business_id,
+                        'accounting_method' => $request->session()->get('business.accounting_method'),
+                        'location_id' => $input['location_id'],
+                        'pos_settings' => $pos_settings
+                    ];
+
                     $this->transactionUtil->mapPurchaseSell($business, $transaction->sell_lines, 'purchase');
 
                     //Auto send notification
@@ -589,6 +601,7 @@ class SellPosController extends Controller
                 $receipt = '';
                 $invoice_layout_id = $request->input('invoice_layout_id');
                 $print_invoice = false;
+
                 if (!$is_direct_sale) {
                     if ($input['status'] == 'draft') {
                         $msg = trans("sale.draft_added");
@@ -620,9 +633,10 @@ class SellPosController extends Controller
                     $output['whatsapp_link'] = $whatsapp_link;
                 }
             } else {
-                $output = ['success' => 0,
-                            'msg' => trans("messages.something_went_wrong")
-                        ];
+                $output = [
+                    'success' => 0,
+                    'msg' => trans("messages.something_went_wrong")
+                ];
             }
         } catch (\Exception $e) {
             DB::rollBack();
@@ -636,9 +650,13 @@ class SellPosController extends Controller
                 $msg = $e->getMessage();
             }
 
-            $output = ['success' => 0,
-                            'msg' => $msg
-                        ];
+            $output = [
+                'success' => 0,
+                'msg' => $msg,
+                'error_details' => $e->getMessage(),
+                'error_file' => $e->getFile(),
+                'error_line' => $e->getLine()
+            ];
         }
 
         if (!$is_direct_sale) {
@@ -1555,6 +1573,19 @@ class SellPosController extends Controller
         return $output;
     }
 
+    private function getManualSellLineRow($productName, $artist, $category_id, $sub_category_id, $price, $rowCount = null)
+    {
+        $rowCount = $rowCount ?? (request()->get('product_row', 0) + 1);
+        
+        $category = Category::find($category_id);
+        $subCategory = Category::find($sub_category_id);
+
+        return [
+            'success' => true,
+            'html_content' => view('sale_pos.manual_product_row', compact('productName', 'artist', 'category_id', 'category', 'sub_category_id', 'subCategory', 'price', 'rowCount'))->render()
+        ];
+    }
+
     /**
      * Finds last sell line of a variation for the customer for a location
      *
@@ -1627,6 +1658,99 @@ class SellPosController extends Controller
 
             $output['success'] = false;
             $output['msg'] = __('lang_v1.item_out_of_stock');
+        }
+
+        return $output;
+    }
+
+    /**
+     * Returns the HTML row for a product in POS
+     *
+     * @param  int  $variation_id
+     * @param  int  $location_id
+     * @return \Illuminate\Http\Response
+     */
+    public function getManualProductRow()
+    {
+        $output = [];
+
+        try {
+            $row_count = request()->get('product_row');
+            $row_count = $row_count + 1;
+            $quantity = request()->get('quantity', 1);
+            $productName = request()->get('name');
+            $artist = request()->get('artist');
+            $categoryId = request()->get('category_id');
+            $subCategoryId = request()->get('sub_category_id');
+            $price = request()->get('price');
+            
+            $output = $this->getManualSellLineRow($productName, $artist, $categoryId, $subCategoryId, $price, $row_count);
+        } catch (\Exception $e) {
+            \Log::emergency("File:" . $e->getFile(). "Line:" . $e->getLine(). "Message:" . $e->getMessage());
+
+            $output['success'] = false;
+            $output['error_details'] = "File:" . $e->getFile(). "Line:" . $e->getLine(). "Message:" . $e->getMessage();
+            $output['msg'] = __('lang_v1.item_out_of_stock');
+        }
+
+        return $output;
+    }
+
+    /**
+     * Returns the HTML rows for multiple manual products in POS
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function getManualProductRows()
+    {
+        $output = [];
+
+        try {
+            $products = request()->get('products', []);
+            $row_count = request()->get('product_row', 0);
+            
+            
+            if (empty($products)) {
+                $output['success'] = false;
+                $output['msg'] = 'No products provided';
+                return $output;
+            }
+
+            $htmlRows = [];
+            
+            foreach ($products as $index => $product) {
+                $current_row_count = $row_count + $index + 1;
+                
+                $productName = $product['name'] ?? '';
+                $artist = $product['artist'] ?? '';
+                $categoryId = $product['category_id'] ?? '';
+                $subCategoryId = $product['sub_category_id'] ?? '';
+                $price = $product['price'] ?? 0;
+                
+                if (empty($productName) || empty($price)) {
+                    continue; // Skip invalid products
+                }
+                
+                $productOutput = $this->getManualSellLineRow($productName, $artist, $categoryId, $subCategoryId, $price, $current_row_count);
+                
+                if ($productOutput['success']) {
+                    $htmlRows[] = $productOutput['html_content'];
+                }
+            }
+            
+            if (!empty($htmlRows)) {
+                $output['success'] = true;
+                $output['html_content'] = $htmlRows;
+                $output['msg'] = count($htmlRows) . ' product(s) added successfully';
+            } else {
+                $output['success'] = false;
+                $output['msg'] = 'No valid products to add';
+            }
+            
+        } catch (\Exception $e) {
+            $output['success'] = false;
+            $output['error_details'] = "File:" . $e->getFile(). "Line:" . $e->getLine(). "Message:" . $e->getMessage();
+            $output['msg'] = 'Error adding products';
         }
 
         return $output;

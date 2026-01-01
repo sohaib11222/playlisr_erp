@@ -79,5 +79,7 @@ mix.js('resources/js/app.js', 'public/js/init.js')
     .copy('resources/plugins/bootstrap/fonts/glyphicons-halflings-regular.woff', 'public/fonts/')
     .copy('resources/plugins/bootstrap/fonts/glyphicons-halflings-regular.ttf', 'public/fonts/')
     .copy('resources/plugins/ionicons/fonts/ionicons.ttf', 'public/fonts/ionicons.ttf')
+    .copyDirectory('node_modules/@fortawesome/fontawesome-free/webfonts', 'public/fonts/vendor/@fortawesome/fontawesome-free')
+    .copyDirectory('node_modules/icheck/skins', 'public/images/vendor/icheck/skins')
     .copyDirectory('node_modules/tinymce/skins/', 'public/js/skins/')
     .setResourceRoot('../');
