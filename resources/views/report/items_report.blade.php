@@ -84,6 +84,8 @@
                             <tr>
                                 <th>@lang('sale.product')</th>
                                 <th>@lang('product.sku')</th>
+                                <th>@lang('product.category')</th>
+                                <th>@lang('product.sub_category')</th>
                                 <th>@lang('lang_v1.description')</th>
                                 <th>@lang('purchase.purchase_date')</th>
                                 <th>@lang('lang_v1.purchase')</th>
@@ -101,7 +103,7 @@
                         </thead>
                         <tfoot>
                             <tr class="bg-gray font-17 text-center footer-total">
-                                <td colspan="7"><strong>@lang('sale.total'):</strong></td>
+                                <td colspan="9"><strong>@lang('sale.total'):</strong></td>
                                 <td id="footer_total_pp" 
                                     class="display_currency" data-currency_symbol="true"></td>
                                 <td colspan="4"></td>

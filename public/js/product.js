@@ -183,6 +183,12 @@ $(document).ready(function() {
                         },
                     },
                 },
+                category_id: {
+                    required: true,
+                },
+                sub_category_id: {
+                    required: true,
+                },
                 expiry_period: {
                     required: {
                         depends: function(element) {
@@ -199,7 +205,18 @@ $(document).ready(function() {
                 sku: {
                     remote: LANG.sku_already_exists,
                 },
+                category_id: {
+                    required: LANG.required,
+                },
+                sub_category_id: {
+                    required: LANG.required,
+                },
             },
+        });
+
+        // Ensure Select2 triggers validation on change
+        $('#category_id, #sub_category_id').on('change', function() {
+            $(this).valid();
         });
     }
 

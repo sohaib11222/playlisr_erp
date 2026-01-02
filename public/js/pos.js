@@ -229,6 +229,9 @@ $(document).ready(function() {
 
             if (item.enable_stock == 1 && item.qty_available <= 0 && !is_overselling_allowed && !for_so) {
                 var string = '<li class="ui-state-disabled">' + item.name;
+                if (item.artist && item.artist.trim() !== '') {
+                    string += ' - ' + item.artist;
+                }
                 if (item.type == 'variable') {
                     string += '-' + item.variation;
                 }
@@ -246,6 +249,9 @@ $(document).ready(function() {
                 return $(string).appendTo(ul);
             } else {
                 var string = '<div>' + item.name;
+                if (item.artist && item.artist.trim() !== '') {
+                    string += ' - ' + item.artist;
+                }
                 if (item.type == 'variable') {
                     string += '-' + item.variation;
                 }
@@ -1370,6 +1376,11 @@ $(document).ready(function() {
         // Open the modal
         $('#add_manual_product_modal').modal('show');
         
+        // Initialize subtotal when modal opens
+        setTimeout(function() {
+            calculateManualProductSubtotal();
+        }, 100);
+        
         // Initialize select2 for existing selects
         setTimeout(function() {
             $('#add_manual_product_modal .select2').select2({
@@ -1417,6 +1428,12 @@ $(document).ready(function() {
     $(document).on('click', '.remove_product_row', function() {
         $(this).closest('.manual_product_row').remove();
         updateProductRowNumbers();
+        calculateManualProductSubtotal();
+    });
+    
+    // Calculate subtotal when price input changes
+    $(document).on('input change', '#manual_products_container input[name*="[price]"]', function() {
+        calculateManualProductSubtotal();
     });
 
     // Handle category change to populate sub-categories for dynamic rows
@@ -3090,7 +3107,8 @@ function addManualProductRow() {
             <td>
                 <select name="products[${newRowIndex}][category_id]" 
                         class="form-control select2 manual_product_category" 
-                        data-row="${newRowIndex}">
+                        data-row="${newRowIndex}"
+                        required>
                     <option value="">Please select</option>
                     ${getCategoryOptions()}
                 </select>
@@ -3098,7 +3116,8 @@ function addManualProductRow() {
             <td>
                 <select name="products[${newRowIndex}][sub_category_id]" 
                         class="form-control select2 manual_product_sub_category" 
-                        data-row="${newRowIndex}">
+                        data-row="${newRowIndex}"
+                        required>
                     <option value="">Please select</option>
                 </select>
             </td>
@@ -3125,6 +3144,9 @@ function addManualProductRow() {
         placeholder: "Please select",
         allowClear: true
     });
+    
+    // Calculate subtotal after adding row
+    calculateManualProductSubtotal();
 }
 
 // Helper function to get category options HTML
@@ -3212,6 +3234,9 @@ function resetManualProductModal() {
     
     // Hide remove button for first row
     $('#manual_products_container .manual_product_row:first .remove_product_row').hide();
+    
+    // Calculate subtotal after removing row
+    calculateManualProductSubtotal();
 }
 
 // Helper function to validate manual product form
@@ -3223,6 +3248,8 @@ function validateManualProductForm() {
         var $row = $(this);
         var productName = $row.find('input[name*="[name]"]').val();
         var price = $row.find('input[name*="[price]"]').val();
+        var categoryId = $row.find('select[name*="[category_id]"]').val();
+        var subCategoryId = $row.find('select[name*="[sub_category_id]"]').val();
         
         // Check if this row has any data
         if (productName || price) {
@@ -3231,6 +3258,18 @@ function validateManualProductForm() {
             // Validate required fields
             if (!productName || productName.trim() === '') {
                 toastr.error('Product name is required for all products');
+                isValid = false;
+                return false;
+            }
+            
+            if (!categoryId || categoryId === '') {
+                toastr.error('Category is required for all products');
+                isValid = false;
+                return false;
+            }
+            
+            if (!subCategoryId || subCategoryId === '') {
+                toastr.error('Sub Category is required for all products');
                 isValid = false;
                 return false;
             }
@@ -3249,4 +3288,22 @@ function validateManualProductForm() {
     }
     
     return isValid;
+}
+
+// Function to calculate and display manual product subtotal
+function calculateManualProductSubtotal() {
+    var subtotal = 0;
+    
+    $('#manual_products_container .manual_product_row').each(function() {
+        var $priceInput = $(this).find('input[name*="[price]"]');
+        if ($priceInput.length) {
+            var price = __read_number($priceInput);
+            if (!isNaN(price) && price > 0) {
+                subtotal += price;
+            }
+        }
+    });
+    
+    // Update subtotal display
+    $('#manual_products_subtotal').text(__currency_trans_from_en(subtotal, false));
 }

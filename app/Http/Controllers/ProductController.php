@@ -207,6 +207,22 @@ class ProductController extends Controller
                 $products->where('products.repair_model_id', request()->get('repair_model_id'));
             }
 
+            // Filter by created_by
+            $created_by = request()->get('created_by', null);
+            if (!empty($created_by)) {
+                $products->where('products.created_by', $created_by);
+            }
+
+            // Filter by date range
+            $start_date = request()->get('start_date', null);
+            $end_date = request()->get('end_date', null);
+            if (!empty($start_date)) {
+                $products->whereDate('products.created_at', '>=', $start_date);
+            }
+            if (!empty($end_date)) {
+                $products->whereDate('products.created_at', '<=', $end_date);
+            }
+
             return Datatables::of($products)
                 ->addColumn(
                     'product_locations',
@@ -351,6 +367,20 @@ class ProductController extends Controller
         $business_locations = BusinessLocation::forDropdown($business_id);
         $business_locations->prepend(__('lang_v1.none'), 'none');
 
+        // Get users who have created products for the "Created By" filter
+        $created_by_ids = Product::where('business_id', $business_id)
+            ->whereNotNull('created_by')
+            ->distinct()
+            ->pluck('created_by')
+            ->toArray();
+        
+        $users_who_created_products = \App\User::where('business_id', $business_id)
+            ->whereIn('id', $created_by_ids)
+            ->select('id', DB::raw("CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')) as full_name"))
+            ->orderBy('first_name')
+            ->pluck('full_name', 'id');
+        $users_who_created_products->prepend(__('lang_v1.all'), '');
+
         if ($this->moduleUtil->isModuleInstalled('Manufacturing') && (auth()->user()->can('superadmin') || $this->moduleUtil->hasThePermissionInSubscription($business_id, 'manufacturing_module'))) {
             $show_manufacturing_data = true;
         } else {
@@ -373,7 +403,8 @@ class ProductController extends Controller
                 'show_manufacturing_data',
                 'pos_module_data',
                 'is_woocommerce',
-                'is_admin'
+                'is_admin',
+                'users_who_created_products'
             ));
     }
 
@@ -472,6 +503,16 @@ class ProductController extends Controller
             abort(403, 'Unauthorized action.');
         }
 
+        // Validate required fields
+        $request->validate([
+            'category_id' => 'required|integer|exists:categories,id',
+            'sub_category_id' => 'required|integer|exists:categories,id',
+        ], [
+            'category_id.required' => __('product.category') . ' is required',
+            'category_id.exists' => __('product.category') . ' is invalid',
+            'sub_category_id.required' => __('product.sub_category') . ' is required',
+            'sub_category_id.exists' => __('product.sub_category') . ' is invalid',
+        ]);
 
         try {
             $business_id = $request->session()->get('user.business_id');
@@ -489,9 +530,8 @@ class ProductController extends Controller
             $product_details['enable_stock'] = (!empty($request->input('enable_stock')) &&  $request->input('enable_stock') == 1) ? 1 : 0;
             $product_details['not_for_selling'] = (!empty($request->input('not_for_selling')) &&  $request->input('not_for_selling') == 1) ? 1 : 0;
 
-            if (!empty($request->input('sub_category_id'))) {
-                $product_details['sub_category_id'] = $request->input('sub_category_id') ;
-            }
+            // sub_category_id is now required, so it will always be set
+            $product_details['sub_category_id'] = $request->input('sub_category_id');
 
             if (!empty($request->input('secondary_unit_id'))) {
                 $product_details['secondary_unit_id'] = $request->input('secondary_unit_id') ;
@@ -714,9 +754,20 @@ class ProductController extends Controller
             abort(403, 'Unauthorized action.');
         }
 
+        // Validate required fields
+        $request->validate([
+            'category_id' => 'required|integer|exists:categories,id',
+            'sub_category_id' => 'required|integer|exists:categories,id',
+        ], [
+            'category_id.required' => __('product.category') . ' is required',
+            'category_id.exists' => __('product.category') . ' is invalid',
+            'sub_category_id.required' => __('product.sub_category') . ' is required',
+            'sub_category_id.exists' => __('product.sub_category') . ' is invalid',
+        ]);
+
         try {
             $business_id = $request->session()->get('user.business_id');
-            $product_details = $request->only(['name', 'brand_id', 'artist', 'unit_id', 'category_id', 'tax', 'barcode_type', 'sku', 'alert_quantity', 'tax_type', 'weight', 'product_custom_field1', 'product_custom_field2', 'product_custom_field3', 'product_custom_field4', 'product_description', 'sub_unit_ids']);
+            $product_details = $request->only(['name', 'brand_id', 'artist', 'unit_id', 'category_id', 'sub_category_id', 'tax', 'barcode_type', 'sku', 'alert_quantity', 'tax_type', 'weight', 'product_custom_field1', 'product_custom_field2', 'product_custom_field3', 'product_custom_field4', 'product_description', 'sub_unit_ids']);
 
             DB::beginTransaction();
             
@@ -737,6 +788,7 @@ class ProductController extends Controller
             $product->artist = $product_details['artist'];
             $product->unit_id = $product_details['unit_id'];
             $product->category_id = $product_details['category_id'];
+            $product->sub_category_id = $request->input('sub_category_id');
             $product->tax = 1;
             $product->barcode_type = $product_details['barcode_type'];
             $product->sku = $product_details['sku'];

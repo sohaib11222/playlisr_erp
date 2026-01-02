@@ -117,7 +117,230 @@ sell_table = $('#sell_table').DataTable({
         },
         createdRow: function( row, data, dataIndex ) {
             $( row ).find('td:eq(6)').attr('class', 'clickable_td');
-        }
+        },
+        buttons: [
+            {
+                extend: 'csv',
+                text: '<i class="fa fa-file-csv" aria-hidden="true"></i> ' + LANG.export_to_csv,
+                className: 'btn-sm',
+                exportOptions: {
+                    columns: ':visible',
+                },
+                footer: true,
+            },
+            {
+                extend: 'excel',
+                text: '<i class="fa fa-file-excel" aria-hidden="true"></i> ' + LANG.export_to_excel,
+                className: 'btn-sm',
+                exportOptions: {
+                    columns: ':visible',
+                },
+                footer: true,
+            },
+            {
+                text: '<i class="fa fa-download" aria-hidden="true"></i> Export Items Sold (CSV)',
+                className: 'btn-sm btn-success',
+                action: function ( e, dt, node, config ) {
+                    var $btn = $(node);
+                    var originalHtml = $btn.html();
+                    
+                    // Disable button and show loading
+                    $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Exporting...');
+                    
+                    var params = new URLSearchParams();
+                    if($('#sell_list_filter_date_range').val()) {
+                        var start = $('#sell_list_filter_date_range').data('daterangepicker').startDate.format('YYYY-MM-DD');
+                        var end = $('#sell_list_filter_date_range').data('daterangepicker').endDate.format('YYYY-MM-DD');
+                        params.append('start_date', start);
+                        params.append('end_date', end);
+                    }
+                    if($('#sell_list_filter_location_id').length && $('#sell_list_filter_location_id').val()) {
+                        params.append('location_id', $('#sell_list_filter_location_id').val());
+                    }
+                    if($('#sell_list_filter_customer_id').val()) {
+                        params.append('customer_id', $('#sell_list_filter_customer_id').val());
+                    }
+                    if($('#sell_list_filter_payment_status').length && $('#sell_list_filter_payment_status').val()) {
+                        params.append('payment_status', $('#sell_list_filter_payment_status').val());
+                    }
+                    if($('#is_direct_sale').length) {
+                        params.append('is_direct_sale', $('#is_direct_sale').val());
+                    }
+                    
+                    // Use fetch API for AJAX - TEMPORARY: Expecting JSON response for testing
+                    fetch('/pos/export-csv?' + params.toString(), {
+                        method: 'GET',
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'Accept': 'application/json'
+                        }
+                    })
+                    .then(function(response) {
+                        if (!response.ok) {
+                            return response.text().then(function(text) {
+                                throw new Error('Export failed: ' + response.status + ' - ' + text);
+                            });
+                        }
+                        
+                        // Get the filename from Content-Disposition header or use default
+                        var contentDisposition = response.headers.get('content-disposition');
+                        var filename = 'pos_sales_items.csv';
+                        if (contentDisposition) {
+                            var filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                            if (filenameMatch && filenameMatch[1]) {
+                                filename = filenameMatch[1].replace(/['"]/g, '');
+                            }
+                        }
+                        
+                        return response.blob().then(function(blob) {
+                            // Check if blob is too small (likely an error)
+                            if (blob.size < 100) {
+                                return blob.text().then(function(text) {
+                                    throw new Error('Export file appears to be empty or contain an error: ' + text);
+                                });
+                            }
+                            
+                            // Create download link
+                            var url = window.URL.createObjectURL(blob);
+                            var a = document.createElement('a');
+                            a.href = url;
+                            a.download = filename;
+                            document.body.appendChild(a);
+                            a.click();
+                            window.URL.revokeObjectURL(url);
+                            document.body.removeChild(a);
+                            
+                            return { success: true, filename: filename };
+                        });
+                    })
+                    .then(function(result) {
+                        // Re-enable button
+                        $btn.prop('disabled', false).html(originalHtml);
+                        toastr.success('Export completed successfully!');
+                    })
+                    .catch(function(error) {
+                        // Re-enable button
+                        $btn.prop('disabled', false).html(originalHtml);
+                        toastr.error('Export failed: ' + error.message);
+                        console.error('Export error:', error);
+                    });
+                }
+            },
+            {
+                text: '<i class="fa fa-download" aria-hidden="true"></i> Export Items Sold (Excel)',
+                className: 'btn-sm btn-success',
+                action: function ( e, dt, node, config ) {
+                    var $btn = $(node);
+                    var originalHtml = $btn.html();
+                    
+                    // Disable button and show loading
+                    $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Exporting...');
+                    
+                    var params = new URLSearchParams();
+                    if($('#sell_list_filter_date_range').val()) {
+                        var start = $('#sell_list_filter_date_range').data('daterangepicker').startDate.format('YYYY-MM-DD');
+                        var end = $('#sell_list_filter_date_range').data('daterangepicker').endDate.format('YYYY-MM-DD');
+                        params.append('start_date', start);
+                        params.append('end_date', end);
+                    }
+                    if($('#sell_list_filter_location_id').length && $('#sell_list_filter_location_id').val()) {
+                        params.append('location_id', $('#sell_list_filter_location_id').val());
+                    }
+                    if($('#sell_list_filter_customer_id').val()) {
+                        params.append('customer_id', $('#sell_list_filter_customer_id').val());
+                    }
+                    if($('#sell_list_filter_payment_status').length && $('#sell_list_filter_payment_status').val()) {
+                        params.append('payment_status', $('#sell_list_filter_payment_status').val());
+                    }
+                    if($('#is_direct_sale').length) {
+                        params.append('is_direct_sale', $('#is_direct_sale').val());
+                    }
+                    
+                    // Use fetch API for AJAX - TEMPORARY: Expecting JSON response for testing
+                    fetch('/pos/export-excel?' + params.toString(), {
+                        method: 'GET',
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'Accept': 'application/json'
+                        }
+                    })
+                    .then(function(response) {
+                        if (!response.ok) {
+                            return response.text().then(function(text) {
+                                throw new Error('Export failed: ' + response.status + ' - ' + text);
+                            });
+                        }
+                        
+                        // Get the filename from Content-Disposition header or use default
+                        var contentDisposition = response.headers.get('content-disposition');
+                        var filename = 'pos_sales_items.csv';
+                        if (contentDisposition) {
+                            var filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                            if (filenameMatch && filenameMatch[1]) {
+                                filename = filenameMatch[1].replace(/['"]/g, '');
+                            }
+                        }
+                        
+                        return response.blob().then(function(blob) {
+                            // Check if blob is too small (likely an error)
+                            if (blob.size < 100) {
+                                return blob.text().then(function(text) {
+                                    throw new Error('Export file appears to be empty or contain an error: ' + text);
+                                });
+                            }
+                            
+                            // Create download link
+                            var url = window.URL.createObjectURL(blob);
+                            var a = document.createElement('a');
+                            a.href = url;
+                            a.download = filename;
+                            document.body.appendChild(a);
+                            a.click();
+                            window.URL.revokeObjectURL(url);
+                            document.body.removeChild(a);
+                            
+                            return { success: true, filename: filename };
+                        });
+                    })
+                    .then(function(result) {
+                        // Re-enable button
+                        $btn.prop('disabled', false).html(originalHtml);
+                        toastr.success('Export completed successfully!');
+                    })
+                    .catch(function(error) {
+                        // Re-enable button
+                        $btn.prop('disabled', false).html(originalHtml);
+                        toastr.error('Export failed: ' + error.message);
+                        console.error('Export error:', error);
+                    });
+                }
+            },
+            {
+                extend: 'print',
+                text: '<i class="fa fa-print" aria-hidden="true"></i> ' + LANG.print,
+                className: 'btn-sm',
+                exportOptions: {
+                    columns: ':visible',
+                    stripHtml: true,
+                },
+                footer: true,
+                customize: function ( win ) {
+                    if ($('.print_table_part').length > 0 ) {
+                        $($('.print_table_part').html()).insertBefore($(win.document.body).find( 'table' ));
+                    }
+                    if ($(win.document.body).find( 'table.hide-footer').length) {
+                        $(win.document.body).find( 'table.hide-footer tfoot' ).remove();
+                    }
+                    __currency_convert_recursively($(win.document.body).find( 'table' ));
+                }
+            },
+            {
+                extend: 'colvis',
+                text: '<i class="fa fa-columns" aria-hidden="true"></i> ' + LANG.col_vis,
+                className: 'btn-sm',
+            },
+        ],
+        dom: 'Bfrtip'
     });
     
     $('#only_subscriptions').on('ifChanged', function(event){

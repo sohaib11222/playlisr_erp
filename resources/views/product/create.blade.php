@@ -88,15 +88,15 @@
 
                 <div class="col-sm-12 @if(!session('business.enable_category')) hide @endif">
                     <div class="form-group">
-                        {!! Form::label('category_id', __('product.category') . ':') !!}
-                        {!! Form::select('category_id', $categories, !empty($duplicate_product->category_id) ? $duplicate_product->category_id : null, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2']); !!}
+                        {!! Form::label('category_id', __('product.category') . ' *:') !!}
+                        {!! Form::select('category_id', $categories, !empty($duplicate_product->category_id) ? $duplicate_product->category_id : null, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2', 'required']); !!}
                     </div>
                 </div>
 
                 <div class="col-sm-12 @if(!(session('business.enable_category') && session('business.enable_sub_category'))) hide @endif">
                     <div class="form-group">
-                        {!! Form::label('sub_category_id', __('product.sub_category') . ':') !!}
-                        {!! Form::select('sub_category_id', $sub_categories, !empty($duplicate_product->sub_category_id) ? $duplicate_product->sub_category_id : null, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2']); !!}
+                        {!! Form::label('sub_category_id', __('product.sub_category') . ' *:') !!}
+                        {!! Form::select('sub_category_id', $sub_categories, !empty($duplicate_product->sub_category_id) ? $duplicate_product->sub_category_id : null, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2', 'required']); !!}
                     </div>
                 </div>
 

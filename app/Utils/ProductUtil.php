@@ -1938,6 +1938,7 @@ class ProductUtil extends Util
         $query->select(
                 'products.id as product_id',
                 'products.name',
+                'products.artist',
                 'products.type',
                 'products.enable_stock',
                 'variations.id as variation_id',

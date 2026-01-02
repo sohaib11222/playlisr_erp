@@ -3123,6 +3123,8 @@ class ReportController extends Controller
                 ->join('product_variations as pv', 'v.product_variation_id', '=', 'pv.id')
                 ->join('products as p', 'PL.product_id', '=', 'p.id')
                 ->join('units as u', 'p.unit_id', '=', 'u.id')
+                ->leftJoin('categories as cat', 'p.category_id', '=', 'cat.id')
+                ->leftJoin('categories as sub_cat', 'p.sub_category_id', '=', 'sub_cat.id')
                 ->leftJoin('contacts as suppliers', 'purchase.contact_id', '=', 'suppliers.id')
                 ->leftJoin('contacts as customers', 'sale.contact_id', '=', 'customers.id')
                 ->where('purchase.business_id', $business_id)
@@ -3133,6 +3135,8 @@ class ReportController extends Controller
                     'v.name as variation_name',
                     'pv.name as product_variation',
                     'u.short_name as unit',
+                    'cat.name as category',
+                    'sub_cat.name as sub_category',
                     'purchase.transaction_date as purchase_date',
                     'purchase.ref_no as purchase_ref_no',
                     'purchase.type as purchase_type',

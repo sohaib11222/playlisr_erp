@@ -19,8 +19,8 @@
                                 <th width="5%">#</th>
                                 <th width="20%">Product Name *</th>
                                 <th width="15%">Artist</th>
-                                <th width="15%">Category</th>
-                                <th width="15%">Sub Category</th>
+                                <th width="15%">Category *</th>
+                                <th width="15%">Sub Category *</th>
                                 <th width="10%">Price *</th>
                                 <th width="5%">Action</th>
                             </tr>
@@ -44,7 +44,8 @@
                                 <td>
                                     <select name="products[0][category_id]" 
                                             class="form-control select2 manual_product_category" 
-                                            data-row="0">
+                                            data-row="0"
+                                            required>
                                         <option value="">Please select</option>
                                         @foreach($categoriesForDropdown as $key => $value)
                                             <option value="{{ $key }}">{{ $value }}</option>
@@ -54,7 +55,8 @@
                                 <td>
                                     <select name="products[0][sub_category_id]" 
                                             class="form-control select2 manual_product_sub_category" 
-                                            data-row="0">
+                                            data-row="0"
+                                            required>
                                         <option value="">Please select</option>
                                     </select>
                                 </td>
@@ -80,6 +82,12 @@
                         <button type="button" class="btn btn-success" id="add_another_product">
                             <i class="fa fa-plus"></i> Add Another Product
                         </button>
+                    </div>
+                </div>
+                
+                <div class="row" style="margin-top: 15px;">
+                    <div class="col-md-12 text-right">
+                        <strong>Subtotal: <span id="manual_products_subtotal">$0.00</span></strong>
                     </div>
                 </div>
 			</div>

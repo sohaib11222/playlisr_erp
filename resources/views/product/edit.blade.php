@@ -80,15 +80,15 @@
 
             <div class="col-sm-4 @if(!session('business.enable_category')) hide @endif">
               <div class="form-group">
-                {!! Form::label('category_id', __('product.category') . ':') !!}
-                  {!! Form::select('category_id', $categories, $product->category_id, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2']); !!}
+                {!! Form::label('category_id', __('product.category') . ' *:') !!}
+                  {!! Form::select('category_id', $categories, $product->category_id, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2', 'required']); !!}
               </div>
             </div>
 
             <div class="col-sm-4 @if(!(session('business.enable_category') && session('business.enable_sub_category'))) hide @endif">
               <div class="form-group">
-                {!! Form::label('sub_category_id', __('product.sub_category')  . ':') !!}
-                  {!! Form::select('sub_category_id', $sub_categories, $product->sub_category_id, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2']); !!}
+                {!! Form::label('sub_category_id', __('product.sub_category') . ' *:') !!}
+                  {!! Form::select('sub_category_id', $sub_categories, $product->sub_category_id, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2', 'required']); !!}
               </div>
             </div>
 

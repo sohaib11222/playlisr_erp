@@ -57,6 +57,18 @@
             </div>
         </div>
         <div class="col-md-3">
+            <div class="form-group">
+                {!! Form::label('created_by', __('business.created_by') . ':') !!}
+                {!! Form::select('created_by', $users_who_created_products, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'product_list_filter_created_by', 'placeholder' => __('lang_v1.all')]); !!}
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="form-group">
+                {!! Form::label('created_date_range', __('lang_v1.created_date_range') . ':') !!}
+                {!! Form::text('created_date_range', null, ['class' => 'form-control', 'id' => 'product_list_filter_created_date_range', 'placeholder' => __('lang_v1.select_a_date_range'), 'readonly']); !!}
+            </div>
+        </div>
+        <div class="col-md-3">
             <br>
             <div class="form-group">
                 {!! Form::select('active_state', ['active' => __('business.is_active'), 'inactive' => __('lang_v1.inactive')], null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'active_state', 'placeholder' => __('lang_v1.all')]); !!}
@@ -192,6 +204,24 @@
                         d.active_state = $('#active_state').val();
                         d.not_for_selling = $('#not_for_selling').is(':checked');
                         d.location_id = $('#location_id').val();
+                        d.created_by = $('#product_list_filter_created_by').val();
+                        
+                        // Handle date range filter
+                        var date_range = $('#product_list_filter_created_date_range').val();
+                        if (date_range) {
+                            // Parse the date range (format: "DD-MM-YYYY ~ DD-MM-YYYY" or "YYYY-MM-DD ~ YYYY-MM-DD")
+                            var dates = date_range.split(' ~ ');
+                            if (dates.length == 2) {
+                                // Convert to YYYY-MM-DD format
+                                var start_moment = moment(dates[0].trim(), moment_date_format);
+                                var end_moment = moment(dates[1].trim(), moment_date_format);
+                                if (start_moment.isValid() && end_moment.isValid()) {
+                                    d.start_date = start_moment.format('YYYY-MM-DD');
+                                    d.end_date = end_moment.format('YYYY-MM-DD');
+                                }
+                            }
+                        }
+                        
                         if ($('#repair_model_id').length == 1) {
                             d.repair_model_id = $('#repair_model_id').val();
                         }
@@ -405,7 +435,28 @@
                 });
             });
 
-            $(document).on('change', '#product_list_filter_type, #product_list_filter_category_id, #product_list_filter_brand_id, #product_list_filter_unit_id, #product_list_filter_tax_id, #location_id, #active_state, #repair_model_id', 
+            // Initialize date range picker for created date
+            if ($('#product_list_filter_created_date_range').length == 1) {
+                $('#product_list_filter_created_date_range').daterangepicker(
+                    dateRangeSettings,
+                    function(start, end) {
+                        $('#product_list_filter_created_date_range').val(
+                            start.format(moment_date_format) + ' ~ ' + end.format(moment_date_format)
+                        );
+                        if ($("#product_list_tab").hasClass('active')) {
+                            product_table.ajax.reload();
+                        }
+                    }
+                );
+                $('#product_list_filter_created_date_range').on('cancel.daterangepicker', function(ev, picker) {
+                    $('#product_list_filter_created_date_range').val('');
+                    if ($("#product_list_tab").hasClass('active')) {
+                        product_table.ajax.reload();
+                    }
+                });
+            }
+
+            $(document).on('change', '#product_list_filter_type, #product_list_filter_category_id, #product_list_filter_brand_id, #product_list_filter_unit_id, #product_list_filter_tax_id, #location_id, #active_state, #repair_model_id, #product_list_filter_created_by', 
                 function() {
                     if ($("#product_list_tab").hasClass('active')) {
                         product_table.ajax.reload();
@@ -415,6 +466,7 @@
                         stock_report_table.ajax.reload();
                     }
             });
+
 
             $(document).on('ifChanged', '#not_for_selling, #woocommerce_enabled', function(){
                 if ($("#product_list_tab").hasClass('active')) {

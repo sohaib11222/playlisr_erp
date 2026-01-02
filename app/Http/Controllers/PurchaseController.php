@@ -927,6 +927,7 @@ class PurchaseController extends Controller
                     
                     $query->orWhere('sku', 'like', '%' . $term .'%');
                     $query->orWhere('sub_sku', 'like', '%' . $term .'%');
+                    $query->orWhere('products.artist', 'like', '%' . $term .'%');
                 })
                 ->active()
                 ->where('products.business_id', $business_id)

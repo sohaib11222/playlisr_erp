@@ -63,6 +63,8 @@ use App\TransactionPayment;
 use Stripe\Charge;
 use Stripe\Stripe;
 use App\VariationLocationDetails;
+use Excel;
+use App\Exports\PosSalesExport;
 
 class SellPosController extends Controller
 {
@@ -1684,6 +1686,31 @@ class SellPosController extends Controller
             $subCategoryId = request()->get('sub_category_id');
             $price = request()->get('price');
             
+            // Validate required fields
+            if (empty($productName)) {
+                $output['success'] = false;
+                $output['msg'] = __('lang_v1.product_name_required');
+                return $output;
+            }
+            
+            if (empty($categoryId)) {
+                $output['success'] = false;
+                $output['msg'] = __('product.category') . ' ' . __('lang_v1.is_required');
+                return $output;
+            }
+            
+            if (empty($subCategoryId)) {
+                $output['success'] = false;
+                $output['msg'] = __('lang_v1.sub_category') . ' ' . __('lang_v1.is_required');
+                return $output;
+            }
+            
+            if (empty($price) || $price <= 0) {
+                $output['success'] = false;
+                $output['msg'] = __('lang_v1.valid_price_required');
+                return $output;
+            }
+            
             $output = $this->getManualSellLineRow($productName, $artist, $categoryId, $subCategoryId, $price, $row_count);
         } catch (\Exception $e) {
             \Log::emergency("File:" . $e->getFile(). "Line:" . $e->getLine(). "Message:" . $e->getMessage());
@@ -1727,8 +1754,29 @@ class SellPosController extends Controller
                 $subCategoryId = $product['sub_category_id'] ?? '';
                 $price = $product['price'] ?? 0;
                 
-                if (empty($productName) || empty($price)) {
-                    continue; // Skip invalid products
+                // Validate required fields
+                if (empty($productName)) {
+                    $output['success'] = false;
+                    $output['msg'] = __('lang_v1.product_name_required') . ' (Row ' . ($index + 1) . ')';
+                    return $output;
+                }
+                
+                if (empty($categoryId)) {
+                    $output['success'] = false;
+                    $output['msg'] = __('product.category') . ' ' . __('lang_v1.is_required') . ' (Row ' . ($index + 1) . ')';
+                    return $output;
+                }
+                
+                if (empty($subCategoryId)) {
+                    $output['success'] = false;
+                    $output['msg'] = __('lang_v1.sub_category') . ' ' . __('lang_v1.is_required') . ' (Row ' . ($index + 1) . ')';
+                    return $output;
+                }
+                
+                if (empty($price) || $price <= 0) {
+                    $output['success'] = false;
+                    $output['msg'] = __('lang_v1.valid_price_required') . ' (Row ' . ($index + 1) . ')';
+                    return $output;
                 }
                 
                 $productOutput = $this->getManualSellLineRow($productName, $artist, $categoryId, $subCategoryId, $price, $current_row_count);
@@ -1940,6 +1988,7 @@ class SellPosController extends Controller
                     $query->where('p.name', 'like', '%' . $term .'%');
                     $query->orWhere('sku', 'like', '%' . $term .'%');
                     $query->orWhere('sub_sku', 'like', '%' . $term .'%');
+                    $query->orWhere('p.artist', 'like', '%' . $term .'%');
                 });
             }
 
@@ -1974,6 +2023,7 @@ class SellPosController extends Controller
             $products = $products->select(
                 'p.id as product_id',
                 'p.name',
+                'p.artist',
                 'p.type',
                 'p.enable_stock',
                 'p.image as product_image',
@@ -2986,5 +3036,57 @@ class SellPosController extends Controller
         $mpdf->SetTitle('PACKINGSLIP-'.$receipt_details->invoice_no.'.pdf');
         $mpdf->WriteHTML($body);
         $mpdf->Output('PACKINGSLIP-'.$receipt_details->invoice_no.'.pdf', 'I');
+    }
+
+    /**
+     * Export POS sales to CSV
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function exportPosSalesCsv()
+    {
+        // Check permissions
+        if (!auth()->user()->can('sell.view') && !auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        
+        $filters = [
+            'start_date' => request()->input('start_date'),
+            'end_date' => request()->input('end_date'),
+            'is_direct_sale' => request()->input('is_direct_sale'),
+            'location_id' => request()->input('location_id'),
+            'customer_id' => request()->input('customer_id'),
+            'payment_status' => request()->input('payment_status'),
+        ];
+        
+        $filename = 'pos_sales_items_' . date('Y-m-d_His') . '.csv';
+        
+        return Excel::download(new \App\Exports\PosSalesExport($filters), $filename, \Maatwebsite\Excel\Excel::CSV);
+    }
+
+    /**
+     * Export POS sales to Excel
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function exportPosSalesExcel()
+    {
+        // Check permissions
+        if (!auth()->user()->can('sell.view') && !auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        
+        $filters = [
+            'start_date' => request()->input('start_date'),
+            'end_date' => request()->input('end_date'),
+            'is_direct_sale' => request()->input('is_direct_sale'),
+            'location_id' => request()->input('location_id'),
+            'customer_id' => request()->input('customer_id'),
+            'payment_status' => request()->input('payment_status'),
+        ];
+        
+        $filename = 'pos_sales_items_' . date('Y-m-d_His') . '.xlsx';
+        
+        return Excel::download(new \App\Exports\PosSalesExport($filters), $filename, \Maatwebsite\Excel\Excel::XLSX);
     }
 }

@@ -177,6 +177,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/sells/pos/get-featured-products/{location_id}', 'SellPosController@getFeaturedProducts');
     Route::get('/reset-mapping', 'SellController@resetMapping');
 
+    // Export routes must be defined BEFORE resource route to avoid conflicts
+    Route::get('/pos/export-csv', 'SellPosController@exportPosSalesCsv')->name('pos.exportCsv');
+    Route::get('/pos/export-excel', 'SellPosController@exportPosSalesExcel')->name('pos.exportExcel');
+    
     Route::resource('pos', 'SellPosController');
 
     Route::resource('roles', 'RoleController');
