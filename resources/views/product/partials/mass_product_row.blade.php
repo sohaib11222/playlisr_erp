@@ -57,6 +57,20 @@
             'id' => "products_{$index}_artist"
         ]) !!}
     </td>
+    <td class="td" data-hide-on-selection="yes" data-row-index="{{ $index }}">
+        {!! Form::text("products[{$index}][bin_position]", null, [
+            'class' => 'form-control',
+            'placeholder' => "Bin Position (e.g., A-12)",
+            'id' => "products_{$index}_bin_position"
+        ]) !!}
+    </td>
+    <td class="td" data-hide-on-selection="yes" data-row-index="{{ $index }}">
+        {!! Form::text("products[{$index}][listing_location]", null, [
+            'class' => 'form-control',
+            'placeholder' => "Listing Location (e.g., Warehouse A)",
+            'id' => "products_{$index}_listing_location"
+        ]) !!}
+    </td>
     <td class="td">
         <div class="form-group" style="max-width: 300px; display: flex; gap: 2px; align-items: center;">
             {!! Form::select("products[{$index}][business_locations][]", $business_locations, $default_location ?? [], [
@@ -78,7 +92,8 @@
             'class' => 'form-control',
             'placeholder' => __('product.selling_price')
         ]) !!}
-        <div class="product-price-recommendation-container" style="display: flex; flex-direction: column; gap: 5px;" data-row-index="{{ $index }}">
+        <!-- Price recommendations removed to reduce row height -->
+        <div class="product-price-recommendation-container" style="display: none;" data-row-index="{{ $index }}">
 
         </div>
     </td>

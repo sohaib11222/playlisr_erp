@@ -43,15 +43,22 @@
 							Genre:<b>{{$page_product->sub_category}}</b>
 						</span>
 
-						{{-- Artist --}}
-						@if(!empty($page_product->artist))
-							<span style="display: block !important; font-size: {{$print['name_size']}}px">
-								Artist:<b>{{$page_product->artist}}</b>
-							</span>
-						@endif
+					{{-- Artist --}}
+					@if(!empty($page_product->artist))
+						<span style="display: block !important; font-size: {{$print['name_size']}}px">
+							Artist:<b>{{$page_product->artist}}</b>
+						</span>
 					@endif
+				@endif
 
-					{{-- Price --}}
+				{{-- Bin Position --}}
+				@if(!empty($page_product->bin_position))
+					<span style="display: block !important; font-size: {{$print['name_size'] ?? 12}}px; font-weight: bold;">
+						Bin: {{ $page_product->bin_position }}
+					</span>
+				@endif
+
+				{{-- Price --}}
 					@if(!empty($print['price']))
 					<span style="font-size: {{$print['price_size']}}px;">
 						@lang('lang_v1.price'):

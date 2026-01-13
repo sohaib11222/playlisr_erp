@@ -68,6 +68,30 @@ class ProductController extends Controller
         //barcode types
         $this->barcode_types = $this->productUtil->barcode_types();
     }
+    
+    /**
+     * Get business_id safely from session or user
+     *
+     * @return int
+     */
+    protected function getBusinessId()
+    {
+        // Use same pattern as other controllers (HomeController, SellPosController, etc.)
+        return request()->session()->get('user.business_id');
+    }
+    
+    /**
+     * Get session value safely
+     *
+     * @param string $key
+     * @param mixed $default
+     * @return mixed
+     */
+    protected function getSessionValue($key, $default = null)
+    {
+        // Use same pattern as other controllers
+        return request()->session()->get($key, $default);
+    }
 
     /**
      * Display a listing of the resource.
@@ -79,7 +103,7 @@ class ProductController extends Controller
         if (!auth()->user()->can('product.view') && !auth()->user()->can('product.create')) {
             abort(403, 'Unauthorized action.');
         }
-        $business_id = request()->session()->get('user.business_id');
+        $business_id = $this->getBusinessId();
         $selling_price_group_count = SellingPriceGroup::countSellingPriceGroups($business_id);
         $is_woocommerce = $this->moduleUtil->isModuleInstalled('Woocommerce');
 
@@ -169,6 +193,12 @@ class ProductController extends Controller
             $category_id = request()->get('category_id', null);
             if (!empty($category_id)) {
                 $products->where('products.category_id', $category_id);
+            }
+            
+            // Filter for uncategorized products
+            $uncategorized_only = request()->get('uncategorized_only', 0);
+            if ($uncategorized_only == 1 || $uncategorized_only === '1' || $uncategorized_only === true) {
+                $products->whereNull('products.category_id');
             }
 
             $brand_id = request()->get('brand_id', null);
@@ -353,7 +383,10 @@ class ProductController extends Controller
                 ->make(true);
         }
 
-        $rack_enabled = (request()->session()->get('business.enable_racks') || request()->session()->get('business.enable_row') || request()->session()->get('business.enable_position'));
+        // Get rack settings safely from session
+        $rack_enabled = $this->getSessionValue('business.enable_racks', false) || 
+                        $this->getSessionValue('business.enable_row', false) || 
+                        $this->getSessionValue('business.enable_position', false);
 
         $categories = Category::forDropdown($business_id, 'product');
 
@@ -419,7 +452,7 @@ class ProductController extends Controller
             abort(403, 'Unauthorized action.');
         }
 
-        $business_id = request()->session()->get('user.business_id');
+        $business_id = $this->getBusinessId();
 
         //Check if subscribed or not, then check for products quota
         if (!$this->moduleUtil->isSubscribed($business_id)) {
@@ -440,7 +473,7 @@ class ProductController extends Controller
         $barcode_types = $this->barcode_types;
         $barcode_default =  $this->productUtil->barcode_default();
 
-        $default_profit_percent = request()->session()->get('business.default_profit_percent');;
+        $default_profit_percent = $this->getSessionValue('business.default_profit_percent', 0);
 
         //Get all business locations
         $business_locations = BusinessLocation::forDropdown($business_id);
@@ -472,7 +505,7 @@ class ProductController extends Controller
         $module_form_parts = $this->moduleUtil->getModuleData('product_form_part');
         $product_types = $this->product_types();
 
-        $common_settings = session()->get('business.common_settings');
+        $common_settings = $this->getSessionValue('business.common_settings', []);
         $warranties = Warranty::forDropdown($business_id);
 
         //product screen view from module
@@ -515,8 +548,8 @@ class ProductController extends Controller
         ]);
 
         try {
-            $business_id = $request->session()->get('user.business_id');
-            $form_fields = ['name', 'brand_id', 'artist', 'unit_id', 'category_id', 'tax', 'type', 'barcode_type', 'sku', 'alert_quantity', 'tax_type', 'weight', 'product_custom_field1', 'product_custom_field2', 'product_custom_field3', 'product_custom_field4', 'product_description', 'sub_unit_ids'];
+            $business_id = $this->getBusinessId();
+            $form_fields = ['name', 'brand_id', 'artist', 'unit_id', 'category_id', 'tax', 'type', 'barcode_type', 'sku', 'alert_quantity', 'tax_type', 'weight', 'product_custom_field1', 'product_custom_field2', 'product_custom_field3', 'product_custom_field4', 'product_description', 'sub_unit_ids', 'bin_position', 'listing_location', 'format'];
 
             $module_form_fields = $this->moduleUtil->getModuleFormField('product_form_fields');
             if (!empty($module_form_fields)) {
@@ -525,7 +558,7 @@ class ProductController extends Controller
             
             $product_details = $request->only($form_fields);
             $product_details['business_id'] = $business_id;
-            $product_details['created_by'] = $request->session()->get('user.id');
+            $product_details['created_by'] = auth()->user()->id;
 
             $product_details['enable_stock'] = (!empty($request->input('enable_stock')) &&  $request->input('enable_stock') == 1) ? 1 : 0;
             $product_details['not_for_selling'] = (!empty($request->input('not_for_selling')) &&  $request->input('not_for_selling') == 1) ? 1 : 0;
@@ -559,7 +592,7 @@ class ProductController extends Controller
 
             //upload document
             $product_details['image'] = $this->productUtil->uploadFile($request, 'image', config('constants.product_img_path'), 'image');
-            $common_settings = session()->get('business.common_settings');
+            $common_settings = $this->getSessionValue('business.common_settings', []);
 
 
 
@@ -673,7 +706,7 @@ class ProductController extends Controller
             abort(403, 'Unauthorized action.');
         }
 
-        $business_id = request()->session()->get('user.business_id');
+        $business_id = $this->getBusinessId();
         $details = $this->productUtil->getRackDetails($business_id, $id, true);
 
         return view('product.show')->with(compact('details'));
@@ -691,7 +724,7 @@ class ProductController extends Controller
             abort(403, 'Unauthorized action.');
         }
 
-        $business_id = request()->session()->get('user.business_id');
+        $business_id = $this->getBusinessId();
         $categories = Category::forDropdown($business_id, 'product');
         $brands = Brands::forDropdown($business_id);
         
@@ -729,7 +762,7 @@ class ProductController extends Controller
 
         $module_form_parts = $this->moduleUtil->getModuleData('product_form_part');
         $product_types = $this->product_types();
-        $common_settings = session()->get('business.common_settings');
+        $common_settings = $this->getSessionValue('business.common_settings', []);
         $warranties = Warranty::forDropdown($business_id);
 
         //product screen view from module
@@ -845,7 +878,15 @@ class ProductController extends Controller
                 }
             }
 
-            $product->product_custom_field1 = $request->product_custom_field1;
+            $product->product_custom_field1 = $request->input('product_custom_field1');
+            $product->product_custom_field2 = $request->input('product_custom_field2');
+            $product->product_custom_field3 = $request->input('product_custom_field3');
+            $product->product_custom_field4 = $request->input('product_custom_field4');
+            
+            // Save bin_position, listing_location, and format
+            $product->bin_position = $request->input('bin_position');
+            $product->listing_location = $request->input('listing_location');
+            $product->format = $request->input('format');
 
             $product->save();
             $product->touch();
@@ -1289,7 +1330,7 @@ class ProductController extends Controller
             $location_id = request()->input('location_id', null);
             $check_qty = request()->input('check_qty', false);
             $price_group_id = request()->input('price_group', null);
-            $business_id = request()->session()->get('user.business_id');
+            $business_id = $this->getBusinessId();
             $not_for_selling = request()->get('not_for_selling', null);
             $price_group_id = request()->input('price_group', '');
             $product_types = request()->get('product_types', []);
@@ -1322,7 +1363,7 @@ class ProductController extends Controller
 
             //$check_qty = request()->input('check_qty', false);
 
-            $business_id = request()->session()->get('user.business_id');
+            $business_id = $this->getBusinessId();
 
             $products = Product::join('variations', 'products.id', '=', 'variations.product_id')
                 ->where('products.business_id', $business_id)
@@ -1481,7 +1522,7 @@ class ProductController extends Controller
         //Get all business locations
         $business_locations = BusinessLocation::forDropdown($business_id);
 
-        $common_settings = session()->get('business.common_settings');
+        $common_settings = $this->getSessionValue('business.common_settings', []);
         $warranties = Warranty::forDropdown($business_id);
 
         return view('product.partials.quick_add_product')
@@ -1838,7 +1879,7 @@ class ProductController extends Controller
             abort(403, 'Unauthorized action.');
         }
 
-        $business_id = request()->session()->get('user.business_id');
+        $business_id = $this->getBusinessId();
 
         $product = Product::where('business_id', $business_id)
                             ->where('id', $id)
@@ -2479,6 +2520,11 @@ class ProductController extends Controller
                         // Add SKU and variation details in larger, centered text
                         $html .= '<h2 style="margin:5px 0 15px 0; font-size:18px;">Price: ' . htmlspecialchars($variation->sell_price_inc_tax) . '</h2>';
                         $html .= '<p style="margin:5px 0 15px 0; font-size:18px;">SKU: ' . htmlspecialchars($variation->sub_sku) . '</p>';
+                        
+                        // Add bin position if available
+                        if (!empty($product->bin_position)) {
+                            $html .= '<p style="margin:5px 0 15px 0; font-size:16px; font-weight:bold;">Bin: ' . htmlspecialchars($product->bin_position) . '</p>';
+                        }
 
                         // Generate the barcode and scale it to fit the page proportionally
                         $barcode = $barcodeGenerator->getBarcodePNG($variation->sub_sku, 'C39', 3, 50);
@@ -2999,6 +3045,578 @@ class ProductController extends Controller
         $query = $request->input('query');
         $releases = $this->discogsService->getRelease($query);
         dd($releases);
+    }
+
+    /**
+     * Bulk update categories for multiple products
+     */
+    public function bulkUpdateCategories(Request $request)
+    {
+        if (!auth()->user()->can('product.update')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        try {
+            $business_id = request()->session()->get('user.business_id');
+            $product_ids = $request->input('product_ids', []);
+            $category_id = $request->input('category_id');
+            $sub_category_id = $request->input('sub_category_id');
+
+            if (empty($product_ids) || !is_array($product_ids)) {
+                return response()->json([
+                    'success' => false,
+                    'msg' => 'No products selected.'
+                ]);
+            }
+
+            if (empty($category_id)) {
+                return response()->json([
+                    'success' => false,
+                    'msg' => 'Please select a category.'
+                ]);
+            }
+
+            // Verify products belong to the business
+            $products = Product::where('business_id', $business_id)
+                ->whereIn('id', $product_ids)
+                ->get();
+
+            if ($products->count() === 0) {
+                return response()->json([
+                    'success' => false,
+                    'msg' => 'No valid products found.'
+                ]);
+            }
+
+            // Update categories
+            $updated = Product::where('business_id', $business_id)
+                ->whereIn('id', $product_ids)
+                ->update([
+                    'category_id' => $category_id,
+                    'sub_category_id' => $sub_category_id
+                ]);
+
+            return response()->json([
+                'success' => true,
+                'msg' => "Successfully updated {$updated} product(s)."
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::emergency("File:" . $e->getFile(). "Line:" . $e->getLine(). "Message:" . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'msg' => 'An error occurred while updating products.'
+            ]);
+        }
+    }
+
+    /**
+     * Export uncategorized products to CSV
+     */
+    public function exportUncategorized()
+    {
+        if (!auth()->user()->can('product.view')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        try {
+            $business_id = request()->session()->get('user.business_id');
+            
+            $products = Product::where('business_id', $business_id)
+                ->whereNull('category_id')
+                ->select('id', 'name', 'sku', 'artist', 'format', 'bin_position')
+                ->orderBy('name')
+                ->get();
+
+            $filename = 'uncategorized_products_' . date('Y-m-d_His') . '.csv';
+            $headers = [
+                'Content-Type' => 'text/csv',
+                'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            ];
+
+            $callback = function() use ($products) {
+                $file = fopen('php://output', 'w');
+                
+                // Headers
+                fputcsv($file, ['ID', 'Product Name', 'SKU', 'Artist', 'Format', 'Bin Position', 'Category', 'Subcategory']);
+                
+                // Data
+                foreach ($products as $product) {
+                    fputcsv($file, [
+                        $product->id,
+                        $product->name,
+                        $product->sku,
+                        $product->artist ?? '',
+                        $product->format ?? '',
+                        $product->bin_position ?? '',
+                        '', // Category - to be filled
+                        ''  // Subcategory - to be filled
+                    ]);
+                }
+                
+                fclose($file);
+            };
+
+            return response()->stream($callback, 200, $headers);
+
+        } catch (\Exception $e) {
+            \Log::emergency("File:" . $e->getFile(). "Line:" . $e->getLine(). "Message:" . $e->getMessage());
+            return redirect()->back()->with('error', 'Failed to export uncategorized products.');
+        }
+    }
+
+    /**
+     * Show the import sold items form
+     */
+    public function importSoldItems()
+    {
+        if (!auth()->user()->can('product.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = request()->session()->get('user.business_id');
+        
+        // Get statistics about sold items
+        $total_sold_items = TransactionSellLine::join('transactions', 'transaction_sell_lines.transaction_id', '=', 'transactions.id')
+            ->where('transactions.business_id', $business_id)
+            ->where('transactions.status', 'final')
+            ->whereNull('transaction_sell_lines.parent_sell_line_id')
+            ->count();
+
+        $items_with_products = TransactionSellLine::join('transactions', 'transaction_sell_lines.transaction_id', '=', 'transactions.id')
+            ->where('transactions.business_id', $business_id)
+            ->where('transactions.status', 'final')
+            ->whereNotNull('transaction_sell_lines.product_id')
+            ->whereNull('transaction_sell_lines.parent_sell_line_id')
+            ->distinct('transaction_sell_lines.product_id')
+            ->count('transaction_sell_lines.product_id');
+
+        $unique_products_count = Product::where('business_id', $business_id)->count();
+
+        return view('product.import_sold_items', compact('total_sold_items', 'items_with_products', 'unique_products_count'));
+    }
+
+    /**
+     * Process import of sold items as products
+     */
+    public function processImportSoldItems(Request $request)
+    {
+        if (!auth()->user()->can('product.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        try {
+            $notAllowed = $this->productUtil->notAllowedInDemo();
+            if (!empty($notAllowed)) {
+                return $notAllowed;
+            }
+
+            // Set maximum execution time for large imports
+            ini_set('max_execution_time', 0);
+            ini_set('memory_limit', '512M');
+
+            $business_id = $request->session()->get('user.business_id');
+            $user_id = $request->session()->get('user.id');
+
+            // Get filter options
+            $limit = $request->input('limit', 50000); // Default to 50,000
+            $min_sales_count = $request->input('min_sales_count', 1); // Only products sold at least X times
+            $create_duplicates = $request->input('create_duplicates', false); // Whether to create products even if they exist
+
+            DB::beginTransaction();
+
+            // Get default category/subcategory (use first available if none specified)
+            $default_category = Category::where('business_id', $business_id)
+                ->where('parent_id', 0)
+                ->first();
+            
+            $default_sub_category = Category::where('business_id', $business_id)
+                ->where('parent_id', '!=', 0)
+                ->first();
+
+            if (!$default_category || !$default_sub_category) {
+                return response()->json([
+                    'success' => false,
+                    'msg' => 'Please create at least one category and sub-category before importing products.'
+                ]);
+            }
+
+            // Extract unique products from transaction_sell_lines that have been sold
+            // This extracts products that exist in the products table and creates new entries
+            // for autocomplete suggestions (useful for ensuring they appear in purchase autocomplete)
+            $sold_items_query = TransactionSellLine::join('transactions', 'transaction_sell_lines.transaction_id', '=', 'transactions.id')
+                ->join('products', 'transaction_sell_lines.product_id', '=', 'products.id')
+                ->where('transactions.business_id', $business_id)
+                ->where('transactions.status', 'final')
+                ->whereNotNull('transaction_sell_lines.product_id')
+                ->whereNull('transaction_sell_lines.parent_sell_line_id')
+                ->where('products.business_id', $business_id)
+                ->select(
+                    'products.id as original_product_id',
+                    'products.name',
+                    'products.sku',
+                    'products.artist',
+                    'products.category_id',
+                    'products.sub_category_id',
+                    'products.unit_id',
+                    'products.format',
+                    'products.bin_position',
+                    DB::raw('COUNT(DISTINCT transaction_sell_lines.transaction_id) as sale_count'),
+                    DB::raw('AVG(transaction_sell_lines.unit_price) as avg_price'),
+                    DB::raw('MAX(transactions.transaction_date) as last_sale_date')
+                )
+                ->groupBy('products.id', 'products.name', 'products.sku', 'products.artist', 
+                         'products.category_id', 'products.sub_category_id', 'products.unit_id',
+                         'products.format', 'products.bin_position')
+                ->havingRaw('COUNT(DISTINCT transaction_sell_lines.transaction_id) >= ?', [$min_sales_count])
+                ->orderBy('sale_count', 'desc')
+                ->limit($limit);
+
+            $sold_items = $sold_items_query->get();
+
+            $stats = [
+                'total_found' => $sold_items->count(),
+                'created' => 0,
+                'skipped' => 0,
+                'errors' => 0,
+                'errors_list' => []
+            ];
+
+            // Default unit if product doesn't have one
+            $default_unit = Unit::where('business_id', $business_id)->first();
+            if (!$default_unit) {
+                return response()->json([
+                    'success' => false,
+                    'msg' => 'Please create at least one unit before importing products.'
+                ]);
+            }
+
+            // Process in batches for better performance
+            $batch_size = 500;
+            $processed = 0;
+
+            foreach ($sold_items->chunk($batch_size) as $batch) {
+                foreach ($batch as $item) {
+                    try {
+                        // Check if product already exists (unless create_duplicates is true)
+                        if (!$create_duplicates) {
+                            $query = Product::where('business_id', $business_id)
+                                ->where('name', $item->name);
+                            
+                            // Match by SKU if available, otherwise match by artist
+                            if (!empty($item->sku) && trim($item->sku) != ' ') {
+                                $query->where('sku', $item->sku);
+                            } elseif (!empty($item->artist)) {
+                                $query->where('artist', $item->artist);
+                            }
+                            
+                            $existing_product = $query->first();
+
+                            if ($existing_product) {
+                                $stats['skipped']++;
+                                continue;
+                            }
+                        }
+
+                        // Create new product
+                        $product_data = [
+                            'business_id' => $business_id,
+                            'name' => $item->name,
+                            'sku' => !empty($item->sku) ? $item->sku : ' ',
+                            'artist' => $item->artist ?? null,
+                            'category_id' => $item->category_id ?? $default_category->id,
+                            'sub_category_id' => $item->sub_category_id ?? $default_sub_category->id,
+                            'unit_id' => $item->unit_id ?? $default_unit->id,
+                            'type' => 'single',
+                            'enable_stock' => 0, // Disable stock tracking for imported sold items
+                            'not_for_selling' => 0,
+                            'tax' => 1, // Default tax
+                            'tax_type' => 'exclusive',
+                            'created_by' => $user_id,
+                            'format' => $item->format ?? null,
+                            'bin_position' => $item->bin_position ?? null,
+                        ];
+
+                        $product = Product::create($product_data);
+
+                        // Generate SKU if empty
+                        if (empty(trim($product->sku)) || $product->sku == ' ') {
+                            $sku = $this->productUtil->generateProductSku($product->id);
+                            $product->sku = $sku;
+                            $product->save();
+                        }
+
+                        // Create default variation
+                        $this->productUtil->createSingleProductVariation(
+                            $product->id, 
+                            $product->sku, 
+                            $item->avg_price ?? 0, // Purchase price
+                            $item->avg_price ?? 0, // Purchase price inc tax
+                            0, // Profit percent
+                            $item->avg_price ?? 0, // Selling price
+                            $item->avg_price ?? 0  // Selling price inc tax
+                        );
+
+                        $stats['created']++;
+                        $processed++;
+
+                    } catch (\Exception $e) {
+                        $stats['errors']++;
+                        $stats['errors_list'][] = "Error processing '{$item->name}': " . $e->getMessage();
+                        \Log::error("Import Sold Items Error: " . $e->getMessage());
+                    }
+                }
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'msg' => "Import completed successfully! Created: {$stats['created']}, Skipped: {$stats['skipped']}, Errors: {$stats['errors']}",
+                'stats' => $stats
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::emergency("File:" . $e->getFile(). "Line:" . $e->getLine(). "Message:" . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'msg' => 'Import failed: ' . $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * List a single product to eBay
+     *
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function listToEbay($id)
+    {
+        if (!$this->ebayService->isConfigured()) {
+            return response()->json([
+                'success' => false,
+                'msg' => 'eBay API credentials not configured. Please configure in Business Settings > Integrations.'
+            ]);
+        }
+
+        try {
+            $product = Product::findOrFail($id);
+            $business_id = request()->session()->get('user.business_id');
+
+            // Get product category for eBay category mapping
+            $ebayCategoryIds = $this->ebayService->getEbayCategoryIds($product->category_id);
+            
+            $productData = [
+                'title' => $product->name,
+                'description' => $product->product_description ?? '',
+                'price' => $product->sell_price_inc_tax ?? $product->sell_price_exc_tax ?? 0,
+                'currency' => 'USD', // TODO: Get from business currency
+                'category_id' => $ebayCategoryIds[0] ?? '',
+                'quantity' => $product->stock_quantity ?? 1,
+                'condition' => 'NEW',
+                'format' => 'FIXED_PRICE',
+                'listing_duration' => 'GTC',
+                'location' => $product->listing_location ?? null
+            ];
+
+            $result = $this->ebayService->createListing($productData);
+
+            if ($result['success']) {
+                // Update product with listing information
+                $product->ebay_listing_id = $result['listing_id'] ?? null;
+                $product->listing_status = !empty($result['listing_id']) ? 'listed' : 'error';
+                $product->save();
+
+                return response()->json([
+                    'success' => true,
+                    'msg' => 'Product listed to eBay successfully!',
+                    'listing_id' => $result['listing_id'] ?? null
+                ]);
+            } else {
+                $product->listing_status = 'error';
+                $product->save();
+
+                return response()->json([
+                    'success' => false,
+                    'msg' => $result['msg'] ?? 'Failed to list product to eBay'
+                ]);
+            }
+        } catch (\Exception $e) {
+            \Log::error('eBay Listing Error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'msg' => 'Error: ' . $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * List a single product to Discogs
+     *
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function listToDiscogs($id)
+    {
+        if (!$this->discogsService->isConfigured()) {
+            return response()->json([
+                'success' => false,
+                'msg' => 'Discogs API token not configured. Please configure in Business Settings > Integrations.'
+            ]);
+        }
+
+        try {
+            $product = Product::findOrFail($id);
+
+            // Try to find release ID from product name/artist
+            $release = $this->discogsService->getRelease($product->name, $product->sku, $product->name);
+            $releaseId = null;
+            if (!empty($release['data']->results[0]->id)) {
+                $releaseId = $release['data']->results[0]->id;
+            }
+
+            $productData = [
+                'release_id' => $releaseId,
+                'price' => $product->sell_price_inc_tax ?? $product->sell_price_exc_tax ?? 0,
+                'status' => 'For Sale',
+                'condition' => 'Mint (M)',
+                'sleeve_condition' => 'Mint (M)',
+                'comments' => $product->product_description ?? '',
+                'allow_offers' => true,
+                'external_id' => $product->sku,
+                'location' => $product->listing_location ?? null
+            ];
+
+            $result = $this->discogsService->createListing($productData);
+
+            if ($result['success']) {
+                // Update product with listing information
+                $product->discogs_listing_id = $result['listing_id'] ?? null;
+                $product->listing_status = !empty($result['listing_id']) ? 'listed' : 'error';
+                $product->save();
+
+                return response()->json([
+                    'success' => true,
+                    'msg' => 'Product listed to Discogs successfully!',
+                    'listing_id' => $result['listing_id'] ?? null
+                ]);
+            } else {
+                $product->listing_status = 'error';
+                $product->save();
+
+                return response()->json([
+                    'success' => false,
+                    'msg' => $result['msg'] ?? 'Failed to list product to Discogs'
+                ]);
+            }
+        } catch (\Exception $e) {
+            \Log::error('Discogs Listing Error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'msg' => 'Error: ' . $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Bulk list products to eBay
+     *
+     * @param \Illuminate\Http\Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function bulkListToEbay(Request $request)
+    {
+        if (!$this->ebayService->isConfigured()) {
+            return response()->json([
+                'success' => false,
+                'msg' => 'eBay API credentials not configured.'
+            ]);
+        }
+
+        $productIds = $request->input('product_ids', []);
+        if (empty($productIds)) {
+            return response()->json([
+                'success' => false,
+                'msg' => 'No products selected'
+            ]);
+        }
+
+        $results = [];
+        $successCount = 0;
+        $errorCount = 0;
+
+        foreach ($productIds as $productId) {
+            $result = $this->listToEbay($productId);
+            $results[] = [
+                'product_id' => $productId,
+                'success' => $result->getData()->success ?? false,
+                'msg' => $result->getData()->msg ?? ''
+            ];
+            
+            if ($result->getData()->success ?? false) {
+                $successCount++;
+            } else {
+                $errorCount++;
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'msg' => "Listed {$successCount} products successfully. {$errorCount} failed.",
+            'results' => $results
+        ]);
+    }
+
+    /**
+     * Bulk list products to Discogs
+     *
+     * @param \Illuminate\Http\Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function bulkListToDiscogs(Request $request)
+    {
+        if (!$this->discogsService->isConfigured()) {
+            return response()->json([
+                'success' => false,
+                'msg' => 'Discogs API token not configured.'
+            ]);
+        }
+
+        $productIds = $request->input('product_ids', []);
+        if (empty($productIds)) {
+            return response()->json([
+                'success' => false,
+                'msg' => 'No products selected'
+            ]);
+        }
+
+        $results = [];
+        $successCount = 0;
+        $errorCount = 0;
+
+        foreach ($productIds as $productId) {
+            $result = $this->listToDiscogs($productId);
+            $results[] = [
+                'product_id' => $productId,
+                'success' => $result->getData()->success ?? false,
+                'msg' => $result->getData()->msg ?? ''
+            ];
+            
+            if ($result->getData()->success ?? false) {
+                $successCount++;
+            } else {
+                $errorCount++;
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'msg' => "Listed {$successCount} products successfully. {$errorCount} failed.",
+            'results' => $results
+        ]);
     }
 
 }

@@ -34,6 +34,8 @@
                     <a href="#" class="list-group-item text-center">@lang('lang_v1.email_settings')</a>
                     <a href="#" class="list-group-item text-center">@lang('lang_v1.sms_settings')</a>
                     <a href="#" class="list-group-item text-center">@lang('lang_v1.reward_point_settings')</a>
+                    <a href="#" class="list-group-item text-center">Gift Cards & Loyalty</a>
+                    <a href="#" class="list-group-item text-center">Integrations</a>
                     <a href="#" class="list-group-item text-center">@lang('lang_v1.modules')</a>
                     <a href="#" class="list-group-item text-center">@lang('lang_v1.custom_labels')</a>
                 </div>
@@ -78,8 +80,14 @@
                 @include('business.partials.settings_reward_point')
                 <!-- tab 11 end -->
                 <!-- tab 12 start -->
-                @include('business.partials.settings_modules')
+                @include('business.partials.settings_gift_cards_loyalty')
                 <!-- tab 12 end -->
+                <!-- tab 13 start -->
+                @include('business.partials.settings_integrations')
+                <!-- tab 13 end -->
+                <!-- tab 14 start -->
+                @include('business.partials.settings_modules')
+                <!-- tab 14 end -->
                 @include('business.partials.settings_custom_labels')
             </div>
         </div>
@@ -99,6 +107,7 @@
 @section('javascript')
 <script type="text/javascript">
     __page_leave_confirmation('#bussiness_edit_form');
+    
     $(document).on('ifToggled', '#use_superadmin_settings', function() {
         if ($('#use_superadmin_settings').is(':checked')) {
             $('#toggle_visibility').addClass('hide');
@@ -106,6 +115,31 @@
         } else {
             $('#toggle_visibility').removeClass('hide');
             $('.test_email_btn').removeClass('hide');
+        }
+    });
+    
+    // Show/hide plastic bag price field based on enable toggle
+    $(document).ready(function() {
+        function togglePlasticBagPrice() {
+            if ($('#enable_plastic_bag_charge').is(':checked') || $('#enable_plastic_bag_charge').prop('checked')) {
+                $('#plastic_bag_price_container').show();
+                $('#plastic_bag_price_input').prop('required', false); // Price is optional
+            } else {
+                $('#plastic_bag_price_container').hide();
+                $('#plastic_bag_price_input').prop('required', false);
+            }
+        }
+        
+        // Wait for iCheck to initialize, then check initial state
+        if ($('#enable_plastic_bag_charge').length) {
+            setTimeout(function() {
+                togglePlasticBagPrice();
+            }, 500);
+            
+            // Toggle on change (works with iCheck)
+            $(document).on('ifToggled ifChanged change', '#enable_plastic_bag_charge', function() {
+                togglePlasticBagPrice();
+            });
         }
     });
 

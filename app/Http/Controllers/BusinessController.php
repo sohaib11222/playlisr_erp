@@ -273,11 +273,8 @@ class BusinessController extends Controller
             abort(403, 'Unauthorized action.');
         }
 
-        $timezones = DateTimeZone::listIdentifiers(DateTimeZone::ALL);
-        $timezone_list = [];
-        foreach ($timezones as $timezone) {
-            $timezone_list[$timezone] = $timezone;
-        }
+        // Get timezone list using BusinessUtil method (includes all timezones including PST)
+        $timezone_list = $this->businessUtil->allTimeZones();
 
         $business_id = request()->session()->get('user.business_id');
         $business = Business::where('id', $business_id)->first();
@@ -308,7 +305,11 @@ class BusinessController extends Controller
 
         $shortcuts = json_decode($business->keyboard_shortcuts, true);
         
-        $pos_settings = empty($business->pos_settings) ? $this->businessUtil->defaultPosSettings() : json_decode($business->pos_settings, true);
+        // Load pos_settings with defaults for missing values
+        $pos_settings = empty($business->pos_settings) ? [] : json_decode($business->pos_settings, true);
+        $default_pos_settings = $this->businessUtil->defaultPosSettings();
+        // Merge defaults with existing settings (existing settings take precedence)
+        $pos_settings = array_merge($default_pos_settings, $pos_settings);
 
         $email_settings = empty($business->email_settings) ? $this->businessUtil->defaultEmailSettings() : $business->email_settings;
 
@@ -433,14 +434,56 @@ class BusinessController extends Controller
             $business_details['keyboard_shortcuts'] = json_encode($shortcuts);
 
             //pos_settings
-            $pos_settings = $request->input('pos_settings');
+            $pos_settings = $request->input('pos_settings', []);
             $default_pos_settings = $this->businessUtil->defaultPosSettings();
+            
+            // Handle checkbox values (checkboxes don't submit when unchecked)
+            // List of all checkbox settings in pos_settings
+            $checkbox_settings = ['disable_pay_checkout', 'disable_draft', 'disable_express_checkout', 
+                                 'hide_product_suggestion', 'hide_recent_trans', 'disable_discount', 
+                                 'disable_order_tax', 'is_pos_subtotal_editable', 'enable_plastic_bag_charge',
+                                 'disable_suspend', 'enable_transaction_date', 'inline_service_staff',
+                                 'is_service_staff_required', 'disable_credit_sale_button', 'show_invoice_scheme',
+                                 'show_invoice_layout', 'print_on_suspend', 'show_pricing_on_product_sugesstion'];
+            
+            // For checkboxes, if not present in request (unchecked), set to 0
+            foreach ($checkbox_settings as $checkbox_key) {
+                if (!isset($pos_settings[$checkbox_key])) {
+                    $pos_settings[$checkbox_key] = 0;
+                } else {
+                    // Convert to integer if it's a string "1"
+                    $pos_settings[$checkbox_key] = (int)$pos_settings[$checkbox_key];
+                }
+            }
+            
+            // For other non-checkbox settings, use defaults if not set
             foreach ($default_pos_settings as $key => $value) {
-                if (!isset($pos_settings[$key])) {
+                // Skip checkbox settings (already handled above)
+                if (!in_array($key, $checkbox_settings) && !isset($pos_settings[$key])) {
                     $pos_settings[$key] = $value;
                 }
             }
+            
             $business_details['pos_settings'] = json_encode($pos_settings);
+
+            //api_settings
+            $api_settings = $request->input('api_settings', []);
+            $default_api_settings = $this->businessUtil->defaultApiSettings();
+            
+            // Merge defaults with existing settings
+            $existing_api_settings = !empty($business->api_settings) ? $business->api_settings : [];
+            $merged_api_settings = array_merge($default_api_settings, $existing_api_settings);
+            
+            // Update with new values from request
+            foreach ($api_settings as $service => $settings) {
+                if (isset($merged_api_settings[$service])) {
+                    $merged_api_settings[$service] = array_merge($merged_api_settings[$service], $settings);
+                } else {
+                    $merged_api_settings[$service] = $settings;
+                }
+            }
+            
+            $business_details['api_settings'] = json_encode($merged_api_settings);
 
             $business_details['custom_labels'] = json_encode($business_details['custom_labels']);
 
@@ -596,5 +639,63 @@ class BusinessController extends Controller
         }
 
         return $output;
+    }
+
+    /**
+     * Test Streetpulse connection
+     *
+     * @param \Illuminate\Http\Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function testStreetpulseConnection(Request $request)
+    {
+        if (!auth()->user()->can('business_settings.access')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        try {
+            $streetpulseService = new \App\Services\StreetpulseService();
+            $result = $streetpulseService->testConnection();
+
+            return response()->json($result);
+        } catch (\Exception $e) {
+            \Log::emergency("File:" . $e->getFile(). "Line:" . $e->getLine(). "Message:" . $e->getMessage());
+            
+            return response()->json([
+                'success' => false,
+                'msg' => 'Error: ' . $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Sync sales data to Streetpulse
+     *
+     * @param \Illuminate\Http\Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function syncStreetpulse(Request $request)
+    {
+        if (!auth()->user()->can('business_settings.access')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        try {
+            $streetpulseService = new \App\Services\StreetpulseService();
+            
+            $startDate = $request->input('start_date');
+            $endDate = $request->input('end_date');
+            
+            $result = $streetpulseService->syncSales($startDate, $endDate);
+
+            return response()->json($result);
+        } catch (\Exception $e) {
+            \Log::emergency("File:" . $e->getFile(). "Line:" . $e->getLine(). "Message:" . $e->getMessage());
+            
+            return response()->json([
+                'success' => false,
+                'msg' => 'Error: ' . $e->getMessage()
+            ]);
+        }
     }
 }

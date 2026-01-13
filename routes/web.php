@@ -65,6 +65,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     
     Route::post('/test-email', 'BusinessController@testEmailConfiguration');
     Route::post('/test-sms', 'BusinessController@testSmsConfiguration');
+    Route::post('/business/test-streetpulse-connection', 'BusinessController@testStreetpulseConnection');
+    Route::post('/business/sync-streetpulse', 'BusinessController@syncStreetpulse');
     Route::get('/business/settings', 'BusinessController@getBusinessSettings')->name('business.getBusinessSettings');
     Route::post('/business/update', 'BusinessController@postBusinessSettings')->name('business.postBusinessSettings');
     Route::get('/user/profile', 'UserController@getProfile')->name('user.getProfile');
@@ -96,6 +98,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/contacts/check-contacts-id', 'ContactController@checkContactId');
     Route::get('/contacts/customers', 'ContactController@getCustomers');
     Route::resource('contacts', 'ContactController');
+    
+    // Gift Cards
+    Route::resource('gift-cards', 'GiftCardController');
+    
+    // Loyalty Tiers
+    Route::resource('loyalty-tiers', 'LoyaltyTierController');
 
     Route::get('taxonomies-ajax-index-page', 'TaxonomyController@getTaxonomyIndexPage');
     Route::resource('taxonomies', 'TaxonomyController');
@@ -117,6 +125,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/products/list-no-variation', 'ProductController@getProductsWithoutVariations');
     Route::post('/products/bulk-edit', 'ProductController@bulkEdit');
     Route::post('/products/bulk-update', 'ProductController@bulkUpdate');
+    Route::post('/products/{id}/list-to-ebay', 'ProductController@listToEbay');
+    Route::post('/products/{id}/list-to-discogs', 'ProductController@listToDiscogs');
+    Route::post('/products/bulk-list-to-ebay', 'ProductController@bulkListToEbay');
+    Route::post('/products/bulk-list-to-discogs', 'ProductController@bulkListToDiscogs');
     Route::post('/products/bulk-update-location', 'ProductController@updateProductLocation');
     Route::get('/products/get-product-to-edit/{product_id}', 'ProductController@getProductToEdit');
     
@@ -140,6 +152,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/product/mass-store', [ProductController::class, 'massStore'])->name('product.massStore');
     Route::get('/products/get-combo-product-entry-row', 'ProductController@getComboProductEntryRow');
     Route::post('/products/toggle-woocommerce-sync', 'ProductController@toggleWooCommerceSync');
+    Route::post('/products/bulk-update-categories', 'ProductController@bulkUpdateCategories');
+    Route::get('/products/export-uncategorized', 'ProductController@exportUncategorized');
+    Route::get('/products/import-sold-items', 'ProductController@importSoldItems')->name('products.importSoldItems');
+    Route::post('/products/process-import-sold-items', 'ProductController@processImportSoldItems')->name('products.processImportSoldItems');
     
     Route::resource('products', 'ProductController');
 
@@ -170,7 +186,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/sells/pos/get_product_row/{variation_id}/{location_id}', 'SellPosController@getProductRow');
     Route::post('/sells/pos/get_manual_product_row', [SellPosController::class, 'getManualProductRow']);
     Route::post('/sells/pos/get_manual_product_rows', [SellPosController::class, 'getManualProductRows']);
+    Route::post('/sells/pos/get_plastic_bag_row', [SellPosController::class, 'getPlasticBagRow']);
+    Route::get('/sells/pos/get-customer-account-info', [SellPosController::class, 'getCustomerAccountInfo']);
+    Route::get('/sells/pos/lookup-gift-card', [SellPosController::class, 'lookupGiftCard']);
     Route::post('/sells/pos/get_payment_row', 'SellPosController@getPaymentRow');
+    Route::post('/sells/pos/send-to-clover/{id}', 'SellPosController@sendToClover');
+    Route::get('/sells/pos/clover-status/{payment_id}', 'SellPosController@getCloverPaymentStatus');
     Route::post('/sells/pos/get-reward-details', 'SellPosController@getRewardDetails');
     Route::get('/sells/pos/get-recent-transactions', 'SellPosController@getRecentTransactions');
     Route::get('/sells/pos/get-product-suggestion', 'SellPosController@getProductSuggestion');
@@ -180,6 +201,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // Export routes must be defined BEFORE resource route to avoid conflicts
     Route::get('/pos/export-csv', 'SellPosController@exportPosSalesCsv')->name('pos.exportCsv');
     Route::get('/pos/export-excel', 'SellPosController@exportPosSalesExcel')->name('pos.exportExcel');
+    Route::get('/pos/export-manual-products', 'SellPosController@exportManualProducts')->name('pos.exportManualProducts');
     
     Route::resource('pos', 'SellPosController');
 

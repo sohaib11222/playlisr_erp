@@ -19,7 +19,14 @@
 			value="{{$so_line->id}}">
 		@endif
 		@php
-			$product_name = $product->product_name . '<br/>' . $product->sub_sku ;
+			// Format: Artist - Title (or just Title if no artist)
+			$product_name = '';
+			if(!empty($product->artist)){
+				$product_name = $product->artist . ' - ' . $product->product_name;
+			} else {
+				$product_name = $product->product_name;
+			}
+			$product_name .= '<br/>' . $product->sub_sku;
 			if(!empty($product->brand)){ $product_name .= ' ' . $product->brand ;}
 		@endphp
 
@@ -387,6 +394,17 @@
 		@endphp
 		<input type="{{$subtotal_type}}" class="form-control pos_line_total @if(!empty($pos_settings['is_pos_subtotal_editable'])) input_number @endif" value="{{@num_format($product->quantity_ordered*$unit_price_inc_tax )}}">
 		<span class="display_currency pos_line_total_text @if(!empty($pos_settings['is_pos_subtotal_editable'])) hide @endif" data-currency_symbol="true">{{$product->quantity_ordered*$unit_price_inc_tax}}</span>
+		
+		{{-- Discount Display --}}
+		<div class="row_discount_display" style="display: none; margin-top: 5px;">
+			<small class="text-muted">
+				<span class="original_price_text"></span>
+				<br>
+				<span class="discount_applied_text text-danger" style="font-weight: bold;"></span>
+				<br>
+				<span class="final_price_text text-success" style="font-weight: bold;"></span>
+			</small>
+		</div>
 	</td>
 	<td class="text-center v-center">
 		<i class="fa fa-times text-danger pos_remove_row cursor-pointer" aria-hidden="true"></i>

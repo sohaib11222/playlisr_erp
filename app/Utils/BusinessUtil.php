@@ -159,9 +159,8 @@ class BusinessUtil extends Util
      */
     public function allTimeZones()
     {
-        $datetime = new \DateTimeZone("EDT");
-
-        $timezones = $datetime->listIdentifiers();
+        // Get all available timezones including PST (America/Los_Angeles)
+        $timezones = \DateTimeZone::listIdentifiers(\DateTimeZone::ALL);
         $timezone_list = [];
         foreach ($timezones as $timezone) {
             $timezone_list[$timezone] = $timezone;
@@ -193,6 +192,11 @@ class BusinessUtil extends Util
         $business_details['sell_price_tax'] = 'includes';
 
         $business_details['default_profit_percent'] = 25;
+        
+        // Set default timezone to PST (America/Los_Angeles)
+        if (empty($business_details['time_zone'])) {
+            $business_details['time_zone'] = 'America/Los_Angeles';
+        }
 
         //Add POS shortcuts
         $business_details['keyboard_shortcuts'] = '{"pos":{"express_checkout":"shift+e","pay_n_ckeckout":"shift+p","draft":"shift+d","cancel":"shift+c","edit_discount":"shift+i","edit_order_tax":"shift+t","add_payment_row":"shift+r","finalize_payment":"shift+f","recent_product_quantity":"f2","add_new_product":"f4"}}';
@@ -421,7 +425,18 @@ class BusinessUtil extends Util
      */
     public function defaultPosSettings()
     {
-        return ['disable_pay_checkout' => 0, 'disable_draft' => 0, 'disable_express_checkout' => 0, 'hide_product_suggestion' => 0, 'hide_recent_trans' => 0, 'disable_discount' => 0, 'disable_order_tax' => 0, 'is_pos_subtotal_editable' => 0];
+        return [
+            'disable_pay_checkout' => 0, 
+            'disable_draft' => 0, 
+            'disable_express_checkout' => 0, 
+            'hide_product_suggestion' => 0, 
+            'hide_recent_trans' => 0, 
+            'disable_discount' => 0, 
+            'disable_order_tax' => 0, 
+            'is_pos_subtotal_editable' => 0, 
+            'enable_plastic_bag_charge' => 1,  // Enabled by default
+            'plastic_bag_price' => 0.10  // Default price
+        ];
     }
 
     /**
@@ -442,5 +457,58 @@ class BusinessUtil extends Util
     public function defaultSmsSettings()
     {
         return ['url' => '', 'send_to_param_name' => 'to', 'msg_param_name' => 'text', 'request_method' => 'post', 'param_1' => '', 'param_val_1' => '', 'param_2' => '', 'param_val_2' => '','param_3' => '', 'param_val_3' => '','param_4' => '', 'param_val_4' => '','param_5' => '', 'param_val_5' => '', ];
+    }
+
+    /**
+     * Return the default API settings structure.
+     *
+     * @return array
+     */
+    public function defaultApiSettings()
+    {
+        return [
+            'clover' => [
+                'app_id' => '',
+                'app_secret' => '',
+                'merchant_id' => '',
+                'access_token' => '',
+                'environment' => 'sandbox' // sandbox or production
+            ],
+            'ebay' => [
+                'app_id' => '',
+                'cert_id' => '',
+                'dev_id' => '',
+                'environment' => 'sandbox' // sandbox or production
+            ],
+            'discogs' => [
+                'token' => '',
+                'user_token' => ''
+            ],
+            'streetpulse' => [
+                'api_key' => '',
+                'endpoint' => '',
+                'username' => ''
+            ]
+        ];
+    }
+
+    /**
+     * Get API settings for a business with defaults merged.
+     *
+     * @param int $business_id
+     * @return array
+     */
+    public function getApiSettings($business_id)
+    {
+        $business = Business::find($business_id);
+        if (empty($business)) {
+            return $this->defaultApiSettings();
+        }
+
+        $api_settings = $business->api_settings ?? [];
+        $defaults = $this->defaultApiSettings();
+
+        // Merge defaults with existing settings
+        return array_merge($defaults, $api_settings);
     }
 }

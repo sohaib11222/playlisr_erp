@@ -490,22 +490,40 @@ $(document).ready(function() {
         });
         $('div.lead_additional_div').hide();
 
-        if ($('select#contact_type').val() == 'customer') {
-            $('div.supplier_fields').hide();
-            $('div.customer_fields').show();
-        } else if ($('select#contact_type').val() == 'supplier') {
-            $('div.supplier_fields').show();
-            $('div.customer_fields').hide();
-        }  else if ($('select#contact_type').val() == 'lead') {
-            $('div.supplier_fields').hide();
-            $('div.customer_fields').hide();
-            $('div.opening_balance').hide();
-            $('div.pay_term').hide();
-            $('div.lead_additional_div').show();
-            $('div.shipping_addr_div').hide();
+        // Function to update customer_fields visibility
+        function updateCustomerFieldsVisibility() {
+            var contactType = $('select#contact_type').val();
+            if (contactType == 'customer' || contactType == 'both') {
+                if (contactType == 'both') {
+                    $('div.supplier_fields').show();
+                } else {
+                    $('div.supplier_fields').hide();
+                }
+                $('div.customer_fields').css('display', '').show();
+            } else if (contactType == 'supplier') {
+                $('div.supplier_fields').show();
+                $('div.customer_fields').hide();
+            }  else if (contactType == 'lead') {
+                $('div.supplier_fields').hide();
+                $('div.customer_fields').hide();
+                $('div.opening_balance').hide();
+                $('div.pay_term').hide();
+                $('div.lead_additional_div').show();
+                $('div.shipping_addr_div').hide();
+            } else {
+                // Default: show customer fields if type is not set or unknown
+                // This ensures employee checkbox is visible even if type is not explicitly set
+                $('div.customer_fields').css('display', '').show();
+            }
         }
+        
+        // Initialize customer_fields visibility based on contact type
+        // Use setTimeout to ensure select2 and other plugins are initialized
+        setTimeout(function() {
+            updateCustomerFieldsVisibility();
+        }, 100);
 
-        $('select#contact_type').change(function() {
+        $('select#contact_type').on('change', function() {
             var t = $(this).val();
 
             if (t == 'supplier') {
@@ -513,9 +531,9 @@ $(document).ready(function() {
                 $('div.customer_fields').fadeOut();
             } else if (t == 'both') {
                 $('div.supplier_fields').fadeIn();
-                $('div.customer_fields').fadeIn();
+                $('div.customer_fields').css('display', '').fadeIn();
             } else if (t == 'customer') {
-                $('div.customer_fields').fadeIn();
+                $('div.customer_fields').css('display', '').fadeIn();
                 $('div.supplier_fields').fadeOut();
             } else if (t == 'lead') {
                 $('div.customer_fields').fadeOut();

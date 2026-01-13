@@ -222,6 +222,40 @@
                 </div>
             </div>
         </div>
+        
+        <div class="clearfix"></div>
+        <div class="col-sm-12">
+            <h4>Shopping Bag / Plastic Bag Charge Settings:</h4>
+        </div>
+
+        <div class="col-sm-4">
+            <div class="form-group">
+                <div class="checkbox">
+                <br>
+                  <label>
+                    {!! Form::checkbox('pos_settings[enable_plastic_bag_charge]', 1,  
+                    isset($pos_settings['enable_plastic_bag_charge']) ? (int)$pos_settings['enable_plastic_bag_charge'] : 1 , 
+                    [ 'class' => 'input-icheck', 'id' => 'enable_plastic_bag_charge']); !!} Enable Shopping Bag Charge
+                  </label>
+                  @show_tooltip('Enable this to allow adding shopping bag/plastic bag charge to POS transactions')
+                </div>
+            </div>
+        </div>
+
+        <div class="col-sm-6" id="plastic_bag_price_container" style="@if(empty($pos_settings['enable_plastic_bag_charge']) || $pos_settings['enable_plastic_bag_charge'] == 0) display: none; @endif">
+            <div class="form-group">
+                {!! Form::label('pos_settings[plastic_bag_price]', 'Shopping Bag Charge Price:') !!}
+                <div class="input-group">
+                    <span class="input-group-addon">
+                        <i class="fa fa-dollar"></i>
+                    </span>
+                    {!! Form::text('pos_settings[plastic_bag_price]', 
+                        !empty($pos_settings['plastic_bag_price']) ? $pos_settings['plastic_bag_price'] : 0.10, 
+                        ['class' => 'form-control input_number', 'step' => '0.01', 'min' => '0', 'id' => 'plastic_bag_price_input']); !!}
+                </div>
+                <p class="help-block">Price charged per shopping bag/plastic bag (applied with sales tax)</p>
+            </div>
+        </div>
 
         <div class="col-sm-6">
             <div class="form-group">

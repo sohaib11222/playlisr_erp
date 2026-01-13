@@ -2,20 +2,58 @@
 
 namespace App\Services;
 
+use App\Utils\BusinessUtil;
 use Illuminate\Support\Facades\Log;
 
 class DiscogsService
 {
+    private $businessUtil;
+    private $businessId;
+    private $settings;
     private string $baseUrl = 'https://api.discogs.com/';
-
-    private string $token = 'tsaPkOArKRJoYaEdiUgRtlVriVMtAnswAdTaNknw';
-
+    private string $token;
     private string $databaseSearchUrl = 'database/search';
-
     private string $priceSuggestionUrl = 'marketplace/price_suggestions';
 
-    public function __construct()
-    {}
+    public function __construct($businessId = null)
+    {
+        $this->businessUtil = new BusinessUtil();
+        
+        // Safely get business_id - try session first, fallback to auth user
+        if ($businessId) {
+            $this->businessId = $businessId;
+        } else {
+            try {
+                $session = request()->getSession();
+                if ($session && $session->has('user.business_id')) {
+                    $this->businessId = $session->get('user.business_id');
+                } else {
+                    $this->businessId = auth()->user()->business_id ?? null;
+                }
+            } catch (\Exception $e) {
+                $this->businessId = auth()->user()->business_id ?? null;
+            }
+        }
+        
+        if ($this->businessId) {
+            $this->settings = $this->businessUtil->getApiSettings($this->businessId);
+            
+            $discogs = $this->settings['discogs'] ?? [];
+            $this->token = $discogs['token'] ?? '';
+        } else {
+            $this->token = '';
+        }
+    }
+
+    /**
+     * Check if Discogs is configured with required token
+     *
+     * @return bool
+     */
+    public function isConfigured()
+    {
+        return !empty($this->token);
+    }
 
     public function searchProductPrice($query, $artist = null, $title = null)
     {
@@ -128,21 +166,35 @@ class DiscogsService
         return $url;
     }
 
-    public function callApi($url)
+    public function callApi($url, $method = 'GET', $data = [])
     {
         try {
             $ch = curl_init();
             
-            // Set basic cURL options
             curl_setopt($ch, CURLOPT_URL, $url);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            
+            $headers = [
                 'User-Agent: NivessaPlaylist/1.0 +https://playlist.nivessa.com',
                 'Accept: application/vnd.discogs.v2.plaintext+json',
                 'Accept-Language: en-US,en;q=0.9',
                 'Connection: keep-alive',
                 'Cache-Control: no-cache'
-            ]);
+            ];
+            
+            // Add token to URL for GET requests, or in Authorization header for POST
+            if ($method === 'POST' && !empty($this->token)) {
+                $headers[] = 'Authorization: Discogs token=' . $this->token;
+            }
+            
+            curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+
+            if ($method === 'POST') {
+                curl_setopt($ch, CURLOPT_POST, true);
+                if (!empty($data)) {
+                    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
+                }
+            }
 
             $response = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -154,7 +206,7 @@ class DiscogsService
                 throw new \Exception('cURL Error: ' . $error);
             }
     
-            if ($httpCode !== 200) {
+            if ($httpCode !== 200 && $httpCode !== 201) {
                 throw new \Exception('HTTP Error: ' . $httpCode . ' Response: ' . $response);
             }
 
@@ -174,4 +226,112 @@ class DiscogsService
             ];
         }
     }
+
+    /**
+     * Create a Discogs listing for a product
+     *
+     * @param array $productData
+     * @return array
+     */
+    public function createListing($productData)
+    {
+        if (!$this->isConfigured()) {
+            return [
+                'success' => false,
+                'msg' => 'Discogs API token not configured. Please configure in Business Settings > Integrations.'
+            ];
+        }
+
+        try {
+            $url = $this->baseUrl . 'marketplace/listings';
+            
+            $listingData = [
+                'release_id' => $productData['release_id'] ?? null,
+                'price' => $productData['price'] ?? 0,
+                'status' => $productData['status'] ?? 'For Sale',
+                'sleeve_condition' => $productData['sleeve_condition'] ?? 'Mint (M)',
+                'condition' => $productData['condition'] ?? 'Mint (M)',
+                'comments' => $productData['comments'] ?? '',
+                'allow_offers' => $productData['allow_offers'] ?? true,
+                'external_id' => $productData['external_id'] ?? null
+            ];
+
+            $response = $this->callApi($url, 'POST', $listingData);
+
+            if (!empty($response['error'])) {
+                return [
+                    'success' => false,
+                    'msg' => $response['message']
+                ];
+            }
+
+            return [
+                'success' => true,
+                'data' => $response['data'],
+                'listing_id' => $response['data']->id ?? null
+            ];
+        } catch (\Exception $e) {
+            Log::error('Discogs Listing Error: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'msg' => 'Discogs listing error: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Update a Discogs listing
+     *
+     * @param string $listingId
+     * @param array $productData
+     * @return array
+     */
+    public function updateListing($listingId, $productData)
+    {
+        if (!$this->isConfigured()) {
+            return [
+                'success' => false,
+                'msg' => 'Discogs API token not configured.'
+            ];
+        }
+
+        try {
+            $url = $this->baseUrl . 'marketplace/listings/' . $listingId;
+            
+            $listingData = [];
+            if (isset($productData['price'])) {
+                $listingData['price'] = $productData['price'];
+            }
+            if (isset($productData['status'])) {
+                $listingData['status'] = $productData['status'];
+            }
+            if (isset($productData['condition'])) {
+                $listingData['condition'] = $productData['condition'];
+            }
+            if (isset($productData['comments'])) {
+                $listingData['comments'] = $productData['comments'];
+            }
+
+            $response = $this->callApi($url, 'POST', $listingData);
+
+            if (!empty($response['error'])) {
+                return [
+                    'success' => false,
+                    'msg' => $response['message']
+                ];
+            }
+
+            return [
+                'success' => true,
+                'data' => $response['data']
+            ];
+        } catch (\Exception $e) {
+            Log::error('Discogs Update Listing Error: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'msg' => 'Discogs update listing error: ' . $e->getMessage()
+            ];
+        }
+    }
+
 }

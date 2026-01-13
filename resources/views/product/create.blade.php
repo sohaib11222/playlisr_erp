@@ -86,6 +86,23 @@
                     </div>
                 </div>
 
+                <div class="col-sm-6">
+                    <div class="form-group">
+                        {!! Form::label('bin_position', 'Bin Position' . ':') !!}
+                        {!! Form::text('bin_position', !empty($duplicate_product->bin_position) ? $duplicate_product->bin_position : null, ['class' => 'form-control',
+                        'placeholder' => 'e.g., A-12, B-5']); !!}
+                    </div>
+                </div>
+
+                <div class="col-sm-6">
+                    <div class="form-group">
+                        {!! Form::label('listing_location', 'Listing Location' . ':') !!}
+                        {!! Form::text('listing_location', !empty($duplicate_product->listing_location) ? $duplicate_product->listing_location : null, ['class' => 'form-control',
+                        'placeholder' => 'e.g., Warehouse A, Storage B']); !!}
+                        <p class="help-block">Location for eBay/Discogs listings (separate from store locations)</p>
+                    </div>
+                </div>
+
                 <div class="col-sm-12 @if(!session('business.enable_category')) hide @endif">
                     <div class="form-group">
                         {!! Form::label('category_id', __('product.category') . ' *:') !!}

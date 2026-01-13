@@ -46,6 +46,12 @@
 				            </div>
 				        </div>
 				    </div>
+				    <div class="col-md-12">
+				        <div class="form-group">
+				            {!! Form::label('discount_reason_modal', 'Discount Reason (Optional):' ) !!}
+				            {!! Form::text('discount_reason_modal', !empty($discount_reason) ? $discount_reason : '', ['class' => 'form-control', 'placeholder' => 'e.g., Damaged item, Employee discount, Customer complaint']); !!}
+				        </div>
+				    </div>
 				</div>
 				<br>
 				<div class="row @if(!$is_rp_enabled) hide @endif">

@@ -1345,13 +1345,13 @@ $(document).ready(function() {
                 start.format(moment_date_format) + ' ~ ' + end.format(moment_date_format)
             );
             if (typeof items_report_table !== 'undefined' && items_report_table) {
-                items_report_table.ajax.reload();
+            items_report_table.ajax.reload();
             }
         });
         $('#ir_purchase_date_filter').on('cancel.daterangepicker', function(ev, picker) {
             $('#ir_purchase_date_filter').val('');
             if (typeof items_report_table !== 'undefined' && items_report_table) {
-                items_report_table.ajax.reload();
+            items_report_table.ajax.reload();
             }
         });
     }
@@ -1361,13 +1361,13 @@ $(document).ready(function() {
                 start.format(moment_date_format) + ' ~ ' + end.format(moment_date_format)
             );
             if (typeof items_report_table !== 'undefined' && items_report_table) {
-                items_report_table.ajax.reload();
+            items_report_table.ajax.reload();
             }
         });
         $('#ir_sale_date_filter').on('cancel.daterangepicker', function(ev, picker) {
             $('#ir_sale_date_filter').val('');
             if (typeof items_report_table !== 'undefined' && items_report_table) {
-                items_report_table.ajax.reload();
+            items_report_table.ajax.reload();
             }
         });
     }
@@ -1414,6 +1414,7 @@ $(document).ready(function() {
         },
         columns: [
             { data: 'product_name', name: 'p.name' },
+            { data: 'format', name: 'p.format' },
             { data: 'sku', name: 'v.sub_sku' },
             { data: 'category', name: 'cat.name' },
             { data: 'sub_category', name: 'sub_cat.name' },

@@ -4,7 +4,9 @@ namespace App\Services;
 
 use App\Category;
 use App\Models\EbayOauthToken;
+use App\Utils\BusinessUtil;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 
 class EbayService
@@ -12,17 +14,64 @@ class EbayService
     private const SANDBOX_BASE_URL = 'https://api.sandbox.ebay.com';
     private const PRODUCTION_BASE_URL = 'https://api.ebay.com';
     
+    private $businessUtil;
+    private $businessId;
+    private $settings;
     private string $appId;
     private string $certId;
     private string $devId;
     private string $baseUrl;
 
-    public function __construct()
+    public function __construct($businessId = null)
     {
-        $this->appId = '''';
-        $this->certId = '''';
-        $this->devId = '''';
-        $this->baseUrl = self::PRODUCTION_BASE_URL; // Using sandbox for development
+        $this->businessUtil = new BusinessUtil();
+        
+        // Safely get business_id - try session first, fallback to auth user
+        if ($businessId) {
+            $this->businessId = $businessId;
+        } else {
+            try {
+                $session = request()->getSession();
+                if ($session && $session->has('user.business_id')) {
+                    $this->businessId = $session->get('user.business_id');
+                } else {
+                    $this->businessId = auth()->user()->business_id ?? null;
+                }
+            } catch (\Exception $e) {
+                $this->businessId = auth()->user()->business_id ?? null;
+            }
+        }
+        
+        if ($this->businessId) {
+            $this->settings = $this->businessUtil->getApiSettings($this->businessId);
+            
+            $ebay = $this->settings['ebay'] ?? [];
+            $this->appId = $ebay['app_id'] ?? '';
+            $this->certId = $ebay['cert_id'] ?? '';
+            $this->devId = $ebay['dev_id'] ?? '';
+            
+            $environment = $ebay['environment'] ?? 'sandbox';
+            $this->baseUrl = $environment === 'production' 
+                ? self::PRODUCTION_BASE_URL 
+                : self::SANDBOX_BASE_URL;
+        } else {
+            $this->appId = '';
+            $this->certId = '';
+            $this->devId = '';
+            $this->baseUrl = self::SANDBOX_BASE_URL;
+        }
+    }
+
+    /**
+     * Check if eBay is configured with required credentials
+     *
+     * @return bool
+     */
+    public function isConfigured()
+    {
+        return !empty($this->appId) && 
+               !empty($this->certId) && 
+               !empty($this->devId);
     }
 
     private function makeRequest(string $url, array $options = []): array
@@ -48,7 +97,12 @@ class EbayService
 
         if (isset($options['post'])) {
             $defaultOptions[CURLOPT_POST] = true;
-            $defaultOptions[CURLOPT_POSTFIELDS] = http_build_query($options['post']);
+            // If post data is already a string (JSON), use it directly
+            if (is_string($options['post'])) {
+                $defaultOptions[CURLOPT_POSTFIELDS] = $options['post'];
+            } else {
+                $defaultOptions[CURLOPT_POSTFIELDS] = http_build_query($options['post']);
+            }
         }
 
         if (isset($options['query'])) {
@@ -219,5 +273,123 @@ class EbayService
             'median' => number_format($median, 2, '.', ''),
             'average' => number_format($average, 2, '.', '')
         ];
+    }
+
+    /**
+     * Create an eBay listing for a product
+     *
+     * @param array $productData
+     * @return array
+     */
+    public function createListing($productData)
+    {
+        if (!$this->isConfigured()) {
+            return [
+                'success' => false,
+                'msg' => 'eBay API credentials not configured. Please configure in Business Settings > Integrations.'
+            ];
+        }
+
+        try {
+            $token = $this->getOAuthToken()['access_token'];
+            
+            // Build listing request
+            $listingRequest = [
+                'availability' => [
+                    'shipToLocationAvailability' => [
+                        'quantity' => $productData['quantity'] ?? 1
+                    ]
+                ],
+                'condition' => $productData['condition'] ?? 'NEW',
+                'product' => [
+                    'title' => $productData['title'] ?? '',
+                    'description' => $productData['description'] ?? '',
+                    'aspects' => $productData['aspects'] ?? []
+                ],
+                'pricingSummary' => [
+                    'price' => [
+                        'value' => $productData['price'] ?? 0,
+                        'currency' => $productData['currency'] ?? 'USD'
+                    ]
+                ],
+                'categoryId' => $productData['category_id'] ?? '',
+                'format' => $productData['format'] ?? 'FIXED_PRICE',
+                'listingDuration' => $productData['listing_duration'] ?? 'GTC'
+            ];
+
+            $response = $this->makeRequest($this->baseUrl . '/sell/inventory/v1/offer', [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $token,
+                    'Content-Type' => 'application/json'
+                ],
+                'post' => json_encode($listingRequest)
+            ]);
+
+            return [
+                'success' => true,
+                'data' => $response,
+                'listing_id' => $response['offerId'] ?? null
+            ];
+        } catch (\Exception $e) {
+            Log::error('eBay Listing Error: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'msg' => 'eBay listing error: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Update an eBay listing
+     *
+     * @param string $listingId
+     * @param array $productData
+     * @return array
+     */
+    public function updateListing($listingId, $productData)
+    {
+        if (!$this->isConfigured()) {
+            return [
+                'success' => false,
+                'msg' => 'eBay API credentials not configured.'
+            ];
+        }
+
+        try {
+            $token = $this->getOAuthToken()['access_token'];
+            
+            $listingRequest = [
+                'availability' => [
+                    'shipToLocationAvailability' => [
+                        'quantity' => $productData['quantity'] ?? 1
+                    ]
+                ],
+                'pricingSummary' => [
+                    'price' => [
+                        'value' => $productData['price'] ?? 0,
+                        'currency' => $productData['currency'] ?? 'USD'
+                    ]
+                ]
+            ];
+
+            $response = $this->makeRequest($this->baseUrl . '/sell/inventory/v1/offer/' . $listingId, [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $token,
+                    'Content-Type' => 'application/json'
+                ],
+                'post' => json_encode($listingRequest)
+            ]);
+
+            return [
+                'success' => true,
+                'data' => $response
+            ];
+        } catch (\Exception $e) {
+            Log::error('eBay Update Listing Error: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'msg' => 'eBay update listing error: ' . $e->getMessage()
+            ];
+        }
     }
 } 

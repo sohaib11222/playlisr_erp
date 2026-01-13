@@ -3105,21 +3105,15 @@ class ReportController extends Controller
         $business_id = request()->session()->get('user.business_id');
 
         if (request()->ajax()) {
-            $query = TransactionSellLinesPurchaseLines::leftJoin('transaction_sell_lines 
-                    as SL', 'SL.id', '=', 'transaction_sell_lines_purchase_lines.sell_line_id')
-                ->leftJoin('stock_adjustment_lines 
-                    as SAL', 'SAL.id', '=', 'transaction_sell_lines_purchase_lines.stock_adjustment_line_id')
+            // Optimized query structure - apply filters early in the join chain
+            $query = TransactionSellLinesPurchaseLines::join('purchase_lines as PL', 'PL.id', '=', 'transaction_sell_lines_purchase_lines.purchase_line_id')
+                ->join('transactions as purchase', 'PL.transaction_id', '=', 'purchase.id')
+                ->leftJoin('transaction_sell_lines as SL', 'SL.id', '=', 'transaction_sell_lines_purchase_lines.sell_line_id')
+                ->leftJoin('stock_adjustment_lines as SAL', 'SAL.id', '=', 'transaction_sell_lines_purchase_lines.stock_adjustment_line_id')
                 ->leftJoin('transactions as sale', 'SL.transaction_id', '=', 'sale.id')
                 ->leftJoin('transactions as stock_adjustment', 'SAL.transaction_id', '=', 'stock_adjustment.id')
-                ->join('purchase_lines as PL', 'PL.id', '=', 'transaction_sell_lines_purchase_lines.purchase_line_id')
-                ->join('transactions as purchase', 'PL.transaction_id', '=', 'purchase.id')
                 ->join('business_locations as bl', 'purchase.location_id', '=', 'bl.id')
-                ->join(
-                    'variations as v',
-                    'PL.variation_id',
-                    '=',
-                    'v.id'
-                    )
+                ->join('variations as v', 'PL.variation_id', '=', 'v.id')
                 ->join('product_variations as pv', 'v.product_variation_id', '=', 'pv.id')
                 ->join('products as p', 'PL.product_id', '=', 'p.id')
                 ->join('units as u', 'p.unit_id', '=', 'u.id')
@@ -3132,6 +3126,7 @@ class ReportController extends Controller
                     'v.sub_sku as sku',
                     'p.type as product_type',
                     'p.name as product_name',
+                    'p.format as format',
                     'v.name as variation_name',
                     'pv.name as product_variation',
                     'u.short_name as unit',
@@ -3167,22 +3162,23 @@ class ReportController extends Controller
                 $query->whereIn('purchase.location_id', $permitted_locations);
             }
 
+            // Apply purchase date filter - use direct date comparison for better index usage
             if (!empty(request()->purchase_start) && !empty(request()->purchase_end)) {
                 $start = request()->purchase_start;
                 $end =  request()->purchase_end;
-                $query->whereDate('purchase.transaction_date', '>=', $start)
-                            ->whereDate('purchase.transaction_date', '<=', $end);
+                $query->whereBetween(DB::raw('DATE(purchase.transaction_date)'), [$start, $end]);
             }
+            // Apply sale/stock adjustment date filter - optimized for indexes
             if (!empty(request()->sale_start) && !empty(request()->sale_end)) {
                 $start = request()->sale_start;
                 $end =  request()->sale_end;
                 $query->where(function ($q) use ($start, $end) {
                     $q->where(function ($qr) use ($start, $end) {
-                        $qr->whereDate('sale.transaction_date', '>=', $start)
-                           ->whereDate('sale.transaction_date', '<=', $end);
+                        $qr->whereNotNull('sale.transaction_date')
+                           ->whereBetween(DB::raw('DATE(sale.transaction_date)'), [$start, $end]);
                     })->orWhere(function ($qr) use ($start, $end) {
-                        $qr->whereDate('stock_adjustment.transaction_date', '>=', $start)
-                           ->whereDate('stock_adjustment.transaction_date', '<=', $end);
+                        $qr->whereNotNull('stock_adjustment.transaction_date')
+                           ->whereBetween(DB::raw('DATE(stock_adjustment.transaction_date)'), [$start, $end]);
                     });
                 });
             }
@@ -3206,6 +3202,11 @@ class ReportController extends Controller
             if (!empty($only_mfg_products)) {
                 $query->where('purchase.type', 'production_purchase');
             }
+
+            // Add default ordering for better pagination performance
+            // This helps the database optimize LIMIT/OFFSET queries
+            $query->orderBy('purchase.transaction_date', 'desc')
+                  ->orderBy('p.id', 'asc');
 
             return Datatables::of($query)
                 ->editColumn('product_name', function ($row) {

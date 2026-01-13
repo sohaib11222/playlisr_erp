@@ -64,15 +64,18 @@
 			<button type="button" class="pull-right btn btn-primary btn-flat @if($is_mobile) col-xs-6 @endif" data-toggle="modal" data-target="#recent_transactions_modal" id="recent-transactions"> <i class="fas fa-clock"></i> @lang('lang_v1.recent_transactions')</button>
 			@endif
 
+			<a href="{{ route('pos.exportManualProducts') }}" class="pull-right btn btn-success btn-flat @if($is_mobile) col-xs-6 @endif" style="margin-right: 10px;" title="Export manually added products from POS">
+				<i class="fas fa-file-excel"></i> Export Manual Products
+			</a>
 			
 			
 		</div>
 	</div>
 </div>
 @if(isset($transaction))
-	@include('sale_pos.partials.edit_discount_modal', ['sales_discount' => $transaction->discount_amount, 'discount_type' => $transaction->discount_type, 'rp_redeemed' => $transaction->rp_redeemed, 'rp_redeemed_amount' => $transaction->rp_redeemed_amount, 'max_available' => !empty($redeem_details['points']) ? $redeem_details['points'] : 0])
+	@include('sale_pos.partials.edit_discount_modal', ['sales_discount' => $transaction->discount_amount, 'discount_type' => $transaction->discount_type, 'discount_reason' => $transaction->discount_reason ?? '', 'rp_redeemed' => $transaction->rp_redeemed, 'rp_redeemed_amount' => $transaction->rp_redeemed_amount, 'max_available' => !empty($redeem_details['points']) ? $redeem_details['points'] : 0, 'transaction' => $transaction])
 @else
-	@include('sale_pos.partials.edit_discount_modal', ['sales_discount' => $business_details->default_sales_discount, 'discount_type' => 'percentage', 'rp_redeemed' => 0, 'rp_redeemed_amount' => 0, 'max_available' => 0])
+	@include('sale_pos.partials.edit_discount_modal', ['sales_discount' => $business_details->default_sales_discount, 'discount_type' => 'percentage', 'discount_reason' => '', 'rp_redeemed' => 0, 'rp_redeemed_amount' => 0, 'max_available' => 0])
 @endif
 
 @if(isset($transaction))

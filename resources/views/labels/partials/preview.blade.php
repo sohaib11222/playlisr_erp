@@ -55,6 +55,13 @@
 				
 			@endif
 
+			{{-- Bin Position --}}
+			@if(!empty($details['details']->bin_position))
+				<span style="display: block !important; font-weight: bold;">
+					Bin: {{$details['details']->bin_position}}
+				</span>
+			@endif
+
 			{{-- Price --}}
 			@if(!empty($print['price']))
 				<b>@lang('lang_v1.price'):</b>

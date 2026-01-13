@@ -27,6 +27,32 @@
 		</div>
 	</div>
 	<div class="col-md-8">
+		<!-- Customer Account Info Display -->
+		<div id="customer_account_info" class="customer-account-info" style="display: none; margin-bottom: 10px; padding: 8px; background-color: #f8f9fa; border-radius: 4px; border: 1px solid #dee2e6;">
+			<div class="row">
+				<div class="col-md-12">
+					<strong id="customer_account_name" style="color: #495057;"></strong>
+					<button type="button" class="btn btn-xs btn-info pull-right" id="view_customer_details_btn" style="margin-left: 10px;">
+						<i class="fa fa-info-circle"></i> View Details
+					</button>
+				</div>
+			</div>
+			<div class="row" style="margin-top: 5px;">
+				<div class="col-md-3">
+					<small><strong>Credit:</strong> <span id="customer_account_balance" class="text-danger">$0.00</span></small>
+				</div>
+				<div class="col-md-3">
+					<small><strong>Gift Cards:</strong> <span id="customer_gift_card_balance" class="text-success">$0.00</span></small>
+				</div>
+				<div class="col-md-3">
+					<small><strong>Lifetime:</strong> <span id="customer_lifetime_purchases">$0.00</span></small>
+				</div>
+				<div class="col-md-3">
+					<small><strong>Points:</strong> <span id="customer_loyalty_points">0</span></small>
+				</div>
+			</div>
+		</div>
+		
 		<div class="form-group">
 			<div class="input-group">
 				<div class="input-group-btn">
@@ -49,6 +75,22 @@
 			</div>
 		</div>
 	</div>
+	@if(!empty($pos_settings['enable_plastic_bag_charge']))
+	<div class="col-md-12">
+		<div class="form-group">
+			<div class="checkbox">
+				<label>
+					<input type="checkbox" id="add_plastic_bag" name="add_plastic_bag" value="1">
+					<strong>Add Shopping Bag Charge</strong>
+					<span id="plastic_bag_price_display" class="text-muted">
+						(${{ number_format($pos_settings['plastic_bag_price'] ?? 0.10, 2) }})
+					</span>
+				</label>
+			</div>
+			<input type="hidden" id="plastic_bag_price" value="{{ $pos_settings['plastic_bag_price'] ?? 0.10 }}">
+		</div>
+	</div>
+	@endif
 </div>
 <div class="row">
 	@if(!empty($pos_settings['show_invoice_layout']))

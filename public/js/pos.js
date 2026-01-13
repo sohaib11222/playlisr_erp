@@ -102,6 +102,127 @@ $(document).ready(function() {
             return markup;
         },
     });
+    // Load customer account info when customer is selected
+    function loadCustomerAccountInfo(contactId) {
+        if (!contactId || contactId === '') {
+            $('#customer_account_info').hide();
+            return;
+        }
+
+        $.ajax({
+            url: '/sells/pos/get-customer-account-info',
+            type: 'GET',
+            data: { contact_id: contactId },
+            dataType: 'json',
+            success: function(response) {
+                console.log('Customer account info response:', response);
+                if (response.success && response.data) {
+                    var data = response.data;
+                    var contact = data.contact;
+
+                    // Update account info display
+                    $('#customer_account_name').text(contact.name || 'N/A');
+                    $('#customer_account_balance').text(__currency_trans_from_en(contact.balance || 0, true));
+                    $('#customer_gift_card_balance').text(__currency_trans_from_en(data.total_gift_card_balance || 0, true));
+                    $('#customer_lifetime_purchases').text(__currency_trans_from_en(contact.lifetime_purchases || 0, true));
+                    $('#customer_loyalty_points').text(contact.loyalty_points || 0);
+
+                    // Show the account info panel
+                    $('#customer_account_info').show();
+                } else {
+                    console.log('Customer account info: No data or unsuccessful response');
+                    $('#customer_account_info').hide();
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('Error loading customer account info:', error);
+                console.error('Response:', xhr.responseText);
+                $('#customer_account_info').hide();
+            }
+        });
+    }
+
+    // View customer details button click
+    $(document).on('click', '#view_customer_details_btn', function() {
+        var contactId = $('#customer_id').val();
+        if (!contactId) {
+            toastr.error('Please select a customer first');
+            return;
+        }
+
+        // Show loading
+        $('#customer_account_loading').show();
+        $('#customer_account_content').hide();
+
+        // Open modal
+        $('#customer_account_modal').modal('show');
+
+        // Load detailed customer info
+        $.ajax({
+            url: '/sells/pos/get-customer-account-info',
+            type: 'GET',
+            data: { contact_id: contactId },
+            dataType: 'json',
+            success: function(response) {
+                $('#customer_account_loading').hide();
+                
+                if (response.success && response.data) {
+                    var data = response.data;
+                    var contact = data.contact;
+
+                    // Update modal content
+                    $('#modal_customer_name').text(contact.name);
+                    $('#modal_account_balance').text(__currency_trans_from_en(contact.balance || 0, true));
+                    $('#modal_lifetime_purchases').text(__currency_trans_from_en(contact.lifetime_purchases || 0, true));
+                    $('#modal_loyalty_points').text(contact.loyalty_points || 0);
+                    $('#modal_loyalty_tier').text(contact.loyalty_tier || 'Bronze');
+                    $('#modal_last_purchase_date').text(contact.last_purchase_date || 'Never');
+                    $('#modal_total_gift_card_balance').text(__currency_trans_from_en(data.total_gift_card_balance || 0, true));
+
+                    // Update gift cards list
+                    var giftCardsHtml = '';
+                    if (data.gift_cards && data.gift_cards.length > 0) {
+                        data.gift_cards.forEach(function(card) {
+                            giftCardsHtml += '<p><strong>Card:</strong> ' + card.card_number + 
+                                          ' | <strong>Balance:</strong> ' + __currency_trans_from_en(card.balance, true);
+                            if (card.expiry_date) {
+                                giftCardsHtml += ' | <strong>Expires:</strong> ' + card.expiry_date;
+                            }
+                            giftCardsHtml += '</p>';
+                        });
+                    } else {
+                        giftCardsHtml = '<p class="text-muted">No active gift cards</p>';
+                    }
+                    $('#modal_gift_cards_list').html(giftCardsHtml);
+
+                    // Update recent purchases
+                    var purchasesHtml = '';
+                    if (data.recent_purchases && data.recent_purchases.length > 0) {
+                        data.recent_purchases.forEach(function(purchase) {
+                            purchasesHtml += '<tr>' +
+                                '<td>' + purchase.invoice_no + '</td>' +
+                                '<td>' + purchase.date + '</td>' +
+                                '<td>' + __currency_trans_from_en(purchase.total, true) + '</td>' +
+                                '<td><span class="label label-' + (purchase.payment_status === 'paid' ? 'success' : 'warning') + '">' + purchase.payment_status + '</span></td>' +
+                                '</tr>';
+                        });
+                    } else {
+                        purchasesHtml = '<tr><td colspan="4" class="text-center text-muted">No recent purchases</td></tr>';
+                    }
+                    $('#modal_recent_purchases_list').html(purchasesHtml);
+
+                    $('#customer_account_content').show();
+                } else {
+                    toastr.error('Failed to load customer information');
+                }
+            },
+            error: function() {
+                $('#customer_account_loading').hide();
+                toastr.error('Error loading customer information');
+            }
+        });
+    });
+
     $('#customer_id').on('select2:select', function(e) {
         var data = e.params.data;
         if (data.pay_term_number) {
@@ -131,6 +252,24 @@ $(document).ready(function() {
         }
         if ($('.contact_due_text').length) {
             get_contact_due(data.id);
+        }
+        
+        // Load customer account info
+        loadCustomerAccountInfo(data.id);
+        
+        // Store employee status for later use
+        if (data.is_employee == 1) {
+            $('#customer_id').data('is_employee', true);
+            
+            // Apply 20% discount to all products in the cart
+            $('table#pos_table tbody tr.product_row').each(function() {
+                var row = $(this);
+                applyEmployeeDiscount(row);
+            });
+            
+            toastr.info('Employee discount (20%) applied automatically');
+        } else {
+            $('#customer_id').data('is_employee', false);
         }
     });
 
@@ -227,13 +366,16 @@ $(document).ready(function() {
                     for_so = true;
                 }
 
+            // Format: Artist - Title (or just Title if no artist)
+            var displayName = item.name;
+            if (item.artist && item.artist.trim() !== '') {
+                displayName = item.artist + ' - ' + item.name;
+            }
+            
             if (item.enable_stock == 1 && item.qty_available <= 0 && !is_overselling_allowed && !for_so) {
-                var string = '<li class="ui-state-disabled">' + item.name;
-                if (item.artist && item.artist.trim() !== '') {
-                    string += ' - ' + item.artist;
-                }
+                var string = '<li class="ui-state-disabled">' + displayName;
                 if (item.type == 'variable') {
-                    string += '-' + item.variation;
+                    string += ' - ' + item.variation;
                 }
                 var selling_price = item.selling_price;
                 if (item.variation_group_price) {
@@ -248,12 +390,9 @@ $(document).ready(function() {
                     ' (Out of stock) </li>';
                 return $(string).appendTo(ul);
             } else {
-                var string = '<div>' + item.name;
-                if (item.artist && item.artist.trim() !== '') {
-                    string += ' - ' + item.artist;
-                }
+                var string = '<div>' + displayName;
                 if (item.type == 'variable') {
-                    string += '-' + item.variation;
+                    string += ' - ' + item.variation;
                 }
 
                 var selling_price = item.selling_price;
@@ -293,6 +432,9 @@ $(document).ready(function() {
 
         __write_number(tr.find('input.pos_line_total'), line_total, false, 2);
         tr.find('span.pos_line_total_text').text(__currency_trans_from_en(line_total, true));
+        
+        // Update discount display
+        update_discount_display(tr);
 
         //Change modifier quantity
         tr.find('.modifier_qty_text').each( function(){
@@ -327,6 +469,10 @@ $(document).ready(function() {
         __write_number(tr.find('input.pos_unit_price_inc_tax'), unit_price_inc_tax);
         __write_number(tr.find('input.pos_line_total'), line_total);
         tr.find('span.pos_line_total_text').text(__currency_trans_from_en(line_total, true));
+        
+        // Update discount display
+        update_discount_display(tr);
+        
         pos_each_row(tr);
         pos_total_row();
         round_row_to_iraqi_dinnar(tr);
@@ -346,6 +492,9 @@ $(document).ready(function() {
         var unit_price = get_unit_price_from_discounted_unit_price(tr, discounted_unit_price);
         __write_number(tr.find('input.pos_unit_price'), unit_price);
         pos_each_row(tr);
+        
+        // Update discount display
+        update_discount_display(tr);
     });
 
     //If change in unit price including tax, update unit price
@@ -462,6 +611,10 @@ $(document).ready(function() {
             __write_number(tr.find('input.pos_unit_price_inc_tax'), unit_price_inc_tax);
             __write_number(tr.find('input.pos_line_total'), line_total, false, 2);
             tr.find('span.pos_line_total_text').text(__currency_trans_from_en(line_total, true));
+            
+            // Update discount display
+            update_discount_display(tr);
+            
             pos_each_row(tr);
             pos_total_row();
             round_row_to_iraqi_dinnar(tr);
@@ -846,6 +999,10 @@ $(document).ready(function() {
         //Update values
         $('input#discount_type').val($('select#discount_type_modal').val());
         __write_number($('input#discount_amount'), __read_number($('input#discount_amount_modal')));
+        
+        //Update discount reason
+        var discount_reason = $('#discount_reason_modal').val() || '';
+        $('#discount_reason').val(discount_reason);
 
         if ($('#reward_point_enabled').length) {
             var reward_validation = isValidatRewardPoint();
@@ -858,6 +1015,29 @@ $(document).ready(function() {
         }
 
         pos_total_row();
+    });
+    
+    // Manual discount button - opens discount modal
+    $(document).on('click', '#pos-manual-discount', function() {
+        $('#posEditDiscountModal').modal('show');
+    });
+    
+    // Auto-apply 20% employee discount on page load if user is employee
+    $(document).ready(function() {
+        var isEmployee = $('#is_employee').val() == '1';
+        var currentDiscount = $('#discount_amount').val();
+        if (isEmployee && (currentDiscount == '0' || currentDiscount == '' || parseFloat(currentDiscount) == 0)) {
+            // Auto-apply 20% employee discount
+            $('#discount_type').val('percentage');
+            $('#discount_amount').val('20');
+            $('#discount_reason').val('Employee discount (20%)');
+            
+            // Update display
+            pos_total_row();
+            
+            // Show notification
+            toastr.info('20% employee discount applied automatically');
+        }
     });
 
     //Shipping
@@ -1805,6 +1985,15 @@ function pos_product_row(variation_id = null, purchase_line_id = null, weighing_
                     //For initial discount if present
                     var line_total = __read_number(this_row.find('input.pos_line_total'));
                     this_row.find('span.pos_line_total_text').text(line_total);
+                    
+                    // Apply employee discount if customer is an employee
+                    var isEmployee = $('#customer_id').data('is_employee');
+                    if (isEmployee) {
+                        applyEmployeeDiscount(this_row);
+                    }
+                    
+                    // Update discount display
+                    update_discount_display(this_row);
 
                     pos_total_row();
 
@@ -1874,6 +2063,9 @@ function pos_each_row(row_obj) {
     //var unit_price_inc_tax = __read_number(row_obj.find('input.pos_unit_price_inc_tax'));
 
     __write_number(row_obj.find('input.item_tax'), unit_price_inc_tax - discounted_unit_price);
+    
+    // Update discount display
+    update_discount_display(row_obj);
 }
 
 function pos_total_row() {
@@ -2332,6 +2524,109 @@ function calculate_discounted_unit_price(row) {
     return row_discounted_unit_price;
 }
 
+// Apply employee discount to a product row
+function applyEmployeeDiscount(row) {
+    var discountType = row.find('select.row_discount_type');
+    var discountAmount = row.find('input.row_discount_amount');
+    
+    // Check if discount fields exist (they might be hidden but still in DOM)
+    if (discountType.length && discountAmount.length) {
+        // Only apply if no discount is already set
+        var currentDiscount = __read_number(discountAmount);
+        if (!currentDiscount || currentDiscount == 0) {
+            // Set the values even if fields are hidden
+            discountType.val('percentage');
+            discountAmount.val(20);
+            
+            // Make sure fields are visible temporarily to trigger change (if needed)
+            var wasHidden = discountType.closest('td').hasClass('hide') || discountType.closest('td').is(':hidden');
+            if (wasHidden) {
+                discountType.closest('td').removeClass('hide').show();
+            }
+            
+            // Trigger change to recalculate
+            discountType.trigger('change');
+            discountAmount.trigger('change');
+            
+            // Hide again if it was hidden
+            if (wasHidden) {
+                setTimeout(function() {
+                    discountType.closest('td').addClass('hide').hide();
+                }, 100);
+            }
+        }
+    } else {
+        // If discount fields don't exist at all, create hidden inputs
+        var rowIndex = row.data('row_index') || row.find('input[name*="[product_id]"]').attr('name').match(/\[(\d+)\]/)[1];
+        
+        // Check if hidden inputs already exist
+        if (row.find('input[name="products[' + rowIndex + '][line_discount_type]"]').length == 0) {
+            row.append('<input type="hidden" name="products[' + rowIndex + '][line_discount_type]" value="percentage" class="row_discount_type">');
+            row.append('<input type="hidden" name="products[' + rowIndex + '][line_discount_amount]" value="20" class="row_discount_amount">');
+        } else {
+            row.find('input[name="products[' + rowIndex + '][line_discount_type]"]').val('percentage');
+            row.find('input[name="products[' + rowIndex + '][line_discount_amount]"]').val(20);
+        }
+        
+        // Manually recalculate the row
+        pos_each_row(row);
+        update_discount_display(row);
+        pos_total_row();
+    }
+}
+
+// Update discount display in product row
+function update_discount_display(row_obj) {
+    var discount_display = row_obj.find('.row_discount_display');
+    var discount_amount = __read_number(row_obj.find('input.row_discount_amount'));
+    var discount_type = row_obj.find('select.row_discount_type').val();
+    var unit_price = __read_number(row_obj.find('input.pos_unit_price'));
+    var quantity = __read_number(row_obj.find('input.pos_quantity'));
+    var tax_rate = row_obj.find('select.tax_id').find(':selected').data('rate') || 0;
+    
+    if (discount_amount > 0) {
+        // Calculate original price (before discount) with tax
+        var original_unit_price_inc_tax = __add_percent(unit_price, tax_rate);
+        var original_line_total = quantity * original_unit_price_inc_tax;
+        
+        // Calculate discount amount
+        var discount_value = 0;
+        if (discount_type == 'fixed') {
+            discount_value = discount_amount * quantity;
+        } else {
+            discount_value = (discount_amount / 100) * original_line_total;
+        }
+        
+        // Calculate final price (after discount) with tax
+        var discounted_unit_price = calculate_discounted_unit_price(row_obj);
+        var final_unit_price_inc_tax = __add_percent(discounted_unit_price, tax_rate);
+        var final_line_total = quantity * final_unit_price_inc_tax;
+        
+        // Update display
+        discount_display.find('.original_price_text').html(
+            'Original: <span class="display_currency" data-currency_symbol="true">' + original_line_total + '</span>'
+        );
+        
+        if (discount_type == 'fixed') {
+            discount_display.find('.discount_applied_text').html(
+                '- Discount: <span class="display_currency" data-currency_symbol="true">' + discount_value + '</span>'
+            );
+        } else {
+            discount_display.find('.discount_applied_text').html(
+                '- Discount: <span class="display_currency" data-currency_symbol="true">' + discount_value + '</span> (' + discount_amount + '%)'
+            );
+        }
+        
+        discount_display.find('.final_price_text').html(
+            'Final: <span class="display_currency" data-currency_symbol="true">' + final_line_total + '</span>'
+        );
+        
+        discount_display.show();
+    } else {
+        discount_display.hide();
+    }
+}
+
 function get_unit_price_from_discounted_unit_price(row, discounted_unit_price) {
     var this_unit_price = discounted_unit_price;
     var row_discount_type = row.find('select.row_discount_type').val();
@@ -2665,6 +2960,23 @@ $(document).on('change', '.payment_types_dropdown', function(e) {
             account_dropdown.prop('disabled', false); 
             account_dropdown.closest('.form-group').removeClass('hide');
         }    
+    }
+    
+    // Auto-populate amount for Clover payment
+    if (payment_type == 'clover') {
+        var total_payable = __read_number($('input#final_total_input'));
+        var total_paying = __read_number($('input#total_paying_input'));
+        var balance_due = total_payable - total_paying;
+        
+        // Set the amount in the payment row
+        if (balance_due > 0) {
+            __write_number(amount_element, balance_due);
+            amount_element.trigger('change');
+        }
+        
+        // Automatically send payment to Clover device
+        // Note: This will be sent when transaction is finalized, but we can prepare it here
+        toastr.info('Clover payment selected. Amount will be sent to device when transaction is finalized.');
     }
 });
 
@@ -3307,3 +3619,60 @@ function calculateManualProductSubtotal() {
     // Update subtotal display
     $('#manual_products_subtotal').text(__currency_trans_from_en(subtotal, false));
 }
+
+// Handle plastic bag charge toggle
+$(document).on('change', '#add_plastic_bag', function() {
+    var isChecked = $(this).is(':checked');
+    var plasticBagRow = $('#pos_table tbody tr[data-plastic-bag="true"]');
+    
+    if (isChecked) {
+        // Add plastic bag row if not already present
+        if (plasticBagRow.length === 0) {
+            var location_id = $('#location_id').val();
+            var currentRowCount = $('#pos_table tbody tr.product_row').length;
+            
+            $.ajax({
+                url: '/sells/pos/get_plastic_bag_row',
+                method: 'POST',
+                data: {
+                    _token: $('meta[name="csrf-token"]').attr('content'),
+                    product_row: currentRowCount,
+                    location_id: location_id
+                },
+                dataType: 'json',
+                success: function(result) {
+                    if (result.success && result.html_content) {
+                        // Add the plastic bag row
+                        $('#pos_table tbody').append(result.html_content);
+                        
+                        // Mark it as plastic bag row
+                        var newRow = $('#pos_table tbody tr').last();
+                        newRow.attr('data-plastic-bag', 'true');
+                        
+                        // Initialize the row - this will populate tax and calculate prices
+                        pos_each_row(newRow);
+                        
+                        // Trigger tax change to recalculate price with tax
+                        var taxSelect = newRow.find('select.tax_id');
+                        if (taxSelect.length && taxSelect.val()) {
+                            taxSelect.trigger('change');
+                        }
+                        
+                        // Recalculate totals
+                        pos_total_row();
+                    }
+                },
+                error: function() {
+                    toastr.error('Failed to add plastic bag charge');
+                    $('#add_plastic_bag').prop('checked', false);
+                }
+            });
+        }
+    } else {
+        // Remove plastic bag row
+        if (plasticBagRow.length > 0) {
+            plasticBagRow.remove();
+            pos_total_row();
+        }
+    }
+});

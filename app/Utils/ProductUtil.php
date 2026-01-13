@@ -721,6 +721,7 @@ class ProductUtil extends Util
             'p.enable_stock',
             'p.enable_sr_no',
             'p.artist',
+            'p.bin_position',
             'p.type as product_type',
             'p.name as product_actual_name',
             'p.warranty_id',

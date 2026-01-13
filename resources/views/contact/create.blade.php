@@ -136,6 +136,19 @@
 
 
             <div class="clearfix"></div>
+            
+            {{-- Employee Checkbox - Always visible when customer type is selected --}}
+            <div class="col-md-4 customer_fields" style="display: none;">
+              <div class="form-group">
+                  <label>
+                      {!! Form::checkbox('is_employee', 1, false, ['class' => 'input-icheck']); !!}
+                      <strong>Employee (20% discount)</strong>
+                  </label>
+                  <p class="help-block">Check this box to automatically apply 20% employee discount in POS</p>
+              </div>
+            </div>
+            
+            <div class="clearfix"></div>
         </div>
         <div class="row">
 {{--            <div class="col-md-12">--}}
@@ -198,8 +211,7 @@
                       <p class="help-block">@lang('lang_v1.credit_limit_help')</p>
                   </div>
                 </div>
-
-
+                
                 <div class="col-md-12"><hr/></div>
                 <div class="clearfix"></div>
 

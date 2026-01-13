@@ -120,7 +120,18 @@
             </div>
         </div>
         
-
+        {{-- Employee Checkbox - Always visible when customer type is selected --}}
+        <div class="col-md-4 customer_fields">
+          <div class="form-group">
+              <label>
+                  {!! Form::checkbox('is_employee', 1, !empty($contact->is_employee) && $contact->is_employee == 1, ['class' => 'input-icheck']); !!}
+                  <strong>Employee (20% discount)</strong>
+              </label>
+              <p class="help-block">Check this box to automatically apply 20% employee discount in POS</p>
+          </div>
+        </div>
+        
+        <div class="clearfix"></div>
 
 {{--        <div class="col-md-12">--}}
 {{--            <button type="button" class="btn btn-primary center-block more_btn" data-target="#more_div">@lang('lang_v1.more_info') <i class="fa fa-chevron-down"></i></button>--}}
@@ -180,7 +191,7 @@
               <p class="help-block">@lang('lang_v1.credit_limit_help')</p>
           </div>
         </div>
-          
+        
       <div class="col-md-12">
         <hr/>
       </div>
@@ -447,3 +458,28 @@
 
   </div><!-- /.modal-content -->
 </div><!-- /.modal-dialog -->
+
+<script type="text/javascript">
+    // Ensure customer_fields are visible when contact type is customer or both
+    $(document).ready(function() {
+        // Run when modal is shown
+        $('.contact_modal').on('shown.bs.modal', function() {
+            setTimeout(function() {
+                var contactType = $('#contact_type').val();
+                if (contactType == 'customer' || contactType == 'both') {
+                    $('.customer_fields').css('display', '').show();
+                }
+            }, 200);
+        });
+        
+        // Also run immediately if modal is already open
+        if ($('.contact_modal').hasClass('in') || $('.contact_modal').is(':visible')) {
+            setTimeout(function() {
+                var contactType = $('#contact_type').val();
+                if (contactType == 'customer' || contactType == 'both') {
+                    $('.customer_fields').css('display', '').show();
+                }
+            }, 100);
+        }
+    });
+</script>

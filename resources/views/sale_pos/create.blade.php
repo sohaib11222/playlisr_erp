@@ -11,6 +11,7 @@
 	@if(session('business.enable_rp') == 1)
         <input type="hidden" id="reward_point_enabled">
     @endif
+    <input type="hidden" id="is_employee" value="{{ $is_employee ?? false ? '1' : '0' }}">
     @php
 		$is_discount_enabled = $pos_settings['disable_discount'] != 1 ? true : false;
 		$is_rp_enabled = session('business.enable_rp') == 1 ? true : false;
@@ -84,6 +85,8 @@
 @include('sale_pos.partials.weighing_scale_modal')
 
 @include('sale_pos.partials.add_manual_product_modal')
+
+@include('sale_pos.partials.customer_account_modal')
 
 @stop
 @section('css')

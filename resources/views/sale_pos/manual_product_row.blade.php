@@ -77,9 +77,13 @@
 	{{-- Tax --}}
 	<td class="text-center {{$hide_tax}}">
 		<input type="hidden" name="products[{{$rowCount}}][item_tax]" class="item_tax" value="0">
-		<select name="products[{{$rowCount}}][tax_id]" class="form-control tax_id">
-			<option value="">@lang('lang_v1.select_tax')</option>
-		</select>
+		@if(!empty($tax_dropdown) && !empty($tax_dropdown['tax_rates']))
+			{!! Form::select("products[{$rowCount}][tax_id]", $tax_dropdown['tax_rates'], !empty($default_tax) ? $default_tax : null, ['placeholder' => 'Select', 'class' => 'form-control tax_id'], $tax_dropdown['attributes']); !!}
+		@else
+			<select name="products[{{$rowCount}}][tax_id]" class="form-control tax_id">
+				<option value="">@lang('lang_v1.select_tax')</option>
+			</select>
+		@endif
 	</td>
 
 	{{-- Unit Price Inc Tax --}}

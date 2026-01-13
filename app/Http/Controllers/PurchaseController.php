@@ -387,6 +387,11 @@ class PurchaseController extends Controller
             //Adjust stock over selling if found
             $this->productUtil->adjustStockOverSelling($transaction);
 
+            // Update product purchase dates
+            if ($transaction->status == 'received') {
+                $this->updateProductPurchaseDates($transaction);
+            }
+
             $this->transactionUtil->activityLog($transaction, 'added');
             
             DB::commit();
@@ -711,6 +716,11 @@ class PurchaseController extends Controller
 
             //Adjust stock over selling if found
             $this->productUtil->adjustStockOverSelling($transaction);
+
+            // Update product purchase dates if status changed to received
+            if ($transaction->status == 'received' && $before_status != 'received') {
+                $this->updateProductPurchaseDates($transaction);
+            }
 
             $new_purchase_order_ids = $transaction->purchase_order_ids ?? [];
             $purchase_order_ids = array_merge($purchase_order_ids, $new_purchase_order_ids);
@@ -1554,6 +1564,37 @@ class PurchaseController extends Controller
     public function importExcelFile()
     {
         return view('purchase.importfile');
+    }
+
+    /**
+     * Update product purchase dates when a purchase is received
+     */
+    private function updateProductPurchaseDates($transaction)
+    {
+        try {
+            $purchase_date = \Carbon\Carbon::parse($transaction->transaction_date)->format('Y-m-d');
+            
+            // Get unique product IDs from purchase lines
+            $product_ids = PurchaseLine::where('transaction_id', $transaction->id)
+                ->distinct()
+                ->pluck('product_id')
+                ->toArray();
+
+            if (empty($product_ids)) {
+                return;
+            }
+
+            // Update first_purchase_date for products that don't have one or have a later date
+            Product::whereIn('id', $product_ids)
+                ->where(function($q) use ($purchase_date) {
+                    $q->whereNull('first_purchase_date')
+                      ->orWhere('first_purchase_date', '>', $purchase_date);
+                })
+                ->update(['first_purchase_date' => $purchase_date]);
+                
+        } catch (\Exception $e) {
+            \Log::error("Error updating product purchase dates: " . $e->getMessage());
+        }
     }
     
     

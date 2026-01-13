@@ -51,6 +51,8 @@ use App\Utils\TransactionUtil;
 use App\Variation;
 use App\Warranty;
 use App\InvoiceLayout;
+use App\GiftCard;
+use App\LoyaltyTier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -199,6 +201,12 @@ class SellPosController extends Controller
         }
 
         $payment_types = $this->productUtil->payment_types(null, true, $business_id);
+        
+        // Add Clover payment option if configured
+        $cloverService = new \App\Services\CloverService();
+        if ($cloverService->isConfigured()) {
+            $payment_types['clover'] = 'Clover';
+        }
 
         //Shortcuts
         $shortcuts = json_decode($business_details->keyboard_shortcuts, true);
@@ -256,6 +264,12 @@ class SellPosController extends Controller
         $edit_discount = auth()->user()->can('edit_product_discount_from_pos_screen');
         $edit_price = auth()->user()->can('edit_product_price_from_pos_screen');
 
+        //Check if user is an employee (has Cashier role or Employee role)
+        $user = auth()->user();
+        $is_employee = $user->hasRole('Cashier#' . $business_id) || 
+                      $user->hasRole('Employee#' . $business_id) ||
+                      (method_exists($user, 'hasAnyRole') && $user->hasAnyRole(['Cashier#' . $business_id, 'Employee#' . $business_id]));
+
         //Added check because $users is of no use if enable_contact_assign if false
         $users = config('constants.enable_contact_assign') ? User::forDropdown($business_id, false, false, false, true) : [];
 
@@ -292,7 +306,8 @@ class SellPosController extends Controller
                 'default_invoice_schemes',
                 'invoice_layouts',
                 'users',
-                'categoriesForDropdown'
+                'categoriesForDropdown',
+                'is_employee'
             ));
     }
 
@@ -404,6 +419,22 @@ class SellPosController extends Controller
                 $contact_id = $request->get('contact_id', null);
                 $cg = $this->contactUtil->getCustomerGroup($business_id, $contact_id);
                 $input['customer_group_id'] = (empty($cg) || empty($cg->id)) ? null : $cg->id;
+                
+                // Check if customer is an employee and apply 20% discount automatically
+                if (!empty($contact_id)) {
+                    $contact = Contact::find($contact_id);
+                    if (!empty($contact) && !empty($contact->is_employee) && $contact->is_employee == 1) {
+                        // Apply 20% employee discount to all products that don't already have a discount
+                        if (!empty($input['products'])) {
+                            foreach ($input['products'] as $key => $product) {
+                                if (empty($product['line_discount_amount']) || $product['line_discount_amount'] == 0) {
+                                    $input['products'][$key]['line_discount_type'] = 'percentage';
+                                    $input['products'][$key]['line_discount_amount'] = 20;
+                                }
+                            }
+                        }
+                    }
+                }
 
                 //set selling price group id
                 $price_group_id = $request->has('price_group') ? $request->input('price_group') : null;
@@ -500,6 +531,33 @@ class SellPosController extends Controller
 
                 // Check for final and do some processing.
                 if ($input['status'] == 'final') {
+                    // Send payment to Clover if Clover payment method is used
+                    if (!empty($input['payment'])) {
+                        foreach ($input['payment'] as $payment) {
+                            if (!empty($payment['method']) && $payment['method'] == 'clover' && !empty($payment['amount'])) {
+                                try {
+                                    $cloverService = new \App\Services\CloverService();
+                                    if ($cloverService->isConfigured()) {
+                                        $cloverResult = $cloverService->sendPayment($payment['amount'], $transaction->invoice_no ?? 'TEMP-' . $transaction->id);
+                                        if (!$cloverResult['success']) {
+                                            \Log::warning('Clover payment failed: ' . ($cloverResult['msg'] ?? 'Unknown error'));
+                                        }
+                                    }
+                                } catch (\Exception $e) {
+                                    \Log::error('Clover payment error: ' . $e->getMessage());
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Update customer loyalty information
+                    if (!empty($input['contact_id'])) {
+                        $this->updateCustomerLoyalty($input['contact_id'], $business_id, $transaction->final_total);
+                    }
+                    
+                    // Update product sale dates
+                    $this->updateProductSaleDates($transaction);
+                    
                     // Update product stock
                     foreach ($input['products'] as $product) {
                         if ($product['product_id'] == 'manual') {
@@ -558,9 +616,9 @@ class SellPosController extends Controller
 
                     $transaction->payment_status = $payment_status;
 
-                    if ($request->session()->get('business.enable_rp') == 1) {
+                    if ($request->session()->get('business.enable_rp') == 1 && !empty($input['contact_id'])) {
                         $redeemed = !empty($input['rp_redeemed']) ? $input['rp_redeemed'] : 0;
-                        $this->transactionUtil->updateCustomerRewardPoints($contact_id, $transaction->rp_earned, 0, $redeemed);
+                        $this->transactionUtil->updateCustomerRewardPoints($input['contact_id'], $transaction->rp_earned, 0, $redeemed);
                     }
 
                     // Allocate the quantity from purchase and add mapping of
@@ -825,6 +883,12 @@ class SellPosController extends Controller
         $location_id = $transaction->location_id;
         $business_location = BusinessLocation::find($location_id);
         $payment_types = $this->productUtil->payment_types($business_location, true);
+        
+        // Add Clover payment option if configured
+        $cloverService = new \App\Services\CloverService();
+        if ($cloverService->isConfigured()) {
+            $payment_types['clover'] = 'Clover';
+        }
         $location_printer_type = $business_location->receipt_printer_type;
         $sell_details = TransactionSellLine::
                         join(
@@ -1728,6 +1792,63 @@ class SellPosController extends Controller
      *
      * @return \Illuminate\Http\Response
      */
+    /**
+     * Get plastic bag charge row
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function getPlasticBagRow()
+    {
+        $business_id = request()->session()->get('user.business_id');
+        $business = Business::findOrFail($business_id);
+        $pos_settings = empty($business->pos_settings) ? $this->businessUtil->defaultPosSettings() : json_decode($business->pos_settings, true);
+        
+        // Check if plastic bag charge is enabled
+        if (empty($pos_settings['enable_plastic_bag_charge'])) {
+            return response()->json([
+                'success' => false,
+                'msg' => 'Shopping bag charge is not enabled. Please enable it in Business Settings > POS Settings.'
+            ]);
+        }
+        
+        $plastic_bag_price = $pos_settings['plastic_bag_price'] ?? 0.10;
+        $row_count = request()->get('product_row', 0);
+        
+        // Get default tax rate for the location (plastic bag should have sales tax applied)
+        $location_id = request()->get('location_id');
+        $default_tax = null;
+        if ($location_id) {
+            $location = BusinessLocation::find($location_id);
+            if ($location) {
+                $default_tax = $location->default_sales_tax;
+            }
+        }
+        if (!$default_tax) {
+            $default_tax = $business->default_sales_tax;
+        }
+        
+        // Get tax dropdown
+        $tax_dropdown = TaxRate::forBusinessDropdown($business_id, true, true);
+        
+        // Plastic bag doesn't need category/subcategory - pass null
+        $productName = 'Plastic Bag';
+        $artist = '';
+        $category = null;
+        $subCategory = null;
+        $category_id = null;
+        $sub_category_id = null;
+        $price = $plastic_bag_price;
+        $rowCount = $row_count;
+        
+        $result = [
+            'success' => true,
+            'html_content' => view('sale_pos.manual_product_row', compact('productName', 'artist', 'category_id', 'category', 'sub_category_id', 'subCategory', 'price', 'rowCount', 'tax_dropdown', 'default_tax'))
+                ->render()
+        ];
+        
+        return response()->json($result);
+    }
+
     public function getManualProductRows()
     {
         $output = [];
@@ -1818,6 +1939,12 @@ class SellPosController extends Controller
         $location_id = $request->input('location_id');
         $removable = true;
         $payment_types = $this->productUtil->payment_types($location_id, true);
+        
+        // Add Clover payment option if configured
+        $cloverService = new \App\Services\CloverService();
+        if ($cloverService->isConfigured()) {
+            $payment_types['clover'] = 'Clover';
+        }
 
         $payment_line = $this->dummyPaymentLine;
 
@@ -2769,6 +2896,9 @@ class SellPosController extends Controller
             $transaction->is_quotation = 0;
             $transaction->save();
 
+            // Update product sale dates
+            $this->updateProductSaleDates($transaction);
+
             //update product stock
             foreach ($transaction->sell_lines as $sell_line) {
                 $decrease_qty = $sell_line->quantity;
@@ -3088,5 +3218,328 @@ class SellPosController extends Controller
         $filename = 'pos_sales_items_' . date('Y-m-d_His') . '.xlsx';
         
         return Excel::download(new \App\Exports\PosSalesExport($filters), $filename, \Maatwebsite\Excel\Excel::XLSX);
+    }
+
+    /**
+     * Get customer account information for POS
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function getCustomerAccountInfo()
+    {
+        $business_id = request()->session()->get('user.business_id');
+        $contact_id = request()->get('contact_id');
+
+        if (empty($contact_id)) {
+            return response()->json([
+                'success' => false,
+                'msg' => 'Contact ID is required'
+            ]);
+        }
+
+        $contact = Contact::where('business_id', $business_id)
+            ->where('id', $contact_id)
+            ->first();
+
+        if (!$contact) {
+            return response()->json([
+                'success' => false,
+                'msg' => 'Contact not found'
+            ]);
+        }
+
+        // Get gift cards
+        $gift_cards = GiftCard::where('business_id', $business_id)
+            ->where('contact_id', $contact_id)
+            ->where('status', 'active')
+            ->where('balance', '>', 0)
+            ->get()
+            ->map(function($card) {
+                return [
+                    'card_number' => $card->card_number,
+                    'balance' => $card->balance,
+                    'expiry_date' => $card->expiry_date ? $this->businessUtil->format_date($card->expiry_date, false) : null,
+                ];
+            });
+
+        // Get recent purchases (last 10)
+        $recent_purchases = Transaction::where('business_id', $business_id)
+            ->where('contact_id', $contact_id)
+            ->where('type', 'sell')
+            ->where('status', 'final')
+            ->orderBy('transaction_date', 'desc')
+            ->limit(10)
+            ->get()
+            ->map(function($transaction) {
+                return [
+                    'invoice_no' => $transaction->invoice_no,
+                    'date' => $this->businessUtil->format_date($transaction->transaction_date, false),
+                    'total' => $transaction->final_total,
+                    'payment_status' => $transaction->payment_status,
+                ];
+            });
+
+        // Calculate lifetime purchases
+        $lifetime_purchases = Transaction::where('business_id', $business_id)
+            ->where('contact_id', $contact_id)
+            ->where('type', 'sell')
+            ->where('status', 'final')
+            ->sum('final_total');
+
+        // Update contact lifetime purchases if different
+        if ($contact->lifetime_purchases != $lifetime_purchases) {
+            $contact->lifetime_purchases = $lifetime_purchases;
+            $contact->save();
+        }
+
+        // Get last purchase date
+        $last_purchase = Transaction::where('business_id', $business_id)
+            ->where('contact_id', $contact_id)
+            ->where('type', 'sell')
+            ->where('status', 'final')
+            ->orderBy('transaction_date', 'desc')
+            ->first();
+
+        if ($last_purchase && (!$contact->last_purchase_date || $contact->last_purchase_date != $last_purchase->transaction_date)) {
+            $contact->last_purchase_date = $last_purchase->transaction_date;
+            $contact->save();
+        }
+
+        // Get reward points if enabled (use loyalty_points if available, otherwise 0)
+        $reward_points = $contact->loyalty_points ?? 0;
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'contact' => [
+                    'id' => $contact->id,
+                    'name' => $contact->name,
+                    'balance' => $contact->balance ?? 0,
+                    'lifetime_purchases' => $lifetime_purchases,
+                    'loyalty_points' => $contact->loyalty_points ?? 0,
+                    'loyalty_tier' => $contact->loyalty_tier ?? 'Bronze',
+                    'last_purchase_date' => $contact->last_purchase_date ? $this->businessUtil->format_date($contact->last_purchase_date, false) : null,
+                    'reward_points' => $reward_points,
+                ],
+                'gift_cards' => $gift_cards,
+                'recent_purchases' => $recent_purchases,
+                'total_gift_card_balance' => $gift_cards->sum('balance'),
+            ]
+        ]);
+    }
+
+    /**
+     * Lookup gift card by card number
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function lookupGiftCard()
+    {
+        $business_id = request()->session()->get('user.business_id');
+        $card_number = request()->get('card_number');
+
+        if (empty($card_number)) {
+            return response()->json([
+                'success' => false,
+                'msg' => 'Card number is required'
+            ]);
+        }
+
+        $gift_card = GiftCard::where('business_id', $business_id)
+            ->where('card_number', $card_number)
+            ->first();
+
+        if (!$gift_card) {
+            return response()->json([
+                'success' => false,
+                'msg' => 'Gift card not found'
+            ]);
+        }
+
+        if (!$gift_card->isValid()) {
+            return response()->json([
+                'success' => false,
+                'msg' => 'Gift card is not valid (expired, inactive, or has no balance)'
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'card_number' => $gift_card->card_number,
+                'balance' => $gift_card->balance,
+                'expiry_date' => $gift_card->expiry_date ? $this->businessUtil->format_date($gift_card->expiry_date, false) : null,
+                'contact_name' => $gift_card->contact ? $gift_card->contact->name : null,
+            ]
+        ]);
+    }
+
+    /**
+     * Update customer loyalty information after a purchase
+     */
+    private function updateCustomerLoyalty($contact_id, $business_id, $final_total)
+    {
+        try {
+            $contact = Contact::where('business_id', $business_id)
+                ->where('id', $contact_id)
+                ->first();
+
+            if (!$contact) {
+                return;
+            }
+
+            // Calculate lifetime purchases
+            $lifetime_purchases = Transaction::where('business_id', $business_id)
+                ->where('contact_id', $contact_id)
+                ->where('type', 'sell')
+                ->where('status', 'final')
+                ->sum('final_total');
+
+            // Update lifetime purchases
+            $contact->lifetime_purchases = $lifetime_purchases;
+
+            // Get last purchase date
+            $last_purchase = Transaction::where('business_id', $business_id)
+                ->where('contact_id', $contact_id)
+                ->where('type', 'sell')
+                ->where('status', 'final')
+                ->orderBy('transaction_date', 'desc')
+                ->first();
+
+            if ($last_purchase) {
+                $contact->last_purchase_date = $last_purchase->transaction_date;
+            }
+
+            // Determine loyalty tier based on lifetime purchases
+            $tier = LoyaltyTier::getTierForPurchaseAmount($business_id, $lifetime_purchases);
+            if ($tier) {
+                $contact->loyalty_tier = $tier->name;
+            } else {
+                // Default to lowest tier if no tier found
+                $contact->loyalty_tier = 'Bronze';
+            }
+
+            $contact->save();
+        } catch (\Exception $e) {
+            \Log::error("Error updating customer loyalty: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Update product sale dates when a sale is finalized
+     */
+    private function updateProductSaleDates($transaction)
+    {
+        try {
+            $sale_date = \Carbon\Carbon::parse($transaction->transaction_date)->format('Y-m-d');
+            
+            // Get unique product IDs from sell lines (exclude null/zero IDs which are manual products)
+            // product_id is an integer column in transaction_sell_lines
+            $product_ids = \App\TransactionSellLine::where('transaction_id', $transaction->id)
+                ->whereNotNull('product_id')
+                ->where('product_id', '>', 0)
+                ->distinct()
+                ->pluck('product_id')
+                ->toArray();
+
+            if (empty($product_ids)) {
+                return;
+            }
+
+            // Update last_sale_date for all products sold
+            \App\Product::whereIn('id', $product_ids)
+                ->update(['last_sale_date' => $sale_date]);
+                
+        } catch (\Exception $e) {
+            \Log::error("Error updating product sale dates: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Send payment to Clover device
+     *
+     * @param int $id Transaction ID
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function sendToClover($id)
+    {
+        try {
+            $cloverService = new \App\Services\CloverService();
+            
+            if (!$cloverService->isConfigured()) {
+                return response()->json([
+                    'success' => false,
+                    'msg' => 'Clover API credentials not configured.'
+                ]);
+            }
+
+            $transaction = Transaction::findOrFail($id);
+            
+            if ($transaction->type !== 'sell' || $transaction->status !== 'final') {
+                return response()->json([
+                    'success' => false,
+                    'msg' => 'Transaction must be a finalized sale.'
+                ]);
+            }
+
+            $result = $cloverService->sendPayment($transaction->final_total, $transaction->invoice_no);
+
+            return response()->json($result);
+        } catch (\Exception $e) {
+            \Log::emergency("File:" . $e->getFile(). "Line:" . $e->getLine(). "Message:" . $e->getMessage());
+            
+            return response()->json([
+                'success' => false,
+                'msg' => 'Error: ' . $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Get Clover payment status
+     *
+     * @param string $paymentId
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getCloverPaymentStatus($paymentId)
+    {
+        try {
+            $cloverService = new \App\Services\CloverService();
+            
+            if (!$cloverService->isConfigured()) {
+                return response()->json([
+                    'success' => false,
+                    'msg' => 'Clover API credentials not configured.'
+                ]);
+            }
+
+            $result = $cloverService->getPaymentStatus($paymentId);
+
+            return response()->json($result);
+        } catch (\Exception $e) {
+            \Log::emergency("File:" . $e->getFile(). "Line:" . $e->getLine(). "Message:" . $e->getMessage());
+            
+            return response()->json([
+                'success' => false,
+                'msg' => 'Error: ' . $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Export manually added products from POS
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function exportManualProducts(Request $request)
+    {
+        // Check permissions
+        if (!auth()->user()->can('sell.view') && !auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        
+        $filename = 'manual_products_' . date('Y-m-d_His') . '.csv';
+        
+        return Excel::download(new \App\Exports\ManualProductsExport(), $filename, \Maatwebsite\Excel\Excel::CSV);
     }
 }
