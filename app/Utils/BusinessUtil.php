@@ -506,6 +506,16 @@ class BusinessUtil extends Util
         }
 
         $api_settings = $business->api_settings ?? [];
+        
+        // Ensure api_settings is an array (handle case where it might be a JSON string)
+        if (is_string($api_settings)) {
+            $api_settings = json_decode($api_settings, true) ?? [];
+        }
+        
+        if (!is_array($api_settings)) {
+            $api_settings = [];
+        }
+        
         $defaults = $this->defaultApiSettings();
 
         // Merge defaults with existing settings

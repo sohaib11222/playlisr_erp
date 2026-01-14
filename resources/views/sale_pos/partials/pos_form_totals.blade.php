@@ -32,7 +32,7 @@
 						@endif
 							<input type="hidden" name="discount_type" id="discount_type" value="@if(empty($edit)){{'percentage'}}@else{{$transaction->discount_type}}@endif" data-default="percentage">
 
-							<input type="hidden" name="discount_amount" id="discount_amount" value="@if(empty($edit)) {{@num_format($business_details->default_sales_discount)}} @else {{@num_format($transaction->discount_amount)}} @endif" data-default="{{$business_details->default_sales_discount}}">
+							<input type="hidden" name="discount_amount" id="discount_amount" value="@if(empty($edit)) {{0}} @else {{@num_format($transaction->discount_amount)}} @endif" data-default="0">
 
 							<input type="hidden" name="discount_reason" id="discount_reason" value="@if(empty($edit)){{''}}@else{{$transaction->discount_reason ?? ''}}@endif">
 

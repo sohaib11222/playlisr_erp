@@ -3062,18 +3062,42 @@ class ProductController extends Controller
             $category_id = $request->input('category_id');
             $sub_category_id = $request->input('sub_category_id');
 
+            // Validate product_ids
             if (empty($product_ids) || !is_array($product_ids)) {
                 return response()->json([
                     'success' => false,
                     'msg' => 'No products selected.'
                 ]);
             }
+            
+            // Filter out any invalid IDs and convert to integers
+            $product_ids = array_filter(array_map('intval', $product_ids), function($id) {
+                return $id > 0;
+            });
+            
+            if (empty($product_ids)) {
+                return response()->json([
+                    'success' => false,
+                    'msg' => 'No valid product IDs provided.'
+                ]);
+            }
 
+            // Validate category_id
             if (empty($category_id)) {
                 return response()->json([
                     'success' => false,
                     'msg' => 'Please select a category.'
                 ]);
+            }
+            
+            // Convert to integer
+            $category_id = (int)$category_id;
+            
+            // Validate sub_category_id if provided
+            if (!empty($sub_category_id)) {
+                $sub_category_id = (int)$sub_category_id;
+            } else {
+                $sub_category_id = null;
             }
 
             // Verify products belong to the business
@@ -3088,13 +3112,22 @@ class ProductController extends Controller
                 ]);
             }
 
+            // Prepare update data
+            $updateData = [
+                'category_id' => $category_id
+            ];
+            
+            // Only update sub_category_id if provided and not empty
+            if (!empty($sub_category_id)) {
+                $updateData['sub_category_id'] = $sub_category_id;
+            } else {
+                $updateData['sub_category_id'] = null;
+            }
+            
             // Update categories
             $updated = Product::where('business_id', $business_id)
                 ->whereIn('id', $product_ids)
-                ->update([
-                    'category_id' => $category_id,
-                    'sub_category_id' => $sub_category_id
-                ]);
+                ->update($updateData);
 
             return response()->json([
                 'success' => true,

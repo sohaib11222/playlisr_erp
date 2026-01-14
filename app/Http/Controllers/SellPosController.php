@@ -264,12 +264,6 @@ class SellPosController extends Controller
         $edit_discount = auth()->user()->can('edit_product_discount_from_pos_screen');
         $edit_price = auth()->user()->can('edit_product_price_from_pos_screen');
 
-        //Check if user is an employee (has Cashier role or Employee role)
-        $user = auth()->user();
-        $is_employee = $user->hasRole('Cashier#' . $business_id) || 
-                      $user->hasRole('Employee#' . $business_id) ||
-                      (method_exists($user, 'hasAnyRole') && $user->hasAnyRole(['Cashier#' . $business_id, 'Employee#' . $business_id]));
-
         //Added check because $users is of no use if enable_contact_assign if false
         $users = config('constants.enable_contact_assign') ? User::forDropdown($business_id, false, false, false, true) : [];
 
@@ -306,8 +300,7 @@ class SellPosController extends Controller
                 'default_invoice_schemes',
                 'invoice_layouts',
                 'users',
-                'categoriesForDropdown',
-                'is_employee'
+                'categoriesForDropdown'
             ));
     }
 
@@ -420,21 +413,8 @@ class SellPosController extends Controller
                 $cg = $this->contactUtil->getCustomerGroup($business_id, $contact_id);
                 $input['customer_group_id'] = (empty($cg) || empty($cg->id)) ? null : $cg->id;
                 
-                // Check if customer is an employee and apply 20% discount automatically
-                if (!empty($contact_id)) {
-                    $contact = Contact::find($contact_id);
-                    if (!empty($contact) && !empty($contact->is_employee) && $contact->is_employee == 1) {
-                        // Apply 20% employee discount to all products that don't already have a discount
-                        if (!empty($input['products'])) {
-                            foreach ($input['products'] as $key => $product) {
-                                if (empty($product['line_discount_amount']) || $product['line_discount_amount'] == 0) {
-                                    $input['products'][$key]['line_discount_type'] = 'percentage';
-                                    $input['products'][$key]['line_discount_amount'] = 20;
-                                }
-                            }
-                        }
-                    }
-                }
+                // Note: Employee discount is now applied manually via button in POS
+                // Removed automatic application to allow manual control
 
                 //set selling price group id
                 $price_group_id = $request->has('price_group') ? $request->input('price_group') : null;

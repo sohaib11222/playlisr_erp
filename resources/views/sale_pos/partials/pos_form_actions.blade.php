@@ -45,6 +45,10 @@
 
 			<button type="button" class="btn btn-success @if(!$is_mobile) @endif btn-flat no-print @if($pos_settings['disable_express_checkout'] != 0 || !array_key_exists('cash', $payment_types)) hide @endif pos-express-finalize @if($is_mobile) col-xs-6 @endif" data-pay_method="cash" title="@lang('tooltip.express_checkout')"> <i class="fas fa-money-bill-alt" aria-hidden="true"></i> @lang('lang_v1.express_checkout_cash')</button>
 
+			<button type="button" class="btn btn-warning btn-flat no-print hide @if($is_mobile) col-xs-6 @endif" id="pos-employee-discount-btn" title="Apply 20% Employee Discount to All Items" style="font-weight: bold; background-color: #f39c12; color: #fff; border-color: #e67e22;">
+				<i class="fas fa-user-tag" aria-hidden="true"></i> <strong>Employee Discount (20%)</strong>
+			</button>
+
 			@if(empty($edit))
 				<button type="button" class="btn btn-danger btn-flat @if($is_mobile) col-xs-6 @else btn-xs @endif" id="pos-cancel"> <i class="fas fa-window-close"></i> @lang('sale.cancel')</button>
 			@else

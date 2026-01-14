@@ -1058,27 +1058,56 @@
             }
         });
 
-        // Function to get selected product IDs
+        // Function to get selected product IDs (using checkbox values)
         function getSelectedProductIds() {
             const selectedIds = [];
-            product_table.rows({ search: 'applied' }).every(function() {
-                const row = this.node();
-                const checkbox = $(row).find('input[type="checkbox"]:not(#select-all-row)');
-                if (checkbox.is(':checked')) {
-                    const data = this.data();
-                    selectedIds.push(data.id);
+            // Use the same approach as getSelectedRows() - get from checkbox values
+            // Make sure we're only getting checkboxes from the product table
+            $('#product_table tbody input.row-select:checked').each(function() {
+                const productId = $(this).val();
+                if (productId && productId !== '') {
+                    // Convert to integer to ensure proper type
+                    const id = parseInt(productId);
+                    if (!isNaN(id) && id > 0) {
+                        selectedIds.push(id);
+                    }
                 }
             });
             return selectedIds;
         }
 
-        // Function to get all visible product IDs
+        // Function to get all visible product IDs (from all checkboxes in visible rows)
         function getAllVisibleProductIds() {
             const productIds = [];
-            product_table.rows({ search: 'applied' }).every(function() {
-                const data = this.data();
-                productIds.push(data.id);
-            });
+            // Get all checkboxes in visible/filtered rows
+            // Use DataTable API to iterate through visible rows
+            if (typeof product_table !== 'undefined' && product_table) {
+                product_table.rows({ search: 'applied' }).every(function() {
+                    const row = this.node();
+                    const checkbox = $(row).find('input.row-select');
+                    if (checkbox.length > 0) {
+                        const productId = checkbox.val();
+                        if (productId && productId !== '') {
+                            // Convert to integer to ensure proper type
+                            const id = parseInt(productId);
+                            if (!isNaN(id) && id > 0) {
+                                productIds.push(id);
+                            }
+                        }
+                    }
+                });
+            } else {
+                // Fallback: get all checkboxes if DataTable not available
+                $('#product_table tbody input.row-select').each(function() {
+                    const productId = $(this).val();
+                    if (productId && productId !== '') {
+                        const id = parseInt(productId);
+                        if (!isNaN(id) && id > 0) {
+                            productIds.push(id);
+                        }
+                    }
+                });
+            }
             return productIds;
         }
 
@@ -1171,6 +1200,12 @@
 
             $(this).prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Updating...');
 
+            console.log('Sending bulk update request:', {
+                product_ids: productIds,
+                category_id: categoryId,
+                sub_category_id: subCategoryId
+            });
+
             $.ajax({
                 url: "{{ action('ProductController@bulkUpdateCategories') }}",
                 type: 'POST',
@@ -1181,6 +1216,7 @@
                 },
                 headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
                 success: function(response) {
+                    console.log('Bulk update response:', response);
                     if (response.success) {
                         toastr.success(response.msg || `Successfully updated ${productIds.length} products.`);
                         $('#bulk_category_update_modal').modal('hide');
@@ -1188,15 +1224,28 @@
                         $('#bulk_category_id').val(null).trigger('change');
                         $('#bulk_subcategory_id').html('<option value="">Select Subcategory</option>');
                         $('#update_all_visible').prop('checked', true);
-                        product_table.ajax.reload();
+                        // Reload table after a short delay to ensure update is visible
+                        setTimeout(function() {
+                            product_table.ajax.reload(null, false); // false = don't reset paging
+                        }, 500);
                     } else {
                         toastr.error(response.msg || 'Failed to update products.');
                     }
                 },
                 error: function(xhr) {
+                    console.error('Bulk update error:', xhr);
                     let errorMsg = 'An error occurred while updating products.';
                     if (xhr.responseJSON && xhr.responseJSON.msg) {
                         errorMsg = xhr.responseJSON.msg;
+                    } else if (xhr.responseText) {
+                        try {
+                            const errorData = JSON.parse(xhr.responseText);
+                            if (errorData.msg) {
+                                errorMsg = errorData.msg;
+                            }
+                        } catch (e) {
+                            // If not JSON, use default message
+                        }
                     }
                     toastr.error(errorMsg);
                 },
@@ -1260,16 +1309,22 @@
             e.preventDefault();
             e.stopPropagation();
             
+            console.log('Bulk category update button clicked');
+            
             // Check if there are any uncategorized products visible
             const allIds = getAllVisibleProductIds();
+            console.log('All visible product IDs:', allIds);
+            
             if (allIds.length === 0) {
-                toastr.warning('No uncategorized products found. Make sure "Show Uncategorized Only" filter is enabled.');
+                toastr.warning('No uncategorized products found. Make sure "Show Uncategorized Only" filter is enabled and products are visible in the table.');
                 return;
             }
             
             // Reset modal state
             $('#update_all_visible').prop('checked', true);
             const selectedIds = getSelectedProductIds();
+            console.log('Selected product IDs:', selectedIds);
+            
             if (selectedIds.length > 0) {
                 $('#selected_products_count').text(selectedIds.length);
                 $('#selected_count_alert').show();
@@ -1277,6 +1332,10 @@
                 $('#selected_count_alert').hide();
             }
             $('#bulk_update_note').text(`This will update all ${allIds.length} visible uncategorized products.`);
+            
+            // Reset category selects
+            $('#bulk_category_id').val(null).trigger('change');
+            $('#bulk_subcategory_id').html('<option value="">Select Subcategory</option>');
             
             $('#bulk_category_update_modal').modal('show');
         });
