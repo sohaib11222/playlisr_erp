@@ -94,13 +94,23 @@ class PosSalesExport implements FromArray
                 // Convert string "0" to integer 0 for comparison
                 $is_direct_sale = $this->filters['is_direct_sale'];
                 if ($is_direct_sale == '0' || $is_direct_sale === 0) {
-                    // POS sales: is_direct_sale = 0 and sub_type is null (not a quotation or proforma)
+                    // POS sales: is_direct_sale = 0
+                    // Exclude only quotations and proforma invoices, but include all other POS transactions
                     $sells->where('transactions.is_direct_sale', 0)
-                          ->whereNull('transactions.sub_type');
+                          ->where(function($q) {
+                              $q->whereNull('transactions.sub_type')
+                                ->orWhereNotIn('transactions.sub_type', ['quotation', 'proforma']);
+                          });
                 } else {
                     // Direct sales: is_direct_sale = 1
                     $sells->where('transactions.is_direct_sale', 1);
                 }
+            } else {
+                // If no filter specified, exclude only quotations and proforma invoices
+                $sells->where(function($q) {
+                    $q->whereNull('transactions.sub_type')
+                      ->orWhereNotIn('transactions.sub_type', ['quotation', 'proforma']);
+                });
             }
 
             // Group by transaction ID (getListSells uses groupBy)
@@ -118,6 +128,7 @@ class PosSalesExport implements FromArray
             
             // Use Eloquent to get sell lines with relationships - more reliable
             // This matches how the system typically accesses sell lines
+            // IMPORTANT: Include all sell lines, even if product is deleted (use product_name from line)
             $sell_lines = TransactionSellLine::whereIn('transaction_id', $transaction_ids)
                 ->whereNull('parent_sell_line_id') // Only get main line items, not modifiers
                 ->with([
@@ -156,28 +167,47 @@ class PosSalesExport implements FromArray
 
             foreach ($sell_lines as $line) {
                 $transaction = $line->transaction;
-                $product = $line->product;
-                $variation = $line->variations; // This is a belongsTo relationship, returns single object
                 
-                // Ensure transaction, product, and variation are not null before accessing properties
-                if (!$transaction || !$product) {
-                    continue; // Skip this line if essential data is missing
+                // Skip only if transaction is missing (this is critical)
+                if (!$transaction) {
+                    continue;
                 }
 
                 $transaction_id = $transaction->id;
                 $payment_methods = $payment_methods_by_transaction->get($transaction_id, '');
                 
-                $product_name = $product->name ?? '';
-                $sku = ($variation && $variation->sub_sku) ? $variation->sub_sku : ($product->sku ?? '');
-                $artist = $product->artist ?? '';
+                // Use product name from line if product is deleted (product_name is stored in transaction_sell_lines)
+                // This ensures we export all items even if products were deleted
+                $product = $line->product;
+                $product_name = $product ? ($product->name ?? '') : ($line->product_name ?? '');
+                
+                // Use SKU from line if product is deleted
+                $variation = $line->variations; // This is a belongsTo relationship, returns single object
+                $sku = '';
+                if ($variation && $variation->sub_sku) {
+                    $sku = $variation->sub_sku;
+                } elseif ($product && $product->sku) {
+                    $sku = $product->sku;
+                } else {
+                    // Fallback to sub_sku from transaction_sell_lines if product is deleted
+                    $sku = $line->sub_sku ?? '';
+                }
+                
+                // Use artist from product if available, otherwise from line
+                $artist = '';
+                if ($product && $product->artist) {
+                    $artist = $product->artist;
+                } else {
+                    $artist = $line->product_artist ?? '';
+                }
                 
                 $line_total = ($line->unit_price ?? 0) * ($line->quantity ?? 0);
 
                 $sales_array[] = [
                     $transaction->transaction_date ? date('Y-m-d', strtotime($transaction->transaction_date)) : '',
                     $transaction->invoice_no ?? '',
-                    $transaction->contact->name ?? '',
-                    $transaction->location->name ?? '',
+                    $transaction->contact ? ($transaction->contact->name ?? '') : 'Walk-In Customer',
+                    $transaction->location ? ($transaction->location->name ?? '') : '',
                     $product_name,
                     $sku,
                     $artist,

@@ -51,6 +51,18 @@
 					<small><strong>Points:</strong> <span id="customer_loyalty_points">0</span></small>
 				</div>
 			</div>
+			<!-- Employee Discount Checkbox - Only shown for employee customers -->
+			<div class="row" id="employee_discount_row" style="margin-top: 10px; display: none;">
+				<div class="col-md-12">
+					<div class="checkbox">
+						<label>
+							<input type="checkbox" id="apply_employee_discount" name="apply_employee_discount" value="1">
+							<strong style="color: #f39c12;">Apply Employee Discount (20%)</strong>
+							<span class="text-muted">(20% discount on all items)</span>
+						</label>
+					</div>
+				</div>
+			</div>
 		</div>
 		
 		<div class="form-group">

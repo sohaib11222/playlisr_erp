@@ -51,6 +51,14 @@ $(document).ready(function() {
         }
     });
 
+    // Reset employee discount when customer changes
+    $(document).on('select2:clear', '#customer_id', function() {
+        $('#employee_discount_row').hide();
+        $('#apply_employee_discount').prop('checked', false);
+        $('#customer_id').data('employee_discount_applied', false);
+        removeEmployeeDiscount();
+    });
+    
     //get customer
     $('select#customer_id').select2({
         ajax: {
@@ -260,12 +268,15 @@ $(document).ready(function() {
         // Store employee status for later use
         if (data.is_employee == 1) {
             $('#customer_id').data('is_employee', true);
-            // Show employee discount button
-            $('#pos-employee-discount-btn').removeClass('hide');
+            // Show employee discount checkbox
+            $('#employee_discount_row').show();
         } else {
             $('#customer_id').data('is_employee', false);
-            // Hide employee discount button
-            $('#pos-employee-discount-btn').addClass('hide');
+            // Hide employee discount checkbox
+            $('#employee_discount_row').hide();
+            $('#apply_employee_discount').prop('checked', false);
+            // Remove any applied discounts if customer is not employee
+            removeEmployeeDiscount();
         }
     });
 
@@ -1018,33 +1029,70 @@ $(document).ready(function() {
         $('#posEditDiscountModal').modal('show');
     });
     
-    // Employee discount button handler
-    $(document).on('click', '#pos-employee-discount-btn', function() {
+    // Employee discount checkbox handler
+    $(document).on('change', '#apply_employee_discount', function() {
         var isEmployee = $('#customer_id').data('is_employee');
         if (!isEmployee) {
+            $(this).prop('checked', false);
             toastr.warning('Please select an employee customer first.');
             return;
         }
         
-        // Apply 20% discount to all products in the cart
-        var discountApplied = false;
-        $('table#pos_table tbody tr.product_row').each(function() {
-            var row = $(this);
-            var currentDiscount = __read_number(row.find('input.row_discount_amount'));
-            // Only apply if no discount is already set
-            if (!currentDiscount || currentDiscount == 0) {
-                applyEmployeeDiscount(row);
-                discountApplied = true;
+        if ($(this).is(':checked')) {
+            // Apply 20% discount to all products in the cart
+            var discountApplied = false;
+            $('table#pos_table tbody tr.product_row').each(function() {
+                var row = $(this);
+                var currentDiscount = __read_number(row.find('input.row_discount_amount'));
+                // Only apply if no discount is already set
+                if (!currentDiscount || currentDiscount == 0) {
+                    applyEmployeeDiscount(row);
+                    discountApplied = true;
+                }
+            });
+            
+            if (discountApplied) {
+                toastr.success('Employee discount (20%) applied to all items.');
+            } else {
+                toastr.info('All items already have discounts applied.');
             }
-        });
-        
-        if (discountApplied) {
-            toastr.success('Employee discount (20%) applied to all items.');
+            
+            $('#customer_id').data('employee_discount_applied', true);
             pos_total_row();
         } else {
-            toastr.info('All items already have discounts applied.');
+            // Remove employee discount from all items
+            removeEmployeeDiscount();
+            toastr.info('Employee discount removed from all items.');
+            $('#customer_id').data('employee_discount_applied', false);
+            pos_total_row();
         }
     });
+    
+    // Function to remove employee discount from all items
+    function removeEmployeeDiscount() {
+        $('table#pos_table tbody tr.product_row').each(function() {
+            var row = $(this);
+            var discountType = row.find('select.row_discount_type');
+            var discountAmount = row.find('input.row_discount_amount');
+            
+            // Check if this row has the employee discount (20% percentage)
+            var currentDiscount = __read_number(discountAmount);
+            var currentType = discountType.val();
+            
+            if (currentType == 'percentage' && currentDiscount == 20) {
+                // Remove the discount
+                discountType.val('percentage');
+                discountAmount.val(0);
+                
+                // Trigger change to recalculate
+                discountType.trigger('change');
+                discountAmount.trigger('change');
+                
+                // Update display
+                update_discount_display(row);
+            }
+        });
+    }
 
     //Shipping
     $('button#posShippingModalUpdate').click(function() {
@@ -1994,6 +2042,18 @@ function pos_product_row(variation_id = null, purchase_line_id = null, weighing_
                     
                     // Update discount display
                     update_discount_display(this_row);
+                    
+                    // Apply employee discount if checkbox is checked and customer is employee
+                    if ($('#apply_employee_discount').is(':checked')) {
+                        var isEmployee = $('#customer_id').data('is_employee');
+                        if (isEmployee) {
+                            var currentDiscount = __read_number(this_row.find('input.row_discount_amount'));
+                            if (!currentDiscount || currentDiscount == 0) {
+                                applyEmployeeDiscount(this_row);
+                                update_discount_display(this_row);
+                            }
+                        }
+                    }
 
                     pos_total_row();
 

@@ -470,22 +470,47 @@ class BusinessController extends Controller
             $api_settings = $request->input('api_settings', []);
             $default_api_settings = $this->businessUtil->defaultApiSettings();
             
-            // Merge defaults with existing settings
+            // Get existing settings (model cast will handle JSON decoding automatically)
             $existing_api_settings = !empty($business->api_settings) ? $business->api_settings : [];
+            
+            // Ensure existing_api_settings is an array
+            if (!is_array($existing_api_settings)) {
+                $existing_api_settings = [];
+            }
+            
             $merged_api_settings = array_merge($default_api_settings, $existing_api_settings);
             
             // Update with new values from request
-            foreach ($api_settings as $service => $settings) {
-                if (isset($merged_api_settings[$service])) {
-                    $merged_api_settings[$service] = array_merge($merged_api_settings[$service], $settings);
-                } else {
-                    $merged_api_settings[$service] = $settings;
+            if (!empty($api_settings) && is_array($api_settings)) {
+                foreach ($api_settings as $service => $settings) {
+                    if (is_array($settings)) {
+                        if (isset($merged_api_settings[$service]) && is_array($merged_api_settings[$service])) {
+                            $merged_api_settings[$service] = array_merge($merged_api_settings[$service], $settings);
+                        } else {
+                            $merged_api_settings[$service] = $settings;
+                        }
+                    }
                 }
             }
             
-            $business_details['api_settings'] = json_encode($merged_api_settings);
+            // Don't json_encode here - the model cast will handle it automatically
+            $business_details['api_settings'] = $merged_api_settings;
 
-            $business_details['custom_labels'] = json_encode($business_details['custom_labels']);
+            // Handle custom_labels - ensure it exists
+            // Note: custom_labels is not in the model casts, so we need to json_encode it
+            if (!isset($business_details['custom_labels'])) {
+                // If not in request, keep existing value or set to empty array
+                $existing_custom_labels = !empty($business->custom_labels) ? $business->custom_labels : '[]';
+                // If it's already a JSON string, use it; otherwise encode it
+                if (is_string($existing_custom_labels)) {
+                    $business_details['custom_labels'] = $existing_custom_labels;
+                } else {
+                    $business_details['custom_labels'] = json_encode($existing_custom_labels ?: []);
+                }
+            } else {
+                // Encode the custom_labels from request
+                $business_details['custom_labels'] = json_encode($business_details['custom_labels']);
+            }
 
             $business_details['common_settings'] = !empty($request->input('common_settings')) ? $request->input('common_settings') : [];
 
