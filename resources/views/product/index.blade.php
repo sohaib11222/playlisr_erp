@@ -149,9 +149,9 @@
                          <a class="btn btn-success pull-right margin-left-10" href="{{url('import-products')}}"><i class="fa fa-download"></i>Import Products</a>
                          <a class="btn btn-primary pull-right margin-left-10" href="{{action('ProductController@importSoldItems')}}"><i class="fa fa-upload"></i> Import Sold Items as Products</a>
                             <a class="btn btn-success pull-right margin-left-10" href="{{action('ProductController@downloadExcel')}}"><i class="fa fa-download"></i> @lang('lang_v1.download_excel')</a>
-                            <button type="button" class="btn btn-info pull-right margin-left-10" id="bulk_category_update_btn" style="display: none;">
+                            <a href="{{ action('ProductController@bulkCategoryUpdatePage') }}" class="btn btn-info pull-right margin-left-10" id="bulk_category_update_btn">
                                 <i class="fa fa-tags"></i> Bulk Update Categories
-                            </button>
+                            </a>
                             <button type="button" class="btn btn-warning pull-right margin-left-10" id="export_uncategorized_btn" style="display: none;">
                                 <i class="fa fa-download"></i> Export Uncategorized
                             </button>
@@ -233,7 +233,7 @@
                 <div class="form-group">
                     <label>
                         <input type="checkbox" id="update_all_visible" checked> 
-                        <strong>Update all visible uncategorized products</strong>
+                        <strong>Update all visible products</strong>
                     </label>
                     <br>
                     <small class="text-muted">Uncheck to update only selected products (use checkboxes in table)</small>
@@ -263,8 +263,77 @@
         console.log('Product index script loading...');
         console.log('jQuery version:', typeof jQuery !== 'undefined' ? jQuery.fn.jquery : 'NOT LOADED');
         
+        // Define helper functions globally BEFORE document.ready
+        // This ensures they're available when event handlers are attached
+        
+        // Function to get selected product IDs (using checkbox values)
+        window.getSelectedProductIds = function() {
+            const selectedIds = [];
+            // Use the same approach as getSelectedRows() - get from checkbox values
+            // Make sure we're only getting checkboxes from the product table
+            $('#product_table tbody input.row-select:checked').each(function() {
+                const productId = $(this).val();
+                if (productId && productId !== '') {
+                    // Convert to integer to ensure proper type
+                    const id = parseInt(productId);
+                    if (!isNaN(id) && id > 0) {
+                        selectedIds.push(id);
+                    }
+                }
+            });
+            return selectedIds;
+        };
+        
+        // Function to get all visible product IDs (from all checkboxes in visible rows)
+        window.getAllVisibleProductIds = function() {
+            const productIds = [];
+            // Get all checkboxes in visible/filtered rows
+            // Use DataTable API to iterate through visible rows
+            if (typeof product_table !== 'undefined' && product_table) {
+                product_table.rows({ search: 'applied' }).every(function() {
+                    const row = this.node();
+                    const checkbox = $(row).find('input.row-select');
+                    if (checkbox.length > 0) {
+                        const productId = checkbox.val();
+                        if (productId && productId !== '') {
+                            // Convert to integer to ensure proper type
+                            const id = parseInt(productId);
+                            if (!isNaN(id) && id > 0) {
+                                productIds.push(id);
+                            }
+                        }
+                    }
+                });
+            } else {
+                // Fallback: get all checkboxes if DataTable not available
+                $('#product_table tbody input.row-select').each(function() {
+                    const productId = $(this).val();
+                    if (productId && productId !== '') {
+                        const id = parseInt(productId);
+                        if (!isNaN(id) && id > 0) {
+                            productIds.push(id);
+                        }
+                    }
+                });
+            }
+            return productIds;
+        };
+        
         $(document).ready( function(){
             console.log('Document ready - setting up handlers');
+            
+            // Check if table exists before initializing
+            if ($('#product_table').length === 0) {
+                console.error('Product table not found!');
+                return;
+            }
+            
+            // Check if table has thead
+            if ($('#product_table thead').length === 0) {
+                console.error('Product table thead not found!');
+                return;
+            }
+            
             product_table = $('#product_table').DataTable({
                 processing: true,
                 serverSide: true,
@@ -335,6 +404,7 @@
                         { data: 'product_url', searchable: false},
                         { data: 'type', name: 'products.type'},
                         { data: 'category', name: 'c1.name'},
+                        { data: 'subcategory', name: 'c2.name'},
                         { data: 'brand', name: 'brands.name'},
                         { data: 'artist', name: 'products.artist'},
                         { data: 'tax', name: 'tax_rates.name', searchable: false},
@@ -539,14 +609,14 @@
             // Show/hide bulk update buttons based on uncategorized filter
             // Use iCheck events for iCheck checkboxes
             $(document).on('ifChecked', '#uncategorized_only', function() {
-                $('#bulk_category_update_btn, #export_uncategorized_btn').show();
+                $('#export_uncategorized_btn').show();
                 if ($("#product_list_tab").hasClass('active')) {
                     product_table.ajax.reload();
                 }
             });
 
             $(document).on('ifUnchecked', '#uncategorized_only', function() {
-                $('#bulk_category_update_btn, #export_uncategorized_btn').hide();
+                $('#export_uncategorized_btn').hide();
                 if ($("#product_list_tab").hasClass('active')) {
                     product_table.ajax.reload();
                 }
@@ -857,7 +927,13 @@
                         url: "{{ route('product.get_sub_categories') }}",
                         type: 'POST',
                         data: { cat_id: categoryId },
-                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                        headers: { 
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                            'Content-Type': 'application/x-www-form-urlencoded'
+                        },
+                        beforeSend: function() {
+                            console.log('Loading subcategories for category:', categoryId);
+                        },
                         success: function (data) {
                             console.log('Subcategories received:', data); // Debug
                             
@@ -875,10 +951,17 @@
                                 placeholder: 'Select Subcategory',
                                 allowClear: true
                             });
+                            
+                            console.log('Subcategories loaded successfully');
                         },
                         error: function (xhr, status, error) {
-                            console.error('Error loading subcategories:', error, xhr); // Debug
-                            toastr.error('Failed to fetch subcategories.');
+                            console.error('Error loading subcategories:', {
+                                status: status,
+                                error: error,
+                                response: xhr.responseText,
+                                statusCode: xhr.status
+                            });
+                            toastr.error('Failed to fetch subcategories. Please check console for details.');
                             
                             // Destroy Select2 before updating HTML
                             if (subCategorySelect.hasClass('select2-hidden-accessible')) {
@@ -939,187 +1022,85 @@
             });
             
             // Remove any existing event handlers and bind new one
-            $('#bulk_category_id').off('select2:select change').on('select2:select', function (e) {
+            // Use Select2 specific events - trigger change event which will handle loading
+            $('#bulk_category_id').off('select2:select select2:unselect change').on('select2:select', function (e) {
+                const categoryId = $(this).val();
+                console.log('Select2 select event fired! Category ID:', categoryId);
+                // Trigger change event which will handle the subcategory loading
+                setTimeout(() => {
+                    $(this).trigger('change');
+                }, 50);
+            });
+            
+            // Handle change event - this is where we actually load subcategories
+            $('#bulk_category_id').on('change', function() {
                 const categoryId = $(this).val();
                 const subCategorySelect = $('#bulk_subcategory_id');
                 
-                console.log('Select2 select event fired! Category ID:', categoryId);
-                console.log('Making AJAX request...');
+                console.log('Change event fired! Category ID:', categoryId);
                 
-                loadSubcategories(categoryId, subCategorySelect);
-            });
-            
-            // Also test with a simple change event
-            $('#bulk_category_id').on('change', function() {
-                console.log('=== REGULAR CHANGE EVENT FIRED ===');
-                console.log('Category ID:', $(this).val());
-                const categoryId = $(this).val();
                 if (categoryId) {
-                    loadSubcategories(categoryId, $('#bulk_subcategory_id'));
+                    // Only load if not already loading (avoid duplicate calls)
+                    if (!subCategorySelect.prop('disabled')) {
+                        window.loadSubcategories(categoryId, subCategorySelect);
+                    }
+                } else {
+                    // Clear subcategory if no category selected
+                    if (subCategorySelect.hasClass('select2-hidden-accessible')) {
+                        subCategorySelect.select2('destroy');
+                    }
+                    subCategorySelect.html('<option value="">Select Subcategory</option>');
+                    subCategorySelect.select2({
+                        dropdownParent: $('#bulk_category_update_modal'),
+                        placeholder: 'Select Subcategory',
+                        allowClear: true
+                    });
                 }
             });
             
             console.log('Select2 initialized and events bound');
-            console.log('Test: Try manually calling loadSubcategories(1, $("#bulk_subcategory_id")) in console');
+            console.log('Test: Try manually calling window.loadSubcategories(1, $("#bulk_subcategory_id")) in console');
         });
 
-        // Handle category change to load subcategories - use Select2 events (fallback)
-        $(document).on('select2:select change', '#bulk_category_id', function(e) {
+        // Handle category change to load subcategories - use event delegation as fallback
+        // This ensures it works even if modal initialization fails
+        // Use Select2 specific events
+        $(document).on('select2:select select2:unselect change', '#bulk_category_id', function(e) {
             const categoryId = $(this).val();
             const subCategorySelect = $('#bulk_subcategory_id');
             
-            console.log('=== EVENT HANDLER FIRED ===');
-            console.log('Event type:', e ? e.type : 'unknown');
-            console.log('Category changed:', categoryId);
-            console.log('Handler source: fallback event delegation');
+            console.log('Fallback handler fired! Event:', e.type, 'Category ID:', categoryId);
             
             if (categoryId) {
-                // Show loading state
-                subCategorySelect.prop('disabled', true);
-                
-                // Destroy Select2 if initialized
-                if (subCategorySelect.hasClass('select2-hidden-accessible')) {
-                    subCategorySelect.select2('destroy');
-                }
-                subCategorySelect.html('<option value="">Loading...</option>');
-                
-                // Re-initialize Select2 with loading state
-                subCategorySelect.select2({
-                    dropdownParent: $('#bulk_category_update_modal'),
-                    placeholder: 'Loading...',
-                    disabled: true
-                });
-                
-                console.log('=== AJAX REQUEST STARTING ===');
-                console.log('URL:', "{{ route('product.get_sub_categories') }}");
-                console.log('Category ID:', categoryId);
-                console.log('CSRF Token:', $('meta[name="csrf-token"]').attr('content'));
-                
-                $.ajax({
-                    url: "{{ route('product.get_sub_categories') }}",
-                    type: 'POST',
-                    data: { cat_id: categoryId },
-                    headers: { 
-                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
-                        'Content-Type': 'application/x-www-form-urlencoded'
-                    },
-                    beforeSend: function(xhr) {
-                        console.log('AJAX beforeSend - request is being sent');
-                    },
-                    success: function (data) {
-                        console.log('=== AJAX SUCCESS ===');
-                        console.log('Subcategories received:', data);
-                        
-                        // Destroy Select2 before updating HTML
-                        if (subCategorySelect.hasClass('select2-hidden-accessible')) {
-                            subCategorySelect.select2('destroy');
-                        }
-                        
-                        subCategorySelect.html(data);
-                        subCategorySelect.prop('disabled', false);
-                        
-                        // Re-initialize Select2
-                        subCategorySelect.select2({
-                            dropdownParent: $('#bulk_category_update_modal'),
-                            placeholder: 'Select Subcategory'
-                        });
-                    },
-                    error: function (xhr, status, error) {
-                        console.error('Error loading subcategories:', error, xhr); // Debug
-                        toastr.error('Failed to fetch subcategories.');
-                        
-                        // Destroy Select2 before updating HTML
-                        if (subCategorySelect.hasClass('select2-hidden-accessible')) {
-                            subCategorySelect.select2('destroy');
-                        }
-                        
-                        subCategorySelect.html('<option value="">Select Subcategory</option>');
-                        subCategorySelect.prop('disabled', false);
-                        
-                        // Re-initialize Select2 even on error
-                        subCategorySelect.select2({
-                            dropdownParent: $('#bulk_category_update_modal'),
-                            placeholder: 'Select Subcategory'
-                        });
-                    }
-                });
+                // Use the loadSubcategories function
+                window.loadSubcategories(categoryId, subCategorySelect);
             } else {
-                // Destroy Select2 if initialized
+                // Clear subcategory if no category selected
                 if (subCategorySelect.hasClass('select2-hidden-accessible')) {
                     subCategorySelect.select2('destroy');
                 }
                 subCategorySelect.html('<option value="">Select Subcategory</option>');
-                
-                // Re-initialize Select2
-                subCategorySelect.select2({
-                    dropdownParent: $('#bulk_category_update_modal'),
-                    placeholder: 'Select Subcategory'
-                });
+                if ($('#bulk_category_update_modal').is(':visible')) {
+                    subCategorySelect.select2({
+                        dropdownParent: $('#bulk_category_update_modal'),
+                        placeholder: 'Select Subcategory',
+                        allowClear: true
+                    });
+                }
             }
         });
 
-        // Function to get selected product IDs (using checkbox values)
-        function getSelectedProductIds() {
-            const selectedIds = [];
-            // Use the same approach as getSelectedRows() - get from checkbox values
-            // Make sure we're only getting checkboxes from the product table
-            $('#product_table tbody input.row-select:checked').each(function() {
-                const productId = $(this).val();
-                if (productId && productId !== '') {
-                    // Convert to integer to ensure proper type
-                    const id = parseInt(productId);
-                    if (!isNaN(id) && id > 0) {
-                        selectedIds.push(id);
-                    }
-                }
-            });
-            return selectedIds;
-        }
-
-        // Function to get all visible product IDs (from all checkboxes in visible rows)
-        function getAllVisibleProductIds() {
-            const productIds = [];
-            // Get all checkboxes in visible/filtered rows
-            // Use DataTable API to iterate through visible rows
-            if (typeof product_table !== 'undefined' && product_table) {
-                product_table.rows({ search: 'applied' }).every(function() {
-                    const row = this.node();
-                    const checkbox = $(row).find('input.row-select');
-                    if (checkbox.length > 0) {
-                        const productId = checkbox.val();
-                        if (productId && productId !== '') {
-                            // Convert to integer to ensure proper type
-                            const id = parseInt(productId);
-                            if (!isNaN(id) && id > 0) {
-                                productIds.push(id);
-                            }
-                        }
-                    }
-                });
-            } else {
-                // Fallback: get all checkboxes if DataTable not available
-                $('#product_table tbody input.row-select').each(function() {
-                    const productId = $(this).val();
-                    if (productId && productId !== '') {
-                        const id = parseInt(productId);
-                        if (!isNaN(id) && id > 0) {
-                            productIds.push(id);
-                        }
-                    }
-                });
-            }
-            return productIds;
-        }
+        // Functions are now defined globally above, before document.ready - no need to redefine here
 
         // Update selected count when modal opens
         $('#bulk_category_update_modal').on('show.bs.modal', function() {
             const updateAll = $('#update_all_visible').is(':checked');
             if (updateAll) {
-                const allIds = getAllVisibleProductIds();
+                const allIds = window.getAllVisibleProductIds();
                 $('#bulk_update_note').text(`This will update all ${allIds.length} visible uncategorized products.`);
                 $('#selected_count_alert').hide();
             } else {
-                const selectedIds = getSelectedProductIds();
+                const selectedIds = window.getSelectedProductIds();
                 $('#bulk_update_note').text(`This will update only selected products.`);
                 if (selectedIds.length > 0) {
                     $('#selected_products_count').text(selectedIds.length);
@@ -1134,11 +1115,11 @@
         $('#update_all_visible').on('change', function() {
             const updateAll = $(this).is(':checked');
             if (updateAll) {
-                const allIds = getAllVisibleProductIds();
+                const allIds = window.getAllVisibleProductIds();
                 $('#bulk_update_note').text(`This will update all ${allIds.length} visible uncategorized products.`);
                 $('#selected_count_alert').hide();
             } else {
-                const selectedIds = getSelectedProductIds();
+                const selectedIds = window.getSelectedProductIds();
                 $('#bulk_update_note').text(`This will update only selected products.`);
                 if (selectedIds.length > 0) {
                     $('#selected_products_count').text(selectedIds.length);
@@ -1155,7 +1136,7 @@
             if ($('#bulk_category_update_modal').hasClass('in') || $('#bulk_category_update_modal').is(':visible')) {
                 const updateAll = $('#update_all_visible').is(':checked');
                 if (!updateAll) {
-                    const selectedIds = getSelectedProductIds();
+                    const selectedIds = window.getSelectedProductIds();
                     if (selectedIds.length > 0) {
                         $('#selected_products_count').text(selectedIds.length);
                         $('#selected_count_alert').show();
@@ -1169,13 +1150,20 @@
         });
 
         // Confirm bulk category update - use event delegation
-        $(document).on('click', '#confirm_bulk_category_update', function() {
+        $(document).on('click', '#confirm_bulk_category_update', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            console.log('Update Categories button clicked!');
             const categoryId = $('#bulk_category_id').val();
             const subCategoryId = $('#bulk_subcategory_id').val();
             
+            console.log('Category ID:', categoryId);
+            console.log('Subcategory ID:', subCategoryId);
+            
             if (!categoryId) {
                 toastr.error('Please select a category.');
-                return;
+                return false;
             }
 
             // Get product IDs based on selection mode
@@ -1183,9 +1171,9 @@
             let productIds = [];
             
             if (updateAll) {
-                productIds = getAllVisibleProductIds();
+                productIds = window.getAllVisibleProductIds();
             } else {
-                productIds = getSelectedProductIds();
+                productIds = window.getSelectedProductIds();
             }
 
             if (productIds.length === 0) {
@@ -1207,7 +1195,7 @@
             });
 
             $.ajax({
-                url: "{{ action('ProductController@bulkUpdateCategories') }}",
+                url: "{{ url('products/bulk-update-categories') }}",
                 type: 'POST',
                 data: {
                     product_ids: productIds,
@@ -1232,8 +1220,13 @@
                         toastr.error(response.msg || 'Failed to update products.');
                     }
                 },
-                error: function(xhr) {
-                    console.error('Bulk update error:', xhr);
+                error: function(xhr, status, error) {
+                    console.error('Bulk update error:', {
+                        status: status,
+                        error: error,
+                        response: xhr.responseText,
+                        statusCode: xhr.status
+                    });
                     let errorMsg = 'An error occurred while updating products.';
                     if (xhr.responseJSON && xhr.responseJSON.msg) {
                         errorMsg = xhr.responseJSON.msg;
@@ -1245,6 +1238,7 @@
                             }
                         } catch (e) {
                             // If not JSON, use default message
+                            console.error('Failed to parse error response:', e);
                         }
                     }
                     toastr.error(errorMsg);
@@ -1304,40 +1298,36 @@
             });
         }
 
-        // Bulk category update button click handler
+        // Bulk category update button click handler - redirect to dedicated page
         $(document).on('click', '#bulk_category_update_btn', function(e) {
             e.preventDefault();
-            e.stopPropagation();
             
             console.log('Bulk category update button clicked');
             
-            // Check if there are any uncategorized products visible
-            const allIds = getAllVisibleProductIds();
-            console.log('All visible product IDs:', allIds);
-            
-            if (allIds.length === 0) {
-                toastr.warning('No uncategorized products found. Make sure "Show Uncategorized Only" filter is enabled and products are visible in the table.');
-                return;
-            }
-            
-            // Reset modal state
-            $('#update_all_visible').prop('checked', true);
-            const selectedIds = getSelectedProductIds();
+            // Get selected product IDs (checked checkboxes)
+            const selectedIds = window.getSelectedProductIds();
             console.log('Selected product IDs:', selectedIds);
             
-            if (selectedIds.length > 0) {
-                $('#selected_products_count').text(selectedIds.length);
-                $('#selected_count_alert').show();
-            } else {
-                $('#selected_count_alert').hide();
+            // If no products selected, get all visible products
+            let productIds = selectedIds;
+            if (productIds.length === 0) {
+                productIds = window.getAllVisibleProductIds();
+                console.log('No products selected, using all visible products:', productIds);
             }
-            $('#bulk_update_note').text(`This will update all ${allIds.length} visible uncategorized products.`);
             
-            // Reset category selects
-            $('#bulk_category_id').val(null).trigger('change');
-            $('#bulk_subcategory_id').html('<option value="">Select Subcategory</option>');
+            if (productIds.length === 0) {
+                toastr.warning('No products found. Please select products using checkboxes or make sure products are visible in the table.');
+                return false;
+            }
             
-            $('#bulk_category_update_modal').modal('show');
+            // Build URL with product IDs
+            const baseUrl = $(this).attr('href') || "{{ action('ProductController@bulkCategoryUpdatePage') }}";
+            const url = baseUrl + '?product_ids=' + productIds.join(',');
+            
+            console.log('Redirecting to:', url);
+            window.location.href = url;
+            
+            return false;
         });
 
     </script>

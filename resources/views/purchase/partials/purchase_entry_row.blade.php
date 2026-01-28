@@ -1,19 +1,16 @@
 @foreach( $variations as $variation)
     <tr @if(!empty($purchase_order_line)) data-purchase_order_id="{{$purchase_order_line->transaction_id}}" @endif>
         <td><span class="sr_number"></span></td>
-        <td>
-            {{ $product->name }} ({{$variation->sub_sku}})
+        <td style="white-space: nowrap;">
+            <span>{{ $product->name }} ({{$variation->sub_sku}})</span>
             @if( $product->type == 'variable' )
-                <br/>
-                (<b>{{ $variation->product_variation->name }}</b> : {{ $variation->name }})
+                <span class="text-muted"> | <b>{{ $variation->product_variation->name }}</b>: {{ $variation->name }}</span>
             @endif
             @if($product->enable_stock == 1)
-                <br>
-                <small class="text-muted" style="white-space: nowrap;">@lang('report.current_stock'): @if(!empty($variation->variation_location_details->first())) {{@num_format($variation->variation_location_details->first()->qty_available)}} @else 0 @endif {{ $product->unit->short_name }}</small>
+                <span class="text-muted"> | @lang('report.current_stock'): @if(!empty($variation->variation_location_details->first())) {{@num_format($variation->variation_location_details->first()->qty_available)}} @else 0 @endif {{ $product->unit->short_name }}</span>
             @endif
-
         </td>
-        <td>
+        <td style="white-space: nowrap;">
             @if(!empty($purchase_order_line))
                 {!! Form::hidden('purchases[' . $row_count . '][purchase_order_line_id]', $purchase_order_line->id ); !!}
             @endif
@@ -29,12 +26,23 @@
                 $currency_precision = session('business.currency_precision', 2);
                 $quantity_precision = session('business.quantity_precision', 2);
 
-                $quantity_value = !empty($purchase_order_line) ? $purchase_order_line->quantity : 1;
+                // Always default to 1 if no purchase order line or imported data
+                $quantity_value = 1;
+                if (!empty($purchase_order_line)) {
+                    $quantity_value = $purchase_order_line->quantity;
+                }
+                if (!empty($imported_data) && !empty($imported_data['quantity'])) {
+                    $quantity_value = $imported_data['quantity'];
+                }
+                
                 $max_quantity = !empty($purchase_order_line) ? $purchase_order_line->quantity - $purchase_order_line->po_quantity_purchased : 0;
-
-                $quantity_value = !empty($imported_data) ? $imported_data['quantity'] : $quantity_value;
             @endphp
 
+            <input type="hidden" class="base_unit_cost" value="{{$variation->default_purchase_price}}">
+            <input type="hidden" class="base_unit_selling_price" value="{{$variation->sell_price_inc_tax}}">
+            <input type="hidden" name="purchases[{{$row_count}}][product_unit_id]" value="{{$product->unit->id}}">
+            
+            <div style="display: flex !important; align-items: center !important; gap: 5px !important; white-space: nowrap !important; flex-wrap: nowrap !important; width: 100%;">
             <input type="text"
                 name="purchases[{{$row_count}}][quantity]"
                 value="{{@format_quantity($quantity_value)}}"
@@ -46,16 +54,10 @@
                     data-rule-max-value="{{$max_quantity}}"
                     data-msg-max-value="{{__('lang_v1.max_quantity_quantity_allowed', ['quantity' => $max_quantity])}}"
                 @endif
+                style="width: 70px !important; flex-shrink: 0 !important; margin: 0 !important; display: inline-block !important;"
             >
-
-
-            <input type="hidden" class="base_unit_cost" value="{{$variation->default_purchase_price}}">
-            <input type="hidden" class="base_unit_selling_price" value="{{$variation->sell_price_inc_tax}}">
-
-            <input type="hidden" name="purchases[{{$row_count}}][product_unit_id]" value="{{$product->unit->id}}">
             @if(!empty($sub_units))
-                <br>
-                <select name="purchases[{{$row_count}}][sub_unit_id]" class="form-control input-sm sub_unit">
+                <select name="purchases[{{$row_count}}][sub_unit_id]" class="form-control input-sm sub_unit" style="width: auto !important; min-width: 80px !important; margin: 0 !important; flex-shrink: 0 !important; display: inline-block !important;">
                     @foreach($sub_units as $key => $value)
                         <option value="{{$key}}" data-multiplier="{{$value['multiplier']}}">
                             {{$value['name']}}
@@ -63,19 +65,19 @@
                     @endforeach
                 </select>
             @else
-                {{ $product->unit->short_name }}
+                <span style="font-size: 12px !important; white-space: nowrap !important; display: inline-block !important; margin-left: 3px !important;">{{ $product->unit->short_name }}</span>
             @endif
 
             @if(!empty($product->second_unit))
-                <br>
-                <span style="white-space: nowrap;">
-                @lang('lang_v1.quantity_in_second_unit', ['unit' => $product->second_unit->short_name])*:</span><br>
+                <span style="font-size: 11px !important; white-space: nowrap !important; display: inline-block !important; margin-left: 5px !important;">@lang('lang_v1.quantity_in_second_unit', ['unit' => $product->second_unit->short_name])*:</span>
                 <input type="text"
                 name="purchases[{{$row_count}}][secondary_unit_quantity]"
                 value=""
                 class="form-control input-sm input_number"
+                style="width: 60px !important; margin: 0 !important; flex-shrink: 0 !important; display: inline-block !important;"
                 required>
             @endif
+            </div>
         </td>
         <td>
             @php
@@ -94,19 +96,17 @@
                 $discount_percent = !empty($imported_data['discount_percent']) ? $imported_data['discount_percent'] : $discount_percent;
             @endphp
             {!! Form::text('purchases[' . $row_count . '][pp_without_discount]',
-            number_format($pp_without_discount, $currency_precision, $currency_details->decimal_separator, $currency_details->thousand_separator), ['class' => 'form-control input-sm purchase_unit_cost_without_discount input_number', 'required']); !!}
+            number_format($pp_without_discount, $currency_precision, $currency_details->decimal_separator, $currency_details->thousand_separator), ['class' => 'form-control input-sm purchase_unit_cost_without_discount input_number', 'required', 'style' => 'display: inline-block; width: 80px;']); !!}
 
             @if(!empty($last_purchase_line))
-                <br>
-                <small class="text-muted">@lang('lang_v1.prev_unit_price'): @format_currency($last_purchase_line->pp_without_discount)</small>
+                <small class="text-muted" style="display: block; font-size: 10px; margin-top: 2px;">@lang('lang_v1.prev_unit_price'): @format_currency($last_purchase_line->pp_without_discount)</small>
             @endif
         </td>
         <td>
-            {!! Form::text('purchases[' . $row_count . '][discount_percent]', number_format($discount_percent, $currency_precision, $currency_details->decimal_separator, $currency_details->thousand_separator), ['class' => 'form-control input-sm inline_discounts input_number', 'required']); !!}
+            {!! Form::text('purchases[' . $row_count . '][discount_percent]', number_format($discount_percent, $currency_precision, $currency_details->decimal_separator, $currency_details->thousand_separator), ['class' => 'form-control input-sm inline_discounts input_number', 'required', 'style' => 'display: inline-block; width: 60px;']); !!}
 
             @if(!empty($last_purchase_line))
-                <br>
-                <small class="text-muted">
+                <small class="text-muted" style="display: block; font-size: 10px; margin-top: 2px;">
                     @lang('lang_v1.prev_discount'):
                     {{@num_format($last_purchase_line->discount_percent)}}%
                 </small>
@@ -114,7 +114,7 @@
         </td>
         <td>
             {!! Form::text('purchases[' . $row_count . '][purchase_price]',
-            number_format($purchase_price, $currency_precision, $currency_details->decimal_separator, $currency_details->thousand_separator), ['class' => 'form-control input-sm purchase_unit_cost input_number', 'required']); !!}
+            number_format($purchase_price, $currency_precision, $currency_details->decimal_separator, $currency_details->thousand_separator), ['class' => 'form-control input-sm purchase_unit_cost input_number', 'required', 'style' => 'width: 80px;']); !!}
         </td>
         <td class="{{$hide_tax}}">
             <span class="row_subtotal_before_tax display_currency">0</span>
@@ -144,21 +144,21 @@
                 $dpp_inc_tax = !empty($purchase_order_line) ? number_format($purchase_order_line->purchase_price_inc_tax/$purchase_order->exchange_rate, $currency_precision, $currency_details->decimal_separator, $currency_details->thousand_separator) : $dpp_inc_tax;
 
             @endphp
-            {!! Form::text('purchases[' . $row_count . '][purchase_price_inc_tax]', $dpp_inc_tax, ['class' => 'form-control input-sm purchase_unit_cost_after_tax input_number', 'required']); !!}
+            {!! Form::text('purchases[' . $row_count . '][purchase_price_inc_tax]', $dpp_inc_tax, ['class' => 'form-control input-sm purchase_unit_cost_after_tax input_number', 'required', 'style' => 'width: 80px;']); !!}
         </td>
         <td>
             <span class="row_subtotal_after_tax display_currency">0</span>
             <input type="hidden" class="row_subtotal_after_tax_hidden" value=0>
         </td>
         <td class="@if(!session('business.enable_editing_product_from_purchase') || !empty($is_purchase_order)) hide @endif">
-            {!! Form::text('purchases[' . $row_count . '][profit_percent]', number_format($variation->profit_percent, $currency_precision, $currency_details->decimal_separator, $currency_details->thousand_separator), ['class' => 'form-control input-sm input_number profit_percent', 'required']); !!}
+            {!! Form::text('purchases[' . $row_count . '][profit_percent]', number_format($variation->profit_percent, $currency_precision, $currency_details->decimal_separator, $currency_details->thousand_separator), ['class' => 'form-control input-sm input_number profit_percent', 'required', 'style' => 'width: 60px;']); !!}
         </td>
         @if(empty($is_purchase_order))
         <td>
             @if(session('business.enable_editing_product_from_purchase'))
-                {!! Form::text('purchases[' . $row_count . '][default_sell_price]', number_format($variation->sell_price_inc_tax, $currency_precision, $currency_details->decimal_separator, $currency_details->thousand_separator), ['class' => 'form-control input-sm input_number default_sell_price', 'required']); !!}
+                {!! Form::text('purchases[' . $row_count . '][default_sell_price]', number_format($variation->sell_price_inc_tax, $currency_precision, $currency_details->decimal_separator, $currency_details->thousand_separator), ['class' => 'form-control input-sm input_number default_sell_price', 'required', 'style' => 'width: 80px;']); !!}
             @else
-                {{ number_format($variation->sell_price_inc_tax, $currency_precision, $currency_details->decimal_separator, $currency_details->thousand_separator)}}
+                <span style="white-space: nowrap;">{{ number_format($variation->sell_price_inc_tax, $currency_precision, $currency_details->decimal_separator, $currency_details->thousand_separator)}}</span>
             @endif
         </td>
         @if(session('business.enable_lot_number'))
@@ -166,7 +166,7 @@
                 $lot_number = !empty($imported_data['lot_number']) ? $imported_data['lot_number'] : null;
             @endphp
             <td>
-                {!! Form::text('purchases[' . $row_count . '][lot_number]', $lot_number, ['class' => 'form-control input-sm']); !!}
+                {!! Form::text('purchases[' . $row_count . '][lot_number]', $lot_number, ['class' => 'form-control input-sm', 'style' => 'width: 100px;']); !!}
             </td>
         @endif
         @if(session('business.enable_product_expiry'))
@@ -195,19 +195,21 @@
                     $exp_date = !empty($imported_data['exp_date']) ? $imported_data['exp_date'] : null;
                 @endphp
 
-                <b class="@if($hide_mfg) hide @endif"><small>@lang('product.mfg_date'):</small></b>
-                <div class="input-group @if($hide_mfg) hide @endif">
-                    <span class="input-group-addon">
-                        <i class="fa fa-calendar"></i>
+                <div style="white-space: nowrap; font-size: 11px;">
+                <span class="@if($hide_mfg) hide @endif"><b>@lang('product.mfg_date'):</b></span>
+                <div class="input-group @if($hide_mfg) hide @endif" style="display: inline-block; width: 90px; margin-left: 3px;">
+                    <span class="input-group-addon" style="padding: 2px 5px;">
+                        <i class="fa fa-calendar" style="font-size: 10px;"></i>
                     </span>
-                    {!! Form::text('purchases[' . $row_count . '][mfg_date]', $mfg_date, ['class' => 'form-control input-sm expiry_datepicker mfg_date', 'readonly']); !!}
+                    {!! Form::text('purchases[' . $row_count . '][mfg_date]', $mfg_date, ['class' => 'form-control input-sm expiry_datepicker mfg_date', 'readonly', 'style' => 'padding: 2px 5px; font-size: 11px;']); !!}
                 </div>
-                <b><small>@lang('product.exp_date'):</small></b>
-                <div class="input-group">
-                    <span class="input-group-addon">
-                        <i class="fa fa-calendar"></i>
+                <span style="margin-left: 5px;"><b>@lang('product.exp_date'):</b></span>
+                <div class="input-group" style="display: inline-block; width: 90px; margin-left: 3px;">
+                    <span class="input-group-addon" style="padding: 2px 5px;">
+                        <i class="fa fa-calendar" style="font-size: 10px;"></i>
                     </span>
-                    {!! Form::text('purchases[' . $row_count . '][exp_date]', $exp_date, ['class' => 'form-control input-sm expiry_datepicker exp_date', 'readonly']); !!}
+                    {!! Form::text('purchases[' . $row_count . '][exp_date]', $exp_date, ['class' => 'form-control input-sm expiry_datepicker exp_date', 'readonly', 'style' => 'padding: 2px 5px; font-size: 11px;']); !!}
+                </div>
                 </div>
                 @else
                 <div class="text-center">

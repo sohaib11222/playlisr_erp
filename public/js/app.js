@@ -364,103 +364,133 @@ $(document).ready(function() {
 
     //Start: CRUD for Contacts
     //contacts table
-    var contact_table_type = $('#contact_type').val();
-    if (contact_table_type == 'supplier') {
-        var columns = [
-            { data: 'action', searchable: false, orderable: false },
-            { data: 'contact_id', name: 'contact_id' },
-            { data: 'name', name: 'name' },
-            { data: 'email', name: 'email' },
-            { data: 'created_at', name: 'contacts.created_at' },
-            { data: 'address', name: 'address', orderable: false },
-            { data: 'mobile', name: 'mobile' },
-        ];
-    } else if (contact_table_type == 'customer') {
-        var columns = [
-            { data: 'action', searchable: false, orderable: false },
-            { data: 'contact_id', name: 'contact_id' },
-            { data: 'name', name: 'name' },
-            { data: 'email', name: 'email' },
-            { data: 'created_at', name: 'contacts.created_at' },
-            { data: 'mobile', name: 'mobile' },
-        ];
-
-
-        if ($('#rp_col').length) {
+    var contact_table; // Declare outside to use in event handlers
+    // Only initialize if contact table exists on the page
+    if ($('#contact_table').length > 0 && $('#contact_type').length > 0) {
+        var contact_table_type = $('#contact_type').val();
+        var columns = [];
+        
+        if (contact_table_type == 'supplier') {
+            columns = [
+                { data: 'action', searchable: false, orderable: false },
+                { data: 'contact_id', name: 'contact_id' },
+                { data: 'name', name: 'name' },
+                { data: 'email', name: 'email' },
+                { data: 'created_at', name: 'contacts.created_at' },
+                { data: 'address', name: 'address', orderable: false },
+                { data: 'mobile', name: 'mobile' },
+            ];
+        } else if (contact_table_type == 'customer') {
+            columns = [
+                { data: 'action', searchable: false, orderable: false },
+                { data: 'contact_id', name: 'contact_id' },
+                { data: 'supplier_business_name', name: 'supplier_business_name', defaultContent: '', orderable: false },
+                { data: 'name', name: 'name' },
+                { data: 'email', name: 'email', defaultContent: '', orderable: false },
+                { data: 'created_at', name: 'contacts.created_at' },
+                { data: 'mobile', name: 'mobile', defaultContent: '', orderable: false },
+                { data: 'lifetime_purchases', name: 'lifetime_purchases', orderable: false, defaultContent: '0' },
+                { data: 'loyalty_points', name: 'loyalty_points', orderable: false, defaultContent: '0' },
+                { data: 'loyalty_tier', name: 'loyalty_tier', orderable: false, defaultContent: 'Bronze' },
+                { data: 'preorders_count', name: 'preorders_count', orderable: false, defaultContent: '0' },
+            ];
         }
-        Array.prototype.push.apply(columns, [{ data: 'customer_group', name: 'cg.name' },
 
-            ]);
-    }
+    // Only initialize DataTable if columns are defined and table exists
+    if (typeof columns !== 'undefined' && columns.length > 0 && $('#contact_table').length > 0) {
+        // Verify column count matches table headers
+        var headerCount = $('#contact_table thead th').length;
+        if (headerCount !== columns.length) {
+            console.warn('Column count mismatch: Headers=' + headerCount + ', Columns=' + columns.length);
+            console.log('Headers:', $('#contact_table thead th').map(function() { return $(this).text().trim(); }).get());
+            console.log('Columns:', columns.map(function(c) { return c.data; }));
+        }
+        
+        contact_table = $('#contact_table').DataTable({
+            processing: true,
+            serverSide: true,
+            scrollY:        "75vh",
+            scrollX:        false,
+            scrollCollapse: true,
+            autoWidth: true,
+            columnDefs: [
+                { targets: '_all', defaultContent: '' }
+            ],
+            "ajax": {
+                "url": "/contacts",
+                "data": function ( d ) {
+                    d.type = $('#contact_type').val();
+                    d = __datatable_ajax_callback(d);
 
-    contact_table = $('#contact_table').DataTable({
-        processing: true,
-        serverSide: true,
-        scrollY:        "75vh",
-        scrollX:        true,
-        scrollCollapse: true,
-        "ajax": {
-            "url": "/contacts",
-            "data": function ( d ) {
-                d.type = $('#contact_type').val();
-                d = __datatable_ajax_callback(d);
+                    if ($('#has_sell_due').length > 0 && $('#has_sell_due').is(':checked')) {
+                        d.has_sell_due = true;
+                    }
 
-                if ($('#has_sell_due').length > 0 && $('#has_sell_due').is(':checked')) {
-                    d.has_sell_due = true;
+                    if ($('#has_sell_return').length > 0 && $('#has_sell_return').is(':checked')) {
+                        d.has_sell_return = true;
+                    }
+
+                    if ($('#has_purchase_due').length > 0 && $('#has_purchase_due').is(':checked')) {
+                        d.has_purchase_due = true;
+                    }
+
+                    if ($('#has_purchase_return').length > 0 && $('#has_purchase_return').is(':checked')) {
+                        d.has_purchase_return = true;
+                    }
+
+                    if ($('#has_advance_balance').length > 0 && $('#has_advance_balance').is(':checked')) {
+                        d.has_advance_balance = true;
+                    }
+
+                    if ($('#has_opening_balance').length > 0 && $('#has_opening_balance').is(':checked')) {
+                        d.has_opening_balance = true;
+                    }
+
+                    if ($('#has_no_sell_from').length > 0) {
+                        d.has_no_sell_from = $('#has_no_sell_from').val();
+                    }
+
+                    if ($('#assigned_to').length > 0) {
+                        d.assigned_to = $('#assigned_to').val();
+                    }
+
+                    if ($('#cg_filter').length > 0) {
+                        d.customer_group_id = $('#cg_filter').val();
+                    }
+
+                    if ($('#status_filter').length > 0) {
+                        d.contact_status = $('#status_filter').val();
+                    }
+                },
+                error: function(xhr, error, thrown) {
+                    console.error('AJAX error:', error, thrown);
+                    console.error('Response:', xhr.responseText);
                 }
-
-                if ($('#has_sell_return').length > 0 && $('#has_sell_return').is(':checked')) {
-                    d.has_sell_return = true;
-                }
-
-                if ($('#has_purchase_due').length > 0 && $('#has_purchase_due').is(':checked')) {
-                    d.has_purchase_due = true;
-                }
-
-                if ($('#has_purchase_return').length > 0 && $('#has_purchase_return').is(':checked')) {
-                    d.has_purchase_return = true;
-                }
-
-                if ($('#has_advance_balance').length > 0 && $('#has_advance_balance').is(':checked')) {
-                    d.has_advance_balance = true;
-                }
-
-                if ($('#has_opening_balance').length > 0 && $('#has_opening_balance').is(':checked')) {
-                    d.has_opening_balance = true;
-                }
-
-                if ($('#has_no_sell_from').length > 0) {
-                    d.has_no_sell_from = $('#has_no_sell_from').val();
-                }
-
-                if ($('#assigned_to').length > 0) {
-                    d.assigned_to = $('#assigned_to').val();
-                }
-
-                if ($('#cg_filter').length > 0) {
-                    d.customer_group_id = $('#cg_filter').val();
-                }
-
-                if ($('#status_filter').length > 0) {
-                    d.contact_status = $('#status_filter').val();
-                }
+            },
+            aaSorting: [[1, 'desc']],
+            columns: columns,
+            fnDrawCallback: function(oSettings) {
+                __currency_convert_recursively($('#contact_table'));
+            },
+            error: function(xhr, error, thrown) {
+                console.error('DataTables error:', error, thrown);
+                console.error('Response:', xhr.responseText);
             }
-        },
-        aaSorting: [[1, 'desc']],
-        columns: columns,
-        fnDrawCallback: function(oSettings) {
-            __currency_convert_recursively($('#contact_table'));
-        },
-
-    });
+        });
+    } // End of DataTable initialization
+    } // End of contact table initialization check
 
     $(document).on('ifChanged', '#has_sell_due, #has_sell_return, \
     #has_purchase_due, #has_purchase_return, #has_advance_balance, #has_opening_balance', function(){
-        contact_table.ajax.reload();
+        if (typeof contact_table !== 'undefined' && contact_table) {
+            contact_table.ajax.reload();
+        }
     });
 
     $(document).on('change', '#has_no_sell_from, #cg_filter, #status_filter, #assigned_to', function(){
-        contact_table.ajax.reload();
+        if (typeof contact_table !== 'undefined' && contact_table) {
+            contact_table.ajax.reload();
+        }
     });
 
     //On display of add contact modal
@@ -549,6 +579,13 @@ $(document).ready(function() {
             $(this).select2();
         });
 
+        // Custom validation: at least email OR mobile required
+        $.validator.addMethod("emailOrMobile", function(value, element) {
+            var email = $('#email').val();
+            var mobile = $('#mobile').val();
+            return (email && email.trim() !== '') || (mobile && mobile.trim() !== '');
+        }, "Please provide at least an email or mobile number.");
+
         $('form#contact_add_form, form#contact_edit_form')
             .submit(function(e) {
                 e.preventDefault();
@@ -573,14 +610,38 @@ $(document).ready(function() {
                             },
                         },
                     },
+                    email: {
+                        emailOrMobile: true
+                    },
+                    mobile: {
+                        emailOrMobile: true
+                    },
                 },
                 messages: {
                     contact_id: {
                         remote: LANG.contact_id_already_exists,
                     },
+                    email: {
+                        emailOrMobile: "Please provide at least an email or mobile number."
+                    },
+                    mobile: {
+                        emailOrMobile: "Please provide at least an email or mobile number."
+                    },
                 },
                 submitHandler: function(form) {
                     e.preventDefault();
+                    // Double-check email or mobile before submitting
+                    var email = $('#email').val();
+                    var mobile = $('#mobile').val();
+                    if ((!email || email.trim() === '') && (!mobile || mobile.trim() === '')) {
+                        swal({
+                            title: 'Validation Error',
+                            text: 'Please provide at least an email or mobile number.',
+                            icon: 'error'
+                        });
+                        return false;
+                    }
+                    
                     $.ajax({
                         method: 'POST',
                         url: base_path + '/check-mobile',
@@ -2103,21 +2164,38 @@ function printer_connection_type_field(ctype) {
 }
 
 function show_invoice_preview() {
-    if ($('input[type=radio][name=scheme_type]:checked').val() == 'blank') {
-        var scheme_type = '';
-    } else if ($('input[type=radio][name=scheme_type]:checked').val() == 'year') {
+    // Check if required elements exist
+    if ($('#prefix').length === 0 || $('#start_number').length === 0 || $('#total_digits').length === 0) {
+        return; // Exit if elements don't exist
+    }
+    
+    var scheme_type = '';
+    var scheme_type_val = $('input[type=radio][name=scheme_type]:checked').val();
+    if (scheme_type_val == 'blank') {
+        scheme_type = '';
+    } else if (scheme_type_val == 'year') {
         var d = new Date();
         var this_year = d.getFullYear();
-        var scheme_type = this_year + APP.INVOICE_SCHEME_SEPARATOR;
+        scheme_type = this_year + (APP.INVOICE_SCHEME_SEPARATOR || '-');
     }
-    var prefix = $('#prefix').val()+scheme_type;
-    var start_number = $('#start_number').val();
-    var total_digits = $('#total_digits').val();
-    var preview = prefix + pad_zero(start_number, total_digits);
-    $('#preview_format').text('#' + preview);
+    
+    var prefix = ($('#prefix').val() || '') + scheme_type;
+    var start_number = $('#start_number').val() || '0';
+    var total_digits = $('#total_digits').val() || '4';
+    
+    // Only show preview if all values are valid
+    if (start_number && total_digits) {
+        var preview = prefix + pad_zero(start_number, total_digits);
+        $('#preview_format').text('#' + preview);
+    }
 }
 function pad_zero(str, max) {
+    // Handle null/undefined values
+    if (str == null || str === undefined) {
+        str = '0';
+    }
     str = str.toString();
+    max = parseInt(max) || 4; // Default to 4 if max is invalid
     return str.length < max ? pad_zero('0' + str, max) : str;
 }
 function get_sub_categories() {

@@ -21,19 +21,30 @@ class CloverService
 
     /**
      * Check if Clover is configured with required credentials
+     * Supports both OAuth (App ID/Secret) and Ecommerce API Tokens (Public/Private)
      *
      * @return bool
      */
     public function isConfigured()
     {
         $clover = $this->settings['clover'] ?? [];
-        return !empty($clover['app_id']) && 
-               !empty($clover['app_secret']) && 
-               !empty($clover['merchant_id']);
+        
+        // Check for Ecommerce API Tokens (simpler method)
+        if (!empty($clover['public_token']) && !empty($clover['private_token']) && !empty($clover['merchant_id'])) {
+            return true;
+        }
+        
+        // Check for OAuth credentials (alternative method)
+        if (!empty($clover['app_id']) && !empty($clover['app_secret']) && !empty($clover['merchant_id'])) {
+            return true;
+        }
+        
+        return false;
     }
 
     /**
-     * Get OAuth access token from Clover
+     * Get authentication token for Clover API
+     * Supports both Ecommerce API Tokens and OAuth tokens
      *
      * @return string|null
      */
@@ -41,41 +52,48 @@ class CloverService
     {
         $clover = $this->settings['clover'] ?? [];
         
-        // If we have a stored access token, use it
+        // Method 1: Use Ecommerce API Private Token (simpler, recommended)
+        if (!empty($clover['private_token'])) {
+            return $clover['private_token'];
+        }
+        
+        // Method 2: Use stored OAuth access token
         if (!empty($clover['access_token'])) {
             return $clover['access_token'];
         }
 
-        // Otherwise, get a new token
-        try {
-            $baseUrl = $clover['environment'] === 'production' 
-                ? 'https://api.clover.com' 
-                : 'https://sandbox.dev.clover.com';
+        // Method 3: Try to get OAuth token (requires OAuth flow)
+        if (!empty($clover['app_id']) && !empty($clover['app_secret'])) {
+            try {
+                $baseUrl = $clover['environment'] === 'production' 
+                    ? 'https://api.clover.com' 
+                    : 'https://sandbox.dev.clover.com';
 
-            $ch = curl_init($baseUrl . '/oauth/token');
-            curl_setopt_array($ch, [
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_POST => true,
-                CURLOPT_POSTFIELDS => http_build_query([
-                    'client_id' => $clover['app_id'],
-                    'client_secret' => $clover['app_secret'],
-                    'code' => '', // This would be obtained from OAuth flow
-                ]),
-                CURLOPT_HTTPHEADER => [
-                    'Content-Type: application/x-www-form-urlencoded'
-                ]
-            ]);
+                $ch = curl_init($baseUrl . '/oauth/token');
+                curl_setopt_array($ch, [
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_POST => true,
+                    CURLOPT_POSTFIELDS => http_build_query([
+                        'client_id' => $clover['app_id'],
+                        'client_secret' => $clover['app_secret'],
+                        'code' => '', // This would be obtained from OAuth flow
+                    ]),
+                    CURLOPT_HTTPHEADER => [
+                        'Content-Type: application/x-www-form-urlencoded'
+                    ]
+                ]);
 
-            $response = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
+                $response = curl_exec($ch);
+                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                curl_close($ch);
 
-            if ($httpCode === 200) {
-                $data = json_decode($response, true);
-                return $data['access_token'] ?? null;
+                if ($httpCode === 200) {
+                    $data = json_decode($response, true);
+                    return $data['access_token'] ?? null;
+                }
+            } catch (\Exception $e) {
+                Log::error('Clover OAuth Error: ' . $e->getMessage());
             }
-        } catch (\Exception $e) {
-            Log::error('Clover OAuth Error: ' . $e->getMessage());
         }
 
         return null;
@@ -119,15 +137,28 @@ class CloverService
                 'taxAmount' => 0
             ];
 
+            // For Ecommerce API, use public token in header, private token for auth
+            $publicToken = $clover['public_token'] ?? '';
+            $authHeader = !empty($publicToken) 
+                ? 'Bearer ' . $accessToken 
+                : 'Bearer ' . $accessToken;
+            
+            $headers = [
+                'Authorization: ' . $authHeader,
+                'Content-Type: application/json'
+            ];
+            
+            // Add public token if using ecommerce API tokens
+            if (!empty($publicToken)) {
+                $headers[] = 'X-Clover-Public-Token: ' . $publicToken;
+            }
+            
             $ch = curl_init($baseUrl . '/v3/merchants/' . $clover['merchant_id'] . '/payments');
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_POST => true,
                 CURLOPT_POSTFIELDS => json_encode($paymentData),
-                CURLOPT_HTTPHEADER => [
-                    'Authorization: Bearer ' . $accessToken,
-                    'Content-Type: application/json'
-                ]
+                CURLOPT_HTTPHEADER => $headers
             ]);
 
             $response = curl_exec($ch);
@@ -214,6 +245,191 @@ class CloverService
             return [
                 'success' => false,
                 'msg' => 'Error checking payment status: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Get base URL for Clover API
+     *
+     * @return string
+     */
+    private function getBaseUrl()
+    {
+        $clover = $this->settings['clover'] ?? [];
+        return $clover['environment'] === 'production' 
+            ? 'https://api.clover.com' 
+            : 'https://sandbox.dev.clover.com';
+    }
+
+    /**
+     * Get API headers with authentication
+     *
+     * @return array
+     */
+    private function getApiHeaders()
+    {
+        $clover = $this->settings['clover'] ?? [];
+        $accessToken = $this->getAccessToken();
+        $publicToken = $clover['public_token'] ?? '';
+        
+        $headers = [
+            'Authorization: Bearer ' . $accessToken,
+            'Content-Type: application/json'
+        ];
+        
+        if (!empty($publicToken)) {
+            $headers[] = 'X-Clover-Public-Token: ' . $publicToken;
+        }
+        
+        return $headers;
+    }
+
+    /**
+     * Get customers from Clover
+     *
+     * @param int $limit Limit number of customers to fetch
+     * @param int $offset Offset for pagination
+     * @return array
+     */
+    public function getCustomers($limit = 100, $offset = 0)
+    {
+        if (!$this->isConfigured()) {
+            return [
+                'success' => false,
+                'msg' => 'Clover API credentials not configured.'
+            ];
+        }
+
+        try {
+            $clover = $this->settings['clover'] ?? [];
+            $merchantId = $clover['merchant_id'] ?? '';
+            
+            if (empty($merchantId)) {
+                return [
+                    'success' => false,
+                    'msg' => 'Clover merchant ID not configured.'
+                ];
+            }
+
+            $baseUrl = $this->getBaseUrl();
+            $url = $baseUrl . '/v3/merchants/' . $merchantId . '/customers';
+            $url .= '?limit=' . $limit . '&offset=' . $offset;
+
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_HTTPHEADER => $this->getApiHeaders()
+            ]);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $error = curl_error($ch);
+            curl_close($ch);
+
+            if ($error) {
+                throw new \Exception('cURL Error: ' . $error);
+            }
+
+            if ($httpCode === 200) {
+                $data = json_decode($response, true);
+                return [
+                    'success' => true,
+                    'customers' => $data['elements'] ?? [],
+                    'total' => $data['count'] ?? count($data['elements'] ?? []),
+                    'has_more' => !empty($data['href']) && strpos($data['href'], 'offset') !== false
+                ];
+            } else {
+                throw new \Exception('HTTP Error: ' . $httpCode . ' Response: ' . $response);
+            }
+        } catch (\Exception $e) {
+            Log::error('Clover Get Customers Error: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'msg' => 'Error fetching customers: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Get customer orders from Clover
+     *
+     * @param string $customerId Clover customer ID
+     * @return array
+     */
+    public function getCustomerOrders($customerId)
+    {
+        if (!$this->isConfigured()) {
+            return [
+                'success' => false,
+                'msg' => 'Clover API credentials not configured.'
+            ];
+        }
+
+        try {
+            $clover = $this->settings['clover'] ?? [];
+            $merchantId = $clover['merchant_id'] ?? '';
+            
+            if (empty($merchantId)) {
+                return [
+                    'success' => false,
+                    'msg' => 'Clover merchant ID not configured.'
+                ];
+            }
+
+            $baseUrl = $this->getBaseUrl();
+            $url = $baseUrl . '/v3/merchants/' . $merchantId . '/customers/' . $customerId . '/orders';
+
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_HTTPHEADER => $this->getApiHeaders()
+            ]);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($httpCode === 200) {
+                $data = json_decode($response, true);
+                return [
+                    'success' => true,
+                    'orders' => $data['elements'] ?? []
+                ];
+            } else {
+                throw new \Exception('HTTP Error: ' . $httpCode);
+            }
+        } catch (\Exception $e) {
+            Log::error('Clover Get Customer Orders Error: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'msg' => 'Error fetching customer orders: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Test Clover API connection
+     *
+     * @return array
+     */
+    public function testConnection()
+    {
+        if (!$this->isConfigured()) {
+            return [
+                'success' => false,
+                'msg' => 'Clover API credentials not configured.'
+            ];
+        }
+
+        try {
+            // Try to fetch a small number of customers to test connection
+            $result = $this->getCustomers(1, 0);
+            return $result;
+        } catch (\Exception $e) {
+            return [
+                'success' => false,
+                'msg' => 'Connection test failed: ' . $e->getMessage()
             ];
         }
     }

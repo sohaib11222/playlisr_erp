@@ -73,19 +73,13 @@
                     {!! Form::text('prefix', null, ['class' => 'form-control', 'placeholder' => __( 'business.prefix_placeholder' ) ]); !!}
                 </div>
             </div>
-            <div class="col-md-3 individual">
+            <div class="col-md-4 individual">
                 <div class="form-group">
                     {!! Form::label('first_name', __( 'business.first_name' ) . ':*') !!}
                     {!! Form::text('first_name', null, ['class' => 'form-control', 'required', 'placeholder' => __( 'business.first_name' ) ]); !!}
                 </div>
             </div>
-            <div class="col-md-3 individual" >
-                <div class="form-group">
-                    {!! Form::label('middle_name', __( 'lang_v1.middle_name' ) . ':') !!}
-                    {!! Form::text('middle_name', null, ['class' => 'form-control', 'placeholder' => __( 'lang_v1.middle_name' ) ]); !!}
-                </div>
-            </div>
-            <div class="col-md-3 individual">
+            <div class="col-md-4 individual">
                 <div class="form-group">
                     {!! Form::label('last_name', __( 'business.last_name' ) . ':') !!}
                     {!! Form::text('last_name', null, ['class' => 'form-control', 'placeholder' => __( 'business.last_name' ) ]); !!}
@@ -95,12 +89,13 @@
 
             <div class="col-md-3">
                 <div class="form-group">
-                    {!! Form::label('mobile', __('contact.mobile') . ':*') !!}
+                    {!! Form::label('mobile', __('contact.mobile') . ':') !!}
+                    <small class="text-muted">(@lang('lang_v1.email_or_mobile_required'))</small>
                     <div class="input-group">
                         <span class="input-group-addon">
                             <i class="fa fa-mobile"></i>
                         </span>
-                        {!! Form::text('mobile', null, ['class' => 'form-control', 'required', 'placeholder' => __('contact.mobile')]); !!}
+                        {!! Form::text('mobile', null, ['class' => 'form-control', 'id' => 'mobile', 'placeholder' => __('contact.mobile')]); !!}
                     </div>
                 </div>
             </div>
@@ -109,11 +104,12 @@
             <div class="col-md-3">
                 <div class="form-group">
                     {!! Form::label('email', __('business.email') . ':') !!}
+                    <small class="text-muted">(@lang('lang_v1.email_or_mobile_required'))</small>
                     <div class="input-group">
                         <span class="input-group-addon">
                             <i class="fa fa-envelope"></i>
                         </span>
-                        {!! Form::email('email', null, ['class' => 'form-control','placeholder' => __('business.email')]); !!}
+                        {!! Form::email('email', null, ['class' => 'form-control', 'id' => 'email', 'placeholder' => __('business.email')]); !!}
                     </div>
                 </div>
             </div>
@@ -137,16 +133,7 @@
 
             <div class="clearfix"></div>
             
-            {{-- Employee Checkbox - Always visible when customer type is selected --}}
-            <div class="col-md-4 customer_fields" style="display: none;">
-              <div class="form-group">
-                  <label>
-                      {!! Form::checkbox('is_employee', 1, false, ['class' => 'input-icheck']); !!}
-                      <strong>Employee (20% discount)</strong>
-                  </label>
-                  <p class="help-block">Check this box to automatically apply 20% employee discount in POS</p>
-              </div>
-            </div>
+            {{-- Employee Checkbox - Removed from new customer creation (only shown for existing employees in POS) --}}
             
             <div class="clearfix"></div>
         </div>

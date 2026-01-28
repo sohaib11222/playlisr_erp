@@ -166,6 +166,17 @@
                   ['class' => 'form-control select2', 'required']); !!}
               </div>
             </div>
+            
+            <div class="col-sm-4 @if(!session('business.enable_price_tax')) hide @endif">
+              <div class="form-group">
+                <br>
+                <label>
+                    {!! Form::checkbox('tax_exempt', 1, !empty($product->tax_exempt) ? $product->tax_exempt : false, ['class' => 'input-icheck']); !!} 
+                    <strong>Tax Exempt</strong>
+                </label>
+                <p class="help-block">Check if this product is exempt from sales tax</p>
+              </div>
+            </div>
 
             <div class="clearfix"></div>
             <div class="col-sm-4">

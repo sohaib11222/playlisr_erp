@@ -360,7 +360,7 @@ class BusinessController extends Controller
                 'redeem_amount_per_unit_rp', 'min_order_total_for_redeem',
                 'min_redeem_point', 'max_redeem_point', 'rp_expiry_period',
                 'rp_expiry_type', 'custom_labels', 'weighing_scale_setting',
-                'code_label_1', 'code_1', 'code_label_2', 'code_2', 'currency_precision', 'quantity_precision']);
+                'code_label_1', 'code_1', 'code_label_2', 'code_2', 'currency_precision', 'quantity_precision', 'streetpulse_acronym']);
 
             if (!empty($request->input('enable_rp')) &&  $request->input('enable_rp') == 1) {
                 $business_details['enable_rp'] = 1;
@@ -667,7 +667,7 @@ class BusinessController extends Controller
     }
 
     /**
-     * Test Streetpulse connection
+     * Test Streetpulse FTP connection
      *
      * @param \Illuminate\Http\Request $request
      * @return \Illuminate\Http\JsonResponse
@@ -680,7 +680,7 @@ class BusinessController extends Controller
 
         try {
             $streetpulseService = new \App\Services\StreetpulseService();
-            $result = $streetpulseService->testConnection();
+            $result = $streetpulseService->testFtpConnection();
 
             return response()->json($result);
         } catch (\Exception $e) {
@@ -694,7 +694,7 @@ class BusinessController extends Controller
     }
 
     /**
-     * Sync sales data to Streetpulse
+     * Sync sales data to Streetpulse (FTP upload)
      *
      * @param \Illuminate\Http\Request $request
      * @return \Illuminate\Http\JsonResponse
@@ -708,10 +708,21 @@ class BusinessController extends Controller
         try {
             $streetpulseService = new \App\Services\StreetpulseService();
             
-            $startDate = $request->input('start_date');
-            $endDate = $request->input('end_date');
+            // Accept date parameter (defaults to yesterday if not provided)
+            $date = $request->input('date');
+            if (!$date) {
+                $date = date('Y-m-d', strtotime('-1 day'));
+            }
             
-            $result = $streetpulseService->syncSales($startDate, $endDate);
+            // Validate date format
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+                return response()->json([
+                    'success' => false,
+                    'msg' => 'Invalid date format. Use YYYY-MM-DD format.'
+                ]);
+            }
+            
+            $result = $streetpulseService->syncDailySales($date);
 
             return response()->json($result);
         } catch (\Exception $e) {

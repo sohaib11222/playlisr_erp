@@ -112,7 +112,7 @@ class TransactionUtil extends Util
             'recur_repetitions' => !empty($input['recur_repetitions']) ? $input['recur_repetitions'] : 0,
             'order_addresses' => !empty($input['order_addresses']) ? $input['order_addresses'] : null,
             'sub_type' => !empty($input['sub_type']) ? $input['sub_type'] : null,
-            'rp_earned' => $input['status'] == 'final' ? $this->calculateRewardPoints($business_id, $final_total) : 0,
+            'rp_earned' => $input['status'] == 'final' ? $this->calculateRewardPoints($business_id, $final_total, $input['contact_id'] ?? null) : 0,
             'rp_redeemed' => !empty($input['rp_redeemed']) ? $input['rp_redeemed'] : 0,
             'rp_redeemed_amount' => !empty($input['rp_redeemed_amount']) ? $input['rp_redeemed_amount'] : 0,
             'is_created_from_api' => !empty($input['is_created_from_api']) ? 1 : 0,
@@ -233,7 +233,7 @@ class TransactionUtil extends Util
             'subscription_repeat_on' => !empty($input['subscription_repeat_on']) ? $input['subscription_repeat_on'] : null,
             'recur_repetitions' => !empty($input['recur_repetitions']) ? $input['recur_repetitions'] : 0,
             'order_addresses' => !empty($input['order_addresses']) ? $input['order_addresses'] : null,
-            'rp_earned' => $input['status'] == 'final' ? $this->calculateRewardPoints($business_id, $final_total) : 0,
+            'rp_earned' => $input['status'] == 'final' ? $this->calculateRewardPoints($business_id, $final_total, $input['contact_id'] ?? null) : 0,
             'rp_redeemed' => !empty($input['rp_redeemed']) ? $input['rp_redeemed'] : 0,
             'rp_redeemed_amount' => !empty($input['rp_redeemed_amount']) ? $input['rp_redeemed_amount'] : 0,
             'types_of_service_id' => !empty($input['types_of_service_id']) ? $input['types_of_service_id'] : null,
@@ -4605,7 +4605,7 @@ class TransactionUtil extends Util
      *
      * @return integer
      */
-    public function calculateRewardPoints($business_id, $total)
+    public function calculateRewardPoints($business_id, $total, $customer_id = null)
     {
         if (session()->has('business')) {
             $business = session()->get('business');
@@ -4625,6 +4625,21 @@ class TransactionUtil extends Util
 
             if (!empty($business->max_rp_per_order) && $business->max_rp_per_order < $total_points) {
                 $total_points = $business->max_rp_per_order;
+            }
+            
+            // Apply tier multiplier if customer has a tier
+            if (!empty($customer_id)) {
+                $customer = Contact::find($customer_id);
+                if ($customer && !empty($customer->loyalty_tier) && !$customer->is_default) {
+                    $tier = \App\LoyaltyTier::where('business_id', $business_id)
+                        ->where('name', $customer->loyalty_tier)
+                        ->where('is_active', true)
+                        ->first();
+                    
+                    if ($tier && $tier->points_multiplier > 1.0) {
+                        $total_points = floor($total_points * $tier->points_multiplier);
+                    }
+                }
             }
         }
 
@@ -4660,6 +4675,28 @@ class TransactionUtil extends Util
 
         $customer->total_rp = $total_points;
         $customer->total_rp_used += $total_redeemed;
+        
+        // Sync loyalty_points with total_rp for consistency
+        $customer->loyalty_points = (int)$total_points;
+        
+        // Apply tier multiplier if customer has a tier
+        if (!empty($customer->loyalty_tier) && $total_earned > 0) {
+            $business_id = $customer->business_id;
+            $tier = \App\LoyaltyTier::where('business_id', $business_id)
+                ->where('name', $customer->loyalty_tier)
+                ->where('is_active', true)
+                ->first();
+            
+            if ($tier && $tier->points_multiplier > 1.0) {
+                // Apply multiplier to newly earned points
+                $multiplier_bonus = floor($total_earned * ($tier->points_multiplier - 1.0));
+                if ($multiplier_bonus > 0) {
+                    $customer->total_rp += $multiplier_bonus;
+                    $customer->loyalty_points = (int)$customer->total_rp;
+                }
+            }
+        }
+        
         $customer->save();
     }
 
@@ -5881,7 +5918,7 @@ class TransactionUtil extends Util
             $is_reward_expired = $this->isRewardExpired($sell->transaction_date, $business_id);
             if (!$is_reward_expired) {
                 $diff = $sell->final_total - $sell_return->final_total;
-                $new_reward_point = $this->calculateRewardPoints($business_id, $diff);
+                $new_reward_point = $this->calculateRewardPoints($business_id, $diff, $sell->contact_id);
                 $this->updateCustomerRewardPoints($sell->contact_id, $new_reward_point, $sell->rp_earned);
 
                 $sell->rp_earned = $new_reward_point;

@@ -258,6 +258,58 @@
                                     </div>
                                 </div>
                             @endif
+                            
+                            @if(isset($gift_cards) && $gift_cards->count() > 0)
+                                <div class="col-md-3">
+                                    <div class="info-box bg-green">
+                                        <span class="info-box-icon"><i class="fa fa-credit-card"></i></span>
+
+                                        <div class="info-box-content">
+                                          <span class="info-box-text">Gift Cards</span>
+                                          <span class="info-box-number">@format_currency($total_gift_card_balance ?? 0)</span>
+                                          <span class="info-box-text"><small>{{$gift_cards->count()}} active card(s)</small></span>
+                                        </div>
+                                        <!-- /.info-box-content -->
+                                    </div>
+                                </div>
+                            @endif
+                            
+                            <div class="col-md-12">
+                                @if(isset($gift_cards) && $gift_cards->count() > 0)
+                                    <div class="box box-success">
+                                        <div class="box-header with-border">
+                                            <h3 class="box-title"><i class="fa fa-credit-card"></i> Active Gift Cards</h3>
+                                        </div>
+                                        <div class="box-body">
+                                            <div class="table-responsive">
+                                                <table class="table table-bordered table-striped">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Card Number</th>
+                                                            <th>Balance</th>
+                                                            <th>Initial Value</th>
+                                                            <th>Expiry Date</th>
+                                                            <th>Status</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        @foreach($gift_cards as $card)
+                                                            <tr>
+                                                                <td><strong>{{$card->card_number}}</strong></td>
+                                                                <td>@format_currency($card->balance)</td>
+                                                                <td>@format_currency($card->initial_value)</td>
+                                                                <td>{{$card->expiry_date ? \Carbon\Carbon::parse($card->expiry_date)->format('Y-m-d') : 'No expiry'}}</td>
+                                                                <td><span class="label label-success">{{ucfirst($card->status)}}</span></td>
+                                                            </tr>
+                                                        @endforeach
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                @endif
+                            </div>
+                            
                             <div class="col-md-12">
                                 <div class="table-responsive">
                                     <table class="table table-bordered table-striped" 

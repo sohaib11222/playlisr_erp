@@ -127,6 +127,10 @@
                             <th>@lang('business.email')</th>
                             <th>@lang('lang_v1.added_on')</th>
                             <th>@lang('contact.mobile')</th>
+                            <th>Lifetime Purchases</th>
+                            <th>Loyalty Points</th>
+                            <th>Loyalty Tier</th>
+                            <th>Preorders</th>
                         @endif
                         @php
                             $custom_labels = json_decode(session('business.custom_labels'), true);
@@ -151,6 +155,10 @@
     <div class="modal fade pay_contact_due_modal" tabindex="-1" role="dialog"
         aria-labelledby="gridSystemModalLabel">
     </div>
+    
+    @if($type == 'customer')
+        @include('sale_pos.partials.customer_account_modal')
+    @endif
 
 </section>
 <!-- /.content -->
@@ -251,6 +259,147 @@
 <script type="text/javascript">
     $(document).on('shown.bs.modal', '.contact_modal', function(e) {
         initAutocomplete();
+    });
+    
+    // Function to show customer profile modal (similar to POS) - define globally
+    window.showCustomerProfileModal = function(contactId) {
+        if (!contactId) {
+            toastr.error('Please select a customer first');
+            return;
+        }
+
+        // Check if modal exists
+        if ($('#customer_account_modal').length === 0) {
+            toastr.error('Customer account modal not found. Please refresh the page.');
+            console.error('Modal #customer_account_modal not found');
+            return;
+        }
+
+        // Show loading
+        $('#customer_account_loading').show();
+        $('#customer_account_content').hide();
+
+        // Open modal
+        $('#customer_account_modal').modal('show');
+
+        // Load detailed customer info
+        $.ajax({
+            url: '/sells/pos/get-customer-account-info',
+            type: 'GET',
+            data: { contact_id: contactId },
+            dataType: 'json',
+            success: function(response) {
+                $('#customer_account_loading').hide();
+                
+                if (response && response.success && response.data) {
+                    var data = response.data;
+                    var contact = data.contact;
+
+                    // Update modal content
+                    $('#modal_customer_name').text(contact.name);
+                    $('#modal_account_balance').text(__currency_trans_from_en(contact.balance || 0, true));
+                    $('#modal_lifetime_purchases').text(__currency_trans_from_en(contact.lifetime_purchases || 0, true));
+                    $('#modal_loyalty_points').text(contact.loyalty_points || 0);
+                    $('#modal_loyalty_tier').text(contact.loyalty_tier || 'Bronze');
+                    $('#modal_last_purchase_date').text(contact.last_purchase_date || 'Never');
+                    $('#modal_total_gift_card_balance').text(__currency_trans_from_en(data.total_gift_card_balance || 0, true));
+
+                    // Update gift cards list
+                    var giftCardsHtml = '';
+                    if (data.gift_cards && data.gift_cards.length > 0) {
+                        data.gift_cards.forEach(function(card) {
+                            giftCardsHtml += '<p><strong>Card:</strong> ' + card.card_number + 
+                                          ' | <strong>Balance:</strong> ' + __currency_trans_from_en(card.balance, true);
+                            if (card.expiry_date) {
+                                giftCardsHtml += ' | <strong>Expires:</strong> ' + card.expiry_date;
+                            }
+                            giftCardsHtml += '</p>';
+                        });
+                    } else {
+                        giftCardsHtml = '<p class="text-muted">No active gift cards</p>';
+                    }
+                    $('#modal_gift_cards_list').html(giftCardsHtml);
+
+                    // Update preorders
+                    var preordersHtml = '';
+                    var preorderCount = 0;
+                    if (data.preorders && data.preorders.length > 0) {
+                        preorderCount = data.preorders.length;
+                        data.preorders.forEach(function(preorder) {
+                            var productDisplay = preorder.product_name;
+                            if (preorder.artist) {
+                                productDisplay = preorder.artist + ' - ' + productDisplay;
+                            }
+                            preordersHtml += '<tr>' +
+                                '<td>' + productDisplay + '</td>' +
+                                '<td>' + (preorder.sub_sku || 'N/A') + '</td>' +
+                                '<td>' + preorder.quantity + '</td>' +
+                                '<td>' + preorder.order_date + '</td>' +
+                                '<td>' + (preorder.expected_date || 'Not set') + '</td>' +
+                                '</tr>';
+                        });
+                    } else {
+                        preordersHtml = '<tr><td colspan="5" class="text-center text-muted">No pending preorders</td></tr>';
+                    }
+                    $('#modal_preorders_list').html(preordersHtml);
+                    $('#modal_preorder_count').text('(' + preorderCount + ' preorder' + (preorderCount !== 1 ? 's' : '') + ')');
+
+                    // Update purchase count
+                    var totalPurchases = data.total_purchases_count || 0;
+                    $('#modal_purchase_count').text('(' + totalPurchases + ' purchase' + (totalPurchases !== 1 ? 's' : '') + ')');
+                    
+                    // Update all purchases (full history)
+                    var purchasesHtml = '';
+                    if (data.all_purchases && data.all_purchases.length > 0) {
+                        data.all_purchases.forEach(function(purchase) {
+                            var itemsText = purchase.item_count + ' item' + (purchase.item_count !== 1 ? 's' : '');
+                            var viewLink = '<a href="' + '/sells/' + purchase.id + '" target="_blank" class="btn btn-xs btn-info"><i class="fa fa-eye"></i> View</a>';
+                            
+                            purchasesHtml += '<tr>' +
+                                '<td><strong>' + purchase.invoice_no + '</strong></td>' +
+                                '<td>' + purchase.date + '</td>' +
+                                '<td>' + itemsText + '</td>' +
+                                '<td>' + __currency_trans_from_en(purchase.total, true) + '</td>' +
+                                '<td><span class="label label-' + (purchase.payment_status === 'paid' ? 'success' : purchase.payment_status === 'partial' ? 'warning' : 'danger') + '">' + purchase.payment_status + '</span></td>' +
+                                '<td>' + viewLink + '</td>' +
+                                '</tr>';
+                        });
+                    } else {
+                        purchasesHtml = '<tr><td colspan="6" class="text-center text-muted">No purchases found</td></tr>';
+                    }
+                    $('#modal_all_purchases_list').html(purchasesHtml);
+
+                    $('#customer_account_content').show();
+                } else {
+                    $('#customer_account_loading').hide();
+                    $('#customer_account_content').show();
+                    toastr.error('Failed to load customer information. Response: ' + JSON.stringify(response));
+                    console.error('Failed to load customer info:', response);
+                }
+            },
+            error: function(xhr, status, error) {
+                $('#customer_account_loading').hide();
+                $('#customer_account_content').show();
+                toastr.error('Error loading customer information: ' + error);
+                console.error('AJAX error:', {xhr: xhr, status: status, error: error});
+            }
+        });
+    };
+    
+    // Handle view customer profile click - use delegated event for dynamically added content
+    $(document).on('click', '.view_customer_profile', function(e) {
+        e.preventDefault();
+        e.stopPropagation(); // Prevent dropdown from interfering
+        
+        var contactId = $(this).data('contact-id') || $(this).attr('data-contact-id');
+        console.log('View Profile clicked for contact ID:', contactId); // Debug log
+        
+        if (contactId) {
+            showCustomerProfileModal(contactId);
+        } else {
+            toastr.error('Contact ID not found');
+            console.error('Contact ID not found in element:', this);
+        }
     });
 </script>
 @endif

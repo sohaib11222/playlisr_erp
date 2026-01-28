@@ -197,6 +197,7 @@ return [
     'forgot_your_password' => 'Forgot Your Password?',
     'reset_password' => 'Reset Password',
     'email_address' => 'E-Mail Address',
+    'email_or_mobile_required' => 'At least email or mobile number is required',
     'send_password_reset_link' => 'Send Password Reset Link',
     'instructions' => 'Instructions',
     'instruction_line1' => 'Follow the instructions carefully before importing the file.',

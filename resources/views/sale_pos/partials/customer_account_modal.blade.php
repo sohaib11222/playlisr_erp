@@ -73,24 +73,56 @@
                     
                     <div class="row" style="margin-top: 20px;">
                         <div class="col-md-12">
-                            <div class="box box-info">
+                            <div class="box box-warning">
                                 <div class="box-header">
-                                    <h3 class="box-title">Recent Purchases</h3>
+                                    <h3 class="box-title">Pending Preorders <small id="modal_preorder_count">(0 preorders)</small></h3>
                                 </div>
                                 <div class="box-body">
-                                    <div class="table-responsive">
-                                        <table class="table table-striped">
+                                    <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                                        <table class="table table-striped table-hover">
+                                            <thead>
+                                                <tr>
+                                                    <th>Product</th>
+                                                    <th>SKU</th>
+                                                    <th>Quantity</th>
+                                                    <th>Order Date</th>
+                                                    <th>Expected Date</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="modal_preorders_list">
+                                                <tr>
+                                                    <td colspan="5" class="text-center text-muted">No pending preorders</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row" style="margin-top: 20px;">
+                        <div class="col-md-12">
+                            <div class="box box-info">
+                                <div class="box-header">
+                                    <h3 class="box-title">Purchase History <small id="modal_purchase_count">(0 purchases)</small></h3>
+                                </div>
+                                <div class="box-body">
+                                    <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                                        <table class="table table-striped table-hover">
                                             <thead>
                                                 <tr>
                                                     <th>Invoice #</th>
                                                     <th>Date</th>
+                                                    <th>Items</th>
                                                     <th>Amount</th>
                                                     <th>Status</th>
+                                                    <th>Actions</th>
                                                 </tr>
                                             </thead>
-                                            <tbody id="modal_recent_purchases_list">
+                                            <tbody id="modal_all_purchases_list">
                                                 <tr>
-                                                    <td colspan="4" class="text-center text-muted">No recent purchases</td>
+                                                    <td colspan="6" class="text-center text-muted">No purchases found</td>
                                                 </tr>
                                             </tbody>
                                         </table>

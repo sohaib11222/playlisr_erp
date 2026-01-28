@@ -9,12 +9,31 @@ $(document).ready(function() {
         }
     });
 
+    // Initialize default tax on page load
+    var tax_rate_id = $('#tax_rate_id').val();
+    var default_tax = $('#tax_rate_id').data('default');
+    
+    // If tax_rate_id is empty/null/0 but default exists, set it
+    if ((!tax_rate_id || tax_rate_id === '' || tax_rate_id === null || tax_rate_id === '0' || tax_rate_id === 0) && 
+        default_tax && default_tax !== '' && default_tax !== null && default_tax !== '0' && default_tax !== 0) {
+        $('#tax_rate_id').val(default_tax);
+        // Also set calculation amount from default
+        var default_calc_amount = $('#tax_calculation_amount').data('default');
+        if (default_calc_amount && default_calc_amount !== '' && default_calc_amount !== null) {
+            $('#tax_calculation_amount').val(default_calc_amount);
+        }
+    }
+
     //For edit pos form
     if ($('form#edit_pos_sell_form').length > 0) {
         pos_total_row();
         pos_form_obj = $('form#edit_pos_sell_form');
     } else {
         pos_form_obj = $('form#add_pos_sell_form');
+        // Recalculate totals on new POS form to ensure default tax is applied
+        setTimeout(function() {
+            pos_total_row();
+        }, 100);
     }
     if ($('form#edit_pos_sell_form').length > 0 || $('form#add_pos_sell_form').length > 0) {
         initialize_printer();
@@ -117,6 +136,8 @@ $(document).ready(function() {
             return;
         }
 
+        console.log('Loading customer account info for contact ID:', contactId);
+
         $.ajax({
             url: '/sells/pos/get-customer-account-info',
             type: 'GET',
@@ -128,8 +149,10 @@ $(document).ready(function() {
                     var data = response.data;
                     var contact = data.contact;
 
-                    // Update account info display
-                    $('#customer_account_name').text(contact.name || 'N/A');
+                    // Update account info display - make name clickable
+                    var customerNameHtml = '<a href="#" class="customer-name-link" style="color: #495057; text-decoration: none; cursor: pointer; font-weight: bold;" data-contact-id="' + contact.id + '">' + 
+                                          (contact.name || 'N/A') + ' <i class="fa fa-info-circle text-info"></i></a>';
+                    $('#customer_account_name').html(customerNameHtml);
                     $('#customer_account_balance').text(__currency_trans_from_en(contact.balance || 0, true));
                     $('#customer_gift_card_balance').text(__currency_trans_from_en(data.total_gift_card_balance || 0, true));
                     $('#customer_lifetime_purchases').text(__currency_trans_from_en(contact.lifetime_purchases || 0, true));
@@ -137,22 +160,31 @@ $(document).ready(function() {
 
                     // Show the account info panel
                     $('#customer_account_info').show();
+                    console.log('Customer account info displayed successfully');
                 } else {
-                    console.log('Customer account info: No data or unsuccessful response');
+                    console.warn('Customer account info: No data or unsuccessful response', response);
                     $('#customer_account_info').hide();
                 }
             },
             error: function(xhr, status, error) {
                 console.error('Error loading customer account info:', error);
-                console.error('Response:', xhr.responseText);
+                console.error('Status:', status);
+                console.error('Response status:', xhr.status);
+                console.error('Response text:', xhr.responseText);
+                console.error('Full response:', xhr);
+                
+                // Show error message to user
+                if (xhr.status === 500) {
+                    console.error('Server error - check if migrations are run (gift_cards table, loyalty fields)');
+                }
+                
                 $('#customer_account_info').hide();
             }
         });
     }
 
-    // View customer details button click
-    $(document).on('click', '#view_customer_details_btn', function() {
-        var contactId = $('#customer_id').val();
+    // Function to load and show customer details modal
+    function showCustomerDetailsModal(contactId) {
         if (!contactId) {
             toastr.error('Please select a customer first');
             return;
@@ -203,21 +235,54 @@ $(document).ready(function() {
                     }
                     $('#modal_gift_cards_list').html(giftCardsHtml);
 
-                    // Update recent purchases
-                    var purchasesHtml = '';
-                    if (data.recent_purchases && data.recent_purchases.length > 0) {
-                        data.recent_purchases.forEach(function(purchase) {
-                            purchasesHtml += '<tr>' +
-                                '<td>' + purchase.invoice_no + '</td>' +
-                                '<td>' + purchase.date + '</td>' +
-                                '<td>' + __currency_trans_from_en(purchase.total, true) + '</td>' +
-                                '<td><span class="label label-' + (purchase.payment_status === 'paid' ? 'success' : 'warning') + '">' + purchase.payment_status + '</span></td>' +
+                    // Update preorders
+                    var preordersHtml = '';
+                    var preorderCount = 0;
+                    if (data.preorders && data.preorders.length > 0) {
+                        preorderCount = data.preorders.length;
+                        data.preorders.forEach(function(preorder) {
+                            var productDisplay = preorder.product_name;
+                            if (preorder.artist) {
+                                productDisplay = preorder.artist + ' - ' + productDisplay;
+                            }
+                            preordersHtml += '<tr>' +
+                                '<td>' + productDisplay + '</td>' +
+                                '<td>' + (preorder.sub_sku || 'N/A') + '</td>' +
+                                '<td>' + preorder.quantity + '</td>' +
+                                '<td>' + preorder.order_date + '</td>' +
+                                '<td>' + (preorder.expected_date || 'Not set') + '</td>' +
                                 '</tr>';
                         });
                     } else {
-                        purchasesHtml = '<tr><td colspan="4" class="text-center text-muted">No recent purchases</td></tr>';
+                        preordersHtml = '<tr><td colspan="5" class="text-center text-muted">No pending preorders</td></tr>';
                     }
-                    $('#modal_recent_purchases_list').html(purchasesHtml);
+                    $('#modal_preorders_list').html(preordersHtml);
+                    $('#modal_preorder_count').text('(' + preorderCount + ' preorder' + (preorderCount !== 1 ? 's' : '') + ')');
+
+                    // Update purchase count
+                    var totalPurchases = data.total_purchases_count || 0;
+                    $('#modal_purchase_count').text('(' + totalPurchases + ' purchase' + (totalPurchases !== 1 ? 's' : '') + ')');
+                    
+                    // Update all purchases (full history)
+                    var purchasesHtml = '';
+                    if (data.all_purchases && data.all_purchases.length > 0) {
+                        data.all_purchases.forEach(function(purchase) {
+                            var itemsText = purchase.item_count + ' item' + (purchase.item_count !== 1 ? 's' : '');
+                            var viewLink = '<a href="' + '/sells/' + purchase.id + '" target="_blank" class="btn btn-xs btn-info"><i class="fa fa-eye"></i> View</a>';
+                            
+                            purchasesHtml += '<tr>' +
+                                '<td><strong>' + purchase.invoice_no + '</strong></td>' +
+                                '<td>' + purchase.date + '</td>' +
+                                '<td>' + itemsText + '</td>' +
+                                '<td>' + __currency_trans_from_en(purchase.total, true) + '</td>' +
+                                '<td><span class="label label-' + (purchase.payment_status === 'paid' ? 'success' : purchase.payment_status === 'partial' ? 'warning' : 'danger') + '">' + purchase.payment_status + '</span></td>' +
+                                '<td>' + viewLink + '</td>' +
+                                '</tr>';
+                        });
+                    } else {
+                        purchasesHtml = '<tr><td colspan="6" class="text-center text-muted">No purchases found</td></tr>';
+                    }
+                    $('#modal_all_purchases_list').html(purchasesHtml);
 
                     $('#customer_account_content').show();
                 } else {
@@ -229,6 +294,25 @@ $(document).ready(function() {
                 toastr.error('Error loading customer information');
             }
         });
+    }
+
+    // View customer details button click
+    $(document).on('click', '#view_customer_details_btn', function() {
+        var contactId = $('#customer_id').val();
+        showCustomerDetailsModal(contactId);
+    });
+
+    // Customer name click handler (delegated event for dynamically added elements)
+    $(document).on('click', '.customer-name-link', function(e) {
+        e.preventDefault();
+        var contactId = $(this).data('contact-id');
+        if (contactId) {
+            showCustomerDetailsModal(contactId);
+        } else {
+            // Fallback: get from customer_id select
+            contactId = $('#customer_id').val();
+            showCustomerDetailsModal(contactId);
+        }
     });
 
     $('#customer_id').on('select2:select', function(e) {
@@ -2034,7 +2118,32 @@ function pos_product_row(variation_id = null, purchase_line_id = null, weighing_
                     var this_row = $('table#pos_table tbody')
                         .find('tr')
                         .last();
-                    pos_each_row(this_row);
+                    
+                    // Trigger tax dropdown change if it has a value to ensure it's properly selected and calculated
+                    var taxSelect = this_row.find('select.tax_id');
+                    if (taxSelect.length && taxSelect.val()) {
+                        taxSelect.trigger('change');
+                    } else {
+                        // No tax selected - calculate row without tax
+                        pos_each_row(this_row);
+                    }
+                    
+                    // Ensure default tax is set in order tax if not already set
+                    var current_tax_rate_id = $('#tax_rate_id').val();
+                    if (!current_tax_rate_id || current_tax_rate_id === '' || current_tax_rate_id === null || current_tax_rate_id === '0' || current_tax_rate_id === 0) {
+                        var default_tax = $('#tax_rate_id').data('default');
+                        if (default_tax && default_tax !== '' && default_tax !== null && default_tax !== '0' && default_tax !== 0) {
+                            $('#tax_rate_id').val(default_tax);
+                            // Also set calculation amount if available
+                            var default_calc_amount = $('#tax_calculation_amount').data('default');
+                            if (default_calc_amount && default_calc_amount !== '' && default_calc_amount !== null) {
+                                $('#tax_calculation_amount').val(default_calc_amount);
+                            }
+                        }
+                    }
+                    
+                    // Ensure order tax is recalculated after adding product
+                    pos_total_row();
 
                     //For initial discount if present
                     var line_total = __read_number(this_row.find('input.pos_line_total'));
@@ -2103,10 +2212,16 @@ function pos_each_row(row_obj) {
     var unit_price = __read_number(row_obj.find('input.pos_unit_price'));
 
     var discounted_unit_price = calculate_discounted_unit_price(row_obj);
-    var tax_rate = row_obj
-        .find('select.tax_id')
-        .find(':selected')
-        .data('rate');
+    var taxSelect = row_obj.find('select.tax_id');
+    var tax_rate = 0;
+    
+    // Only get tax rate if tax is actually selected (not empty/null)
+    if (taxSelect.length && taxSelect.val() && taxSelect.val() !== '' && taxSelect.val() !== null) {
+        var selectedOption = taxSelect.find(':selected');
+        if (selectedOption.length) {
+            tax_rate = selectedOption.data('rate') || 0;
+        }
+    }
 
     var unit_price_inc_tax =
         discounted_unit_price + __calculate_amount('percentage', tax_rate, discounted_unit_price);
@@ -2165,6 +2280,41 @@ function get_subtotal() {
     });
 
     return price_total;
+}
+
+function get_taxable_subtotal() {
+    // Get subtotal for ORDER tax calculation
+    // Include ALL products EXCEPT:
+    // 1. Bag fee (data-plastic-bag="true")
+    // 2. Products explicitly marked as tax-exempt (data-tax-exempt="true")
+    var taxable_total = 0;
+
+    $('table#pos_table tbody tr').each(function() {
+        // Skip bag fee rows (always tax-exempt)
+        if ($(this).attr('data-plastic-bag') === 'true') {
+            return true; // continue to next iteration
+        }
+        
+        // Skip tax-exempt products (marked with data-tax-exempt="true")
+        if ($(this).data('tax-exempt') === true || $(this).data('tax-exempt') === 'true' || $(this).attr('data-tax-exempt') === 'true') {
+            return true; // continue to next iteration
+        }
+        
+        // Include ALL other products in taxable total
+        // This includes products with or without tax_id - ORDER tax applies to all non-exempt products
+        var rowTotal = __read_number($(this).find('input.pos_line_total'));
+        taxable_total = taxable_total + rowTotal;
+    });
+
+    //Go through the modifier prices.
+    $('input.modifiers_price').each(function() {
+        var modifier_price = __read_number($(this));
+        var modifier_quantity = $(this).closest('.product_modifier').find('.modifiers_quantity').val();
+        var modifier_subtotal = modifier_price * modifier_quantity;
+        taxable_total = taxable_total + modifier_subtotal;
+    });
+
+    return taxable_total;
 }
 
 function calculate_billing_details(price_total) {
@@ -2254,15 +2404,78 @@ function pos_discount(total_amount) {
 }
 
 function pos_order_tax(price_total, discount) {
+    // Use taxable subtotal (excluding bag fee and tax-exempt products) for tax calculation
+    var taxable_total = get_taxable_subtotal();
+    var total_amount = taxable_total - discount;
+    
+    // Get tax_rate_id - check value first, then data-default
     var tax_rate_id = $('#tax_rate_id').val();
     var calculation_type = 'percentage';
     var calculation_amount = __read_number($('#tax_calculation_amount'));
-    var total_amount = price_total - discount;
+    
+    // If tax_rate_id is empty/null/0, get from data-default
+    if (!tax_rate_id || tax_rate_id === '' || tax_rate_id === null || tax_rate_id === '0' || tax_rate_id === 0) {
+        tax_rate_id = $('#tax_rate_id').data('default');
+        if (tax_rate_id && tax_rate_id !== '' && tax_rate_id !== null && tax_rate_id !== '0' && tax_rate_id !== 0) {
+            $('#tax_rate_id').val(tax_rate_id);
+        }
+    }
+    
+    // If calculation_amount is 0 or empty, get from data-default
+    if (!calculation_amount || calculation_amount === 0) {
+        var default_calc_amount = $('#tax_calculation_amount').data('default');
+        if (default_calc_amount && default_calc_amount !== '' && default_calc_amount !== null) {
+            calculation_amount = parseFloat(default_calc_amount);
+            if (calculation_amount && calculation_amount > 0) {
+                $('#tax_calculation_amount').val(calculation_amount);
+            }
+        }
+    }
+    
+    // If still no tax_rate_id but we have taxable items, try to get from first taxable product
+    if ((!tax_rate_id || tax_rate_id === '' || tax_rate_id === null || tax_rate_id === '0' || tax_rate_id === 0) && taxable_total > 0) {
+        var firstTaxableRow = $('table#pos_table tbody tr').not('[data-plastic-bag="true"]').filter(function() {
+            var taxSelect = $(this).find('select.tax_id');
+            if (taxSelect.length) {
+                var taxValue = taxSelect.val();
+                return taxValue && taxValue !== '' && taxValue !== null && taxValue !== '0' && taxValue !== 0;
+            }
+            return false;
+        }).first();
+        
+        if (firstTaxableRow.length) {
+            var productTaxId = firstTaxableRow.find('select.tax_id').val();
+            if (productTaxId && productTaxId !== '' && productTaxId !== null && productTaxId !== '0' && productTaxId !== 0) {
+                tax_rate_id = productTaxId;
+                $('#tax_rate_id').val(tax_rate_id);
+                var productTaxRate = firstTaxableRow.find('select.tax_id').find(':selected').data('rate') || 0;
+                if (productTaxRate > 0) {
+                    calculation_amount = productTaxRate;
+                    $('#tax_calculation_amount').val(calculation_amount);
+                }
+            }
+        }
+    }
 
-    if (tax_rate_id) {
-        var order_tax = __calculate_amount(calculation_type, calculation_amount, total_amount);
-    } else {
-        var order_tax = 0;
+    // Calculate order tax if we have valid tax_rate_id, taxable_total, and calculation_amount
+    var order_tax = 0;
+    if (tax_rate_id && tax_rate_id !== '' && tax_rate_id !== null && tax_rate_id !== '0' && tax_rate_id !== 0) {
+        if (taxable_total > 0) {
+            if (calculation_amount && calculation_amount > 0) {
+                order_tax = __calculate_amount(calculation_type, calculation_amount, total_amount);
+            } else {
+                // If calculation_amount is missing, try to get it from the tax dropdown
+                var taxSelect = $('select.tax_id').first();
+                if (taxSelect.length && taxSelect.val() === tax_rate_id) {
+                    var taxRate = taxSelect.find(':selected').data('rate');
+                    if (taxRate && taxRate > 0) {
+                        calculation_amount = taxRate;
+                        $('#tax_calculation_amount').val(calculation_amount);
+                        order_tax = __calculate_amount(calculation_type, calculation_amount, total_amount);
+                    }
+                }
+            }
+        }
     }
 
     $('span#order_tax').text(__currency_trans_from_en(order_tax, false));
@@ -3425,6 +3638,15 @@ function submitQuickContactForm(form) {
                 $('div.contact_modal').modal('hide');
                 update_shipping_address(result.data)
                 toastr.success(result.msg);
+                
+                // Fix column alignment after customer creation
+                setTimeout(function() {
+                    $('#customer_account_info').css('display', 'none').show();
+                    // Force layout recalculation
+                    if (typeof $('#customer_account_info')[0] !== 'undefined') {
+                        $('#customer_account_info')[0].offsetHeight;
+                    }
+                }, 100);
             } else {
                 toastr.error(result.msg);
             }
@@ -3680,14 +3902,14 @@ function calculateManualProductSubtotal() {
     $('#manual_products_subtotal').text(__currency_trans_from_en(subtotal, false));
 }
 
-// Handle plastic bag charge toggle
+// Handle bag fee charge toggle
 $(document).on('change', '#add_plastic_bag', function() {
     var isChecked = $(this).is(':checked');
-    var plasticBagRow = $('#pos_table tbody tr[data-plastic-bag="true"]');
+    var bagFeeRow = $('#pos_table tbody tr[data-plastic-bag="true"]');
     
     if (isChecked) {
-        // Add plastic bag row if not already present
-        if (plasticBagRow.length === 0) {
+        // Add bag fee row if not already present
+        if (bagFeeRow.length === 0) {
             var location_id = $('#location_id').val();
             var currentRowCount = $('#pos_table tbody tr.product_row').length;
             
@@ -3702,36 +3924,36 @@ $(document).on('change', '#add_plastic_bag', function() {
                 dataType: 'json',
                 success: function(result) {
                     if (result.success && result.html_content) {
-                        // Add the plastic bag row
+                        // Add the bag fee row
                         $('#pos_table tbody').append(result.html_content);
                         
-                        // Mark it as plastic bag row
+                        // Mark it as bag fee row
                         var newRow = $('#pos_table tbody tr').last();
                         newRow.attr('data-plastic-bag', 'true');
                         
+                        // Set tax to "No Tax" for bag fee (tax-exempt)
+                        var taxSelect = newRow.find('select.tax_id');
+                        if (taxSelect.length) {
+                            taxSelect.val('').trigger('change');
+                        }
+                        
                         // Initialize the row - this will populate tax and calculate prices
                         pos_each_row(newRow);
-                        
-                        // Trigger tax change to recalculate price with tax
-                        var taxSelect = newRow.find('select.tax_id');
-                        if (taxSelect.length && taxSelect.val()) {
-                            taxSelect.trigger('change');
-                        }
                         
                         // Recalculate totals
                         pos_total_row();
                     }
                 },
                 error: function() {
-                    toastr.error('Failed to add plastic bag charge');
+                    toastr.error('Failed to add bag fee charge');
                     $('#add_plastic_bag').prop('checked', false);
                 }
             });
         }
     } else {
-        // Remove plastic bag row
-        if (plasticBagRow.length > 0) {
-            plasticBagRow.remove();
+        // Remove bag fee row
+        if (bagFeeRow.length > 0) {
+            bagFeeRow.remove();
             pos_total_row();
         }
     }

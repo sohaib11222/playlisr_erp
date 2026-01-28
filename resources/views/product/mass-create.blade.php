@@ -256,12 +256,7 @@
                 <small class="text-muted">(Smart Auto-Complete & Formatting)</small>
             </h3>
             <div class="box-tools pull-right">
-                <button type="button" class="btn btn-sm btn-info" id="parse_bulk_text">
-                    <i class="fa fa-magic"></i> Parse & Add Products
-                </button>
-                <button type="button" class="btn btn-sm btn-default" id="preview_bulk_text">
-                    <i class="fa fa-eye"></i> Preview
-                </button>
+                <!-- Buttons moved to box-body to avoid duplicate IDs -->
             </div>
         </div>
         <div class="box-body">
@@ -361,6 +356,9 @@
                 </tr>
                 <tr class="tr">
                     <td class="td" colspan="1">
+                        <button type="button" class="btn btn-info" id="verify_all_categories" style="margin-right: 10px;">
+                            <i class="fa fa-check-circle"></i> Verify All Categories
+                        </button>
                         <button type="button" class="btn btn-success" id="save_all_products">Save All Products</button>
                     </td>
                 </tr>
@@ -405,7 +403,20 @@
                     rowIndex++;
 
                     // Reinitialize Select2 for new elements
-                    $('#product_rows_container .product-row').last().find('.select2').select2();
+                    const $newRow = $('#product_rows_container .product-row').last();
+                    // Configure category and subcategory Select2 to prevent free text
+                    $newRow.find('.category-select.select2').select2({
+                        allowClear: true,
+                        tags: false,
+                        placeholder: '@lang("messages.please_select")'
+                    });
+                    $newRow.find('.subcategory-select.select2').select2({
+                        allowClear: true,
+                        tags: false,
+                        placeholder: '@lang("messages.please_select")'
+                    });
+                    // Initialize other Select2 fields
+                    $newRow.find('.select2').not('.category-select').not('.subcategory-select').select2();
                     window.setupProductNameSelect2();
                     window.isAddingNewRow = false;
                     $('#add_row').html('Add New Product Row');
@@ -438,30 +449,248 @@
             $(this).closest('.tr').remove();
         });
 
+        // Store valid subcategory IDs for each category
+        window.categorySubcategories = {};
+
         // Handle category change to fetch subcategories
         $(document).on('change', '.category-select', function () {
             const $this = $(this);
             const category_id = $this.val();
+            const rowIndex = $this.attr('data-row-index');
             const subCategorySelect = $this.closest('.tr').find('.subcategory-select');
+            const $row = $this.closest('.tr');
+
+            // Verify category immediately
+            verifyCategorySubcategoryMatch($row, rowIndex);
 
             // window.getProductPriceRecommendation($(this).attr('data-row-index')); // DISABLED: eBay/Discogs suggestions
 
             if (category_id) {
+                // Check if category exists in options
+                const categoryOption = $this.find('option[value="' + category_id + '"]');
+                if (categoryOption.length === 0 || !category_id || category_id === '') {
+                    // Invalid category
+                    verifyCategorySubcategoryMatch($row, rowIndex);
+                    return;
+                }
+                
                 $.ajax({
                     url: "{{ route('product.get_sub_categories') }}",
                     type: 'POST',
                     data: { cat_id: category_id },
                     headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
                     success: function (data) {
-                        subCategorySelect.html(data); // Directly insert received <option> tags
+                        subCategorySelect.html(data);
+                        
+                        // Store valid subcategory IDs for this category
+                        const validSubcategoryIds = [];
+                        // Parse the HTML string to extract option values
+                        const $temp = $('<div>').html(data);
+                        $temp.find('option').each(function() {
+                            const val = $(this).val();
+                            if (val && val !== '') {
+                                validSubcategoryIds.push(val);
+                            }
+                        });
+                        window.categorySubcategories[category_id] = validSubcategoryIds;
+                        
+                        // Reinitialize Select2
+                        subCategorySelect.trigger('change');
+                        
+                        // Verify current subcategory selection after a short delay to ensure Select2 is updated
+                        setTimeout(function() {
+                            verifyCategorySubcategoryMatch($row, rowIndex);
+                        }, 100);
                     },
                     error: function () {
                         toastr.error('Failed to fetch subcategories.');
+                        verifyCategorySubcategoryMatch($row, rowIndex);
                     },
                 });
             } else {
                 subCategorySelect.html('<option value="">@lang("messages.please_select")</option>');
+                subCategorySelect.trigger('change');
+                verifyCategorySubcategoryMatch($row, rowIndex);
             }
+        });
+
+        // Verify category/subcategory match
+        function verifyCategorySubcategoryMatch($row, rowIndex) {
+            const categorySelect = $row.find('.category-select');
+            const categoryId = categorySelect.val();
+            const subcategoryId = $row.find('.subcategory-select').val();
+            
+            // Remove existing indicators
+            $row.find('.category-validation-indicator').remove();
+            $row.find('.subcategory-validation-indicator').remove();
+            
+            // Check if category exists in dropdown options
+            const categoryOption = categorySelect.find('option[value="' + categoryId + '"]');
+            const categoryExists = categoryOption.length > 0 && categoryId && categoryId !== '';
+            
+            // Add validation indicator for category
+            const categoryContainer = $row.find('.category-selection-container');
+            if (!categoryContainer.find('.category-validation-indicator').length) {
+                categoryContainer.append('<span class="category-validation-indicator" style="margin-left: 5px;"></span>');
+            }
+            
+            if (!categoryId || categoryId === '') {
+                // No category selected
+                $row.find('.category-validation-indicator').html('<i class="fa fa-exclamation-circle text-warning" title="Category is required"></i>');
+                return;
+            }
+            
+            if (!categoryExists) {
+                // Category doesn't exist in dropdown (invalid)
+                $row.find('.category-validation-indicator').html('<i class="fa fa-times-circle text-danger" title="Invalid category - not found in system"></i>');
+                categorySelect.addClass('is-invalid');
+                return;
+            } else {
+                categorySelect.removeClass('is-invalid');
+            }
+            
+            // Category is valid
+            $row.find('.category-validation-indicator').html('<i class="fa fa-check-circle text-success" title="Valid category"></i>');
+            
+            if (subcategoryId) {
+                // Check if subcategory belongs to category
+                const validSubcategories = window.categorySubcategories[categoryId] || [];
+                const isValid = validSubcategories.includes(subcategoryId);
+                
+                const subcategoryContainer = $row.find('.subcategory-select').parent();
+                if (!subcategoryContainer.find('.subcategory-validation-indicator').length) {
+                    subcategoryContainer.append('<span class="subcategory-validation-indicator" style="margin-left: 5px;"></span>');
+                }
+                
+                const indicator = $row.find('.subcategory-validation-indicator');
+                if (isValid) {
+                    indicator.html('<i class="fa fa-check-circle text-success" title="Valid subcategory for this category"></i>');
+                    $row.find('.subcategory-select').removeClass('is-invalid');
+                } else {
+                    indicator.html('<i class="fa fa-exclamation-triangle text-danger" title="This subcategory does not belong to the selected category"></i>');
+                    $row.find('.subcategory-select').addClass('is-invalid');
+                }
+            } else {
+                // No subcategory selected, but category is valid
+                $row.find('.subcategory-select').removeClass('is-invalid');
+            }
+        }
+
+        // Handle subcategory change to verify match
+        $(document).on('change', '.subcategory-select', function () {
+            const $this = $(this);
+            const rowIndex = $this.closest('.tr').find('.category-select').attr('data-row-index');
+            const $row = $this.closest('.tr');
+            verifyCategorySubcategoryMatch($row, rowIndex);
+        });
+        
+        // Validate categories on page load and when Select2 is opened/closed
+        $(document).on('select2:open select2:close', '.category-select', function() {
+            const $row = $(this).closest('.tr');
+            const rowIndex = $(this).attr('data-row-index');
+            setTimeout(function() {
+                verifyCategorySubcategoryMatch($row, rowIndex);
+            }, 100);
+        });
+        
+        // Also validate when Select2 selection changes (for manual entry)
+        $(document).on('select2:select select2:unselect', '.category-select', function() {
+            const $row = $(this).closest('.tr');
+            const rowIndex = $(this).attr('data-row-index');
+            setTimeout(function() {
+                verifyCategorySubcategoryMatch($row, rowIndex);
+            }, 100);
+        });
+
+        // Verify all rows
+        $('#verify_all_categories').on('click', function() {
+            const rows = $('#product_rows_container .product-row');
+            let validCount = 0;
+            let invalidCount = 0;
+            let missingCategoryCount = 0;
+            let missingSubcategoryCount = 0;
+            const invalidRows = [];
+
+            rows.each(function() {
+                const $row = $(this);
+                const rowIndex = $row.find('.category-select').attr('data-row-index');
+                const categoryId = $row.find('.category-select').val();
+                const subcategoryId = $row.find('.subcategory-select').val();
+                const productName = $row.find('.product-name-autocomplete').val();
+
+                // Verify this row
+                verifyCategorySubcategoryMatch($row, rowIndex);
+
+                if (!categoryId) {
+                    missingCategoryCount++;
+                    if (productName) {
+                        invalidRows.push({
+                            row: rowIndex,
+                            product: productName,
+                            issue: 'Missing category'
+                        });
+                    }
+                } else if (subcategoryId) {
+                    // Check if subcategory belongs to category
+                    const validSubcategories = window.categorySubcategories[categoryId] || [];
+                    if (validSubcategories.includes(subcategoryId)) {
+                        validCount++;
+                    } else {
+                        invalidCount++;
+                        invalidRows.push({
+                            row: rowIndex,
+                            product: productName || 'Unnamed product',
+                            issue: 'Subcategory does not belong to selected category'
+                        });
+                    }
+                } else {
+                    missingSubcategoryCount++;
+                    // Category selected but no subcategory - this is OK, just count it
+                    validCount++;
+                }
+            });
+
+            // Show summary
+            let summaryHtml = '<div class="alert alert-info"><h4><i class="fa fa-info-circle"></i> Verification Summary</h4>';
+            summaryHtml += '<ul style="margin-bottom: 0;">';
+            summaryHtml += `<li><strong>Valid:</strong> <span class="text-success">${validCount}</span> rows</li>`;
+            if (invalidCount > 0) {
+                summaryHtml += `<li><strong>Invalid:</strong> <span class="text-danger">${invalidCount}</span> rows (subcategory mismatch)</li>`;
+            }
+            if (missingCategoryCount > 0) {
+                summaryHtml += `<li><strong>Missing Category:</strong> <span class="text-warning">${missingCategoryCount}</span> rows</li>`;
+            }
+            if (missingSubcategoryCount > 0) {
+                summaryHtml += `<li><strong>Missing Subcategory:</strong> <span class="text-info">${missingSubcategoryCount}</span> rows (category selected but no subcategory)</li>`;
+            }
+            summaryHtml += '</ul>';
+
+            if (invalidRows.length > 0) {
+                summaryHtml += '<hr><h5>Issues Found:</h5><ul>';
+                invalidRows.forEach(item => {
+                    summaryHtml += `<li>Row ${parseInt(item.row) + 1}: "${item.product}" - ${item.issue}</li>`;
+                });
+                summaryHtml += '</ul>';
+            }
+            summaryHtml += '</div>';
+
+            // Show in a modal or alert
+            swal({
+                title: 'Category Verification Complete',
+                content: {
+                    element: 'div',
+                    attributes: {
+                        innerHTML: summaryHtml
+                    }
+                },
+                icon: invalidCount > 0 || missingCategoryCount > 0 ? 'warning' : 'success',
+                buttons: {
+                    confirm: {
+                        text: 'OK',
+                        className: 'btn btn-primary'
+                    }
+                }
+            });
         });
 
         // Tooltip для элементов
@@ -474,7 +703,19 @@
         });
 
         // Реинициализация Select2 для уже существующих строк
-        $('.select2').select2();
+        // Configure Select2 to prevent free text entry (tags) for categories
+        $('.category-select.select2').select2({
+            allowClear: true,
+            tags: false, // Prevent free text entry
+            placeholder: '@lang("messages.please_select")'
+        });
+        $('.subcategory-select.select2').select2({
+            allowClear: true,
+            tags: false, // Prevent free text entry
+            placeholder: '@lang("messages.please_select")'
+        });
+        // Initialize other Select2 fields normally
+        $('.select2').not('.category-select').not('.subcategory-select').select2();
 
         $(document).on('change', '.select2_business_locations', function() {
             const inputId = this.id.split('_');
@@ -555,6 +796,70 @@
             // Clear previous error messages
             $('.error-message').remove();
             $('.is-invalid').removeClass('is-invalid');
+            
+            // Validate all categories before submission
+            let hasErrors = false;
+            let errorMessages = [];
+            const rows = $('#product_rows_container .product-row');
+            
+            rows.each(function(index) {
+                const $row = $(this);
+                const rowIndex = $row.attr('data-row-index');
+                const categorySelect = $row.find('.category-select');
+                const categoryId = categorySelect.val();
+                const subcategorySelect = $row.find('.subcategory-select');
+                const subcategoryId = subcategorySelect.val();
+                const productName = $row.find('.product-name-autocomplete').val() || `Product ${parseInt(rowIndex) + 1}`;
+                
+                // Check if category is selected
+                if (!categoryId || categoryId === '') {
+                    hasErrors = true;
+                    categorySelect.addClass('is-invalid');
+                    const errorMsg = `Row ${parseInt(rowIndex) + 1} (${productName}): Category is required`;
+                    errorMessages.push(errorMsg);
+                    categorySelect.closest('td').append(`<div class="invalid-feedback error-message" style="display: block; color: red; font-size: 12px;">Category is required</div>`);
+                } else {
+                    // Check if category exists in dropdown options
+                    const categoryOption = categorySelect.find('option[value="' + categoryId + '"]');
+                    if (categoryOption.length === 0) {
+                        hasErrors = true;
+                        categorySelect.addClass('is-invalid');
+                        const errorMsg = `Row ${parseInt(rowIndex) + 1} (${productName}): Invalid category - not found in system`;
+                        errorMessages.push(errorMsg);
+                        categorySelect.closest('td').append(`<div class="invalid-feedback error-message" style="display: block; color: red; font-size: 12px;">Invalid category - not found in system</div>`);
+                    } else {
+                        // Check subcategory if selected
+                        if (subcategoryId && subcategoryId !== '') {
+                            const validSubcategories = window.categorySubcategories[categoryId] || [];
+                            if (!validSubcategories.includes(subcategoryId)) {
+                                hasErrors = true;
+                                subcategorySelect.addClass('is-invalid');
+                                const errorMsg = `Row ${parseInt(rowIndex) + 1} (${productName}): Subcategory does not belong to selected category`;
+                                errorMessages.push(errorMsg);
+                                subcategorySelect.closest('td').append(`<div class="invalid-feedback error-message" style="display: block; color: red; font-size: 12px;">Subcategory does not belong to selected category</div>`);
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // If validation errors found, show them and prevent submission
+            if (hasErrors) {
+                toastr.error('Please fix the following errors before saving:\n' + errorMessages.join('\n'), 'Validation Errors', {
+                    timeOut: 10000,
+                    extendedTimeOut: 10000
+                });
+                
+                // Scroll to first error
+                const firstError = $('.is-invalid').first();
+                if (firstError.length) {
+                    $('html, body').animate({
+                        scrollTop: firstError.offset().top - 100
+                    }, 500);
+                }
+                
+                return false;
+            }
 
             let form = $('#mass_create_form')[0];
             let formData = new FormData(form);  // Собираем все данные формы
@@ -640,6 +945,13 @@
         });
 
         window.setupProductNameSelect2();
+    
+    // Ensure all buttons are properly bound (in case of duplicate IDs or timing issues)
+    console.log('Mass create page initialized');
+    console.log('Parse button found:', $('#parse_bulk_text').length);
+    console.log('Preview button found:', $('#preview_bulk_text').length);
+    console.log('Clear button found:', $('#clear_bulk_text').length);
+    console.log('Format button found:', $('#format_bulk_text').length);
     });
 
     window.setAsFreeTextProductRow = function(rowIndex) {
@@ -725,11 +1037,14 @@
                         $.getJSON('/product/mass-create/get-products', { term: request.term }, response);
                     },
                     minLength: 2,
+                    autoFocus: true,
                     response: function(event, ui) {
                         if (ui.content.length == 1) {
-                            // ui.item = ui.content[0];
-                            // $(this).data('ui-autocomplete')._trigger('select', 'autocompleteselect', ui);
-                            // $(this).autocomplete('close');
+                            // Auto-select if only one result
+                            setTimeout(() => {
+                                $(this).data('ui-autocomplete').menu.activate();
+                                $(this).data('ui-autocomplete').menu.select();
+                            }, 100);
                         } else if (ui.content.length == 0) {
                             var term = $(this).data('ui-autocomplete').term;
                             
@@ -754,13 +1069,30 @@
                         }
                     },
                     select: function(event, ui) {
-                        setTimeout(n => {
-                            window.setAsSelectedProductRow(ui, $(this));
-                        }, 50);
+                        event.preventDefault();
+                        $(this).val(ui.item.text);
+                        window.setAsSelectedProductRow(ui, $(this));
+                        $(this).autocomplete('close');
+                        return false;
+                    },
+                    focus: function(event, ui) {
+                        event.preventDefault();
+                        return false;
                     }
                 }).autocomplete('instance')._renderItem = function(ul, item) {
                     return $('<li>').append('<div>' + item.text + '</div>').appendTo(ul);
                 };
+                
+                // Handle Enter key to submit autocomplete
+                $(this).on('keydown', function(event) {
+                    if (event.keyCode === 13) { // Enter key
+                        const autocomplete = $(this).data('ui-autocomplete');
+                        if (autocomplete && autocomplete.menu.active) {
+                            event.preventDefault();
+                            autocomplete.menu.select();
+                        }
+                    }
+                });
             });
                     
         } catch (error) {
@@ -985,8 +1317,18 @@
                         resolve();
                     }
                     
-                    // Reinitialize Select2
-                    $row.find('.select2').select2();
+                    // Reinitialize Select2 with proper configuration
+                    $row.find('.category-select.select2').select2({
+                        allowClear: true,
+                        tags: false,
+                        placeholder: '@lang("messages.please_select")'
+                    });
+                    $row.find('.subcategory-select.select2').select2({
+                        allowClear: true,
+                        tags: false,
+                        placeholder: '@lang("messages.please_select")'
+                    });
+                    $row.find('.select2').not('.category-select').not('.subcategory-select').select2();
                     window.setupProductNameSelect2();
                 },
                 error: function () {

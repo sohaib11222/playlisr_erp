@@ -212,7 +212,7 @@ class ContactController extends Controller
                     ->orWhereRaw("CONCAT(COALESCE(address_line_1, ''), ', ', COALESCE(address_line_2, ''), ', ', COALESCE(city, ''), ', ', COALESCE(state, ''), ', ', COALESCE(country, '') ) like ?", ["%{$keyword}%"]);
                 });
             })
-            ->rawColumns(['action', 'opening_balance', 'pay_term', 'due', 'return_due', 'name', 'balance'])
+            ->rawColumns(['action', 'opening_balance', 'pay_term', 'due', 'return_due', 'name', 'balance', 'mobile', 'preorders_count'])
             ->make(true);
     }
 
@@ -324,6 +324,9 @@ class ContactController extends Controller
 
 
 
+                    // Add Profile link
+                    $html .= '<li><a href="#" class="view_customer_profile" data-contact-id="' . $row->id . '"><i class="fa fa-user"></i> View Profile</a></li>';
+                    
                     if (auth()->user()->can('customer.update')) {
                         $html .= '<li><a href="' . action('ContactController@edit', [$row->id]) . '" class="edit_contact_button"><i class="glyphicon glyphicon-edit"></i>' .  __("messages.edit") . '</a></li>';
                     }
@@ -373,7 +376,45 @@ class ContactController extends Controller
                 if (!empty($row->converted_by)) {
                     $name .= '<span class="label bg-info label-round no-print" data-toggle="tooltip" title="Converted from leads"><i class="fas fa-sync-alt"></i></span>';
                 }
+                
+                // Make name clickable to open customer profile page
+                $name = '<a href="' . action('ContactController@show', [$row->id]) . '" style="color: #3c8dbc; cursor: pointer;">' . $name . '</a>';
+                
                 return $name;
+            })
+            ->editColumn('mobile', function ($row) {
+                return $row->mobile ?? '';
+            })
+            ->addColumn('lifetime_purchases', function ($row) {
+                $lifetime = $row->lifetime_purchases ?? 0;
+                return $this->transactionUtil->num_f($lifetime, true);
+            })
+            ->addColumn('loyalty_points', function ($row) {
+                $points = $row->loyalty_points ?? 0;
+                // If loyalty_points column doesn't exist, try total_rp
+                if ($points == 0 && isset($row->total_rp)) {
+                    $points = $row->total_rp ?? 0;
+                }
+                return $points;
+            })
+            ->addColumn('loyalty_tier', function ($row) {
+                $tier = $row->loyalty_tier ?? 'Bronze';
+                return $tier;
+            })
+            ->addColumn('preorders_count', function ($row) {
+                try {
+                    if (\Illuminate\Support\Facades\Schema::hasTable('preorders')) {
+                        $count = \App\Preorder::where('contact_id', $row->id)
+                            ->where('status', 'pending')
+                            ->count();
+                        if ($count > 0) {
+                            return '<span class="label label-warning">' . $count . '</span>';
+                        }
+                    }
+                } catch (\Exception $e) {
+                    // Table doesn't exist or error occurred
+                }
+                return '0';
             })
             ->editColumn('total_rp', '{{$total_rp ?? 0}}')
             ->editColumn('created_at', '{{@format_date($created_at)}}')
@@ -467,6 +508,16 @@ class ContactController extends Controller
                 return $this->moduleUtil->expiredResponse();
             }
 
+            // Validate that at least email OR mobile is provided
+            $email = $request->input('email');
+            $mobile = $request->input('mobile');
+            if (empty($email) && empty($mobile)) {
+                $output = ['success' => false,
+                            'msg' => __('lang_v1.email_or_mobile_required')
+                        ];
+                return $output;
+            }
+
             $input = $request->only(['type', 'supplier_business_name',
                 'prefix', 'first_name', 'middle_name', 'last_name', 'tax_number', 'pay_term_number', 'pay_term_type', 'mobile', 'landline', 'alternate_number', 'city', 'state', 'country', 'address_line_1', 'address_line_2', 'customer_group_id', 'zip_code', 'contact_id', 'custom_field1', 'custom_field2', 'custom_field3', 'custom_field4', 'custom_field5', 'custom_field6', 'custom_field7', 'custom_field8', 'custom_field9', 'custom_field10', 'email', 'shipping_address', 'position', 'dob', 'shipping_custom_field_details', 'assigned_to_users', 'is_employee']);
 
@@ -478,9 +529,7 @@ class ContactController extends Controller
             if (!empty($input['first_name'])) {
                 $name_array[] = $input['first_name'];
             }
-            if (!empty($input['middle_name'])) {
-                $name_array[] = $input['middle_name'];
-            }
+            // Middle name removed - no longer used
             if (!empty($input['last_name'])) {
                 $name_array[] = $input['last_name'];
             }
@@ -579,8 +628,26 @@ class ContactController extends Controller
            ->latest()
            ->get();
         
+        // Get gift cards for the customer (if customer type and gift cards table exists)
+        $gift_cards = collect([]);
+        $total_gift_card_balance = 0;
+        try {
+            if (in_array($contact->type, ['customer', 'both']) && \Illuminate\Support\Facades\Schema::hasTable('gift_cards')) {
+                $gift_cards = \App\GiftCard::where('business_id', $business_id)
+                    ->where('contact_id', $contact->id)
+                    ->where('status', 'active')
+                    ->where('balance', '>', 0)
+                    ->orderBy('created_at', 'desc')
+                    ->get();
+                
+                $total_gift_card_balance = $gift_cards->sum('balance');
+            }
+        } catch (\Exception $e) {
+            \Log::warning('Gift cards not available: ' . $e->getMessage());
+        }
+        
         return view('contact.show')
-             ->with(compact('contact', 'reward_enabled', 'contact_dropdown', 'business_locations', 'view_type', 'contact_view_tabs', 'activities'));
+             ->with(compact('contact', 'reward_enabled', 'contact_dropdown', 'business_locations', 'view_type', 'contact_view_tabs', 'activities', 'gift_cards', 'total_gift_card_balance'));
     }
 
     /**
@@ -654,6 +721,16 @@ class ContactController extends Controller
 
         if (request()->ajax()) {
             try {
+                // Validate that at least email OR mobile is provided
+                $email = $request->input('email');
+                $mobile = $request->input('mobile');
+                if (empty($email) && empty($mobile)) {
+                    $output = ['success' => false,
+                                'msg' => __('lang_v1.email_or_mobile_required')
+                            ];
+                    return $output;
+                }
+
                 $input = $request->only(['type', 'supplier_business_name', 'prefix', 'first_name', 'middle_name', 'last_name', 'tax_number', 'pay_term_number', 'pay_term_type', 'mobile', 'address_line_1', 'address_line_2', 'zip_code', 'dob', 'alternate_number', 'city', 'state', 'country', 'landline', 'customer_group_id', 'contact_id', 'custom_field1', 'custom_field2', 'custom_field3', 'custom_field4', 'custom_field5', 'custom_field6', 'custom_field7', 'custom_field8', 'custom_field9', 'custom_field10', 'email', 'shipping_address', 'position', 'shipping_custom_field_details', 'export_custom_field_1', 'export_custom_field_2', 'export_custom_field_3', 'export_custom_field_4', 'export_custom_field_5',
                     'export_custom_field_6', 'assigned_to_users', 'is_employee']);
 
@@ -665,9 +742,7 @@ class ContactController extends Controller
                 if (!empty($input['first_name'])) {
                     $name_array[] = $input['first_name'];
                 }
-                if (!empty($input['middle_name'])) {
-                    $name_array[] = $input['middle_name'];
-                }
+                // Middle name removed - no longer used
                 if (!empty($input['last_name'])) {
                     $name_array[] = $input['last_name'];
                 }

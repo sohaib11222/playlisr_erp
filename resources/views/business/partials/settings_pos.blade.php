@@ -225,7 +225,7 @@
         
         <div class="clearfix"></div>
         <div class="col-sm-12">
-            <h4>Shopping Bag / Plastic Bag Charge Settings:</h4>
+            <h4>Bag Fee Settings:</h4>
         </div>
 
         <div class="col-sm-4">
@@ -235,16 +235,16 @@
                   <label>
                     {!! Form::checkbox('pos_settings[enable_plastic_bag_charge]', 1,  
                     isset($pos_settings['enable_plastic_bag_charge']) ? (int)$pos_settings['enable_plastic_bag_charge'] : 1 , 
-                    [ 'class' => 'input-icheck', 'id' => 'enable_plastic_bag_charge']); !!} Enable Shopping Bag Charge
+                    [ 'class' => 'input-icheck', 'id' => 'enable_plastic_bag_charge']); !!} Enable Bag Fee
                   </label>
-                  @show_tooltip('Enable this to allow adding shopping bag/plastic bag charge to POS transactions')
+                  @show_tooltip('Enable this to allow adding bag fee charge to POS transactions (tax-exempt)')
                 </div>
             </div>
         </div>
 
         <div class="col-sm-6" id="plastic_bag_price_container" style="@if(empty($pos_settings['enable_plastic_bag_charge']) || $pos_settings['enable_plastic_bag_charge'] == 0) display: none; @endif">
             <div class="form-group">
-                {!! Form::label('pos_settings[plastic_bag_price]', 'Shopping Bag Charge Price:') !!}
+                {!! Form::label('pos_settings[plastic_bag_price]', 'Bag Fee Price:') !!}
                 <div class="input-group">
                     <span class="input-group-addon">
                         <i class="fa fa-dollar"></i>
@@ -253,7 +253,7 @@
                         !empty($pos_settings['plastic_bag_price']) ? $pos_settings['plastic_bag_price'] : 0.10, 
                         ['class' => 'form-control input_number', 'step' => '0.01', 'min' => '0', 'id' => 'plastic_bag_price_input']); !!}
                 </div>
-                <p class="help-block">Price charged per shopping bag/plastic bag (applied with sales tax)</p>
+                <p class="help-block">Price charged per bag (tax-exempt)</p>
             </div>
         </div>
 

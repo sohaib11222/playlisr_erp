@@ -93,7 +93,7 @@
 			<div class="checkbox">
 				<label>
 					<input type="checkbox" id="add_plastic_bag" name="add_plastic_bag" value="1">
-					<strong>Add Shopping Bag Charge</strong>
+					<strong>Add Bag Fee</strong>
 					<span id="plastic_bag_price_display" class="text-muted">
 						(${{ number_format($pos_settings['plastic_bag_price'] ?? 0.10, 2) }})
 					</span>

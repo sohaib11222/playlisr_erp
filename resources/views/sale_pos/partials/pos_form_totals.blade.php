@@ -57,8 +57,8 @@
 
 						<input type="hidden" name="tax_rate_id" 
 							id="tax_rate_id" 
-							value="@if(empty($edit)) {{$business_details->default_sales_tax}} @else {{$transaction->tax_id}} @endif" 
-							data-default="{{$business_details->default_sales_tax}}">
+							value="@if(empty($edit)) @if(!empty($business_details->default_sales_tax)){{$business_details->default_sales_tax}}@endif @else {{$transaction->tax_id}} @endif" 
+							data-default="@if(!empty($business_details->default_sales_tax)){{$business_details->default_sales_tax}}@endif">
 
 						<input type="hidden" name="tax_calculation_amount" id="tax_calculation_amount" 
 							value="@if(empty($edit)) {{@num_format($business_details->tax_calculation_amount)}} @else {{@num_format(optional($transaction->tax)->amount)}} @endif" data-default="{{$business_details->tax_calculation_amount}}">

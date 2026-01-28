@@ -46,6 +46,7 @@ class ProductController extends Controller
      */
     protected $productUtil;
     protected $moduleUtil;
+    protected $transactionUtil;
 
     private $barcode_types;
 
@@ -282,7 +283,10 @@ class ProductController extends Controller
                         ->sum('quantity');
 
                 })
-                ->editColumn('category', '{{$category}} @if(!empty($sub_category))<br/> -- {{$sub_category}}@endif')
+                ->editColumn('category', '{{$category}}')
+                ->addColumn('subcategory', function ($row) {
+                    return $row->sub_category ?? '';
+                })
                 ->editColumn('artist', function ($row) {
                     return $row->artist ?? 'N/A';
                 })
@@ -379,7 +383,7 @@ class ProductController extends Controller
                             return '';
                         }
                     }])
-                ->rawColumns(['action' , 'product_url', 'image', 'mass_delete', 'product', 'selling_price', 'purchase_price', 'category', 'current_stock'])
+                ->rawColumns(['action' , 'product_url', 'image', 'mass_delete', 'product', 'selling_price', 'purchase_price', 'category', 'subcategory', 'current_stock'])
                 ->make(true);
         }
 
@@ -549,7 +553,7 @@ class ProductController extends Controller
 
         try {
             $business_id = $this->getBusinessId();
-            $form_fields = ['name', 'brand_id', 'artist', 'unit_id', 'category_id', 'tax', 'type', 'barcode_type', 'sku', 'alert_quantity', 'tax_type', 'weight', 'product_custom_field1', 'product_custom_field2', 'product_custom_field3', 'product_custom_field4', 'product_description', 'sub_unit_ids', 'bin_position', 'listing_location', 'format'];
+            $form_fields = ['name', 'brand_id', 'artist', 'unit_id', 'category_id', 'tax', 'type', 'barcode_type', 'sku', 'alert_quantity', 'tax_type', 'tax_exempt', 'weight', 'product_custom_field1', 'product_custom_field2', 'product_custom_field3', 'product_custom_field4', 'product_description', 'sub_unit_ids', 'bin_position', 'listing_location', 'format'];
 
             $module_form_fields = $this->moduleUtil->getModuleFormField('product_form_fields');
             if (!empty($module_form_fields)) {
@@ -562,6 +566,7 @@ class ProductController extends Controller
 
             $product_details['enable_stock'] = (!empty($request->input('enable_stock')) &&  $request->input('enable_stock') == 1) ? 1 : 0;
             $product_details['not_for_selling'] = (!empty($request->input('not_for_selling')) &&  $request->input('not_for_selling') == 1) ? 1 : 0;
+            $product_details['tax_exempt'] = (!empty($request->input('tax_exempt')) &&  $request->input('tax_exempt') == 1) ? 1 : 0;
 
             // sub_category_id is now required, so it will always be set
             $product_details['sub_category_id'] = $request->input('sub_category_id');
@@ -827,6 +832,7 @@ class ProductController extends Controller
             $product->sku = $product_details['sku'];
             $product->alert_quantity = null;
             $product->tax_type = $product_details['tax_type'];
+            $product->tax_exempt = (!empty($request->input('tax_exempt')) && $request->input('tax_exempt') == 1) ? 1 : 0;
             $product->weight = $product_details['weight']??0;
             $product->product_description = $product_details['product_description'];
 
@@ -2261,6 +2267,24 @@ class ProductController extends Controller
         $product = Product::where('business_id', $business_id)
                             ->with(['variations', 'variations.product_variation', 'variations.group_prices'])
                             ->findOrFail($product_id);
+        
+        // If AJAX request, return JSON with variations (for preorder form)
+        if (request()->ajax() || request()->wantsJson()) {
+            $variations = [];
+            foreach ($product->variations as $variation) {
+                $variation_name = $variation->name;
+                if ($variation->sub_sku) {
+                    $variation_name .= ' (' . $variation->sub_sku . ')';
+                }
+                $variations[$variation->id] = $variation_name;
+            }
+            
+            return response()->json([
+                'variations' => $variations
+            ]);
+        }
+        
+        // Otherwise, return view for bulk edit
         $all_categories = Category::catAndSubCategories($business_id);
 
         $categories = [];
@@ -2282,6 +2306,7 @@ class ProductController extends Controller
         $tax_attributes = $tax_dropdown['attributes'];
 
         $price_groups = SellingPriceGroup::where('business_id', $business_id)->active()->pluck('name', 'id');
+        $business_locations = BusinessLocation::forDropdown($business_id);
 
         return view('product.partials.bulk_edit_product_row')->with(compact(
             'product',
@@ -2290,7 +2315,8 @@ class ProductController extends Controller
             'taxes',
             'tax_attributes',
             'sub_categories',
-            'price_groups'
+            'price_groups',
+            'business_locations'
         ));
     }
 
@@ -3144,6 +3170,30 @@ class ProductController extends Controller
     }
 
     /**
+     * Show bulk category update page
+     */
+    public function bulkCategoryUpdatePage(Request $request)
+    {
+        if (!auth()->user()->can('product.update')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = $request->session()->get('user.business_id');
+        $categories = Category::forDropdown($business_id, 'product');
+        
+        // Get product IDs from query string if provided
+        $product_ids = $request->input('product_ids', []);
+        if (is_string($product_ids)) {
+            $product_ids = explode(',', $product_ids);
+        }
+        $product_ids = array_filter(array_map('intval', $product_ids), function($id) {
+            return $id > 0;
+        });
+
+        return view('product.bulk-category-update')->with(compact('categories', 'product_ids'));
+    }
+
+    /**
      * Export uncategorized products to CSV
      */
     public function exportUncategorized()
@@ -3418,6 +3468,236 @@ class ProductController extends Controller
                 'msg' => 'Import failed: ' . $e->getMessage()
             ]);
         }
+    }
+
+    /**
+     * Process import of sold items from uploaded CSV/Excel file
+     */
+    public function processImportSoldItemsFromFile(Request $request)
+    {
+        if (!auth()->user()->can('product.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        try {
+            $notAllowed = $this->productUtil->notAllowedInDemo();
+            if (!empty($notAllowed)) {
+                return $notAllowed;
+            }
+
+            // Validate file
+            $request->validate([
+                'import_file' => 'required|file|mimes:csv,xlsx,xls|max:51200', // 50MB max
+            ]);
+
+            // Set maximum execution time for large imports
+            ini_set('max_execution_time', 0);
+            ini_set('memory_limit', '512M');
+
+            $business_id = $request->session()->get('user.business_id');
+            $user_id = $request->session()->get('user.id');
+
+            $min_sales_count = $request->input('file_min_sales_count', 1);
+            $create_duplicates = $request->input('file_create_duplicates', false);
+
+            $file = $request->file('import_file');
+            $extension = $file->getClientOriginalExtension();
+
+            DB::beginTransaction();
+
+            // Get defaults
+            $default_category = Category::where('business_id', $business_id)
+                ->where('parent_id', 0)
+                ->first();
+            
+            $default_sub_category = Category::where('business_id', $business_id)
+                ->where('parent_id', '!=', 0)
+                ->first();
+
+            if (!$default_category || !$default_sub_category) {
+                return response()->json([
+                    'success' => false,
+                    'msg' => 'Please create at least one category and sub-category before importing products.'
+                ]);
+            }
+
+            $default_unit = Unit::where('business_id', $business_id)->first();
+            if (!$default_unit) {
+                return response()->json([
+                    'success' => false,
+                    'msg' => 'Please create at least one unit before importing products.'
+                ]);
+            }
+
+            // Parse file
+            $data = [];
+            if ($extension == 'csv') {
+                $data = $this->parseCsvFile($file);
+            } else {
+                $data = Excel::toArray([], $file);
+                $data = $data[0] ?? []; // Get first sheet
+            }
+
+            if (empty($data) || count($data) < 2) {
+                return response()->json([
+                    'success' => false,
+                    'msg' => 'File is empty or invalid. Please check the file format.'
+                ]);
+            }
+
+            // Get header row
+            $headers = array_map('strtolower', array_map('trim', $data[0]));
+            $name_col = $this->findColumnIndex($headers, ['name', 'product name', 'title']);
+            $sku_col = $this->findColumnIndex($headers, ['sku', 'sub_sku', 'product sku']);
+            $artist_col = $this->findColumnIndex($headers, ['artist', 'artist name']);
+            $category_col = $this->findColumnIndex($headers, ['category', 'cat']);
+            $price_col = $this->findColumnIndex($headers, ['price', 'selling price', 'unit price']);
+
+            if ($name_col === false) {
+                return response()->json([
+                    'success' => false,
+                    'msg' => 'Could not find "Name" column in file. Please ensure your file has a "Name" column.'
+                ]);
+            }
+
+            $stats = [
+                'total_found' => count($data) - 1, // Exclude header
+                'created' => 0,
+                'skipped' => 0,
+                'errors' => 0,
+                'errors_list' => []
+            ];
+
+            // Process rows (skip header)
+            $batch_size = 500;
+            $processed = 0;
+
+            foreach (array_chunk(array_slice($data, 1), $batch_size) as $batch) {
+                foreach ($batch as $row) {
+                    try {
+                        $name = trim($row[$name_col] ?? '');
+                        if (empty($name)) {
+                            $stats['skipped']++;
+                            continue;
+                        }
+
+                        $sku = isset($sku_col) && isset($row[$sku_col]) ? trim($row[$sku_col]) : '';
+                        $artist = isset($artist_col) && isset($row[$artist_col]) ? trim($row[$artist_col]) : '';
+                        $price = isset($price_col) && isset($row[$price_col]) ? $this->transactionUtil->num_uf($row[$price_col]) : 0;
+
+                        // Check for duplicates
+                        if (!$create_duplicates) {
+                            $query = Product::where('business_id', $business_id)
+                                ->where('name', $name);
+                            
+                            if (!empty($sku)) {
+                                $query->where('sku', $sku);
+                            } elseif (!empty($artist)) {
+                                $query->where('artist', $artist);
+                            }
+                            
+                            $existing = $query->first();
+                            if ($existing) {
+                                $stats['skipped']++;
+                                continue;
+                            }
+                        }
+
+                        // Create product
+                        $product_data = [
+                            'business_id' => $business_id,
+                            'name' => $name,
+                            'sku' => !empty($sku) ? $sku : ' ',
+                            'artist' => $artist ?: null,
+                            'category_id' => $default_category->id,
+                            'sub_category_id' => $default_sub_category->id,
+                            'unit_id' => $default_unit->id,
+                            'type' => 'single',
+                            'enable_stock' => 0,
+                            'not_for_selling' => 0,
+                            'tax' => 1,
+                            'tax_type' => 'exclusive',
+                            'created_by' => $user_id,
+                        ];
+
+                        $product = Product::create($product_data);
+
+                        // Generate SKU if empty
+                        if (empty(trim($product->sku)) || $product->sku == ' ') {
+                            $sku = $this->productUtil->generateProductSku($product->id);
+                            $product->sku = $sku;
+                            $product->save();
+                        }
+
+                        // Create variation with price
+                        $this->productUtil->createSingleProductVariation(
+                            $product->id,
+                            $product->sku,
+                            $price,
+                            $price,
+                            0,
+                            $price,
+                            $price
+                        );
+
+                        $stats['created']++;
+                        $processed++;
+
+                    } catch (\Exception $e) {
+                        $stats['errors']++;
+                        $stats['errors_list'][] = "Row " . ($processed + 1) . ": " . $e->getMessage();
+                        \Log::error("Import File Error: " . $e->getMessage());
+                    }
+                }
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'msg' => "Import completed successfully. Created {$stats['created']} products, skipped {$stats['skipped']} duplicates.",
+                'stats' => $stats
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error("Import File Error: " . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'msg' => 'Import error: ' . $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Parse CSV file
+     */
+    private function parseCsvFile($file)
+    {
+        $data = [];
+        $handle = fopen($file->getRealPath(), 'r');
+        
+        if ($handle !== false) {
+            while (($row = fgetcsv($handle, 1000, ',')) !== false) {
+                $data[] = $row;
+            }
+            fclose($handle);
+        }
+        
+        return $data;
+    }
+
+    /**
+     * Find column index by possible names
+     */
+    private function findColumnIndex($headers, $possible_names)
+    {
+        foreach ($possible_names as $name) {
+            $index = array_search($name, $headers);
+            if ($index !== false) {
+                return $index;
+            }
+        }
+        return false;
     }
 
     /**

@@ -53,9 +53,27 @@
                 <div class="row">
                     <div class="col-md-12">
                         <h4>Import Options</h4>
-                        <p class="help-block">This will extract unique products from your sold items (transaction_sell_lines) and create them in the products database. This helps with autocomplete suggestions when adding purchases in POS.</p>
+                        <p class="help-block">Import products from sold items. You can either extract from transaction history or upload a CSV/Excel file with 50,000 items.</p>
                         
-                        {!! Form::open(['url' => action('ProductController@processImportSoldItems'), 'method' => 'post', 'id' => 'import_sold_items_form']) !!}
+                        <ul class="nav nav-tabs" role="tablist">
+                            <li role="presentation" class="active">
+                                <a href="#from_transactions" aria-controls="from_transactions" role="tab" data-toggle="tab">
+                                    <i class="fa fa-database"></i> From Transaction History
+                                </a>
+                            </li>
+                            <li role="presentation">
+                                <a href="#from_file" aria-controls="from_file" role="tab" data-toggle="tab">
+                                    <i class="fa fa-file-excel-o"></i> Upload CSV/Excel File
+                                </a>
+                            </li>
+                        </ul>
+                        
+                        <div class="tab-content" style="margin-top: 20px;">
+                            <!-- Tab 1: From Transactions -->
+                            <div role="tabpanel" class="tab-pane active" id="from_transactions">
+                                <p class="help-block">Extract unique products from your sold items (transaction_sell_lines) and create them in the products database.</p>
+                                
+                                {!! Form::open(['url' => action('ProductController@processImportSoldItems'), 'method' => 'post', 'id' => 'import_sold_items_form']) !!}
                         
                         <div class="row">
                             <div class="col-md-6">
@@ -110,7 +128,72 @@
                             </div>
                         </div>
 
-                        {!! Form::close() !!}
+                                {!! Form::close() !!}
+                            </div>
+                            
+                            <!-- Tab 2: From File -->
+                            <div role="tabpanel" class="tab-pane" id="from_file">
+                                <p class="help-block">Upload a CSV or Excel file with product data. File should contain columns: Name, SKU, Artist, Category, Price, etc.</p>
+                                
+                                {!! Form::open(['url' => action('ProductController@processImportSoldItemsFromFile'), 'method' => 'post', 'id' => 'import_file_form', 'files' => true]) !!}
+                                
+                                <div class="row">
+                                    <div class="col-md-12">
+                                        <div class="form-group">
+                                            {!! Form::label('import_file', 'Select File (CSV or Excel):') !!}
+                                            {!! Form::file('import_file', ['class' => 'form-control', 'accept' => '.csv,.xlsx,.xls', 'required' => true]) !!}
+                                            <p class="help-block">Maximum file size: 50MB. Supported formats: CSV, XLS, XLSX</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="form-group">
+                                            {!! Form::label('file_min_sales_count', 'Minimum Sales Count (if applicable):') !!}
+                                            {!! Form::number('file_min_sales_count', 1, ['class' => 'form-control', 'min' => 1]) !!}
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="form-group">
+                                            <div class="checkbox" style="margin-top: 25px;">
+                                                <label>
+                                                    {!! Form::checkbox('file_create_duplicates', 1, false, ['class' => 'input-icheck']) !!} 
+                                                    Create products even if similar products already exist
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="row">
+                                    <div class="col-md-12">
+                                        <div class="alert alert-info">
+                                            <strong>File Format:</strong> Your CSV/Excel file should have columns like:
+                                            <ul>
+                                                <li>Name (required)</li>
+                                                <li>SKU (optional)</li>
+                                                <li>Artist (optional)</li>
+                                                <li>Category (optional)</li>
+                                                <li>Price (optional)</li>
+                                                <li>Format (optional)</li>
+                                            </ul>
+                                            The system will try to match columns automatically.
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="row">
+                                    <div class="col-md-12">
+                                        <button type="submit" class="btn btn-primary btn-lg" id="import_file_btn">
+                                            <i class="fa fa-upload"></i> Upload and Import
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                {!! Form::close() !!}
+                            </div>
+                        </div>
                     </div>
                 </div>
 

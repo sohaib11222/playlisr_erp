@@ -67,6 +67,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/test-sms', 'BusinessController@testSmsConfiguration');
     Route::post('/business/test-streetpulse-connection', 'BusinessController@testStreetpulseConnection');
     Route::post('/business/sync-streetpulse', 'BusinessController@syncStreetpulse');
+    
+    // Clover Customer Import
+    Route::post('/business/test-clover-connection', 'CloverController@testConnection');
+    Route::get('/business/preview-clover-customers', 'CloverController@previewCustomers');
+    Route::post('/business/import-clover-customers', 'CloverController@importCustomers');
+    
     Route::get('/business/settings', 'BusinessController@getBusinessSettings')->name('business.getBusinessSettings');
     Route::post('/business/update', 'BusinessController@postBusinessSettings')->name('business.postBusinessSettings');
     Route::get('/user/profile', 'UserController@getProfile')->name('user.getProfile');
@@ -101,6 +107,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     
     // Gift Cards
     Route::resource('gift-cards', 'GiftCardController');
+    
+    // Preorders
+    Route::resource('preorders', 'PreorderController');
+    Route::get('/preorders/customer/{contact_id}', 'PreorderController@getCustomerPreorders');
+    Route::post('/preorders/{id}/fulfill', 'PreorderController@fulfill');
     
     // Loyalty Tiers
     Route::resource('loyalty-tiers', 'LoyaltyTierController');
@@ -152,10 +163,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/product/mass-store', [ProductController::class, 'massStore'])->name('product.massStore');
     Route::get('/products/get-combo-product-entry-row', 'ProductController@getComboProductEntryRow');
     Route::post('/products/toggle-woocommerce-sync', 'ProductController@toggleWooCommerceSync');
+    Route::get('/products/bulk-update-categories', 'ProductController@bulkCategoryUpdatePage');
     Route::post('/products/bulk-update-categories', 'ProductController@bulkUpdateCategories');
     Route::get('/products/export-uncategorized', 'ProductController@exportUncategorized');
     Route::get('/products/import-sold-items', 'ProductController@importSoldItems')->name('products.importSoldItems');
     Route::post('/products/process-import-sold-items', 'ProductController@processImportSoldItems')->name('products.processImportSoldItems');
+    Route::post('/products/process-import-sold-items-from-file', 'ProductController@processImportSoldItemsFromFile')->name('products.processImportSoldItemsFromFile');
     
     Route::resource('products', 'ProductController');
 
@@ -189,6 +202,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/sells/pos/get_plastic_bag_row', [SellPosController::class, 'getPlasticBagRow']);
     Route::get('/sells/pos/get-customer-account-info', [SellPosController::class, 'getCustomerAccountInfo']);
     Route::get('/sells/pos/lookup-gift-card', [SellPosController::class, 'lookupGiftCard']);
+    Route::get('/sells/pos/get-customer-preorders/{contact_id}', 'PreorderController@getCustomerPreorders');
     Route::post('/sells/pos/get_payment_row', 'SellPosController@getPaymentRow');
     Route::post('/sells/pos/send-to-clover/{id}', 'SellPosController@sendToClover');
     Route::get('/sells/pos/clover-status/{payment_id}', 'SellPosController@getCloverPaymentStatus');

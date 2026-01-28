@@ -195,6 +195,17 @@
                         </select>
                     </div>
                 </div>
+                
+                <div class="col-sm-4 @if(!session('business.enable_price_tax')) hide @endif">
+                    <div class="form-group">
+                        <br>
+                        <label>
+                            {!! Form::checkbox('tax_exempt', 1, !empty($duplicate_product) && !empty($duplicate_product->tax_exempt) ? $duplicate_product->tax_exempt : false, ['class' => 'input-icheck']); !!} 
+                            <strong>Tax Exempt</strong>
+                        </label>
+                        <p class="help-block">Check if this product is exempt from sales tax</p>
+                    </div>
+                </div>
 
 
                 <div class="clearfix"></div>

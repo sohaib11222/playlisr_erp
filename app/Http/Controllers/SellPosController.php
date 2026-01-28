@@ -53,8 +53,10 @@ use App\Warranty;
 use App\InvoiceLayout;
 use App\GiftCard;
 use App\LoyaltyTier;
+use App\Preorder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Yajra\DataTables\Facades\DataTables;
@@ -1473,7 +1475,16 @@ class SellPosController extends Controller
                 \Log::emergency("File:" . $e->getFile(). "Line:" . $e->getLine(). "Message:" . $e->getMessage());
 
                 $output['success'] = false;
-                $output['msg'] = trans("messages.something_went_wrong");
+
+                // Provide a more helpful error message so issues can be diagnosed
+                // If a specific message is available from the exception, surface it;
+                // otherwise, fall back to the generic "something went wrong" text.
+                $exceptionMessage = trim($e->getMessage() ?? '');
+                if (!empty($exceptionMessage)) {
+                    $output['msg'] = $exceptionMessage;
+                } else {
+                    $output['msg'] = trans("messages.something_went_wrong");
+                }
             }
 
             return $output;
@@ -1550,6 +1561,35 @@ class SellPosController extends Controller
         $percent = (empty($cg) || empty($cg->amount) || $cg->price_calculation_type != 'percentage') ? 0 : $cg->amount;
         $product->default_sell_price = $product->default_sell_price + ($percent * $product->default_sell_price / 100);
         $product->sell_price_inc_tax = $product->sell_price_inc_tax + ($percent * $product->sell_price_inc_tax / 100);
+
+        // Check if product is tax exempt FIRST - this must override any existing tax_id
+        $productModel = Product::find($product->product_id);
+        if ($productModel && !empty($productModel->tax_exempt) && $productModel->tax_exempt == 1) {
+            // Product is tax exempt - remove any tax and set price without tax
+            $product->tax_id = null;
+            // If price includes tax, recalculate to exclude tax
+            if (!empty($product->sell_price_inc_tax) && $product->sell_price_inc_tax > 0) {
+                // Price is already set, but we need to ensure it's the base price without tax
+                // The sell_price_inc_tax should equal default_sell_price for tax exempt products
+                $product->sell_price_inc_tax = $product->default_sell_price;
+            }
+        } else {
+            // Product is NOT tax exempt
+            // If product doesn't have a tax set, apply default tax
+            if (empty($product->tax_id) || $product->tax_id == 0 || $product->tax_id == '') {
+                // Try location default tax first, then business default tax
+                $location = BusinessLocation::find($location_id);
+                $default_tax = null;
+                if ($location && !empty($location->default_sales_tax)) {
+                    $default_tax = $location->default_sales_tax;
+                } elseif (!empty($business_details->default_sales_tax)) {
+                    $default_tax = $business_details->default_sales_tax;
+                }
+                if ($default_tax) {
+                    $product->tax_id = $default_tax;
+                }
+            }
+        }
 
         $tax_dropdown = TaxRate::forBusinessDropdown($business_id, true, true);
 
@@ -1773,7 +1813,7 @@ class SellPosController extends Controller
      * @return \Illuminate\Http\Response
      */
     /**
-     * Get plastic bag charge row
+     * Get bag fee charge row
      *
      * @return \Illuminate\Http\Response
      */
@@ -1783,35 +1823,27 @@ class SellPosController extends Controller
         $business = Business::findOrFail($business_id);
         $pos_settings = empty($business->pos_settings) ? $this->businessUtil->defaultPosSettings() : json_decode($business->pos_settings, true);
         
-        // Check if plastic bag charge is enabled
+        // Check if bag fee charge is enabled
         if (empty($pos_settings['enable_plastic_bag_charge'])) {
             return response()->json([
                 'success' => false,
-                'msg' => 'Shopping bag charge is not enabled. Please enable it in Business Settings > POS Settings.'
+                'msg' => 'Bag fee charge is not enabled. Please enable it in Business Settings > POS Settings.'
             ]);
         }
         
         $plastic_bag_price = $pos_settings['plastic_bag_price'] ?? 0.10;
         $row_count = request()->get('product_row', 0);
         
-        // Get default tax rate for the location (plastic bag should have sales tax applied)
+        // Get default tax rate for the location (bag fee should be tax-exempt)
         $location_id = request()->get('location_id');
         $default_tax = null;
-        if ($location_id) {
-            $location = BusinessLocation::find($location_id);
-            if ($location) {
-                $default_tax = $location->default_sales_tax;
-            }
-        }
-        if (!$default_tax) {
-            $default_tax = $business->default_sales_tax;
-        }
+        // Bag fee is tax-exempt, so we don't apply default tax
         
         // Get tax dropdown
         $tax_dropdown = TaxRate::forBusinessDropdown($business_id, true, true);
         
-        // Plastic bag doesn't need category/subcategory - pass null
-        $productName = 'Plastic Bag';
+        // Bag fee doesn't need category/subcategory - pass null
+        $productName = 'Bag Fee';
         $artist = '';
         $category = null;
         $subCategory = null;
@@ -3228,36 +3260,60 @@ class SellPosController extends Controller
             ]);
         }
 
-        // Get gift cards
-        $gift_cards = GiftCard::where('business_id', $business_id)
-            ->where('contact_id', $contact_id)
-            ->where('status', 'active')
-            ->where('balance', '>', 0)
-            ->get()
-            ->map(function($card) {
-                return [
-                    'card_number' => $card->card_number,
-                    'balance' => $card->balance,
-                    'expiry_date' => $card->expiry_date ? $this->businessUtil->format_date($card->expiry_date, false) : null,
-                ];
-            });
+        // Get gift cards (handle if table doesn't exist)
+        $gift_cards = collect([]);
+        try {
+            if (Schema::hasTable('gift_cards')) {
+                $gift_cards = GiftCard::where('business_id', $business_id)
+                    ->where('contact_id', $contact_id)
+                    ->where('status', 'active')
+                    ->where('balance', '>', 0)
+                    ->get()
+                    ->map(function($card) {
+                        return [
+                            'card_number' => $card->card_number,
+                            'balance' => $card->balance,
+                            'expiry_date' => $card->expiry_date ? $this->businessUtil->format_date($card->expiry_date, false) : null,
+                        ];
+                    });
+            }
+        } catch (\Exception $e) {
+            \Log::warning('Gift cards table not available: ' . $e->getMessage());
+            $gift_cards = collect([]);
+        }
 
-        // Get recent purchases (last 10)
-        $recent_purchases = Transaction::where('business_id', $business_id)
+        // Get all purchase history (no limit - show all purchases)
+        $all_purchases = Transaction::where('business_id', $business_id)
             ->where('contact_id', $contact_id)
             ->where('type', 'sell')
             ->where('status', 'final')
             ->orderBy('transaction_date', 'desc')
-            ->limit(10)
             ->get()
             ->map(function($transaction) {
+                // Get transaction items
+                $items = $transaction->sell_lines->map(function($line) {
+                    return [
+                        'product_name' => $line->product_name ?? ($line->product->name ?? 'N/A'),
+                        'quantity' => $line->quantity,
+                        'unit_price' => $line->unit_price,
+                        'line_total' => $line->quantity * $line->unit_price,
+                    ];
+                });
+                
                 return [
+                    'id' => $transaction->id,
                     'invoice_no' => $transaction->invoice_no,
                     'date' => $this->businessUtil->format_date($transaction->transaction_date, false),
+                    'date_raw' => $transaction->transaction_date,
                     'total' => $transaction->final_total,
                     'payment_status' => $transaction->payment_status,
+                    'items' => $items,
+                    'item_count' => $items->count(),
                 ];
             });
+        
+        // Get recent purchases (last 10) for summary
+        $recent_purchases = $all_purchases->take(10);
 
         // Calculate lifetime purchases
         $lifetime_purchases = Transaction::where('business_id', $business_id)
@@ -3266,10 +3322,12 @@ class SellPosController extends Controller
             ->where('status', 'final')
             ->sum('final_total');
 
-        // Update contact lifetime purchases if different
-        if ($contact->lifetime_purchases != $lifetime_purchases) {
-            $contact->lifetime_purchases = $lifetime_purchases;
-            $contact->save();
+        // Update contact lifetime purchases if different (only if column exists)
+        if (Schema::hasColumn('contacts', 'lifetime_purchases')) {
+            if ($contact->lifetime_purchases != $lifetime_purchases) {
+                $contact->lifetime_purchases = $lifetime_purchases;
+                $contact->save();
+            }
         }
 
         // Get last purchase date
@@ -3280,13 +3338,58 @@ class SellPosController extends Controller
             ->orderBy('transaction_date', 'desc')
             ->first();
 
-        if ($last_purchase && (!$contact->last_purchase_date || $contact->last_purchase_date != $last_purchase->transaction_date)) {
-            $contact->last_purchase_date = $last_purchase->transaction_date;
-            $contact->save();
+        if ($last_purchase && Schema::hasColumn('contacts', 'last_purchase_date')) {
+            if (!$contact->last_purchase_date || $contact->last_purchase_date != $last_purchase->transaction_date) {
+                $contact->last_purchase_date = $last_purchase->transaction_date;
+                $contact->save();
+            }
         }
 
         // Get reward points if enabled (use loyalty_points if available, otherwise 0)
-        $reward_points = $contact->loyalty_points ?? 0;
+        $reward_points = 0;
+        if (Schema::hasColumn('contacts', 'loyalty_points')) {
+            $reward_points = $contact->loyalty_points ?? 0;
+        } elseif (Schema::hasColumn('contacts', 'total_rp')) {
+            $reward_points = $contact->total_rp ?? 0;
+        }
+
+        // Get pending preorders (handle if table doesn't exist)
+        $preorders = collect([]);
+        try {
+            if (Schema::hasTable('preorders')) {
+                $preorders_query = \App\Preorder::where('business_id', $business_id)
+                    ->where('contact_id', $contact_id)
+                    ->where('status', 'pending')
+                    ->with(['product', 'variation'])
+                    ->orderBy('order_date', 'desc');
+                
+                // Debug: Log the query
+                \Log::info('Preorders query for contact ' . $contact_id . ': ' . $preorders_query->toSql());
+                
+                $preorders = $preorders_query->get();
+                
+                // Debug: Log count
+                \Log::info('Preorders found: ' . $preorders->count());
+                
+                $preorders = $preorders->map(function($preorder) {
+                    return [
+                        'id' => $preorder->id,
+                        'product_name' => $preorder->product ? $preorder->product->name : 'N/A',
+                        'artist' => $preorder->product ? ($preorder->product->artist ?? '') : '',
+                        'sub_sku' => $preorder->variation ? ($preorder->variation->sub_sku ?? 'N/A') : 'N/A',
+                        'quantity' => $preorder->quantity,
+                        'order_date' => $this->businessUtil->format_date($preorder->order_date, false),
+                        'expected_date' => $preorder->expected_date ? $this->businessUtil->format_date($preorder->expected_date, false) : null,
+                        'notes' => $preorder->notes,
+                    ];
+                });
+            } else {
+                \Log::warning('Preorders table does not exist');
+            }
+        } catch (\Exception $e) {
+            \Log::error('Error fetching preorders: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString());
+            $preorders = collect([]);
+        }
 
         return response()->json([
             'success' => true,
@@ -3296,13 +3399,16 @@ class SellPosController extends Controller
                     'name' => $contact->name,
                     'balance' => $contact->balance ?? 0,
                     'lifetime_purchases' => $lifetime_purchases,
-                    'loyalty_points' => $contact->loyalty_points ?? 0,
-                    'loyalty_tier' => $contact->loyalty_tier ?? 'Bronze',
-                    'last_purchase_date' => $contact->last_purchase_date ? $this->businessUtil->format_date($contact->last_purchase_date, false) : null,
+                    'loyalty_points' => Schema::hasColumn('contacts', 'loyalty_points') ? ($contact->loyalty_points ?? 0) : 0,
+                    'loyalty_tier' => Schema::hasColumn('contacts', 'loyalty_tier') ? ($contact->loyalty_tier ?? 'Bronze') : 'Bronze',
+                    'last_purchase_date' => (Schema::hasColumn('contacts', 'last_purchase_date') && $contact->last_purchase_date) ? $this->businessUtil->format_date($contact->last_purchase_date, false) : null,
                     'reward_points' => $reward_points,
                 ],
                 'gift_cards' => $gift_cards,
+                'preorders' => $preorders->values()->all(), // Convert collection to array
                 'recent_purchases' => $recent_purchases,
+                'all_purchases' => $all_purchases,
+                'total_purchases_count' => $all_purchases->count(),
                 'total_gift_card_balance' => $gift_cards->sum('balance'),
             ]
         ]);
@@ -3364,8 +3470,8 @@ class SellPosController extends Controller
                 ->where('id', $contact_id)
                 ->first();
 
-            if (!$contact) {
-                return;
+            if (!$contact || $contact->is_default == 1) {
+                return; // Skip walk-in customers
             }
 
             // Calculate lifetime purchases
@@ -3392,6 +3498,8 @@ class SellPosController extends Controller
 
             // Determine loyalty tier based on lifetime purchases
             $tier = LoyaltyTier::getTierForPurchaseAmount($business_id, $lifetime_purchases);
+            $old_tier = $contact->loyalty_tier;
+            
             if ($tier) {
                 $contact->loyalty_tier = $tier->name;
             } else {
@@ -3399,7 +3507,18 @@ class SellPosController extends Controller
                 $contact->loyalty_tier = 'Bronze';
             }
 
+            // Sync loyalty_points with total_rp (reward points)
+            // loyalty_points should match total_rp for consistency
+            if (!empty($contact->total_rp)) {
+                $contact->loyalty_points = (int)$contact->total_rp;
+            }
+
             $contact->save();
+
+            // Log tier upgrade if it happened
+            if ($old_tier != $contact->loyalty_tier && !empty($old_tier)) {
+                \Log::info("Customer {$contact_id} upgraded from {$old_tier} to {$contact->loyalty_tier}");
+            }
         } catch (\Exception $e) {
             \Log::error("Error updating customer loyalty: " . $e->getMessage());
         }

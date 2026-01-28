@@ -179,6 +179,17 @@
         $('#add_tier_form').on('submit', function(e) {
             e.preventDefault();
             var form = $(this);
+            
+            // Check if form is valid
+            if (!form[0].checkValidity()) {
+                form[0].reportValidity();
+                return false;
+            }
+            
+            // Disable submit button to prevent double submission
+            var submitBtn = form.find('button[type="submit"]');
+            submitBtn.prop('disabled', true).text('Saving...');
+            
             $.ajax({
                 method: 'POST',
                 url: form.attr('action'),
@@ -189,12 +200,46 @@
                         toastr.success(result.msg);
                         $('#add_tier_modal').modal('hide');
                         form[0].reset();
+                        // Reset form values to defaults
+                        form.find('input[name="discount_percentage"]').val(0);
+                        form.find('input[name="points_multiplier"]').val(1);
+                        form.find('input[name="sort_order"]').val(0);
+                        form.find('input[name="is_active"]').prop('checked', true);
                         tier_table.ajax.reload();
                     } else {
                         toastr.error(result.msg);
                     }
+                },
+                error: function(xhr) {
+                    var errorMsg = 'Something went wrong';
+                    if (xhr.responseJSON && xhr.responseJSON.msg) {
+                        errorMsg = xhr.responseJSON.msg;
+                    } else if (xhr.responseJSON && xhr.responseJSON.errors) {
+                        var errors = xhr.responseJSON.errors;
+                        errorMsg = Object.values(errors).flat().join(', ');
+                    }
+                    toastr.error(errorMsg);
+                },
+                complete: function() {
+                    // Re-enable submit button
+                    submitBtn.prop('disabled', false).text('Save');
                 }
             });
+        });
+        
+        // Reset form when modal is closed
+        $('#add_tier_modal').on('hidden.bs.modal', function() {
+            var form = $('#add_tier_form');
+            form[0].reset();
+            form.find('input[name="discount_percentage"]').val(0);
+            form.find('input[name="points_multiplier"]').val(1);
+            form.find('input[name="sort_order"]').val(0);
+            form.find('input[name="is_active"]').prop('checked', true);
+            // Remove any validation error messages
+            form.find('.error').remove();
+            form.find('.is-invalid').removeClass('is-invalid');
+            // Re-enable submit button
+            form.find('button[type="submit"]').prop('disabled', false).text('Save');
         });
     });
 </script>

@@ -19,8 +19,8 @@
                 </a>
             </div>
         @endslot
-        <div class="table-responsive">
-            <table class="table table-bordered table-striped table-hover" id="gift_card_table">
+        <div class="table-responsive" style="width: 100%;">
+            <table class="table table-bordered table-striped table-hover" id="gift_card_table" style="width: 100%;">
                 <thead>
                     <tr>
                         <th>Card Number</th>
@@ -47,6 +47,17 @@
             processing: true,
             serverSide: true,
             ajax: '{{ action("GiftCardController@index") }}',
+            autoWidth: false,
+            scrollX: false,
+            columnDefs: [
+                { width: '10%', targets: 0 },  // Card Number
+                { width: '25%', targets: 1 },  // Customer
+                { width: '12%', targets: 2 },  // Initial Value
+                { width: '12%', targets: 3 },  // Balance
+                { width: '12%', targets: 4 },  // Expiry Date
+                { width: '10%', targets: 5 },  // Status
+                { width: '10%', targets: 6 },  // Action
+            ],
             columns: [
                 { data: 'card_number', name: 'card_number' },
                 { data: 'contact', name: 'contact' },

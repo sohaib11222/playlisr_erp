@@ -629,3 +629,113 @@
 	</script>
 	@include('purchase.partials.keyboard_shortcuts')
 @endsection
+
+@section('css')
+<style>
+    /* Make purchase entry rows single-line and compact */
+    #purchase_entry_table tbody tr {
+        height: auto !important;
+        min-height: 35px;
+    }
+    
+    #purchase_entry_table tbody td {
+        padding: 4px 6px !important;
+        vertical-align: middle !important;
+        white-space: nowrap;
+    }
+    
+    #purchase_entry_table tbody td input[type="text"],
+    #purchase_entry_table tbody td select {
+        margin: 0;
+        padding: 2px 5px;
+        font-size: 12px;
+        height: 28px;
+        line-height: 1.2;
+        vertical-align: middle;
+    }
+    
+    #purchase_entry_table tbody td .input-group {
+        margin: 0;
+        display: inline-block;
+    }
+    
+    #purchase_entry_table tbody td .input-group-addon {
+        padding: 2px 5px;
+        font-size: 11px;
+    }
+    
+    /* Ensure product name column doesn't wrap */
+    #purchase_entry_table tbody td:first-child + td {
+        max-width: 250px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    /* Compact date pickers */
+    #purchase_entry_table .expiry_datepicker {
+        font-size: 11px !important;
+        padding: 2px 5px !important;
+    }
+    
+    /* Quantity column - everything inline on one line using flexbox - FORCE IT */
+    #purchase_entry_table tbody td:nth-child(3) {
+        white-space: nowrap !important;
+        padding: 4px 6px !important;
+        line-height: 1 !important;
+    }
+    
+    #purchase_entry_table tbody td:nth-child(3) > div {
+        display: flex !important;
+        align-items: center !important;
+        gap: 5px !important;
+        white-space: nowrap !important;
+        flex-wrap: nowrap !important;
+        width: 100% !important;
+    }
+    
+    #purchase_entry_table tbody td:nth-child(3) input[type="text"],
+    #purchase_entry_table tbody td:nth-child(3) select,
+    #purchase_entry_table tbody td:nth-child(3) span {
+        display: inline-block !important;
+        vertical-align: middle !important;
+        margin: 0 !important;
+        flex-shrink: 0 !important;
+        float: none !important;
+    }
+    
+    /* Force quantity input and unit to be on same line - override Bootstrap */
+    #purchase_entry_table tbody td:nth-child(3) .purchase_quantity {
+        width: 70px !important;
+        display: inline-block !important;
+        margin-right: 5px !important;
+        float: none !important;
+        clear: none !important;
+    }
+    
+    #purchase_entry_table tbody td:nth-child(3) .sub_unit {
+        width: auto !important;
+        min-width: 80px !important;
+        display: inline-block !important;
+        margin-left: 0 !important;
+        float: none !important;
+        clear: none !important;
+    }
+    
+    /* Remove any block-level spacing or line breaks */
+    #purchase_entry_table tbody td:nth-child(3) br {
+        display: none !important;
+    }
+    
+    /* Override any Bootstrap form-control block display */
+    #purchase_entry_table tbody td:nth-child(3) .form-control {
+        display: inline-block !important;
+        width: auto !important;
+    }
+    
+    /* Prevent any block-level elements */
+    #purchase_entry_table tbody td:nth-child(3) > div > * {
+        display: inline-block !important;
+        float: none !important;
+    }
+</style>
+@endsection
