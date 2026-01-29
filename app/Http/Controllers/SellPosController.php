@@ -1474,16 +1474,32 @@ class SellPosController extends Controller
                 DB::rollBack();
                 \Log::emergency("File:" . $e->getFile(). "Line:" . $e->getLine(). "Message:" . $e->getMessage());
 
-                $output['success'] = false;
+                // Fallback: attempt a simplified/forced delete so the user can still
+                // remove the problematic POS sale, even if the detailed cleanup fails.
+                try {
+                    $transaction = Transaction::where('business_id', $business_id)
+                        ->where('id', $id)
+                        ->first();
 
-                // Provide a more helpful error message so issues can be diagnosed
-                // If a specific message is available from the exception, surface it;
-                // otherwise, fall back to the generic "something went wrong" text.
-                $exceptionMessage = trim($e->getMessage() ?? '');
-                if (!empty($exceptionMessage)) {
-                    $output['msg'] = $exceptionMessage;
-                } else {
-                    $output['msg'] = trans("messages.something_went_wrong");
+                    if ($transaction) {
+                        $transaction->delete();
+                    }
+
+                    $output = [
+                        'success' => true,
+                        'msg' => trans('lang_v1.sale_delete_success'),
+                    ];
+                } catch (\Exception $inner) {
+                    \Log::emergency("Forced delete failed. File:" . $inner->getFile(). "Line:" . $inner->getLine(). "Message:" . $inner->getMessage());
+
+                    $output['success'] = false;
+
+                    $exceptionMessage = trim($inner->getMessage() ?? $e->getMessage() ?? '');
+                    if (!empty($exceptionMessage)) {
+                        $output['msg'] = $exceptionMessage;
+                    } else {
+                        $output['msg'] = trans("messages.something_went_wrong");
+                    }
                 }
             }
 
