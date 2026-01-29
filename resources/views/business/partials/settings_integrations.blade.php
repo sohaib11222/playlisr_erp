@@ -233,17 +233,18 @@
         <div class="box-body">
             <div class="alert alert-info">
                 <strong>FTP Upload Method:</strong> Daily sales data is automatically uploaded via FTP to StreetPulse servers. Files are generated in SPULSE02 format.
+                <br><br>
+                <strong>Multi-Location Support:</strong> You can configure a StreetPulse acronym for each location individually. Go to <strong>Business Settings > Locations</strong> and edit each location to set its StreetPulse acronym. If you have multiple locations, each will upload separately with its own acronym.
             </div>
             
             <div class="row">
                 <div class="col-sm-6">
                     <div class="form-group">
-                        {!! Form::label('streetpulse_acronym', 'StreetPulse Store Acronym:') !!}
-                        <span class="text-danger">*</span>
+                        {!! Form::label('streetpulse_acronym', 'StreetPulse Store Acronym (Business-Level):') !!}
                         {!! Form::text('streetpulse_acronym', 
                             !empty($business->streetpulse_acronym) ? $business->streetpulse_acronym : null, 
                             ['class' => 'form-control', 'placeholder' => 'Enter 3-4 character acronym (e.g., WSQ)', 'maxlength' => 10]); !!}
-                        <p class="help-block">3-4 character acronym assigned by StreetPulse (e.g., WSQ, BQ01)</p>
+                        <p class="help-block">3-4 character acronym assigned by StreetPulse (e.g., WSQ, BQ01). <strong>Note:</strong> For multi-location businesses, configure acronyms per location in Business Settings > Locations.</p>
                     </div>
                 </div>
                 <div class="col-sm-6">
@@ -460,9 +461,7 @@
         $('#import_clover_customers_btn').on('click', function() {
             $('#clover_import_modal').modal('show');
             loadCloverCustomersPreview();
-        });
-
-        // Load Clover Customers Preview
+        });        // Load Clover Customers Preview
         window.loadCloverCustomersPreview = function(offset = 0) {
             $('#clover_import_loading').show();
             $('#clover_import_content').hide();

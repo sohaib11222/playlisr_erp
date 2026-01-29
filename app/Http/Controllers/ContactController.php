@@ -404,11 +404,11 @@ class ContactController extends Controller
             ->addColumn('preorders_count', function ($row) {
                 try {
                     if (\Illuminate\Support\Facades\Schema::hasTable('preorders')) {
-                        $count = \App\Preorder::where('contact_id', $row->id)
-                            ->where('status', 'pending')
-                            ->count();
-                        if ($count > 0) {
-                            return '<span class="label label-warning">' . $count . '</span>';
+                $count = \App\Preorder::where('contact_id', $row->id)
+                    ->where('status', 'pending')
+                    ->count();
+                if ($count > 0) {
+                    return '<span class="label label-warning">' . $count . '</span>';
                         }
                     }
                 } catch (\Exception $e) {

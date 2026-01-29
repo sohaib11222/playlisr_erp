@@ -33,14 +33,35 @@ class StreetpulseService
     /**
      * Check if Streetpulse is configured with required credentials
      *
+     * @param int|null $locationId Optional location ID to check
      * @return bool
      */
-    public function isConfigured()
+    public function isConfigured($locationId = null)
     {
         if (!$this->business) {
             return false;
         }
-        return !empty($this->business->streetpulse_acronym);
+        
+        // If location ID provided, check location-specific acronym
+        if ($locationId !== null) {
+            $location = \App\BusinessLocation::where('business_id', $this->businessId)
+                ->where('id', $locationId)
+                ->first();
+            return $location && !empty($location->streetpulse_acronym);
+        }
+        
+        // Check business-level acronym (for backward compatibility)
+        if (!empty($this->business->streetpulse_acronym)) {
+            return true;
+        }
+        
+        // Check if any location has acronym configured
+        $hasLocationAcronym = \App\BusinessLocation::where('business_id', $this->businessId)
+            ->whereNotNull('streetpulse_acronym')
+            ->where('streetpulse_acronym', '!=', '')
+            ->exists();
+        
+        return $hasLocationAcronym;
     }
 
     /**
@@ -117,14 +138,15 @@ class StreetpulseService
      * Generate StreetPulse file and upload for a specific date
      *
      * @param string $date Date in Y-m-d format (defaults to yesterday)
+     * @param int|null $locationId Optional location ID to upload for specific location
      * @return array
      */
-    public function syncDailySales($date = null)
+    public function syncDailySales($date = null, $locationId = null)
     {
-        if (!$this->isConfigured()) {
+        if (!$this->isConfigured($locationId)) {
             return [
                 'success' => false,
-                'msg' => 'StreetPulse acronym not configured.'
+                'msg' => 'StreetPulse acronym not configured' . ($locationId ? ' for this location' : '') . '.'
             ];
         }
 
@@ -133,8 +155,31 @@ class StreetpulseService
             $date = date('Y-m-d', strtotime('-1 day'));
         }
 
-        // Check if already uploaded for this date
-        if ($this->business->streetpulse_last_upload_date == $date) {
+        // Get acronym - location-specific or business-level
+        $acronym = null;
+        if ($locationId !== null) {
+            $location = \App\BusinessLocation::where('business_id', $this->businessId)
+                ->where('id', $locationId)
+                ->first();
+            if ($location && !empty($location->streetpulse_acronym)) {
+                $acronym = $location->streetpulse_acronym;
+            }
+        }
+        
+        // Fallback to business-level acronym if location doesn't have one
+        if (empty($acronym) && !empty($this->business->streetpulse_acronym)) {
+            $acronym = $this->business->streetpulse_acronym;
+        }
+        
+        if (empty($acronym)) {
+            return [
+                'success' => false,
+                'msg' => 'StreetPulse acronym not configured' . ($locationId ? ' for this location' : '') . '.'
+            ];
+        }
+
+        // Check if already uploaded for this date (business-level check for now)
+        if ($this->business->streetpulse_last_upload_date == $date && $locationId === null) {
             return [
                 'success' => false,
                 'msg' => 'Data for ' . $date . ' has already been uploaded.'
@@ -150,8 +195,9 @@ class StreetpulseService
             $fileResult = $this->fileGenerator->generate(
                 $this->businessId,
                 $date,
-                $this->business->streetpulse_acronym,
-                $checkDigitOption
+                $acronym,
+                $checkDigitOption,
+                $locationId
             );
 
             if (!$fileResult['success']) {

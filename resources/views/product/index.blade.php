@@ -1034,27 +1034,27 @@
             
             // Handle change event - this is where we actually load subcategories
             $('#bulk_category_id').on('change', function() {
-                const categoryId = $(this).val();
-                const subCategorySelect = $('#bulk_subcategory_id');
-                
+            const categoryId = $(this).val();
+            const subCategorySelect = $('#bulk_subcategory_id');
+            
                 console.log('Change event fired! Category ID:', categoryId);
-                
-                if (categoryId) {
+            
+            if (categoryId) {
                     // Only load if not already loading (avoid duplicate calls)
                     if (!subCategorySelect.prop('disabled')) {
                         window.loadSubcategories(categoryId, subCategorySelect);
                     }
                 } else {
                     // Clear subcategory if no category selected
-                    if (subCategorySelect.hasClass('select2-hidden-accessible')) {
-                        subCategorySelect.select2('destroy');
-                    }
+                if (subCategorySelect.hasClass('select2-hidden-accessible')) {
+                    subCategorySelect.select2('destroy');
+                }
                     subCategorySelect.html('<option value="">Select Subcategory</option>');
-                    subCategorySelect.select2({
-                        dropdownParent: $('#bulk_category_update_modal'),
+                subCategorySelect.select2({
+                    dropdownParent: $('#bulk_category_update_modal'),
                         placeholder: 'Select Subcategory',
                         allowClear: true
-                    });
+                });
                 }
             });
             
@@ -1081,14 +1081,14 @@
                 }
                 subCategorySelect.html('<option value="">Select Subcategory</option>');
                 if ($('#bulk_category_update_modal').is(':visible')) {
-                    subCategorySelect.select2({
-                        dropdownParent: $('#bulk_category_update_modal'),
+                subCategorySelect.select2({
+                    dropdownParent: $('#bulk_category_update_modal'),
                         placeholder: 'Select Subcategory',
                         allowClear: true
                     });
+                    }
                 }
-            }
-        });
+            });
 
         // Functions are now defined globally above, before document.ready - no need to redefine here
 

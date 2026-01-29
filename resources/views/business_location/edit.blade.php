@@ -26,6 +26,13 @@
         </div>
         <div class="col-sm-6">
           <div class="form-group">
+            {!! Form::label('streetpulse_acronym', 'StreetPulse Store Acronym:') !!}
+              {!! Form::text('streetpulse_acronym', $location->streetpulse_acronym, ['class' => 'form-control', 'placeholder' => 'Enter 3-4 character acronym (e.g., WSQ)', 'maxlength' => 10]); !!}
+              <p class="help-block">3-4 character acronym assigned by StreetPulse for this location (e.g., WSQ, BQ01)</p>
+          </div>
+        </div>
+        <div class="col-sm-6">
+          <div class="form-group">
             {!! Form::label('landmark', __( 'business.landmark' ) . ':') !!}
               {!! Form::text('landmark', $location->landmark, ['class' => 'form-control', 'placeholder' => __( 'business.landmark' ) ]); !!}
           </div>

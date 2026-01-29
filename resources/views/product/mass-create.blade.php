@@ -403,20 +403,7 @@
                     rowIndex++;
 
                     // Reinitialize Select2 for new elements
-                    const $newRow = $('#product_rows_container .product-row').last();
-                    // Configure category and subcategory Select2 to prevent free text
-                    $newRow.find('.category-select.select2').select2({
-                        allowClear: true,
-                        tags: false,
-                        placeholder: '@lang("messages.please_select")'
-                    });
-                    $newRow.find('.subcategory-select.select2').select2({
-                        allowClear: true,
-                        tags: false,
-                        placeholder: '@lang("messages.please_select")'
-                    });
-                    // Initialize other Select2 fields
-                    $newRow.find('.select2').not('.category-select').not('.subcategory-select').select2();
+                    $('#product_rows_container .product-row').last().find('.select2').select2();
                     window.setupProductNameSelect2();
                     window.isAddingNewRow = false;
                     $('#add_row').html('Add New Product Row');
@@ -703,19 +690,7 @@
         });
 
         // Реинициализация Select2 для уже существующих строк
-        // Configure Select2 to prevent free text entry (tags) for categories
-        $('.category-select.select2').select2({
-            allowClear: true,
-            tags: false, // Prevent free text entry
-            placeholder: '@lang("messages.please_select")'
-        });
-        $('.subcategory-select.select2').select2({
-            allowClear: true,
-            tags: false, // Prevent free text entry
-            placeholder: '@lang("messages.please_select")'
-        });
-        // Initialize other Select2 fields normally
-        $('.select2').not('.category-select').not('.subcategory-select').select2();
+        $('.select2').select2();
 
         $(document).on('change', '.select2_business_locations', function() {
             const inputId = this.id.split('_');
@@ -1071,7 +1046,7 @@
                     select: function(event, ui) {
                         event.preventDefault();
                         $(this).val(ui.item.text);
-                        window.setAsSelectedProductRow(ui, $(this));
+                            window.setAsSelectedProductRow(ui, $(this));
                         $(this).autocomplete('close');
                         return false;
                     },
@@ -1317,18 +1292,8 @@
                         resolve();
                     }
                     
-                    // Reinitialize Select2 with proper configuration
-                    $row.find('.category-select.select2').select2({
-                        allowClear: true,
-                        tags: false,
-                        placeholder: '@lang("messages.please_select")'
-                    });
-                    $row.find('.subcategory-select.select2').select2({
-                        allowClear: true,
-                        tags: false,
-                        placeholder: '@lang("messages.please_select")'
-                    });
-                    $row.find('.select2').not('.category-select').not('.subcategory-select').select2();
+                    // Reinitialize Select2
+                    $row.find('.select2').select2();
                     window.setupProductNameSelect2();
                 },
                 error: function () {

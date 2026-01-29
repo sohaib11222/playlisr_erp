@@ -16,13 +16,14 @@ class StreetpulseFileGenerator
      * @param string $date Date in Y-m-d format
      * @param string $acronym StreetPulse store acronym
      * @param string $checkDigitOption CHECKDIGIT or NOCHECKDIGIT
+     * @param int|null $locationId Optional location ID to filter by location
      * @return array ['success' => bool, 'file_path' => string, 'record_count' => int, 'msg' => string]
      */
-    public function generate($businessId, $date, $acronym, $checkDigitOption = 'NOCHECKDIGIT')
+    public function generate($businessId, $date, $acronym, $checkDigitOption = 'NOCHECKDIGIT', $locationId = null)
     {
         try {
             // Get sales data for the date
-            $salesData = $this->getSalesDataForDate($businessId, $date);
+            $salesData = $this->getSalesDataForDate($businessId, $date, $locationId);
             
             if (empty($salesData)) {
                 return [
@@ -117,23 +118,30 @@ class StreetpulseFileGenerator
      *
      * @param int $businessId
      * @param string $date Date in Y-m-d format
+     * @param int|null $locationId Optional location ID to filter by location
      * @return array
      */
-    private function getSalesDataForDate($businessId, $date)
+    private function getSalesDataForDate($businessId, $date, $locationId = null)
     {
         $startDate = $date . ' 00:00:00';
         $endDate = $date . ' 23:59:59';
 
         // Query transaction_sell_lines for the date range
-        $sellLines = TransactionSellLine::join('transactions', 'transaction_sell_lines.transaction_id', '=', 'transactions.id')
+        $query = TransactionSellLine::join('transactions', 'transaction_sell_lines.transaction_id', '=', 'transactions.id')
             ->leftJoin('variations', 'transaction_sell_lines.variation_id', '=', 'variations.id')
             ->leftJoin('products', 'transaction_sell_lines.product_id', '=', 'products.id')
             ->where('transactions.business_id', $businessId)
             ->where('transactions.type', 'sell')
             ->where('transactions.status', 'final')
             ->whereBetween('transactions.transaction_date', [$startDate, $endDate])
-            ->whereNull('transaction_sell_lines.parent_sell_line_id') // Only main line items, not modifiers
-            ->select(
+            ->whereNull('transaction_sell_lines.parent_sell_line_id'); // Only main line items, not modifiers
+        
+        // Filter by location if provided
+        if ($locationId !== null) {
+            $query->where('transactions.location_id', $locationId);
+        }
+        
+        $sellLines = $query->select(
                 'transaction_sell_lines.id',
                 'transaction_sell_lines.sub_sku',
                 'transaction_sell_lines.product_id',

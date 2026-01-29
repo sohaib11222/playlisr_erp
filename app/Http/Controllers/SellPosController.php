@@ -1492,13 +1492,13 @@ class SellPosController extends Controller
                 } catch (\Exception $inner) {
                     \Log::emergency("Forced delete failed. File:" . $inner->getFile(). "Line:" . $inner->getLine(). "Message:" . $inner->getMessage());
 
-                    $output['success'] = false;
+                $output['success'] = false;
 
                     $exceptionMessage = trim($inner->getMessage() ?? $e->getMessage() ?? '');
                     if (!empty($exceptionMessage)) {
                         $output['msg'] = $exceptionMessage;
                     } else {
-                        $output['msg'] = trans("messages.something_went_wrong");
+                $output['msg'] = trans("messages.something_went_wrong");
                     }
                 }
             }
@@ -1579,7 +1579,7 @@ class SellPosController extends Controller
         $product->sell_price_inc_tax = $product->sell_price_inc_tax + ($percent * $product->sell_price_inc_tax / 100);
 
         // Check if product is tax exempt FIRST - this must override any existing tax_id
-        $productModel = Product::find($product->product_id);
+            $productModel = Product::find($product->product_id);
         if ($productModel && !empty($productModel->tax_exempt) && $productModel->tax_exempt == 1) {
             // Product is tax exempt - remove any tax and set price without tax
             $product->tax_id = null;
@@ -3280,18 +3280,18 @@ class SellPosController extends Controller
         $gift_cards = collect([]);
         try {
             if (Schema::hasTable('gift_cards')) {
-                $gift_cards = GiftCard::where('business_id', $business_id)
-                    ->where('contact_id', $contact_id)
-                    ->where('status', 'active')
-                    ->where('balance', '>', 0)
-                    ->get()
-                    ->map(function($card) {
-                        return [
-                            'card_number' => $card->card_number,
-                            'balance' => $card->balance,
-                            'expiry_date' => $card->expiry_date ? $this->businessUtil->format_date($card->expiry_date, false) : null,
-                        ];
-                    });
+        $gift_cards = GiftCard::where('business_id', $business_id)
+            ->where('contact_id', $contact_id)
+            ->where('status', 'active')
+            ->where('balance', '>', 0)
+            ->get()
+            ->map(function($card) {
+                return [
+                    'card_number' => $card->card_number,
+                    'balance' => $card->balance,
+                    'expiry_date' => $card->expiry_date ? $this->businessUtil->format_date($card->expiry_date, false) : null,
+                ];
+            });
             }
         } catch (\Exception $e) {
             \Log::warning('Gift cards table not available: ' . $e->getMessage());
@@ -3340,9 +3340,9 @@ class SellPosController extends Controller
 
         // Update contact lifetime purchases if different (only if column exists)
         if (Schema::hasColumn('contacts', 'lifetime_purchases')) {
-            if ($contact->lifetime_purchases != $lifetime_purchases) {
-                $contact->lifetime_purchases = $lifetime_purchases;
-                $contact->save();
+        if ($contact->lifetime_purchases != $lifetime_purchases) {
+            $contact->lifetime_purchases = $lifetime_purchases;
+            $contact->save();
             }
         }
 
@@ -3356,15 +3356,15 @@ class SellPosController extends Controller
 
         if ($last_purchase && Schema::hasColumn('contacts', 'last_purchase_date')) {
             if (!$contact->last_purchase_date || $contact->last_purchase_date != $last_purchase->transaction_date) {
-                $contact->last_purchase_date = $last_purchase->transaction_date;
-                $contact->save();
+            $contact->last_purchase_date = $last_purchase->transaction_date;
+            $contact->save();
             }
         }
 
         // Get reward points if enabled (use loyalty_points if available, otherwise 0)
         $reward_points = 0;
         if (Schema::hasColumn('contacts', 'loyalty_points')) {
-            $reward_points = $contact->loyalty_points ?? 0;
+        $reward_points = $contact->loyalty_points ?? 0;
         } elseif (Schema::hasColumn('contacts', 'total_rp')) {
             $reward_points = $contact->total_rp ?? 0;
         }
@@ -3374,8 +3374,8 @@ class SellPosController extends Controller
         try {
             if (Schema::hasTable('preorders')) {
                 $preorders_query = \App\Preorder::where('business_id', $business_id)
-                    ->where('contact_id', $contact_id)
-                    ->where('status', 'pending')
+            ->where('contact_id', $contact_id)
+            ->where('status', 'pending')
                     ->with(['product', 'variation'])
                     ->orderBy('order_date', 'desc');
                 
@@ -3388,17 +3388,17 @@ class SellPosController extends Controller
                 \Log::info('Preorders found: ' . $preorders->count());
                 
                 $preorders = $preorders->map(function($preorder) {
-                    return [
-                        'id' => $preorder->id,
+                return [
+                    'id' => $preorder->id,
                         'product_name' => $preorder->product ? $preorder->product->name : 'N/A',
                         'artist' => $preorder->product ? ($preorder->product->artist ?? '') : '',
                         'sub_sku' => $preorder->variation ? ($preorder->variation->sub_sku ?? 'N/A') : 'N/A',
-                        'quantity' => $preorder->quantity,
-                        'order_date' => $this->businessUtil->format_date($preorder->order_date, false),
-                        'expected_date' => $preorder->expected_date ? $this->businessUtil->format_date($preorder->expected_date, false) : null,
-                        'notes' => $preorder->notes,
-                    ];
-                });
+                    'quantity' => $preorder->quantity,
+                    'order_date' => $this->businessUtil->format_date($preorder->order_date, false),
+                    'expected_date' => $preorder->expected_date ? $this->businessUtil->format_date($preorder->expected_date, false) : null,
+                    'notes' => $preorder->notes,
+                ];
+            });
             } else {
                 \Log::warning('Preorders table does not exist');
             }
