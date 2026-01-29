@@ -143,7 +143,6 @@ class StreetpulseFileGenerator
         
         $sellLines = $query->select(
                 'transaction_sell_lines.id',
-                'transaction_sell_lines.sub_sku',
                 'transaction_sell_lines.product_id',
                 'transaction_sell_lines.variation_id',
                 'transactions.transaction_date',
@@ -155,8 +154,8 @@ class StreetpulseFileGenerator
 
         $salesData = [];
         foreach ($sellLines as $line) {
-            // Get UPC from variation, product, or line
-            $upc = $line->variation_sku ?? $line->product_sku ?? $line->sub_sku ?? null;
+            // Get UPC from variation or product
+            $upc = $line->variation_sku ?? $line->product_sku ?? null;
             
             if (empty($upc)) {
                 continue;
