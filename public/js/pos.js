@@ -2358,9 +2358,29 @@ function calculate_billing_details(price_total) {
         $('#packing_charge_text').text(__currency_trans_from_en(packing_charge, false));
     }
 
-    var total_payable = price_total + order_tax - discount + shipping_charges + packing_charge + additional_expense;
-
+    // Get rounding multiple for calculations
     var rounding_multiple = $('#amount_rounding_method').val() ? parseFloat($('#amount_rounding_method').val()) : 0;
+
+    // Calculate pre-tax amount (what goes into Clover device)
+    // Pre-tax = subtotal - discount + shipping + packing + additional expenses (before order tax)
+    var pre_tax_amount = price_total - discount + shipping_charges + packing_charge + additional_expense;
+    
+    // Apply rounding to pre-tax amount if rounding is enabled
+    var pre_tax_rounded = pre_tax_amount;
+    if (rounding_multiple > 0) {
+        var pre_tax_round_data = __round(pre_tax_amount, rounding_multiple);
+        pre_tax_rounded = pre_tax_round_data.number;
+    }
+    
+    // Display pre-tax amount (what cashiers enter into Clover)
+    var curr_exchange_rate = 1;
+    if ($('#exchange_rate').length > 0 && $('#exchange_rate').val()) {
+        curr_exchange_rate = __read_number($('#exchange_rate'));
+    }
+    var shown_pre_tax = pre_tax_rounded * curr_exchange_rate;
+    $('span#pre_tax_amount').text(__currency_trans_from_en(shown_pre_tax, false));
+
+    var total_payable = price_total + order_tax - discount + shipping_charges + packing_charge + additional_expense;
     var round_off_data = __round(total_payable, rounding_multiple);
     var total_payable_rounded = round_off_data.number;
 
@@ -2373,12 +2393,11 @@ function calculate_billing_details(price_total) {
     $('input#round_off_amount').val(round_off_amount);
 
     __write_number($('input#final_total_input'), total_payable_rounded);
-    var curr_exchange_rate = 1;
-    if ($('#exchange_rate').length > 0 && $('#exchange_rate').val()) {
-        curr_exchange_rate = __read_number($('#exchange_rate'));
-    }
+    // curr_exchange_rate already calculated above for pre_tax_amount
     var shown_total = total_payable_rounded * curr_exchange_rate;
     $('span#total_payable').text(__currency_trans_from_en(shown_total, false));
+    // Update total with tax in totals section
+    $('span#total_with_tax').text(__currency_trans_from_en(shown_total, false));
 
     $('span.total_payable_span').text(__currency_trans_from_en(total_payable_rounded, true));
 
@@ -2479,6 +2498,8 @@ function pos_order_tax(price_total, discount) {
     }
 
     $('span#order_tax').text(__currency_trans_from_en(order_tax, false));
+    // Also update tax display in totals section
+    $('span#order_tax_display').text(__currency_trans_from_en(order_tax, false));
 
     return order_tax;
 }
@@ -2569,7 +2590,7 @@ function reset_pos_form(){
 	set_location();
 
 	$('tr.product_row').remove();
-	$('span.total_quantity, span.price_total, span#total_discount, span#order_tax, span#total_payable, span#shipping_charges_amount').text(0);
+	$('span.total_quantity, span.price_total, span#total_discount, span#order_tax, span#order_tax_display, span#total_payable, span#total_with_tax, span#shipping_charges_amount').text(0);
 	$('span.total_payable_span', 'span.total_paying', 'span.balance_due').text(0);
 
 	$('#modal_payment').find('.remove_payment_row').each( function(){

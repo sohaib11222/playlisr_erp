@@ -71,6 +71,17 @@
                     </div>
                 </div>
             @endif
+            <div class="col-md-3">
+                <div class="form-group">
+                    <br>
+                    <div class="checkbox">
+                        <label>
+                          {!! Form::checkbox('only_manual_items', 1, false, 
+                          [ 'class' => 'input-icheck', 'id' => 'only_manual_items']); !!} Only Manual Items
+                        </label>
+                    </div>
+                </div>
+            </div>
             @endcomponent
         </div>
     </div>

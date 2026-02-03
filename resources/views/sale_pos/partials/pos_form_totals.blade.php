@@ -5,8 +5,16 @@
 				<td><b>@lang('sale.item'):</b>&nbsp;
 					<span class="total_quantity">0</span></td>
 				<td>
-					<b>@lang('sale.total'):</b> &nbsp;
-					<span class="price_total">0</span>
+					<b>Without Tax:</b> &nbsp;
+					<span id="pre_tax_amount" class="text-success" style="font-weight: bold;">0</span>
+				</td>
+				<td class="@if($pos_settings['disable_order_tax'] != 0) hide @endif">
+					<b>Tax:</b> &nbsp;
+					<span id="order_tax_display" style="font-weight: bold;">0</span>
+				</td>
+				<td>
+					<b>Total (with Tax):</b> &nbsp;
+					<span id="total_with_tax" style="font-weight: bold;">0</span>
 				</td>
 			</tr>
 			<tr>

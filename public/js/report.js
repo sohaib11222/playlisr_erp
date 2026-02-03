@@ -1410,6 +1410,7 @@ $(document).ready(function() {
                 d.customer_id = $('select#ir_customer_id').val();
                 d.location_id = $('select#ir_location_id').val();
                 d.only_mfg_products = $('#only_mfg_products').length && $('#only_mfg_products').is(':checked') ? 1 : 0;
+                d.only_manual_items = $('#only_manual_items').length && $('#only_manual_items').is(':checked') ? 1 : 0;
             },
         },
         columns: [
@@ -1447,6 +1448,23 @@ $(document).ready(function() {
     });
     $(document).on('change', '#ir_supplier_id, #ir_customer_id, #ir_location_id', function(){
         items_report_table.ajax.reload();
+    });
+    
+    // Handle iCheck checkboxes (only_manual_items and only_mfg_products)
+    // Use both iCheck events and regular change event as fallback
+    $(document).on('ifToggled ifChanged change', '#only_manual_items, #only_mfg_products', function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof items_report_table !== 'undefined' && items_report_table) {
+            items_report_table.ajax.reload(null, false); // false = don't reset paging
+        }
+    });
+    
+    // Also handle direct checkbox change as additional fallback
+    $(document).on('change', '#only_manual_items, #only_mfg_products', function(){
+        if (typeof items_report_table !== 'undefined' && items_report_table) {
+            items_report_table.ajax.reload(null, false);
+        }
     });
 
     expense_report_table = $('#expense_report_table').DataTable();

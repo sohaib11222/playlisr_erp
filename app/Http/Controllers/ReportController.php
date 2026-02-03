@@ -474,6 +474,12 @@ class ReportController extends Controller
                           ->orWhere('variation_name', 'like', "%{$keyword}%");
                     });
                 })
+                ->orderColumn('unit_price', 'unit_price $1')
+                ->orderColumn('stock', 'stock $1')
+                ->orderColumn('total_sold', 'total_sold $1')
+                ->orderColumn('total_transfered', 'total_transfered $1')
+                ->orderColumn('total_adjusted', 'total_adjusted $1')
+                ->orderColumn('stock_price', 'stock_price $1')
                 ->removeColumn('enable_stock')
                 ->removeColumn('unit')
                 ->removeColumn('id');
@@ -3105,8 +3111,8 @@ class ReportController extends Controller
         $business_id = request()->session()->get('user.business_id');
 
         if (request()->ajax()) {
-            // Optimized query structure - apply filters early in the join chain
-            $query = TransactionSellLinesPurchaseLines::join('purchase_lines as PL', 'PL.id', '=', 'transaction_sell_lines_purchase_lines.purchase_line_id')
+            // Query for items with purchase-sell mappings (existing query)
+            $purchased_items_query = TransactionSellLinesPurchaseLines::join('purchase_lines as PL', 'PL.id', '=', 'transaction_sell_lines_purchase_lines.purchase_line_id')
                 ->join('transactions as purchase', 'PL.transaction_id', '=', 'purchase.id')
                 ->leftJoin('transaction_sell_lines as SL', 'SL.id', '=', 'transaction_sell_lines_purchase_lines.sell_line_id')
                 ->leftJoin('stock_adjustment_lines as SAL', 'SAL.id', '=', 'transaction_sell_lines_purchase_lines.stock_adjustment_line_id')
@@ -3157,22 +3163,75 @@ class ReportController extends Controller
                     'PL.lot_number'
                 );
 
+            // Query for manual items (items without product_id)
+            $manual_items_query = TransactionSellLine::join('transactions as sale', 'transaction_sell_lines.transaction_id', '=', 'sale.id')
+                ->join('business_locations as bl', 'sale.location_id', '=', 'bl.id')
+                ->leftJoin('categories as cat', 'transaction_sell_lines.category_id', '=', 'cat.id')
+                ->leftJoin('categories as sub_cat', 'transaction_sell_lines.sub_category_id', '=', 'sub_cat.id')
+                ->leftJoin('contacts as customers', 'sale.contact_id', '=', 'customers.id')
+                ->where('sale.business_id', $business_id)
+                ->where('sale.type', 'sell')
+                ->where('sale.status', 'final')
+                ->where(function($q) {
+                    $q->whereNull('transaction_sell_lines.product_id')
+                      ->orWhere('transaction_sell_lines.product_id', 0);
+                })
+                ->whereNotNull('transaction_sell_lines.product_name')
+                ->select(
+                    DB::raw('NULL as sku'),
+                    DB::raw("'single' as product_type"),
+                    'transaction_sell_lines.product_name as product_name',
+                    DB::raw('NULL as format'),
+                    DB::raw('NULL as variation_name'),
+                    DB::raw('NULL as product_variation'),
+                    DB::raw("'pcs' as unit"), // Default unit for manual items
+                    'cat.name as category',
+                    'sub_cat.name as sub_category',
+                    DB::raw('NULL as purchase_date'),
+                    DB::raw("'Manual Item' as purchase_ref_no"),
+                    DB::raw("'manual' as purchase_type"),
+                    DB::raw('NULL as purchase_id'),
+                    DB::raw('NULL as supplier'),
+                    DB::raw('NULL as supplier_business_name'),
+                    DB::raw('0 as purchase_price'),
+                    'sale.transaction_date as sell_date',
+                    DB::raw('NULL as stock_adjustment_date'),
+                    'sale.invoice_no as sale_invoice_no',
+                    DB::raw('NULL as stock_adjustment_ref_no'),
+                    'customers.name as customer',
+                    'customers.supplier_business_name as customer_business_name',
+                    'transaction_sell_lines.quantity as quantity',
+                    'transaction_sell_lines.unit_price_inc_tax as selling_price',
+                    DB::raw('NULL as stock_adjustment_price'),
+                    DB::raw('NULL as stock_adjustment_line_id'),
+                    'transaction_sell_lines.id as sell_line_id',
+                    DB::raw('NULL as purchase_line_id'),
+                    DB::raw('0 as qty_returned'),
+                    'bl.name as location',
+                    'transaction_sell_lines.sell_line_note',
+                    DB::raw('NULL as lot_number')
+                );
+
+            // Apply filters to purchased items query
             $permitted_locations = auth()->user()->permitted_locations();
             if ($permitted_locations != 'all') {
-                $query->whereIn('purchase.location_id', $permitted_locations);
+                $purchased_items_query->whereIn('purchase.location_id', $permitted_locations);
+                $manual_items_query->whereIn('sale.location_id', $permitted_locations);
             }
 
-            // Apply purchase date filter - use direct date comparison for better index usage
+            // Apply purchase date filter
             if (!empty(request()->purchase_start) && !empty(request()->purchase_end)) {
                 $start = request()->purchase_start;
-                $end =  request()->purchase_end;
-                $query->whereBetween(DB::raw('DATE(purchase.transaction_date)'), [$start, $end]);
+                $end = request()->purchase_end;
+                $purchased_items_query->whereBetween(DB::raw('DATE(purchase.transaction_date)'), [$start, $end]);
+                // Manual items don't have purchase dates, so skip this filter for them
             }
-            // Apply sale/stock adjustment date filter - optimized for indexes
+
+            // Apply sale date filter
             if (!empty(request()->sale_start) && !empty(request()->sale_end)) {
                 $start = request()->sale_start;
-                $end =  request()->sale_end;
-                $query->where(function ($q) use ($start, $end) {
+                $end = request()->sale_end;
+                $purchased_items_query->where(function ($q) use ($start, $end) {
                     $q->where(function ($qr) use ($start, $end) {
                         $qr->whereNotNull('sale.transaction_date')
                            ->whereBetween(DB::raw('DATE(sale.transaction_date)'), [$start, $end]);
@@ -3181,44 +3240,101 @@ class ReportController extends Controller
                            ->whereBetween(DB::raw('DATE(stock_adjustment.transaction_date)'), [$start, $end]);
                     });
                 });
+                $manual_items_query->whereBetween(DB::raw('DATE(sale.transaction_date)'), [$start, $end]);
             }
 
             $supplier_id = request()->get('supplier_id', null);
             if (!empty($supplier_id)) {
-                $query->where('suppliers.id', $supplier_id);
+                $purchased_items_query->where('suppliers.id', $supplier_id);
+                // Manual items don't have suppliers, so skip this filter
             }
 
             $customer_id = request()->get('customer_id', null);
             if (!empty($customer_id)) {
-                $query->where('customers.id', $customer_id);
+                $purchased_items_query->where('customers.id', $customer_id);
+                $manual_items_query->where('customers.id', $customer_id);
             }
 
             $location_id = request()->get('location_id', null);
             if (!empty($location_id)) {
-                $query->where('purchase.location_id', $location_id);
+                $purchased_items_query->where('purchase.location_id', $location_id);
+                $manual_items_query->where('sale.location_id', $location_id);
             }
 
             $only_mfg_products = request()->get('only_mfg_products', 0);
             if (!empty($only_mfg_products)) {
-                $query->where('purchase.type', 'production_purchase');
+                $purchased_items_query->where('purchase.type', 'production_purchase');
+                // Manual items don't have purchase types, so skip this filter
             }
 
-            // Add default ordering for better pagination performance
-            // This helps the database optimize LIMIT/OFFSET queries
-            $query->orderBy('purchase.transaction_date', 'desc')
-                  ->orderBy('p.id', 'asc');
+            $only_manual_items = request()->get('only_manual_items', 0);
+            
+            // Union the queries or use only manual items query
+            if (!empty($only_manual_items) && ($only_manual_items == 1 || $only_manual_items == '1')) {
+                // Only show manual items - use only the manual items query
+                $query = DB::table(DB::raw("({$manual_items_query->toSql()}) as unioned_query"))
+                    ->mergeBindings($manual_items_query->getQuery());
+            } else {
+                // Show both purchased and manual items - use UNION
+                $union_query = $purchased_items_query->union($manual_items_query);
+                // Wrap UNION in subquery for Datatables compatibility
+                $query = DB::table(DB::raw("({$union_query->toSql()}) as unioned_query"))
+                    ->mergeBindings($purchased_items_query->getQuery())
+                    ->mergeBindings($manual_items_query->getQuery());
+            }
 
             return Datatables::of($query)
+                // Map original column names to aliased columns in unioned_query
+                // Use backticks and proper table reference for SQL compatibility
+                ->orderColumn('p.name', DB::raw('`unioned_query`.`product_name` $1'))
+                ->orderColumn('p.format', DB::raw('`unioned_query`.`format` $1'))
+                ->orderColumn('v.sub_sku', DB::raw('`unioned_query`.`sku` $1'))
+                ->orderColumn('cat.name', DB::raw('`unioned_query`.`category` $1'))
+                ->orderColumn('sub_cat.name', DB::raw('`unioned_query`.`sub_category` $1'))
+                ->orderColumn('SL.sell_line_note', DB::raw('`unioned_query`.`sell_line_note` $1'))
+                ->orderColumn('purchase.transaction_date', DB::raw('`unioned_query`.`purchase_date` $1'))
+                ->orderColumn('purchase.ref_no', DB::raw('`unioned_query`.`purchase_ref_no` $1'))
+                ->orderColumn('PL.lot_number', DB::raw('`unioned_query`.`lot_number` $1'))
+                ->orderColumn('suppliers.name', DB::raw('`unioned_query`.`supplier` $1'))
+                ->orderColumn('PL.purchase_price_inc_tax', DB::raw('`unioned_query`.`purchase_price` $1'))
+                ->orderColumn('bl.name', DB::raw('`unioned_query`.`location` $1'))
+                ->orderColumn('sale_invoice_no', DB::raw('`unioned_query`.`sale_invoice_no` $1'))
+                ->orderColumn('product_name', DB::raw('`unioned_query`.`product_name` $1'))
+                ->orderColumn('sell_date', DB::raw('`unioned_query`.`sell_date` $1'))
+                ->orderColumn('purchase_date', DB::raw('`unioned_query`.`purchase_date` $1'))
+                ->orderColumn('quantity', DB::raw('`unioned_query`.`quantity` $1'))
+                ->orderColumn('selling_price', DB::raw('`unioned_query`.`selling_price` $1'))
+                ->orderColumn('purchase_price', DB::raw('`unioned_query`.`purchase_price` $1'))
+                ->orderColumn('category', DB::raw('`unioned_query`.`category` $1'))
+                ->orderColumn('sub_category', DB::raw('`unioned_query`.`sub_category` $1'))
+                ->orderColumn('sku', DB::raw('`unioned_query`.`sku` $1'))
+                ->orderColumn('location', DB::raw('`unioned_query`.`location` $1'))
+                ->orderColumn('supplier', DB::raw('`unioned_query`.`supplier` $1'))
+                ->orderColumn('customer', DB::raw('`unioned_query`.`customer` $1'))
+                ->orderColumn('purchase_ref_no', DB::raw('`unioned_query`.`purchase_ref_no` $1'))
                 ->editColumn('product_name', function ($row) {
                     $product_name = $row->product_name;
-                    if ($row->product_type == 'variable') {
+                    if ($row->product_type == 'variable' && !empty($row->product_variation)) {
                         $product_name .= ' - ' . $row->product_variation . ' - ' . $row->variation_name;
+                    }
+                    // Add indicator for manual items
+                    if ($row->purchase_type == 'manual') {
+                        $product_name .= ' <span class="label label-info">(Manual)</span>';
                     }
 
                     return $product_name;
                 })
-                ->editColumn('purchase_date', '{{@format_datetime($purchase_date)}}')
+                ->editColumn('purchase_date', function ($row) {
+                    if ($row->purchase_type == 'manual' || empty($row->purchase_date)) {
+                        return '<span class="text-muted">N/A</span>';
+                    }
+                    $time_format = session('business.time_format') == 24 ? 'H:i' : 'h:i A';
+                    return \Carbon::createFromTimestamp(strtotime($row->purchase_date))->format(session('business.date_format') . ' ' . $time_format);
+                })
                 ->editColumn('purchase_ref_no', function ($row) {
+                    if ($row->purchase_type == 'manual') {
+                        return $row->purchase_ref_no; // "Manual Item"
+                    }
                     $html = $row->purchase_type == 'purchase' ? '<a data-href="' . action('PurchaseController@show', [$row->purchase_id])
                             . '" href="#" data-container=".view_modal" class="btn-modal">' . $row->purchase_ref_no . '</a>' : $row->purchase_ref_no;
                     if ($row->purchase_type == 'opening_stock') {
@@ -3227,9 +3343,20 @@ class ReportController extends Controller
                     return $html;
                 })
                 ->editColumn('purchase_price', function ($row) {
+                    if ($row->purchase_type == 'manual') {
+                        return '<span class="text-muted">N/A</span>';
+                    }
                     return '<span class="display_currency purchase_price" data-currency_symbol=true data-orig-value="' . $row->purchase_price . '">' . $row->purchase_price . '</span>';
                 })
-                ->editColumn('sell_date', '@if(!empty($sell_line_id)) {{@format_datetime($sell_date)}} @else {{@format_datetime($stock_adjustment_date)}} @endif')
+                ->editColumn('sell_date', function ($row) {
+                    $time_format = session('business.time_format') == 24 ? 'H:i' : 'h:i A';
+                    if (!empty($row->sell_date)) {
+                        return \Carbon::createFromTimestamp(strtotime($row->sell_date))->format(session('business.date_format') . ' ' . $time_format);
+                    } elseif (!empty($row->stock_adjustment_date)) {
+                        return \Carbon::createFromTimestamp(strtotime($row->stock_adjustment_date))->format(session('business.date_format') . ' ' . $time_format);
+                    }
+                    return '';
+                })
 
                 ->editColumn('sale_invoice_no', function ($row) {
                     $invoice_no = !empty($row->sell_line_id) ? $row->sale_invoice_no : $row->stock_adjustment_ref_no . '<br><small>(' . __('stock_adjustment.stock_adjustment') . '</small)>' ;
@@ -3237,25 +3364,33 @@ class ReportController extends Controller
                     return $invoice_no;
                 })
                 ->editColumn('quantity', function ($row) {
-                    $html = '<span data-is_quantity="true" class="display_currency quantity" data-currency_symbol=false data-orig-value="' . (float)$row->quantity . '" data-unit="' . $row->unit . '" >' . (float) $row->quantity . '</span> ' . $row->unit;
+                    $html = '<span data-is_quantity="true" class="display_currency quantity" data-currency_symbol=false data-orig-value="' . (float)$row->quantity . '" data-unit="' . ($row->unit ?? 'pcs') . '" >' . (float) $row->quantity . '</span> ' . ($row->unit ?? 'pcs');
 
-                    if (empty($row->sell_line_id)) {
+                    if ($row->purchase_type != 'manual' && empty($row->sell_line_id)) {
                         $html .= '<br><small>(' . __('stock_adjustment.stock_adjustment') . '</small)>';
                     }
-                    if ($row->qty_returned > 0) {
-                        $html .= '<small><i>(<span data-is_quantity="true" class="display_currency" data-currency_symbol=false>' . (float) $row->quantity . '</span> ' . $row->unit . ' ' . __('lang_v1.returned') . ')</i></small>';
+                    if ($row->purchase_type != 'manual' && $row->qty_returned > 0) {
+                        $html .= '<small><i>(<span data-is_quantity="true" class="display_currency" data-currency_symbol=false>' . (float) $row->quantity . '</span> ' . ($row->unit ?? 'pcs') . ' ' . __('lang_v1.returned') . ')</i></small>';
                     }
 
                     return $html;
                 })
                  ->editColumn('selling_price', function ($row) {
-                     $selling_price = !empty($row->sell_line_id) ? $row->selling_price : $row->stock_adjustment_price;
+                     if ($row->purchase_type == 'manual') {
+                         $selling_price = $row->selling_price;
+                     } else {
+                         $selling_price = !empty($row->sell_line_id) ? $row->selling_price : $row->stock_adjustment_price;
+                     }
 
                      return '<span class="display_currency row_selling_price" data-currency_symbol=true data-orig-value="' . $selling_price . '">' . $selling_price . '</span>';
                  })
 
                  ->addColumn('subtotal', function ($row) {
-                     $selling_price = !empty($row->sell_line_id) ? $row->selling_price : $row->stock_adjustment_price;
+                     if ($row->purchase_type == 'manual') {
+                         $selling_price = $row->selling_price;
+                     } else {
+                         $selling_price = !empty($row->sell_line_id) ? $row->selling_price : $row->stock_adjustment_price;
+                     }
                      $subtotal = $selling_price * $row->quantity;
                      return '<span class="display_currency row_subtotal" data-currency_symbol=true data-orig-value="' . $subtotal . '">' . $subtotal . '</span>';
                  })
@@ -3268,7 +3403,7 @@ class ReportController extends Controller
                           ->orWhere('stock_adjustment.ref_no', 'like', ["%{$keyword}%"]);
                 })
                 
-                ->rawColumns(['subtotal', 'selling_price', 'quantity', 'purchase_price', 'sale_invoice_no', 'purchase_ref_no', 'supplier', 'customer'])
+                ->rawColumns(['subtotal', 'selling_price', 'quantity', 'purchase_price', 'sale_invoice_no', 'purchase_ref_no', 'supplier', 'customer', 'product_name', 'purchase_date', 'sell_date'])
                 ->make(true);
         }
 

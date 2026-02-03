@@ -27,7 +27,7 @@
             <th>Product Url</th>
             <th>@lang('product.product_type')</th>
             <th>@lang('product.category')</th>
-            <th>@lang('lang_v1.sub_category')</th>
+            <th>@lang('product.sub_category')</th>
             <th>@lang('product.brand')</th>
             <th>Artist</th>
             <th>@lang('product.tax')</th>
