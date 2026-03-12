@@ -47,7 +47,10 @@ class Kernel extends ConsoleKernel
         }
         */
 
-        $schedule->command('stock:refresh-cache')->dailyAt('23:50');
+        $schedule->command('stock:refresh-cache')
+            ->dailyAt('00:15')
+            ->timezone('America/Los_Angeles')
+            ->withoutOverlapping(180);
         
         // StreetPulse daily upload (runs at 2:00 AM to upload yesterday's data)
         $schedule->command('streetpulse:upload-daily')->dailyAt('02:00');

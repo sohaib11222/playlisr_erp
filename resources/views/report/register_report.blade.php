@@ -12,6 +12,13 @@
 <section class="content">
     <div class="row">
         <div class="col-md-12">
+            <div class="callout callout-info">
+                <p class="text-muted mb-0"><small>@lang('report.register_report_help')</small></p>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-md-12">
             @component('components.filters', ['title' => __('report.filters')])
               {!! Form::open(['url' => action('ReportController@getStockReport'), 'method' => 'get', 'id' => 'register_report_filter_form' ]) !!}
                 <div class="col-md-4">
@@ -46,6 +53,10 @@
                             <th>@lang('report.close_time')</th>
                             <th>@lang('sale.location')</th>
                             <th>@lang('report.user')</th>
+                            <th>Opening Balance</th>
+                            <th>Closing Balance</th>
+                            <th>Expected (Cash)</th>
+                            <th>Difference</th>
                             <th>@lang('cash_register.total_card_slips')</th>
                             <th>@lang('cash_register.total_cheques')</th>
                             <th>@lang('cash_register.total_cash')</th>
@@ -66,11 +77,15 @@
                     <tfoot>
                         <tr class="bg-gray font-17 text-center footer-total">
                             <td colspan="4"><strong>@lang('sale.total'):</strong></td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
                             <td class="footer_total_card_payment"></td>
                             <td class="footer_total_cheque_payment"></td>
                             <td class="footer_total_cash_payment"></td>
                             <td class="footer_total_bank_transfer_payment"></td>
-                            <td class="footer_total_advance_payment"></td>'
+                            <td class="footer_total_advance_payment"></td>
                             <td class="footer_total_custom_pay_1"></td>
                             <td class="footer_total_custom_pay_2"></td>
                             <td class="footer_total_custom_pay_3"></td>

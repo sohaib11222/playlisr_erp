@@ -1,5 +1,26 @@
 <div class="row pos_form_totals">
 	<div class="col-md-12">
+		@if(!empty($default_location))
+		<div class="alert alert-info pos-store-awareness" style="margin-bottom: 12px; padding: 10px 14px;">
+			<strong><i class="fa fa-map-marker-alt"></i> @lang('sale.location'):</strong>
+			<span id="pos_display_location_name">{{ $default_location->name ?? '' }}</span>
+			<small class="text-muted">— @lang('lang_v1.pos_store_awareness_help')</small>
+		</div>
+		@endif
+		@if(!empty($pos_settings['enable_plastic_bag_charge']))
+		<div class="form-group" style="margin-bottom: 12px;">
+			<div class="checkbox">
+				<label>
+					<input type="checkbox" id="add_plastic_bag" name="add_plastic_bag" value="1" checked>
+					<strong>Add Bag Fee</strong>
+					<span id="plastic_bag_price_display" class="text-muted">
+						(${{ number_format($pos_settings['plastic_bag_price'] ?? 0.10, 2) }})
+					</span>
+				</label>
+			</div>
+			<input type="hidden" id="plastic_bag_price" value="{{ $pos_settings['plastic_bag_price'] ?? 0.10 }}">
+		</div>
+		@endif
 		<table class="table table-condensed">
 			<tr>
 				<td><b>@lang('sale.item'):</b>&nbsp;

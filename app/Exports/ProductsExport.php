@@ -3,6 +3,7 @@
 namespace App\Exports;
 
 use App\Product;
+use App\BusinessLocation;
 use Maatwebsite\Excel\Concerns\FromArray;
 
 class ProductsExport implements FromArray
@@ -12,12 +13,14 @@ class ProductsExport implements FromArray
         $business_id = request()->session()->get('user.business_id');
 
         $products = Product::where('business_id', $business_id)
-                    ->with(['brand', 'unit', 'category', 'sub_category', 'product_variations', 'product_variations.variations', 'product_tax', 'rack_details', 'product_locations'])
+                    ->with(['brand', 'unit', 'category', 'sub_category', 'product_variations', 'product_variations.variations.variation_location_details', 'product_tax', 'rack_details', 'product_locations'])
                     ->select('products.*')
                     ->get();
 
-        //set headers
-        $products_array = [['NAME', 'BRAND', 'UNIT', 'CATEGORY', 'SUB-CATEGORY', 'SKU (Leave blank to auto generate sku)', 'BARCODE TYPE', 'MANAGE STOCK (1=yes 0=No)', 'ALERT QUANTITY', 'EXPIRES IN', 'EXPIRY PERIOD UNIT (months/days)', 'APPLICABLE TAX', 'Selling Price Tax Type (inclusive or exclusive)', 'PRODUCT TYPE (single or variable)', 'VARIATION NAME (Keep blank if product type is single)', 'VARIATION VALUES (| seperated values & blank if product type if single)', 'VARIATION SKUs (| seperated values & blank if product type if single)', 'PURCHASE PRICE (Including tax)', 'PURCHASE PRICE (Excluding tax)', 'PROFIT MARGIN', 'SELLING PRICE', 'OPENING STOCK', 'OPENING STOCK LOCATION', 'EXPIRY DATE', 'ENABLE IMEI OR SERIAL NUMBER(1=yes 0=No)', 'WEIGHT', 'RACK', 'ROW', 'POSITION', 'IMAGE', 'PRODUCT DESCRIPTION', 'CUSTOM FIELD 1', 'CUSTOM FIELD 2', 'CUSTOM FIELD 3', 'CUSTOM FIELD 4', 'NOT FOR SELLING(1=yes 0=No)', 'PRODUCT LOCATIONS']];
+        $location_names = BusinessLocation::where('business_id', $business_id)->pluck('name', 'id')->toArray();
+
+        //set headers (added CURRENT STOCK and CURRENT STOCK BY LOCATION)
+        $products_array = [['NAME', 'BRAND', 'UNIT', 'CATEGORY', 'SUB-CATEGORY', 'SKU (Leave blank to auto generate sku)', 'BARCODE TYPE', 'MANAGE STOCK (1=yes 0=No)', 'ALERT QUANTITY', 'EXPIRES IN', 'EXPIRY PERIOD UNIT (months/days)', 'APPLICABLE TAX', 'Selling Price Tax Type (inclusive or exclusive)', 'PRODUCT TYPE (single or variable)', 'VARIATION NAME (Keep blank if product type is single)', 'VARIATION VALUES (| seperated values & blank if product type if single)', 'VARIATION SKUs (| seperated values & blank if product type if single)', 'PURCHASE PRICE (Including tax)', 'PURCHASE PRICE (Excluding tax)', 'PROFIT MARGIN', 'SELLING PRICE', 'OPENING STOCK', 'OPENING STOCK LOCATION', 'EXPIRY DATE', 'ENABLE IMEI OR SERIAL NUMBER(1=yes 0=No)', 'WEIGHT', 'RACK', 'ROW', 'POSITION', 'IMAGE', 'PRODUCT DESCRIPTION', 'CUSTOM FIELD 1', 'CUSTOM FIELD 2', 'CUSTOM FIELD 3', 'CUSTOM FIELD 4', 'NOT FOR SELLING(1=yes 0=No)', 'PRODUCT LOCATIONS', 'CURRENT STOCK', 'CURRENT STOCK BY LOCATION']];
         foreach ($products as $product) {
             $product_variation = $product->product_variations->first();
 
@@ -29,6 +32,29 @@ class ProductsExport implements FromArray
             $profit_percents = implode('|', $product_variation->variations->pluck('profit_percent')->toArray());
             $selling_prices = $product->tax_type == 'inclusive' ? implode('|', $product_variation->variations->pluck('sell_price_inc_tax')->toArray()) : implode('|', $product_variation->variations->pluck('default_sell_price')->toArray());
             $locations = implode(',', $product->product_locations->pluck('name')->toArray());
+
+            // Current stock: sum qty_available across all variations and locations
+            $current_stock_total = 0;
+            $stock_by_location = [];
+            foreach ($product->product_variations ?? [] as $pv) {
+                foreach ($pv->variations ?? [] as $variation) {
+                    foreach ($variation->variation_location_details ?? [] as $vld) {
+                        $qty = (float) ($vld->qty_available ?? 0);
+                        $current_stock_total += $qty;
+                        $loc_id = $vld->location_id;
+                        if (!isset($stock_by_location[$loc_id])) {
+                            $stock_by_location[$loc_id] = 0;
+                        }
+                        $stock_by_location[$loc_id] += $qty;
+                    }
+                }
+            }
+            $current_stock_by_location_parts = [];
+            foreach ($stock_by_location as $loc_id => $qty) {
+                $loc_name = $location_names[$loc_id] ?? 'Location ' . $loc_id;
+                $current_stock_by_location_parts[] = $loc_name . ': ' . (string) round($qty, 2);
+            }
+            $current_stock_by_location = implode(', ', $current_stock_by_location_parts);
 
             $rack_details = [];
             $row_details = [];
@@ -80,7 +106,9 @@ class ProductsExport implements FromArray
                 $product->product_custom_field3,
                 $product->product_custom_field4,
                 $product->not_for_selling,
-                $locations
+                $locations,
+                (string) round($current_stock_total, 2),
+                $current_stock_by_location
             ];
 
             $products_array[] = $product_arr;

@@ -191,7 +191,8 @@ function __write_number(
     precision = __currency_precision
 ) {
     if(input_element.hasClass('input_quantity')) {
-        precision = __quantity_precision;
+        precision = 0;
+        value = Math.floor(parseFloat(value) || 0);
     }
 
     input_element.val(__number_f(value, false, use_page_currency, precision));

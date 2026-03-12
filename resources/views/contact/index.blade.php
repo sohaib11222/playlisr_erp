@@ -23,14 +23,14 @@
         <div class="col-md-3">
             <div class="form-group">
                 <label>
-                    {!! Form::checkbox('has_sell_due', 1, false, ['class' => 'input-icheck', 'id' => 'has_sell_due']); !!} <strong>@lang('lang_v1.sell_due')</strong>
+                    {!! Form::checkbox('has_sell_due', 1, false, ['class' => 'input-icheck', 'id' => 'has_sell_due']) !!} <strong>@lang('lang_v1.sell_due')</strong>
                 </label>
             </div>
         </div>
         <div class="col-md-3">
             <div class="form-group">
                 <label>
-                    {!! Form::checkbox('has_sell_return', 1, false, ['class' => 'input-icheck', 'id' => 'has_sell_return']); !!} <strong>@lang('lang_v1.sell_return')</strong>
+                    {!! Form::checkbox('has_sell_return', 1, false, ['class' => 'input-icheck', 'id' => 'has_sell_return']) !!} <strong>@lang('lang_v1.sell_return')</strong>
                 </label>
             </div>
         </div>
@@ -38,14 +38,14 @@
         <div class="col-md-3">
             <div class="form-group">
                 <label>
-                    {!! Form::checkbox('has_purchase_due', 1, false, ['class' => 'input-icheck', 'id' => 'has_purchase_due']); !!} <strong>@lang('report.purchase_due')</strong>
+                    {!! Form::checkbox('has_purchase_due', 1, false, ['class' => 'input-icheck', 'id' => 'has_purchase_due']) !!} <strong>@lang('report.purchase_due')</strong>
                 </label>
             </div>
         </div>
         <div class="col-md-3">
             <div class="form-group">
                 <label>
-                    {!! Form::checkbox('has_purchase_return', 1, false, ['class' => 'input-icheck', 'id' => 'has_purchase_return']); !!} <strong>@lang('lang_v1.purchase_return')</strong>
+                    {!! Form::checkbox('has_purchase_return', 1, false, ['class' => 'input-icheck', 'id' => 'has_purchase_return']) !!} <strong>@lang('lang_v1.purchase_return')</strong>
                 </label>
             </div>
         </div>
@@ -53,14 +53,14 @@
     <div class="col-md-3">
         <div class="form-group">
             <label>
-                {!! Form::checkbox('has_advance_balance', 1, false, ['class' => 'input-icheck', 'id' => 'has_advance_balance']); !!} <strong>@lang('lang_v1.advance_balance')</strong>
+                {!! Form::checkbox('has_advance_balance', 1, false, ['class' => 'input-icheck', 'id' => 'has_advance_balance']) !!} <strong>@lang('lang_v1.advance_balance')</strong>
             </label>
         </div>
     </div>
     <div class="col-md-3">
         <div class="form-group">
             <label>
-                {!! Form::checkbox('has_opening_balance', 1, false, ['class' => 'input-icheck', 'id' => 'has_opening_balance']); !!} <strong>@lang('lang_v1.opening_balance')</strong>
+                {!! Form::checkbox('has_opening_balance', 1, false, ['class' => 'input-icheck', 'id' => 'has_opening_balance']) !!} <strong>@lang('lang_v1.opening_balance')</strong>
             </label>
         </div>
     </div>
@@ -68,14 +68,14 @@
         <div class="col-md-3">
             <div class="form-group">
                 <label for="has_no_sell_from">@lang('lang_v1.has_no_sell_from'):</label>
-                {!! Form::select('has_no_sell_from', ['one_month' => __('lang_v1.one_month'), 'three_months' => __('lang_v1.three_months'), 'six_months' => __('lang_v1.six_months'), 'one_year' => __('lang_v1.one_year')], null, ['class' => 'form-control', 'id' => 'has_no_sell_from', 'placeholder' => __('messages.please_select')]); !!}
+                {!! Form::select('has_no_sell_from', ['one_month' => __('lang_v1.one_month'), 'three_months' => __('lang_v1.three_months'), 'six_months' => __('lang_v1.six_months'), 'one_year' => __('lang_v1.one_year')], null, ['class' => 'form-control', 'id' => 'has_no_sell_from', 'placeholder' => __('messages.please_select')]) !!}
             </div>
         </div>
 
         <div class="col-md-3">
             <div class="form-group">
                 <label for="cg_filter">@lang('lang_v1.customer_group'):</label>
-                {!! Form::select('cg_filter', $customer_groups, null, ['class' => 'form-control', 'id' => 'cg_filter']); !!}
+                {!! Form::select('cg_filter', $customer_groups, null, ['class' => 'form-control', 'id' => 'cg_filter']) !!}
             </div>
         </div>
     @endif
@@ -84,7 +84,7 @@
     <div class="col-md-3">
         <div class="form-group">
             {!! Form::label('assigned_to',  __('lang_v1.assigned_to') . ':') !!}
-            {!! Form::select('assigned_to', $users, null, ['class' => 'form-control select2', 'style' => 'width:100%']); !!}
+            {!! Form::select('assigned_to', $users, null, ['class' => 'form-control select2', 'style' => 'width:100%']) !!}
         </div>
     </div>
     @endif
@@ -92,7 +92,7 @@
     <div class="col-md-3">
         <div class="form-group">
             <label for="status_filter">@lang('sale.status'):</label>
-            {!! Form::select('status_filter', ['active' => __('business.is_active'), 'inactive' => __('lang_v1.inactive')], null, ['class' => 'form-control', 'id' => 'status_filter', 'placeholder' => __('lang_v1.none')]); !!}
+            {!! Form::select('status_filter', ['active' => __('business.is_active'), 'inactive' => __('lang_v1.inactive')], null, ['class' => 'form-control', 'id' => 'status_filter', 'placeholder' => __('lang_v1.none')]) !!}
         </div>
     </div>
     @endcomponent
@@ -101,6 +101,11 @@
         @if(auth()->user()->can('supplier.create') || auth()->user()->can('customer.create') || auth()->user()->can('supplier.view_own') || auth()->user()->can('customer.view_own'))
             @slot('tool')
                 <div class="box-tools">
+                    @if($type == 'customer')
+                        <a href="{{ action('ContactCampaignController@index') }}" class="btn btn-warning" style="margin-bottom: 8px;">
+                            <i class="fa fa-bullhorn"></i> Customer Alerts
+                        </a>
+                    @endif
                     <button type="button" class="btn btn-block btn-primary btn-modal"
                     data-href="{{action('ContactController@create', ['type' => $type])}}"
                     data-container=".contact_modal">
@@ -303,6 +308,8 @@
                     $('#modal_loyalty_tier').text(contact.loyalty_tier || 'Bronze');
                     $('#modal_last_purchase_date').text(contact.last_purchase_date || 'Never');
                     $('#modal_total_gift_card_balance').text(__currency_trans_from_en(data.total_gift_card_balance || 0, true));
+                    $('#modal_store_credit_contact_id').val(contact.id);
+                    $('#modal_store_credit_amount').val('');
 
                     // Update gift cards list
                     var giftCardsHtml = '';
@@ -401,6 +408,185 @@
             console.error('Contact ID not found in element:', this);
         }
     });
+
+    $(document).on('click', '.add_store_credit_button', function(e) {
+        e.preventDefault();
+        var contactId = $(this).data('contact-id');
+        if (!contactId) {
+            toastr.error('Contact ID not found');
+            return;
+        }
+
+        swal({
+            title: 'Add Store Credit',
+            text: 'Enter amount to add to customer credit balance:',
+            content: {
+                element: 'input',
+                attributes: {
+                    type: 'number',
+                    step: '0.01',
+                    min: '0.01',
+                    placeholder: 'Amount'
+                }
+            },
+            buttons: true
+        }).then(function(value) {
+            var amount = parseFloat(value) || 0;
+            if (amount <= 0) {
+                return;
+            }
+
+            $.ajax({
+                method: 'POST',
+                url: '/contacts/' + contactId + '/store-credit',
+                dataType: 'json',
+                data: {
+                    amount: amount,
+                    _token: $('meta[name="csrf-token"]').attr('content')
+                },
+                success: function(result) {
+                    if (result.success) {
+                        toastr.success(result.msg);
+                        if (typeof customer_table !== 'undefined') {
+                            customer_table.ajax.reload();
+                        }
+                    } else {
+                        toastr.error(result.msg || 'Unable to add store credit.');
+                    }
+                },
+                error: function() {
+                    toastr.error('Unable to add store credit.');
+                }
+            });
+        });
+    });
+
+    $(document).on('click', '#modal_add_store_credit_btn', function() {
+        var contactId = $('#modal_store_credit_contact_id').val();
+        var amount = parseFloat($('#modal_store_credit_amount').val()) || 0;
+
+        if (!contactId) {
+            toastr.error('Customer not selected.');
+            return;
+        }
+        if (amount <= 0) {
+            toastr.error('Please enter a valid amount.');
+            return;
+        }
+
+        $.ajax({
+            method: 'POST',
+            url: '/contacts/' + contactId + '/store-credit',
+            dataType: 'json',
+            data: {
+                amount: amount,
+                _token: $('meta[name="csrf-token"]').attr('content')
+            },
+            success: function(result) {
+                if (result.success) {
+                    toastr.success(result.msg);
+                    $('#modal_account_balance').text(__currency_trans_from_en(result.new_balance || 0, true));
+                    $('#modal_store_credit_amount').val('');
+                } else {
+                    toastr.error(result.msg || 'Unable to add store credit.');
+                }
+            },
+            error: function() {
+                toastr.error('Unable to add store credit.');
+            }
+        });
+    });
 </script>
 @endif
+
+<script type="text/javascript">
+// Keep store-credit actions available even when Google Maps API key is not set.
+$(document).off('click', '.add_store_credit_button').on('click', '.add_store_credit_button', function(e) {
+    e.preventDefault();
+    var contactId = $(this).data('contact-id');
+    if (!contactId) {
+        toastr.error('Contact ID not found');
+        return;
+    }
+
+    swal({
+        title: 'Add Store Credit',
+        text: 'Enter amount to add to customer credit balance:',
+        content: {
+            element: 'input',
+            attributes: {
+                type: 'number',
+                step: '0.01',
+                min: '0.01',
+                placeholder: 'Amount'
+            }
+        },
+        buttons: true
+    }).then(function(value) {
+        var amount = parseFloat(value) || 0;
+        if (amount <= 0) {
+            return;
+        }
+
+        $.ajax({
+            method: 'POST',
+            url: '/contacts/' + contactId + '/store-credit',
+            dataType: 'json',
+            data: {
+                amount: amount,
+                _token: $('meta[name="csrf-token"]').attr('content')
+            },
+            success: function(result) {
+                if (result.success) {
+                    toastr.success(result.msg);
+                    if (typeof customer_table !== 'undefined') {
+                        customer_table.ajax.reload();
+                    }
+                } else {
+                    toastr.error(result.msg || 'Unable to add store credit.');
+                }
+            },
+            error: function() {
+                toastr.error('Unable to add store credit.');
+            }
+        });
+    });
+});
+
+$(document).off('click', '#modal_add_store_credit_btn').on('click', '#modal_add_store_credit_btn', function() {
+    var contactId = $('#modal_store_credit_contact_id').val();
+    var amount = parseFloat($('#modal_store_credit_amount').val()) || 0;
+
+    if (!contactId) {
+        toastr.error('Customer not selected.');
+        return;
+    }
+    if (amount <= 0) {
+        toastr.error('Please enter a valid amount.');
+        return;
+    }
+
+    $.ajax({
+        method: 'POST',
+        url: '/contacts/' + contactId + '/store-credit',
+        dataType: 'json',
+        data: {
+            amount: amount,
+            _token: $('meta[name="csrf-token"]').attr('content')
+        },
+        success: function(result) {
+            if (result.success) {
+                toastr.success(result.msg);
+                $('#modal_account_balance').text(__currency_trans_from_en(result.new_balance || 0, true));
+                $('#modal_store_credit_amount').val('');
+            } else {
+                toastr.error(result.msg || 'Unable to add store credit.');
+            }
+        },
+        error: function() {
+            toastr.error('Unable to add store credit.');
+        }
+    });
+});
+</script>
 @endsection

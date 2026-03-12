@@ -222,9 +222,11 @@
 
 	@component('components.widget', ['class' => 'box-primary'])
 		<div class="row">
-{{--			<div class="col-sm-2 text-center">--}}
-{{--				<button type="button" class="btn btn-primary btn-flat" data-toggle="modal" data-target="#import_purchase_products_modal">@lang('product.import_products')</button>--}}
-{{--			</div>--}}
+			<div class="col-sm-12">
+				<div class="form-group">
+					<button type="button" class="btn btn-primary btn-flat" id="open_mass_add_product_btn"><i class="fa fa-plus"></i> Mass Add</button>
+				</div>
+			</div>
 			<div class="col-sm-8">
 				<div class="form-group">
 					<div class="input-group">
@@ -235,12 +237,6 @@
 					</div>
 				</div>
 			</div>
-{{--			<div class="col-sm-2">--}}
-{{--				<div class="form-group">--}}
-{{--					<button tabindex="-1" type="button" class="btn btn-link btn-modal"data-href="{{action('ProductController@quickAdd')}}"--}}
-{{--            	data-container=".quick_add_product_modal"><i class="fa fa-plus"></i> @lang( 'product.add_new_product' ) </button>--}}
-{{--				</div>--}}
-{{--			</div>--}}
 		</div>
 		@php
 			$hide_tax = '';
@@ -575,6 +571,20 @@
 </section>
 <!-- quick product modal -->
 <div class="modal fade quick_add_product_modal" tabindex="-1" role="dialog" aria-labelledby="modalTitle"></div>
+<!-- Mass Add product modal (iframe) -->
+<div class="modal fade mass_add_product_modal" id="mass_add_product_modal" tabindex="-1" role="dialog" aria-labelledby="massAddModalTitle" style="z-index: 1050;">
+	<div class="modal-dialog modal-xl" role="document" style="width: 95%; max-width: 1200px;">
+		<div class="modal-content">
+			<div class="modal-header">
+				<button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+				<h4 class="modal-title" id="massAddModalTitle">Mass Add Products</h4>
+			</div>
+			<div class="modal-body" style="padding: 0; height: 80vh;">
+				<iframe id="mass_add_product_iframe" style="width: 100%; height: 100%; border: none;"></iframe>
+			</div>
+		</div>
+	</div>
+</div>
 <div class="modal fade contact_modal" tabindex="-1" role="dialog" aria-labelledby="gridSystemModalLabel">
 	@include('contact.create', ['quick_add' => true])
 </div>

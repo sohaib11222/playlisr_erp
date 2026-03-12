@@ -224,7 +224,9 @@ class ContactUtil extends Util
         if ($type == 'supplier') {
            $query->onlySuppliers();
         } elseif ($type == 'customer') {
-            $query->onlyCustomers();
+            // Business decision: all employees/admins should see the same customer list.
+            // Keep permission checks in controllers, but avoid "own customers only" scoping here.
+            $query->whereIn('contacts.type', ['customer', 'both']);
         } else {
             if (auth()->check() && ( (!auth()->user()->can('customer.view') && auth()->user()->can('customer.view_own'))) || (!auth()->user()->can('supplier.view') && auth()->user()->can('supplier.view_own')) ) {
                 $query->onlyOwnContact();

@@ -186,16 +186,7 @@ $(document).ready(function() {
                             buttons: [LANG.cancel, LANG.ok],
                         }).then(value => {
                             if (value) {
-                                var container = $('.quick_add_product_modal');
-                                $.ajax({
-                                    url: '/products/quick_add?product_name=' + term,
-                                    dataType: 'html',
-                                    success: function(result) {
-                                        $(container)
-                                            .html(result)
-                                            .modal('show');
-                                    },
-                                });
+                                open_mass_add_modal(term);
                             }
                         });
                     }
@@ -211,6 +202,31 @@ $(document).ready(function() {
                 .appendTo(ul);
         };
     }
+
+    function open_mass_add_modal(product_name) {
+        var url = '/product/mass-create?from_purchase=1';
+        if (product_name) {
+            url += '&product_name=' + encodeURIComponent(product_name);
+        }
+        $('#mass_add_product_iframe').attr('src', url);
+        $('.mass_add_product_modal').modal('show');
+    }
+
+    $(document).on('click', '#open_mass_add_product_btn', function() {
+        open_mass_add_modal(null);
+    });
+
+    $(document).on('hidden.bs.modal', '.mass_add_product_modal', function() {
+        $('#mass_add_product_iframe').attr('src', 'about:blank');
+    });
+
+    window.addEventListener('message', function(event) {
+        if (event.data && event.data.type === 'massAddComplete' && event.data.product_ids && event.data.product_ids.length) {
+            $('.mass_add_product_modal').modal('hide');
+            $('#mass_add_product_iframe').attr('src', 'about:blank');
+            add_mass_products_sequentially(event.data.product_ids);
+        }
+    });
 
     $(document).on('click', '.remove_purchase_entry_row', function() {
         swal({
@@ -233,7 +249,7 @@ $(document).ready(function() {
     //On Change of quantity
     $(document).on('change', '.purchase_quantity', function() {
         var row = $(this).closest('tr');
-        var quantity = __read_number($(this), true);
+        var quantity = Math.floor(__read_number($(this), true) || 0);
         var purchase_before_tax = __read_number(row.find('input.purchase_unit_cost'), true);
         var purchase_after_tax = __read_number(
             row.find('input.purchase_unit_cost_after_tax'),
@@ -267,7 +283,7 @@ $(document).ready(function() {
 
         var row = $(this).closest('tr');
         var discount_percent = __read_number(row.find('input.inline_discounts'), true);
-        var quantity = __read_number(row.find('input.purchase_quantity'), true);
+        var quantity = Math.floor(__read_number(row.find('input.purchase_quantity'), true) || 0);
 
         //Calculations.
         var purchase_before_tax =
@@ -320,7 +336,7 @@ $(document).ready(function() {
 
         var discount_percent = __read_number($(this), true);
 
-        var quantity = __read_number(row.find('input.purchase_quantity'), true);
+        var quantity = Math.floor(__read_number(row.find('input.purchase_quantity'), true) || 0);
         var purchase_before_discount = __read_number(
             row.find('input.purchase_unit_cost_without_discount'),
             true
@@ -373,7 +389,7 @@ $(document).ready(function() {
 
     $(document).on('change', '.purchase_unit_cost', function() {
         var row = $(this).closest('tr');
-        var quantity = __read_number(row.find('input.purchase_quantity'), true);
+        var quantity = Math.floor(__read_number(row.find('input.purchase_quantity'), true) || 0);
         var purchase_before_tax = __read_number($(this), true);
 
         var sub_total_before_tax = quantity * purchase_before_tax;
@@ -428,7 +444,7 @@ $(document).ready(function() {
     $(document).on('change', 'select.purchase_line_tax_id', function() {
         var row = $(this).closest('tr');
         var purchase_before_tax = __read_number(row.find('.purchase_unit_cost'), true);
-        var quantity = __read_number(row.find('input.purchase_quantity'), true);
+        var quantity = Math.floor(__read_number(row.find('input.purchase_quantity'), true) || 0);
 
         //Tax
         var tax_rate = parseFloat(
@@ -461,7 +477,7 @@ $(document).ready(function() {
     $(document).on('change', '.purchase_unit_cost_after_tax', function() {
         var row = $(this).closest('tr');
         var purchase_after_tax = __read_number($(this), true);
-        var quantity = __read_number(row.find('input.purchase_quantity'), true);
+        var quantity = Math.floor(__read_number(row.find('input.purchase_quantity'), true) || 0);
 
         var sub_total_after_tax = purchase_after_tax * quantity;
 
@@ -726,9 +742,9 @@ $(document).ready(function() {
     toggle_search();
 });
 
-function get_purchase_entry_row(product_id, variation_id) {
+function get_purchase_entry_row(product_id, variation_id, callback, row_count_override) {
     if (product_id) {
-        var row_count = $('#row_count').val();
+        var row_count = typeof row_count_override !== 'undefined' ? row_count_override : ($('#row_count').val() || 0);
         var location_id = $('#location_id').val();
         var supplier_id = $('#supplier_id').val();
         var data = { 
@@ -748,7 +764,10 @@ function get_purchase_entry_row(product_id, variation_id) {
             dataType: 'html',
             data: data,
             success: function(result) {
-                append_purchase_lines(result, row_count);
+                var added_count = append_purchase_lines(result, row_count);
+                if (typeof callback === 'function') {
+                    callback(added_count);
+                }
             },
         });
     }
@@ -780,16 +799,41 @@ function append_purchase_lines(data, row_count, trigger_change = false) {
                 row.find('.purchase_unit_cost_without_discount').trigger('change');
             }
         });
-    if ($(data).find('.purchase_quantity').length) {
-        $('#row_count').val(
-            $(data).find('.purchase_quantity').length + parseInt(row_count)
-        );
+    var added_rows = $(data).find('.purchase_quantity').length;
+    if (added_rows) {
+        var current_row_count = parseInt($('#row_count').val() || 0);
+        $('#row_count').val(current_row_count + added_rows);
     }
+    return added_rows;
+}
+
+function add_mass_products_sequentially(product_ids) {
+    if (!product_ids || !product_ids.length) {
+        return;
+    }
+
+    var start_row_count = parseInt($('#row_count').val() || 0);
+    var index = 0;
+
+    function process_next() {
+        if (index >= product_ids.length) {
+            return;
+        }
+
+        var product_id = product_ids[index];
+        get_purchase_entry_row(product_id, 0, function(added_count) {
+            start_row_count += (added_count || 0);
+            index++;
+            process_next();
+        }, start_row_count);
+    }
+
+    process_next();
 }
 
 function update_purchase_entry_row_values(row) {
     if (typeof row != 'undefined') {
-        var quantity = __read_number(row.find('.purchase_quantity'), true);
+        var quantity = Math.floor(__read_number(row.find('.purchase_quantity'), true) || 0);
         var unit_cost_price = __read_number(row.find('.purchase_unit_cost'), true);
         var row_subtotal_before_tax = quantity * unit_cost_price;
 
@@ -919,7 +963,7 @@ function update_table_total() {
     $('#purchase_entry_table tbody')
         .find('tr')
         .each(function() {
-            total_quantity += __read_number($(this).find('.purchase_quantity'), true);
+            total_quantity += Math.floor(__read_number($(this).find('.purchase_quantity'), true) || 0);
             total_st_before_tax += __read_number(
                 $(this).find('.row_subtotal_before_tax_hidden'),
                 true
@@ -927,7 +971,7 @@ function update_table_total() {
             total_subtotal += __read_number($(this).find('.row_subtotal_after_tax_hidden'), true);
         });
 
-    $('#total_quantity').text(__number_f(total_quantity, false));
+    $('#total_quantity').text(__number_f(total_quantity, false, false, 0));
     $('#total_st_before_tax').text(__currency_trans_from_en(total_st_before_tax, true, true));
     __write_number($('input#st_before_tax_input'), total_st_before_tax, true);
 

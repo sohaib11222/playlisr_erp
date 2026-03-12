@@ -488,6 +488,16 @@ class BusinessUtil extends Util
                 'api_key' => '',
                 'endpoint' => '',
                 'username' => ''
+            ],
+            'quickbooks' => [
+                'client_id' => '',
+                'client_secret' => '',
+                'redirect_uri' => '',
+                'environment' => 'production',
+                'scope' => 'com.intuit.quickbooks.accounting',
+                'default_sales_item_id' => '',
+                'realm_id' => '',
+                'connected_at' => ''
             ]
         ];
     }

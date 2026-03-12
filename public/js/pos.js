@@ -33,6 +33,10 @@ $(document).ready(function() {
         // Recalculate totals on new POS form to ensure default tax is applied
         setTimeout(function() {
             pos_total_row();
+            // If Add Bag Fee is prechecked, add the bag fee row
+            if ($('#add_plastic_bag').length && $('#add_plastic_bag').is(':checked')) {
+                $('#add_plastic_bag').trigger('change');
+            }
         }, 100);
     }
     if ($('form#edit_pos_sell_form').length > 0 || $('form#add_pos_sell_form').length > 0) {
@@ -40,6 +44,10 @@ $(document).ready(function() {
     }
 
     $('select#select_location_id').change(function() {
+        var selectedText = $(this).find(':selected').text();
+        if ($('#pos_display_location_name').length) {
+            $('#pos_display_location_name').text(selectedText || '');
+        }
         reset_pos_form();
 
         var default_price_group = $(this).find(':selected').data('default_price_group')
@@ -80,6 +88,8 @@ $(document).ready(function() {
     
     //get customer
     $('select#customer_id').select2({
+        width: '100%',
+        dropdownCssClass: 'pos-customer-select2-dropdown',
         ajax: {
             url: '/contacts/customers',
             dataType: 'json',
@@ -148,15 +158,20 @@ $(document).ready(function() {
                 if (response.success && response.data) {
                     var data = response.data;
                     var contact = data.contact;
+                    var contactBalance = parseFloat(contact.balance || 0) || 0;
 
                     // Update account info display - make name clickable
                     var customerNameHtml = '<a href="#" class="customer-name-link" style="color: #495057; text-decoration: none; cursor: pointer; font-weight: bold;" data-contact-id="' + contact.id + '">' + 
                                           (contact.name || 'N/A') + ' <i class="fa fa-info-circle text-info"></i></a>';
                     $('#customer_account_name').html(customerNameHtml);
-                    $('#customer_account_balance').text(__currency_trans_from_en(contact.balance || 0, true));
+                    $('#customer_account_balance').text(__currency_trans_from_en(contactBalance, true));
                     $('#customer_gift_card_balance').text(__currency_trans_from_en(data.total_gift_card_balance || 0, true));
                     $('#customer_lifetime_purchases').text(__currency_trans_from_en(contact.lifetime_purchases || 0, true));
                     $('#customer_loyalty_points').text(contact.loyalty_points || 0);
+
+                    // Keep payment modal's advance/store-credit in sync with latest customer balance.
+                    $('#advance_balance_text').text(__currency_trans_from_en(contactBalance, true));
+                    $('#advance_balance').val(contactBalance);
 
                     // Show the account info panel
                     $('#customer_account_info').show();
@@ -218,6 +233,8 @@ $(document).ready(function() {
                     $('#modal_loyalty_tier').text(contact.loyalty_tier || 'Bronze');
                     $('#modal_last_purchase_date').text(contact.last_purchase_date || 'Never');
                     $('#modal_total_gift_card_balance').text(__currency_trans_from_en(data.total_gift_card_balance || 0, true));
+                    $('#modal_store_credit_contact_id').val(contact.id);
+                    $('#modal_store_credit_amount').val('');
 
                     // Update gift cards list
                     var giftCardsHtml = '';
@@ -313,6 +330,49 @@ $(document).ready(function() {
             contactId = $('#customer_id').val();
             showCustomerDetailsModal(contactId);
         }
+    });
+
+    // Add store credit directly from customer details modal
+    $(document).on('click', '#modal_add_store_credit_btn', function() {
+        var contactId = $('#modal_store_credit_contact_id').val();
+        var amount = parseFloat($('#modal_store_credit_amount').val()) || 0;
+
+        if (!contactId) {
+            toastr.error('Customer not selected.');
+            return;
+        }
+        if (amount <= 0) {
+            toastr.error('Please enter a valid amount.');
+            return;
+        }
+
+        $.ajax({
+            method: 'POST',
+            url: '/contacts/' + contactId + '/store-credit',
+            dataType: 'json',
+            data: {
+                amount: amount,
+                _token: $('meta[name="csrf-token"]').attr('content')
+            },
+            success: function(result) {
+                if (result.success) {
+                    toastr.success(result.msg);
+                    $('#modal_account_balance').text(__currency_trans_from_en(result.new_balance || 0, true));
+                    $('#modal_store_credit_amount').val('');
+
+                    if ($('#customer_id').val() == contactId) {
+                        $('#advance_balance').val(result.new_balance || 0);
+                        $('#advance_balance_text').text(__currency_trans_from_en(result.new_balance || 0, true));
+                        loadCustomerAccountInfo(contactId);
+                    }
+                } else {
+                    toastr.error(result.msg || 'Unable to add store credit.');
+                }
+            },
+            error: function() {
+                toastr.error('Unable to add store credit.');
+            }
+        });
     });
 
     $('#customer_id').on('select2:select', function(e) {
@@ -552,7 +612,7 @@ $(document).ready(function() {
             .find('select.tax_id')
             .find(':selected')
             .data('rate');
-        var quantity = __read_number(tr.find('input.pos_quantity'));
+        var quantity = Math.floor(__read_number(tr.find('input.pos_quantity')) || 0);
 
         var unit_price_inc_tax = __add_percent(discounted_unit_price, tax_rate);
         var line_total = quantity * unit_price_inc_tax;
@@ -603,7 +663,7 @@ $(document).ready(function() {
             .find('select.tax_id')
             .find(':selected')
             .data('rate');
-        var quantity = __read_number(tr.find('input.pos_quantity'));
+        var quantity = Math.floor(__read_number(tr.find('input.pos_quantity')) || 0);
 
         var line_total = quantity * unit_price_inc_tax;
         var discounted_unit_price = __get_principle(unit_price_inc_tax, tax_rate);
@@ -694,7 +754,7 @@ $(document).ready(function() {
                 .find('select.tax_id')
                 .find(':selected')
                 .data('rate');
-            var quantity = __read_number(tr.find('input.pos_quantity'));
+            var quantity = Math.floor(__read_number(tr.find('input.pos_quantity')) || 0);
 
             var unit_price_inc_tax = __add_percent(discounted_unit_price, tax_rate);
             var line_total = quantity * unit_price_inc_tax;
@@ -714,9 +774,11 @@ $(document).ready(function() {
 
     //Remove row on click on remove row
     $('table#pos_table tbody').on('click', 'i.pos_remove_row', function() {
-        $(this)
-            .parents('tr')
-            .remove();
+        var $row = $(this).parents('tr');
+        if ($row.attr('data-plastic-bag') === 'true') {
+            $('#add_plastic_bag').prop('checked', false);
+        }
+        $row.remove();
         pos_total_row();
     });
 
@@ -823,6 +885,14 @@ $(document).ready(function() {
                 toastr.error(validate_rp['msg']);
                 return false;
             }
+        }
+
+        // Fallback sync: ensure payment modal receives selected customer's latest balance.
+        var selectedCustomer = ($('#customer_id').select2('data') || [])[0];
+        if (selectedCustomer && selectedCustomer.balance !== undefined) {
+            var selectedBalance = parseFloat(selectedCustomer.balance || 0) || 0;
+            $('#advance_balance').val(selectedBalance);
+            $('#advance_balance_text').text(__currency_trans_from_en(selectedBalance, true));
         }
 
         $('#modal_payment').modal('show');
@@ -1039,6 +1109,15 @@ $(document).ready(function() {
             if (cnf) {
                 disable_pos_form_actions();
 
+                var selected_customer_id_before_submit = $('#customer_id').val();
+                var advance_used_for_sale = 0;
+                $('#payment_rows_div .payment_row').each(function() {
+                    var method = $(this).find('select.payment_types_dropdown').first().val();
+                    if (method === 'advance') {
+                        advance_used_for_sale += __read_number($(this).find('input.payment-amount').first());
+                    }
+                });
+
                 var data = $(form).serialize();
                 data = data + '&status=final';
                 var url = $(form).attr('action');
@@ -1054,6 +1133,10 @@ $(document).ready(function() {
                             }
                             $('#modal_payment').modal('hide');
                             toastr.success(result.msg);
+
+                            if (selected_customer_id_before_submit && advance_used_for_sale > 0) {
+                                refresh_customer_credit_after_sale(selected_customer_id_before_submit, advance_used_for_sale);
+                            }
 
                             reset_pos_form();
 
@@ -1781,6 +1864,20 @@ $(document).ready(function() {
             });
         }
     });
+
+    // Copy down category/subcategory values to rows below
+    $(document).on('click', '#add_manual_product_modal .manual-copy-down', function() {
+        var inputClass = $(this).attr('data-class');
+        var $currentRow = $(this).closest('.manual_product_row');
+        var rowIndex = $('#manual_products_container .manual_product_row').index($currentRow);
+        var value = $currentRow.find('.' + inputClass).val();
+
+        $('#manual_products_container .manual_product_row')
+            .slice(rowIndex + 1)
+            .each(function() {
+                $(this).find('.' + inputClass).val(value).trigger('change');
+            });
+    });
 });
 
 // Function to get all input names and values from the add_manual_product_modal
@@ -1921,6 +2018,20 @@ function set_payment_type_dropdown() {
             }
         });
     }
+
+    // Always keep advance/store-credit payment available in POS payment rows.
+    $('.payment_types_dropdown').each(function() {
+        var $dropdown = $(this);
+        var $advance = $dropdown.find('option[value="advance"]');
+        if ($advance.length === 0) {
+            $dropdown.append('<option value="advance">' + (LANG.advance || 'Advance') + '</option>');
+        } else {
+            $advance.removeClass('hide').prop('disabled', false);
+        }
+        if ($dropdown.hasClass('select2-hidden-accessible')) {
+            $dropdown.trigger('change.select2');
+        }
+    });
 }
 
 function get_featured_products() {
@@ -1944,6 +2055,32 @@ function get_featured_products() {
         $('#feature_product_div').addClass('hide');
         $('#featured_products_box').html('');
     }
+}
+
+function refresh_customer_credit_after_sale(contact_id, advance_used_for_sale) {
+    $.ajax({
+        url: '/sells/pos/get-customer-account-info',
+        type: 'GET',
+        data: { contact_id: contact_id },
+        dataType: 'json',
+        success: function(response) {
+            if (response && response.success && response.data && response.data.contact) {
+                var latest_balance = parseFloat(response.data.contact.balance || 0) || 0;
+
+                if ($('#customer_id').val() == contact_id) {
+                    $('#advance_balance').val(latest_balance);
+                    $('#advance_balance_text').text(__currency_trans_from_en(latest_balance, true));
+                    $('#customer_account_balance').text(__currency_trans_from_en(latest_balance, true));
+                }
+            } else if (advance_used_for_sale > 0 && $('#customer_id').val() == contact_id) {
+                var current_balance = parseFloat($('#advance_balance').val() || 0) || 0;
+                var adjusted = Math.max(0, current_balance - advance_used_for_sale);
+                $('#advance_balance').val(adjusted);
+                $('#advance_balance_text').text(__currency_trans_from_en(adjusted, true));
+                $('#customer_account_balance').text(__currency_trans_from_en(adjusted, true));
+            }
+        }
+    });
 }
 
 function get_product_suggestion_list(category_id, brand_id, location_id, url = null, is_enabled_stock = null, repair_model_id = null) {
@@ -2230,7 +2367,7 @@ function pos_each_row(row_obj) {
     var discount = __read_number(row_obj.find('input.row_discount_amount'));
 
     if (discount > 0) {
-        var qty = __read_number(row_obj.find('input.pos_quantity'));
+        var qty = Math.floor(__read_number(row_obj.find('input.pos_quantity')) || 0);
         var line_total = qty * unit_price_inc_tax;
         __write_number(row_obj.find('input.pos_line_total'), line_total);
     }
@@ -2247,7 +2384,7 @@ function pos_total_row() {
     var total_quantity = 0;
     var price_total = get_subtotal();
     $('table#pos_table tbody tr').each(function() {
-        total_quantity = total_quantity + __read_number($(this).find('input.pos_quantity'));
+        total_quantity = total_quantity + Math.floor(__read_number($(this).find('input.pos_quantity')) || 0);
     });
 
     //updating shipping charges
@@ -2256,7 +2393,7 @@ function pos_total_row() {
     );
 
     $('span.total_quantity').each(function() {
-        $(this).html(__number_f(total_quantity));
+        $(this).html(__number_f(total_quantity, false, false, 0));
     });
 
     //$('span.unit_price_total').html(unit_price_total);
@@ -2653,12 +2790,13 @@ function reset_pos_form(){
 function set_default_customer() {
     var default_customer_id = $('#default_customer_id').val();
     var default_customer_name = $('#default_customer_name').val();
+    var default_customer_display_name = $('#default_customer_display_name').length ? $('#default_customer_display_name').val() : default_customer_name;
     var default_customer_balance = $('#default_customer_balance').val();
     var default_customer_address = $('#default_customer_address').val();
     var exists = default_customer_id ? $('select#customer_id option[value=' + default_customer_id + ']').length : 0;
     if (exists == 0 && default_customer_id) {
         $('select#customer_id').append(
-            $('<option>', { value: default_customer_id, text: default_customer_name })
+            $('<option>', { value: default_customer_id, text: default_customer_display_name || default_customer_name })
         );
     }
     $('#advance_balance_text').text(__currency_trans_from_en(default_customer_balance), true);
@@ -2875,7 +3013,7 @@ function update_discount_display(row_obj) {
     var discount_amount = __read_number(row_obj.find('input.row_discount_amount'));
     var discount_type = row_obj.find('select.row_discount_type').val();
     var unit_price = __read_number(row_obj.find('input.pos_unit_price'));
-    var quantity = __read_number(row_obj.find('input.pos_quantity'));
+    var quantity = Math.floor(__read_number(row_obj.find('input.pos_quantity')) || 0);
     var tax_rate = row_obj.find('select.tax_id').find(':selected').data('rate') || 0;
     
     if (discount_amount > 0) {
@@ -2942,7 +3080,7 @@ $('table#pos_table tbody').on('change', 'input.pos_line_total', function() {
     var tr = $(this).parents('tr');
     var quantity_element = tr.find('input.pos_quantity');
     var unit_price_inc_tax = __read_number(tr.find('input.pos_unit_price_inc_tax'));
-    var quantity = subtotal / unit_price_inc_tax;
+    var quantity = Math.floor(subtotal / unit_price_inc_tax) || 0;
     __write_number(quantity_element, quantity);
 
     if (sell_form_validator) {
@@ -3136,7 +3274,7 @@ function isValidatRewardPoint() {
 
 function adjustComboQty(tr){
     if(tr.find('input.product_type').val() == 'combo'){
-        var qty = __read_number(tr.find('input.pos_quantity'));
+        var qty = Math.floor(__read_number(tr.find('input.pos_quantity')) || 0);
         var multiplier = __getUnitMultiplier(tr);
 
         tr.find('input.combo_product_qty').each(function(){
@@ -3720,21 +3858,31 @@ function addManualProductRow() {
                        placeholder="Artist">
             </td>
             <td>
-                <select name="products[${newRowIndex}][category_id]" 
-                        class="form-control select2 manual_product_category" 
-                        data-row="${newRowIndex}"
-                        required>
-                    <option value="">Please select</option>
-                    ${getCategoryOptions()}
-                </select>
+                <div style="display:flex; gap:4px; align-items:center;">
+                    <select name="products[${newRowIndex}][category_id]" 
+                            class="form-control select2 manual_product_category" 
+                            data-row="${newRowIndex}"
+                            required>
+                        <option value="">Please select</option>
+                        ${getCategoryOptions()}
+                    </select>
+                    <button type="button" class="btn btn-primary btn-xs manual-copy-down" data-class="manual_product_category" data-row-index="${newRowIndex}" title="Copy Down">
+                        <i class="fa fa-arrow-down"></i>
+                    </button>
+                </div>
             </td>
             <td>
-                <select name="products[${newRowIndex}][sub_category_id]" 
-                        class="form-control select2 manual_product_sub_category" 
-                        data-row="${newRowIndex}"
-                        required>
-                    <option value="">Please select</option>
-                </select>
+                <div style="display:flex; gap:4px; align-items:center;">
+                    <select name="products[${newRowIndex}][sub_category_id]" 
+                            class="form-control select2 manual_product_sub_category" 
+                            data-row="${newRowIndex}"
+                            required>
+                        <option value="">Please select</option>
+                    </select>
+                    <button type="button" class="btn btn-primary btn-xs manual-copy-down" data-class="manual_product_sub_category" data-row-index="${newRowIndex}" title="Copy Down">
+                        <i class="fa fa-arrow-down"></i>
+                    </button>
+                </div>
             </td>
             <td>
                 <input type="text" 
@@ -3810,6 +3958,8 @@ function updateProductRowNumbers() {
                 $this.attr('data-row', index);
             }
         });
+
+        $row.find('.manual-copy-down').attr('data-row-index', index);
         
         // Hide remove button for first row
         if (index === 0) {

@@ -10,11 +10,12 @@
 
     <div class="modal-body">
         @include('cash_register.payment_details')
+        <p class="text-muted"><small>@lang('cash_register.closing_balance_reconciliation_note')</small></p>
         <hr>
       <div class="row">
         <div class="col-sm-4">
           <div class="form-group">
-            {!! Form::label('closing_amount', __( 'cash_register.total_cash' ) . ':*') !!}
+            {!! Form::label('closing_amount', __( 'cash_register.closing_balance_label' ) . ':*') !!}
               {!! Form::text('closing_amount', @num_format($register_details->cash_in_hand + $register_details->total_cash - $register_details->total_cash_refund - $register_details->total_cash_expense), ['class' => 'form-control input_number', 'required', 'placeholder' => __( 'cash_register.total_cash' ) ]); !!}
           </div>
         </div>

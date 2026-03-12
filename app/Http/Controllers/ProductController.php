@@ -112,6 +112,12 @@ class ProductController extends Controller
             //Filter by location
             $location_id = request()->get('location_id', null);
             $permitted_locations = auth()->user()->permitted_locations();
+            $soldTotalsSubquery = DB::table('transaction_sell_lines as tsl')
+                ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+                ->where('t.type', 'sell')
+                ->where('t.status', 'final')
+                ->select('tsl.product_id', DB::raw('SUM(tsl.quantity) as total_sold_qty'))
+                ->groupBy('tsl.product_id');
 
             $query = Product::with(['media'])
                 ->leftJoin('brands', 'products.brand_id', '=', 'brands.id')
@@ -119,11 +125,19 @@ class ProductController extends Controller
                 ->leftJoin('categories as c1', 'products.category_id', '=', 'c1.id')
                 ->leftJoin('categories as c2', 'products.sub_category_id', '=', 'c2.id')
                 ->leftJoin('tax_rates', 'products.tax', '=', 'tax_rates.id')
+                ->leftJoin('users as u', 'products.created_by', '=', 'u.id')
                 ->join('variations as v', 'v.product_id', '=', 'products.id')
-                ->leftJoin('variation_location_details as vld', function($join) use ($permitted_locations){
+                ->leftJoinSub($soldTotalsSubquery, 'sold_totals', function ($join) {
+                    $join->on('sold_totals.product_id', '=', 'products.id');
+                })
+                ->leftJoin('variation_location_details as vld', function($join) use ($permitted_locations, $location_id){
                     $join->on('vld.variation_id', '=', 'v.id');
                     if ($permitted_locations != 'all') {
                         $join->whereIn('vld.location_id', $permitted_locations);
+                    }
+                    // When list is filtered by location, show current_stock for that location only
+                    if (!empty($location_id) && $location_id != 'none') {
+                        $join->where('vld.location_id', '=', $location_id);
                     }
                 })
                 ->whereNull('v.deleted_at')
@@ -172,6 +186,8 @@ class ProductController extends Controller
                 'products.product_custom_field4',
                 'v.id as vid',
                 'products.alert_quantity',
+                DB::raw("CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as added_by_name"),
+                DB::raw('COALESCE(MAX(sold_totals.total_sold_qty), 0) as total_sold_qty'),
                 DB::raw('SUM(vld.qty_available) as current_stock'),
                 DB::raw('MAX(v.sell_price_inc_tax) as max_price'),
                 DB::raw('MIN(v.sell_price_inc_tax) as min_price'),
@@ -269,19 +285,11 @@ class ProductController extends Controller
                     }
 
                 })
-                ->addColumn('added_by' , function($q){
-                    $user = \App\User::find($q->created_by);
-                   return $user->first_name . " ".$user->last_name;
-
+                ->addColumn('added_by', function ($q) {
+                    return trim($q->added_by_name);
                 })
-                ->addColumn('total_sold', function ($q){
-                    return TransactionSellLine::where('product_id', $q->id)
-                        ->whereHas('transaction', function($query) {
-                            $query->where('type', 'sell')
-                                ->where('status', 'final');
-                        })
-                        ->sum('quantity');
-
+                ->addColumn('total_sold', function ($q) {
+                    return number_format((int) round((float) $q->total_sold_qty), 0);
                 })
                 ->editColumn('category', '{{$category}}')
                 ->addColumn('subcategory', function ($row) {
@@ -350,13 +358,11 @@ class ProductController extends Controller
                     return  '<input type="checkbox" class="row-select" value="' . $row->id .'">' ;
                 })
                 ->editColumn('current_stock', function($row){
-                    if ($this->productUtil->num_f($row->current_stock, false, null, true)) {
-                        $stock = $this->productUtil->num_f($row->current_stock, false, null, true);
-                        return $stock . ' ' . $row->unit;
-                    } else {
-                        return '--';
+                    $qty = (float) $row->current_stock;
+                    if ($qty !== 0.0 || $row->current_stock !== null) {
+                        return number_format((int) round($qty), 0) . ' ' . $row->unit;
                     }
-                    
+                    return '--';
                 })
                 ->addColumn(
                     'purchase_price',
@@ -740,7 +746,10 @@ class ProductController extends Controller
         $barcode_types = $this->barcode_types;
         
         $product = Product::where('business_id', $business_id)
-                            ->with(['product_locations'])
+                            ->with([
+                                'product_locations',
+                                'product_variations.variations.variation_location_details',
+                            ])
                             ->where('id', $id)
                             ->firstOrFail();
 
@@ -777,6 +786,125 @@ class ProductController extends Controller
 
         return view('product.edit')
                 ->with(compact('categories', 'brands', 'units', 'sub_units', 'taxes', 'tax_attributes', 'barcode_types', 'product', 'sub_categories', 'default_profit_percent', 'business_locations', 'rack_details', 'selling_price_group_count', 'module_form_parts', 'product_types', 'common_settings', 'warranties', 'pos_module_data', 'alert_quantity'));
+    }
+
+    /**
+     * Set current stock (quantity on hand) for a product. This overwrites qty_available
+     * per location/variation instead of adding like opening stock.
+     *
+     * @param  \Illuminate\Http\Request  $request  expects current_stock[location_id][variation_id] = quantity
+     * @param  int  $id  product id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function setCurrentStock(Request $request, $id)
+    {
+        if (!auth()->user()->can('product.update')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = $request->session()->get('user.business_id');
+        $product = Product::where('business_id', $business_id)
+            ->where('id', $id)
+            ->with(['product_variations.variations', 'product_locations'])
+            ->first();
+
+        if (!$product) {
+            return response()->json(['success' => false, 'msg' => __('product.product_not_found')], 404);
+        }
+
+        if (empty($product->enable_stock)) {
+            return response()->json(['success' => false, 'msg' => __('product.manage_stock') . ' is disabled for this product.'], 422);
+        }
+
+        $valid_location_ids = $product->product_locations->pluck('id')->toArray();
+        $valid_variation_ids = Variation::where('product_id', $product->id)->pluck('id')->toArray();
+
+        $current_stock = $request->input('current_stock', []);
+        if (!is_array($current_stock)) {
+            return response()->json(['success' => false, 'msg' => 'Invalid request.'], 422);
+        }
+
+        try {
+            DB::beginTransaction();
+            $updated_count = 0;
+
+            foreach ($current_stock as $location_id => $variations) {
+                $location_id = (int) $location_id;
+                if (!in_array($location_id, $valid_location_ids)) {
+                    continue;
+                }
+                if (!is_array($variations)) {
+                    continue;
+                }
+                foreach ($variations as $variation_id => $qty) {
+                    $variation_id = (int) $variation_id;
+                    if (!in_array($variation_id, $valid_variation_ids)) {
+                        continue;
+                    }
+                    $quantity = $this->productUtil->num_uf($qty);
+                    if ($quantity < 0) {
+                        $quantity = 0;
+                    }
+
+                    $variation = Variation::find($variation_id);
+                    if (!$variation || (int) $variation->product_id !== (int) $product->id) {
+                        continue;
+                    }
+
+                    VariationLocationDetails::updateOrCreate(
+                        [
+                            'variation_id'  => $variation_id,
+                            'location_id'   => $location_id,
+                        ],
+                        [
+                            'product_id'            => $product->id,
+                            'product_variation_id'   => $variation->product_variation_id,
+                            'qty_available'         => $quantity,
+                        ]
+                    );
+                    $updated_count++;
+                }
+            }
+
+            if ($updated_count === 0) {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'msg'     => __('product.set_current_stock_no_values'),
+                ], 422);
+            }
+
+            DB::commit();
+
+            // Return saved values so frontend can update UI and user can verify response
+            $saved_stock = [];
+            foreach ($current_stock as $location_id => $variations) {
+                $location_id = (int) $location_id;
+                if (!in_array($location_id, $valid_location_ids) || !is_array($variations)) {
+                    continue;
+                }
+                foreach ($variations as $variation_id => $qty) {
+                    $variation_id = (int) $variation_id;
+                    if (in_array($variation_id, $valid_variation_ids)) {
+                        $saved_stock[$location_id][$variation_id] = max(0, $this->productUtil->num_uf($qty));
+                    }
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'msg'     => __('product.current_stock_updated'),
+                'updated_count' => $updated_count,
+                'saved_stock' => $saved_stock,
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Set current stock failed: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'msg'     => __('messages.something_went_wrong'),
+            ], 500);
+        }
     }
 
     /**
@@ -2124,7 +2252,7 @@ class ProductController extends Controller
      */
     public function bulkEdit(Request $request)
     {
-        if (!auth()->user()->can('product.update')) {
+        if (!auth()->user()->can('product.update') && !$this->productUtil->is_admin(auth()->user())) {
             abort(403, 'Unauthorized action.');
         }
 
@@ -2182,7 +2310,7 @@ class ProductController extends Controller
      */
     public function bulkUpdate(Request $request)
     {
-        if (!auth()->user()->can('product.update')) {
+        if (!auth()->user()->can('product.update') && !$this->productUtil->is_admin(auth()->user())) {
             abort(403, 'Unauthorized action.');
         }
 
@@ -2611,10 +2739,10 @@ class ProductController extends Controller
         $validator = Validator::make($request->all(), [
             'products' => 'required|array|min:1',
             'products.*.name' => 'required_without:products.*.id|string|max:255',
-            'products.*.category_id' => 'required|integer|exists:categories,id',
-            'products.*.single_dsp_inc_tax' => 'required|numeric|min:0',
+            'products.*.category_id' => 'nullable|integer|exists:categories,id',
+            'products.*.single_dsp_inc_tax' => 'nullable|numeric|min:0',
             'products.*.business_locations' => 'required|array|min:1',
-            'products.*.stock_locations.*.stock' => 'required|integer|min:1',
+            'products.*.stock_locations.*.stock' => 'nullable|integer|min:0',
             'products.*.artist' => [
                 'required_if:products.*.category_id,11,15,55,104,111,174,175',
             ],
@@ -2625,11 +2753,9 @@ class ProductController extends Controller
             
             'products.*.name.required_without' => 'Product name is required when ID is not provided',
             
-            'products.*.category_id.required' => 'Category is required for each product',
             'products.*.category_id.integer' => 'Category ID must be an integer',
             'products.*.category_id.exists' => 'Selected category does not exist',
             
-            'products.*.single_dsp_inc_tax.required' => 'Selling Price is required for each product',
             'products.*.single_dsp_inc_tax.numeric' => 'Selling Price must be a number',
             'products.*.single_dsp_inc_tax.min' => 'Selling Price cannot be negative',
             
@@ -2637,12 +2763,27 @@ class ProductController extends Controller
             'products.*.business_locations.array' => 'Business locations must be an array',
             'products.*.business_locations.min' => 'At least one business location is required',
             
-            'products.*.stock_locations.*.stock.required' => 'Stock quantity is required for each location',
             'products.*.stock_locations.*.stock.integer' => 'Stock quantity must be an integer',
-            'products.*.stock_locations.*.stock.min' => 'Stock quantity must be at least 1',
+            'products.*.stock_locations.*.stock.min' => 'Stock quantity cannot be negative',
 
             'products.*.artist.required_if' => 'Artist is required for this category',
         ]);
+
+        $validator->after(function ($validator) use ($request) {
+            $productsInput = $request->input('products', []);
+
+            foreach ($productsInput as $index => $productInput) {
+                $isExistingProduct = !empty($productInput['id']);
+                $sellingPrice = $productInput['single_dsp_inc_tax'] ?? null;
+
+                if (!$isExistingProduct && ($sellingPrice === null || $sellingPrice === '')) {
+                    $validator->errors()->add(
+                        "products.$index.single_dsp_inc_tax",
+                        'Selling Price is required for new products'
+                    );
+                }
+            }
+        });
 
         if ($validator->fails()) {
             // Return field-specific validation errors in JSON format
@@ -2861,7 +3002,8 @@ class ProductController extends Controller
                 $only_variations = filter_var(request()->only_variations, FILTER_VALIDATE_BOOLEAN);
             }
 
-            if (empty($term)) {
+            $term = trim((string) $term);
+            if (empty($term) || strlen($term) < 3) {
                 return json_encode([]);
             }
 
@@ -2911,7 +3053,8 @@ class ProductController extends Controller
             if (!empty(request()->location_id)) {
                 $q->ForLocation(request()->location_id);
             }
-            $products = $q->get();
+            // Keep autocomplete responses fast on large catalogs.
+            $products = $q->limit(100)->get();
                 
             $products_array = [];
             foreach ($products as $product) {
@@ -2931,15 +3074,46 @@ class ProductController extends Controller
             $result = [];
             $i = 1;
             $no_of_records = $products->count();
+
+            // Preload opening stock data in one query to avoid N+1 timeouts.
+            $openingStockByProductVariation = [];
+            $productIds = array_keys($products_array);
+            if (!empty($productIds)) {
+                $variationIds = [];
+                foreach ($products_array as $productData) {
+                    foreach ($productData['variations'] as $variationData) {
+                        $variationIds[] = $variationData['variation_id'];
+                    }
+                }
+                $variationIds = array_values(array_unique($variationIds));
+
+                if (!empty($variationIds)) {
+                    $openingStockRows = DB::table('transactions as t')
+                        ->join('purchase_lines as pl', 't.id', '=', 'pl.transaction_id')
+                        ->where('t.type', 'opening_stock')
+                        ->where('t.business_id', $business_id)
+                        ->whereIn('pl.product_id', $productIds)
+                        ->whereIn('pl.variation_id', $variationIds)
+                        ->select(
+                            'pl.product_id',
+                            'pl.variation_id',
+                            't.location_id',
+                            DB::raw('SUM(pl.quantity) as opening_stock_qty')
+                        )
+                        ->groupBy('pl.product_id', 'pl.variation_id', 't.location_id')
+                        ->get();
+
+                    foreach ($openingStockRows as $stockRow) {
+                        $openingStockByProductVariation[$stockRow->product_id][$stockRow->variation_id][] = [
+                            'id' => (int) $stockRow->location_id,
+                            'opening_stock' => (float) $stockRow->opening_stock_qty,
+                        ];
+                    }
+                }
+            }
             if (!empty($products_array)) {
                 foreach ($products_array as $key => $value) {
                     $product_id = $key;
-
-                    // Find opening stock 
-                    $transactions = Transaction::where('opening_stock_product_id', $product_id)
-                                    ->where('type', 'opening_stock')
-                                    ->where('business_id', $business_id)
-                                    ->get();
 
                     if ($no_of_records > 1 && $value['type'] != 'single' && !$only_variations) {
                         $result[] = [ 'id' => $i,
@@ -2952,16 +3126,7 @@ class ProductController extends Controller
                     $name = $value['name'];
 
                     foreach ($value['variations'] as $variation) {
-                        $openingLocations = [];
-
-                        foreach($transactions as $ts) {
-                            if (!in_array($ts->location_id, $openingLocations)) {
-                                $openingLocations[] = [
-                                    'id' => $ts->location_id,
-                                    'opening_stock' => $ts->purchase_lines()->where('product_id', $product_id)->where('variation_id', $variation['variation_id'])->first()->quantity ?? 0
-                                ];
-                            }
-                        }
+                        $openingLocations = $openingStockByProductVariation[$product_id][$variation['variation_id']] ?? [];
 
                         $text = $name;
 

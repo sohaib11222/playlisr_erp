@@ -54,7 +54,7 @@
 				value="1" 
 				name="products[{{$rowCount}}][quantity]" 
 				data-allow-overselling="true"
-				data-decimal="1" 
+				data-decimal="0" 
 				data-rule-required="true" 
 				data-msg-required="@lang('validation.custom-messages.this_field_is_required')">
 			<span class="input-group-btn">

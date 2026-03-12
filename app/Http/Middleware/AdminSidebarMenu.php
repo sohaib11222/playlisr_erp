@@ -413,7 +413,7 @@ class AdminSidebarMenu
             }
 
             //Reports dropdown
-            if (auth()->user()->can('purchase_n_sell_report.view') || auth()->user()->can('contacts_report.view')
+            if ($is_admin || auth()->user()->can('purchase_n_sell_report.view') || auth()->user()->can('contacts_report.view')
                 || auth()->user()->can('stock_report.view') || auth()->user()->can('tax_report.view')
                 || auth()->user()->can('trending_product_report.view') || auth()->user()->can('sales_representative.view') || auth()->user()->can('register_report.view')
                 || auth()->user()->can('expense_report.view')) {
@@ -582,6 +582,51 @@ class AdminSidebarMenu
                         }
 
                         if ($is_admin) {
+                            $sub->url(
+                                action('ReportController@inventoryValuationSummary'),
+                                'Inventory Valuation Summary',
+                                ['icon' => 'fa fas fa-boxes', 'active' => request()->segment(2) == 'inventory-valuation-summary']
+                            );
+                            $sub->url(
+                                action('ReportController@inventoryValuationDetail'),
+                                'Inventory Valuation Detail',
+                                ['icon' => 'fa fas fa-layer-group', 'active' => request()->segment(2) == 'inventory-valuation-detail']
+                            );
+                            $sub->url(
+                                action('ReportController@salesByItemCostMargin'),
+                                'Sales by Item (Cost & Margin)',
+                                ['icon' => 'fa fas fa-chart-line', 'active' => request()->segment(2) == 'sales-by-item-cost-margin']
+                            );
+                            $sub->url(
+                                action('ReportController@purchasesByItemVendor'),
+                                'Purchases by Item/Vendor',
+                                ['icon' => 'fa fas fa-file-invoice', 'active' => request()->segment(2) == 'purchases-by-item-vendor']
+                            );
+                            $sub->url(
+                                action('ReportController@abcInventoryClassification'),
+                                'ABC Inventory Classification',
+                                ['icon' => 'fa fas fa-stream', 'active' => request()->segment(2) == 'abc-inventory-classification']
+                            );
+                            $sub->url(
+                                action('ReportController@inventoryAgingSummary'),
+                                'Inventory Aging Summary',
+                                ['icon' => 'fa fas fa-hourglass-half', 'active' => request()->segment(2) == 'inventory-aging-summary']
+                            );
+                            $sub->url(
+                                action('ReportController@landedCostSummary'),
+                                'Landed Cost Summary',
+                                ['icon' => 'fa fas fa-ship', 'active' => request()->segment(2) == 'landed-cost-summary']
+                            );
+                            $sub->url(
+                                action('ReportController@purchaseOrderVsReceived'),
+                                'PO vs Received',
+                                ['icon' => 'fa fas fa-clipboard-check', 'active' => request()->segment(2) == 'purchase-order-vs-received']
+                            );
+                            $sub->url(
+                                action('ReportController@itemTransactionHistory'),
+                                'Item Transaction History',
+                                ['icon' => 'fa fas fa-history', 'active' => request()->segment(2) == 'item-transaction-history']
+                            );
                             $sub->url(
                                 action('ReportController@activityLog'),
                                 __('lang_v1.activity_log'),

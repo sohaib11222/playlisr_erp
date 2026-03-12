@@ -6,12 +6,126 @@
         $business_id = request()->session()->get('user.business_id');
         $businessUtil = new \App\Utils\BusinessUtil();
         $api_settings = $businessUtil->getApiSettings($business_id);
+        $quickbooks_connection = \App\QuickBooksConnection::where('business_id', $business_id)->first();
         
         // Load business object if not already available
         if (!isset($business)) {
             $business = \App\Business::find($business_id);
         }
     @endphp
+
+    <!-- QuickBooks Integration -->
+    <div class="box box-solid">
+        <div class="box-header with-border">
+            <h3 class="box-title">QuickBooks Online Integration</h3>
+        </div>
+        <div class="box-body">
+            <p class="help-block">
+                Connect QuickBooks Online via OAuth2 to sync accounting data from ERP.
+                Use the callback URL shown below when configuring your Intuit app.
+            </p>
+
+            <div class="row">
+                <div class="col-sm-6">
+                    <div class="form-group">
+                        {!! Form::label('api_settings[quickbooks][client_id]', 'Client ID:') !!}
+                        {!! Form::text('api_settings[quickbooks][client_id]',
+                            !empty($api_settings['quickbooks']['client_id']) ? $api_settings['quickbooks']['client_id'] : null,
+                            ['class' => 'form-control', 'placeholder' => 'Enter QuickBooks Client ID']) !!}
+                    </div>
+                </div>
+                <div class="col-sm-6">
+                    <div class="form-group">
+                        {!! Form::label('api_settings[quickbooks][client_secret]', 'Client Secret:') !!}
+                        {!! Form::text('api_settings[quickbooks][client_secret]',
+                            !empty($api_settings['quickbooks']['client_secret']) ? $api_settings['quickbooks']['client_secret'] : null,
+                            ['class' => 'form-control', 'placeholder' => 'Enter QuickBooks Client Secret']) !!}
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-sm-6">
+                    <div class="form-group">
+                        {!! Form::label('api_settings[quickbooks][environment]', 'Environment:') !!}
+                        {!! Form::select('api_settings[quickbooks][environment]',
+                            ['sandbox' => 'Sandbox', 'production' => 'Production'],
+                            !empty($api_settings['quickbooks']['environment']) ? $api_settings['quickbooks']['environment'] : 'production',
+                            ['class' => 'form-control']) !!}
+                    </div>
+                </div>
+                <div class="col-sm-6">
+                    <div class="form-group">
+                        {!! Form::label('api_settings[quickbooks][redirect_uri]', 'Redirect URI (optional override):') !!}
+                        {!! Form::text('api_settings[quickbooks][redirect_uri]',
+                            !empty($api_settings['quickbooks']['redirect_uri']) ? $api_settings['quickbooks']['redirect_uri'] : action('QuickBooksController@callback'),
+                            ['class' => 'form-control', 'placeholder' => action('QuickBooksController@callback')]) !!}
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-sm-6">
+                    <div class="form-group">
+                        {!! Form::label('api_settings[quickbooks][default_sales_item_id]', 'Default Sales Item ID (required for invoice sync):') !!}
+                        {!! Form::text('api_settings[quickbooks][default_sales_item_id]',
+                            !empty($api_settings['quickbooks']['default_sales_item_id']) ? $api_settings['quickbooks']['default_sales_item_id'] : null,
+                            ['class' => 'form-control', 'placeholder' => 'Example: 1']) !!}
+                        <p class="help-block">Use a valid QuickBooks Item ID for ERP sale invoice lines.</p>
+                    </div>
+                </div>
+                <div class="col-sm-6">
+                    <div class="form-group">
+                        <label>Manual Sync (single sale)</label>
+                        <div class="input-group">
+                            <input type="number" min="1" class="form-control" id="quickbooks_transaction_id" placeholder="ERP Transaction ID">
+                            <span class="input-group-btn">
+                                <button type="button" class="btn btn-success" id="sync_quickbooks_sale_btn">
+                                    <i class="fa fa-refresh"></i> Sync Sale
+                                </button>
+                            </span>
+                        </div>
+                        <p class="help-block">Pilot sync tool: push one finalized ERP sale to QuickBooks invoice.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="alert alert-info">
+                <strong>OAuth Callback URL:</strong>
+                <code>{{ action('QuickBooksController@callback') }}</code>
+            </div>
+
+            @if(!empty($quickbooks_connection) && $quickbooks_connection->is_active)
+                <div class="alert alert-success">
+                    <strong>Status:</strong> Connected
+                    @if(!empty($quickbooks_connection->realm_id))
+                        | <strong>Realm ID:</strong> {{ $quickbooks_connection->realm_id }}
+                    @endif
+                    @if(!empty($quickbooks_connection->token_expires_at))
+                        | <strong>Token Expires:</strong> {{ $quickbooks_connection->token_expires_at }}
+                    @endif
+                </div>
+            @else
+                <div class="alert alert-warning">
+                    <strong>Status:</strong> Not connected
+                </div>
+            @endif
+
+            <div class="row">
+                <div class="col-sm-12">
+                    <a href="{{ action('QuickBooksController@connect') }}" class="btn btn-primary" id="connect_quickbooks_btn">
+                        <i class="fa fa-link"></i> Connect QuickBooks
+                    </a>
+                    <button type="button" class="btn btn-info" id="test_quickbooks_connection_btn" style="margin-left: 8px;">
+                        <i class="fa fa-plug"></i> Test Connection
+                    </button>
+                    <button type="button" class="btn btn-danger" id="disconnect_quickbooks_btn" style="margin-left: 8px;">
+                        <i class="fa fa-unlink"></i> Disconnect
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Clover POS Integration -->
     <div class="box box-solid">
@@ -29,7 +143,7 @@
                         {!! Form::label('api_settings[clover][public_token]', 'Public Token:') !!}
                         {!! Form::text('api_settings[clover][public_token]', 
                             !empty($api_settings['clover']['public_token']) ? $api_settings['clover']['public_token'] : null, 
-                            ['class' => 'form-control', 'placeholder' => 'Enter Public Token from Ecommerce API Tokens']); !!}
+                            ['class' => 'form-control', 'placeholder' => 'Enter Public Token from Ecommerce API Tokens']) !!}
                         <p class="help-block">From Clover Dashboard > Setup > API Tokens > Ecommerce API Tokens</p>
                     </div>
                 </div>
@@ -38,7 +152,7 @@
                         {!! Form::label('api_settings[clover][private_token]', 'Private Token:') !!}
                         {!! Form::text('api_settings[clover][private_token]', 
                             !empty($api_settings['clover']['private_token']) ? $api_settings['clover']['private_token'] : null, 
-                            ['class' => 'form-control', 'placeholder' => 'Enter Private Token from Ecommerce API Tokens', 'type' => 'password']); !!}
+                            ['class' => 'form-control', 'placeholder' => 'Enter Private Token from Ecommerce API Tokens', 'type' => 'password']) !!}
                         <p class="help-block">Click the eye icon in Clover to reveal the private token</p>
                     </div>
                 </div>
@@ -49,7 +163,7 @@
                         {!! Form::label('api_settings[clover][merchant_id]', 'Merchant ID:') !!}
                         {!! Form::text('api_settings[clover][merchant_id]', 
                             !empty($api_settings['clover']['merchant_id']) ? $api_settings['clover']['merchant_id'] : null, 
-                            ['class' => 'form-control', 'placeholder' => 'Enter Merchant ID']); !!}
+                            ['class' => 'form-control', 'placeholder' => 'Enter Merchant ID']) !!}
                         <p class="help-block">Found in Clover Dashboard URL: /m/{merchantId}/</p>
                     </div>
                 </div>
@@ -59,7 +173,7 @@
                         {!! Form::select('api_settings[clover][environment]', 
                             ['sandbox' => 'Sandbox', 'production' => 'Production'], 
                             !empty($api_settings['clover']['environment']) ? $api_settings['clover']['environment'] : 'production', 
-                            ['class' => 'form-control']); !!}
+                            ['class' => 'form-control']) !!}
                     </div>
                 </div>
             </div>
@@ -74,7 +188,7 @@
                         {!! Form::label('api_settings[clover][app_id]', 'App ID (OAuth):') !!}
                         {!! Form::text('api_settings[clover][app_id]', 
                             !empty($api_settings['clover']['app_id']) ? $api_settings['clover']['app_id'] : null, 
-                            ['class' => 'form-control', 'placeholder' => 'Enter Clover App ID (OAuth)']); !!}
+                            ['class' => 'form-control', 'placeholder' => 'Enter Clover App ID (OAuth)']) !!}
                     </div>
                 </div>
                 <div class="col-sm-6">
@@ -82,7 +196,7 @@
                         {!! Form::label('api_settings[clover][app_secret]', 'App Secret (OAuth):') !!}
                         {!! Form::text('api_settings[clover][app_secret]', 
                             !empty($api_settings['clover']['app_secret']) ? $api_settings['clover']['app_secret'] : null, 
-                            ['class' => 'form-control', 'placeholder' => 'Enter Clover App Secret (OAuth)']); !!}
+                            ['class' => 'form-control', 'placeholder' => 'Enter Clover App Secret (OAuth)']) !!}
                     </div>
                 </div>
             </div>
@@ -163,7 +277,7 @@
                         {!! Form::label('api_settings[ebay][app_id]', 'App ID (Client ID):') !!}
                         {!! Form::text('api_settings[ebay][app_id]', 
                             !empty($api_settings['ebay']['app_id']) ? $api_settings['ebay']['app_id'] : null, 
-                            ['class' => 'form-control', 'placeholder' => 'Enter eBay App ID']); !!}
+                            ['class' => 'form-control', 'placeholder' => 'Enter eBay App ID']) !!}
                     </div>
                 </div>
                 <div class="col-sm-6">
@@ -171,7 +285,7 @@
                         {!! Form::label('api_settings[ebay][cert_id]', 'Cert ID (Client Secret):') !!}
                         {!! Form::text('api_settings[ebay][cert_id]', 
                             !empty($api_settings['ebay']['cert_id']) ? $api_settings['ebay']['cert_id'] : null, 
-                            ['class' => 'form-control', 'placeholder' => 'Enter eBay Cert ID']); !!}
+                            ['class' => 'form-control', 'placeholder' => 'Enter eBay Cert ID']) !!}
                     </div>
                 </div>
             </div>
@@ -181,7 +295,7 @@
                         {!! Form::label('api_settings[ebay][dev_id]', 'Dev ID:') !!}
                         {!! Form::text('api_settings[ebay][dev_id]', 
                             !empty($api_settings['ebay']['dev_id']) ? $api_settings['ebay']['dev_id'] : null, 
-                            ['class' => 'form-control', 'placeholder' => 'Enter eBay Dev ID']); !!}
+                            ['class' => 'form-control', 'placeholder' => 'Enter eBay Dev ID']) !!}
                     </div>
                 </div>
                 <div class="col-sm-6">
@@ -190,7 +304,7 @@
                         {!! Form::select('api_settings[ebay][environment]', 
                             ['sandbox' => 'Sandbox', 'production' => 'Production'], 
                             !empty($api_settings['ebay']['environment']) ? $api_settings['ebay']['environment'] : 'sandbox', 
-                            ['class' => 'form-control']); !!}
+                            ['class' => 'form-control']) !!}
                     </div>
                 </div>
             </div>
@@ -209,7 +323,7 @@
                         {!! Form::label('api_settings[discogs][token]', 'API Token:') !!}
                         {!! Form::text('api_settings[discogs][token]', 
                             !empty($api_settings['discogs']['token']) ? $api_settings['discogs']['token'] : null, 
-                            ['class' => 'form-control', 'placeholder' => 'Enter Discogs API Token']); !!}
+                            ['class' => 'form-control', 'placeholder' => 'Enter Discogs API Token']) !!}
                         <p class="help-block">Get your token from <a href="https://www.discogs.com/settings/developers" target="_blank">Discogs Developer Settings</a></p>
                     </div>
                 </div>
@@ -218,7 +332,7 @@
                         {!! Form::label('api_settings[discogs][user_token]', 'User Token (Optional):') !!}
                         {!! Form::text('api_settings[discogs][user_token]', 
                             !empty($api_settings['discogs']['user_token']) ? $api_settings['discogs']['user_token'] : null, 
-                            ['class' => 'form-control', 'placeholder' => 'Enter User Token if needed']); !!}
+                            ['class' => 'form-control', 'placeholder' => 'Enter User Token if needed']) !!}
                     </div>
                 </div>
             </div>
@@ -243,7 +357,7 @@
                         {!! Form::label('streetpulse_acronym', 'StreetPulse Store Acronym (Business-Level):') !!}
                         {!! Form::text('streetpulse_acronym', 
                             !empty($business->streetpulse_acronym) ? $business->streetpulse_acronym : null, 
-                            ['class' => 'form-control', 'placeholder' => 'Enter 3-4 character acronym (e.g., WSQ)', 'maxlength' => 10]); !!}
+                            ['class' => 'form-control', 'placeholder' => 'Enter 3-4 character acronym (e.g., WSQ)', 'maxlength' => 10]) !!}
                         <p class="help-block">3-4 character acronym assigned by StreetPulse (e.g., WSQ, BQ01). <strong>Note:</strong> For multi-location businesses, configure acronyms per location in Business Settings > Locations.</p>
                     </div>
                 </div>
@@ -253,7 +367,7 @@
                         {!! Form::select('api_settings[streetpulse][check_digit_option]', 
                             ['NOCHECKDIGIT' => 'NOCHECKDIGIT (Remove check digit)', 'CHECKDIGIT' => 'CHECKDIGIT (Keep check digit)'], 
                             !empty($api_settings['streetpulse']['check_digit_option']) ? $api_settings['streetpulse']['check_digit_option'] : 'NOCHECKDIGIT', 
-                            ['class' => 'form-control']); !!}
+                            ['class' => 'form-control']) !!}
                         <p class="help-block">Whether UPCs include check digit (last digit)</p>
                     </div>
                 </div>
@@ -423,7 +537,108 @@
 </script>
 
 <script type="text/javascript">
-    $(document).ready(function() {
+    (function() {
+    function initIntegrationHandlers($) {
+        // Test QuickBooks connection
+        $('#test_quickbooks_connection_btn').on('click', function() {
+            var btn = $(this);
+            btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Testing...');
+
+            $.ajax({
+                url: '{{ action("QuickBooksController@testConnection") }}',
+                method: 'POST',
+                data: {
+                    _token: '{{ csrf_token() }}'
+                },
+                dataType: 'json',
+                success: function(response) {
+                    btn.prop('disabled', false).html('<i class="fa fa-plug"></i> Test Connection');
+                    if (response.success) {
+                        var companyName = response.company && response.company.name ? response.company.name : 'Connected';
+                        toastr.success('QuickBooks connected: ' + companyName);
+                    } else {
+                        toastr.error(response.msg || 'QuickBooks test failed.');
+                    }
+                },
+                error: function() {
+                    btn.prop('disabled', false).html('<i class="fa fa-plug"></i> Test Connection');
+                    toastr.error('QuickBooks test failed.');
+                }
+            });
+        });
+
+        // Sync one sale to QuickBooks
+        $('#sync_quickbooks_sale_btn').on('click', function() {
+            var transactionId = $('#quickbooks_transaction_id').val();
+            if (!transactionId) {
+                toastr.error('Please enter ERP Transaction ID first.');
+                return;
+            }
+
+            var btn = $(this);
+            btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Syncing...');
+
+            $.ajax({
+                url: '{{ action("QuickBooksController@syncSale") }}',
+                method: 'POST',
+                data: {
+                    _token: '{{ csrf_token() }}',
+                    transaction_id: transactionId
+                },
+                dataType: 'json',
+                success: function(response) {
+                    btn.prop('disabled', false).html('<i class="fa fa-refresh"></i> Sync Sale');
+                    if (response.success) {
+                        toastr.success(response.msg || 'Sale synced to QuickBooks.');
+                    } else {
+                        toastr.error(response.msg || 'QuickBooks sale sync failed.');
+                    }
+                },
+                error: function(xhr) {
+                    btn.prop('disabled', false).html('<i class="fa fa-refresh"></i> Sync Sale');
+                    if (xhr.responseJSON && xhr.responseJSON.message) {
+                        toastr.error(xhr.responseJSON.message);
+                    } else {
+                        toastr.error('QuickBooks sale sync failed.');
+                    }
+                }
+            });
+        });
+
+        // Disconnect QuickBooks
+        $('#disconnect_quickbooks_btn').on('click', function() {
+            if (!confirm('Disconnect QuickBooks for this business?')) {
+                return;
+            }
+
+            var btn = $(this);
+            btn.prop('disabled', true);
+
+            $.ajax({
+                url: '{{ action("QuickBooksController@disconnect") }}',
+                method: 'POST',
+                data: {
+                    _token: '{{ csrf_token() }}'
+                },
+                dataType: 'json',
+                success: function(response) {
+                    btn.prop('disabled', false);
+                    if (response.success) {
+                        toastr.success(response.msg || 'QuickBooks disconnected.');
+                        setTimeout(function() {
+                            location.reload();
+                        }, 600);
+                    } else {
+                        toastr.error(response.msg || 'Unable to disconnect QuickBooks.');
+                    }
+                },
+                error: function() {
+                    btn.prop('disabled', false);
+                    toastr.error('Unable to disconnect QuickBooks.');
+                }
+            });
+        });
+
         // Test Clover Connection
         $('#test_clover_connection_btn').on('click', function() {
             var btn = $(this);
@@ -575,5 +790,16 @@
                 }
             });
         });
-    });
+    }
+
+    if (typeof jQuery !== 'undefined') {
+        initIntegrationHandlers(jQuery);
+    } else {
+        window.addEventListener('load', function() {
+            if (typeof jQuery !== 'undefined') {
+                initIntegrationHandlers(jQuery);
+            }
+        });
+    }
+    })();
 </script>

@@ -2,6 +2,7 @@
 @if(!empty($for_pdf))
 	<link rel="stylesheet" href="{{ asset('css/app.css?v='.$asset_v) }}">
 @endif
+@if(empty($for_pdf))<div class="row">@endif
 <div class="col-md-12 col-sm-12 @if(!empty($for_pdf)) width-100 align-right @endif">
         <p class="text-right align-right"><strong>{{$contact->business->name}}</strong>
         	<br>
@@ -12,6 +13,7 @@
         	@endif
         </p>
 </div>
+@if(empty($for_pdf))</div><div class="row">@endif
 <div class="col-md-6 col-sm-6 col-xs-6 @if(!empty($for_pdf)) width-50 f-left @endif">
 	<p class="blue-heading p-4 width-50">@lang('lang_v1.to'):</p>
 	<p><strong>{{$contact->name}}</strong><br> {!! $contact->contact_address !!} @if(!empty($contact->email)) <br>@lang('business.email'): {{$contact->email}} @endif
@@ -60,6 +62,7 @@
 	</tr>
 	</table>
 </div>
+@if(empty($for_pdf))</div><div class="row">@endif
 <div class="col-md-12 col-sm-12 @if(!empty($for_pdf)) width-100 @endif">
 	<p class="text-center" style="text-align: center;"><strong>@lang('lang_v1.ledger_table_heading', ['start_date' => $ledger_details['start_date'], 'end_date' => $ledger_details['end_date']])</strong></p>
 	<div class="table-responsive">
@@ -107,3 +110,4 @@
 	</table>
 	</div>
 </div>
+@if(empty($for_pdf))</div>@endif

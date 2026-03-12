@@ -38,6 +38,7 @@
                     <a href="#" class="list-group-item text-center">Integrations</a>
                     <a href="#" class="list-group-item text-center">@lang('lang_v1.modules')</a>
                     <a href="#" class="list-group-item text-center">@lang('lang_v1.custom_labels')</a>
+                    <a href="#" class="list-group-item text-center">Data Tools</a>
                 </div>
             </div>
             <div class="col-lg-10 col-md-10 col-sm-10 col-xs-10 pos-tab">
@@ -89,6 +90,7 @@
                 @include('business.partials.settings_modules')
                 <!-- tab 14 end -->
                 @include('business.partials.settings_custom_labels')
+                @include('business.partials.settings_data_tools')
             </div>
         </div>
         <!--  </pos-tab-container> -->
@@ -231,6 +233,114 @@
                     });
                 }
             },
+        });
+    });
+
+    // Data Tools: Update Artist Names
+    var artistUpdateUrl = '{{ action("BusinessController@updateArtistNames") }}';
+
+    $('#btn_preview_artists').click(function() {
+        var $btn = $(this);
+        $btn.prop('disabled', true);
+        $('#artist_update_spinner').removeClass('hide');
+        $('#artist-update-results').html('');
+
+        $.ajax({
+            method: 'POST',
+            url: artistUpdateUrl,
+            data: { mode: 'preview' },
+            dataType: 'json',
+            success: function(result) {
+                $btn.prop('disabled', false);
+                $('#artist_update_spinner').addClass('hide');
+
+                if (!result.success) {
+                    $('#artist-update-results').html(
+                        '<div class="alert alert-danger">' + result.msg + '</div>'
+                    );
+                    return;
+                }
+
+                if (result.count === 0) {
+                    $('#artist-update-results').html(
+                        '<div class="alert alert-info">No products found that need artist extraction.</div>'
+                    );
+                    return;
+                }
+
+                var html = '<div class="alert alert-warning">'
+                    + '<strong>' + result.count + '</strong> products can have their artist extracted from the title.'
+                    + '</div>';
+                html += '<table class="table table-bordered table-striped table-condensed">';
+                html += '<thead><tr><th>ID</th><th>Current Title</th><th>Extracted Artist</th></tr></thead><tbody>';
+                for (var i = 0; i < result.samples.length; i++) {
+                    var s = result.samples[i];
+                    html += '<tr><td>' + s.id + '</td><td>' + $('<span>').text(s.current_name).html()
+                        + '</td><td><strong>' + $('<span>').text(s.extracted_artist).html() + '</strong></td></tr>';
+                }
+                html += '</tbody></table>';
+
+                if (result.count > result.samples.length) {
+                    html += '<p class="text-muted">Showing ' + result.samples.length + ' of ' + result.count + ' products.</p>';
+                }
+
+                $('#artist-update-results').html(html);
+                $('#btn_update_artists').prop('disabled', false);
+            },
+            error: function() {
+                $btn.prop('disabled', false);
+                $('#artist_update_spinner').addClass('hide');
+                $('#artist-update-results').html(
+                    '<div class="alert alert-danger">An error occurred while fetching the preview.</div>'
+                );
+            }
+        });
+    });
+
+    $('#btn_update_artists').click(function() {
+        var $btn = $(this);
+        swal({
+            title: 'Are you sure?',
+            text: 'This will update the artist field for all matching products. This action cannot be undone easily.',
+            icon: 'warning',
+            buttons: true,
+            dangerMode: true,
+        }).then(function(confirmed) {
+            if (!confirmed) return;
+
+            $btn.prop('disabled', true);
+            $('#btn_preview_artists').prop('disabled', true);
+            $('#artist_update_spinner').removeClass('hide');
+
+            $.ajax({
+                method: 'POST',
+                url: artistUpdateUrl,
+                data: { mode: 'execute' },
+                dataType: 'json',
+                success: function(result) {
+                    $('#artist_update_spinner').addClass('hide');
+                    $('#btn_preview_artists').prop('disabled', false);
+
+                    if (result.success) {
+                        $('#artist-update-results').html(
+                            '<div class="alert alert-success"><i class="fa fa-check"></i> Successfully updated <strong>'
+                            + result.updated_count + '</strong> products with extracted artist names.</div>'
+                        );
+                        toastr.success('Updated ' + result.updated_count + ' artist names.');
+                    } else {
+                        $btn.prop('disabled', false);
+                        $('#artist-update-results').html(
+                            '<div class="alert alert-danger">' + result.msg + '</div>'
+                        );
+                    }
+                },
+                error: function() {
+                    $btn.prop('disabled', false);
+                    $('#btn_preview_artists').prop('disabled', false);
+                    $('#artist_update_spinner').addClass('hide');
+                    toastr.error('An error occurred while updating artist names.');
+                }
+            });
         });
     });
 </script>

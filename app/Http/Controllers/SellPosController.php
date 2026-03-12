@@ -182,6 +182,7 @@ class SellPosController extends Controller
         $register_details = $this->cashRegisterUtil->getCurrentCashRegister(auth()->user()->id);
 
         $walk_in_customer = $this->contactUtil->getWalkInCustomer($business_id);
+        $walk_in_display_name = 'Do you have a Nivessa rewards account?';
         
         $business_details = $this->businessUtil->getDetails($business_id);
         $taxes = TaxRate::forBusinessDropdown($business_id, true, true);
@@ -279,6 +280,7 @@ class SellPosController extends Controller
                 'taxes',
                 'payment_types',
                 'walk_in_customer',
+                'walk_in_display_name',
                 'payment_lines',
                 'default_location',
                 'shortcuts',
@@ -852,6 +854,7 @@ class SellPosController extends Controller
         }
 
         $walk_in_customer = $this->contactUtil->getWalkInCustomer($business_id);
+        $walk_in_display_name = 'Do you have a Nivessa rewards account?';
         
         $business_details = $this->businessUtil->getDetails($business_id);
 
@@ -1111,7 +1114,7 @@ class SellPosController extends Controller
         $users = config('constants.enable_contact_assign') ? User::forDropdown($business_id, false, false, false, true) : [];
 
         return view('sale_pos.edit')
-            ->with(compact('business_details', 'taxes', 'payment_types', 'walk_in_customer', 'sell_details', 'transaction', 'payment_lines', 'location_printer_type', 'shortcuts', 'commission_agent', 'categories', 'pos_settings', 'change_return', 'types', 'customer_groups', 'brands', 'accounts', 'waiters', 'redeem_details', 'edit_price', 'edit_discount', 'shipping_statuses', 'warranties', 'sub_type', 'pos_module_data', 'invoice_schemes', 'default_invoice_schemes', 'invoice_layouts', 'featured_products', 'customer_due', 'users'));
+            ->with(compact('business_details', 'taxes', 'payment_types', 'walk_in_customer', 'walk_in_display_name', 'sell_details', 'transaction', 'payment_lines', 'location_printer_type', 'shortcuts', 'commission_agent', 'categories', 'pos_settings', 'change_return', 'types', 'customer_groups', 'brands', 'accounts', 'waiters', 'redeem_details', 'edit_price', 'edit_discount', 'shipping_statuses', 'warranties', 'sub_type', 'pos_module_data', 'invoice_schemes', 'default_invoice_schemes', 'invoice_layouts', 'featured_products', 'customer_due', 'users'));
     }
 
     /**

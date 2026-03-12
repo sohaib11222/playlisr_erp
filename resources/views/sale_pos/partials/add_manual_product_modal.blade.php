@@ -42,23 +42,33 @@
                                            placeholder="Artist">
                                 </td>
                                 <td>
-                                    <select name="products[0][category_id]" 
-                                            class="form-control select2 manual_product_category" 
-                                            data-row="0"
-                                            required>
-                                        <option value="">Please select</option>
-                                        @foreach($categoriesForDropdown as $key => $value)
-                                            <option value="{{ $key }}">{{ $value }}</option>
-                                        @endforeach
-                                    </select>
+                                    <div style="display:flex; gap:4px; align-items:center;">
+                                        <select name="products[0][category_id]" 
+                                                class="form-control select2 manual_product_category" 
+                                                data-row="0"
+                                                required>
+                                            <option value="">Please select</option>
+                                            @foreach($categoriesForDropdown as $key => $value)
+                                                <option value="{{ $key }}">{{ $value }}</option>
+                                            @endforeach
+                                        </select>
+                                        <button type="button" class="btn btn-primary btn-xs manual-copy-down" data-class="manual_product_category" data-row-index="0" title="Copy Down">
+                                            <i class="fa fa-arrow-down"></i>
+                                        </button>
+                                    </div>
                                 </td>
                                 <td>
-                                    <select name="products[0][sub_category_id]" 
-                                            class="form-control select2 manual_product_sub_category" 
-                                            data-row="0"
-                                            required>
-                                        <option value="">Please select</option>
-                                    </select>
+                                    <div style="display:flex; gap:4px; align-items:center;">
+                                        <select name="products[0][sub_category_id]" 
+                                                class="form-control select2 manual_product_sub_category" 
+                                                data-row="0"
+                                                required>
+                                            <option value="">Please select</option>
+                                        </select>
+                                        <button type="button" class="btn btn-primary btn-xs manual-copy-down" data-class="manual_product_sub_category" data-row-index="0" title="Copy Down">
+                                            <i class="fa fa-arrow-down"></i>
+                                        </button>
+                                    </div>
                                 </td>
                                 <td>
                                     <input type="text" 

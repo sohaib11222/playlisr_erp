@@ -53,6 +53,8 @@ return [
     'total_normal' =>'Total Normal',
     'total_abnormal' =>'Total Abnormal',
     'register_report' => 'Register Report',
+    'register_report_help' => 'This report shows opening balance and closing balance per register (store and user). Use the date range to see a specific day. Use it to reconcile: Opening balance + Total cash (daily sales) ≈ Expected (Cash); Closing balance should match what was entered when closing the register.',
+    'no_closing_balance_recorded' => 'No closing balance recorded',
     'open_time' => 'Open Time',
     'close_time' => 'Close Time',
     'user' => 'User',

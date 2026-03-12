@@ -360,6 +360,7 @@ return [
    'lot' => 'Lot',
    'lot_n_expiry' => 'Lot & Expiry',
    'pos_edit_product_price_help' => 'Edit product Unit Price and Tax',
+   'pos_store_awareness_help' => 'Items and payments are recorded for this store. Confirm you are at the correct location.',
    'name' => 'Name',
    'payment_type' => 'Payment Type',
    'manage_payment_account' => 'Manage Your Payment Account',

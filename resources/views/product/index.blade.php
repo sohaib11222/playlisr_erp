@@ -22,20 +22,20 @@
         <div class="col-md-3">
             <div class="form-group">
                 {!! Form::label('type', __('product.product_type') . ':') !!}
-                {!! Form::select('type', ['single' => __('lang_v1.single'), 'variable' => __('lang_v1.variable'), 'combo' => __('lang_v1.combo')], null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'product_list_filter_type', 'placeholder' => __('lang_v1.all')]); !!}
+                {!! Form::select('type', ['single' => __('lang_v1.single'), 'variable' => __('lang_v1.variable'), 'combo' => __('lang_v1.combo')], null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'product_list_filter_type', 'placeholder' => __('lang_v1.all')]) !!}
             </div>
         </div>
         <div class="col-md-3">
             <div class="form-group">
                 {!! Form::label('category_id', __('product.category') . ':') !!}
-                {!! Form::select('category_id', $categories, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'product_list_filter_category_id', 'placeholder' => __('lang_v1.all')]); !!}
+                {!! Form::select('category_id', $categories, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'product_list_filter_category_id', 'placeholder' => __('lang_v1.all')]) !!}
             </div>
         </div>
         <div class="col-md-3">
             <div class="form-group">
                 <br>
                 <label>
-                    {!! Form::checkbox('uncategorized_only', 1, false, ['class' => 'input-icheck', 'id' => 'uncategorized_only']); !!} 
+                    {!! Form::checkbox('uncategorized_only', 1, false, ['class' => 'input-icheck', 'id' => 'uncategorized_only']) !!} 
                     <strong>Show Uncategorized Only</strong>
                 </label>
             </div>
@@ -44,43 +44,43 @@
         <div class="col-md-3">
             <div class="form-group">
                 {!! Form::label('unit_id', __('product.unit') . ':') !!}
-                {!! Form::select('unit_id', $units, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'product_list_filter_unit_id', 'placeholder' => __('lang_v1.all')]); !!}
+                {!! Form::select('unit_id', $units, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'product_list_filter_unit_id', 'placeholder' => __('lang_v1.all')]) !!}
             </div>
         </div>
         <div class="col-md-3">
             <div class="form-group">
                 {!! Form::label('tax_id', __('product.tax') . ':') !!}
-                {!! Form::select('tax_id', $taxes, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'product_list_filter_tax_id', 'placeholder' => __('lang_v1.all')]); !!}
+                {!! Form::select('tax_id', $taxes, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'product_list_filter_tax_id', 'placeholder' => __('lang_v1.all')]) !!}
             </div>
         </div>
         <div class="col-md-3">
             <div class="form-group">
                 {!! Form::label('brand_id', __('product.brand') . ':') !!}
-                {!! Form::select('brand_id', $brands, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'product_list_filter_brand_id', 'placeholder' => __('lang_v1.all')]); !!}
+                {!! Form::select('brand_id', $brands, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'product_list_filter_brand_id', 'placeholder' => __('lang_v1.all')]) !!}
             </div>
         </div>
         <div class="col-md-3" id="location_filter">
             <div class="form-group">
                 {!! Form::label('location_id',  __('purchase.business_location') . ':') !!}
-                {!! Form::select('location_id', $business_locations, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'placeholder' => __('lang_v1.all')]); !!}
+                {!! Form::select('location_id', $business_locations, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'placeholder' => __('lang_v1.all')]) !!}
             </div>
         </div>
         <div class="col-md-3">
             <div class="form-group">
                 {!! Form::label('created_by', __('business.created_by') . ':') !!}
-                {!! Form::select('created_by', $users_who_created_products, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'product_list_filter_created_by', 'placeholder' => __('lang_v1.all')]); !!}
+                {!! Form::select('created_by', $users_who_created_products, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'product_list_filter_created_by', 'placeholder' => __('lang_v1.all')]) !!}
             </div>
         </div>
         <div class="col-md-3">
             <div class="form-group">
                 {!! Form::label('created_date_range', __('lang_v1.created_date_range') . ':') !!}
-                {!! Form::text('created_date_range', null, ['class' => 'form-control', 'id' => 'product_list_filter_created_date_range', 'placeholder' => __('lang_v1.select_a_date_range'), 'readonly']); !!}
+                {!! Form::text('created_date_range', null, ['class' => 'form-control', 'id' => 'product_list_filter_created_date_range', 'placeholder' => __('lang_v1.select_a_date_range'), 'readonly']) !!}
             </div>
         </div>
         <div class="col-md-3">
             <br>
             <div class="form-group">
-                {!! Form::select('active_state', ['active' => __('business.is_active'), 'inactive' => __('lang_v1.inactive')], null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'active_state', 'placeholder' => __('lang_v1.all')]); !!}
+                {!! Form::select('active_state', ['active' => __('business.is_active'), 'inactive' => __('lang_v1.inactive')], null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'active_state', 'placeholder' => __('lang_v1.all')]) !!}
             </div>
         </div>
 
@@ -97,7 +97,7 @@
           <div class="form-group">
             <br>
             <label>
-              {!! Form::checkbox('not_for_selling', 1, false, ['class' => 'input-icheck', 'id' => 'not_for_selling']); !!} <strong>@lang('lang_v1.not_for_selling')</strong>
+              {!! Form::checkbox('not_for_selling', 1, false, ['class' => 'input-icheck', 'id' => 'not_for_selling']) !!} <strong>@lang('lang_v1.not_for_selling')</strong>
             </label>
           </div>
         </div>
@@ -107,7 +107,7 @@
                     <br>
                     <label>
                       {!! Form::checkbox('woocommerce_enabled', 1, false, 
-                      [ 'class' => 'input-icheck', 'id' => 'woocommerce_enabled']); !!} {{ __('lang_v1.woocommerce_enabled') }}
+                      [ 'class' => 'input-icheck', 'id' => 'woocommerce_enabled']) !!} {{ __('lang_v1.woocommerce_enabled') }}
                     </label>
                 </div>
             </div>
@@ -145,6 +145,11 @@
                             </select>
                         </div>
                         <button class="btn btn-success pull-right margin-left-10 downloadbarcodes">Download Barcodes</button>
+                        @if(config('constants.enable_product_bulk_edit') && ($is_admin || auth()->user()->can('product.update')))
+                            <button type="button" class="btn btn-primary pull-right margin-left-10" id="edit-selected-top">
+                                <i class="fa fa-edit"></i> {{ __('lang_v1.bulk_edit') }}
+                            </button>
+                        @endif
                         @if($is_admin)
                          <a class="btn btn-success pull-right margin-left-10" href="{{url('import-products')}}"><i class="fa fa-download"></i>Import Products</a>
                          <a class="btn btn-primary pull-right margin-left-10" href="{{action('ProductController@importSoldItems')}}"><i class="fa fa-upload"></i> Import Sold Items as Products</a>
@@ -219,7 +224,7 @@
             <div class="modal-body">
                 <div class="form-group">
                     <label>Select Category:</label>
-                    {!! Form::select('bulk_category_id', $categories, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'bulk_category_id', 'placeholder' => 'Select Category']); !!}
+                    {!! Form::select('bulk_category_id', $categories, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'bulk_category_id', 'placeholder' => 'Select Category']) !!}
                 </div>
                 <div class="form-group">
                     <label>Select Subcategory (Optional):</label>
@@ -554,7 +559,7 @@
                 }    
             })
 
-            $(document).on('click', '#edit-selected', function(e){
+            $(document).on('click', '#edit-selected, #edit-selected-top', function(e){
                 e.preventDefault();
                 var selected_rows = getSelectedRows();
                 
@@ -562,7 +567,7 @@
                     $('input#selected_products_for_edit').val(selected_rows);
                     $('form#bulk_edit_form').submit();
                 } else{
-                    $('input#selected_products').val('');
+                    $('input#selected_products_for_edit').val('');
                     swal('@lang("lang_v1.no_row_selected")');
                 }    
             })

@@ -103,7 +103,7 @@
         @endif
 
         <input type="text" class="form-control product_quantity input_number input_quantity" value="{{@format_quantity($qty_ordered)}}" name="products[{{$row_index}}][quantity]" 
-        @if($product->unit_allow_decimal == 1) data-decimal=1 @else data-rule-abs_digit="true" data-msg-abs_digit="@lang('lang_v1.decimal_value_not_allowed')" data-decimal=0 @endif
+        data-decimal="0" data-rule-abs_digit="true" data-msg-abs_digit="@lang('lang_v1.decimal_value_not_allowed')"
         data-rule-required="true" data-msg-required="@lang('validation.custom-messages.this_field_is_required')" @if($product->enable_stock) data-rule-max-value="{{$max_qty_rule}}" data-msg-max-value="{{$max_qty_msg}}"
         data-qty_available="{{$product->qty_available}}" 
         data-msg_max_default="@lang('validation.custom-messages.quantity_not_available', ['qty'=> $product->formatted_qty_available, 'unit' => $product->unit  ])" @endif >

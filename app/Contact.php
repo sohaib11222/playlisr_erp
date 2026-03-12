@@ -28,7 +28,17 @@ class Contact extends Authenticatable
      */
     protected $casts = [
         'shipping_custom_field_details' => 'array',
+        'favorite_genres' => 'array',
+        'opt_in_marketing' => 'boolean',
     ];
+
+    public function getAvatarUrlAttribute()
+    {
+        if (!empty($this->avatar)) {
+            return asset('/uploads/contact_avatars/' . rawurlencode($this->avatar));
+        }
+        return null;
+    }
     
 
     /**

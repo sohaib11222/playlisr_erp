@@ -76,8 +76,9 @@
                 <input type="text" 
                 name="purchases[{{$loop->index}}][quantity]" 
                 value="{{@format_quantity($purchase_line->quantity)}}"
-                class="form-control input-sm purchase_quantity input_number mousetrap"
+                class="form-control input-sm purchase_quantity input_number input_quantity mousetrap"
                 required
+                data-decimal="0"
                 data-rule-abs_digit={{$check_decimal}}
                 data-msg-abs_digit="{{__('lang_v1.decimal_value_not_allowed')}}"
                 @if(!empty($max_quantity))
@@ -113,7 +114,8 @@
                     <input type="text" 
                     name="purchases[{{$row_count}}][secondary_unit_quantity]" 
                     value="{{@format_quantity($purchase_line->secondary_unit_quantity)}}"
-                    class="form-control input-sm input_number"
+                    class="form-control input-sm input_number input_quantity"
+                    data-decimal="0"
                     required>
                 @endif
             </td>

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Business;
 use App\Currency;
 use App\Notifications\TestEmailNotification;
+use App\Product;
 use App\System;
 use App\TaxRate;
 use App\Unit;
@@ -731,6 +732,87 @@ class BusinessController extends Controller
             return response()->json([
                 'success' => false,
                 'msg' => 'Error: ' . $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Extract artist names from product titles and populate the artist field.
+     * Supports preview (dry-run) and execute modes.
+     */
+    public function updateArtistNames(Request $request)
+    {
+        if (!auth()->user()->can('business_settings.access')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        try {
+            $business_id = request()->session()->get('user.business_id');
+            $mode = $request->input('mode', 'preview');
+
+            $query = Product::where('business_id', $business_id)
+                ->where(function ($q) {
+                    $q->whereNull('artist')->orWhere('artist', '');
+                })
+                ->where('name', 'LIKE', '% - %');
+
+            if ($mode === 'preview') {
+                $count = $query->count();
+                $samples = $query->select('id', 'name')->limit(25)->get();
+
+                $sampleData = [];
+                foreach ($samples as $product) {
+                    $lastDash = strrpos($product->name, ' - ');
+                    $extracted = trim(substr($product->name, $lastDash + 3));
+                    $sampleData[] = [
+                        'id' => $product->id,
+                        'current_name' => $product->name,
+                        'extracted_artist' => $extracted,
+                    ];
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'count' => $count,
+                    'samples' => $sampleData,
+                ]);
+            }
+
+            if ($mode === 'execute') {
+                $updatedCount = 0;
+
+                $query->chunkById(500, function ($products) use (&$updatedCount) {
+                    foreach ($products as $product) {
+                        $lastDash = strrpos($product->name, ' - ');
+                        if ($lastDash === false) {
+                            continue;
+                        }
+                        $artist = trim(substr($product->name, $lastDash + 3));
+                        if (empty($artist)) {
+                            continue;
+                        }
+                        $product->artist = $artist;
+                        $product->save();
+                        $updatedCount++;
+                    }
+                });
+
+                return response()->json([
+                    'success' => true,
+                    'updated_count' => $updatedCount,
+                ]);
+            }
+
+            return response()->json([
+                'success' => false,
+                'msg' => 'Invalid mode. Use "preview" or "execute".',
+            ]);
+        } catch (\Exception $e) {
+            \Log::emergency("File:" . $e->getFile() . "Line:" . $e->getLine() . "Message:" . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'msg' => 'Error: ' . $e->getMessage(),
             ]);
         }
     }

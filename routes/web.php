@@ -67,6 +67,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/test-sms', 'BusinessController@testSmsConfiguration');
     Route::post('/business/test-streetpulse-connection', 'BusinessController@testStreetpulseConnection');
     Route::post('/business/sync-streetpulse', 'BusinessController@syncStreetpulse');
+    Route::get('/business/quickbooks/connect', 'QuickBooksController@connect')->name('business.quickbooks.connect');
+    Route::get('/business/quickbooks/callback', 'QuickBooksController@callback')->name('business.quickbooks.callback');
+    Route::post('/business/quickbooks/disconnect', 'QuickBooksController@disconnect')->name('business.quickbooks.disconnect');
+    Route::post('/business/quickbooks/test-connection', 'QuickBooksController@testConnection')->name('business.quickbooks.testConnection');
+    Route::post('/business/quickbooks/sync-sale', 'QuickBooksController@syncSale')->name('business.quickbooks.syncSale');
     
     // Clover Customer Import
     Route::post('/business/test-clover-connection', 'CloverController@testConnection');
@@ -75,6 +80,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     
     Route::get('/business/settings', 'BusinessController@getBusinessSettings')->name('business.getBusinessSettings');
     Route::post('/business/update', 'BusinessController@postBusinessSettings')->name('business.postBusinessSettings');
+    Route::post('/business/update-artists', 'BusinessController@updateArtistNames')->name('business.updateArtistNames');
     Route::get('/user/profile', 'UserController@getProfile')->name('user.getProfile');
     Route::post('/user/update', 'UserController@updateProfile')->name('user.updateProfile');
     Route::post('/user/update-password', 'UserController@updatePassword')->name('user.updatePassword');
@@ -103,6 +109,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/contacts/import', 'ContactController@postImportContacts');
     Route::post('/contacts/check-contacts-id', 'ContactController@checkContactId');
     Route::get('/contacts/customers', 'ContactController@getCustomers');
+    Route::post('/contacts/{id}/avatar', 'ContactController@updateAvatar');
+    Route::post('/contacts/{id}/genres', 'ContactController@updateGenres');
+    Route::post('/contacts/{id}/store-credit', 'ContactController@updateStoreCredit');
+    Route::get('/contacts/campaigns', 'ContactCampaignController@index');
+    Route::post('/contacts/campaigns/send', 'ContactCampaignController@send');
     Route::resource('contacts', 'ContactController');
     
     // Gift Cards
@@ -169,7 +180,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/products/import-sold-items', 'ProductController@importSoldItems')->name('products.importSoldItems');
     Route::post('/products/process-import-sold-items', 'ProductController@processImportSoldItems')->name('products.processImportSoldItems');
     Route::post('/products/process-import-sold-items-from-file', 'ProductController@processImportSoldItemsFromFile')->name('products.processImportSoldItemsFromFile');
-    
+    Route::post('/products/{id}/set-current-stock', 'ProductController@setCurrentStock')->name('products.setCurrentStock');
+
     Route::resource('products', 'ProductController');
 
     Route::post('/import-purchase-products', 'PurchaseController@importPurchaseProducts');
@@ -278,6 +290,15 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/get-profit/{by?}', 'ReportController@getProfit');
     Route::get('/reports/items-report', 'ReportController@itemsReport');
     Route::get('/reports/get-stock-value', 'ReportController@getStockValue');
+    Route::get('/reports/inventory-valuation-summary', 'ReportController@inventoryValuationSummary');
+    Route::get('/reports/inventory-valuation-detail', 'ReportController@inventoryValuationDetail');
+    Route::get('/reports/sales-by-item-cost-margin', 'ReportController@salesByItemCostMargin');
+    Route::get('/reports/purchases-by-item-vendor', 'ReportController@purchasesByItemVendor');
+    Route::get('/reports/abc-inventory-classification', 'ReportController@abcInventoryClassification');
+    Route::get('/reports/inventory-aging-summary', 'ReportController@inventoryAgingSummary');
+    Route::get('/reports/landed-cost-summary', 'ReportController@landedCostSummary');
+    Route::get('/reports/purchase-order-vs-received', 'ReportController@purchaseOrderVsReceived');
+    Route::get('/reports/item-transaction-history', 'ReportController@itemTransactionHistory');
     
     Route::get('business-location/activate-deactivate/{location_id}', 'BusinessLocationController@activateDeactivateLocation');
 

@@ -13,6 +13,7 @@ use App\Contact;
 use App\CustomerGroup;
 use App\ExpenseCategory;
 use App\Product;
+use App\ProductStockCache;
 use App\PurchaseLine;
 use App\Restaurant\ResTable;
 use App\SellingPriceGroup;
@@ -1021,6 +1022,7 @@ class ReportController extends Controller
                         "CONCAT(COALESCE(surname, ''), ' ', COALESCE(first_name, ''), ' ', COALESCE(last_name, ''), '<br>', COALESCE(u.email, '')) as user_name"
                     ),
                     'bl.name as location_name',
+                    DB::raw("SUM(IF(ct.transaction_type='initial', ct.amount, 0)) as opening_balance"),
                     DB::raw("SUM(IF(pay_method='cash', IF(transaction_type='sell', amount, 0), 0)) as total_cash_payment"),
                     DB::raw("SUM(IF(pay_method='cheque', IF(transaction_type='sell', amount, 0), 0)) as total_cheque_payment"),
                     DB::raw("SUM(IF(pay_method='card', IF(transaction_type='sell', amount, 0), 0)) as total_card_payment"),
@@ -1104,6 +1106,38 @@ class ReportController extends Controller
                 ->editColumn('created_at', function ($row) {
                     return $this->productUtil->format_date($row->created_at, true);
                 })
+                ->editColumn('opening_balance', function ($row) {
+                    return '<span data-orig-value="' . ($row->opening_balance ?? 0) . '" >' . $this->transactionUtil->num_f($row->opening_balance ?? 0, true) . '</span>';
+                })
+                ->editColumn('closing_amount', function ($row) {
+                    if ($row->status != 'close') {
+                        return '';
+                    }
+                    $val = $row->closing_amount ?? 0;
+                    $html = '<span data-orig-value="' . $val . '" >' . $this->transactionUtil->num_f($val, true) . '</span>';
+                    if ($val === null || $val === '' || (float) $val <= 0) {
+                        $html .= ' <span class="label label-warning">' . __('report.no_closing_balance_recorded') . '</span>';
+                    }
+                    return $html;
+                })
+                ->addColumn('expected_closing', function ($row) {
+                    $opening = $row->opening_balance ?? 0;
+                    $cash_sales = $row->total_cash_payment ?? 0;
+                    $expected = $opening + $cash_sales;
+                    return $row->status == 'close' ? '<span data-orig-value="' . $expected . '" >' . $this->transactionUtil->num_f($expected, true) . '</span>' : '';
+                })
+                ->addColumn('reconciliation_difference', function ($row) {
+                    if ($row->status != 'close') {
+                        return '';
+                    }
+                    $opening = $row->opening_balance ?? 0;
+                    $cash_sales = $row->total_cash_payment ?? 0;
+                    $expected = $opening + $cash_sales;
+                    $actual = $row->closing_amount ?? 0;
+                    $diff = $actual - $expected;
+                    $cls = abs($diff) < 0.01 ? 'text-success' : 'text-danger';
+                    return '<span class="' . $cls . '" data-orig-value="' . $diff . '" >' . $this->transactionUtil->num_f($diff, true) . '</span>';
+                })
                 ->addColumn('total', function ($row) {
                     $total = $row->total_card_payment + $row->total_cheque_payment + $row->total_cash_payment + $row->total_bank_transfer_payment + $row->total_other_payment + $row->total_advance_payment + $row->total_custom_pay_1 + $row->total_custom_pay_2 + $row->total_custom_pay_3 + $row->total_custom_pay_4 + $row->total_custom_pay_5 + $row->total_custom_pay_6 + $row->total_custom_pay_7;
                     
@@ -1115,7 +1149,7 @@ class ReportController extends Controller
                 ->filterColumn('user_name', function ($query, $keyword) {
                     $query->whereRaw("CONCAT(COALESCE(surname, ''), ' ', COALESCE(first_name, ''), ' ', COALESCE(last_name, ''), '<br>', COALESCE(u.email, '')) like ?", ["%{$keyword}%"]);
                 })
-                ->rawColumns(['action', 'user_name', 'total_card_payment', 'total_cheque_payment', 'total_cash_payment', 'total_bank_transfer_payment', 'total_other_payment', 'total_advance_payment', 'total_custom_pay_1', 'total_custom_pay_2', 'total_custom_pay_3', 'total_custom_pay_4', 'total_custom_pay_5', 'total_custom_pay_6', 'total_custom_pay_7', 'total'])
+                ->rawColumns(['action', 'user_name', 'opening_balance', 'closing_amount', 'expected_closing', 'reconciliation_difference', 'total_card_payment', 'total_cheque_payment', 'total_cash_payment', 'total_bank_transfer_payment', 'total_other_payment', 'total_advance_payment', 'total_custom_pay_1', 'total_custom_pay_2', 'total_custom_pay_3', 'total_custom_pay_4', 'total_custom_pay_5', 'total_custom_pay_6', 'total_custom_pay_7', 'total'])
                 ->make(true);
         }
 
@@ -3379,7 +3413,7 @@ class ReportController extends Controller
                      if ($row->purchase_type == 'manual') {
                          $selling_price = $row->selling_price;
                      } else {
-                         $selling_price = !empty($row->sell_line_id) ? $row->selling_price : $row->stock_adjustment_price;
+                     $selling_price = !empty($row->sell_line_id) ? $row->selling_price : $row->stock_adjustment_price;
                      }
 
                      return '<span class="display_currency row_selling_price" data-currency_symbol=true data-orig-value="' . $selling_price . '">' . $selling_price . '</span>';
@@ -3389,7 +3423,7 @@ class ReportController extends Controller
                      if ($row->purchase_type == 'manual') {
                          $selling_price = $row->selling_price;
                      } else {
-                         $selling_price = !empty($row->sell_line_id) ? $row->selling_price : $row->stock_adjustment_price;
+                     $selling_price = !empty($row->sell_line_id) ? $row->selling_price : $row->stock_adjustment_price;
                      }
                      $subtotal = $selling_price * $row->quantity;
                      return '<span class="display_currency row_subtotal" data-currency_symbol=true data-orig-value="' . $subtotal . '">' . $subtotal . '</span>';
@@ -3991,5 +4025,539 @@ class ReportController extends Controller
         $business_locations = BusinessLocation::forDropdown(auth()->user()->business_id, true);
 
         return view('report.categoryreport', compact('business_locations'));
+    }
+
+    /**
+     * Admin-only: Inventory valuation summary.
+     */
+    public function inventoryValuationSummary(Request $request)
+    {
+        $this->ensureAccountantReportAdminAccess();
+        $business_id = $request->session()->get('user.business_id');
+
+        if ($request->ajax()) {
+            $query = ProductStockCache::where('business_id', $business_id)
+                ->where('enable_stock', 1)
+                ->select(
+                    'product_stock_cache.id',
+                    'product',
+                    'sku',
+                    'location_name',
+                    'unit',
+                    'stock',
+                    'stock_price',
+                    'unit_price',
+                    'calculated_at'
+                );
+
+            if (!empty($request->input('location_id'))) {
+                $query->where('location_id', $request->input('location_id'));
+            }
+            if (!empty($request->input('category_id'))) {
+                $query->where('category_id', $request->input('category_id'));
+            }
+            if (!empty($request->input('brand_id'))) {
+                $query->where('brand_id', $request->input('brand_id'));
+            }
+
+            return Datatables::of($query)
+                ->addColumn('cost_per_unit', function ($row) {
+                    $stock = (float) $row->stock;
+                    if ($stock <= 0) {
+                        return 0;
+                    }
+
+                    return (float) $row->stock_price / $stock;
+                })
+                ->make(true);
+        }
+
+        $business_locations = BusinessLocation::forDropdown($business_id, true);
+        $categories = Category::forDropdown($business_id, 'product');
+        $brands = Brands::forDropdown($business_id);
+
+        return view('report.inventory_valuation_summary')
+            ->with(compact('business_locations', 'categories', 'brands'));
+    }
+
+    /**
+     * Admin-only: Inventory valuation detail (cost layers).
+     */
+    public function inventoryValuationDetail(Request $request)
+    {
+        $this->ensureAccountantReportAdminAccess();
+        $business_id = $request->session()->get('user.business_id');
+
+        if ($request->ajax()) {
+            $query = DB::table('purchase_lines as pl')
+                ->join('transactions as t', 'pl.transaction_id', '=', 't.id')
+                ->join('variations as v', 'pl.variation_id', '=', 'v.id')
+                ->join('products as p', 'v.product_id', '=', 'p.id')
+                ->leftJoin('business_locations as bl', 't.location_id', '=', 'bl.id')
+                ->leftJoin('contacts as c', 't.contact_id', '=', 'c.id')
+                ->where('t.business_id', $business_id)
+                ->whereIn('t.type', ['purchase', 'opening_stock', 'purchase_transfer'])
+                ->select(
+                    'pl.id',
+                    't.transaction_date',
+                    't.ref_no',
+                    'p.name as product',
+                    'v.sub_sku as sku',
+                    'bl.name as location_name',
+                    'c.name as vendor_name',
+                    'pl.lot_number',
+                    'pl.quantity',
+                    'pl.quantity_sold',
+                    'pl.quantity_adjusted',
+                    'pl.quantity_returned',
+                    'pl.purchase_price_inc_tax as unit_cost',
+                    DB::raw('GREATEST((pl.quantity - COALESCE(pl.quantity_sold, 0) - COALESCE(pl.quantity_adjusted, 0) - COALESCE(pl.quantity_returned, 0)), 0) as remaining_qty'),
+                    DB::raw('(GREATEST((pl.quantity - COALESCE(pl.quantity_sold, 0) - COALESCE(pl.quantity_adjusted, 0) - COALESCE(pl.quantity_returned, 0)), 0) * pl.purchase_price_inc_tax) as remaining_value')
+                );
+
+            if (!empty($request->input('location_id'))) {
+                $query->where('t.location_id', $request->input('location_id'));
+            }
+            if (!empty($request->input('start_date'))) {
+                $query->whereDate('t.transaction_date', '>=', $request->input('start_date'));
+            }
+            if (!empty($request->input('end_date'))) {
+                $query->whereDate('t.transaction_date', '<=', $request->input('end_date'));
+            }
+
+            return Datatables::of($query)->make(true);
+        }
+
+        $business_locations = BusinessLocation::forDropdown($business_id, true);
+        return view('report.inventory_valuation_detail')->with(compact('business_locations'));
+    }
+
+    /**
+     * Admin-only: Sales by item with cost & margin.
+     */
+    public function salesByItemCostMargin(Request $request)
+    {
+        $this->ensureAccountantReportAdminAccess();
+        $business_id = $request->session()->get('user.business_id');
+
+        if ($request->ajax()) {
+            $query = DB::table('transaction_sell_lines as tsl')
+                ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+                ->join('variations as v', 'tsl.variation_id', '=', 'v.id')
+                ->join('products as p', 'v.product_id', '=', 'p.id')
+                ->leftJoin('product_variations as pv', 'v.product_variation_id', '=', 'pv.id')
+                ->leftJoin('transaction_sell_lines_purchase_lines as tspl', 'tsl.id', '=', 'tspl.sell_line_id')
+                ->leftJoin('purchase_lines as pl', 'tspl.purchase_line_id', '=', 'pl.id')
+                ->where('t.business_id', $business_id)
+                ->where('t.type', 'sell')
+                ->where('t.status', 'final')
+                ->whereNull('t.return_parent_id')
+                ->select(
+                    'p.id as product_id',
+                    'v.id as variation_id',
+                    'p.name as product',
+                    'v.sub_sku as sku',
+                    DB::raw("CONCAT(COALESCE(pv.name, ''), CASE WHEN v.name IS NULL OR v.name = 'DUMMY' THEN '' ELSE CONCAT(' - ', v.name) END) as variation"),
+                    DB::raw('SUM(tsl.quantity - tsl.quantity_returned) as qty_sold'),
+                    DB::raw('SUM((tsl.quantity - tsl.quantity_returned) * tsl.unit_price_inc_tax) as revenue'),
+                    DB::raw('SUM(COALESCE(tspl.quantity, 0) * COALESCE(pl.purchase_price_inc_tax, 0)) as cost'),
+                    DB::raw('(SUM((tsl.quantity - tsl.quantity_returned) * tsl.unit_price_inc_tax) - SUM(COALESCE(tspl.quantity, 0) * COALESCE(pl.purchase_price_inc_tax, 0))) as gross_margin'),
+                    DB::raw('IF(SUM((tsl.quantity - tsl.quantity_returned) * tsl.unit_price_inc_tax) > 0, ((SUM((tsl.quantity - tsl.quantity_returned) * tsl.unit_price_inc_tax) - SUM(COALESCE(tspl.quantity, 0) * COALESCE(pl.purchase_price_inc_tax, 0))) / SUM((tsl.quantity - tsl.quantity_returned) * tsl.unit_price_inc_tax)) * 100, 0) as margin_percent')
+                )
+                ->groupBy('p.id', 'v.id', 'p.name', 'v.sub_sku', 'pv.name', 'v.name');
+
+            if (!empty($request->input('location_id'))) {
+                $query->where('t.location_id', $request->input('location_id'));
+            }
+            if (!empty($request->input('start_date'))) {
+                $query->whereDate('t.transaction_date', '>=', $request->input('start_date'));
+            }
+            if (!empty($request->input('end_date'))) {
+                $query->whereDate('t.transaction_date', '<=', $request->input('end_date'));
+            }
+
+            return Datatables::of($query)->make(true);
+        }
+
+        $business_locations = BusinessLocation::forDropdown($business_id, true);
+        return view('report.sales_item_cost_margin')->with(compact('business_locations'));
+    }
+
+    /**
+     * Admin-only: Purchases by item/vendor.
+     */
+    public function purchasesByItemVendor(Request $request)
+    {
+        $this->ensureAccountantReportAdminAccess();
+        $business_id = $request->session()->get('user.business_id');
+
+        if ($request->ajax()) {
+            $query = DB::table('purchase_lines as pl')
+                ->join('transactions as t', 'pl.transaction_id', '=', 't.id')
+                ->join('variations as v', 'pl.variation_id', '=', 'v.id')
+                ->join('products as p', 'v.product_id', '=', 'p.id')
+                ->leftJoin('contacts as c', 't.contact_id', '=', 'c.id')
+                ->leftJoin('business_locations as bl', 't.location_id', '=', 'bl.id')
+                ->where('t.business_id', $business_id)
+                ->whereIn('t.type', ['purchase', 'opening_stock', 'purchase_transfer'])
+                ->select(
+                    'pl.id',
+                    't.transaction_date',
+                    't.ref_no',
+                    'p.name as product',
+                    'v.sub_sku as sku',
+                    'c.name as vendor_name',
+                    'bl.name as location_name',
+                    'pl.quantity',
+                    'pl.purchase_price_inc_tax as unit_cost',
+                    DB::raw('(pl.quantity * pl.purchase_price_inc_tax) as total_cost')
+                );
+
+            if (!empty($request->input('supplier_id'))) {
+                $query->where('t.contact_id', $request->input('supplier_id'));
+            }
+            if (!empty($request->input('location_id'))) {
+                $query->where('t.location_id', $request->input('location_id'));
+            }
+            if (!empty($request->input('start_date'))) {
+                $query->whereDate('t.transaction_date', '>=', $request->input('start_date'));
+            }
+            if (!empty($request->input('end_date'))) {
+                $query->whereDate('t.transaction_date', '<=', $request->input('end_date'));
+            }
+
+            return Datatables::of($query)->make(true);
+        }
+
+        $business_locations = BusinessLocation::forDropdown($business_id, true);
+        $suppliers = Contact::suppliersDropdown($business_id);
+        return view('report.purchases_item_vendor')->with(compact('business_locations', 'suppliers'));
+    }
+
+    /**
+     * Admin-only: ABC inventory classification.
+     */
+    public function abcInventoryClassification(Request $request)
+    {
+        $this->ensureAccountantReportAdminAccess();
+        $business_id = $request->session()->get('user.business_id');
+
+        if ($request->ajax()) {
+            $inventory_rows = DB::table('product_stock_cache as psc')
+                ->where('psc.business_id', $business_id)
+                ->where('psc.enable_stock', 1)
+                ->select(
+                    'psc.product_id',
+                    DB::raw('MAX(psc.product) as product'),
+                    DB::raw('MAX(psc.sku) as sku'),
+                    DB::raw('SUM(psc.stock) as qty_on_hand'),
+                    DB::raw('SUM(psc.stock_price) as inventory_value')
+                )
+                ->groupBy('psc.product_id')
+                ->get();
+
+            $sales_query = DB::table('transaction_sell_lines as tsl')
+                ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+                ->join('variations as v', 'tsl.variation_id', '=', 'v.id')
+                ->where('t.business_id', $business_id)
+                ->where('t.type', 'sell')
+                ->where('t.status', 'final')
+                ->whereNull('t.return_parent_id')
+                ->select(
+                    'v.product_id',
+                    DB::raw('SUM(tsl.quantity - tsl.quantity_returned) as qty_sold')
+                )
+                ->groupBy('v.product_id');
+
+            if (!empty($request->input('start_date'))) {
+                $sales_query->whereDate('t.transaction_date', '>=', $request->input('start_date'));
+            }
+            if (!empty($request->input('end_date'))) {
+                $sales_query->whereDate('t.transaction_date', '<=', $request->input('end_date'));
+            }
+
+            $sales_map = $sales_query->pluck('qty_sold', 'product_id')->toArray();
+            $rows = $inventory_rows->map(function ($row) use ($sales_map) {
+                $row->qty_sold = isset($sales_map[$row->product_id]) ? (float) $sales_map[$row->product_id] : 0;
+                return $row;
+            })->sortByDesc('inventory_value')->values();
+
+            $total_value = (float) $rows->sum('inventory_value');
+            $running = 0;
+            $classified = [];
+            foreach ($rows as $row) {
+                $value = (float) $row->inventory_value;
+                $running += $value;
+                $cumulative_pct = $total_value > 0 ? ($running / $total_value) * 100 : 0;
+
+                if ($cumulative_pct <= 80) {
+                    $class = 'A';
+                } elseif ($cumulative_pct <= 95) {
+                    $class = 'B';
+                } else {
+                    $class = 'C';
+                }
+
+                $classified[] = [
+                    'product' => $row->product,
+                    'sku' => $row->sku,
+                    'qty_on_hand' => (float) $row->qty_on_hand,
+                    'qty_sold' => (float) $row->qty_sold,
+                    'inventory_value' => $value,
+                    'cumulative_value_pct' => round($cumulative_pct, 2),
+                    'abc_class' => $class,
+                ];
+            }
+
+            return Datatables::of(collect($classified))->make(true);
+        }
+
+        return view('report.abc_inventory_classification');
+    }
+
+    /**
+     * Admin-only: Inventory aging summary.
+     */
+    public function inventoryAgingSummary(Request $request)
+    {
+        $this->ensureAccountantReportAdminAccess();
+        $business_id = $request->session()->get('user.business_id');
+
+        if ($request->ajax()) {
+            $as_of = !empty($request->input('as_of_date')) ? $request->input('as_of_date') : date('Y-m-d');
+
+            $query = DB::table('purchase_lines as pl')
+                ->join('transactions as t', 'pl.transaction_id', '=', 't.id')
+                ->join('variations as v', 'pl.variation_id', '=', 'v.id')
+                ->join('products as p', 'v.product_id', '=', 'p.id')
+                ->where('t.business_id', $business_id)
+                ->whereIn('t.type', ['purchase', 'opening_stock', 'purchase_transfer'])
+                ->select(
+                    'p.id as product_id',
+                    'p.name as product',
+                    'v.sub_sku as sku',
+                    DB::raw("SUM(CASE WHEN DATEDIFF('{$as_of}', DATE(t.transaction_date)) BETWEEN 0 AND 30 THEN GREATEST((pl.quantity - COALESCE(pl.quantity_sold, 0) - COALESCE(pl.quantity_adjusted, 0) - COALESCE(pl.quantity_returned, 0)), 0) ELSE 0 END) as qty_0_30"),
+                    DB::raw("SUM(CASE WHEN DATEDIFF('{$as_of}', DATE(t.transaction_date)) BETWEEN 31 AND 60 THEN GREATEST((pl.quantity - COALESCE(pl.quantity_sold, 0) - COALESCE(pl.quantity_adjusted, 0) - COALESCE(pl.quantity_returned, 0)), 0) ELSE 0 END) as qty_31_60"),
+                    DB::raw("SUM(CASE WHEN DATEDIFF('{$as_of}', DATE(t.transaction_date)) BETWEEN 61 AND 90 THEN GREATEST((pl.quantity - COALESCE(pl.quantity_sold, 0) - COALESCE(pl.quantity_adjusted, 0) - COALESCE(pl.quantity_returned, 0)), 0) ELSE 0 END) as qty_61_90"),
+                    DB::raw("SUM(CASE WHEN DATEDIFF('{$as_of}', DATE(t.transaction_date)) > 90 THEN GREATEST((pl.quantity - COALESCE(pl.quantity_sold, 0) - COALESCE(pl.quantity_adjusted, 0) - COALESCE(pl.quantity_returned, 0)), 0) ELSE 0 END) as qty_90_plus"),
+                    DB::raw("SUM(GREATEST((pl.quantity - COALESCE(pl.quantity_sold, 0) - COALESCE(pl.quantity_adjusted, 0) - COALESCE(pl.quantity_returned, 0)), 0) * pl.purchase_price_inc_tax) as total_value")
+                )
+                ->groupBy('p.id', 'p.name', 'v.sub_sku');
+
+            if (!empty($request->input('location_id'))) {
+                $query->where('t.location_id', $request->input('location_id'));
+            }
+
+            return Datatables::of($query)->make(true);
+        }
+
+        $business_locations = BusinessLocation::forDropdown($business_id, true);
+        return view('report.inventory_aging_summary')->with(compact('business_locations'));
+    }
+
+    /**
+     * Admin-only: Landed cost summary.
+     */
+    public function landedCostSummary(Request $request)
+    {
+        $this->ensureAccountantReportAdminAccess();
+        $business_id = $request->session()->get('user.business_id');
+
+        if ($request->ajax()) {
+            $query = DB::table('transactions as t')
+                ->join('contacts as c', 't.contact_id', '=', 'c.id')
+                ->leftJoin('business_locations as bl', 't.location_id', '=', 'bl.id')
+                ->where('t.business_id', $business_id)
+                ->whereIn('t.type', ['purchase', 'opening_stock'])
+                ->select(
+                    't.id',
+                    't.transaction_date',
+                    't.ref_no',
+                    'c.name as supplier_name',
+                    'bl.name as location_name',
+                    't.total_before_tax',
+                    't.final_total',
+                    't.tax_amount',
+                    't.shipping_charges',
+                    't.additional_expense_key_1',
+                    't.additional_expense_key_2',
+                    't.additional_expense_key_3',
+                    't.additional_expense_key_4',
+                    't.additional_expense_value_1',
+                    't.additional_expense_value_2',
+                    't.additional_expense_value_3',
+                    't.additional_expense_value_4',
+                    DB::raw('(COALESCE(t.shipping_charges,0) + COALESCE(t.additional_expense_value_1,0) + COALESCE(t.additional_expense_value_2,0) + COALESCE(t.additional_expense_value_3,0) + COALESCE(t.additional_expense_value_4,0)) as landed_addons'),
+                    DB::raw('(COALESCE(t.final_total,0) + COALESCE(t.shipping_charges,0) + COALESCE(t.additional_expense_value_1,0) + COALESCE(t.additional_expense_value_2,0) + COALESCE(t.additional_expense_value_3,0) + COALESCE(t.additional_expense_value_4,0)) as landed_total')
+                );
+
+            if (!empty($request->input('supplier_id'))) {
+                $query->where('t.contact_id', $request->input('supplier_id'));
+            }
+            if (!empty($request->input('location_id'))) {
+                $query->where('t.location_id', $request->input('location_id'));
+            }
+            if (!empty($request->input('start_date'))) {
+                $query->whereDate('t.transaction_date', '>=', $request->input('start_date'));
+            }
+            if (!empty($request->input('end_date'))) {
+                $query->whereDate('t.transaction_date', '<=', $request->input('end_date'));
+            }
+
+            return Datatables::of($query)
+                ->addColumn('addons_pct', function ($row) {
+                    $base = (float) $row->final_total;
+                    $addons = (float) $row->landed_addons;
+                    if ($base <= 0) {
+                        return 0;
+                    }
+
+                    return round(($addons / $base) * 100, 2);
+                })
+                ->make(true);
+        }
+
+        $business_locations = BusinessLocation::forDropdown($business_id, true);
+        $suppliers = Contact::suppliersDropdown($business_id);
+        return view('report.landed_cost_summary')->with(compact('business_locations', 'suppliers'));
+    }
+
+    /**
+     * Admin-only: Purchase order vs received.
+     */
+    public function purchaseOrderVsReceived(Request $request)
+    {
+        $this->ensureAccountantReportAdminAccess();
+        $business_id = $request->session()->get('user.business_id');
+
+        if ($request->ajax()) {
+            $query = DB::table('transactions as t')
+                ->join('purchase_lines as pl', 't.id', '=', 'pl.transaction_id')
+                ->join('variations as v', 'pl.variation_id', '=', 'v.id')
+                ->join('products as p', 'v.product_id', '=', 'p.id')
+                ->leftJoin('contacts as c', 't.contact_id', '=', 'c.id')
+                ->leftJoin('business_locations as bl', 't.location_id', '=', 'bl.id')
+                ->where('t.business_id', $business_id)
+                ->where('t.type', 'purchase_order')
+                ->select(
+                    'pl.id',
+                    't.transaction_date',
+                    't.ref_no',
+                    'c.name as supplier_name',
+                    'bl.name as location_name',
+                    'p.name as product',
+                    'v.sub_sku as sku',
+                    'pl.quantity as ordered_qty',
+                    'pl.po_quantity_purchased as received_qty',
+                    DB::raw('GREATEST((pl.quantity - COALESCE(pl.po_quantity_purchased, 0)), 0) as pending_qty'),
+                    't.status'
+                );
+
+            if (!empty($request->input('supplier_id'))) {
+                $query->where('t.contact_id', $request->input('supplier_id'));
+            }
+            if (!empty($request->input('location_id'))) {
+                $query->where('t.location_id', $request->input('location_id'));
+            }
+            if (!empty($request->input('start_date'))) {
+                $query->whereDate('t.transaction_date', '>=', $request->input('start_date'));
+            }
+            if (!empty($request->input('end_date'))) {
+                $query->whereDate('t.transaction_date', '<=', $request->input('end_date'));
+            }
+
+            return Datatables::of($query)->make(true);
+        }
+
+        $business_locations = BusinessLocation::forDropdown($business_id, true);
+        $suppliers = Contact::suppliersDropdown($business_id);
+        return view('report.purchase_order_vs_received')->with(compact('business_locations', 'suppliers'));
+    }
+
+    /**
+     * Admin-only: Item transaction history.
+     */
+    public function itemTransactionHistory(Request $request)
+    {
+        $this->ensureAccountantReportAdminAccess();
+        $business_id = $request->session()->get('user.business_id');
+
+        if ($request->ajax()) {
+            $product_id = $request->input('product_id');
+            $location_id = $request->input('location_id');
+
+            $purchases = DB::table('purchase_lines as pl')
+                ->join('transactions as t', 'pl.transaction_id', '=', 't.id')
+                ->join('variations as v', 'pl.variation_id', '=', 'v.id')
+                ->join('products as p', 'v.product_id', '=', 'p.id')
+                ->leftJoin('business_locations as bl', 't.location_id', '=', 'bl.id')
+                ->where('t.business_id', $business_id)
+                ->whereIn('t.type', ['purchase', 'opening_stock', 'purchase_transfer'])
+                ->select(
+                    't.transaction_date',
+                    't.ref_no',
+                    'p.name as product',
+                    'v.sub_sku as sku',
+                    'bl.name as location_name',
+                    DB::raw("'purchase' as txn_type"),
+                    'pl.quantity as qty_in',
+                    DB::raw('0 as qty_out'),
+                    'pl.purchase_price_inc_tax as unit_cost'
+                );
+
+            $sales = DB::table('transaction_sell_lines as tsl')
+                ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+                ->join('variations as v', 'tsl.variation_id', '=', 'v.id')
+                ->join('products as p', 'v.product_id', '=', 'p.id')
+                ->leftJoin('business_locations as bl', 't.location_id', '=', 'bl.id')
+                ->where('t.business_id', $business_id)
+                ->where('t.type', 'sell')
+                ->where('t.status', 'final')
+                ->select(
+                    't.transaction_date',
+                    't.ref_no',
+                    'p.name as product',
+                    'v.sub_sku as sku',
+                    'bl.name as location_name',
+                    DB::raw("'sell' as txn_type"),
+                    DB::raw('0 as qty_in'),
+                    DB::raw('(tsl.quantity - tsl.quantity_returned) as qty_out'),
+                    'tsl.unit_price_inc_tax as unit_cost'
+                );
+
+            if (!empty($product_id)) {
+                $purchases->where('p.id', $product_id);
+                $sales->where('p.id', $product_id);
+            }
+            if (!empty($location_id)) {
+                $purchases->where('t.location_id', $location_id);
+                $sales->where('t.location_id', $location_id);
+            }
+            if (!empty($request->input('start_date'))) {
+                $purchases->whereDate('t.transaction_date', '>=', $request->input('start_date'));
+                $sales->whereDate('t.transaction_date', '>=', $request->input('start_date'));
+            }
+            if (!empty($request->input('end_date'))) {
+                $purchases->whereDate('t.transaction_date', '<=', $request->input('end_date'));
+                $sales->whereDate('t.transaction_date', '<=', $request->input('end_date'));
+            }
+
+            $rows = $purchases->get()->merge($sales->get())->sortByDesc('transaction_date')->values();
+            return Datatables::of($rows)->make(true);
+        }
+
+        $products = Product::where('business_id', $business_id)->pluck('name', 'id');
+        $business_locations = BusinessLocation::forDropdown($business_id, true);
+        return view('report.item_transaction_history')->with(compact('products', 'business_locations'));
+    }
+
+    /**
+     * Restrict accountant reports to admin users only.
+     */
+    protected function ensureAccountantReportAdminAccess()
+    {
+        if (!$this->businessUtil->is_admin(auth()->user())) {
+            abort(403, 'Unauthorized action.');
+        }
     }
 }

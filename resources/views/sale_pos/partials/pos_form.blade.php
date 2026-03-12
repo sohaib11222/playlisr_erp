@@ -1,7 +1,9 @@
 <div class="row">
-	<div class="col-md-4">
+	<div class="col-md-5 pos-customer-block">
+		<style>.pos-customer-block .select2-container { width: 100% !important; min-width: 0; margin-bottom: 8px; } .pos-customer-select2-dropdown { min-width: 320px !important; } .pos-customer-block .select2-selection__rendered { white-space: normal !important; word-break: break-word; }</style>
 		<div class="form-group">
-			<div class="input-group">
+			<label class="control-label">@lang('contact.customer')</label>
+			<div class="input-group" style="margin-bottom: 4px;">
 				<span class="input-group-addon">
 					<i class="fa fa-user"></i>
 				</span>
@@ -9,6 +11,8 @@
 				value="{{ $walk_in_customer['id'] ?? ''}}" >
 				<input type="hidden" id="default_customer_name" 
 				value="{{ $walk_in_customer['name'] ?? ''}}" >
+				<input type="hidden" id="default_customer_display_name" 
+				value="{{ $walk_in_display_name ?? $walk_in_customer['name'] ?? ''}}" >
 				<input type="hidden" id="default_customer_balance" 
 				value="{{ $walk_in_customer['balance'] ?? ''}}" >
 				<input type="hidden" id="default_customer_address" 
@@ -18,15 +22,15 @@
 				value="{{ $walk_in_customer['selling_price_group_id'] ?? ''}}" >
 				@endif
 				{!! Form::select('contact_id', 
-					[], null, ['class' => 'form-control mousetrap', 'id' => 'customer_id', 'placeholder' => 'Enter Customer name / phone', 'required']); !!}
-				<span class="input-group-btn">
-					<button type="button" class="btn btn-default bg-white btn-flat add_new_customer" data-name=""  @if(!auth()->user()->can('customer.create')) disabled @endif><i class="fa fa-plus-circle text-primary fa-lg"></i></button>
-				</span>
+					[], null, ['class' => 'form-control mousetrap', 'id' => 'customer_id', 'placeholder' => 'Do you have a Nivessa rewards account?', 'required', 'style' => 'width: 100%;']); !!}
+			</div>
+			<div style="margin-top: 14px;">
+				<button type="button" class="btn btn-default bg-white btn-flat btn-sm add_new_customer" data-name=""  @if(!auth()->user()->can('customer.create')) disabled @endif><i class="fa fa-plus-circle text-primary"></i> create account/rewards</button>
 			</div>
 			<small class="text-danger hide contact_due_text"><strong>@lang('account.customer_due'):</strong> <span></span></small>
 		</div>
 	</div>
-	<div class="col-md-8">
+	<div class="col-md-7">
 		<!-- Customer Account Info Display -->
 		<div id="customer_account_info" class="customer-account-info" style="display: none; margin-bottom: 10px; padding: 8px; background-color: #f8f9fa; border-radius: 4px; border: 1px solid #dee2e6;">
 			<div class="row">
@@ -87,22 +91,6 @@
 			</div>
 		</div>
 	</div>
-	@if(!empty($pos_settings['enable_plastic_bag_charge']))
-	<div class="col-md-12">
-		<div class="form-group">
-			<div class="checkbox">
-				<label>
-					<input type="checkbox" id="add_plastic_bag" name="add_plastic_bag" value="1">
-					<strong>Add Bag Fee</strong>
-					<span id="plastic_bag_price_display" class="text-muted">
-						(${{ number_format($pos_settings['plastic_bag_price'] ?? 0.10, 2) }})
-					</span>
-				</label>
-			</div>
-			<input type="hidden" id="plastic_bag_price" value="{{ $pos_settings['plastic_bag_price'] ?? 0.10 }}">
-		</div>
-	</div>
-	@endif
 </div>
 <div class="row">
 	@if(!empty($pos_settings['show_invoice_layout']))

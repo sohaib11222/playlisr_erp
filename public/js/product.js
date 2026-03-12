@@ -1,6 +1,14 @@
 //This file contains all functions used products tab
 
 $(document).ready(function() {
+    // True when editing an existing product (do not auto-overwrite selling price from purchase/margin)
+    // Use #type data-action first: it's always present on edit page; form/data may not be in scope when form part is AJAX-loaded
+    function is_product_edit() {
+        return ($('#type').data('action') === 'edit') ||
+            ($('#product_add_form').length && $('#product_add_form').data('productEdit') == 1) ||
+            ($('#product_id').length && $('#product_id').val());
+    }
+
     $(document).on('ifChecked', 'input#enable_stock', function() {
         $('div#alert_quantity_div').show();
         $('div#quick_product_opening_stock_div').show();
@@ -46,12 +54,15 @@ $(document).ready(function() {
         var purchase_inc_tax = __add_percent(purchase_exc_tax, tax_rate);
         __write_number($('input#single_dpp_inc_tax'), purchase_inc_tax);
 
-        var profit_percent = __read_number($('#profit_percent'));
-        var selling_price = __add_percent(purchase_exc_tax, profit_percent);
-        __write_number($('input#single_dsp'), selling_price);
+        // On edit page: do not overwrite selling price when user blurs purchase price (avoids accidental overwrite)
+        if (!is_product_edit()) {
+            var profit_percent = __read_number($('#profit_percent'));
+            var selling_price = __add_percent(purchase_exc_tax, profit_percent);
+            __write_number($('input#single_dsp'), selling_price);
 
-        var selling_price_inc_tax = __add_percent(selling_price, tax_rate);
-        __write_number($('input#single_dsp_inc_tax'), selling_price_inc_tax);
+            var selling_price_inc_tax = __add_percent(selling_price, tax_rate);
+            __write_number($('input#single_dsp_inc_tax'), selling_price_inc_tax);
+        }
     });
 
     //If tax rate is changed
@@ -88,16 +99,22 @@ $(document).ready(function() {
         __write_number($('input#single_dpp'), purchase_exc_tax);
         $('input#single_dpp').change();
 
-        var profit_percent = __read_number($('#profit_percent'));
-        profit_percent = profit_percent == undefined ? 0 : profit_percent;
-        var selling_price = __add_percent(purchase_exc_tax, profit_percent);
-        __write_number($('input#single_dsp'), selling_price);
+        // On edit page: do not overwrite selling price when user blurs purchase price
+        if (!is_product_edit()) {
+            var profit_percent = __read_number($('#profit_percent'));
+            profit_percent = profit_percent == undefined ? 0 : profit_percent;
+            var selling_price = __add_percent(purchase_exc_tax, profit_percent);
+            __write_number($('input#single_dsp'), selling_price);
 
-        var selling_price_inc_tax = __add_percent(selling_price, tax_rate);
-        __write_number($('input#single_dsp_inc_tax'), selling_price_inc_tax);
+            var selling_price_inc_tax = __add_percent(selling_price, tax_rate);
+            __write_number($('input#single_dsp_inc_tax'), selling_price_inc_tax);
+        }
     });
 
     $(document).on('change', 'input#profit_percent', function(e) {
+        // On edit page: do not overwrite selling price when user changes profit %
+        if (is_product_edit()) return;
+
         var tax_rate = $('select#tax')
             .find(':selected')
             .data('rate');
@@ -283,12 +300,15 @@ $(document).ready(function() {
         var purchase_inc_tax = __add_percent(purchase_exc_tax, tax_rate);
         __write_number(tr_obj.find('input.variable_dpp_inc_tax'), purchase_inc_tax);
 
-        var profit_percent = __read_number(tr_obj.find('input.variable_profit_percent'));
-        var selling_price = __add_percent(purchase_exc_tax, profit_percent);
-        __write_number(tr_obj.find('input.variable_dsp'), selling_price);
+        // On edit page: do not overwrite selling price when user blurs purchase price
+        if (!is_product_edit()) {
+            var profit_percent = __read_number(tr_obj.find('input.variable_profit_percent'));
+            var selling_price = __add_percent(purchase_exc_tax, profit_percent);
+            __write_number(tr_obj.find('input.variable_dsp'), selling_price);
 
-        var selling_price_inc_tax = __add_percent(selling_price, tax_rate);
-        __write_number(tr_obj.find('input.variable_dsp_inc_tax'), selling_price_inc_tax);
+            var selling_price_inc_tax = __add_percent(selling_price, tax_rate);
+            __write_number(tr_obj.find('input.variable_dsp_inc_tax'), selling_price_inc_tax);
+        }
     });
 
     //If purchase price inc tax is changed
@@ -306,15 +326,21 @@ $(document).ready(function() {
         var purchase_exc_tax = __get_principle(purchase_inc_tax, tax_rate);
         __write_number(tr_obj.find('input.variable_dpp'), purchase_exc_tax);
 
-        var profit_percent = __read_number(tr_obj.find('input.variable_profit_percent'));
-        var selling_price = __add_percent(purchase_exc_tax, profit_percent);
-        __write_number(tr_obj.find('input.variable_dsp'), selling_price);
+        // On edit page: do not overwrite selling price when user blurs purchase price
+        if (!is_product_edit()) {
+            var profit_percent = __read_number(tr_obj.find('input.variable_profit_percent'));
+            var selling_price = __add_percent(purchase_exc_tax, profit_percent);
+            __write_number(tr_obj.find('input.variable_dsp'), selling_price);
 
-        var selling_price_inc_tax = __add_percent(selling_price, tax_rate);
-        __write_number(tr_obj.find('input.variable_dsp_inc_tax'), selling_price_inc_tax);
+            var selling_price_inc_tax = __add_percent(selling_price, tax_rate);
+            __write_number(tr_obj.find('input.variable_dsp_inc_tax'), selling_price_inc_tax);
+        }
     });
 
     $(document).on('change', 'input.variable_profit_percent', function(e) {
+        // On edit page: do not overwrite selling price when user changes profit %
+        if (is_product_edit()) return;
+
         var tax_rate = $('select#tax')
             .find(':selected')
             .data('rate');

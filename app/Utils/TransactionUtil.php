@@ -2395,12 +2395,19 @@ class TransactionUtil extends Util
      */
     public function getPurchaseTotals($business_id, $start_date = null, $end_date = null, $location_id = null, $user_id = null)
     {
+        $purchasePaymentsSubquery = DB::table('transaction_payments as tp')
+            ->select('tp.transaction_id', DB::raw('SUM(tp.amount) as total_paid'))
+            ->groupBy('tp.transaction_id');
+
         $query = Transaction::where('business_id', $business_id)
                         ->where('type', 'purchase')
+                        ->leftJoinSub($purchasePaymentsSubquery, 'purchase_payments', function ($join) {
+                            $join->on('purchase_payments.transaction_id', '=', 'transactions.id');
+                        })
                         ->select(
                             DB::raw('SUM(final_total) as final_total_sum'),
                             //DB::raw("SUM(final_total - tax_amount) as total_exc_tax"),
-                            DB::raw("SUM((SELECT COALESCE(SUM(tp.amount), 0) FROM transaction_payments as tp WHERE tp.transaction_id=transactions.id)) as total_paid"),
+                            DB::raw('SUM(COALESCE(purchase_payments.total_paid, 0)) as total_paid'),
                             DB::raw('SUM(total_before_tax) as total_before_tax_sum'),
                             DB::raw('SUM(shipping_charges) as total_shipping_charges'),
                             DB::raw("SUM(additional_expense_value_1 + additional_expense_value_2 + additional_expense_value_3 + additional_expense_value_4) as total_expense")
@@ -2454,13 +2461,20 @@ class TransactionUtil extends Util
      */
     public function getSellTotals($business_id, $start_date = null, $end_date = null, $location_id = null, $created_by = null)
     {
+        $sellPaymentsSubquery = DB::table('transaction_payments as tp')
+            ->select('tp.transaction_id', DB::raw('SUM(IF(tp.is_return = 1, -1 * tp.amount, tp.amount)) as total_paid_signed'))
+            ->groupBy('tp.transaction_id');
+
         $query = Transaction::where('transactions.business_id', $business_id)
                     ->where('transactions.type', 'sell')
                     ->where('transactions.status', 'final')
+                    ->leftJoinSub($sellPaymentsSubquery, 'sell_payments', function ($join) {
+                        $join->on('sell_payments.transaction_id', '=', 'transactions.id');
+                    })
                     ->select(
                         DB::raw('SUM(final_total) as total_sell'),
                         DB::raw("SUM(final_total - tax_amount) as total_exc_tax"),
-                        DB::raw('SUM(final_total - (SELECT COALESCE(SUM(IF(tp.is_return = 1, -1*tp.amount, tp.amount)), 0) FROM transaction_payments as tp WHERE tp.transaction_id = transactions.id) )  as total_due'),
+                        DB::raw('SUM(final_total - COALESCE(sell_payments.total_paid_signed, 0)) as total_due'),
                         DB::raw('SUM(total_before_tax) as total_before_tax'),
                         DB::raw('SUM(shipping_charges) as total_shipping_charges'),
                         DB::raw("SUM(additional_expense_value_1 + additional_expense_value_2 + additional_expense_value_3 + additional_expense_value_4) as total_expense")

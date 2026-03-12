@@ -300,6 +300,22 @@ class ContactController extends Controller
             $query->where('contacts.contact_status', request()->input('contact_status'));
         }
 
+        $hasPreordersTable = false;
+        try {
+            $hasPreordersTable = \Illuminate\Support\Facades\Schema::hasTable('preorders');
+        } catch (\Exception $e) {
+            $hasPreordersTable = false;
+        }
+
+        if ($hasPreordersTable) {
+            $query->leftJoin(
+                DB::raw("(SELECT contact_id, COUNT(*) as pending_preorders_count FROM preorders WHERE status = 'pending' GROUP BY contact_id) as preorder_counts"),
+                'preorder_counts.contact_id',
+                '=',
+                'contacts.id'
+            )->addSelect(DB::raw('COALESCE(MAX(preorder_counts.pending_preorders_count), 0) as pending_preorders_count'));
+        }
+
         $contacts = Datatables::of($query)
             ->addColumn('address', '{{implode(", ", array_filter([$address_line_1, $address_line_2, $city, $state, $country, $zip_code]))}}')
             ->addColumn(
@@ -313,32 +329,23 @@ class ContactController extends Controller
             ->addColumn(
                 'action',
                 function ($row) {
-                    $html = '<div class="btn-group">
-                    <button type="button" class="btn btn-info dropdown-toggle btn-xs" 
-                        data-toggle="dropdown" aria-expanded="false">' .
-                        __("messages.actions") .
-                        '<span class="caret"></span><span class="sr-only">Toggle Dropdown
-                        </span>
-                    </button>
-                    <ul class="dropdown-menu dropdown-menu-left" role="menu">';
+                    // Use direct buttons instead of dropdown for better click reliability on customer list.
+                    $html = '<div class="btn-group">' .
+                        '<a href="' . action('ContactController@show', [$row->id]) . '" class="btn btn-xs btn-info">' .
+                        '<i class="fa fa-user"></i> View</a>';
 
-
-
-                    // Add Profile link
-                    $html .= '<li><a href="#" class="view_customer_profile" data-contact-id="' . $row->id . '"><i class="fa fa-user"></i> View Profile</a></li>';
-                    
                     if (auth()->user()->can('customer.update')) {
-                        $html .= '<li><a href="' . action('ContactController@edit', [$row->id]) . '" class="edit_contact_button"><i class="glyphicon glyphicon-edit"></i>' .  __("messages.edit") . '</a></li>';
+                        $html .= '<a href="' . action('ContactController@edit', [$row->id]) . '" class="btn btn-xs btn-primary edit_contact_button">' .
+                            '<i class="glyphicon glyphicon-edit"></i> ' . __("messages.edit") . '</a>';
+                        $html .= '<a href="#" class="btn btn-xs btn-success add_store_credit_button" data-contact-id="' . $row->id . '">' .
+                            '<i class="fa fa-plus-circle"></i> Store Credit</a>';
                     }
                     if (!$row->is_default && auth()->user()->can('customer.delete')) {
-                        $html .= '<li><a href="' . action('ContactController@destroy', [$row->id]) . '" class="delete_contact_button"><i class="glyphicon glyphicon-trash"></i>' . __("messages.delete") . '</a></li>';
+                        $html .= '<a href="' . action('ContactController@destroy', [$row->id]) . '" class="btn btn-xs btn-danger delete_contact_button">' .
+                            '<i class="glyphicon glyphicon-trash"></i> ' . __("messages.delete") . '</a>';
                     }
 
-
-
-
-
-                    $html .= '</ul></div>';
+                    $html .= '</div>';
 
                     return $html;
                 }
@@ -402,17 +409,9 @@ class ContactController extends Controller
                 return $tier;
             })
             ->addColumn('preorders_count', function ($row) {
-                try {
-                    if (\Illuminate\Support\Facades\Schema::hasTable('preorders')) {
-                $count = \App\Preorder::where('contact_id', $row->id)
-                    ->where('status', 'pending')
-                    ->count();
+                $count = (int) ($row->pending_preorders_count ?? 0);
                 if ($count > 0) {
                     return '<span class="label label-warning">' . $count . '</span>';
-                        }
-                    }
-                } catch (\Exception $e) {
-                    // Table doesn't exist or error occurred
                 }
                 return '0';
             })
@@ -519,7 +518,8 @@ class ContactController extends Controller
             }
 
             $input = $request->only(['type', 'supplier_business_name',
-                'prefix', 'first_name', 'middle_name', 'last_name', 'tax_number', 'pay_term_number', 'pay_term_type', 'mobile', 'landline', 'alternate_number', 'city', 'state', 'country', 'address_line_1', 'address_line_2', 'customer_group_id', 'zip_code', 'contact_id', 'custom_field1', 'custom_field2', 'custom_field3', 'custom_field4', 'custom_field5', 'custom_field6', 'custom_field7', 'custom_field8', 'custom_field9', 'custom_field10', 'email', 'shipping_address', 'position', 'dob', 'shipping_custom_field_details', 'assigned_to_users', 'is_employee']);
+                'prefix', 'first_name', 'middle_name', 'last_name', 'tax_number', 'pay_term_number', 'pay_term_type', 'mobile', 'landline', 'alternate_number', 'city', 'state', 'country', 'address_line_1', 'address_line_2', 'customer_group_id', 'zip_code', 'contact_id', 'custom_field1', 'custom_field2', 'custom_field3', 'custom_field4', 'custom_field5', 'custom_field6', 'custom_field7', 'custom_field8', 'custom_field9', 'custom_field10', 'email', 'shipping_address', 'position', 'dob', 'shipping_custom_field_details', 'assigned_to_users', 'is_employee', 'opt_in_marketing']);
+            $input['opt_in_marketing'] = !empty($request->input('opt_in_marketing')) ? 1 : 0;
 
             $name_array = [];
 
@@ -645,9 +645,105 @@ class ContactController extends Controller
         } catch (\Exception $e) {
             \Log::warning('Gift cards not available: ' . $e->getMessage());
         }
-        
+
+        // Profile data: recent purchases, stats, tier info
+        $recent_purchases = collect([]);
+        $purchase_history = collect([]);
+        $sell_count = 0;
+        $avg_order = 0;
+        $visits_90d = 0;
+        $current_tier = null;
+        $next_tier = null;
+        $tier_progress = 0;
+
+        if (in_array($contact->type, ['customer', 'both'])) {
+            $sell_lines_query = \App\TransactionSellLine::join('transactions as t', 'transaction_sell_lines.transaction_id', '=', 't.id')
+                ->leftJoin('products as p', 'transaction_sell_lines.product_id', '=', 'p.id')
+                ->leftJoin('business_locations as bl', 't.location_id', '=', 'bl.id')
+                ->leftJoin('users as u', 't.created_by', '=', 'u.id')
+                ->where('t.contact_id', $contact->id)
+                ->where('t.business_id', $business_id)
+                ->where('t.type', 'sell')
+                ->where('t.status', 'final')
+                ->whereNull('t.return_parent_id')
+                ->select(
+                    'transaction_sell_lines.id',
+                    'p.name as product_name',
+                    'p.artist',
+                    'p.image as product_image',
+                    't.transaction_date',
+                    't.invoice_no',
+                    'transaction_sell_lines.unit_price_inc_tax',
+                    'transaction_sell_lines.quantity',
+                    'bl.name as location_name',
+                    DB::raw("CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,'')) as staff_name")
+                )
+                ->orderBy('t.transaction_date', 'desc');
+
+            $recent_purchases = (clone $sell_lines_query)->limit(4)->get();
+            $purchase_history = (clone $sell_lines_query)->limit(50)->get();
+
+            $sell_count = Transaction::where('contact_id', $contact->id)
+                ->where('business_id', $business_id)
+                ->where('type', 'sell')
+                ->where('status', 'final')
+                ->count();
+
+            $avg_order = $sell_count > 0 ? ($contact->total_invoice / $sell_count) : 0;
+
+            $visits_90d = Transaction::where('contact_id', $contact->id)
+                ->where('business_id', $business_id)
+                ->where('type', 'sell')
+                ->where('status', 'final')
+                ->where('transaction_date', '>=', \Carbon\Carbon::now()->subDays(90))
+                ->count();
+
+            // Loyalty tier info
+            try {
+                $all_tiers = \App\LoyaltyTier::getActiveTiers($business_id);
+                if ($all_tiers->isNotEmpty()) {
+                    $lifetime = $contact->total_invoice ?? 0;
+                    foreach ($all_tiers as $tier) {
+                        if ($lifetime >= $tier->min_lifetime_purchases) {
+                            $current_tier = $tier;
+                        } else {
+                            $next_tier = $tier;
+                            break;
+                        }
+                    }
+                    if ($current_tier && $next_tier) {
+                        $range = $next_tier->min_lifetime_purchases - $current_tier->min_lifetime_purchases;
+                        $progress = $lifetime - $current_tier->min_lifetime_purchases;
+                        $tier_progress = $range > 0 ? min(100, round(($progress / $range) * 100)) : 100;
+                    } elseif ($current_tier && !$next_tier) {
+                        $tier_progress = 100;
+                    }
+                }
+            } catch (\Exception $e) {
+                // Loyalty tiers may not be set up
+            }
+        }
+
+        // Customer notes
+        $customer_notes = collect([]);
+        try {
+            $customer_notes = \App\DocumentAndNote::where('notable_id', $contact->id)
+                ->where('notable_type', 'App\Contact')
+                ->with('createdBy')
+                ->orderBy('created_at', 'desc')
+                ->limit(10)
+                ->get();
+        } catch (\Exception $e) {
+            // Notes table may not exist
+        }
+
         return view('contact.show')
-             ->with(compact('contact', 'reward_enabled', 'contact_dropdown', 'business_locations', 'view_type', 'contact_view_tabs', 'activities', 'gift_cards', 'total_gift_card_balance'));
+             ->with(compact(
+                 'contact', 'reward_enabled', 'contact_dropdown', 'business_locations',
+                 'view_type', 'contact_view_tabs', 'activities', 'gift_cards', 'total_gift_card_balance',
+                 'recent_purchases', 'purchase_history', 'sell_count', 'avg_order', 'visits_90d',
+                 'current_tier', 'next_tier', 'tier_progress', 'customer_notes'
+             ));
     }
 
     /**
@@ -732,7 +828,8 @@ class ContactController extends Controller
                 }
 
                 $input = $request->only(['type', 'supplier_business_name', 'prefix', 'first_name', 'middle_name', 'last_name', 'tax_number', 'pay_term_number', 'pay_term_type', 'mobile', 'address_line_1', 'address_line_2', 'zip_code', 'dob', 'alternate_number', 'city', 'state', 'country', 'landline', 'customer_group_id', 'contact_id', 'custom_field1', 'custom_field2', 'custom_field3', 'custom_field4', 'custom_field5', 'custom_field6', 'custom_field7', 'custom_field8', 'custom_field9', 'custom_field10', 'email', 'shipping_address', 'position', 'shipping_custom_field_details', 'export_custom_field_1', 'export_custom_field_2', 'export_custom_field_3', 'export_custom_field_4', 'export_custom_field_5',
-                    'export_custom_field_6', 'assigned_to_users', 'is_employee']);
+                    'export_custom_field_6', 'assigned_to_users', 'is_employee', 'opt_in_marketing']);
+                $input['opt_in_marketing'] = !empty($request->input('opt_in_marketing')) ? 1 : 0;
 
                 $name_array = [];
 
@@ -850,17 +947,24 @@ class ContactController extends Controller
      */
     public function getCustomers(){
         if (request()->ajax()) {
-            $term = request()->input('q', '');
+            $term = trim((string) request()->input('q', ''));
+            $minSearchLength = 2;
+            $defaultLimit = 50;
+            $searchLimit = 100;
 
             $business_id = request()->session()->get('user.business_id');
-            $user_id = request()->session()->get('user.id');
 
             $contacts = Contact::where('contacts.business_id', $business_id)
                             ->leftjoin('customer_groups as cg', 'cg.id', '=', 'contacts.customer_group_id')
                             ->active();
 
             if (!request()->has('all_contact')) {
-                $contacts->onlyCustomers();
+                // Business decision: allow all employees/admins to access the same customer usernames.
+                $contacts->whereIn('contacts.type', ['customer', 'both']);
+            }
+
+            if ($term !== '' && mb_strlen($term) < $minSearchLength) {
+                return json_encode([]);
             }
 
             if (!empty($term)) {
@@ -904,6 +1008,13 @@ class ContactController extends Controller
             if (request()->session()->get('business.enable_rp') == 1) {
                 $contacts->addSelect('total_rp');
             }
+
+            if (empty($term)) {
+                $contacts->orderBy('contacts.name')->limit($defaultLimit);
+            } else {
+                $contacts->limit($searchLimit);
+            }
+
             $contacts = $contacts->get();
             return json_encode($contacts);
         }
@@ -1617,4 +1728,105 @@ class ContactController extends Controller
         ];
     }
 
+    public function updateAvatar($id, Request $request)
+    {
+        if (!auth()->user()->can('customer.update') && !auth()->user()->can('supplier.update')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        try {
+            $business_id = request()->session()->get('user.business_id');
+            $contact = Contact::where('business_id', $business_id)->findOrFail($id);
+
+            if ($request->hasFile('avatar') && $request->file('avatar')->isValid()) {
+                $avatar = $request->file('avatar');
+                $filename = 'contact_' . $contact->id . '_' . time() . '.' . $avatar->getClientOriginalExtension();
+
+                $upload_path = public_path('uploads/contact_avatars');
+                if (!file_exists($upload_path)) {
+                    mkdir($upload_path, 0755, true);
+                }
+
+                // Remove old avatar
+                if (!empty($contact->avatar) && file_exists($upload_path . '/' . $contact->avatar)) {
+                    unlink($upload_path . '/' . $contact->avatar);
+                }
+
+                $avatar->move($upload_path, $filename);
+                $contact->avatar = $filename;
+                $contact->save();
+
+                return response()->json([
+                    'success' => true,
+                    'avatar_url' => $contact->avatar_url,
+                ]);
+            }
+
+            return response()->json(['success' => false, 'msg' => 'No valid file uploaded.']);
+        } catch (\Exception $e) {
+            \Log::emergency("File:" . $e->getFile() . "Line:" . $e->getLine() . "Message:" . $e->getMessage());
+            return response()->json(['success' => false, 'msg' => $e->getMessage()]);
+        }
+    }
+
+    public function updateGenres($id, Request $request)
+    {
+        if (!auth()->user()->can('customer.update') && !auth()->user()->can('supplier.update')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        try {
+            $business_id = request()->session()->get('user.business_id');
+            $contact = Contact::where('business_id', $business_id)->findOrFail($id);
+
+            $genres = $request->input('genres', []);
+            if (is_string($genres)) {
+                $genres = array_map('trim', explode(',', $genres));
+            }
+            $genres = array_filter($genres);
+
+            $contact->favorite_genres = array_values($genres);
+            $contact->save();
+
+            return response()->json([
+                'success' => true,
+                'genres' => $contact->favorite_genres,
+            ]);
+        } catch (\Exception $e) {
+            \Log::emergency("File:" . $e->getFile() . "Line:" . $e->getLine() . "Message:" . $e->getMessage());
+            return response()->json(['success' => false, 'msg' => $e->getMessage()]);
+        }
+    }
+
+    public function updateStoreCredit($id, Request $request)
+    {
+        if (!auth()->user()->can('customer.update') && !auth()->user()->can('supplier.update')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        try {
+            $business_id = request()->session()->get('user.business_id');
+            $contact = Contact::where('business_id', $business_id)->findOrFail($id);
+
+            $amount = (float) $request->input('amount', 0);
+            if ($amount <= 0) {
+                return response()->json([
+                    'success' => false,
+                    'msg' => 'Store credit amount must be greater than 0.'
+                ]);
+            }
+
+            $contact->balance = (float) $contact->balance + $amount;
+            $contact->save();
+
+            return response()->json([
+                'success' => true,
+                'msg' => 'Store credit added successfully.',
+                'new_balance' => (float) $contact->balance
+            ]);
+        } catch (\Exception $e) {
+            \Log::emergency("File:" . $e->getFile() . "Line:" . $e->getLine() . "Message:" . $e->getMessage());
+            return response()->json(['success' => false, 'msg' => $e->getMessage()]);
+        }
+    }
 }

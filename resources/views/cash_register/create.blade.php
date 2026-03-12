@@ -31,6 +31,7 @@
             {!! Form::label('amount', __('cash_register.cash_in_hand') . ':*') !!}
             {!! Form::text('amount', null, ['class' => 'form-control input_number',
               'placeholder' => __('cash_register.enter_amount'), 'required']); !!}
+            <p class="help-block text-muted"><small>@lang('cash_register.opening_balance_help')</small></p>
           </div>
         </div>
         @if(count($business_locations) > 1)

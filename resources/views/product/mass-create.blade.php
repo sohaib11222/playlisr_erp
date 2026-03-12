@@ -18,49 +18,74 @@
         /* Внешний контейнер с горизонтальной прокруткой */
         .responsive-table {
             width: 100%;
+            max-width: 100%;
             overflow-x: auto;
+            overflow-y: hidden;
             border: 1px solid #ddd;
             margin: 20px 0;
         }
 
-        /* Задаём минимальную ширину таблицы, чтобы колонки не сжимались */
         #mass_create_table {
-            min-width: 1500px; /* или другое нужное значение */
             white-space: nowrap;
+            table-layout: fixed;
+            width: 1680px;
+            min-width: 1680px;
+            max-width: 1680px;
         }
 
-        /* Предотвращаем перенос строк внутри ячеек и устанавливаем минимальную ширину колонок */
         #mass_create_table .thead .th,
         #mass_create_table .tbody .td {
             white-space: nowrap;
-            min-width: 300px; /* Установите желаемую минимальную ширину */
+            min-width: 140px;
         }
 
-        /* Пример установки фиксированной ширины для первой колонки */
-        #mass_create_table .thead .tr > .th:nth-child(1),
-        #mass_create_table .tbody .tr > .td:nth-child(1) {
-            width: 300px; /* Ширина первой колонки */
+        /* Product name column */
+        #mass_create_table .col-name {
+            min-width: 200px;
+            width: 200px;
+        }
+        /* SKU - narrow */
+        #mass_create_table .col-sku {
+            min-width: 100px;
+            width: 100px;
+        }
+        /* Category / Sub Category - need room for select2 + copy-down */
+        #mass_create_table .col-select {
+            min-width: 200px;
+        }
+        /* Artist */
+        #mass_create_table .col-artist {
+            min-width: 130px;
+        }
+        /* Business Locations */
+        #mass_create_table .col-locations {
+            min-width: 180px;
+        }
+        /* Opening Stock */
+        #mass_create_table .col-stock {
+            min-width: 150px;
+        }
+        /* Action column - narrow */
+        #mass_create_table .col-action {
+            min-width: 50px !important;
+            width: 50px;
         }
 
-        /* Предотвращаем перенос строк внутри ячеек */
-        #mass_create_table th,
-        #mass_create_table td {
-            white-space: nowrap;
-            min-width: 300px; /* Установите желаемую минимальную ширину */
-        }
-
-        #mass_create_table th:nth-child(1),
-        #mass_create_table td:nth-child(1) {
-            width: 300px; /* Ширина первой колонки */
-        }
-
-
-        /* Основная таблица */
         .table-wrapper {
             display: table;
-            width: 100%;
-            min-width: 1500px; /* Минимальная ширина таблицы */
+            width: 1680px;
+            min-width: 1680px;
+            max-width: 1680px;
             border-collapse: collapse;
+        }
+
+        /* Keep selects/inputs from stretching row width as new rows are added */
+        #mass_create_table .td .form-control,
+        #mass_create_table .td .select2-container {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            box-sizing: border-box;
         }
 
         /* Заголовок таблицы */
@@ -87,10 +112,9 @@
             border-bottom: 1px solid #ddd;
         }
 
-        /* Ячейки – заголовки и данные */
         .th, .td {
             display: table-cell;
-            padding: 15px;
+            padding: 8px 6px;
             box-sizing: border-box;
             text-align: center;
             white-space: nowrap;
@@ -116,11 +140,11 @@
         }
         .tfoot .td {
             text-align: center;
-            padding: 15px;
+            padding: 8px;
         }
         .tfoot .btn {
-            width: 300px;
-            margin: 15px auto;
+            width: 200px;
+            margin: 8px auto;
             display: block;
         }
 
@@ -135,7 +159,7 @@
         /* Адаптивный режим */
         @media (max-width: 768px) {
             .table-wrapper {
-                min-width: 100%;
+                min-width: 1680px;
             }
             .th, .td {
                 white-space: normal;
@@ -147,6 +171,17 @@
 
         .expandable {
             display: none;
+        }
+
+        #mass_create_table .price-col {
+            min-width: 90px !important;
+            max-width: 110px;
+            width: 90px;
+        }
+        #mass_create_table .price-col .form-control {
+            min-width: 70px;
+            padding: 6px 4px;
+            text-align: right;
         }
 
         .price-recomendation-card-wrapper {
@@ -248,18 +283,19 @@
 
     {!! Form::open(['url' => action('ProductController@massStore'), 'method' => 'post', 'id' => 'mass_create_form', 'enctype' => 'multipart/form-data' ]) !!}
 
-    <!-- Bulk Text Entry Section -->
-    <div class="box box-primary" style="margin-bottom: 20px;">
-        <div class="box-header with-border">
+    <!-- Bulk Text Entry Section (collapsed by default) -->
+    <div class="box box-primary collapsed-box" style="margin-bottom: 20px;">
+        <div class="box-header with-border" style="cursor: pointer;" data-widget="collapse">
             <h3 class="box-title">
                 <i class="fa fa-file-text"></i> Bulk Product Entry
-                <small class="text-muted">(Smart Auto-Complete & Formatting)</small>
             </h3>
             <div class="box-tools pull-right">
-                <!-- Buttons moved to box-body to avoid duplicate IDs -->
+                <button type="button" class="btn btn-sm btn-primary" data-widget="collapse">
+                    <i class="fa fa-plus"></i> Open Bulk Entry
+                </button>
             </div>
         </div>
-        <div class="box-body">
+        <div class="box-body" style="display: none;">
             <div class="form-group">
                 <label for="bulk_product_text">
                     <strong>Paste products here (one per line).</strong> Smart parser supports multiple formats:
@@ -316,26 +352,26 @@
             <!-- Шапка таблицы с восстановленными колонками -->
             <thead class="thead">
                 <tr class="tr">
-                    <th class="th">@lang('product.product_name')*</th>
-                    <th class="th" style="min-width: 150px !important;">@lang('product.sku')</th>
-                    <th class="th">@lang('product.category')</th>
-                    <th class="th">@lang('product.sub_category')</th>
-                    <th class="th">Artist</th>
-                    <th class="th">Bin Position</th>
-                    <th class="th">Listing Location</th>
-                    <th class="th">@lang('business.business_locations')</th>
-                    <th class="th">Opening Stock</th>
-                    <th class="th">Product Selling Price</th>
-                    <th class="th">Product Purchase Price</th>
-                    <th class="th" style="min-width: 75px;">
+                    <th class="th col-name">@lang('product.product_name')*</th>
+                    <th class="th col-sku">@lang('product.sku')</th>
+                    <th class="th col-select">@lang('product.category')</th>
+                    <th class="th col-select">@lang('product.sub_category')</th>
+                    <th class="th col-artist">Artist</th>
+                    <th class="th col-locations">@lang('business.business_locations')</th>
+                    <th class="th col-stock">Opening Stock</th>
+                    <th class="th price-col">Selling Price</th>
+                    <th class="th price-col">Purchase Price</th>
+                    <th class="th" style="min-width: 60px; width: 60px;">
                         <button type="button" class="btn btn-primary btn-xs show-expandables">
                             More
                         </button>
                     </th>
+                    <th class="th expandable">Bin Position</th>
+                    <th class="th expandable">Listing Location</th>
                     <th class="th expandable">Product Image Url</th>
                     <th class="th expandable">Upload Product Image</th>
                     <th class="th expandable">Product Description</th>
-                    <th class="th">@lang('messages.action')</th>
+                    <th class="th col-action">@lang('messages.action')</th>
                 </tr>
             </thead>
 
@@ -522,8 +558,10 @@
             }
             
             if (!categoryId || categoryId === '') {
-                // No category selected
-                $row.find('.category-validation-indicator').html('<i class="fa fa-exclamation-circle text-warning" title="Category is required"></i>');
+                // Category is optional; clear validation state when empty
+                categorySelect.removeClass('is-invalid');
+                $row.find('.subcategory-select').removeClass('is-invalid');
+                $row.find('.category-validation-indicator').html('');
                 return;
             }
             
@@ -594,7 +632,6 @@
             const rows = $('#product_rows_container .product-row');
             let validCount = 0;
             let invalidCount = 0;
-            let missingCategoryCount = 0;
             let missingSubcategoryCount = 0;
             const invalidRows = [];
 
@@ -609,14 +646,8 @@
                 verifyCategorySubcategoryMatch($row, rowIndex);
 
                 if (!categoryId) {
-                    missingCategoryCount++;
-                    if (productName) {
-                        invalidRows.push({
-                            row: rowIndex,
-                            product: productName,
-                            issue: 'Missing category'
-                        });
-                    }
+                    // Category is optional; count this as valid if no category is selected.
+                    validCount++;
                 } else if (subcategoryId) {
                     // Check if subcategory belongs to category
                     const validSubcategories = window.categorySubcategories[categoryId] || [];
@@ -644,9 +675,6 @@
             if (invalidCount > 0) {
                 summaryHtml += `<li><strong>Invalid:</strong> <span class="text-danger">${invalidCount}</span> rows (subcategory mismatch)</li>`;
             }
-            if (missingCategoryCount > 0) {
-                summaryHtml += `<li><strong>Missing Category:</strong> <span class="text-warning">${missingCategoryCount}</span> rows</li>`;
-            }
             if (missingSubcategoryCount > 0) {
                 summaryHtml += `<li><strong>Missing Subcategory:</strong> <span class="text-info">${missingSubcategoryCount}</span> rows (category selected but no subcategory)</li>`;
             }
@@ -670,7 +698,7 @@
                         innerHTML: summaryHtml
                     }
                 },
-                icon: invalidCount > 0 || missingCategoryCount > 0 ? 'warning' : 'success',
+                icon: invalidCount > 0 ? 'warning' : 'success',
                 buttons: {
                     confirm: {
                         text: 'OK',
@@ -733,7 +761,7 @@
             selectedValues.forEach(function(locationId) {
                 if (!container.find(`#qty-wrapper-${rowId}-${locationId}`).length) {
                     var locationName = businessLocations[locationId] || 'Unknown';
-                    var qtyValue = existingQty[locationId] || 1;
+                    var qtyValue = existingQty[locationId] || 0;
 
                     container.append(`
                         <div class="qty-input" id="qty-wrapper-${rowId}-${locationId}" style="margin-bottom: 10px;">
@@ -786,14 +814,8 @@
                 const subcategoryId = subcategorySelect.val();
                 const productName = $row.find('.product-name-autocomplete').val() || `Product ${parseInt(rowIndex) + 1}`;
                 
-                // Check if category is selected
-                if (!categoryId || categoryId === '') {
-                    hasErrors = true;
-                    categorySelect.addClass('is-invalid');
-                    const errorMsg = `Row ${parseInt(rowIndex) + 1} (${productName}): Category is required`;
-                    errorMessages.push(errorMsg);
-                    categorySelect.closest('td').append(`<div class="invalid-feedback error-message" style="display: block; color: red; font-size: 12px;">Category is required</div>`);
-                } else {
+                // Category is optional; validate only when provided
+                if (categoryId && categoryId !== '') {
                     // Check if category exists in dropdown options
                     const categoryOption = categorySelect.find('option[value="' + categoryId + '"]');
                     if (categoryOption.length === 0) {
@@ -802,17 +824,15 @@
                         const errorMsg = `Row ${parseInt(rowIndex) + 1} (${productName}): Invalid category - not found in system`;
                         errorMessages.push(errorMsg);
                         categorySelect.closest('td').append(`<div class="invalid-feedback error-message" style="display: block; color: red; font-size: 12px;">Invalid category - not found in system</div>`);
-                    } else {
+                    } else if (subcategoryId && subcategoryId !== '') {
                         // Check subcategory if selected
-                        if (subcategoryId && subcategoryId !== '') {
-                            const validSubcategories = window.categorySubcategories[categoryId] || [];
-                            if (!validSubcategories.includes(subcategoryId)) {
-                                hasErrors = true;
-                                subcategorySelect.addClass('is-invalid');
-                                const errorMsg = `Row ${parseInt(rowIndex) + 1} (${productName}): Subcategory does not belong to selected category`;
-                                errorMessages.push(errorMsg);
-                                subcategorySelect.closest('td').append(`<div class="invalid-feedback error-message" style="display: block; color: red; font-size: 12px;">Subcategory does not belong to selected category</div>`);
-                            }
+                        const validSubcategories = window.categorySubcategories[categoryId] || [];
+                        if (!validSubcategories.includes(subcategoryId)) {
+                            hasErrors = true;
+                            subcategorySelect.addClass('is-invalid');
+                            const errorMsg = `Row ${parseInt(rowIndex) + 1} (${productName}): Subcategory does not belong to selected category`;
+                            errorMessages.push(errorMsg);
+                            subcategorySelect.closest('td').append(`<div class="invalid-feedback error-message" style="display: block; color: red; font-size: 12px;">Subcategory does not belong to selected category</div>`);
                         }
                     }
                 }
@@ -855,6 +875,11 @@
                         toastr.success(response.msg);
                         document.getElementById('success-audio').play();
                         const product_ids = response.product_ids;
+                        var fromPurchase = window !== window.top && /from_purchase=1/.test(window.location.search);
+                        if (fromPurchase && product_ids && product_ids.length) {
+                            window.parent.postMessage({ type: 'massAddComplete', product_ids: product_ids }, '*');
+                            return;
+                        }
                         setTimeout(() => {
                             if (window.confirm("Do you want to print the labels?")) {
                                 window.location.href = `/labels/show?product_ids=${product_ids.join(",")}`;
@@ -862,7 +887,6 @@
                                 window.location.href = `/products`;
                             }
                         }, 300);
-                        // Дополнительные действия при успехе
                     } else {
                         toastr.error('Error: ' + response.msg);
                         document.getElementById('error-audio').play();
@@ -1011,7 +1035,7 @@
                     source: function(request, response) {
                         $.getJSON('/product/mass-create/get-products', { term: request.term }, response);
                     },
-                    minLength: 2,
+                    minLength: 3,
                     autoFocus: true,
                     response: function(event, ui) {
                         if (ui.content.length == 1) {

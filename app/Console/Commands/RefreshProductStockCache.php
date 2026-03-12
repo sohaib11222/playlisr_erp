@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use App\ProductStockCache;
 use App\Variation;
 use App\Business;
@@ -45,11 +46,20 @@ class RefreshProductStockCache extends Command
      */
     public function handle()
     {
+        $startedAt = microtime(true);
+        $startedAtIso = Carbon::now()->toDateTimeString();
+
         try {
             ini_set('max_execution_time', 0);
             ini_set('memory_limit', '1024M');
 
             $this->info('Starting stock cache refresh...');
+            Log::info('stock:refresh-cache started', [
+                'started_at' => $startedAtIso,
+                'business_id' => $this->option('business_id'),
+                'location_id' => $this->option('location_id'),
+                'truncate' => (bool) $this->option('truncate'),
+            ]);
 
             // Truncate if requested
             if ($this->option('truncate')) {
@@ -73,10 +83,25 @@ class RefreshProductStockCache extends Command
             }
 
             $this->info('Stock cache refresh completed successfully!');
+            Log::info('stock:refresh-cache completed', [
+                'started_at' => $startedAtIso,
+                'ended_at' => Carbon::now()->toDateTimeString(),
+                'duration_seconds' => round(microtime(true) - $startedAt, 2),
+                'business_id' => $this->option('business_id'),
+                'location_id' => $this->option('location_id'),
+            ]);
 
         } catch (\Exception $e) {
             $this->error("Error: " . $e->getMessage());
-            \Log::emergency("File:" . $e->getFile(). " Line:" . $e->getLine(). " Message:" . $e->getMessage());
+            Log::emergency("File:" . $e->getFile(). " Line:" . $e->getLine(). " Message:" . $e->getMessage());
+            Log::error('stock:refresh-cache failed', [
+                'started_at' => $startedAtIso,
+                'ended_at' => Carbon::now()->toDateTimeString(),
+                'duration_seconds' => round(microtime(true) - $startedAt, 2),
+                'business_id' => $this->option('business_id'),
+                'location_id' => $this->option('location_id'),
+                'error' => $e->getMessage(),
+            ]);
             return 1;
         }
 

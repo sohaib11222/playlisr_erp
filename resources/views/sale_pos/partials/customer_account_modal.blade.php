@@ -49,6 +49,20 @@
                                             <td id="modal_last_purchase_date">Never</td>
                                         </tr>
                                     </table>
+                                    <hr>
+                                    <input type="hidden" id="modal_store_credit_contact_id" value="">
+                                    <div class="form-group">
+                                        <label><strong>Add Store Credit</strong></label>
+                                        <div class="input-group">
+                                            <input type="number" min="0" step="0.01" class="form-control" id="modal_store_credit_amount" placeholder="Amount">
+                                            <span class="input-group-btn">
+                                                <button type="button" class="btn btn-success" id="modal_add_store_credit_btn">
+                                                    <i class="fa fa-plus-circle"></i> Add
+                                                </button>
+                                            </span>
+                                        </div>
+                                        <small class="text-muted">This increases customer's advance/store credit balance.</small>
+                                    </div>
                                 </div>
                             </div>
                         </div>
