@@ -16,103 +16,118 @@
 
 <!-- Main content -->
 <section class="content">
-<div class="row">
-    <div class="col-md-12">
-    @component('components.filters', ['title' => __('report.filters')])
-        <div class="col-md-3">
-            <div class="form-group">
-                {!! Form::label('type', __('product.product_type') . ':') !!}
-                {!! Form::select('type', ['single' => __('lang_v1.single'), 'variable' => __('lang_v1.variable'), 'combo' => __('lang_v1.combo')], null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'product_list_filter_type', 'placeholder' => __('lang_v1.all')]) !!}
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="form-group">
-                {!! Form::label('category_id', __('product.category') . ':') !!}
-                {!! Form::select('category_id', $categories, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'product_list_filter_category_id', 'placeholder' => __('lang_v1.all')]) !!}
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="form-group">
-                <br>
-                <label>
-                    {!! Form::checkbox('uncategorized_only', 1, false, ['class' => 'input-icheck', 'id' => 'uncategorized_only']) !!} 
-                    <strong>Show Uncategorized Only</strong>
-                </label>
-            </div>
-        </div>
 
-        <div class="col-md-3">
-            <div class="form-group">
-                {!! Form::label('unit_id', __('product.unit') . ':') !!}
-                {!! Form::select('unit_id', $units, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'product_list_filter_unit_id', 'placeholder' => __('lang_v1.all')]) !!}
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="form-group">
-                {!! Form::label('tax_id', __('product.tax') . ':') !!}
-                {!! Form::select('tax_id', $taxes, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'product_list_filter_tax_id', 'placeholder' => __('lang_v1.all')]) !!}
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="form-group">
-                {!! Form::label('brand_id', __('product.brand') . ':') !!}
-                {!! Form::select('brand_id', $brands, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'product_list_filter_brand_id', 'placeholder' => __('lang_v1.all')]) !!}
-            </div>
-        </div>
-        <div class="col-md-3" id="location_filter">
-            <div class="form-group">
-                {!! Form::label('location_id',  __('purchase.business_location') . ':') !!}
-                {!! Form::select('location_id', $business_locations, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'placeholder' => __('lang_v1.all')]) !!}
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="form-group">
-                {!! Form::label('created_by', __('business.created_by') . ':') !!}
-                {!! Form::select('created_by', $users_who_created_products, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'product_list_filter_created_by', 'placeholder' => __('lang_v1.all')]) !!}
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="form-group">
-                {!! Form::label('created_date_range', __('lang_v1.created_date_range') . ':') !!}
-                {!! Form::text('created_date_range', null, ['class' => 'form-control', 'id' => 'product_list_filter_created_date_range', 'placeholder' => __('lang_v1.select_a_date_range'), 'readonly']) !!}
-            </div>
-        </div>
-        <div class="col-md-3">
-            <br>
-            <div class="form-group">
-                {!! Form::select('active_state', ['active' => __('business.is_active'), 'inactive' => __('lang_v1.inactive')], null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'active_state', 'placeholder' => __('lang_v1.all')]) !!}
-            </div>
-        </div>
+<style>
+    #product_filters_bar {
+        position: sticky;
+        top: 55px;
+        z-index: 999;
+        background: #ffffff;
+        padding: 10px 0 5px 0;
+        border-bottom: 1px solid #eee;
+        margin-bottom: 10px;
+    }
+    #product_filters_bar .product-search-input {
+        max-width: 520px;
+        width: 100%;
+    }
+</style>
 
-        <!-- include module filter -->
-        @if(!empty($pos_module_data))
-            @foreach($pos_module_data as $key => $value)
-                @if(!empty($value['view_path']))
-                    @includeIf($value['view_path'], ['view_data' => $value['view_data']])
+<div id="product_filters_bar">
+    <div class="row" style="margin-bottom: 5px;">
+        <div class="col-md-7 col-sm-12">
+            <div class="form-group">
+                <input type="text"
+                       id="product_search_main"
+                       class="form-control product-search-input"
+                       placeholder="Search products (artist / title / SKU / barcode)">
+            </div>
+        </div>
+        <div class="col-md-5 col-sm-12 text-right">
+            <div class="btn-toolbar" style="justify-content: flex-end; display: flex; gap: 5px;">
+                @if($is_admin)
+                    <a class="btn btn-default" href="{{action('ProductController@downloadExcel')}}">
+                        <i class="fa fa-download"></i> Export
+                    </a>
                 @endif
-            @endforeach
-        @endif
-
-        <div class="col-md-3">
-          <div class="form-group">
-            <br>
-            <label>
-              {!! Form::checkbox('not_for_selling', 1, false, ['class' => 'input-icheck', 'id' => 'not_for_selling']) !!} <strong>@lang('lang_v1.not_for_selling')</strong>
-            </label>
-          </div>
+                <div class="btn-group">
+                    <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                        Bulk Actions <span class="caret"></span>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-right">
+                        @if($is_admin)
+                            <li><a href="#" id="bulk_action_bulk_category_update">Bulk Update Categories</a></li>
+                            <li><a href="{{action('ProductController@importSoldItems')}}">Import Sold Items as Products</a></li>
+                            <li><a href="{{url('import-products')}}">Import Products</a></li>
+                        @endif
+                        @if(config('constants.enable_product_bulk_edit') && ($is_admin || auth()->user()->can('product.update')))
+                            <li><a href="#" id="bulk_action_bulk_edit">Bulk Edit</a></li>
+                        @endif
+                        <li><a href="#" id="bulk_action_download_barcodes">Download Barcodes</a></li>
+                    </ul>
+                </div>
+                @can('product.create')                            
+                    <a class="btn btn-primary" href="{{action('ProductController@create')}}">
+                        <i class="fa fa-plus"></i> @lang('messages.add')
+                    </a>
+                @endcan
+            </div>
         </div>
-        @if($is_woocommerce)
-            <div class="col-md-3">
+    </div>
+
+    <div class="row">
+        <div class="col-md-12">
+        @component('components.filters', ['title' => __('report.filters')])
+            <div class="col-md-2">
                 <div class="form-group">
-                    <br>
-                    <label>
-                      {!! Form::checkbox('woocommerce_enabled', 1, false, 
-                      [ 'class' => 'input-icheck', 'id' => 'woocommerce_enabled']) !!} {{ __('lang_v1.woocommerce_enabled') }}
-                    </label>
+                    {!! Form::label('category_id', __('product.category') . ':') !!}
+                    {!! Form::select('category_id', $categories, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'product_list_filter_category_id', 'placeholder' => __('lang_v1.all')]) !!}
                 </div>
             </div>
-        @endif
-    @endcomponent
+            <div class="col-md-2">
+                <div class="form-group">
+                    {!! Form::label('sub_category_id', __('product.sub_category') . ':') !!}
+                    <select name="sub_category_id" id="product_list_filter_sub_category_id" class="form-control select2" style="width:100%;">
+                        <option value="">{{ __('lang_v1.all') }}</option>
+                    </select>
+                </div>
+            </div>
+            <div class="col-md-2" id="location_filter">
+                <div class="form-group">
+                    <label for="location_id">Store Location:</label>
+                    {!! Form::select('location_id', $business_locations, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'location_id', 'placeholder' => __('lang_v1.all')]) !!}
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="form-group">
+                    {!! Form::label('created_by', __('business.created_by') . ':') !!}
+                    {!! Form::select('created_by', $users_who_created_products, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'product_list_filter_created_by', 'placeholder' => __('lang_v1.all')]) !!}
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="form-group">
+                    {!! Form::label('created_date_range', __('lang_v1.created_date_range') . ':') !!}
+                    <div class="input-group">
+                        {!! Form::text('created_date_range', null, ['class' => 'form-control', 'id' => 'product_list_filter_created_date_range', 'placeholder' => __('lang_v1.select_a_date_range'), 'readonly']) !!}
+                        <span class="input-group-addon">
+                            <label style="margin:0; font-weight:400;">
+                                <input type="checkbox" id="product_list_filter_all_time"> @lang('lang_v1.all')
+                            </label>
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- include module filter (if any custom filters exist) -->
+            @if(!empty($pos_module_data))
+                @foreach($pos_module_data as $key => $value)
+                    @if(!empty($value['view_path']))
+                        @includeIf($value['view_path'], ['view_data' => $value['view_data']])
+                    @endif
+                @endforeach
+            @endif
+        @endcomponent
+        </div>
     </div>
 </div>
 @can('product.view')
@@ -136,25 +151,17 @@
 
                     <div class="tab-pane active" id="product_list_tab">
 
-                        <div class="col-xs-6">
-                            <label for="location">Select Location</label>
-                            <select class="form-control" id="location" >
-                                <option value="">Select Location</option>
-                                <option value="1">Pico</option>
-                                <option value="2">Hollywood</option>
-                            </select>
-                        </div>
-                        <button class="btn btn-success pull-right margin-left-10 downloadbarcodes">Download Barcodes</button>
+                        <button class="btn btn-success pull-right margin-left-10 downloadbarcodes" style="display:none;">Download Barcodes</button>
                         @if(config('constants.enable_product_bulk_edit') && ($is_admin || auth()->user()->can('product.update')))
-                            <button type="button" class="btn btn-primary pull-right margin-left-10" id="edit-selected-top">
+                            <button type="button" class="btn btn-primary pull-right margin-left-10" id="edit-selected-top" style="display:none;">
                                 <i class="fa fa-edit"></i> {{ __('lang_v1.bulk_edit') }}
                             </button>
                         @endif
                         @if($is_admin)
-                         <a class="btn btn-success pull-right margin-left-10" href="{{url('import-products')}}"><i class="fa fa-download"></i>Import Products</a>
-                         <a class="btn btn-primary pull-right margin-left-10" href="{{action('ProductController@importSoldItems')}}"><i class="fa fa-upload"></i> Import Sold Items as Products</a>
-                            <a class="btn btn-success pull-right margin-left-10" href="{{action('ProductController@downloadExcel')}}"><i class="fa fa-download"></i> @lang('lang_v1.download_excel')</a>
-                            <a href="{{ action('ProductController@bulkCategoryUpdatePage') }}" class="btn btn-info pull-right margin-left-10" id="bulk_category_update_btn">
+                            <a class="btn btn-success pull-right margin-left-10" href="{{url('import-products')}}" id="import_products_top" style="display:none;"><i class="fa fa-download"></i>Import Products</a>
+                            <a class="btn btn-primary pull-right margin-left-10" href="{{action('ProductController@importSoldItems')}}" id="import_sold_items_top" style="display:none;"><i class="fa fa-upload"></i> Import Sold Items as Products</a>
+                            <a class="btn btn-success pull-right margin-left-10" href="{{action('ProductController@downloadExcel')}}" id="download_excel_top" style="display:none;"><i class="fa fa-download"></i> @lang('lang_v1.download_excel')</a>
+                            <a href="{{ action('ProductController@bulkCategoryUpdatePage') }}" class="btn btn-info pull-right margin-left-10" id="bulk_category_update_btn" style="display:none;">
                                 <i class="fa fa-tags"></i> Bulk Update Categories
                             </a>
                             <button type="button" class="btn btn-warning pull-right margin-left-10" id="export_uncategorized_btn" style="display: none;">
@@ -175,11 +182,6 @@
                                 </button>
                             @endif
                         @endif
-                        @can('product.create')                            
-                            <a class="btn btn-primary pull-right" href="{{action('ProductController@create')}}">
-                                        <i class="fa fa-plus"></i> @lang('messages.add')</a>
-                            <br><br>
-                        @endcan
                         @include('product.partials.product_list')
                     </div>
                     @can('stock_report.view')
@@ -339,34 +341,31 @@
                 return;
             }
             
+            var updatedAtColIndex = $('#product_table thead th').filter(function() {
+                return $(this).text().trim() === 'Last updated at';
+            }).index();
+
             product_table = $('#product_table').DataTable({
                 processing: true,
                 serverSide: true,
-                aaSorting: [[3, 'asc']],
+                aaSorting: [[updatedAtColIndex >= 0 ? updatedAtColIndex : 11, 'desc']],
                 scrollY:        "75vh",
                 scrollX:        true,
                 scrollCollapse: true,
                 "ajax": {
                     "url": "/products",
                     "data": function ( d ) {
-                        d.type = $('#product_list_filter_type').val();
                         d.category_id = $('#product_list_filter_category_id').val();
-                        d.brand_id = $('#product_list_filter_brand_id').val();
-                        d.unit_id = $('#product_list_filter_unit_id').val();
-                        d.tax_id = $('#product_list_filter_tax_id').val();
-                        d.active_state = $('#active_state').val();
-                        d.not_for_selling = $('#not_for_selling').is(':checked');
+                        d.sub_category_id = $('#product_list_filter_sub_category_id').val();
                         d.location_id = $('#location_id').val();
                         d.created_by = $('#product_list_filter_created_by').val();
-                        d.uncategorized_only = $('#uncategorized_only').is(':checked') ? 1 : 0;
                         
-                        // Handle date range filter
+                        // Handle date range filter (skipped when All time checked)
+                        var all_time = $('#product_list_filter_all_time').is(':checked');
                         var date_range = $('#product_list_filter_created_date_range').val();
-                        if (date_range) {
-                            // Parse the date range (format: "DD-MM-YYYY ~ DD-MM-YYYY" or "YYYY-MM-DD ~ YYYY-MM-DD")
+                        if (!all_time && date_range) {
                             var dates = date_range.split(' ~ ');
                             if (dates.length == 2) {
-                                // Convert to YYYY-MM-DD format
                                 var start_moment = moment(dates[0].trim(), moment_date_format);
                                 var end_moment = moment(dates[1].trim(), moment_date_format);
                                 if (start_moment.isValid() && end_moment.isValid()) {
@@ -388,34 +387,29 @@
                     }
                 },
                 columnDefs: [ {
-                    "targets": [0, 1, 2],
+                    "targets": [0, 1],
                     "orderable": false,
                     "searchable": false
                 } ],
                 columns: [
                         { data: 'mass_delete'  },
-                        { data: 'image', name: 'products.image'  },
                         { data: 'action', name: 'action'},
-                        { data: 'product', name: 'products.name'  },
                         { data: 'product_locations', name: 'product_locations'  },
+                        { data: 'product', name: 'products.name'  },
+                        { data: 'artist', name: 'products.artist'},
+                        { data: 'category', name: 'c1.name'},
+                        { data: 'subcategory', name: 'c2.name'},
                         @can('view_purchase_price')
-                            { data: 'purchase_price', name: 'max_purchase_price', searchable: false},
+                            { data: 'purchase_price', name: 'min_purchase_price', searchable: false},
                         @endcan
                         @can('access_default_selling_price')
                             { data: 'selling_price', name: 'max_price', searchable: false},
                         @endcan
                         { data: 'current_stock', searchable: false},
                         { data: 'total_sold', searchable: false},
-                        { data: 'product_url', searchable: false},
-                        { data: 'type', name: 'products.type'},
-                        { data: 'category', name: 'c1.name'},
-                        { data: 'subcategory', name: 'c2.name'},
-                        { data: 'brand', name: 'brands.name'},
-                        { data: 'artist', name: 'products.artist'},
-                        { data: 'tax', name: 'tax_rates.name', searchable: false},
                         { data: 'sku', name: 'products.sku'},
-                        { data: 'added_by', name: 'added_by'},
-                        { data: 'updated_at', name: 'updated_at'}
+                        { data: 'updated_at', name: 'updated_at'},
+                        { data: 'created_by_name', name: 'u.first_name' }
                     ],
                     createdRow: function( row, data, dataIndex ) {
                         if($('input#is_rack_enabled').val() == 1){
@@ -437,6 +431,22 @@
             $('.add-stock').on( 'click',  function () {
                 alert($(this).data('pr'))
             })
+
+            // Bulk Actions dropdown triggers
+            $(document).on('click', '#bulk_action_bulk_category_update', function(e) {
+                e.preventDefault();
+                $('#bulk_category_update_btn').trigger('click');
+            });
+
+            $(document).on('click', '#bulk_action_bulk_edit', function(e) {
+                e.preventDefault();
+                $('#edit-selected-top').trigger('click');
+            });
+
+            $(document).on('click', '#bulk_action_download_barcodes', function(e) {
+                e.preventDefault();
+                $('.downloadbarcodes').trigger('click');
+            });
 
             $('#product_table tbody').on( 'click', 'tr i.rack-details', function () {
                 var i = $(this);
@@ -462,6 +472,56 @@
                     if ( idx === -1 ) {
                         detailRows.push( tr.attr('id') );
                     }
+                }
+            });
+
+            // Hook up main search bar to DataTables
+            if ($('#product_search_main').length) {
+                $('#product_search_main').on('keyup change', function() {
+                    if (typeof product_table !== 'undefined') {
+                        product_table.search($(this).val()).draw();
+                    }
+                });
+            }
+
+            // All time toggle for created date range
+            $(document).on('change', '#product_list_filter_all_time', function() {
+                if ($(this).is(':checked')) {
+                    $('#product_list_filter_created_date_range').val('');
+                    if ($("#product_list_tab").hasClass('active')) {
+                        product_table.ajax.reload();
+                    }
+                    if ($("#product_stock_report").hasClass('active')) {
+                        stock_report_table.ajax.reload();
+                    }
+                }
+            });
+
+            $('#product_list_filter_created_date_range').on('change', function() {
+                if ($(this).val()) {
+                    $('#product_list_filter_all_time').prop('checked', false);
+                }
+            });
+
+            // Subcategory options based on selected category
+            $(document).on('change', '#product_list_filter_category_id', function() {
+                var category_id = $(this).val();
+                var $subSelect = $('#product_list_filter_sub_category_id');
+                $subSelect.empty().append('<option value="">' + LANG.all + '</option>');
+
+                if (category_id) {
+                    $.ajax({
+                        url: "{{ url('/products/get_sub_categories') }}",
+                        method: 'POST',
+                        data: { cat_id: category_id, _token: $('meta[name="csrf-token"]').attr('content') },
+                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                        success: function(data) {
+                            $subSelect.html('<option value="">' + LANG.all + '</option>' + data);
+                            $subSelect.trigger('change.select2');
+                        },
+                    });
+                } else {
+                    $subSelect.trigger('change.select2');
                 }
             });
 
@@ -559,6 +619,19 @@
                 }    
             })
 
+            $(document).on('click', '#send-to-purchase-selected', function(e){
+                e.preventDefault();
+                var selected_rows = getSelectedRows();
+
+                if (selected_rows.length > 0) {
+                    $('input#selected_products_for_purchase').val(selected_rows.join(','));
+                    $('form#bulk_send_to_purchase_form').submit();
+                } else {
+                    $('input#selected_products_for_purchase').val('');
+                    swal('@lang("lang_v1.no_row_selected")');
+                }
+            });
+
             $(document).on('click', '#edit-selected, #edit-selected-top', function(e){
                 e.preventDefault();
                 var selected_rows = getSelectedRows();
@@ -627,7 +700,7 @@
                 }
             });
 
-            $(document).on('change', '#product_list_filter_type, #product_list_filter_category_id, #product_list_filter_brand_id, #product_list_filter_unit_id, #product_list_filter_tax_id, #location_id, #active_state, #repair_model_id, #product_list_filter_created_by', 
+            $(document).on('change', '#product_list_filter_category_id, #product_list_filter_sub_category_id, #location_id, #repair_model_id, #product_list_filter_created_by', 
                 function() {
                     if ($("#product_list_tab").hasClass('active')) {
                         product_table.ajax.reload();
@@ -749,11 +822,7 @@
                             data: function(d) {
                                 d.location_id = $('#location_id').val();
                                 d.category_id = $('#product_list_filter_category_id').val();
-                                d.brand_id = $('#product_list_filter_brand_id').val();
-                                d.unit_id = $('#product_list_filter_unit_id').val();
-                                d.type = $('#product_list_filter_type').val();
-                                d.active_state = $('#active_state').val();
-                                d.not_for_selling = $('#not_for_selling').is(':checked');
+                                d.sub_category_id = $('#product_list_filter_sub_category_id').val();
                                 if ($('#repair_model_id').length == 1) {
                                     d.repair_model_id = $('#repair_model_id').val();
                                 }

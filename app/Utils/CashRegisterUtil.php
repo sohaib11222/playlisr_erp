@@ -26,6 +26,67 @@ class CashRegisterUtil extends Util
     }
 
     /**
+     * Get all open registers for the current user that were opened
+     * at least $hours hours ago.
+     *
+     * @param int $hours
+     * @return \Illuminate\Support\Collection
+     */
+    public function getOpenRegistersOlderThan($hours)
+    {
+        $user_id = auth()->user()->id;
+        $threshold = now()->subHours($hours);
+
+        return CashRegister::where('user_id', $user_id)
+            ->where('status', 'open')
+            ->where('created_at', '<=', $threshold)
+            ->get();
+    }
+
+    /**
+     * Get last activity time for a register based on its transactions.
+     * Falls back to created_at if there is no transaction activity.
+     *
+     * @param \App\CashRegister $register
+     * @return \Carbon\Carbon
+     */
+    public function getLastActivityAt(CashRegister $register)
+    {
+        $last_txn = CashRegisterTransaction::where('cash_register_id', $register->id)
+            ->max('created_at');
+
+        return $last_txn ? \Carbon\Carbon::parse($last_txn) : \Carbon\Carbon::parse($register->created_at);
+    }
+
+    /**
+     * Auto-close registers that have been inactive for the given number of hours.
+     * Inactivity is defined as: last activity (any cash_register_transaction) is
+     * at least $hours hours ago.
+     *
+     * @param int $hours
+     * @return void
+     */
+    public function autoCloseInactiveRegisters($hours = 6)
+    {
+        $open_registers = $this->getOpenRegistersOlderThan($hours);
+        if ($open_registers->isEmpty()) {
+            return;
+        }
+
+        $threshold = now()->subHours($hours);
+
+        foreach ($open_registers as $register) {
+            $last_activity = $this->getLastActivityAt($register);
+
+            if ($last_activity->lessThanOrEqualTo($threshold)) {
+                $register->status = 'close';
+                $register->closed_at = now();
+                $register->save();
+            }
+        }
+    }
+
+    /**
      * Adds sell payments to currently opened cash register
      *
      * @param object/int $transaction

@@ -33,6 +33,7 @@ use App\BusinessLocation;
 use App\Category;
 use App\Contact;
 use App\CustomerGroup;
+use App\Discount;
 use App\Media;
 use App\Product;
 use App\SellingPriceGroup;
@@ -174,6 +175,14 @@ class SellPosController extends Controller
         //like:repair
         $sub_type = request()->get('sub_type');
 
+        // Auto-close stale cash registers (no activity for 6+ hours) before checking for open register.
+        // This helps ensure users are prompted for cash in hand again when they return after a long gap.
+        try {
+            $this->cashRegisterUtil->autoCloseInactiveRegisters(6);
+        } catch (\Exception $e) {
+            \Log::error('Auto close cash registers failed: ' . $e->getMessage());
+        }
+
         //Check if there is a open register, if no then redirect to Create Register screen.
         if ($this->cashRegisterUtil->countOpenedRegister() == 0) {
             return redirect()->action('CashRegisterController@create', ['sub_type' => $sub_type]);
@@ -270,6 +279,13 @@ class SellPosController extends Controller
         //Added check because $users is of no use if enable_contact_assign if false
         $users = config('constants.enable_contact_assign') ? User::forDropdown($business_id, false, false, false, true) : [];
 
+        // Active percentage discounts matching preset names (Senior, Military, Student, Senior Citizens) for POS discount modal
+        $discount_presets = Discount::where('business_id', $business_id)
+            ->where('is_active', 1)
+            ->where('discount_type', 'percentage')
+            ->whereIn('name', ['Senior Discount', 'Military Discount', 'Student Discount', 'Senior Citizens Discount'])
+            ->get(['id', 'name', 'discount_type', 'discount_amount']);
+
         return view('sale_pos.create')
             ->with(compact(
                 'edit_discount',
@@ -304,7 +320,8 @@ class SellPosController extends Controller
                 'default_invoice_schemes',
                 'invoice_layouts',
                 'users',
-                'categoriesForDropdown'
+                'categoriesForDropdown',
+                'discount_presets'
             ));
     }
 
@@ -511,6 +528,27 @@ class SellPosController extends Controller
 
                 if (!$transaction->is_suspend && !empty($input['payment']) && !$is_credit_sale) {
                     $this->transactionUtil->createOrUpdatePaymentLines($transaction, $input['payment']);
+                }
+
+                // Store credit applied without advance payment line (e.g. user clicked "Use Store Credit" then "Cash")
+                $store_credit_used = $this->transactionUtil->num_uf($request->input('store_credit_used_amount', 0));
+                if ($store_credit_used > 0 && !empty($contact_id)) {
+                    $has_advance = false;
+                    foreach ($input['payment'] ?? [] as $p) {
+                        if (!empty($p['is_return'])) {
+                            continue;
+                        }
+                        if (!empty($p['method']) && $p['method'] == 'advance') {
+                            $has_advance = true;
+                            break;
+                        }
+                    }
+                    if (!$has_advance) {
+                        $contact = \App\Contact::find($contact_id);
+                        if ($contact) {
+                            $this->transactionUtil->updateContactBalance($contact, $store_credit_used, 'deduct');
+                        }
+                    }
                 }
 
                 // Check for final and do some processing.

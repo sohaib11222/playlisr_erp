@@ -55,6 +55,10 @@
 			$tax_id = $product->tax_id;
 			$item_tax = !empty($product->item_tax) ? $product->item_tax : 0;
 			$unit_price_inc_tax = $product->sell_price_inc_tax;
+			// Purchase price is read-only cost shown next to selling price.
+			$unit_purchase_price_inc_tax = !empty($product->dpp_inc_tax)
+				? $product->dpp_inc_tax
+				: (!empty($product->default_purchase_price) ? $product->default_purchase_price : 0);
 			$is_tax_exempt = false;
 
 			// Check if product is tax exempt - override tax_id to null
@@ -64,6 +68,7 @@
 					$tax_id = null;
 					$item_tax = 0;
 					$unit_price_inc_tax = $product->default_sell_price;
+					$unit_purchase_price_inc_tax = !empty($product->default_purchase_price) ? $product->default_purchase_price : $unit_purchase_price_inc_tax;
 					$is_tax_exempt = true;
 				}
 			}
@@ -71,12 +76,15 @@
 			if($hide_tax == 'hide'){
 				$tax_id = null;
 				$unit_price_inc_tax = $product->default_sell_price;
+				$unit_purchase_price_inc_tax = !empty($product->default_purchase_price) ? $product->default_purchase_price : $unit_purchase_price_inc_tax;
 			}
 
 			if(!empty($so_line)) {
 				$tax_id = $so_line->tax_id;
 				$item_tax = $so_line->item_tax;
 				$unit_price_inc_tax = $so_line->unit_price_inc_tax;
+				// If the SO line has purchase cost details we could use it, but by default
+				// show the product variation cost (read-only column).
 			}
 
 			$discount_type = !empty($product->line_discount_type) ? $product->line_discount_type : 'fixed';
@@ -388,6 +396,9 @@
 			</td>
 		@endif
 	@endif
+	<td class="text-center {{$hide_tax}}">
+		<span class="display_currency" data-currency_symbol="true">{{@num_format($unit_purchase_price_inc_tax)}}</span>
+	</td>
 	<td class="{{$hide_tax}}">
 		<input type="text" name="products[{{$row_count}}][unit_price_inc_tax]" class="form-control pos_unit_price_inc_tax input_number" value="{{@num_format($unit_price_inc_tax)}}" @if(!$edit_price) readonly @endif @if(!empty($pos_settings['enable_msp'])) data-rule-min-value="{{$unit_price_inc_tax}}" data-msg-min-value="{{__('lang_v1.minimum_selling_price_error_msg', ['price' => @num_format($unit_price_inc_tax)])}}" @endif>
 	</td>

@@ -21,35 +21,42 @@
         ]) !!}
     </td>
     <td class="td col-select" data-hide-on-selection="yes" data-row-index="{{ $index }}">
-        <div class="form-group category-selection-container" style="display: flex; gap: 2px; align-items: center;">
-            <div style="flex: 1; min-width: 0;">
-                {!! Form::select("products[{$index}][category_id]", $categories, null, [
-                    'class' => 'form-control select2 category-select',
-                    'placeholder' => __('messages.please_select'),
-                    'data-row-index' => $index,
-                    'id' => "products_{$index}_category_id"
-                ]) !!}
+        <div class="form-group category-selection-container" style="display: flex; gap: 2px; align-items: center; flex-direction: column; align-items: stretch;">
+            <div style="display:flex; gap:2px; align-items:center; width:100%;">
+                <div style="flex: 1; min-width: 0;">
+                    <select name="products[{{ $index }}][category_combo]"
+                            class="form-control select2 category-combo-select"
+                            data-row-index="{{ $index }}"
+                            id="products_{{ $index }}_category_combo">
+                        <option value="">{{ __('messages.please_select') }}</option>
+                        @foreach($category_combos ?? [] as $combo)
+                            <option value="{{ $combo['id'] }}"
+                                    data-category-id="{{ $combo['category_id'] }}"
+                                    data-sub-category-id="{{ $combo['sub_category_id'] ?? '' }}">
+                                {{ $combo['label'] }}
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+                <button type="button"
+                        class="btn btn-primary btn-xs copy-down"
+                        style="padding: 4px 6px; border-radius: 0; flex-shrink: 0;"
+                        data-class="category-combo-select"
+                        data-row-index="{{ $index }}"
+                        title="Copy Down">
+                    <i class="fa fa-arrow-down"></i>
+                </button>
             </div>
-            <button type="button" class="btn btn-primary btn-xs copy-down" style="padding: 4px 6px; border-radius: 0; flex-shrink: 0;" data-class="category-select" data-row-index="{{ $index }}" title="Copy Down">
-                <i class="fa fa-arrow-down"></i>
-            </button>
-        </div>
-    </td>
-    <td class="td col-select" data-hide-on-selection="yes" data-row-index="{{ $index }}">
-        <div class="form-group" style="display: flex; gap: 2px; align-items: center;">
-            <div style="flex: 1; min-width: 0;">
-                {!! Form::select("products[{$index}][sub_category_id]", [], null, [
-                    'class' => 'form-control select2 subcategory-select',
-                    'placeholder' => __('messages.please_select'),
-                    'id' => "products_{$index}_sub_category_id"
-                ]) !!}
+            {{-- Hidden fields that are actually submitted to backend --}}
+            {!! Form::hidden("products[{$index}][category_id]", null, [
+                'id' => "products_{$index}_category_id",
+            ]) !!}
+            {!! Form::hidden("products[{$index}][sub_category_id]", null, [
+                'id' => "products_{$index}_sub_category_id",
+            ]) !!}
+            <div class="sub-category-suggestions-container" data-row-index="{{ $index }}">
+                {{-- Suggestions will be added here --}}
             </div>
-            <button type="button" class="btn btn-primary btn-xs copy-down" style="padding: 4px 6px; border-radius: 0; flex-shrink: 0;" data-class="subcategory-select" data-row-index="{{ $index }}" title="Copy Down">
-                <i class="fa fa-arrow-down"></i>
-            </button>
-        </div>
-        <div class="sub-category-suggestions-container" data-row-index="{{ $index }}">
-            {{-- Suggestions will be added here --}}
         </div>
     </td>
     <td class="td col-artist">
@@ -73,8 +80,11 @@
             </button>
         </div>
     </td>
-    <td class="td col-stock" id="{{ "qty-container-{$index}" }}">
-        <span id="no_location_selected_message">Select Business Location to Edit Stock<span>
+    <td class="td price-col" data-hide-on-selection="yes" data-row-index="{{ $index }}">
+        {!! Form::text("products[{$index}][single_dpp_inc_tax]", null, [
+            'class' => 'form-control',
+            'placeholder' => __('product.purchase_price')
+        ]) !!}
     </td>
     <td class="td price-col product-selling-price-row" data-hide-on-selection="yes" data-row-index="{{ $index }}">
         {!! Form::text("products[{$index}][single_dsp_inc_tax]", null, [
@@ -85,12 +95,6 @@
         <div class="product-price-recommendation-container" style="display: none;" data-row-index="{{ $index }}">
 
         </div>
-    </td>
-    <td class="td price-col" data-hide-on-selection="yes" data-row-index="{{ $index }}">
-        {!! Form::text("products[{$index}][single_dpp_inc_tax]", null, [
-            'class' => 'form-control',
-            'placeholder' => __('product.purchase_price')
-        ]) !!}
     </td>
 
     <td class="th" style="min-width: 60px; width: 60px;">-</td>

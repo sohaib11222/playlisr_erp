@@ -4,6 +4,12 @@
 <div class="row">
 	<div class="pos-form-actions">
 		<div class="col-md-12">
+			<div class="form-group" style="margin-bottom: 10px;">
+				<label class="checkbox-inline">
+					<input type="checkbox" name="is_whatnot" id="is_whatnot" value="1">
+					<strong>Whatnot transaction</strong>
+				</label>
+			</div>
 			@if($is_mobile)
 				<div class="col-md-12 text-right">
 					<b>@lang('sale.total_payable'):</b>
@@ -73,9 +79,9 @@
 	</div>
 </div>
 @if(isset($transaction))
-	@include('sale_pos.partials.edit_discount_modal', ['sales_discount' => $transaction->discount_amount, 'discount_type' => $transaction->discount_type, 'discount_reason' => $transaction->discount_reason ?? '', 'rp_redeemed' => $transaction->rp_redeemed, 'rp_redeemed_amount' => $transaction->rp_redeemed_amount, 'max_available' => !empty($redeem_details['points']) ? $redeem_details['points'] : 0, 'transaction' => $transaction])
+	@include('sale_pos.partials.edit_discount_modal', ['sales_discount' => $transaction->discount_amount, 'discount_type' => $transaction->discount_type, 'discount_reason' => $transaction->discount_reason ?? '', 'rp_redeemed' => $transaction->rp_redeemed, 'rp_redeemed_amount' => $transaction->rp_redeemed_amount, 'max_available' => !empty($redeem_details['points']) ? $redeem_details['points'] : 0, 'transaction' => $transaction, 'discount_presets' => $discount_presets ?? []])
 @else
-	@include('sale_pos.partials.edit_discount_modal', ['sales_discount' => $business_details->default_sales_discount, 'discount_type' => 'percentage', 'discount_reason' => '', 'rp_redeemed' => 0, 'rp_redeemed_amount' => 0, 'max_available' => 0])
+	@include('sale_pos.partials.edit_discount_modal', ['sales_discount' => $business_details->default_sales_discount, 'discount_type' => 'percentage', 'discount_reason' => '', 'rp_redeemed' => 0, 'rp_redeemed_amount' => 0, 'max_available' => 0, 'discount_presets' => $discount_presets ?? []])
 @endif
 
 @if(isset($transaction))

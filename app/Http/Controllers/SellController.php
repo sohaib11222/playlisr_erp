@@ -270,6 +270,10 @@ class SellController extends Controller
                 $sells->where('transactions.res_waiter_id', request()->input('service_staffs'));
             }
 
+            if (request()->has('is_whatnot') && request()->input('is_whatnot') == '1') {
+                $sells->where('transactions.is_whatnot', 1);
+            }
+
             $only_pending_shipments = request()->only_pending_shipments == 'true' ? true : false;
             if ($only_pending_shipments) {
                 $sells->where('transactions.shipping_status', '!=', 'delivered')
@@ -563,6 +567,12 @@ class SellController extends Controller
                     return $status;
                 })
                 ->editColumn('so_qty_remaining', '{{@format_quantity($so_qty_remaining)}}')
+                ->addColumn('is_whatnot', function ($row) {
+                    if (!empty($row->is_whatnot)) {
+                        return '<span class="label label-info">Whatnot</span>';
+                    }
+                    return '';
+                })
                 ->setRowAttr([
                     'data-href' => function ($row) {
                         if (auth()->user()->can("sell.view") || auth()->user()->can("view_own_sell_only")) {
@@ -572,7 +582,7 @@ class SellController extends Controller
                         }
                     }]);
 
-            $rawColumns = ['final_total', 'action', 'total_paid', 'total_remaining', 'payment_status', 'invoice_no', 'discount_amount', 'tax_amount', 'total_before_tax', 'shipping_status', 'types_of_service_name', 'payment_methods', 'return_due', 'conatct_name', 'status'];
+            $rawColumns = ['final_total', 'action', 'total_paid', 'total_remaining', 'payment_status', 'invoice_no', 'discount_amount', 'tax_amount', 'total_before_tax', 'shipping_status', 'types_of_service_name', 'payment_methods', 'return_due', 'conatct_name', 'status', 'is_whatnot'];
                 
             return $datatable->rawColumns($rawColumns)
                       ->make(true);

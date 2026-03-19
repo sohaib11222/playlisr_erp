@@ -1,5 +1,6 @@
 $(document).ready(function() {
     customer_set = false;
+    window.pos_submit_in_progress = false;
     //Prevent enter key function except texarea
     $('form').on('keyup keypress', function(e) {
         var keyCode = e.keyCode || e.which;
@@ -173,6 +174,9 @@ $(document).ready(function() {
                     $('#advance_balance_text').text(__currency_trans_from_en(contactBalance, true));
                     $('#advance_balance').val(contactBalance);
 
+                    // Update POS store credit helper row
+                    updatePosStoreCreditUI(contactBalance);
+
                     // Show the account info panel
                     $('#customer_account_info').show();
                     console.log('Customer account info displayed successfully');
@@ -196,6 +200,26 @@ $(document).ready(function() {
                 $('#customer_account_info').hide();
             }
         });
+    }
+
+    /**
+     * Update the Store Credit Available row in POS totals.
+     */
+    function updatePosStoreCreditUI(balance) {
+        var $row = $('#pos_store_credit_row');
+        if (!$row.length) {
+            return;
+        }
+        var amt = parseFloat(balance || 0) || 0;
+        if (amt > 0) {
+            $('#pos_store_credit_amount').text(__currency_trans_from_en(amt, true));
+            $('#btn_use_store_credit').data('credit-amount', amt);
+            $row.show();
+        } else {
+            $('#pos_store_credit_amount').text(__currency_trans_from_en(0, true));
+            $('#btn_use_store_credit').data('credit-amount', 0);
+            $row.hide();
+        }
     }
 
     // Function to load and show customer details modal
@@ -871,6 +895,64 @@ $(document).ready(function() {
         });
     });
 
+    // Track whether we are prefilling advance payment from the \"Use Store Credit\" button
+    window.pos_use_store_credit = false;
+    window.pos_use_store_credit_amount = null;
+
+    // Use store credit: apply on same screen (no popup); deduct from customer when Cash/Finalize is used
+    $(document).on('click', '#btn_use_store_credit', function () {
+        if ($('table#pos_table tbody').find('.product_row').length <= 0) {
+            toastr.warning(LANG.no_products_added);
+            return false;
+        }
+
+        var advanceBalance = parseFloat($('#advance_balance').val() || 0) || 0;
+        if (advanceBalance <= 0) {
+            toastr.error(LANG.required_advance_balance_not_available || 'No store credit available.');
+            return false;
+        }
+
+        var total_payable = __read_number($('input#final_total_input'));
+        if (total_payable <= 0) {
+            toastr.error(LANG.zero_total_error || 'Nothing to pay for this sale.');
+            return false;
+        }
+
+        var maxUsable = Math.min(advanceBalance, total_payable);
+        var entered = window.prompt(
+            'Enter store credit amount to use (max ' + __currency_trans_from_en(maxUsable, true) + '):',
+            __number_f(maxUsable, false, false, __currency_precision)
+        );
+        if (entered === null) {
+            return false;
+        }
+        var requested = parseFloat(entered);
+        if (isNaN(requested) || requested <= 0) {
+            toastr.error('Please enter a valid amount greater than 0.');
+            return false;
+        }
+        if (requested > maxUsable) {
+            toastr.error('Entered amount is greater than available/total payable.');
+            return false;
+        }
+        var useAmount = requested;
+        $('#store_credit_used_amount').val(__number_f(useAmount, false, false, __currency_precision));
+
+        var $firstRow = $('#payment_rows_div').find('.payment_row').first();
+        if ($firstRow.length) {
+            var $method = $firstRow.find('.payment_types_dropdown');
+            var $amount = $firstRow.find('.payment-amount');
+            if ($method.length && $amount.length) {
+                $method.val('advance').trigger('change');
+                __write_number($amount, useAmount);
+                $amount.trigger('change');
+                setTimeout(function () { calculate_balance_due(); }, 50);
+            }
+        }
+
+        toastr.success(__currency_trans_from_en(useAmount, true) + ' store credit applied. Click Cash or Finalize to complete.');
+    });
+
     //Finalize invoice, open payment modal
     $('button#pos-finalize').click(function() {
         //Check if product is present or not.
@@ -909,8 +991,39 @@ $(document).ready(function() {
         }
     });
 
+    // Whenever payment modal is shown, optionally pre-fill advance payment from store credit
+    $('#modal_payment').on('shown.bs.modal', function () {
+        if (!window.pos_use_store_credit || !window.pos_use_store_credit_amount) {
+            return;
+        }
+
+        var useAmount = window.pos_use_store_credit_amount;
+        var $firstRow = $('#payment_rows_div').find('.payment_row').first();
+        if ($firstRow.length) {
+            var $method = $firstRow.find('.payment_types_dropdown');
+            var $amount = $firstRow.find('.payment-amount');
+
+            if ($method.length && $amount.length) {
+                $method.val('advance').trigger('change');
+                __write_number($amount, useAmount);
+                $amount.trigger('change');
+                // Force balance due / total paying to update immediately
+                setTimeout(function () {
+                    calculate_balance_due();
+                }, 50);
+            }
+        }
+
+        // Reset flag so normal checkout is unaffected next time
+        window.pos_use_store_credit = false;
+        window.pos_use_store_credit_amount = null;
+    });
+
     //Finalize without showing payment options
     $('button.pos-express-finalize').click(function() {
+        if (window.pos_submit_in_progress) {
+            return false;
+        }
 
         //Check if product is present or not.
         if ($('table#pos_table tbody').find('.product_row').length <= 0) {
@@ -931,6 +1044,7 @@ $(document).ready(function() {
         //If pay method is credit sale submit form
         if (pay_method == 'credit_sale') {
             $('#is_credit_sale').val(1);
+            window.pos_submit_in_progress = true;
             pos_form_obj.submit();
             return true;
         } else {
@@ -966,6 +1080,7 @@ $(document).ready(function() {
         } else if (pay_method == 'suspend') {
             $('div#confirmSuspendModal').modal('show');
         } else {
+            window.pos_submit_in_progress = true;
             pos_form_obj.submit();
         }
     });
@@ -991,12 +1106,14 @@ $(document).ready(function() {
         $('input#card_security_0').val($('#card_security').val());
 
         $('div#card_details_modal').modal('hide');
+        window.pos_submit_in_progress = true;
         pos_form_obj.submit();
     });
 
     $('button#pos-suspend').click(function() {
         $('input#is_suspend').val(1);
         $('div#confirmSuspendModal').modal('hide');
+        window.pos_submit_in_progress = true;
         pos_form_obj.submit();
         $('input#is_suspend').val(0);
     });
@@ -1060,6 +1177,10 @@ $(document).ready(function() {
 
     pos_form_validator = pos_form_obj.validate({
         submitHandler: function(form) {
+            if (window.pos_submit_in_progress) {
+                return false;
+            }
+            window.pos_submit_in_progress = true;
             // var total_payble = __read_number($('input#final_total_input'));
             // var total_paying = __read_number($('input#total_paying_input'));
             var cnf = true;
@@ -1117,6 +1238,7 @@ $(document).ready(function() {
                         advance_used_for_sale += __read_number($(this).find('input.payment-amount').first());
                     }
                 });
+                var store_credit_used_amount = parseFloat($('#store_credit_used_amount').val() || 0) || 0;
 
                 var data = $(form).serialize();
                 data = data + '&status=final';
@@ -1134,23 +1256,34 @@ $(document).ready(function() {
                             $('#modal_payment').modal('hide');
                             toastr.success(result.msg);
 
-                            if (selected_customer_id_before_submit && advance_used_for_sale > 0) {
-                                refresh_customer_credit_after_sale(selected_customer_id_before_submit, advance_used_for_sale);
-                            }
+                            var doResetAndReceipt = function() {
+                                reset_pos_form();
+                                if (result.receipt.is_enabled) {
+                                    pos_print(result.receipt);
+                                }
+                            };
 
-                            reset_pos_form();
-
-                            //Check if enabled or not
-                            if (result.receipt.is_enabled) {
-                                pos_print(result.receipt);
+                            var credit_deducted = advance_used_for_sale > 0 ? advance_used_for_sale : store_credit_used_amount;
+                            if (selected_customer_id_before_submit && credit_deducted > 0) {
+                                refresh_customer_credit_after_sale(selected_customer_id_before_submit, credit_deducted, doResetAndReceipt);
+                            } else {
+                                doResetAndReceipt();
                             }
                         } else {
                             toastr.error(result.msg);
+                            window.pos_submit_in_progress = false;
                         }
 
                         enable_pos_form_actions();
                     },
+                    error: function() {
+                        window.pos_submit_in_progress = false;
+                        enable_pos_form_actions();
+                    }
                 });
+            }
+            if (!cnf) {
+                window.pos_submit_in_progress = false;
             }
             return false;
         },
@@ -1191,9 +1324,85 @@ $(document).ready(function() {
         pos_total_row();
     });
     
-    // Manual discount button - opens discount modal
+    /**
+     * Manual discount tier (by Total Payable): under $50 = 0%, $50–$99.99 = 5%, $100–$299.99 = 7%, $300+ = 10%.
+     * Returns the max allowed discount percent for the current order total.
+     */
+    function get_manual_discount_tier_max() {
+        var total = __read_number($('#final_total_input')) || 0;
+        if (total < 50) return 0;
+        if (total < 100) return 5;
+        if (total < 300) return 7;
+        return 10;
+    }
+
+    window.pos_discount_mode = 'manual';
+    window.pos_discount_original_max = parseFloat($('#discount_amount_modal').data('max-discount'));
+    window.pos_discount_original_msg = $('#discount_amount_modal').data('max-discount-error_msg');
+
+    // Manual discount button - opens discount modal (block if order under $50)
     $(document).on('click', '#pos-manual-discount', function() {
+        window.pos_discount_mode = 'manual';
+        var tierMax = get_manual_discount_tier_max();
+        if (tierMax === 0) {
+            toastr.warning('Manual discount is not available for orders under $50.');
+            return;
+        }
         $('#posEditDiscountModal').modal('show');
+    });
+
+    // Preset discount button - opens discount modal without manual tier restrictions
+    $(document).on('click', '#pos-preset-discount', function() {
+        window.pos_discount_mode = 'preset';
+        $('#posEditDiscountModal').modal('show');
+        setTimeout(function() {
+            if ($('#pos_discount_preset_select').length) {
+                $('#pos_discount_preset_select').focus();
+            }
+        }, 100);
+    });
+
+    // Edit icon should keep manual mode behavior.
+    $(document).on('click', '#pos-edit-discount', function() {
+        window.pos_discount_mode = 'manual';
+    });
+
+    // When discount modal is shown, enforce tier max (and cap user max by tier)
+    $('#posEditDiscountModal').on('shown.bs.modal', function() {
+        if (window.pos_discount_mode === 'preset') {
+            var resetMax = isNaN(window.pos_discount_original_max) ? 999 : window.pos_discount_original_max;
+            $('#discount_amount_modal').data('max-discount', resetMax);
+            $('#discount_amount_modal').data('max-discount-error_msg', window.pos_discount_original_msg || '');
+            validate_discount_field();
+            return;
+        }
+
+        var tierMax = get_manual_discount_tier_max();
+        var userMax = parseFloat($('#discount_amount_modal').data('max-discount')) || 999;
+        var effectiveMax = (tierMax === 0) ? 0 : Math.min(userMax, tierMax);
+        var msg = (tierMax === 0)
+            ? 'Manual discount is not available for orders under $50.'
+            : ('Maximum allowed discount for this order is ' + effectiveMax + '%.');
+        $('#discount_amount_modal').data('max-discount', effectiveMax);
+        $('#discount_amount_modal').data('max-discount-error_msg', msg);
+        if ($('#discount_type_modal').val() === 'percentage') {
+            var current = __read_number($('#discount_amount_modal')) || 0;
+            if (current > effectiveMax) {
+                __write_number($('#discount_amount_modal'), effectiveMax);
+            }
+        }
+        validate_discount_field();
+    });
+
+    $(document).on('change', '#pos_discount_preset_select', function() {
+        var opt = $(this).find('option:selected');
+        if (!opt.val()) return;
+        var type = opt.data('type');
+        var amount = opt.data('amount');
+        var reason = opt.data('reason') || '';
+        if (type) $('#discount_type_modal').val(type).trigger('change');
+        if (amount !== undefined && amount !== '') __write_number($('#discount_amount_modal'), amount);
+        $('#discount_reason_modal').val(reason);
     });
     
     // Employee discount checkbox handler
@@ -1511,6 +1720,74 @@ $(document).ready(function() {
         device_model_id = $("#repair_model_id").val();
     }
 
+    // Improved category/subcategory search:
+    // - allow multi-token queries (e.g. "used rock")
+    // - allow "first few letters" prefix matches against words
+    // Works by searching across both optgroup label and option text.
+    function __tokenize_prefix_words(text) {
+        if (text === undefined || text === null) return [];
+        return String(text)
+            .toLowerCase()
+            .trim()
+            .split(/[^a-z0-9]+/g)
+            .filter(Boolean);
+    }
+
+    function __pos_category_matcher(params, data) {
+        // Select2 can call matcher with group placeholders etc.
+        if (!data || !data.text) return data;
+
+        var term = params && params.term ? String(params.term).trim().toLowerCase() : '';
+        if (term === '') return data;
+
+        var optionText = String(data.text || '').toLowerCase();
+
+        // For optgroup-based selects, include the optgroup label in match text.
+        var groupLabel = '';
+        if (data.element) {
+            var $opt = $(data.element);
+            groupLabel = $opt.closest('optgroup').attr('label') || '';
+        }
+
+        var combined = (groupLabel + ' ' + optionText).toLowerCase();
+        var tokens = __tokenize_prefix_words(term);
+
+        if (tokens.length === 0) return null;
+
+        // Prefix-match each token against at least one word in combined text.
+        var words = combined.match(/[a-z0-9]+/g) || [];
+        var matchedAll = tokens.every(function(tok) {
+            if (tok.length === 0) return true;
+            return (
+                combined.indexOf(tok) !== -1 ||
+                words.some(function(w) {
+                    return w.indexOf(tok) === 0;
+                })
+            );
+        });
+
+        return matchedAll ? data : null;
+    }
+
+    // Re-init select2 only for the POS category select with a custom matcher.
+    var $posCategory = $('select#product_category');
+    if ($posCategory.length) {
+        var currentVal = $posCategory.val();
+        try {
+            if ($posCategory.data('select2')) {
+                $posCategory.select2('destroy');
+            }
+        } catch (e) {
+            // Ignore re-init errors; page can still function.
+        }
+        $posCategory.select2({
+            matcher: __pos_category_matcher,
+        });
+        if (currentVal !== null && currentVal !== undefined) {
+            $posCategory.val(currentVal).trigger('change.select2');
+        }
+    }
+
     //Show product list.
     get_product_suggestion_list(
         $('select#product_category').val(),
@@ -1701,11 +1978,11 @@ $(document).ready(function() {
         }
     }
     $(window).resize(function() {
-        var win_height = $(window).height();
-        div_height = __calculate_amount('percentage', 63, win_height);
-        $('div.pos_product_div').css('min-height', div_height + 'px');
-        $('div.pos_product_div').css('max-height', div_height + 'px');
-    });
+        // Let the browser handle vertical sizing for POS content on all screens.
+        // This avoids fixed heights that can cut off totals/actions on smaller viewports.
+        $('div.pos_product_div').css('min-height', 'auto');
+        $('div.pos_product_div').css('max-height', 'none');
+    }).trigger('resize');
 
     //Used for weighing scale barcode
     $('#weighing_scale_modal').on('shown.bs.modal', function (e) {
@@ -1761,9 +2038,6 @@ $(document).ready(function() {
     });
     validate_discount_field();
     set_payment_type_dropdown();
-    if ($('#__is_mobile').length) {
-        $('.pos_form_totals').css('margin-bottom', $('.pos-form-actions').height() - 30);
-    }
 
     setInterval(function () {
         if ($('span.curr_datetime').length) {
@@ -1782,12 +2056,9 @@ $(document).ready(function() {
             calculateManualProductSubtotal();
         }, 100);
         
-        // Initialize select2 for existing selects
+        // Initialize select2 for existing selects (with tokenized matcher for merged category/subcategory search)
         setTimeout(function() {
-            $('#add_manual_product_modal .select2').select2({
-                placeholder: "Please select",
-                allowClear: true
-            });
+            applyManualCategoryComboMatcher($('#add_manual_product_modal'));
         }, 300);
 
         // $.ajax({
@@ -1807,7 +2078,9 @@ $(document).ready(function() {
     });
 
     $(document).on('click', '#add_manual_product_button', function() {
-        // Validate form first
+        // Sync combo selection to hidden inputs before validation (Select2 may not fire change)
+        syncManualProductCategoryFromCombo();
+        // Validate form
         var isValid = validateManualProductForm();
         if (!isValid) {
             return;
@@ -1837,32 +2110,16 @@ $(document).ready(function() {
         calculateManualProductSubtotal();
     });
 
-    // Handle category change to populate sub-categories for dynamic rows
-    $(document).on('change', '.manual_product_category', function() {
-        var category_id = $(this).val();
-        var rowIndex = $(this).data('row');
-        var sub_category_select = $('.manual_product_sub_category[data-row="' + rowIndex + '"]');
-        
-        // Clear sub-category options
-        sub_category_select.empty();
-        sub_category_select.append('<option value="">Please select</option>');
-        
-        if(category_id) {
-            // Make AJAX request to get sub-categories
-            $.ajax({
-                url: '/products/get_sub_categories',
-                method: 'POST',
-                data: {
-                    cat_id: category_id
-                },
-                success: function(response) {
-                    sub_category_select.html(response);
-                },
-                error: function(xhr, status, error) {
-                    console.error('Error loading sub-categories:', error);
-                }
-            });
-        }
+    // Handle merged category/subcategory combo in manual product modal
+    $(document).on('change', '.manual_category_combo', function() {
+        var $this = $(this);
+        var $row = $this.closest('.manual_product_row');
+        var selected = $this.find('option:selected');
+        var categoryId = selected.data('category-id') || selected.attr('data-category-id') || '';
+        var subCategoryId = selected.data('sub-category-id') || selected.attr('data-sub-category-id') || '';
+
+        $row.find('input.manual_category_id').val(categoryId);
+        $row.find('input.manual_sub_category_id').val(subCategoryId);
     });
 
     // Copy down category/subcategory values to rows below
@@ -1877,6 +2134,11 @@ $(document).ready(function() {
             .each(function() {
                 $(this).find('.' + inputClass).val(value).trigger('change');
             });
+    });
+
+    // Re-apply matcher every time modal is shown (guards against any late re-init)
+    $(document).on('shown.bs.modal', '#add_manual_product_modal', function() {
+        applyManualCategoryComboMatcher($(this));
     });
 });
 
@@ -2057,7 +2319,7 @@ function get_featured_products() {
     }
 }
 
-function refresh_customer_credit_after_sale(contact_id, advance_used_for_sale) {
+function refresh_customer_credit_after_sale(contact_id, advance_used_for_sale, onDone) {
     $.ajax({
         url: '/sells/pos/get-customer-account-info',
         type: 'GET',
@@ -2071,6 +2333,15 @@ function refresh_customer_credit_after_sale(contact_id, advance_used_for_sale) {
                     $('#advance_balance').val(latest_balance);
                     $('#advance_balance_text').text(__currency_trans_from_en(latest_balance, true));
                     $('#customer_account_balance').text(__currency_trans_from_en(latest_balance, true));
+                    updatePosStoreCreditUI(latest_balance);
+                    if (typeof get_contact_due === 'function') {
+                        get_contact_due(contact_id);
+                    }
+                }
+                // Update Select2 option balance so next time this customer is selected the balance is correct
+                var $opt = $('select#customer_id').find('option[value="' + contact_id + '"]');
+                if ($opt.length && $opt.data('balance') !== undefined) {
+                    $opt.data('balance', latest_balance);
                 }
             } else if (advance_used_for_sale > 0 && $('#customer_id').val() == contact_id) {
                 var current_balance = parseFloat($('#advance_balance').val() || 0) || 0;
@@ -2078,6 +2349,18 @@ function refresh_customer_credit_after_sale(contact_id, advance_used_for_sale) {
                 $('#advance_balance').val(adjusted);
                 $('#advance_balance_text').text(__currency_trans_from_en(adjusted, true));
                 $('#customer_account_balance').text(__currency_trans_from_en(adjusted, true));
+                updatePosStoreCreditUI(adjusted);
+                if (typeof get_contact_due === 'function') {
+                    get_contact_due(contact_id);
+                }
+            }
+            if (typeof onDone === 'function') {
+                onDone();
+            }
+        },
+        error: function() {
+            if (typeof onDone === 'function') {
+                onDone();
             }
         }
     });
@@ -2703,6 +2986,7 @@ function isValidPosForm() {
 }
 
 function reset_pos_form(){
+    window.pos_submit_in_progress = false;
 
 	//If on edit page then redirect to Add POS page
 	if($('form#edit_pos_sell_form').length > 0){
@@ -2736,6 +3020,9 @@ function reset_pos_form(){
 
     if ($('#is_credit_sale').length) {
         $('#is_credit_sale').val(0);
+    }
+    if ($('#store_credit_used_amount').length) {
+        $('#store_credit_used_amount').val(0);
     }
 
 	//Reset discount
@@ -3859,30 +4146,19 @@ function addManualProductRow() {
             </td>
             <td>
                 <div style="display:flex; gap:4px; align-items:center;">
-                    <select name="products[${newRowIndex}][category_id]" 
-                            class="form-control select2 manual_product_category" 
+                    <select name="products[${newRowIndex}][category_combo]" 
+                            class="form-control select2 manual_category_combo" 
                             data-row="${newRowIndex}"
                             required>
                         <option value="">Please select</option>
-                        ${getCategoryOptions()}
+                        ${getCategoryComboOptions()}
                     </select>
-                    <button type="button" class="btn btn-primary btn-xs manual-copy-down" data-class="manual_product_category" data-row-index="${newRowIndex}" title="Copy Down">
+                    <button type="button" class="btn btn-primary btn-xs manual-copy-down" data-class="manual_category_combo" data-row-index="${newRowIndex}" title="Copy Down">
                         <i class="fa fa-arrow-down"></i>
                     </button>
                 </div>
-            </td>
-            <td>
-                <div style="display:flex; gap:4px; align-items:center;">
-                    <select name="products[${newRowIndex}][sub_category_id]" 
-                            class="form-control select2 manual_product_sub_category" 
-                            data-row="${newRowIndex}"
-                            required>
-                        <option value="">Please select</option>
-                    </select>
-                    <button type="button" class="btn btn-primary btn-xs manual-copy-down" data-class="manual_product_sub_category" data-row-index="${newRowIndex}" title="Copy Down">
-                        <i class="fa fa-arrow-down"></i>
-                    </button>
-                </div>
+                <input type="hidden" name="products[${newRowIndex}][category_id]" class="manual_category_id" data-row="${newRowIndex}">
+                <input type="hidden" name="products[${newRowIndex}][sub_category_id]" class="manual_sub_category_id" data-row="${newRowIndex}">
             </td>
             <td>
                 <input type="text" 
@@ -3903,23 +4179,95 @@ function addManualProductRow() {
     $('#manual_products_container').append(newRowHtml);
     
     // Initialize select2 for the new selects
-    $('#manual_products_container tr:last .select2').select2({
-        placeholder: "Please select",
-        allowClear: true
-    });
+    applyManualCategoryComboMatcher($('#manual_products_container tr:last'));
     
     // Calculate subtotal after adding row
     calculateManualProductSubtotal();
 }
 
-// Helper function to get category options HTML
-function getCategoryOptions() {
+function manualCategoryTokenize(text) {
+    if (text === undefined || text === null) return [];
+    return String(text)
+        .toLowerCase()
+        .trim()
+        .split(/[^a-z0-9]+/g)
+        .filter(Boolean);
+}
+
+function manualCategoryComboMatcher(params, data) {
+    if (!data || !data.text) return data;
+    var term = params && params.term ? String(params.term).trim().toLowerCase() : '';
+    if (!term) return data;
+
+    var label = String(data.text || '').toLowerCase();
+    var tokens = manualCategoryTokenize(term);
+    if (!tokens.length) return data;
+
+    var words = label.match(/[a-z0-9]+/g) || [];
+    var matchesAll = tokens.every(function(tok) {
+        return label.indexOf(tok) !== -1 || words.some(function(w) { return w.indexOf(tok) === 0; });
+    });
+
+    return matchesAll ? data : null;
+}
+
+function applyManualCategoryComboMatcher($scope) {
+    var $root = $scope && $scope.length ? $scope : $('#add_manual_product_modal');
+
+    // Keep default Select2 behavior for non-category fields
+    $root.find('.select2').not('.manual_category_combo').each(function() {
+        var $el = $(this);
+        if ($el.hasClass('select2-hidden-accessible')) {
+            return;
+        }
+        $el.select2({
+            placeholder: "Please select",
+            allowClear: true
+        });
+    });
+
+    // Apply enhanced matcher specifically for merged category/subcategory combo
+    $root.find('select.manual_category_combo').each(function() {
+        var $el = $(this);
+        var currentVal = $el.val();
+
+        try {
+            if ($el.hasClass('select2-hidden-accessible') || $el.data('select2')) {
+                $el.select2('destroy');
+            }
+        } catch (e) {}
+
+        // Remove stale select2 wrappers/attrs if any previous init left duplicates.
+        $el.removeClass('select2-hidden-accessible')
+            .removeAttr('data-select2-id')
+            .removeAttr('aria-hidden')
+            .removeAttr('tabindex');
+        $el.siblings('span.select2').remove();
+
+        $el.select2({
+            placeholder: "Please select",
+            allowClear: true,
+            dropdownParent: $('#add_manual_product_modal'),
+            matcher: manualCategoryComboMatcher
+        });
+
+        if (currentVal !== undefined && currentVal !== null && currentVal !== '') {
+            $el.val(currentVal).trigger('change.select2');
+        }
+    });
+}
+
+// Helper function to get category+subcategory combo options HTML
+function getCategoryComboOptions() {
     var options = '';
-    $('#manual_products_container tr:first select[name*="[category_id]"] option').each(function() {
+    $('#manual_products_container tr:first select[name*="[category_combo]"] option').each(function() {
         var value = $(this).attr('value');
         var text = $(this).text();
+        var categoryId = $(this).data('category-id');
+        var subCategoryId = $(this).data('sub-category-id');
+
         if (value !== '') {
-            options += `<option value="${value}">${text}</option>`;
+            options += `<option value="${value}" data-category-id="${categoryId || ''}" data-sub-category-id="${subCategoryId || ''}">${text}</option>`;
         }
     });
     return options;
@@ -3954,7 +4302,7 @@ function updateProductRowNumbers() {
             }
             
             // Update data-row attributes
-            if ($this.hasClass('manual_product_category') || $this.hasClass('manual_product_sub_category')) {
+            if ($this.hasClass('manual_category_combo') || $this.hasClass('manual_category_id') || $this.hasClass('manual_sub_category_id')) {
                 $this.attr('data-row', index);
             }
         });
@@ -3984,15 +4332,7 @@ function resetManualProductModal() {
     });
     
     // Reinitialize select2 for the first row selects
-    $('#manual_products_container .manual_product_row:first .select2').each(function() {
-        if ($(this).hasClass('select2-hidden-accessible')) {
-            $(this).select2('destroy');
-        }
-        $(this).select2({
-            placeholder: "Please select",
-            allowClear: true
-        });
-    });
+    applyManualCategoryComboMatcher($('#manual_products_container .manual_product_row:first'));
     
     // Update row numbers (should just be row 1 now)
     updateProductRowNumbers();
@@ -4004,6 +4344,41 @@ function resetManualProductModal() {
     calculateManualProductSubtotal();
 }
 
+// Sync category_combo selection to hidden category_id/sub_category_id in each row (call before validate/submit)
+function syncManualProductCategoryFromCombo() {
+    $('#manual_products_container .manual_product_row').each(function() {
+        var $row = $(this);
+        var $combo = $row.find('select.manual_category_combo');
+        if (!$combo.length) return;
+        var val = $combo.val();
+        // Select2 can leave native select .val() empty; try selected option's value
+        if (!val && $combo.find('option:selected').length) {
+            val = $combo.find('option:selected').attr('value') || $combo.find('option:selected').val();
+        }
+        if (!val) {
+            var existingCat = $row.find('input.manual_category_id').val();
+            if (!existingCat || String(existingCat).trim() === '') {
+                $row.find('input.manual_category_id').val('');
+                $row.find('input.manual_sub_category_id').val('');
+            }
+            return;
+        }
+        var categoryId = '';
+        var subCategoryId = '';
+        if (String(val).indexOf('_') !== -1) {
+            var parts = String(val).split('_');
+            categoryId = parts[0] || '';
+            subCategoryId = parts[1] !== undefined ? String(parts[1]) : '';
+        } else {
+            var $selected = $combo.find('option:selected');
+            categoryId = $selected.length ? ($selected.attr('data-category-id') || '') : '';
+            subCategoryId = $selected.length ? ($selected.attr('data-sub-category-id') || '') : '';
+        }
+        $row.find('input.manual_category_id').val(String(categoryId).trim());
+        $row.find('input.manual_sub_category_id').val(String(subCategoryId).trim());
+    });
+}
+
 // Helper function to validate manual product form
 function validateManualProductForm() {
     var isValid = true;
@@ -4013,27 +4388,36 @@ function validateManualProductForm() {
         var $row = $(this);
         var productName = $row.find('input[name*="[name]"]').val();
         var price = $row.find('input[name*="[price]"]').val();
-        var categoryId = $row.find('select[name*="[category_id]"]').val();
-        var subCategoryId = $row.find('select[name*="[sub_category_id]"]').val();
+        var categoryId = $row.find('input[name*="[category_id]"]').val();
+        var subCategoryId = $row.find('input[name*="[sub_category_id]"]').val();
+        // Fallback: read from combo when hidden inputs empty (Select2 can leave them unsynced)
+        if ((!categoryId || String(categoryId).trim() === '') && $row.find('select.manual_category_combo').length) {
+            var comboVal = $row.find('select.manual_category_combo').val() || $row.find('select.manual_category_combo option:selected').attr('value');
+            if (comboVal && String(comboVal).indexOf('_') !== -1) {
+                var p = String(comboVal).split('_');
+                categoryId = p[0] || '';
+                subCategoryId = p[1] !== undefined ? p[1] : '';
+                $row.find('input.manual_category_id').val(categoryId);
+                $row.find('input.manual_sub_category_id').val(subCategoryId);
+            }
+        }
         
-        // Check if this row has any data
         if (productName || price) {
             hasValidProduct = true;
             
-            // Validate required fields
             if (!productName || productName.trim() === '') {
                 toastr.error('Product name is required for all products');
                 isValid = false;
                 return false;
             }
             
-            if (!categoryId || categoryId === '') {
+            if (!categoryId || String(categoryId).trim() === '') {
                 toastr.error('Category is required for all products');
                 isValid = false;
                 return false;
             }
             
-            if (!subCategoryId || subCategoryId === '') {
+            if (subCategoryId === undefined || subCategoryId === null || String(subCategoryId).trim() === '') {
                 toastr.error('Sub Category is required for all products');
                 isValid = false;
                 return false;

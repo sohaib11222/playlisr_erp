@@ -28,9 +28,9 @@
         #mass_create_table {
             white-space: nowrap;
             table-layout: fixed;
-            width: 1680px;
-            min-width: 1680px;
-            max-width: 1680px;
+            width: 1350px;
+            min-width: 1350px;
+            max-width: 1350px;
         }
 
         #mass_create_table .thead .th,
@@ -53,17 +53,13 @@
         #mass_create_table .col-select {
             min-width: 200px;
         }
-        /* Artist */
+        /* Artist (narrower) */
         #mass_create_table .col-artist {
-            min-width: 130px;
+            min-width: 100px;
         }
-        /* Business Locations */
+        /* Business Locations (narrower) */
         #mass_create_table .col-locations {
-            min-width: 180px;
-        }
-        /* Opening Stock */
-        #mass_create_table .col-stock {
-            min-width: 150px;
+            min-width: 140px;
         }
         /* Action column - narrow */
         #mass_create_table .col-action {
@@ -73,9 +69,9 @@
 
         .table-wrapper {
             display: table;
-            width: 1680px;
-            min-width: 1680px;
-            max-width: 1680px;
+            width: 1350px;
+            min-width: 1350px;
+            max-width: 1350px;
             border-collapse: collapse;
         }
 
@@ -159,7 +155,7 @@
         /* Адаптивный режим */
         @media (max-width: 768px) {
             .table-wrapper {
-                min-width: 1680px;
+                min-width: 1350px;
             }
             .th, .td {
                 white-space: normal;
@@ -354,13 +350,11 @@
                 <tr class="tr">
                     <th class="th col-name">@lang('product.product_name')*</th>
                     <th class="th col-sku">@lang('product.sku')</th>
-                    <th class="th col-select">@lang('product.category')</th>
-                    <th class="th col-select">@lang('product.sub_category')</th>
+                    <th class="th col-select">@lang('product.category') / @lang('product.sub_category')</th>
                     <th class="th col-artist">Artist</th>
                     <th class="th col-locations">@lang('business.business_locations')</th>
-                    <th class="th col-stock">Opening Stock</th>
-                    <th class="th price-col">Selling Price</th>
                     <th class="th price-col">Purchase Price</th>
+                    <th class="th price-col">Selling Price</th>
                     <th class="th" style="min-width: 60px; width: 60px;">
                         <button type="button" class="btn btn-primary btn-xs show-expandables">
                             More
@@ -392,10 +386,15 @@
                 </tr>
                 <tr class="tr">
                     <td class="td" colspan="1">
-                        <button type="button" class="btn btn-info" id="verify_all_categories" style="margin-right: 10px;">
-                            <i class="fa fa-check-circle"></i> Verify All Categories
-                        </button>
-                        <button type="button" class="btn btn-success" id="save_all_products">Save All Products</button>
+                        <div id="mass_add_action_buttons" style="display: flex; flex-wrap: nowrap; gap: 10px; align-items: center; white-space: nowrap; overflow-x: auto;">
+                            <button type="button" class="btn btn-info" id="verify_all_categories">
+                                <i class="fa fa-check-circle"></i> Verify All Categories
+                            </button>
+                            <button type="button" class="btn btn-success" id="save_all_products">Save All Products</button>
+                            <button type="button" class="btn btn-warning" id="save_and_send_to_purchase" style="font-weight: bold;">
+                                <i class="fa fa-save"></i> Save &amp; send to add purchase
+                            </button>
+                        </div>
                     </td>
                 </tr>
             </tfoot>
@@ -416,8 +415,6 @@
 <script src="{{ asset('js/product.js?v=' . $asset_v) }}"></script>
 
 <script type="text/javascript">
-    var businessLocations = JSON.parse(`{!! json_encode($business_locations) !!}`);
-    window.openingStockLocations = [];
     window.isAddingNewRow = false;
     $(document).ready(function(){
         let rowIndex = 1;
@@ -440,6 +437,7 @@
 
                     // Reinitialize Select2 for new elements
                     $('#product_rows_container .product-row').last().find('.select2').select2();
+                    applyCategoryComboSelect2Matcher($('#product_rows_container .product-row').last());
                     window.setupProductNameSelect2();
                     window.isAddingNewRow = false;
                     $('#add_row').html('Add New Product Row');
@@ -470,6 +468,18 @@
         // Remove row
         $(document).on('click', '.remove_row', function () {
             $(this).closest('.tr').remove();
+        });
+
+        // When merged Category/Subcategory combo changes, sync hidden ids
+        $(document).on('change', '.category-combo-select', function () {
+            const $this = $(this);
+            const rowIndex = $this.attr('data-row-index');
+            const selected = $this.find('option:selected');
+            const categoryId = selected.data('category-id') || '';
+            const subCategoryId = selected.data('sub-category-id') || 0;
+
+            $(`#products_${rowIndex}_category_id`).val(categoryId);
+            $(`#products_${rowIndex}_sub_category_id`).val(subCategoryId);
         });
 
         // Store valid subcategory IDs for each category
@@ -720,58 +730,62 @@
         // Реинициализация Select2 для уже существующих строк
         $('.select2').select2();
 
-        $(document).on('change', '.select2_business_locations', function() {
-            const inputId = this.id.split('_');
-            var rowId = inputId[1] ?? -1;
-            if (rowId < 0) {
-                return;
-            }
+        // Improved category/subcategory search:
+        // tokenized prefix matching against the combo label (e.g. "used rock" => "Used Vinyl - Rock")
+        function __massadd_tokenize_prefix_words(text) {
+            if (text === undefined || text === null) return [];
+            return String(text)
+                .toLowerCase()
+                .trim()
+                .split(/[^a-z0-9]+/g)
+                .filter(Boolean);
+        }
 
-            var selectedValues = $(this).val();
-            var container = $('#qty-container-' + rowId); // Target container
-            
-            if (selectedValues.length == 0) {
-                container.html(`<span id="no_location_selected_message">Select Business Location to Edit Stock<span>`);
-                return;
-            }
+        function __massadd_category_combo_matcher(params, data) {
+            if (!data || !data.text) return data;
 
-            $("#no_location_selected_message").remove();
-            var existingQty = {};
+            var term = params && params.term ? String(params.term).trim().toLowerCase() : '';
+            if (term === '') return data;
 
-            if (window.openingStockLocations[rowId] != undefined) {
-                window.openingStockLocations[rowId].forEach((item, index) => {
-                    existingQty[item.id] = item.opening_stock;
+            var labelText = String(data.text || '').toLowerCase();
+            var tokens = __massadd_tokenize_prefix_words(term);
+            if (tokens.length === 0) return data;
+
+            var words = labelText.match(/[a-z0-9]+/g) || [];
+            var matchedAll = tokens.every(function (tok) {
+                if (!tok) return true;
+                return labelText.indexOf(tok) !== -1 || words.some(function (w) { return w.indexOf(tok) === 0; });
+            });
+
+            return matchedAll ? data : null;
+        }
+
+        function applyCategoryComboSelect2Matcher($scope) {
+            var $root = $scope && $scope.length ? $scope : $('#product_rows_container');
+            $root.find('select.category-combo-select').each(function () {
+                var $el = $(this);
+                var currentVal = $el.val();
+                try {
+                    if ($el.data('select2')) {
+                        $el.select2('destroy');
+                    }
+                } catch (e) {
+                    // ignore; keep default if re-init fails
+                }
+
+                $el.select2({
+                    matcher: __massadd_category_combo_matcher
                 });
-            }
 
-            container.find('input[type="number"]').each(function() {
-                var key = $(this).attr('data-location');
-                if ($(this).val() != undefined && $(this).val() != '') {
-                    existingQty[key] = $(this).val();
+                if (currentVal !== null && currentVal !== undefined && currentVal !== '') {
+                    $el.val(currentVal).trigger('change.select2');
                 }
             });
+        }
 
-            container.find('.qty-input').each(function() {
-                var location = $(this).find('input').attr('data-location');
-                if (!selectedValues.includes(location)) {
-                    $(this).remove();
-                }
-            });
+        applyCategoryComboSelect2Matcher($('#product_rows_container'));
 
-            selectedValues.forEach(function(locationId) {
-                if (!container.find(`#qty-wrapper-${rowId}-${locationId}`).length) {
-                    var locationName = businessLocations[locationId] || 'Unknown';
-                    var qtyValue = existingQty[locationId] || 0;
-
-                    container.append(`
-                        <div class="qty-input" id="qty-wrapper-${rowId}-${locationId}" style="margin-bottom: 10px;">
-                            <label for="qty_${rowId}_${locationId}">Stock for ${locationName}:</label>
-                            <input class="form-control" value="${qtyValue}" id="qty_${rowId}_${locationId}"  placeholder="Enter Stock" name="products[${rowId}][stock_locations][${locationId}][stock]" type="number" data-location="${locationId}">
-                        </div>
-                    `);
-                }
-            });
-        });
+        // Note: opening stock/location-level stock editing has been removed from mass-add.
 
         $(document).on('click', '.show-expandables', function() {
             if ($(this).hasClass('show')) {
@@ -790,6 +804,18 @@
 
         $(document).on('click', '.btn-remove-product-selection', function() {
             window.setAsFreeTextProductRow($(this).attr('data-row-index'));
+        });
+
+        window.massAddThenSendToPurchase = false;
+
+        function runMassAddSave(sendToPurchase) {
+            window.massAddThenSendToPurchase = !!sendToPurchase;
+            $('#save_all_products').trigger('click');
+        }
+
+        $('#save_and_send_to_purchase').on('click', function(e) {
+            e.preventDefault();
+            runMassAddSave(true);
         });
 
         // Обработка клика по кнопке "Save All Products" с отладкой
@@ -880,6 +906,12 @@
                             window.parent.postMessage({ type: 'massAddComplete', product_ids: product_ids }, '*');
                             return;
                         }
+                        if (window.massAddThenSendToPurchase && product_ids && product_ids.length) {
+                            window.massAddThenSendToPurchase = false;
+                            var baseUrl = "{{ url('') }}";
+                            window.location.href = baseUrl + '/purchases/create?from_products=' + product_ids.join(',');
+                            return;
+                        }
                         setTimeout(() => {
                             if (window.confirm("Do you want to print the labels?")) {
                                 window.location.href = `/labels/show?product_ids=${product_ids.join(",")}`;
@@ -965,8 +997,7 @@
     window.setAsSelectedProductRow = function(ui, input) {
         const rowIndex = input.attr('data-row-index');
         const item = ui.item;
-        const openingLocations = item.opening_locations;
-        window.openingStockLocations[rowIndex] = openingLocations;
+        const openingLocations = item.opening_locations || [];
         const locationIds = openingLocations.map(n => n.id);
         // Disable input
         input.val(ui.item.text).attr('disabled', true);

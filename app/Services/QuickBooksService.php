@@ -250,7 +250,16 @@ class QuickBooksService
         $invoiceResult = $this->apiRequest('POST', '/invoice', $payload);
 
         if (empty($invoiceResult['success'])) {
-            $this->createSyncLog($transaction, 'outbound', 'invoice_create', 'failed', $payload, $invoiceResult['msg']);
+            $this->createSyncLog(
+                $transaction,
+                'outbound',
+                'invoice_create',
+                'failed',
+                $payload,
+                $invoiceResult['msg'],
+                $invoiceResult['response'] ?? null,
+                $invoiceResult['intuit_tid'] ?? null
+            );
 
             return [
                 'success' => false,
@@ -358,6 +367,7 @@ class QuickBooksService
 
     protected function apiRequest($method, $endpoint, $payload = null, $queryParams = [])
     {
+        $intuitTid = null;
         $connection = $this->getActiveConnection();
         if (empty($connection)) {
             return [
@@ -396,10 +406,25 @@ class QuickBooksService
         ];
 
         $ch = curl_init($url);
+
+        $headerFn = function ($curl, $headerLine) use (&$intuitTid) {
+            // Capture the Intuit request ID for easier troubleshooting in support tickets.
+            // Header name can vary in casing.
+            $line = trim($headerLine);
+            if (stripos($line, 'Intuit-Tid:') === 0) {
+                $intuitTid = trim(substr($line, strlen('Intuit-Tid:')));
+            } elseif (stripos($line, 'intuit_tid:') === 0) {
+                $intuitTid = trim(substr($line, strlen('intuit_tid:')));
+            }
+
+            return strlen($headerLine);
+        };
+
         $opts = [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HTTPHEADER => $headers,
             CURLOPT_CUSTOMREQUEST => strtoupper($method),
+            CURLOPT_HEADERFUNCTION => $headerFn,
         ];
 
         if (!empty($payload)) {
@@ -416,22 +441,26 @@ class QuickBooksService
             return [
                 'success' => false,
                 'msg' => 'QuickBooks API network error: ' . $curlError,
+                'intuit_tid' => $intuitTid,
             ];
         }
 
         $parsed = json_decode($response, true);
 
         if ($httpCode < 200 || $httpCode >= 300) {
+            $tidSuffix = !empty($intuitTid) ? ' (intuit_tid=' . $intuitTid . ')' : '';
             return [
                 'success' => false,
-                'msg' => $this->extractQuickBooksError($parsed, $httpCode),
+                'msg' => $this->extractQuickBooksError($parsed, $httpCode) . $tidSuffix,
                 'response' => $parsed,
+                'intuit_tid' => $intuitTid,
             ];
         }
 
         return [
             'success' => true,
             'data' => $parsed,
+            'intuit_tid' => $intuitTid,
         ];
     }
 
@@ -546,9 +575,16 @@ class QuickBooksService
         ];
     }
 
-    protected function createSyncLog($transaction, $direction, $operation, $status, $requestPayload = null, $errorMessage = null)
+    protected function createSyncLog($transaction, $direction, $operation, $status, $requestPayload = null, $errorMessage = null, $responsePayload = null, $intuitTid = null)
     {
         try {
+            $errorMessageWithTid = $errorMessage;
+            if (!empty($intuitTid) && empty($errorMessageWithTid)) {
+                $errorMessageWithTid = 'QuickBooks request failed (intuit_tid=' . $intuitTid . ').';
+            } elseif (!empty($intuitTid) && !empty($errorMessageWithTid) && stripos($errorMessageWithTid, 'intuit_tid=') === false) {
+                $errorMessageWithTid .= ' (intuit_tid=' . $intuitTid . ')';
+            }
+
             QuickBooksSyncLog::create([
                 'business_id' => $this->businessId,
                 'erp_entity_type' => 'sell',
@@ -557,7 +593,8 @@ class QuickBooksService
                 'operation' => $operation,
                 'status' => $status,
                 'request_payload' => !empty($requestPayload) ? json_encode($requestPayload) : null,
-                'error_message' => $errorMessage,
+                'response_payload' => !empty($responsePayload) ? json_encode($responsePayload) : null,
+                'error_message' => $errorMessageWithTid,
                 'attempts' => 1,
                 'processed_at' => Carbon::now(),
             ]);

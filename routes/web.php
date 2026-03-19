@@ -172,6 +172,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/product/mass-create/get-product-price-recommendation', [ProductController::class, 'getProductPriceRecommendation']);
     Route::get('/product/mass-create/get-discogs-prices', [ProductController::class, 'getDiscogsPrices']);
     Route::post('/product/mass-store', [ProductController::class, 'massStore'])->name('product.massStore');
+    Route::post('/products/bulk-send-to-purchase', [ProductController::class, 'bulkSendToPurchase'])->name('products.bulkSendToPurchase');
     Route::get('/products/get-combo-product-entry-row', 'ProductController@getComboProductEntryRow');
     Route::post('/products/toggle-woocommerce-sync', 'ProductController@toggleWooCommerceSync');
     Route::get('/products/bulk-update-categories', 'ProductController@bulkCategoryUpdatePage');
@@ -181,6 +182,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/products/process-import-sold-items', 'ProductController@processImportSoldItems')->name('products.processImportSoldItems');
     Route::post('/products/process-import-sold-items-from-file', 'ProductController@processImportSoldItemsFromFile')->name('products.processImportSoldItemsFromFile');
     Route::post('/products/{id}/set-current-stock', 'ProductController@setCurrentStock')->name('products.setCurrentStock');
+    Route::get('/products/{id}/set-current-stock-quick', 'ProductController@setCurrentStockQuickPage')->name('products.setCurrentStockQuick');
 
     Route::resource('products', 'ProductController');
 

@@ -251,8 +251,15 @@ class PurchaseController extends Controller
 
         $common_settings = !empty(session('business.common_settings')) ? session('business.common_settings') : [];
 
+        // Optional: pre-fill purchase lines from product IDs (used by bulk-send from product list)
+        $from_product_ids = [];
+        if (request()->has('from_products')) {
+            $raw = request()->get('from_products', '');
+            $from_product_ids = array_filter(array_map('intval', explode(',', $raw)));
+        }
+
         return view('purchase.create')
-            ->with(compact('taxes', 'orderStatuses', 'business_locations', 'currency_details', 'default_purchase_status', 'customer_groups', 'types', 'shortcuts', 'payment_line', 'payment_types', 'accounts', 'bl_attributes', 'common_settings'));
+            ->with(compact('taxes', 'orderStatuses', 'business_locations', 'currency_details', 'default_purchase_status', 'customer_groups', 'types', 'shortcuts', 'payment_line', 'payment_types', 'accounts', 'bl_attributes', 'common_settings', 'from_product_ids'));
     }
 
     /**

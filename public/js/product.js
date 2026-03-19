@@ -200,10 +200,7 @@ $(document).ready(function() {
                         },
                     },
                 },
-                category_id: {
-                    required: true,
-                },
-                sub_category_id: {
+                category_combo: {
                     required: true,
                 },
                 expiry_period: {
@@ -222,20 +219,83 @@ $(document).ready(function() {
                 sku: {
                     remote: LANG.sku_already_exists,
                 },
-                category_id: {
-                    required: LANG.required,
-                },
-                sub_category_id: {
+                category_combo: {
                     required: LANG.required,
                 },
             },
         });
-
-        // Ensure Select2 triggers validation on change
-        $('#category_id, #sub_category_id').on('change', function() {
-            $(this).valid();
-        });
     }
+
+    // (Set current stock quick modal removed; now handled by dedicated page)
+
+    // Unified Category + Subcategory dropdown (Add/Edit product)
+    function __tokenizeCategorySearch(text) {
+        if (text === undefined || text === null) return [];
+        return String(text)
+            .toLowerCase()
+            .trim()
+            .split(/[^a-z0-9]+/g)
+            .filter(Boolean);
+    }
+
+    function __categoryComboMatcher(params, data) {
+        if (!data || !data.text) return data;
+
+        var term = params && params.term ? String(params.term).trim().toLowerCase() : '';
+        if (term === '') return data;
+
+        var labelText = String(data.text || '').toLowerCase();
+        var tokens = __tokenizeCategorySearch(term);
+        if (!tokens.length) return data;
+
+        var words = labelText.match(/[a-z0-9]+/g) || [];
+        var matchedAll = tokens.every(function(tok) {
+            return labelText.indexOf(tok) !== -1 || words.some(function(w) { return w.indexOf(tok) === 0; });
+        });
+
+        return matchedAll ? data : null;
+    }
+
+    function applyCategoryComboMatcher($el) {
+        if (!$el || !$el.length) return;
+        var selected = $el.val();
+        try {
+            if ($el.data('select2')) {
+                $el.select2('destroy');
+            }
+        } catch (e) {}
+
+        $el.select2({
+            matcher: __categoryComboMatcher
+        });
+
+        if (selected !== null && selected !== undefined && selected !== '') {
+            $el.val(selected).trigger('change.select2');
+        }
+    }
+
+    function syncCategoryComboSelection($combo) {
+        var $selected = $combo.find('option:selected');
+        var categoryId = $selected.data('category-id') || '';
+        var subCategoryId = $selected.data('sub-category-id') || '';
+
+        $('#category_id').val(categoryId);
+        $('#sub_category_id').val(subCategoryId);
+    }
+
+    if ($('#category_combo').length) {
+        applyCategoryComboMatcher($('#category_combo'));
+        // Initial sync on page load
+        syncCategoryComboSelection($('#category_combo'));
+    }
+
+    $(document).on('change', '#category_combo', function() {
+        syncCategoryComboSelection($(this));
+        // Trigger validation if present
+        if ($(this).closest('form').length && $(this).valid) {
+            $(this).valid();
+        }
+    });
 
     $(document).on('click', '.submit_product_form', function(e) {
         e.preventDefault();

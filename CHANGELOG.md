@@ -1,5 +1,26 @@
 # Changelog - Recent Updates
 
+## Date: March 19, 2026
+
+### POS & Mass Add UX batch
+
+**Status:** ✅ Complete
+
+**Changes:**
+- **POS:** Added read-only Purchase Price column to the left of Selling Price; pre-tax total styled in black with larger text; product table scrolls so totals/actions stay visible without page scroll.
+- **Store credit:** "Use Store Credit" no longer opens the payment modal; applied amount is deducted from the customer’s account when the sale is completed with Cash (or when no advance payment line is used).
+- **POS & Mass Add:** Category/subcategory search improved with tokenized partial matching (e.g. "used rock" finds "Used Vinyl - Rock").
+- **Mass Add:** Purchase Price column moved before Selling Price; new prominent **"Save & send to add purchase"** button that saves products then either posts product IDs to the parent (iframe) or redirects to Add Purchase with `from_products`.
+- **Products list:** Default sort changed to newest first (by Updated date desc).
+- **Discounts (admin):** Preset selector on create/edit (Senior, Military, Student, Senior Citizens) auto-fills name and sets type to percentage.
+- **POS discount modal:** Preset dropdown lists active percentage discounts matching those names; selecting one fills type, amount, and reason.
+- **POS rewards/account:** Customer account info and Customer Account modal made responsive (wrapping grid, modal max-width and vertical scroll on small screens).
+
+**Documentation:**
+- `TESTING_ERP_CHANGES_2026-03-19.md` – client testing steps for this batch.
+
+---
+
 ## Date: January 21, 2026
 
 ### 1. StreetPulse FTP Integration

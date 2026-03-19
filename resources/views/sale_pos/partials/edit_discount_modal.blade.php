@@ -18,6 +18,24 @@
 					<div class="col-md-12">
 						<h4 class="modal-title">@lang('sale.edit_discount'):</h4>
 					</div>
+					@if(!empty($discount_presets) && $discount_presets->count() > 0)
+					<div class="col-md-12">
+						<div class="form-group">
+							<label>Apply preset</label>
+							<select id="pos_discount_preset_select" class="form-control" style="width: 100%;">
+								<option value="">— None —</option>
+								@foreach($discount_presets as $preset)
+									<option value="{{ $preset->id }}"
+										data-type="{{ $preset->discount_type }}"
+										data-amount="{{ $preset->discount_amount }}"
+										data-reason="{{ $preset->name }}">
+										{{ $preset->name }} ({{ @num_format($preset->discount_amount) }}%)
+									</option>
+								@endforeach
+							</select>
+						</div>
+					</div>
+					@endif
 					<div class="col-md-6">
 				        <div class="form-group">
 				            {!! Form::label('discount_type_modal', __('sale.discount_type') . ':*' ) !!}

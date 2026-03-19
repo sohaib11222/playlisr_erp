@@ -186,7 +186,7 @@ class ProductController extends Controller
                 'products.product_custom_field4',
                 'v.id as vid',
                 'products.alert_quantity',
-                DB::raw("CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as added_by_name"),
+                DB::raw("CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as created_by_name"),
                 DB::raw('COALESCE(MAX(sold_totals.total_sold_qty), 0) as total_sold_qty'),
                 DB::raw('SUM(vld.qty_available) as current_stock'),
                 DB::raw('MAX(v.sell_price_inc_tax) as max_price'),
@@ -210,6 +210,11 @@ class ProductController extends Controller
             $category_id = request()->get('category_id', null);
             if (!empty($category_id)) {
                 $products->where('products.category_id', $category_id);
+            }
+            
+            $sub_category_id = request()->get('sub_category_id', null);
+            if (!empty($sub_category_id)) {
+                $products->where('products.sub_category_id', $sub_category_id);
             }
             
             // Filter for uncategorized products
@@ -277,17 +282,6 @@ class ProductController extends Controller
                         return $row->product_locations->implode('name', ', ');
                     }
                 )
-                ->addColumn('product_url' , function($q){
-                    if($q->product_custom_field1) {
-                        return '<a href="' . $q->product_custom_field1 . '" target="_blank"><button class="btn btn-primary">Product Url</button></a>';
-                    }else{
-                        return "No Link found";
-                    }
-
-                })
-                ->addColumn('added_by', function ($q) {
-                    return trim($q->added_by_name);
-                })
                 ->addColumn('total_sold', function ($q) {
                     return number_format((int) round((float) $q->total_sold_qty), 0);
                 })
@@ -301,41 +295,49 @@ class ProductController extends Controller
                 ->addColumn(
                     'action',
                     function ($row) use ($selling_price_group_count) {
-                        $html =
-                        '<div class="btn-group"><button type="button" class="btn btn-info dropdown-toggle btn-xs" data-toggle="dropdown" aria-expanded="false">'. __("messages.actions") . '<span class="caret"></span><span class="sr-only">Toggle Dropdown</span></button><ul class="dropdown-menu dropdown-menu-left" role="menu"><li><a href="' . action('LabelsController@show') . '?product_id=' . $row->id . '" data-toggle="tooltip" title="' . __('lang_v1.label_help') . '"><i class="fa fa-barcode"></i> ' . __('barcode.labels') . '</a></li>';
+                        // Compact grey actions group: Labels button + dropdown
+                        $html = '<div class="btn-group btn-group-xs">';
 
+                        // Label icon (always visible)
+                        $html .= '<a href="' . action('LabelsController@show') . '?product_id=' . $row->id . '" class="btn btn-default" data-toggle="tooltip" title="' . __('barcode.labels') . '"><i class="fa fa-tag"></i></a>';
 
-
-                        if (auth()->user()->can('product.update')) {
-                            $html .=
-                            '<li><a href="' . action('ProductController@edit', [$row->id]) . '"><i class="glyphicon glyphicon-edit"></i> ' . __("messages.edit") . '</a></li>';
+                        // More dropdown (contains Edit, Delete, stock actions, etc.)
+                        $html .= '<button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                    <i class="fa fa-ellipsis-v"></i>
+                                  </button>';
+                        $html .= '<ul class="dropdown-menu" role="menu">';
+                        
+                        // Edit product entry
+                        if (
+                            auth()->user()->can('product.update') ||
+                            auth()->user()->can('product.opening_stock') ||
+                            $this->productUtil->is_admin(auth()->user())
+                        ) {
+                            $html .= '<li><a href="' . action('ProductController@edit', [$row->id]) . '"><i class="fa fa-pencil"></i> ' . __("messages.edit") . '</a></li>';
                         }
 
+                        // Delete and status actions
                         if (auth()->user()->can('product.delete')) {
-                            $html .=
-                            '<li><a href="' . action('ProductController@destroy', [$row->id]) . '" class="delete-product"><i class="fa fa-trash"></i> ' . __("messages.delete") . '</a></li>';
+                            $html .= '<li><a href="' . action('ProductController@destroy', [$row->id]) . '" class="delete-product"><i class="fa fa-trash"></i> ' . __("messages.delete") . '</a></li>';
                         }
 
                         if ($row->is_inactive == 1) {
-                            $html .=
-                            '<li><a href="' . action('ProductController@activate', [$row->id]) . '" class="activate-product"><i class="fas fa-check-circle"></i> ' . __("lang_v1.reactivate") . '</a></li>';
+                            $html .= '<li><a href="' . action('ProductController@activate', [$row->id]) . '" class="activate-product"><i class="fas fa-check-circle"></i> ' . __("lang_v1.reactivate") . '</a></li>';
                         }
-
-                        $html .= '<li class="divider"></li>';
 
                         if ($row->enable_stock == 1 && auth()->user()->can('product.opening_stock')) {
-                            $html .=
-                            '<li><a href="#" data-href="' . action('OpeningStockController@add', ['product_id' => $row->id]) . '" class="add-opening-stock"><i class="fa fa-database"></i> ' . __("lang_v1.add_edit_opening_stock") . '</a></li>';
+                            $html .= '<li class="divider"></li>';
+                            $html .= '<li><a href="#" data-href="' . action('OpeningStockController@add', ['product_id' => $row->id]) . '" class="add-opening-stock"><i class="fa fa-database"></i> ' . __("lang_v1.add_edit_opening_stock") . '</a></li>';
+                            $html .= '<li><a href="#" onclick="openAddStock(this)" data-pr="'.$row->id.'"  data-stock="1" data-vr="'.$row->vid.'" class="add-stock"><i class="fa fa-database"></i>  Add 1 Stock and Print Label</a></li>';
+                            $html .= '<li><a href="#" onclick="openAddStock(this)" data-pr="'.$row->id.'" data-vr="'.$row->vid.'" data-stock="2" class="add-stock"><i class="fa fa-database"></i>  Add 2 Stock and Print Label</a></li>';
+                            $html .= '<li><a href="#" onclick="openAddStock(this)" data-pr="'.$row->id.'" data-vr="'.$row->vid.'"  data-stock="3" class="add-stock"><i class="fa fa-database"></i>  Add 3 Stock and Print Label</a></li>';
+                            // Quick access: Set current stock (small dedicated page)
+                            $html .= '<li class="divider"></li>';
+                            $html .= '<li><a href="' . action('ProductController@setCurrentStockQuickPage', [$row->id]) . '"><i class="fa fa-balance-scale"></i> ' . __('product.set_current_stock') . '</a></li>';
                         }
-                        $html .='<li><a href="#" onclick="openAddStock(this)" data-pr="'.$row->id.'"  data-stock="1" data-vr="'.$row->vid.'" class="add-stock"><i class="fa fa-database"></i>  Add 1 Stock and Print Label</a></li>';
-                        $html .='<li><a href="#" onclick="openAddStock(this)" data-pr="'.$row->id.'" data-vr="'.$row->vid.'" data-stock="2" class="add-stock"><i class="fa fa-database"></i>  Add 2 Stock and Print Label</a></li>';
-                        $html .='<li><a href="#" onclick="openAddStock(this)" data-pr="'.$row->id.'" data-vr="'.$row->vid.'"  data-stock="3" class="add-stock"><i class="fa fa-database"></i>  Add 3 Stock and Print Label</a></li>';
-
-
 
                         $html .= '</ul></div>';
                         return $html;
-
                     }
                 )
                 ->editColumn('product', function ($row) use ($is_woocommerce) {
@@ -374,6 +376,9 @@ class ProductController extends Controller
                 )
                 ->editColumn('updated_at', function($row) {
                     return date('m/d/Y H:i', strtotime($row->updated_at));
+                })
+                ->addColumn('created_by_name', function ($row) {
+                    return $row->created_by_name ?? '';
                 })
                 ->filterColumn('products.sku', function ($query, $keyword) {
                     $query->whereHas('variations', function($q) use($keyword){
@@ -472,6 +477,7 @@ class ProductController extends Controller
         }
 
         $categories = Category::forDropdown($business_id, 'product');
+        $category_combos = Category::flattenedProductCategoryCombos($business_id);
 
         $brands = Brands::forDropdown($business_id);
         $units = Unit::forDropdown($business_id, true);
@@ -522,7 +528,27 @@ class ProductController extends Controller
         $pos_module_data = $this->moduleUtil->getModuleData('get_product_screen_top_view');
 
         return view('product.create')
-            ->with(compact('categories', 'brands', 'units', 'taxes', 'barcode_types', 'default_profit_percent', 'tax_attributes', 'barcode_default', 'business_locations', 'duplicate_product', 'sub_categories', 'rack_details', 'selling_price_group_count', 'module_form_parts', 'product_types', 'common_settings', 'warranties', 'pos_module_data'));
+            ->with(compact(
+                'categories',
+                'category_combos',
+                'brands',
+                'units',
+                'taxes',
+                'barcode_types',
+                'default_profit_percent',
+                'tax_attributes',
+                'barcode_default',
+                'business_locations',
+                'duplicate_product',
+                'sub_categories',
+                'rack_details',
+                'selling_price_group_count',
+                'module_form_parts',
+                'product_types',
+                'common_settings',
+                'warranties',
+                'pos_module_data'
+            ));
     }
 
     private function product_types()
@@ -737,6 +763,7 @@ class ProductController extends Controller
 
         $business_id = $this->getBusinessId();
         $categories = Category::forDropdown($business_id, 'product');
+        $category_combos = Category::flattenedProductCategoryCombos($business_id);
         $brands = Brands::forDropdown($business_id);
         
         $tax_dropdown = TaxRate::forBusinessDropdown($business_id, true, true);
@@ -785,7 +812,28 @@ class ProductController extends Controller
         $alert_quantity = !is_null($product->alert_quantity) ? $this->productUtil->num_f($product->alert_quantity, false, null, true) : null;
 
         return view('product.edit')
-                ->with(compact('categories', 'brands', 'units', 'sub_units', 'taxes', 'tax_attributes', 'barcode_types', 'product', 'sub_categories', 'default_profit_percent', 'business_locations', 'rack_details', 'selling_price_group_count', 'module_form_parts', 'product_types', 'common_settings', 'warranties', 'pos_module_data', 'alert_quantity'));
+                ->with(compact(
+                    'categories',
+                    'category_combos',
+                    'brands',
+                    'units',
+                    'sub_units',
+                    'taxes',
+                    'tax_attributes',
+                    'barcode_types',
+                    'product',
+                    'sub_categories',
+                    'default_profit_percent',
+                    'business_locations',
+                    'rack_details',
+                    'selling_price_group_count',
+                    'module_form_parts',
+                    'product_types',
+                    'common_settings',
+                    'warranties',
+                    'pos_module_data',
+                    'alert_quantity'
+                ));
     }
 
     /**
@@ -906,6 +954,42 @@ class ProductController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Small standalone page to quickly set current stock from product list.
+     *
+     * @param \Illuminate\Http\Request $request
+     * @param int $id
+     * @return \Illuminate\Http\Response
+     */
+    public function setCurrentStockQuickPage(Request $request, $id)
+    {
+        if (
+            !auth()->user()->can('product.update') &&
+            !auth()->user()->can('product.opening_stock') &&
+            !$this->productUtil->is_admin(auth()->user())
+        ) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = $request->session()->get('user.business_id');
+
+        $product = Product::where('business_id', $business_id)
+            ->where('id', $id)
+            ->with([
+                'product_locations',
+                'product_variations.variations.variation_location_details',
+            ])
+            ->firstOrFail();
+
+        if (empty($product->enable_stock)) {
+            abort(404);
+        }
+
+        return view('product.set_current_stock_quick')
+            ->with(compact('product'));
+    }
+
 
     /**
      * Update the specified resource in storage.
@@ -1907,6 +1991,44 @@ class ProductController extends Controller
     }
 
     /**
+     * Bulk-send selected products to the Add Purchase form.
+     *
+     * @param \Illuminate\Http\Request $request
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function bulkSendToPurchase(Request $request)
+    {
+        if (!auth()->user()->can('product.view') || !auth()->user()->can('purchase.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $selected = $request->input('selected_products_for_purchase', '');
+        if (empty($selected)) {
+            return redirect()->back()->with([
+                'status' => [
+                    'success' => 0,
+                    'msg' => __('lang_v1.no_row_selected'),
+                ],
+            ]);
+        }
+
+        $ids = array_filter(array_map('intval', explode(',', $selected)));
+        if (empty($ids)) {
+            return redirect()->back()->with([
+                'status' => [
+                    'success' => 0,
+                    'msg' => __('lang_v1.no_row_selected'),
+                ],
+            ]);
+        }
+
+        // Build a simple comma-separated list for the purchase screen.
+        $idString = implode(',', $ids);
+
+        return redirect()->action('PurchaseController@create', ['from_products' => $idString]);
+    }
+
+    /**
      * Shows form to add selling price group prices for a product.
      *
      * @param  int  $id
@@ -2724,12 +2846,20 @@ class ProductController extends Controller
         $business_id = $request->session()->get('user.business_id');
 
         $categories = Category::forDropdown($business_id, 'product');
+        $category_combos = Category::flattenedProductCategoryCombos($business_id);
         $brands = Brands::forDropdown($business_id);
         $taxes = TaxRate::forBusinessDropdown($business_id, false)['tax_rates'];
         $business_locations = BusinessLocation::forDropdown($business_id);
         $units = Unit::forDropdown($business_id);
 
-        return view('product.mass-create')->with(compact('categories', 'brands', 'taxes', 'business_locations', 'units'));
+        return view('product.mass-create')->with(compact(
+            'categories',
+            'category_combos',
+            'brands',
+            'taxes',
+            'business_locations',
+            'units'
+        ));
     }
 
 
@@ -2968,6 +3098,7 @@ class ProductController extends Controller
         $business_id = $request->session()->get('user.business_id');
 
         $categories = Category::forDropdown($business_id, 'product');
+        $category_combos = Category::flattenedProductCategoryCombos($business_id);
 
         $brands = Brands::forDropdown($business_id);
 
@@ -2976,7 +3107,7 @@ class ProductController extends Controller
         $business_locations = BusinessLocation::forDropdown($business_id);
 
         return view('product.partials.mass_product_row')
-            ->with(compact('index', 'categories', 'brands', 'taxes', 'business_locations'))
+            ->with(compact('index', 'categories', 'category_combos', 'brands', 'taxes', 'business_locations'))
             ->render();
     }
 

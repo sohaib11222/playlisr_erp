@@ -23,6 +23,14 @@
     </div>
 </div>
 @endif
+@if(empty($only) || in_array('sell_list_filter_is_whatnot', $only))
+<div class="col-md-3">
+    <div class="form-group">
+        {!! Form::label('sell_list_filter_is_whatnot', 'Whatnot:') !!}
+        {!! Form::select('sell_list_filter_is_whatnot', ['' => __('lang_v1.all'), '1' => 'Whatnot only'], null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'sell_list_filter_is_whatnot']); !!}
+    </div>
+</div>
+@endif
 @if(empty($only) || in_array('sell_list_filter_date_range', $only))
 <div class="col-md-3">
     <div class="form-group">

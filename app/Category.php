@@ -72,6 +72,49 @@ class Category extends Model
     }
 
     /**
+     * Flatten Category + Subcategory into a single list of combinations
+     * that can be used to power a merged dropdown.
+     *
+     * Each entry has:
+     * - id: string identifier (categoryId_subCategoryId or categoryId_0)
+     * - category_id: int
+     * - sub_category_id: int|null
+     * - label: human readable label, e.g. "Used vinyl > Rock" or "Accessories"
+     *
+     * @param int $business_id
+     * @return array
+     */
+    public static function flattenedProductCategoryCombos($business_id)
+    {
+        $categories = self::catAndSubCategories($business_id);
+        $combos = [];
+
+        foreach ($categories as $category) {
+            $hasSubcats = !empty($category['sub_categories']);
+
+            if ($hasSubcats) {
+                foreach ($category['sub_categories'] as $subCat) {
+                    $combos[] = [
+                        'id' => $category['id'] . '_' . (int)$subCat['id'],
+                        'category_id' => (int)$category['id'],
+                        'sub_category_id' => (int)$subCat['id'],
+                        'label' => $category['name'] . ' > ' . $subCat['name'],
+                    ];
+                }
+            } else {
+                $combos[] = [
+                    'id' => $category['id'] . '_0',
+                    'category_id' => (int)$category['id'],
+                    'sub_category_id' => 0,
+                    'label' => $category['name'],
+                ];
+            }
+        }
+
+        return $combos;
+    }
+
+    /**
      * Category Dropdown
      *
      * @param int $business_id

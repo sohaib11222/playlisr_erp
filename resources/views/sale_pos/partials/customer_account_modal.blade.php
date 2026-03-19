@@ -1,6 +1,6 @@
 <!-- Customer Account Details Modal -->
 <div class="modal fade" id="customer_account_modal" tabindex="-1" role="dialog" aria-labelledby="customerAccountModalLabel">
-    <div class="modal-dialog modal-lg" role="document">
+    <div class="modal-dialog modal-lg" role="document" style="max-width: 95%; margin: 10px auto;">
         <div class="modal-content">
             <div class="modal-header">
                 <button type="button" class="close" data-dismiss="modal" aria-label="Close">
@@ -8,7 +8,7 @@
                 </button>
                 <h4 class="modal-title" id="customerAccountModalLabel">Customer Account Details</h4>
             </div>
-            <div class="modal-body">
+            <div class="modal-body" style="overflow-x: hidden; overflow-y: auto; max-height: 70vh;">
                 <div id="customer_account_loading" style="text-align: center; padding: 20px;">
                     <i class="fa fa-spinner fa-spin fa-2x"></i>
                     <p>Loading customer information...</p>
@@ -21,7 +21,7 @@
                     </div>
                     
                     <div class="row" style="margin-top: 20px;">
-                        <div class="col-md-6">
+                        <div class="col-xs-12 col-md-6">
                             <div class="box box-primary">
                                 <div class="box-header">
                                     <h3 class="box-title">Account Summary</h3>
@@ -67,7 +67,7 @@
                             </div>
                         </div>
                         
-                        <div class="col-md-6">
+                        <div class="col-xs-12 col-md-6">
                             <div class="box box-success">
                                 <div class="box-header">
                                     <h3 class="box-title">Gift Cards</h3>

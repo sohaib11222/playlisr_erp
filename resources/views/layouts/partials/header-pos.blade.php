@@ -28,7 +28,8 @@
   <div class="row">
     <div class="col-md-6">
       <div class="m-6 mt-5" style="display: flex;">
-        <p ><strong>@lang('sale.location'): &nbsp;</strong> 
+        <p class="pos-header-store-user" style="font-size: 18px; font-weight: 700; margin-bottom: 0;">
+          <strong>Store:&nbsp;</strong>
           @if(empty($transaction->location_id))
             @if(count($business_locations) > 1)
             <div style="width: 28%;margin-bottom: 5px;">
@@ -41,7 +42,12 @@
             @endif
           @endif
 
-          @if(!empty($transaction->location_id)) {{$transaction->location->name}} @endif &nbsp; <span class="curr_datetime">{{ @format_datetime('now') }}</span> <i class="fa fa-keyboard hover-q text-muted" aria-hidden="true" data-container="body" data-toggle="popover" data-placement="bottom" data-content="@include('sale_pos.partials.keyboard_shortcuts_details')" data-html="true" data-trigger="hover" data-original-title="" title=""></i>
+          @if(!empty($transaction->location_id)) {{$transaction->location->name}} @endif
+          &nbsp;&nbsp;|&nbsp;&nbsp;
+          <strong>User:&nbsp;</strong>{{ auth()->user()->first_name ?? '' }} {{ auth()->user()->last_name ?? '' }}
+          &nbsp;&nbsp;|&nbsp;&nbsp;
+          <span class="curr_datetime" style="font-size: 14px; font-weight: 500;">{{ @format_datetime('now') }}</span>
+          <i class="fa fa-keyboard hover-q text-muted" aria-hidden="true" data-container="body" data-toggle="popover" data-placement="bottom" data-content="@include('sale_pos.partials.keyboard_shortcuts_details')" data-html="true" data-trigger="hover" data-original-title="" title=""></i>
         </p>
       </div>
     </div>

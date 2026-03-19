@@ -45,6 +45,7 @@
                         <th>@lang('sale.customer_name')</th>
                         <th>@lang('lang_v1.contact_no')</th>
                         <th>@lang('sale.location')</th>
+                        <th>Whatnot</th>
                         <th>@lang('sale.payment_status')</th>
                         <th>@lang('lang_v1.payment_method')</th>
                         <th>@lang('sale.total_amount')</th>
@@ -71,6 +72,7 @@
                 <tfoot>
                     <tr class="bg-gray font-17 footer-total text-center">
                         <td colspan="6"><strong>@lang('sale.total'):</strong></td>
+                        <td></td>
                         <td class="footer_payment_status_count"></td>
                         <td class="payment_method_count"></td>
                         <td class="footer_sale_total"></td>
@@ -135,6 +137,7 @@ $(document).ready( function(){
                 d.location_id = $('#sell_list_filter_location_id').val();
                 d.customer_id = $('#sell_list_filter_customer_id').val();
                 d.payment_status = $('#sell_list_filter_payment_status').val();
+                d.is_whatnot = $('#sell_list_filter_is_whatnot').val();
                 d.created_by = $('#created_by').val();
                 d.sales_cmsn_agnt = $('#sales_cmsn_agnt').val();
                 d.service_staffs = $('#service_staffs').val();
@@ -164,6 +167,7 @@ $(document).ready( function(){
             { data: 'conatct_name', name: 'conatct_name'},
             { data: 'mobile', name: 'contacts.mobile'},
             { data: 'business_location', name: 'bl.name'},
+            { data: 'is_whatnot', name: 'is_whatnot', orderable: false, searchable: false},
             { data: 'payment_status', name: 'payment_status'},
             { data: 'payment_methods', orderable: false, "searchable": false},
             { data: 'final_total', name: 'final_total'},
@@ -210,11 +214,11 @@ $(document).ready( function(){
             $('.payment_method_count').html(__count_status(data, 'payment_methods'));
         },
         createdRow: function( row, data, dataIndex ) {
-            $( row ).find('td:eq(6)').attr('class', 'clickable_td');
+            $( row ).find('td:eq(7)').attr('class', 'clickable_td');
         }
     });
 
-    $(document).on('change', '#sell_list_filter_location_id, #sell_list_filter_customer_id, #sell_list_filter_payment_status, #created_by, #sales_cmsn_agnt, #service_staffs, #shipping_status, #sell_list_filter_source',  function() {
+    $(document).on('change', '#sell_list_filter_location_id, #sell_list_filter_customer_id, #sell_list_filter_payment_status, #sell_list_filter_is_whatnot, #created_by, #sales_cmsn_agnt, #service_staffs, #shipping_status, #sell_list_filter_source',  function() {
         sell_table.ajax.reload();
     });
 

@@ -740,6 +740,17 @@ $(document).ready(function() {
         cp_element.change();
     });
     toggle_search();
+
+    // Pre-fill purchase lines from product IDs (bulk-send from product list)
+    var prefillIdsRaw = $('#prefill_product_ids').val() || '';
+    if (prefillIdsRaw) {
+        var prefillIds = prefillIdsRaw.split(',').map(function(id) {
+            return parseInt(id, 10);
+        }).filter(function(id) { return !isNaN(id) && id > 0; });
+        if (prefillIds.length) {
+            add_mass_products_sequentially(prefillIds);
+        }
+    }
 });
 
 function get_purchase_entry_row(product_id, variation_id, callback, row_count_override) {

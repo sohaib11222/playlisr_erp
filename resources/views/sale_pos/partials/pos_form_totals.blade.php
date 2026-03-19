@@ -1,12 +1,13 @@
 <div class="row pos_form_totals">
 	<div class="col-md-12">
-		@if(!empty($default_location))
-		<div class="alert alert-info pos-store-awareness" style="margin-bottom: 12px; padding: 10px 14px;">
-			<strong><i class="fa fa-map-marker-alt"></i> @lang('sale.location'):</strong>
-			<span id="pos_display_location_name">{{ $default_location->name ?? '' }}</span>
-			<small class="text-muted">— @lang('lang_v1.pos_store_awareness_help')</small>
+		<input type="hidden" name="store_credit_used_amount" id="store_credit_used_amount" value="0">
+		<div id="pos_store_credit_row" class="form-group" style="margin-bottom: 12px; display: none;">
+			<strong>Store Credit Available:</strong>
+			<span id="pos_store_credit_amount" class="text-success" style="font-weight: bold; margin-right: 8px;">$0.00</span>
+			<button type="button" class="btn btn-xs btn-success" id="btn_use_store_credit">
+				Use Store Credit
+			</button>
 		</div>
-		@endif
 		@if(!empty($pos_settings['enable_plastic_bag_charge']))
 		<div class="form-group" style="margin-bottom: 12px;">
 			<div class="checkbox">
@@ -21,21 +22,22 @@
 			<input type="hidden" id="plastic_bag_price" value="{{ $pos_settings['plastic_bag_price'] ?? 0.10 }}">
 		</div>
 		@endif
-		<table class="table table-condensed">
+		<table class="table table-condensed" style="margin-top: 8px; margin-bottom: 8px; font-size: 14px;">
 			<tr>
-				<td><b>@lang('sale.item'):</b>&nbsp;
+				<td style="white-space: nowrap;">
+					<b>@lang('sale.item'):</b>&nbsp;
 					<span class="total_quantity">0</span></td>
-				<td>
-					<b>Without Tax:</b> &nbsp;
-					<span id="pre_tax_amount" class="text-success" style="font-weight: bold;">0</span>
+				<td style="white-space: nowrap;">
+					<b>Without Tax:</b>&nbsp;
+					<span id="pre_tax_amount" class="text-dark" style="font-weight: bold; font-size: 20px;">0</span>
 				</td>
-				<td class="@if($pos_settings['disable_order_tax'] != 0) hide @endif">
-					<b>Tax:</b> &nbsp;
+				<td class="@if($pos_settings['disable_order_tax'] != 0) hide @endif" style="white-space: nowrap;">
+					<b>Tax:</b>&nbsp;
 					<span id="order_tax_display" style="font-weight: bold;">0</span>
 				</td>
-				<td>
-					<b>Total (with Tax):</b> &nbsp;
-					<span id="total_with_tax" style="font-weight: bold;">0</span>
+				<td style="white-space: nowrap;">
+					<b>Total (with Tax):</b>&nbsp;
+					<span id="total_with_tax" style="font-weight: bold; font-size: 15px;">0</span>
 				</td>
 			</tr>
 			<tr>
@@ -55,6 +57,9 @@
 							@endif
 							<button type="button" class="btn btn-xs btn-info" id="pos-manual-discount" title="Apply Manual Discount" style="margin-left: 5px;">
 								<i class="fa fa-percent"></i> Manual Discount
+							</button>
+							<button type="button" class="btn btn-xs btn-primary" id="pos-preset-discount" title="Apply Preset Discount" style="margin-left: 5px;">
+								<i class="fa fa-tags"></i> Preset Discount
 							</button>
 						
 							<span id="total_discount">0</span>

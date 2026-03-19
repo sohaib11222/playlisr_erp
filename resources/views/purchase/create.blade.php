@@ -19,6 +19,7 @@
 	<input type="hidden" id="p_symbol" value="{{$currency_details->symbol}}">
 	<input type="hidden" id="p_thousand" value="{{$currency_details->thousand_separator}}">
 	<input type="hidden" id="p_decimal" value="{{$currency_details->decimal_separator}}">
+	<input type="hidden" id="prefill_product_ids" value="{{ !empty($from_product_ids) ? implode(',', $from_product_ids) : '' }}">
 
 	@include('layouts.partials.error')
 

@@ -89,6 +89,28 @@
 
 @stop
 @section('css')
+	<!-- POS: scrollable product table so totals/actions stay visible without page scroll -->
+	<style>
+		.pos_product_div {
+			max-height: 50vh;
+			overflow-y: auto;
+			-webkit-overflow-scrolling: touch;
+		}
+		.pos_form_totals {
+			flex-shrink: 0;
+		}
+		/* Keep checkout actions visible on short/old monitors */
+		@@media (min-width: 768px) and (max-height: 900px) {
+			.pos-form-actions {
+				position: sticky;
+				bottom: 0;
+				z-index: 1030;
+				background: #f5f6f8;
+				padding: 8px 0;
+				border-top: 1px solid #d9dde3;
+			}
+		}
+	</style>
 	<!-- include module css -->
     @if(!empty($pos_module_data))
         @foreach($pos_module_data as $key => $value)

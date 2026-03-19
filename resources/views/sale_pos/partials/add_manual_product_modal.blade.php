@@ -19,8 +19,7 @@
                                 <th width="5%">#</th>
                                 <th width="20%">Product Name *</th>
                                 <th width="15%">Artist</th>
-                                <th width="15%">Category *</th>
-                                <th width="15%">Sub Category *</th>
+                                <th width="30%">Category / Sub Category *</th>
                                 <th width="10%">Price *</th>
                                 <th width="5%">Action</th>
                             </tr>
@@ -42,33 +41,61 @@
                                            placeholder="Artist">
                                 </td>
                                 <td>
+                                    @php
+                                        $categoryCombos = [];
+                                        if (!empty($categories) && is_array($categories)) {
+                                            foreach ($categories as $cat) {
+                                                if (!empty($cat['sub_categories'])) {
+                                                    foreach ($cat['sub_categories'] as $subCat) {
+                                                        $categoryCombos[] = [
+                                                            'id' => $cat['id'] . '_' . $subCat['id'],
+                                                            'category_id' => $cat['id'],
+                                                            'sub_category_id' => $subCat['id'],
+                                                            'label' => $cat['name'] . ' > ' . $subCat['name'],
+                                                        ];
+                                                    }
+                                                } else {
+                                                    $categoryCombos[] = [
+                                                        'id' => $cat['id'] . '_0',
+                                                        'category_id' => $cat['id'],
+                                                        'sub_category_id' => null,
+                                                        'label' => $cat['name'],
+                                                    ];
+                                                }
+                                            }
+                                        } elseif (!empty($categoriesForDropdown)) {
+                                            foreach ($categoriesForDropdown as $key => $value) {
+                                                $categoryCombos[] = [
+                                                    'id' => $key . '_0',
+                                                    'category_id' => $key,
+                                                    'sub_category_id' => null,
+                                                    'label' => $value,
+                                                ];
+                                            }
+                                        }
+                                    @endphp
+
                                     <div style="display:flex; gap:4px; align-items:center;">
-                                        <select name="products[0][category_id]" 
-                                                class="form-control select2 manual_product_category" 
+                                        <select name="products[0][category_combo]" 
+                                                class="form-control select2 manual_category_combo" 
                                                 data-row="0"
                                                 required>
                                             <option value="">Please select</option>
-                                            @foreach($categoriesForDropdown as $key => $value)
-                                                <option value="{{ $key }}">{{ $value }}</option>
+                                            @foreach($categoryCombos as $combo)
+                                                <option value="{{ $combo['id'] }}"
+                                                        data-category-id="{{ $combo['category_id'] }}"
+                                                        data-sub-category-id="{{ $combo['sub_category_id'] ?? '' }}">
+                                                    {{ $combo['label'] }}
+                                                </option>
                                             @endforeach
                                         </select>
-                                        <button type="button" class="btn btn-primary btn-xs manual-copy-down" data-class="manual_product_category" data-row-index="0" title="Copy Down">
+                                        <button type="button" class="btn btn-primary btn-xs manual-copy-down" data-class="manual_category_combo" data-row-index="0" title="Copy Down">
                                             <i class="fa fa-arrow-down"></i>
                                         </button>
                                     </div>
-                                </td>
-                                <td>
-                                    <div style="display:flex; gap:4px; align-items:center;">
-                                        <select name="products[0][sub_category_id]" 
-                                                class="form-control select2 manual_product_sub_category" 
-                                                data-row="0"
-                                                required>
-                                            <option value="">Please select</option>
-                                        </select>
-                                        <button type="button" class="btn btn-primary btn-xs manual-copy-down" data-class="manual_product_sub_category" data-row-index="0" title="Copy Down">
-                                            <i class="fa fa-arrow-down"></i>
-                                        </button>
-                                    </div>
+                                    {{-- Hidden fields actually sent to backend --}}
+                                    <input type="hidden" name="products[0][category_id]" class="manual_category_id" data-row="0">
+                                    <input type="hidden" name="products[0][sub_category_id]" class="manual_sub_category_id" data-row="0">
                                 </td>
                                 <td>
                                     <input type="text" 

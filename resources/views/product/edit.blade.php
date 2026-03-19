@@ -97,16 +97,33 @@
 
             <div class="col-sm-4 @if(!session('business.enable_category')) hide @endif">
               <div class="form-group">
-                {!! Form::label('category_id', __('product.category') . ' *:') !!}
-                  {!! Form::select('category_id', $categories, $product->category_id, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2', 'required']); !!}
+                {!! Form::label('category_combo', __('product.category') . ' / ' . __('product.sub_category') . ' *:') !!}
+                @php
+                    $categoryCombos = isset($category_combos) ? $category_combos : [];
+                    $selectedComboId = null;
+                    if (!empty($product->category_id)) {
+                        $subIdForCombo = !empty($product->sub_category_id) ? (int)$product->sub_category_id : 0;
+                        $selectedComboId = $product->category_id . '_' . $subIdForCombo;
+                    }
+                @endphp
+                <select name="category_combo" id="category_combo" class="form-control select2">
+                    <option value="">{{ __('messages.please_select') }}</option>
+                    @foreach($categoryCombos as $combo)
+                        @php
+                            $isSelected = !empty($selectedComboId) && $combo['id'] == $selectedComboId;
+                        @endphp
+                        <option value="{{ $combo['id'] }}"
+                                data-category-id="{{ $combo['category_id'] }}"
+                                data-sub-category-id="{{ isset($combo['sub_category_id']) ? $combo['sub_category_id'] : '' }}"
+                                @if($isSelected) selected @endif>
+                            {{ $combo['label'] }}
+                        </option>
+                    @endforeach
+                </select>
               </div>
-            </div>
-
-            <div class="col-sm-4 @if(!(session('business.enable_category') && session('business.enable_sub_category'))) hide @endif">
-              <div class="form-group">
-                {!! Form::label('sub_category_id', __('product.sub_category') . ' *:') !!}
-                  {!! Form::select('sub_category_id', $sub_categories, $product->sub_category_id, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2', 'required']); !!}
-              </div>
+              {{-- Hidden fields actually submitted to backend --}}
+              {!! Form::hidden('category_id', $product->category_id, ['id' => 'category_id']) !!}
+              {!! Form::hidden('sub_category_id', $product->sub_category_id, ['id' => 'sub_category_id']) !!}
             </div>
 
             <div class="col-sm-4">
@@ -285,6 +302,45 @@
   <script src="{{ asset('js/product.js?v=' . $asset_v) }}"></script>
   <script type="text/javascript">
     $(document).ready( function(){
+      function tokenizeCategoryComboQuery(text) {
+        if (text === undefined || text === null) return [];
+        return String(text).toLowerCase().trim().split(/[^a-z0-9]+/g).filter(Boolean);
+      }
+
+      function categoryComboMatcher(params, data) {
+        if (!data || !data.text) return data;
+        var term = params && params.term ? String(params.term).toLowerCase().trim() : '';
+        if (!term) return data;
+
+        var label = String(data.text || '').toLowerCase();
+        var words = label.match(/[a-z0-9]+/g) || [];
+        var tokens = tokenizeCategoryComboQuery(term);
+        if (!tokens.length) return data;
+
+        var ok = tokens.every(function(tok) {
+          return label.indexOf(tok) !== -1 || words.some(function(w) { return w.indexOf(tok) === 0; });
+        });
+        return ok ? data : null;
+      }
+
+      function ensureCategoryComboMatcher() {
+        var $combo = $('#category_combo');
+        if (!$combo.length) return;
+        var current = $combo.val();
+        try {
+          if ($combo.data('select2')) {
+            $combo.select2('destroy');
+          }
+        } catch (e) {}
+        $combo.select2({ matcher: categoryComboMatcher });
+        if (current !== undefined && current !== null && current !== '') {
+          $combo.val(current).trigger('change.select2');
+        }
+      }
+
+      ensureCategoryComboMatcher();
+      setTimeout(ensureCategoryComboMatcher, 0);
+
       __page_leave_confirmation('#product_add_form');
 
       $('#set_current_stock_form').on('submit', function (e) {

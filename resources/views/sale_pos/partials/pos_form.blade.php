@@ -22,7 +22,7 @@
 				value="{{ $walk_in_customer['selling_price_group_id'] ?? ''}}" >
 				@endif
 				{!! Form::select('contact_id', 
-					[], null, ['class' => 'form-control mousetrap', 'id' => 'customer_id', 'placeholder' => 'Do you have a Nivessa rewards account?', 'required', 'style' => 'width: 100%;']); !!}
+					[], null, ['class' => 'form-control mousetrap', 'id' => 'customer_id', 'placeholder' => 'Nivessa rewards account?', 'required', 'style' => 'width: 100%;']); !!}
 			</div>
 			<div style="margin-top: 14px;">
 				<button type="button" class="btn btn-default bg-white btn-flat btn-sm add_new_customer" data-name=""  @if(!auth()->user()->can('customer.create')) disabled @endif><i class="fa fa-plus-circle text-primary"></i> create account/rewards</button>
@@ -34,24 +34,26 @@
 		<!-- Customer Account Info Display -->
 		<div id="customer_account_info" class="customer-account-info" style="display: none; margin-bottom: 10px; padding: 8px; background-color: #f8f9fa; border-radius: 4px; border: 1px solid #dee2e6;">
 			<div class="row">
-				<div class="col-md-12">
+				<div class="col-xs-12 col-sm-8">
 					<strong id="customer_account_name" style="color: #495057;"></strong>
-					<button type="button" class="btn btn-xs btn-info pull-right" id="view_customer_details_btn" style="margin-left: 10px;">
+				</div>
+				<div class="col-xs-12 col-sm-4 text-right" style="margin-top: 4px;">
+					<button type="button" class="btn btn-xs btn-info" id="view_customer_details_btn">
 						<i class="fa fa-info-circle"></i> View Details
 					</button>
 				</div>
 			</div>
 			<div class="row" style="margin-top: 5px;">
-				<div class="col-md-3">
+				<div class="col-xs-6 col-sm-6 col-md-3">
 					<small><strong>Credit:</strong> <span id="customer_account_balance" class="text-danger">$0.00</span></small>
 				</div>
-				<div class="col-md-3">
+				<div class="col-xs-6 col-sm-6 col-md-3">
 					<small><strong>Gift Cards:</strong> <span id="customer_gift_card_balance" class="text-success">$0.00</span></small>
 				</div>
-				<div class="col-md-3">
+				<div class="col-xs-6 col-sm-6 col-md-3">
 					<small><strong>Lifetime:</strong> <span id="customer_lifetime_purchases">$0.00</span></small>
 				</div>
-				<div class="col-md-3">
+				<div class="col-xs-6 col-sm-6 col-md-3">
 					<small><strong>Points:</strong> <span id="customer_loyalty_points">0</span></small>
 				</div>
 			</div>
@@ -247,6 +249,9 @@
 							@lang('restaurant.service_staff')
 						</th>
 					@endif
+					<th class="text-center col-md-2 {{$hide_tax}}">
+						@lang('lang_v1.purchase_price') 
+					</th>
 					<th class="text-center col-md-2 {{$hide_tax}}">
 						@lang('sale.price_inc_tax')
 					</th>

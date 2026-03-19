@@ -12,26 +12,41 @@
       <div class="row">
         <div class="col-md-12">
           <div class="form-group">
+            <label>Preset</label>
+            <select id="discount_preset" class="form-control select2" style="width: 100%;">
+              <option value="">— None —</option>
+              <option value="Senior Discount" data-type="percentage">Senior Discount</option>
+              <option value="Military Discount" data-type="percentage">Military Discount</option>
+              <option value="Student Discount" data-type="percentage">Student Discount</option>
+              <option value="Senior Citizens Discount" data-type="percentage">Senior Citizens Discount</option>
+            </select>
+            <p class="help-block">Select a preset to fill name and set type to percentage.</p>
+          </div>
+        </div>
+        <div class="col-md-12">
+          <div class="form-group">
             {!! Form::label('name', __( 'unit.name' ) . ':*') !!}
-              {!! Form::text('name', $discount->name, ['class' => 'form-control', 'required', 'placeholder' => __( 'unit.name' ) ]); !!}
+              {!! Form::text('name', $discount->name, ['class' => 'form-control', 'required', 'placeholder' => __( 'unit.name' ) ]) !!}
           </div>
         </div>
         <div class="col-md-12">
           <div class="form-group">
             {!! Form::label('variation_ids', __('report.products') . ':') !!}
-              {!! Form::select('variation_ids[]', $variations, array_keys($variations), ['id' => "variation_ids", 'class' => 'form-control', 'multiple']); !!}
+              {!! Form::select('variation_ids[]', $variations, array_keys($variations), ['id' => "variation_ids", 'class' => 'form-control', 'multiple', 'data-placeholder' => 'All Products']) !!}
+              <p class="help-block">Leave empty to apply to all products.</p>
           </div>
         </div>
         <div class="col-md-6 @if(!empty($variations)) hide @endif" id="brand_input">
           <div class="form-group">
             {!! Form::label('brand_id', __('product.brand') . ':') !!}
-              {!! Form::select('brand_id', $brands, $discount->brand_id, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2', 'style' => 'width: 100%;']); !!}
+              {!! Form::select('brand_id', $brands, $discount->brand_id, ['placeholder' => __('lang_v1.all'), 'class' => 'form-control select2', 'style' => 'width: 100%;']) !!}
           </div>
         </div>
         <div class="col-sm-6 @if(!empty($variations)) hide @endif" id="category_input">
           <div class="form-group">
             {!! Form::label('category_id', __('product.category') . ':') !!}
-              {!! Form::select('category_id', $categories, $discount->category_id, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2', 'style' => 'width: 100%;']); !!}
+              {!! Form::select('category_id', $categories, $discount->category_id, ['placeholder' => __('lang_v1.all'), 'class' => 'form-control select2', 'style' => 'width: 100%;']) !!}
+              <p class="help-block">Brand/Category can be left as All.</p>
           </div>
         </div>
         <div class="col-sm-6">
@@ -114,3 +129,16 @@
 
   </div><!-- /.modal-content -->
 </div><!-- /.modal-dialog -->
+<script>
+$(document).on('change', '#discount_preset', function() {
+  var opt = $(this).find('option:selected');
+  var name = opt.val();
+  var type = opt.data('type');
+  if (name) {
+    $(this).closest('form').find('input[name="name"]').val(name);
+    if (type) {
+      $(this).closest('form').find('select[name="discount_type"]').val(type).trigger('change');
+    }
+  }
+});
+</script>

@@ -86,6 +86,11 @@
 		@endif
 	</td>
 
+	{{-- Purchase Price (read-only placeholder for manual rows) --}}
+	<td class="text-center {{$hide_tax}}">
+		<span class="display_currency" data-currency_symbol="true">0</span>
+	</td>
+
 	{{-- Unit Price Inc Tax --}}
 	<td class="{{$hide_tax}}">
 		<input type="text" 
