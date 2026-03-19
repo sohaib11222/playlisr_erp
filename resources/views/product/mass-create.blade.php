@@ -52,14 +52,17 @@
         /* Category / Sub Category - need room for select2 + copy-down */
         #mass_create_table .col-select {
             min-width: 200px;
+            width: 200px;
         }
         /* Artist (narrower) */
         #mass_create_table .col-artist {
-            min-width: 100px;
+            min-width: 90px;
+            width: 90px;
         }
         /* Business Locations (narrower) */
         #mass_create_table .col-locations {
-            min-width: 140px;
+            min-width: 130px;
+            width: 130px;
         }
         /* Action column - narrow */
         #mass_create_table .col-action {
@@ -99,7 +102,12 @@
         /* Подвал таблицы */
         .tfoot {
             display: table-footer-group;
-            background: #f5f5f5;
+            background: transparent;
+        }
+
+        /* Mass Add footer action buttons background should match page */
+        #mass_add_action_buttons {
+            background: transparent !important;
         }
 
         /* Ряды таблицы */
@@ -386,12 +394,12 @@
                 </tr>
                 <tr class="tr">
                     <td class="td" colspan="1">
-                        <div id="mass_add_action_buttons" style="display: flex; flex-wrap: nowrap; gap: 10px; align-items: center; white-space: nowrap; overflow-x: auto;">
-                            <button type="button" class="btn btn-info" id="verify_all_categories">
+                        <div id="mass_add_action_buttons" style="display: flex; flex-direction: column; gap: 10px; width: 100%; box-sizing: border-box; padding: 0; overflow: visible;">
+                            <button type="button" class="btn btn-info btn-block" id="verify_all_categories" style="box-sizing: border-box; margin: 0; padding-left: 10px; padding-right: 10px; white-space: normal; word-break: break-word;">
                                 <i class="fa fa-check-circle"></i> Verify All Categories
                             </button>
-                            <button type="button" class="btn btn-success" id="save_all_products">Save All Products</button>
-                            <button type="button" class="btn btn-warning" id="save_and_send_to_purchase" style="font-weight: bold;">
+                            <button type="button" class="btn btn-success btn-block" id="save_all_products" style="box-sizing: border-box; margin: 0; padding-left: 10px; padding-right: 10px; white-space: normal; word-break: break-word;">Save All Products</button>
+                            <button type="button" class="btn btn-warning btn-block" id="save_and_send_to_purchase" style="font-weight: bold; box-sizing: border-box; margin: 0; padding-left: 10px; padding-right: 10px; white-space: normal; word-break: break-word;">
                                 <i class="fa fa-save"></i> Save &amp; send to add purchase
                             </button>
                         </div>

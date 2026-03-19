@@ -81,10 +81,20 @@
         </div>
     </td>
     <td class="td price-col" data-hide-on-selection="yes" data-row-index="{{ $index }}">
-        {!! Form::text("products[{$index}][single_dpp_inc_tax]", null, [
-            'class' => 'form-control',
-            'placeholder' => __('product.purchase_price')
-        ]) !!}
+        <div style="display:flex; gap:2px; align-items:center;">
+            {!! Form::text("products[{$index}][single_dpp_inc_tax]", null, [
+                'class' => 'form-control massadd_purchase_price',
+                'placeholder' => __('product.purchase_price')
+            ]) !!}
+            <button type="button"
+                    class="btn btn-primary btn-xs copy-down"
+                    style="padding: 4px 6px; border-radius: 0; flex-shrink: 0;"
+                    data-class="massadd_purchase_price"
+                    data-row-index="{{ $index }}"
+                    title="Copy Down">
+                <i class="fa fa-arrow-down"></i>
+            </button>
+        </div>
     </td>
     <td class="td price-col product-selling-price-row" data-hide-on-selection="yes" data-row-index="{{ $index }}">
         {!! Form::text("products[{$index}][single_dsp_inc_tax]", null, [

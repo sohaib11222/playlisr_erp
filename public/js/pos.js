@@ -937,6 +937,19 @@ $(document).ready(function() {
         }
         var useAmount = requested;
         $('#store_credit_used_amount').val(__number_f(useAmount, false, false, __currency_precision));
+        // Reflect remaining store credit immediately in the POS header row.
+        var remainingAdvance = Math.max(0, advanceBalance - useAmount);
+        $('#advance_balance').val(remainingAdvance);
+        updatePosStoreCreditUI(remainingAdvance);
+        try {
+            if (window.console && console.log) {
+                console.log('[POS store credit applied]', {
+                    before_balance: advanceBalance,
+                    used_amount: useAmount,
+                    remaining_balance: remainingAdvance
+                });
+            }
+        } catch (e) {}
 
         var $firstRow = $('#payment_rows_div').find('.payment_row').first();
         if ($firstRow.length) {
@@ -946,7 +959,10 @@ $(document).ready(function() {
                 $method.val('advance').trigger('change');
                 __write_number($amount, useAmount);
                 $amount.trigger('change');
-                setTimeout(function () { calculate_balance_due(); }, 50);
+                // Recalculate immediately so "Total Payable" updates right away.
+                calculate_balance_due();
+                // Also update the visible order-total summary lines.
+                apply_store_credit_to_order_totals_display();
             }
         }
 
@@ -1010,6 +1026,7 @@ $(document).ready(function() {
                 // Force balance due / total paying to update immediately
                 setTimeout(function () {
                     calculate_balance_due();
+                    apply_store_credit_to_order_totals_display();
                 }, 50);
             }
         }
@@ -1021,10 +1038,6 @@ $(document).ready(function() {
 
     //Finalize without showing payment options
     $('button.pos-express-finalize').click(function() {
-        if (window.pos_submit_in_progress) {
-            return false;
-        }
-
         //Check if product is present or not.
         if ($('table#pos_table tbody').find('.product_row').length <= 0) {
             toastr.warning(LANG.no_products_added);
@@ -1044,7 +1057,6 @@ $(document).ready(function() {
         //If pay method is credit sale submit form
         if (pay_method == 'credit_sale') {
             $('#is_credit_sale').val(1);
-            window.pos_submit_in_progress = true;
             pos_form_obj.submit();
             return true;
         } else {
@@ -1080,7 +1092,23 @@ $(document).ready(function() {
         } else if (pay_method == 'suspend') {
             $('div#confirmSuspendModal').modal('show');
         } else {
-            window.pos_submit_in_progress = true;
+            // Safety: ensure we don't get stuck in a "submit in progress" state.
+            window.pos_submit_in_progress = false;
+            // Ensure balance/paid inputs are synced right before submit.
+            try {
+                if (window.console && console.log) {
+                    console.log('[POS express finalize]', {
+                        pay_method: pay_method,
+                        final_total: __read_number($('input#final_total_input')),
+                        total_paying: __read_number($('input#total_paying_input')),
+                        in_balance_due: $('input#in_balance_due').val(),
+                        store_credit_used_amount: $('#store_credit_used_amount').val(),
+                        discount_type: $('#discount_type').val(),
+                        discount_amount: $('#discount_amount').val()
+                    });
+                }
+            } catch (e) {}
+            calculate_balance_due();
             pos_form_obj.submit();
         }
     });
@@ -1106,14 +1134,12 @@ $(document).ready(function() {
         $('input#card_security_0').val($('#card_security').val());
 
         $('div#card_details_modal').modal('hide');
-        window.pos_submit_in_progress = true;
         pos_form_obj.submit();
     });
 
     $('button#pos-suspend').click(function() {
         $('input#is_suspend').val(1);
         $('div#confirmSuspendModal').modal('hide');
-        window.pos_submit_in_progress = true;
         pos_form_obj.submit();
         $('input#is_suspend').val(0);
     });
@@ -1184,6 +1210,22 @@ $(document).ready(function() {
             // var total_payble = __read_number($('input#final_total_input'));
             // var total_paying = __read_number($('input#total_paying_input'));
             var cnf = true;
+
+            // Debug: understand why Cash/exress finalize might appear to do nothing.
+            try {
+                if (window.console && console.log) {
+                    console.log('[POS submitHandler]', {
+                        in_balance_due: $('input#in_balance_due').val(),
+                        final_total: $('input#final_total_input').val(),
+                        total_paying_input: $('input#total_paying_input').val(),
+                        payment_rows_count: $('#payment_rows_div .payment_row').length,
+                        store_credit_used_amount: $('#store_credit_used_amount').val(),
+                        discount_type: $('#discount_type').val(),
+                        discount_amount: $('#discount_amount').val(),
+                        discount_reason: $('#discount_reason').val()
+                    });
+                }
+            } catch (e) {}
 
             //Ignore if the difference is less than 0.5
             if ($('input#in_balance_due').val() >= 0.5) {
@@ -2829,6 +2871,8 @@ function calculate_billing_details(price_total) {
     $(document).trigger('invoice_total_calculated');
 
     calculate_balance_due();
+    // If store credit is set, update the visible order summary spans to match remaining due.
+    apply_store_credit_to_order_totals_display();
 }
 
 function pos_discount(total_amount) {
@@ -2962,8 +3006,78 @@ function calculate_balance_due() {
     __write_number($('input#in_balance_due'), bal_due);
     $('span.balance_due').text(__currency_trans_from_en(bal_due, true));
 
+    // Keep bottom "Total Payable" synced with remaining balance due.
+    // This is important for store credit / advance payments UI.
+    if ($('span#total_payable').length) {
+        $('span#total_payable').text(__currency_trans_from_en(bal_due, false));
+    }
+
     __highlight(bal_due * -1, $('span.balance_due'));
     __highlight(change_return * -1, $('span.change_return_span'));
+}
+
+/**
+ * Store credit in POS is treated like a payment (advance) and only affects remaining due.
+ * However, the visible order summary lines ("Without Tax / Tax / Total (with Tax)")
+ * can be expected to reflect remaining due too. This updates only those spans.
+ */
+function apply_store_credit_to_order_totals_display() {
+    var store_credit_used_amount = parseFloat($('#store_credit_used_amount').val() || 0) || 0;
+    if (store_credit_used_amount <= 0) {
+        return;
+    }
+
+    var $totalWithTax = $('span#total_with_tax');
+    var $preTax = $('span#pre_tax_amount');
+    var $orderTaxDisplay = $('span#order_tax_display');
+    var $orderTax = $('span#order_tax');
+
+    if (!$totalWithTax.length || !$preTax.length) {
+        return;
+    }
+
+    var totalWithTaxDisp = 0;
+    try {
+        totalWithTaxDisp = __number_uf($totalWithTax.text(), false);
+    } catch (e) {}
+
+    if (!totalWithTaxDisp || totalWithTaxDisp <= 0) {
+        return;
+    }
+
+    var exchangeRate = 1;
+    if ($('#exchange_rate').length > 0 && $('#exchange_rate').val()) {
+        exchangeRate = __read_number($('#exchange_rate'));
+    }
+
+    var creditDisp = store_credit_used_amount * exchangeRate;
+    var remainingTotalWithTax = totalWithTaxDisp - creditDisp;
+    if (remainingTotalWithTax < 0) {
+        remainingTotalWithTax = 0;
+    }
+
+    var orderTaxDisp = 0;
+    if ($orderTaxDisplay.length) {
+        try {
+            orderTaxDisp = __number_uf($orderTaxDisplay.text(), false);
+        } catch (e) {
+            orderTaxDisp = 0;
+        }
+    }
+
+    // Reduce tax proportionally so: pre-tax + tax = total-with-tax.
+    var taxRatio = totalWithTaxDisp > 0 ? orderTaxDisp / totalWithTaxDisp : 0;
+    var remainingOrderTax = remainingTotalWithTax * taxRatio;
+    var remainingPreTax = remainingTotalWithTax - remainingOrderTax;
+
+    $preTax.text(__currency_trans_from_en(remainingPreTax, false));
+    if ($orderTaxDisplay.length) {
+        $orderTaxDisplay.text(__currency_trans_from_en(remainingOrderTax, false));
+    }
+    if ($orderTax.length) {
+        $orderTax.text(__currency_trans_from_en(remainingOrderTax, false));
+    }
+    $totalWithTax.text(__currency_trans_from_en(remainingTotalWithTax, false));
 }
 
 function isValidPosForm() {
