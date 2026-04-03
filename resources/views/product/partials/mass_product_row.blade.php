@@ -61,7 +61,7 @@
     </td>
     <td class="td col-artist">
         {!! Form::text("products[{$index}][artist]", null, [
-            'class' => 'form-control',
+            'class' => 'form-control artist-autocomplete-input',
             'placeholder' => "Artist",
             'id' => "products_{$index}_artist"
         ]) !!}

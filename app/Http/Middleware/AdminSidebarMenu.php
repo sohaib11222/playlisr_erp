@@ -31,6 +31,15 @@ class AdminSidebarMenu
             //Home
             $menu->url(action('HomeController@index'), __('home.home'), ['icon' => 'fa fas fa-tachometer-alt', 'active' => request()->segment(1) == 'home'])->order(5);
 
+            //Discounts (top-level for quick access)
+            if (auth()->user()->can('discount.access')) {
+                $menu->url(
+                    action('DiscountController@index'),
+                    __('lang_v1.discounts'),
+                    ['icon' => 'fa fas fa-percent', 'active' => request()->segment(1) == 'discounts']
+                )->order(8);
+            }
+
             //User management dropdown
             if (auth()->user()->can('user.view') || auth()->user()->can('user.create') || auth()->user()->can('roles.view')) {
                 $menu->dropdown(
@@ -175,6 +184,20 @@ class AdminSidebarMenu
                                 ['icon' => 'fa fas fa-gem', 'active' => request()->segment(1) == 'brands']
                             );
                         }
+                        if (auth()->user()->can('product.create')) {
+                            $sub->url(
+                                route('manual-item-price-rules.index'),
+                                'Manual Item Price Rules',
+                                ['icon' => 'fa fas fa-dollar-sign', 'active' => request()->segment(1) == 'settings' && request()->segment(2) == 'manual-item-price-rules']
+                            );
+                        }
+                        if (auth()->user()->can('discount.access')) {
+                            $sub->url(
+                                action('DiscountController@index'),
+                                __('lang_v1.discounts'),
+                                ['icon' => 'fa fas fa-percent', 'active' => request()->segment(1) == 'discounts']
+                            );
+                        }
 
 //                        $sub->url(
 //                            action('WarrantyController@index'),
@@ -217,6 +240,13 @@ class AdminSidebarMenu
                                 action('PurchaseReturnController@index'),
                                 __('lang_v1.list_purchase_return'),
                                 ['icon' => 'fa fas fa-undo', 'active' => request()->segment(1) == 'purchase-return']
+                            );
+                        }
+                        if (auth()->user()->can('purchase.create')) {
+                            $sub->url(
+                                action('BuyFromCustomerController@create'),
+                                'Buy from Customer',
+                                ['icon' => 'fa fas fa-calculator', 'active' => request()->segment(1) == 'buy-from-customer']
                             );
                         }
                     },

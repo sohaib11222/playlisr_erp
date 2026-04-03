@@ -225,6 +225,54 @@ $(document).ready( function(){
     $('#only_subscriptions').on('ifChanged', function(event){
         sell_table.ajax.reload();
     });
+
+    $(document).on('click', '.sync-quickbooks-sale', function(e) {
+        e.preventDefault();
+        var $link = $(this);
+        var transactionId = $link.data('transaction-id');
+        if (!transactionId) {
+            toastr.error('Transaction ID is missing for QuickBooks sync.');
+            return;
+        }
+
+        if ($link.data('syncing')) {
+            return;
+        }
+
+        $link.data('syncing', true);
+        $link.addClass('disabled');
+        var oldHtml = $link.html();
+        $link.html('<i class="fa fa-spinner fa-spin"></i> Syncing...');
+
+        $.ajax({
+            url: '{{ action("QuickBooksController@syncSale") }}',
+            method: 'POST',
+            dataType: 'json',
+            data: {
+                _token: '{{ csrf_token() }}',
+                transaction_id: transactionId
+            },
+            success: function(response) {
+                if (response && response.success) {
+                    toastr.success(response.msg || 'Sale synced to QuickBooks.');
+                } else {
+                    toastr.error((response && response.msg) ? response.msg : 'QuickBooks sync failed.');
+                }
+            },
+            error: function(xhr) {
+                if (xhr.responseJSON && xhr.responseJSON.message) {
+                    toastr.error(xhr.responseJSON.message);
+                } else {
+                    toastr.error('QuickBooks sync failed.');
+                }
+            },
+            complete: function() {
+                $link.data('syncing', false);
+                $link.removeClass('disabled');
+                $link.html(oldHtml);
+            }
+        });
+    });
 });
 </script>
 <script src="{{ asset('js/payment.js?v=' . $asset_v) }}"></script>

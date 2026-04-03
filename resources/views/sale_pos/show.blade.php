@@ -260,8 +260,37 @@
             <tr>
               <th>{{ __('sale.discount') }}:</th>
               <td><b>(-)</b></td>
-              <td><div class="pull-right"><span class="display_currency" @if( $sell->discount_type == 'fixed') data-currency_symbol="true" @endif>{{ $sell->discount_amount }}</span> @if( $sell->discount_type == 'percentage') {{ '%'}} @endif</span></div></td>
+              <td>
+                @php
+                  $discount_value = $sell->discount_type == 'percentage'
+                    ? (($sell->total_before_tax * $sell->discount_amount) / 100)
+                    : $sell->discount_amount;
+                @endphp
+                <div class="pull-right">
+                  <span class="display_currency" data-currency_symbol="true">{{ $discount_value }}</span>
+                  @if($sell->discount_type == 'percentage')
+                    <small class="text-muted">({{@num_format($sell->discount_amount)}}%)</small>
+                  @endif
+                </div>
+              </td>
             </tr>
+            @php
+              $store_credit_used_in_notes = 0;
+              foreach ($sell->payment_lines as $pl) {
+                if (!empty($pl->note) && stripos($pl->note, 'Store credit used:') !== false) {
+                  if (preg_match('/Store credit used:\s*([$€£]?\s*[0-9]+(?:\.[0-9]+)?)/i', $pl->note, $matches)) {
+                    $store_credit_used_in_notes += (float) preg_replace('/[^0-9.]/', '', $matches[1]);
+                  }
+                }
+              }
+            @endphp
+            @if($store_credit_used_in_notes > 0)
+              <tr>
+                <th>Store Credit Used:</th>
+                <td><b>(-)</b></td>
+                <td><span class="display_currency pull-right" data-currency_symbol="true">{{ $store_credit_used_in_notes }}</span></td>
+              </tr>
+            @endif
             @if(in_array('types_of_service' ,$enabled_modules) && !empty($sell->packing_charge))
               <tr>
                 <th>{{ __('lang_v1.packing_charge') }}:</th>

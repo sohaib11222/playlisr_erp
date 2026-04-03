@@ -30,14 +30,14 @@
                                 <td>
                                     <input type="text" 
                                            name="products[0][name]" 
-                                           class="form-control" 
+                                           class="form-control manual-product-name-input" 
                                            required 
                                            placeholder="Product Name">
                                 </td>
                                 <td>
                                     <input type="text" 
                                            name="products[0][artist]" 
-                                           class="form-control" 
+                                           class="form-control artist-autocomplete-input" 
                                            placeholder="Artist">
                                 </td>
                                 <td>

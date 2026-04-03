@@ -90,6 +90,7 @@ $(document).ready(function() {
     //get customer
     $('select#customer_id').select2({
         width: '100%',
+        allowClear: true,
         dropdownCssClass: 'pos-customer-select2-dropdown',
         ajax: {
             url: '/contacts/customers',
@@ -139,6 +140,29 @@ $(document).ready(function() {
         escapeMarkup: function(markup) {
             return markup;
         },
+    });
+
+    // Clear selected account and immediately allow searching a different one.
+    $(document).on('click', '#clear_customer_btn', function() {
+        var $customerSelect = $('select#customer_id');
+        if (!$customerSelect.length) {
+            return;
+        }
+
+        $customerSelect.val(null).trigger('change');
+        $('#customer_account_info').hide();
+        $('#apply_employee_discount').prop('checked', false);
+        $('#employee_discount_row').hide();
+        $customerSelect.data('employee_discount_applied', false);
+        $customerSelect.data('is_employee', false);
+
+        $('#advance_balance').val(0);
+        $('#advance_balance_text').text(__currency_trans_from_en(0, true));
+        updatePosStoreCreditUI(0);
+
+        setTimeout(function() {
+            $customerSelect.select2('open');
+        }, 20);
     });
     // Load customer account info when customer is selected
     function loadCustomerAccountInfo(contactId) {
@@ -899,6 +923,35 @@ $(document).ready(function() {
     window.pos_use_store_credit = false;
     window.pos_use_store_credit_amount = null;
 
+    function set_store_credit_cash_cta(active) {
+        var $cashBtn = $('button.pos-express-finalize[data-pay_method="cash"]');
+        if (!$cashBtn.length) {
+            return;
+        }
+
+        var originalText = $cashBtn.data('original-text');
+        if (!originalText) {
+            $cashBtn.data('original-text', $.trim($cashBtn.text()));
+            originalText = $.trim($cashBtn.text());
+        }
+
+        if (active) {
+            $cashBtn
+                .addClass('btn-warning')
+                .removeClass('btn-success')
+                .attr('title', 'Store credit pending: click CASH to complete');
+            $cashBtn.html('<i class="fa fa-hand-pointer-o"></i> Complete with CASH');
+        } else {
+            $cashBtn
+                .removeClass('btn-warning')
+                .addClass('btn-success')
+                .removeAttr('title')
+                .text(originalText);
+        }
+    }
+    // Exposed for global reset_pos_form (defined outside this ready closure).
+    window.set_store_credit_cash_cta = set_store_credit_cash_cta;
+
     // Use store credit: apply on same screen (no popup); deduct from customer when Cash/Finalize is used
     $(document).on('click', '#btn_use_store_credit', function () {
         if ($('table#pos_table tbody').find('.product_row').length <= 0) {
@@ -937,6 +990,7 @@ $(document).ready(function() {
         }
         var useAmount = requested;
         $('#store_credit_used_amount').val(__number_f(useAmount, false, false, __currency_precision));
+        set_store_credit_cash_cta(useAmount > 0);
         // Reflect remaining store credit immediately in the POS header row.
         var remainingAdvance = Math.max(0, advanceBalance - useAmount);
         $('#advance_balance').val(remainingAdvance);
@@ -966,7 +1020,7 @@ $(document).ready(function() {
             }
         }
 
-        toastr.success(__currency_trans_from_en(useAmount, true) + ' store credit applied. Click Cash or Finalize to complete.');
+        toastr.warning(__currency_trans_from_en(useAmount, true) + ' store credit applied. Next step: click the CASH button at bottom to finalize.');
     });
 
     //Finalize invoice, open payment modal
@@ -1053,6 +1107,32 @@ $(document).ready(function() {
         }
 
         var pay_method = $(this).data('pay_method');
+        var store_credit_used_amount = parseFloat($('#store_credit_used_amount').val() || 0) || 0;
+
+        // Guardrail: when store credit is used, push cashier to use CASH finalize path.
+        var bypassStoreCreditGuard = $(this).data('store-credit-bypass') === true;
+        if (store_credit_used_amount > 0 && pay_method !== 'cash' && pay_method !== 'credit_sale' && !bypassStoreCreditGuard) {
+            var $btn = $(this);
+            swal({
+                title: 'Store credit pending',
+                text: 'Store credit was applied. Please click CASH to complete this sale correctly.',
+                icon: 'warning',
+                buttons: {
+                    cancel: 'Go back',
+                    confirm: 'Continue anyway'
+                },
+                dangerMode: true
+            }).then(function(continueAnyway) {
+                if (continueAnyway) {
+                    $btn.data('store-credit-bypass', true);
+                    $btn.trigger('click');
+                }
+            });
+            return false;
+        }
+        if (bypassStoreCreditGuard) {
+            $(this).data('store-credit-bypass', false);
+        }
 
         //If pay method is credit sale submit form
         if (pay_method == 'credit_sale') {
@@ -1094,6 +1174,19 @@ $(document).ready(function() {
         } else {
             // Safety: ensure we don't get stuck in a "submit in progress" state.
             window.pos_submit_in_progress = false;
+            // Keep explicit trace of store credit used in payment note for sell details.
+            var store_credit_used_amount = parseFloat($('#store_credit_used_amount').val() || 0) || 0;
+            if (store_credit_used_amount > 0) {
+                var $firstNote = $('#payment_rows_div').find('textarea[id^="note_"]').first();
+                if ($firstNote.length) {
+                    var existing_note = ($firstNote.val() || '').trim();
+                    var credit_note_prefix = 'Store credit used: ';
+                    var credit_note_text = credit_note_prefix + __currency_trans_from_en(store_credit_used_amount, true);
+                    if (existing_note.indexOf(credit_note_prefix) === -1) {
+                        $firstNote.val(existing_note ? (existing_note + ' | ' + credit_note_text) : credit_note_text);
+                    }
+                }
+            }
             // Ensure balance/paid inputs are synced right before submit.
             try {
                 if (window.console && console.log) {
@@ -2101,6 +2194,7 @@ $(document).ready(function() {
         // Initialize select2 for existing selects (with tokenized matcher for merged category/subcategory search)
         setTimeout(function() {
             applyManualCategoryComboMatcher($('#add_manual_product_modal'));
+            initManualProductNameAutocomplete($('#add_manual_product_modal'));
         }, 300);
 
         // $.ajax({
@@ -2138,6 +2232,7 @@ $(document).ready(function() {
     // Add another product row
     $(document).on('click', '#add_another_product', function() {
         addManualProductRow();
+        initManualProductNameAutocomplete($('#manual_products_container tr:last'));
     });
 
     // Remove product row
@@ -2181,6 +2276,26 @@ $(document).ready(function() {
     // Re-apply matcher every time modal is shown (guards against any late re-init)
     $(document).on('shown.bs.modal', '#add_manual_product_modal', function() {
         applyManualCategoryComboMatcher($(this));
+        initManualProductNameAutocomplete($(this));
+    });
+
+    // If cashier types a keyword and leaves field, try keyword-rule autofill.
+    $(document).on('blur', '#manual_products_container input[name*="[name]"]', function() {
+        var $input = $(this);
+        var $row = $input.closest('.manual_product_row');
+        var term = String($input.val() || '').trim();
+        var $priceInput = $row.find('input[name*="[price]"]');
+        if (!term || $priceInput.val()) {
+            return;
+        }
+        var items = getManualKeywordSuggestions(term);
+        if (!items.length) {
+            return;
+        }
+        var best = items[0];
+        if (best && best.price !== null && best.price !== undefined && best.price !== '') {
+            $priceInput.val(best.price).trigger('change');
+        }
     });
 });
 
@@ -2228,6 +2343,84 @@ function getManualProductModalInputs() {
     });
     
     return inputData;
+}
+
+// Manual keyword -> fixed price rules (admin-configured, DB-backed).
+var MANUAL_ITEM_PRICE_KEYWORDS = [];
+(function initManualItemPriceRulesFromWindow() {
+    var source = window.manualItemPriceRules;
+    if (!Array.isArray(source)) {
+        MANUAL_ITEM_PRICE_KEYWORDS = [];
+        return;
+    }
+    MANUAL_ITEM_PRICE_KEYWORDS = source.map(function(r) {
+        var keywordTokens = String(r.keywords || '')
+            .split(',')
+            .map(function(k) { return String(k).trim().toLowerCase(); })
+            .filter(Boolean);
+        return {
+            label: String(r.label || '').trim(),
+            keywords: keywordTokens,
+            price: String(r.price || '').trim()
+        };
+    }).filter(function(r) {
+        return r.label && r.keywords.length > 0 && r.price !== '';
+    });
+})();
+
+function getManualKeywordSuggestions(term) {
+    var q = String(term || '').toLowerCase().trim();
+    if (!q) {
+        return [];
+    }
+    var out = [];
+    MANUAL_ITEM_PRICE_KEYWORDS.forEach(function(rule) {
+        var matched = rule.keywords.some(function(k) {
+            return k.indexOf(q) !== -1 || q.indexOf(k) !== -1;
+        });
+        if (matched) {
+            out.push({
+                label: rule.label + ' ($' + rule.price + ')',
+                value: rule.label,
+                price: rule.price
+            });
+        }
+    });
+    return out;
+}
+
+function initManualProductNameAutocomplete($scope) {
+    var $root = $scope && $scope.length ? $scope : $('#add_manual_product_modal');
+    if (!(typeof $.ui !== 'undefined' && $.ui.autocomplete)) {
+        return;
+    }
+    $root.find('#manual_products_container input[name*="[name]"]').each(function() {
+        var $input = $(this);
+        if ($input.data('manualPriceAutocompleteInit')) {
+            return;
+        }
+        $input.autocomplete({
+            minLength: 2,
+            delay: 250,
+            appendTo: '#add_manual_product_modal .modal-body',
+            source: function(request, response) {
+                response(getManualKeywordSuggestions(request.term));
+            },
+            select: function(event, ui) {
+                event.preventDefault();
+                var $row = $(this).closest('.manual_product_row');
+                $(this).val(ui.item.value || ui.item.label || '');
+                if (ui.item.price !== null && ui.item.price !== undefined && ui.item.price !== '') {
+                    $row.find('input[name*="[price]"]').val(ui.item.price).trigger('change');
+                }
+            }
+        }).autocomplete('instance')._renderItem = function(ul, item) {
+            var priceText = item.price ? ('<span class="text-success"> $' + item.price + '</span>') : '';
+            return $('<li>').append('<div>' + item.label + priceText + '</div>').appendTo(ul);
+        };
+        $input.autocomplete('widget').css('z-index', 20000);
+        $input.data('manualPriceAutocompleteInit', true);
+    });
 }
 
 // Function to send AJAX request to get manual product rows
@@ -3006,10 +3199,19 @@ function calculate_balance_due() {
     __write_number($('input#in_balance_due'), bal_due);
     $('span.balance_due').text(__currency_trans_from_en(bal_due, true));
 
-    // Keep bottom "Total Payable" synced with remaining balance due.
-    // This is important for store credit / advance payments UI.
+    // Bottom "Total Payable" should match visible top totals.
+    // When store credit is applied, show invoice total minus store credit used.
     if ($('span#total_payable').length) {
-        $('span#total_payable').text(__currency_trans_from_en(bal_due, false));
+        var invoice_total = __read_number($('input#final_total_input'));
+        var store_credit_used_amount = parseFloat($('#store_credit_used_amount').val() || 0) || 0;
+        var payable_display = invoice_total;
+        if (store_credit_used_amount > 0) {
+            payable_display = invoice_total - store_credit_used_amount;
+            if (payable_display < 0) {
+                payable_display = 0;
+            }
+        }
+        $('span#total_payable').text(__currency_trans_from_en(payable_display, false));
     }
 
     __highlight(bal_due * -1, $('span.balance_due'));
@@ -3137,6 +3339,9 @@ function reset_pos_form(){
     }
     if ($('#store_credit_used_amount').length) {
         $('#store_credit_used_amount').val(0);
+    }
+    if (typeof window.set_store_credit_cash_cta === 'function') {
+        window.set_store_credit_cash_cta(false);
     }
 
 	//Reset discount
@@ -4248,14 +4453,14 @@ function addManualProductRow() {
             <td>
                 <input type="text" 
                        name="products[${newRowIndex}][name]" 
-                       class="form-control" 
+                       class="form-control manual-product-name-input" 
                        required 
                        placeholder="Product Name">
             </td>
             <td>
                 <input type="text" 
                        name="products[${newRowIndex}][artist]" 
-                       class="form-control" 
+                       class="form-control artist-autocomplete-input" 
                        placeholder="Artist">
             </td>
             <td>

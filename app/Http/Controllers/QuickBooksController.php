@@ -11,6 +11,69 @@ use Illuminate\Support\Str;
 
 class QuickBooksController extends Controller
 {
+    /**
+     * HMAC-signed OAuth state so the callback does not rely on session (Intuit redirect can arrive without a logged-in session).
+     */
+    protected function getAppKeyForSigning()
+    {
+        $key = config('app.key');
+        if (strpos($key, 'base64:') === 0) {
+            return base64_decode(substr($key, 7));
+        }
+
+        return $key;
+    }
+
+    protected function buildQuickBooksOAuthState($businessId)
+    {
+        $payload = json_encode([
+            'bid' => (int) $businessId,
+            'exp' => time() + 600,
+            'nonce' => Str::random(32),
+        ]);
+        $payloadB64 = base64_encode($payload);
+        $sig = hash_hmac('sha256', $payloadB64, $this->getAppKeyForSigning());
+
+        return $payloadB64 . '.' . $sig;
+    }
+
+    /**
+     * @return array|null
+     */
+    protected function parseQuickBooksOAuthState($state)
+    {
+        if (empty($state) || strpos($state, '.') === false) {
+            return null;
+        }
+        $parts = explode('.', $state, 2);
+        if (count($parts) !== 2) {
+            return null;
+        }
+        list($payloadB64, $sig) = $parts;
+        $expected = hash_hmac('sha256', $payloadB64, $this->getAppKeyForSigning());
+        if (!hash_equals($expected, $sig)) {
+            return null;
+        }
+        $payload = json_decode(base64_decode($payloadB64), true);
+        if (!is_array($payload) || empty($payload['bid']) || empty($payload['exp'])) {
+            return null;
+        }
+        if (time() > (int) $payload['exp']) {
+            return null;
+        }
+
+        return $payload;
+    }
+
+    protected function quickBooksCallbackRedirect(Request $request, array $status)
+    {
+        if (auth()->check()) {
+            return redirect()->route('business.getBusinessSettings')->with('status', $status);
+        }
+
+        return redirect()->route('login')->with('status', $status);
+    }
+
     public function connect(Request $request)
     {
         if (!auth()->user()->can('business_settings.access')) {
@@ -27,34 +90,27 @@ class QuickBooksController extends Controller
             ]);
         }
 
-        $state = Str::random(40);
-        $request->session()->put('quickbooks_oauth_state', $state);
-        $request->session()->put('quickbooks_oauth_business_id', $business_id);
+        $state = $this->buildQuickBooksOAuthState($business_id);
 
         return redirect()->away($qbService->getAuthorizationUrl($state));
     }
 
     public function callback(Request $request)
     {
-        if (!auth()->user()->can('business_settings.access')) {
-            abort(403, 'Unauthorized action.');
-        }
-
-        $expectedState = $request->session()->get('quickbooks_oauth_state');
-        $business_id = $request->session()->get('quickbooks_oauth_business_id');
-
-        if (empty($expectedState) || $request->input('state') !== $expectedState) {
-            return redirect()->route('business.getBusinessSettings')->with('status', [
+        $parsed = $this->parseQuickBooksOAuthState($request->input('state'));
+        if (empty($parsed)) {
+            return $this->quickBooksCallbackRedirect($request, [
                 'success' => 0,
-                'msg' => 'QuickBooks authorization failed due to invalid state. Please try again.',
+                'msg' => 'QuickBooks authorization failed due to invalid or expired state. Please try again.',
             ]);
         }
 
+        $business_id = (int) $parsed['bid'];
         $code = $request->input('code');
         $realmId = $request->input('realmId');
 
-        if (empty($code) || empty($realmId) || empty($business_id)) {
-            return redirect()->route('business.getBusinessSettings')->with('status', [
+        if (empty($code) || empty($realmId)) {
+            return $this->quickBooksCallbackRedirect($request, [
                 'success' => 0,
                 'msg' => 'QuickBooks callback is missing required parameters.',
             ]);
@@ -64,7 +120,7 @@ class QuickBooksController extends Controller
         $tokenResult = $qbService->exchangeAuthorizationCode($code);
 
         if (empty($tokenResult['success'])) {
-            return redirect()->route('business.getBusinessSettings')->with('status', [
+            return $this->quickBooksCallbackRedirect($request, [
                 'success' => 0,
                 'msg' => !empty($tokenResult['msg']) ? $tokenResult['msg'] : 'QuickBooks connection failed.',
             ]);
@@ -101,12 +157,18 @@ class QuickBooksController extends Controller
             $business->save();
         }
 
-        $request->session()->forget('quickbooks_oauth_state');
-        $request->session()->forget('quickbooks_oauth_business_id');
+        $qbServiceFresh = new QuickBooksService($business_id);
+        $provision = $qbServiceFresh->ensureDefaultSalesItem();
+        $statusMsg = 'QuickBooks connected successfully.';
+        if (!empty($provision['success'])) {
+            $statusMsg .= ' ' . ($provision['msg'] ?? 'Default sales item is ready.');
+        } else {
+            $statusMsg .= ' ' . ($provision['msg'] ?? 'Could not auto-create the default sales item; set Default Sales Item ID manually or click Test Connection to retry.');
+        }
 
-        return redirect()->route('business.getBusinessSettings')->with('status', [
+        return $this->quickBooksCallbackRedirect($request, [
             'success' => 1,
-            'msg' => 'QuickBooks connected successfully.',
+            'msg' => $statusMsg,
         ]);
     }
 
@@ -171,6 +233,40 @@ class QuickBooksController extends Controller
         $result = $qbService->syncSaleTransaction((int) $request->input('transaction_id'));
 
         return response()->json($result);
+    }
+
+    public function dashboard(Request $request)
+    {
+        if (!auth()->user()->can('business_settings.access')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = $request->session()->get('user.business_id');
+        $qbService = new QuickBooksService($business_id);
+        $connection = QuickBooksConnection::where('business_id', $business_id)->first();
+        $logs = $qbService->getRecentSyncLogs(100);
+
+        return view('quickbooks.dashboard', compact('connection', 'logs'));
+    }
+
+    public function backfill(Request $request)
+    {
+        if (!auth()->user()->can('business_settings.access')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $request->validate([
+            'from_date' => 'required|date',
+        ]);
+
+        $business_id = $request->session()->get('user.business_id');
+        $qbService = new QuickBooksService($business_id);
+        $result = $qbService->backfillSalesFromDate($request->input('from_date'));
+
+        return redirect()->action('QuickBooksController@dashboard')->with('status', [
+            'success' => !empty($result['success']) ? 1 : 0,
+            'msg' => !empty($result['msg']) ? $result['msg'] : 'Backfill finished.',
+        ]);
     }
 }
 

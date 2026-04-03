@@ -27,6 +27,10 @@
 			<small class="text-muted">
 				({{$product->sub_sku}})
 			</small>
+			<br>
+			<small class="text text-success" style="font-weight: 600;">
+				Price: @format_currency($product->selling_price)
+			</small>
 		</div>
 			
 		</div>

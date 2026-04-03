@@ -362,15 +362,26 @@
                         
                         // Handle date range filter (skipped when All time checked)
                         var all_time = $('#product_list_filter_all_time').is(':checked');
-                        var date_range = $('#product_list_filter_created_date_range').val();
+                        var $dateRangeInput = $('#product_list_filter_created_date_range');
+                        var date_range = $dateRangeInput.val();
                         if (!all_time && date_range) {
-                            var dates = date_range.split(' ~ ');
-                            if (dates.length == 2) {
-                                var start_moment = moment(dates[0].trim(), moment_date_format);
-                                var end_moment = moment(dates[1].trim(), moment_date_format);
-                                if (start_moment.isValid() && end_moment.isValid()) {
-                                    d.start_date = start_moment.format('YYYY-MM-DD');
-                                    d.end_date = end_moment.format('YYYY-MM-DD');
+                            // Prefer daterangepicker state (most reliable for custom ranges)
+                            var drp = $dateRangeInput.data('daterangepicker');
+                            if (drp && drp.startDate && drp.endDate) {
+                                d.start_date = drp.startDate.format('YYYY-MM-DD');
+                                d.end_date = drp.endDate.format('YYYY-MM-DD');
+                            } else {
+                                // Fallback: support both separators used in UI/history
+                                var dates = date_range.indexOf(' ~ ') > -1
+                                    ? date_range.split(' ~ ')
+                                    : date_range.split(' - ');
+                                if (dates.length == 2) {
+                                    var start_moment = moment(dates[0].trim(), moment_date_format);
+                                    var end_moment = moment(dates[1].trim(), moment_date_format);
+                                    if (start_moment.isValid() && end_moment.isValid()) {
+                                        d.start_date = start_moment.format('YYYY-MM-DD');
+                                        d.end_date = end_moment.format('YYYY-MM-DD');
+                                    }
                                 }
                             }
                         }
@@ -408,6 +419,7 @@
                         { data: 'current_stock', searchable: false},
                         { data: 'total_sold', searchable: false},
                         { data: 'sku', name: 'products.sku'},
+                        { data: 'created_at', name: 'products.created_at'},
                         { data: 'updated_at', name: 'updated_at'},
                         { data: 'created_by_name', name: 'u.first_name' }
                     ],

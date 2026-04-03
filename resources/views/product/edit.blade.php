@@ -23,8 +23,8 @@
             <div class="col-sm-4">
               <div class="form-group">
                 {!! Form::label('name', __('product.product_name') . ':*') !!}
-                  {!! Form::text('name', $product->name, ['class' => 'form-control', 'required',
-                  'placeholder' => __('product.product_name')]); !!}
+                  {!! Form::text('name', $product->name, ['class' => 'form-control title-autocomplete-input', 'required',
+                  'placeholder' => __('product.product_name')]) !!}
               </div>
             </div>
 
@@ -32,14 +32,14 @@
               <div class="form-group">
                 {!! Form::label('sku', __('product.sku')  . ':*') !!} @show_tooltip(__('tooltip.sku'))
                 {!! Form::text('sku', $product->sku, ['class' => 'form-control',
-                'placeholder' => __('product.sku'), 'required']); !!}
+                'placeholder' => __('product.sku'), 'required']) !!}
               </div>
             </div>
 
             <div class="col-sm-4" style="display:none;">
               <div class="form-group">
                 {!! Form::label('barcode_type', __('product.barcode_type') . ':*') !!}
-                  {!! Form::select('barcode_type', $barcode_types, $product->barcode_type, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2', 'required']); !!}
+                  {!! Form::select('barcode_type', $barcode_types, $product->barcode_type, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2', 'required']) !!}
               </div>
             </div>
 
@@ -49,7 +49,7 @@
               <div class="form-group">
                 {!! Form::label('unit_id', __('product.unit') . ':*') !!}
                 <div class="input-group">
-                  {!! Form::select('unit_id', $units, $product->unit_id, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2', 'required']); !!}
+                  {!! Form::select('unit_id', $units, $product->unit_id, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2', 'required']) !!}
                   <span class="input-group-btn">
                     <button type="button" @if(!auth()->user()->can('unit.create')) disabled @endif class="btn btn-default bg-white btn-flat quick_add_unit btn-modal" data-href="{{action('UnitController@create', ['quick_add' => true])}}" title="@lang('unit.add_unit')" data-container=".view_modal"><i class="fa fa-plus-circle text-primary fa-lg"></i></button>
                   </span>
@@ -62,7 +62,7 @@
               <div class="form-group">
                 {!! Form::label('brand_id', __('product.brand') . ':') !!}
                 <div class="input-group">
-                  {!! Form::select('brand_id', $brands, $product->brand_id, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2']); !!}
+                  {!! Form::select('brand_id', $brands, $product->brand_id, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2']) !!}
                   <span class="input-group-btn">
                     <button type="button" @if(!auth()->user()->can('brand.create')) disabled @endif class="btn btn-default bg-white btn-flat btn-modal" data-href="{{action('BrandController@create', ['quick_add' => true])}}" title="@lang('brand.add_brand')" data-container=".view_modal"><i class="fa fa-plus-circle text-primary fa-lg"></i></button>
                   </span>
@@ -73,8 +73,8 @@
             <div class="col-sm-4">
                 <div class="form-group">
                     {!! Form::label('artist', 'Artist' . ':') !!}
-                    {!! Form::text('artist', !empty($product->artist) ? $product->artist : null, ['class' => 'form-control',
-                    'placeholder' => 'Artist']); !!}
+                    {!! Form::text('artist', !empty($product->artist) ? $product->artist : null, ['class' => 'form-control artist-autocomplete-input',
+                    'placeholder' => 'Artist']) !!}
                 </div>
             </div>
 
@@ -82,7 +82,7 @@
                 <div class="form-group">
                     {!! Form::label('bin_position', 'Bin Position' . ':') !!}
                     {!! Form::text('bin_position', !empty($product->bin_position) ? $product->bin_position : null, ['class' => 'form-control',
-                    'placeholder' => 'e.g., A-12, B-5']); !!}
+                    'placeholder' => 'e.g., A-12, B-5']) !!}
                 </div>
             </div>
 
@@ -90,7 +90,7 @@
                 <div class="form-group">
                     {!! Form::label('listing_location', 'Listing Location' . ':') !!}
                     {!! Form::text('listing_location', !empty($product->listing_location) ? $product->listing_location : null, ['class' => 'form-control',
-                    'placeholder' => 'e.g., Warehouse A, Storage B']); !!}
+                    'placeholder' => 'e.g., Warehouse A, Storage B']) !!}
                     <p class="help-block">Location for eBay/Discogs listings</p>
                 </div>
             </div>
@@ -130,14 +130,14 @@
                 <div class="form-group">
                     {!! Form::label('product_custom_field1', 'Image Url') !!}
                     {!! Form::text('product_custom_field1', !empty($product->product_custom_field1) ? $product->product_custom_field1 : null, ['class' => 'form-control',
-                    'placeholder' => 'Image Url']); !!}
+                    'placeholder' => 'Image Url']) !!}
                 </div>
             </div>
 
             <div class="col-sm-4">
               <div class="form-group">
                 {!! Form::label('product_locations', __('business.business_locations') . ':') !!} @show_tooltip(__('lang_v1.product_location_help'))
-                  {!! Form::select('product_locations[]', $business_locations, $product->product_locations->pluck('id'), ['class' => 'form-control select2', 'multiple', 'id' => 'product_locations']); !!}
+                  {!! Form::select('product_locations[]', $business_locations, $product->product_locations->pluck('id'), ['class' => 'form-control select2', 'multiple', 'id' => 'product_locations']) !!}
               </div>
             </div>
 
@@ -147,7 +147,7 @@
               <div class="form-group">
               <br>
                 <label>
-                  {!! Form::checkbox('enable_stock', 1, $product->enable_stock, ['class' => 'input-icheck', 'id' => 'enable_stock']); !!} <strong>@lang('product.manage_stock')</strong>
+                  {!! Form::checkbox('enable_stock', 1, $product->enable_stock, ['class' => 'input-icheck', 'id' => 'enable_stock']) !!} <strong>@lang('product.manage_stock')</strong>
                 </label>@show_tooltip(__('tooltip.enable_stock')) <p class="help-block"><i>@lang('product.enable_stock_help')</i></p>
               </div>
             </div>
@@ -158,13 +158,13 @@
             <div class="col-sm-8">
               <div class="form-group">
                 {!! Form::label('product_description', __('lang_v1.product_description') . ':') !!}
-                  {!! Form::textarea('product_description', $product->product_description, ['class' => 'form-control']); !!}
+                  {!! Form::textarea('product_description', $product->product_description, ['class' => 'form-control']) !!}
               </div>
             </div>
             <div class="col-sm-4">
               <div class="form-group">
                 {!! Form::label('image', __('lang_v1.product_image') . ':') !!}
-                {!! Form::file('image', ['id' => 'upload_image', 'accept' => 'image/*']); !!}
+                {!! Form::file('image', ['id' => 'upload_image', 'accept' => 'image/*']) !!}
                 <small><p class="help-block">@lang('purchase.max_file_size', ['size' => (config('constants.document_size_limit') / 1000000)]). @lang('lang_v1.aspect_ratio_should_be_1_1') @if(!empty($product->image)) <br> @lang('lang_v1.previous_image_will_be_replaced') @endif</p></small>
               </div>
             </div>
@@ -180,7 +180,7 @@
               <div class="form-group">
                 {!! Form::label('tax_type', __('product.selling_price_tax_type') . ':*') !!}
                   {!! Form::select('tax_type',['inclusive' => __('product.inclusive'), 'exclusive' => __('product.exclusive')], $product->tax_type,
-                  ['class' => 'form-control select2', 'required']); !!}
+                  ['class' => 'form-control select2', 'required']) !!}
               </div>
             </div>
             
@@ -188,7 +188,7 @@
               <div class="form-group">
                 <br>
                 <label>
-                    {!! Form::checkbox('tax_exempt', 1, !empty($product->tax_exempt) ? $product->tax_exempt : false, ['class' => 'input-icheck']); !!} 
+                    {!! Form::checkbox('tax_exempt', 1, !empty($product->tax_exempt) ? $product->tax_exempt : false, ['class' => 'input-icheck']) !!} 
                     <strong>Tax Exempt</strong>
                 </label>
                 <p class="help-block">Check if this product is exempt from sales tax</p>
@@ -200,7 +200,7 @@
               <div class="form-group">
                 {!! Form::label('type', __('product.product_type') . ':*') !!} @show_tooltip(__('tooltip.product_type'))
                 {!! Form::select('type', $product_types, $product->type, ['class' => 'form-control select2',
-                  'required','disabled', 'data-action' => 'edit', 'data-product_id' => $product->id ]); !!}
+                  'required','disabled', 'data-action' => 'edit', 'data-product_id' => $product->id ]) !!}
               </div>
             </div>
 

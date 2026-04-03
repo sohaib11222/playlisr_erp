@@ -496,6 +496,10 @@ class BusinessUtil extends Util
                 'environment' => 'production',
                 'scope' => 'com.intuit.quickbooks.accounting',
                 'default_sales_item_id' => '',
+                'default_sales_item_name' => 'Playlist ERP Sales Sync',
+                'cogs_account_id' => '',
+                'inventory_asset_account_id' => '',
+                'default_deposit_account_id' => '',
                 'realm_id' => '',
                 'connected_at' => ''
             ]

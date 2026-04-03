@@ -767,3 +767,48 @@ $(document).on('click', 'button.apply-all', function(){
         element.change();
     });
 });
+
+// Artist/title text autocomplete (DB first, API fallback for artists).
+(function() {
+    function initArtistTitleAutocomplete($input) {
+        if (!$input || !$input.length || $input.data('artistTitleAutocompleteInit')) {
+            return;
+        }
+        if (!(typeof $.ui !== 'undefined' && $.ui.autocomplete)) {
+            return;
+        }
+
+        var type = $input.hasClass('artist-autocomplete-input') ? 'artist' : 'title';
+
+        $input.autocomplete({
+            minLength: 1,
+            delay: 180,
+            source: function(request, response) {
+                $.getJSON('/products/autocomplete-suggestions', {
+                    type: type,
+                    q: request.term,
+                    limit: 20
+                }).done(function(data) {
+                    response(Array.isArray(data) ? data : []);
+                }).fail(function() {
+                    response([]);
+                });
+            },
+            focus: function(event, ui) {
+                event.preventDefault();
+                $(this).val(ui.item.value || ui.item.label || '');
+            },
+            select: function(event, ui) {
+                event.preventDefault();
+                $(this).val(ui.item.value || ui.item.label || '');
+                $(this).trigger('change');
+            }
+        });
+
+        $input.data('artistTitleAutocompleteInit', true);
+    }
+
+    $(document).on('focus', 'input.artist-autocomplete-input, input.title-autocomplete-input', function() {
+        initArtistTitleAutocomplete($(this));
+    });
+})();

@@ -753,7 +753,7 @@ $(document).ready(function() {
     }
 });
 
-function get_purchase_entry_row(product_id, variation_id, callback, row_count_override) {
+function get_purchase_entry_row(product_id, variation_id, callback, row_count_override, options) {
     if (product_id) {
         var row_count = typeof row_count_override !== 'undefined' ? row_count_override : ($('#row_count').val() || 0);
         var location_id = $('#location_id').val();
@@ -775,7 +775,12 @@ function get_purchase_entry_row(product_id, variation_id, callback, row_count_ov
             dataType: 'html',
             data: data,
             success: function(result) {
-                var added_count = append_purchase_lines(result, row_count);
+                var added_count = append_purchase_lines(
+                    result,
+                    row_count,
+                    options && options.trigger_change ? true : false,
+                    options || {}
+                );
                 if (typeof callback === 'function') {
                     callback(added_count);
                 }
@@ -784,11 +789,15 @@ function get_purchase_entry_row(product_id, variation_id, callback, row_count_ov
     }
 }
 
-function append_purchase_lines(data, row_count, trigger_change = false) {
+function append_purchase_lines(data, row_count, trigger_change = false, options = {}) {
+    var defaultQtyOne = !!(options && options.defaultQtyOne);
     $(data)
         .find('.purchase_quantity')
         .each(function() {
             row = $(this).closest('tr');
+            if (defaultQtyOne) {
+                __write_number($(this), 1, true);
+            }
 
             $('#purchase_entry_table tbody').append(
                 update_purchase_entry_row_values(row)
@@ -836,7 +845,7 @@ function add_mass_products_sequentially(product_ids) {
             start_row_count += (added_count || 0);
             index++;
             process_next();
-        }, start_row_count);
+        }, start_row_count, { defaultQtyOne: true, trigger_change: true });
     }
 
     process_next();
@@ -1154,10 +1163,9 @@ function toggle_search() {
 
 $(document).on('change', '#location_id', function() {
     toggle_search();
-    $('#purchase_entry_table tbody').html('');
+    // Keep existing lines when location changes (staff may switch Pico/Hollywood after import).
     update_table_total();
     update_grand_total();
-    update_table_sr_number();
 });
 
 $(document).on('shown.bs.modal', '.quick_add_product_modal', function(){

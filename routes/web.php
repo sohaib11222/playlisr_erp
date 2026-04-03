@@ -46,6 +46,8 @@ Route::middleware(['setData'])->group(function () {
         ->name('invoice_payment');
     Route::post('/confirm-payment/{id}', 'SellPosController@confirmPayment')
         ->name('confirm_payment');
+
+    Route::get('/business/quickbooks/callback', 'QuickBooksController@callback')->name('business.quickbooks.callback');
 });
 
 //Routes for authenticated users only
@@ -68,10 +70,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/business/test-streetpulse-connection', 'BusinessController@testStreetpulseConnection');
     Route::post('/business/sync-streetpulse', 'BusinessController@syncStreetpulse');
     Route::get('/business/quickbooks/connect', 'QuickBooksController@connect')->name('business.quickbooks.connect');
-    Route::get('/business/quickbooks/callback', 'QuickBooksController@callback')->name('business.quickbooks.callback');
     Route::post('/business/quickbooks/disconnect', 'QuickBooksController@disconnect')->name('business.quickbooks.disconnect');
     Route::post('/business/quickbooks/test-connection', 'QuickBooksController@testConnection')->name('business.quickbooks.testConnection');
     Route::post('/business/quickbooks/sync-sale', 'QuickBooksController@syncSale')->name('business.quickbooks.syncSale');
+    Route::get('/business/quickbooks/dashboard', 'QuickBooksController@dashboard')->name('business.quickbooks.dashboard');
+    Route::post('/business/quickbooks/backfill', 'QuickBooksController@backfill')->name('business.quickbooks.backfill');
     
     // Clover Customer Import
     Route::post('/business/test-clover-connection', 'CloverController@testConnection');
@@ -156,6 +159,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     
     Route::post('/products/get_sub_categories', 'ProductController@getSubCategories');
     Route::post('/products/get_sub_categories', [ProductController::class, 'getSubCategories'])->name('product.get_sub_categories');
+    Route::get('/products/autocomplete-suggestions', 'ProductController@autocompleteSuggestions')->name('products.autocompleteSuggestions');
+    Route::get('/products/export-artists-titles', 'ProductController@exportArtistsAndTitles')->name('products.exportArtistsTitles');
 
     Route::get('/products/get_sub_units', 'ProductController@getSubUnits');
     Route::post('/products/product_form_part', 'ProductController@getProductVariationFormPart');
@@ -192,6 +197,13 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/purchases/get_suppliers', 'PurchaseController@getSuppliers');
     Route::post('/purchases/get_purchase_entry_row', 'PurchaseController@getPurchaseEntryRow');
     Route::post('/purchases/check_ref_number', 'PurchaseController@checkRefNumber');
+    Route::get('/buy-from-customer', 'BuyFromCustomerController@create')->name('buy-from-customer.create');
+    Route::get('/buy-from-customer/calculate', 'BuyFromCustomerController@create');
+    Route::post('/buy-from-customer/calculate', 'BuyFromCustomerController@calculate')->name('buy-from-customer.calculate');
+    Route::post('/buy-from-customer', 'BuyFromCustomerController@store')->name('buy-from-customer.store');
+    Route::post('/buy-from-customer/accept', 'BuyFromCustomerController@accept')->name('buy-from-customer.accept');
+    Route::post('/buy-from-customer/reject', 'BuyFromCustomerController@reject')->name('buy-from-customer.reject');
+    Route::get('/buy-from-customer/history', 'BuyFromCustomerController@history')->name('buy-from-customer.history');
     Route::resource('purchases', 'PurchaseController')->except(['show']);
 
     Route::get('/toggle-subscription/{id}', 'SellPosController@toggleRecurringInvoices');
@@ -224,6 +236,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/sells/pos/get-recent-transactions', 'SellPosController@getRecentTransactions');
     Route::get('/sells/pos/get-product-suggestion', 'SellPosController@getProductSuggestion');
     Route::get('/sells/pos/get-featured-products/{location_id}', 'SellPosController@getFeaturedProducts');
+    Route::get('/settings/manual-item-price-rules', 'ManualItemPriceRuleController@index')->name('manual-item-price-rules.index');
+    Route::post('/settings/manual-item-price-rules', 'ManualItemPriceRuleController@store')->name('manual-item-price-rules.store');
+    Route::put('/settings/manual-item-price-rules/{id}', 'ManualItemPriceRuleController@update')->name('manual-item-price-rules.update');
+    Route::delete('/settings/manual-item-price-rules/{id}', 'ManualItemPriceRuleController@destroy')->name('manual-item-price-rules.destroy');
     Route::get('/reset-mapping', 'SellController@resetMapping');
 
     // Export routes must be defined BEFORE resource route to avoid conflicts

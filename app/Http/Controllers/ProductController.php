@@ -32,6 +32,7 @@ use Illuminate\Support\Facades\Storage;
 use Yajra\DataTables\Facades\DataTables;
 use App\Exports\ProductsExport;
 use App\Services\DiscogsService;
+use App\Services\ArtistTitleAutocompleteService;
 use App\Transaction;
 use Excel;
 use ZipArchive;
@@ -182,6 +183,7 @@ class ProductController extends Controller
                 'products.product_custom_field2',
                 'products.product_custom_field3',
                 'products.created_by',
+                'products.created_at',
                 'products.updated_at',
                 'products.product_custom_field4',
                 'v.id as vid',
@@ -376,6 +378,9 @@ class ProductController extends Controller
                 )
                 ->editColumn('updated_at', function($row) {
                     return date('m/d/Y H:i', strtotime($row->updated_at));
+                })
+                ->addColumn('created_at', function ($row) {
+                    return date('m/d/Y H:i', strtotime($row->created_at));
                 })
                 ->addColumn('created_by_name', function ($row) {
                     return $row->created_by_name ?? '';
@@ -4226,6 +4231,61 @@ class ProductController extends Controller
             'msg' => "Listed {$successCount} products successfully. {$errorCount} failed.",
             'results' => $results
         ]);
+    }
+
+    /**
+     * Autocomplete suggestions for artist/title fields.
+     */
+    public function autocompleteSuggestions(Request $request, ArtistTitleAutocompleteService $autocompleteService)
+    {
+        $business_id = request()->session()->get('user.business_id');
+        $type = $request->input('type', 'artist');
+        $q = $request->input('q', $request->input('term', ''));
+        $limit = (int) $request->input('limit', 20);
+
+        $suggestions = $autocompleteService->search($business_id, $type, $q, $limit);
+
+        // jQuery UI autocomplete compatible format
+        $response = array_map(function ($value) {
+            return ['label' => $value, 'value' => $value];
+        }, $suggestions);
+
+        return response()->json($response);
+    }
+
+    /**
+     * One-time export of distinct artists and titles from live DB.
+     */
+    public function exportArtistsAndTitles(ArtistTitleAutocompleteService $autocompleteService)
+    {
+        if (!auth()->user()->can('product.view')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = request()->session()->get('user.business_id');
+        $data = $autocompleteService->exportDistinctValues($business_id);
+
+        $filename = 'artists_titles_export_' . date('Ymd_His') . '.csv';
+        $headers = [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ];
+
+        $callback = function () use ($data) {
+            $out = fopen('php://output', 'w');
+            fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF)); // UTF-8 BOM
+            fputcsv($out, ['type', 'value']);
+
+            foreach ($data['artists'] as $artist) {
+                fputcsv($out, ['artist', $artist]);
+            }
+            foreach ($data['titles'] as $title) {
+                fputcsv($out, ['title', $title]);
+            }
+            fclose($out);
+        };
+
+        return response()->stream($callback, 200, $headers);
     }
 
 }

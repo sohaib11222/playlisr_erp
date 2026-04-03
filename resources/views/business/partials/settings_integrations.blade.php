@@ -67,13 +67,52 @@
             <div class="row">
                 <div class="col-sm-6">
                     <div class="form-group">
-                        {!! Form::label('api_settings[quickbooks][default_sales_item_id]', 'Default Sales Item ID (required for invoice sync):') !!}
-                        {!! Form::text('api_settings[quickbooks][default_sales_item_id]',
-                            !empty($api_settings['quickbooks']['default_sales_item_id']) ? $api_settings['quickbooks']['default_sales_item_id'] : null,
-                            ['class' => 'form-control', 'placeholder' => 'Example: 1']) !!}
-                        <p class="help-block">Use a valid QuickBooks Item ID for ERP sale invoice lines.</p>
+                        {!! Form::label('api_settings[quickbooks][default_sales_item_name]', 'Default sales item name (QuickBooks):') !!}
+                        {!! Form::text('api_settings[quickbooks][default_sales_item_name]',
+                            !empty($api_settings['quickbooks']['default_sales_item_name']) ? $api_settings['quickbooks']['default_sales_item_name'] : 'Playlist ERP Sales Sync',
+                            ['class' => 'form-control', 'placeholder' => 'Playlist ERP Sales Sync']) !!}
+                        <p class="help-block">After you connect QuickBooks, we create (or find) this item and save its ID below. Change the name only if it conflicts with an existing QBO product.</p>
                     </div>
                 </div>
+                <div class="col-sm-6">
+                    <div class="form-group">
+                        {!! Form::label('api_settings[quickbooks][default_sales_item_id]', 'Default Sales Item ID (QuickBooks):') !!}
+                        {!! Form::text('api_settings[quickbooks][default_sales_item_id]',
+                            !empty($api_settings['quickbooks']['default_sales_item_id']) ? $api_settings['quickbooks']['default_sales_item_id'] : null,
+                            ['class' => 'form-control', 'placeholder' => 'Filled automatically after connect']) !!}
+                        <p class="help-block">Internal QuickBooks item ID used for synced sale lines. Usually left blank until you connect; then it is set automatically.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-sm-4">
+                    <div class="form-group">
+                        {!! Form::label('api_settings[quickbooks][cogs_account_id]', 'COGS account ID (optional):') !!}
+                        {!! Form::text('api_settings[quickbooks][cogs_account_id]',
+                            !empty($api_settings['quickbooks']['cogs_account_id']) ? $api_settings['quickbooks']['cogs_account_id'] : null,
+                            ['class' => 'form-control', 'placeholder' => 'QuickBooks account Id']) !!}
+                    </div>
+                </div>
+                <div class="col-sm-4">
+                    <div class="form-group">
+                        {!! Form::label('api_settings[quickbooks][inventory_asset_account_id]', 'Inventory asset account ID (optional):') !!}
+                        {!! Form::text('api_settings[quickbooks][inventory_asset_account_id]',
+                            !empty($api_settings['quickbooks']['inventory_asset_account_id']) ? $api_settings['quickbooks']['inventory_asset_account_id'] : null,
+                            ['class' => 'form-control', 'placeholder' => 'QuickBooks account Id']) !!}
+                    </div>
+                </div>
+                <div class="col-sm-4">
+                    <div class="form-group">
+                        {!! Form::label('api_settings[quickbooks][default_deposit_account_id]', 'Default deposit account ID (optional):') !!}
+                        {!! Form::text('api_settings[quickbooks][default_deposit_account_id]',
+                            !empty($api_settings['quickbooks']['default_deposit_account_id']) ? $api_settings['quickbooks']['default_deposit_account_id'] : null,
+                            ['class' => 'form-control', 'placeholder' => 'Fallback for payments']) !!}
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
                 <div class="col-sm-6">
                     <div class="form-group">
                         <label>Manual Sync (single sale)</label>
@@ -85,7 +124,7 @@
                                 </button>
                             </span>
                         </div>
-                        <p class="help-block">Pilot sync tool: push one finalized ERP sale to QuickBooks invoice.</p>
+                        <p class="help-block">Pilot sync tool: push one finalized ERP sale to QuickBooks.</p>
                     </div>
                 </div>
             </div>
@@ -122,6 +161,9 @@
                     <button type="button" class="btn btn-danger" id="disconnect_quickbooks_btn" style="margin-left: 8px;">
                         <i class="fa fa-unlink"></i> Disconnect
                     </button>
+                    <a href="{{ action('QuickBooksController@dashboard') }}" class="btn btn-default" style="margin-left: 8px;">
+                        <i class="fa fa-list"></i> Sync Dashboard
+                    </a>
                 </div>
             </div>
         </div>

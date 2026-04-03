@@ -1,6 +1,6 @@
 @php 
-    // Columns: select, actions, store, product, artist, category, subcategory, price, current stock, units sold, sku, last updated, created by
-    $colspan = 13;
+    // Columns: select, actions, store, product, artist, category, subcategory, prices, current stock, units sold, sku, created at, last updated, created by
+    $colspan = 14;
     $custom_labels = json_decode(session('business.custom_labels'), true);
 @endphp
 <table class="table table-bordered table-striped ajax_view hide-footer" id="product_table">
@@ -22,6 +22,7 @@
             <th>@lang('report.current_stock')</th>
             <th>Units Sold</th>
             <th>@lang('product.sku')</th>
+            <th>Created at</th>
             <th>Last updated at</th>
             <th>Created by</th>
         </tr>

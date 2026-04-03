@@ -49,6 +49,7 @@ use App\Utils\ModuleUtil;
 use App\Utils\NotificationUtil;
 use App\Utils\ProductUtil;
 use App\Utils\TransactionUtil;
+use App\ManualItemPriceRule;
 use App\Variation;
 use App\Warranty;
 use App\InvoiceLayout;
@@ -286,6 +287,12 @@ class SellPosController extends Controller
             ->whereIn('name', ['Senior Discount', 'Military Discount', 'Student Discount', 'Senior Citizens Discount'])
             ->get(['id', 'name', 'discount_type', 'discount_amount']);
 
+        $manual_item_price_rules = ManualItemPriceRule::where('business_id', $business_id)
+            ->where('is_active', 1)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get(['label', 'keywords', 'price']);
+
         return view('sale_pos.create')
             ->with(compact(
                 'edit_discount',
@@ -321,7 +328,8 @@ class SellPosController extends Controller
                 'invoice_layouts',
                 'users',
                 'categoriesForDropdown',
-                'discount_presets'
+                'discount_presets',
+                'manual_item_price_rules'
             ));
     }
 
