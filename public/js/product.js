@@ -770,6 +770,43 @@ $(document).on('click', 'button.apply-all', function(){
 
 // Artist/title text autocomplete (DB first, API fallback for artists).
 (function() {
+    /**
+     * jQuery UI Menu binds delegated mouseenter on .ui-menu-item → menu.focus → autocomplete menufocus.
+     * That fills the input on hover. Remove that binding; click + keyboard still work.
+     * jQuery 3 needs .off(events, '.ui-menu-item'); namespace-only .off() often misses delegates.
+     */
+    function detachArtistTitleMenuMouseenter(inst) {
+        if (!inst || !inst.menu || !inst.menu.element) {
+            return;
+        }
+        var el = inst.menu.element;
+        var m = inst.menu;
+        var ns = m.eventNamespace || '';
+        if (typeof m._off === 'function') {
+            try {
+                m._off(el, 'mouseenter');
+            } catch (e) {}
+        }
+        if (ns) {
+            el.off('mouseenter' + ns, '.ui-menu-item');
+            el.off('mouseenter' + ns);
+        }
+        el.off('mouseenter', '.ui-menu-item');
+        el.off('mouseenter');
+    }
+
+    function patchArtistTitleAutocompleteResponse(inst) {
+        if (!inst || inst._artistTitleNoHoverPatched || typeof inst.__response !== 'function') {
+            return;
+        }
+        inst._artistTitleNoHoverPatched = true;
+        var orig = inst.__response;
+        inst.__response = function(content) {
+            orig.apply(this, arguments);
+            detachArtistTitleMenuMouseenter(this);
+        };
+    }
+
     function initArtistTitleAutocomplete($input) {
         if (!$input || !$input.length || $input.data('artistTitleAutocompleteInit')) {
             return;
@@ -784,6 +821,7 @@ $(document).on('click', 'button.apply-all', function(){
             minLength: 1,
             delay: 180,
             source: function(request, response) {
+                $input.data('acSuggestionBaseTerm', request.term);
                 $.getJSON('/products/autocomplete-suggestions', {
                     type: type,
                     q: request.term,
@@ -794,9 +832,27 @@ $(document).on('click', 'button.apply-all', function(){
                     response([]);
                 });
             },
+            open: function() {
+                detachArtistTitleMenuMouseenter($input.data('ui-autocomplete'));
+            },
+            response: function() {
+                detachArtistTitleMenuMouseenter($input.data('ui-autocomplete'));
+            },
             focus: function(event, ui) {
                 event.preventDefault();
-                $(this).val(ui.item.value || ui.item.label || '');
+                var oe = event.originalEvent;
+                var fromKeyboard = oe && /^key/i.test(oe.type);
+                if (fromKeyboard) {
+                    return;
+                }
+                var base = $input.data('acSuggestionBaseTerm');
+                if (base == null) {
+                    return;
+                }
+                var ac = $input.data('ui-autocomplete');
+                if (ac) {
+                    ac._value(String(base));
+                }
             },
             select: function(event, ui) {
                 event.preventDefault();
@@ -805,10 +861,25 @@ $(document).on('click', 'button.apply-all', function(){
             }
         });
 
+        patchArtistTitleAutocompleteResponse($input.data('ui-autocomplete'));
+
         $input.data('artistTitleAutocompleteInit', true);
     }
 
-    $(document).on('focus', 'input.artist-autocomplete-input, input.title-autocomplete-input', function() {
+    function initArtistTitleAutocompleteInScope($root) {
+        var $ctx = $root && $root.length ? $root : $(document);
+        $ctx.find('input.artist-autocomplete-input, input.title-autocomplete-input').each(function() {
+            initArtistTitleAutocomplete($(this));
+        });
+    }
+
+    $(document).on('focusin', 'input.artist-autocomplete-input, input.title-autocomplete-input', function() {
         initArtistTitleAutocomplete($(this));
     });
+
+    $(function() {
+        initArtistTitleAutocompleteInScope($(document));
+    });
+
+    window.initArtistTitleAutocompleteFields = initArtistTitleAutocompleteInScope;
 })();

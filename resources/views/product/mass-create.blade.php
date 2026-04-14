@@ -59,6 +59,52 @@
             min-width: 90px;
             width: 90px;
         }
+
+        /* Mass Add artist: floating panel is fixed to viewport (see #mass-add-artist-floating-panel) */
+        .mass-add-artist-wrap {
+            position: relative;
+        }
+        #mass-add-artist-floating-panel {
+            display: none;
+            position: fixed;
+            z-index: 10050;
+            max-height: 260px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            background: #fff;
+            border: 1px solid #ccc;
+            border-radius: 2px;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+            text-align: left;
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        .mass-add-artist-option {
+            display: block;
+            width: 100%;
+            padding: 8px 10px;
+            margin: 0;
+            border: 0;
+            border-bottom: 1px solid #eee;
+            background: #fff;
+            color: #333;
+            font-size: 13px;
+            line-height: 1.35;
+            text-align: left;
+            cursor: pointer;
+        }
+        .mass-add-artist-option:last-child {
+            border-bottom: 0;
+        }
+        .mass-add-artist-option:hover,
+        .mass-add-artist-option:focus {
+            background: #e8f4fc;
+            outline: none;
+        }
+        .mass-add-artist-option:active {
+            background: #d0e8f7;
+        }
         /* Business Locations (narrower) */
         #mass_create_table .col-locations {
             min-width: 130px;
@@ -413,6 +459,9 @@
 
     {!! Form::close() !!}
 
+    {{-- Fixed to viewport so it is not clipped by .responsive-table overflow or table cell overflow --}}
+    <div id="mass-add-artist-floating-panel" class="mass-add-artist-floating-root" aria-hidden="true"></div>
+
     <!-- Discogs Price Suggestions Modal - REMOVED: eBay/Discogs suggestions disabled -->
 
 @endsection
@@ -425,6 +474,127 @@
 <script type="text/javascript">
     window.isAddingNewRow = false;
     $(document).ready(function(){
+        (function massAddArtistClickOnlySuggestions($) {
+            var sugUrl = @json(route('products.autocompleteSuggestions'));
+            var debounceMs = 220;
+            var timers = {};
+            var $floatPanel = $('#mass-add-artist-floating-panel');
+            var $activeInput = $();
+
+            function positionFloatingArtistPanel() {
+                if (!$floatPanel.is(':visible') || !$activeInput.length || !$activeInput[0].getBoundingClientRect) {
+                    return;
+                }
+                var r = $activeInput[0].getBoundingClientRect();
+                var w = Math.max(r.width, 200);
+                var top = r.bottom + 2;
+                var maxH = 260;
+                var spaceBelow = window.innerHeight - top - 8;
+                var flipUp = spaceBelow < 120 && r.top > 140;
+                if (flipUp) {
+                    $floatPanel.css({
+                        position: 'fixed',
+                        left: Math.round(r.left) + 'px',
+                        top: 'auto',
+                        bottom: Math.round(window.innerHeight - r.top + 2) + 'px',
+                        width: Math.round(w) + 'px',
+                        maxHeight: Math.min(maxH, Math.round(r.top - 12)) + 'px'
+                    });
+                } else {
+                    $floatPanel.css({
+                        position: 'fixed',
+                        left: Math.round(r.left) + 'px',
+                        top: Math.round(top) + 'px',
+                        bottom: 'auto',
+                        width: Math.round(w) + 'px',
+                        maxHeight: Math.min(maxH, Math.max(80, spaceBelow)) + 'px'
+                    });
+                }
+            }
+
+            function hideArtistFloatingPanel() {
+                $floatPanel.hide().empty().attr('aria-hidden', 'true');
+                $activeInput = $();
+            }
+
+            function showArtistFloatingPanel($input, items) {
+                $floatPanel.empty();
+                if (!items || !items.length) {
+                    hideArtistFloatingPanel();
+                    return;
+                }
+                $activeInput = $input;
+                $.each(items, function (_, item) {
+                    var text = item && (item.label != null ? item.label : item.value);
+                    text = text == null ? '' : String(text);
+                    $('<button type="button" class="mass-add-artist-option"/>')
+                        .text(text)
+                        .data('artistValue', text)
+                        .appendTo($floatPanel);
+                });
+                $floatPanel.attr('aria-hidden', 'false').show();
+                positionFloatingArtistPanel();
+            }
+
+            $(window).on('resize scroll', function () {
+                positionFloatingArtistPanel();
+            });
+            $(document).on('scroll', '.responsive-table, .content-wrapper, .content', function () {
+                positionFloatingArtistPanel();
+            });
+
+            $(document).on('input', '#product_rows_container .mass-add-artist-input', function () {
+                var $input = $(this);
+                var tid = $input.attr('id') || 'mass-artist';
+                if (timers[tid]) {
+                    clearTimeout(timers[tid]);
+                }
+                var q = ($input.val() || '').trim();
+                if (q.length < 1) {
+                    hideArtistFloatingPanel();
+                    return;
+                }
+                timers[tid] = setTimeout(function () {
+                    $.getJSON(sugUrl, { type: 'artist', q: q, limit: 20 })
+                        .done(function (data) {
+                            if (($input.val() || '').trim() !== q) {
+                                return;
+                            }
+                            showArtistFloatingPanel($input, Array.isArray(data) ? data : []);
+                        })
+                        .fail(function () {
+                            hideArtistFloatingPanel();
+                        });
+                }, debounceMs);
+            });
+
+            $(document).on('mousedown', '#mass-add-artist-floating-panel .mass-add-artist-option', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                var val = $(this).data('artistValue');
+                if ($activeInput.length) {
+                    $activeInput.val(val).trigger('change').focus();
+                }
+                hideArtistFloatingPanel();
+            });
+
+            $(document).on('keydown', '#product_rows_container .mass-add-artist-input', function (e) {
+                if (e.keyCode === 27) {
+                    hideArtistFloatingPanel();
+                }
+            });
+
+            $(document).on('click', function (e) {
+                if ($(e.target).closest('.mass-add-artist-wrap').length) {
+                    return;
+                }
+                if ($(e.target).closest('#mass-add-artist-floating-panel').length) {
+                    return;
+                }
+                hideArtistFloatingPanel();
+            });
+        })(jQuery);
+
         let rowIndex = 1;
         // Add a new row
         // Add new row

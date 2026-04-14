@@ -60,11 +60,14 @@
         </div>
     </td>
     <td class="td col-artist">
-        {!! Form::text("products[{$index}][artist]", null, [
-            'class' => 'form-control artist-autocomplete-input',
-            'placeholder' => "Artist",
-            'id' => "products_{$index}_artist"
-        ]) !!}
+        <div class="mass-add-artist-wrap">
+            {!! Form::text("products[{$index}][artist]", null, [
+                'class' => 'form-control mass-add-artist-input',
+                'placeholder' => "Artist",
+                'id' => "products_{$index}_artist",
+                'autocomplete' => 'off',
+            ]) !!}
+        </div>
     </td>
     <td class="td col-locations">
         <div class="form-group" style="display: flex; gap: 2px; align-items: center;">
