@@ -89,6 +89,12 @@
 							{{$page_product->packing_date}}
 						</span>
 					@endif
+					@if(!empty($print['purchase_date']) && !empty($page_product->purchase_date))
+						<span style="font-size: {{$print['purchase_date_size'] ?? 12}}px">
+							<b>Purchase Date:</b>
+							{{$page_product->purchase_date}}
+						</span>
+					@endif
 					<br>
 
 					{{-- Barcode --}}

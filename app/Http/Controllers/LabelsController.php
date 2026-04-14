@@ -104,7 +104,14 @@ class LabelsController extends Controller
                         'variations.name as variation_name',
                         'variations.sell_price_inc_tax as price',
                         'categories.name as catname',
-                        'variations.sub_sku as sub_sku'
+                        'variations.sub_sku as sub_sku',
+                        DB::raw("(SELECT DATE_FORMAT(t.transaction_date, '%m/%d/%Y') 
+                            FROM purchase_lines pl 
+                            INNER JOIN transactions t ON pl.transaction_id = t.id 
+                            WHERE pl.variation_id = variations.id 
+                                AND t.type = 'purchase' 
+                            ORDER BY t.transaction_date DESC, pl.id DESC 
+                            LIMIT 1) as purchase_date")
                     )
                     ->groupBy('variation_id')
                     ->get();
@@ -155,6 +162,9 @@ class LabelsController extends Controller
                 }
                 if (!empty($value['packing_date'])) {
                     $details->packing_date = $value['packing_date'];
+                }
+                if (!empty($value['purchase_date'])) {
+                    $details->purchase_date = $value['purchase_date'];
                 }
                 if (!empty($value['lot_number'])) {
                     $details->lot_number = $value['lot_number'];

@@ -2978,6 +2978,7 @@ class ProductController extends Controller
                         'alert_quantity'      => 1,
                         'business_id'         => $businessId,
                         'created_by'          => auth()->user()->id,
+                        'added_via'           => 'mass_add',
                         'product_custom_field1' => $productData['image_url'] ?? null,
                         'image'               => $image,
                         'enable_stock'        => 1,

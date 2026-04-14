@@ -883,3 +883,73 @@ $(document).on('click', 'button.apply-all', function(){
 
     window.initArtistTitleAutocompleteFields = initArtistTitleAutocompleteInScope;
 })();
+
+// Product Entry Rules resolver (title/category -> artist/prices/category)
+(function() {
+    function readFirst($scope, selectors) {
+        for (var i = 0; i < selectors.length; i++) {
+            var $el = $scope.find(selectors[i]).first();
+            if ($el.length) {
+                return $el;
+            }
+        }
+        return $();
+    }
+
+    function resolveProductEntryRule(title, category_id, sub_category_id, callback) {
+        $.getJSON('/settings/product-entry-rules/resolve', {
+            title: title || '',
+            category_id: category_id || '',
+            sub_category_id: sub_category_id || ''
+        }).done(function(resp) {
+            if (resp && resp.success && resp.rule && typeof callback === 'function') {
+                callback(resp.rule);
+            }
+        });
+    }
+
+    function applyRuleToScope($scope, rule) {
+        if (!$scope || !$scope.length || !rule) {
+            return;
+        }
+        if (rule.artist) {
+            var $artist = readFirst($scope, ['input.artist-autocomplete-input', 'input[name="artist"]', 'input[name*="[artist]"]']);
+            if ($artist.length && !$artist.val()) {
+                $artist.val(rule.artist).trigger('change');
+            }
+        }
+        if (rule.purchase_price !== null && rule.purchase_price !== undefined && rule.purchase_price !== '') {
+            var $pp = readFirst($scope, ['input[name="single_dpp_inc_tax"]', 'input[name*="[single_dpp_inc_tax]"]']);
+            if ($pp.length && !$pp.val()) {
+                $pp.val(rule.purchase_price).trigger('change');
+            }
+        }
+        if (rule.selling_price !== null && rule.selling_price !== undefined && rule.selling_price !== '') {
+            var $sp = readFirst($scope, ['input[name="single_dsp_inc_tax"]', 'input[name*="[single_dsp_inc_tax]"]']);
+            if ($sp.length && !$sp.val()) {
+                $sp.val(rule.selling_price).trigger('change');
+            }
+        }
+    }
+
+    $(document).on('blur', 'input[name="name"], .product-name-autocomplete, input[name*="[name]"]', function() {
+        var $name = $(this);
+        var title = String($name.val() || '').trim();
+        if (!title) {
+            return;
+        }
+        var $scope = $name.closest('form, .product-row, .manual_product_row');
+        if (!$scope.length) {
+            $scope = $(document);
+        }
+
+        var $cat = readFirst($scope, ['input[name="category_id"]', 'input[name*="[category_id]"]']);
+        var $sub = readFirst($scope, ['input[name="sub_category_id"]', 'input[name*="[sub_category_id]"]']);
+        var category_id = $cat.length ? $cat.val() : '';
+        var sub_category_id = $sub.length ? $sub.val() : '';
+
+        resolveProductEntryRule(title, category_id, sub_category_id, function(rule) {
+            applyRuleToScope($scope, rule);
+        });
+    });
+})();

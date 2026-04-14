@@ -44,6 +44,7 @@
 								<th>@lang( 'product.exp_date' )</th>
 							@endif
 							<th>@lang('lang_v1.packing_date')</th>
+							<th>Purchase Date</th>
 							<th>@lang('lang_v1.selling_price_group')</th>
 							<th>@lang('#')</th>
 						</tr>
@@ -151,6 +152,20 @@
       							<div class="input-group-addon"><b>@lang( 'lang_v1.size' )</b></div>
 								<input type="text" class="form-control" 
 									name="print[packing_date_size]" 
+									value="12">
+							</div>
+						</td>
+						<td>
+							<div class="checkbox">
+							    <label>
+							    	<input type="checkbox" name="print[purchase_date]" value="0"> <b>Print Purchase Date</b>
+							    </label>
+							</div>
+
+							<div class="input-group">
+      							<div class="input-group-addon"><b>@lang( 'lang_v1.size' )</b></div>
+								<input type="text" class="form-control" 
+									name="print[purchase_date_size]" 
 									value="12">
 							</div>
 						</td>

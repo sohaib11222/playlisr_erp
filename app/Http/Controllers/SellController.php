@@ -284,6 +284,18 @@ class SellController extends Controller
             if (!empty(request()->input('shipping_status'))) {
                 $sells->where('transactions.shipping_status', request()->input('shipping_status'));
             }
+
+            if (!empty(request()->input('pos_text_search'))) {
+                $search = trim((string) request()->input('pos_text_search'));
+                $sells->where(function ($q) use ($search) {
+                    $q->where('transactions.invoice_no', 'like', '%' . $search . '%')
+                        ->orWhere('transactions.ref_no', 'like', '%' . $search . '%')
+                        ->orWhere('transactions.additional_notes', 'like', '%' . $search . '%')
+                        ->orWhere('transactions.staff_note', 'like', '%' . $search . '%')
+                        ->orWhere('contacts.name', 'like', '%' . $search . '%')
+                        ->orWhere('contacts.mobile', 'like', '%' . $search . '%');
+                });
+            }
             
             if (!empty(request()->input('for_dashboard_sales_order'))) {
                 $sells->whereIn('transactions.status', ['partial', 'ordered'])

@@ -2284,8 +2284,7 @@ $(document).ready(function() {
         var $input = $(this);
         var $row = $input.closest('.manual_product_row');
         var term = String($input.val() || '').trim();
-        var $priceInput = $row.find('input[name*="[price]"]');
-        if (!term || $priceInput.val()) {
+        if (!term || $row.find('input[name*="[price]"]').val()) {
             return;
         }
         var items = getManualKeywordSuggestions(term);
@@ -2293,9 +2292,12 @@ $(document).ready(function() {
             return;
         }
         var best = items[0];
-        if (best && best.price !== null && best.price !== undefined && best.price !== '') {
-            $priceInput.val(best.price).trigger('change');
-        }
+        applyManualRuleToRow($row, best);
+        var catId = $row.find('input.manual_category_id').val() || '';
+        var subCatId = $row.find('input.manual_sub_category_id').val() || '';
+        resolveProductEntryRule(term, catId, subCatId, function(rule) {
+            applyResolvedProductEntryRuleToManualRow($row, rule);
+        });
     });
 });
 
@@ -2361,7 +2363,9 @@ var MANUAL_ITEM_PRICE_KEYWORDS = [];
         return {
             label: String(r.label || '').trim(),
             keywords: keywordTokens,
-            price: String(r.price || '').trim()
+            price: String(r.price || '').trim(),
+            category_id: r.category_id ? String(r.category_id).trim() : '',
+            sub_category_id: r.sub_category_id ? String(r.sub_category_id).trim() : ''
         };
     }).filter(function(r) {
         return r.label && r.keywords.length > 0 && r.price !== '';
@@ -2382,11 +2386,84 @@ function getManualKeywordSuggestions(term) {
             out.push({
                 label: rule.label + ' ($' + rule.price + ')',
                 value: rule.label,
-                price: rule.price
+                price: rule.price,
+                category_id: rule.category_id,
+                sub_category_id: rule.sub_category_id
             });
         }
     });
     return out;
+}
+
+function applyManualRuleToRow($row, item) {
+    if (!$row || !$row.length || !item) {
+        return;
+    }
+
+    if (item.price !== null && item.price !== undefined && item.price !== '') {
+        $row.find('input[name*="[price]"]').val(item.price).trigger('change');
+    }
+
+    var catId = item.category_id ? String(item.category_id).trim() : '';
+    var subCatId = item.sub_category_id ? String(item.sub_category_id).trim() : '';
+    if (!catId && !subCatId) {
+        return;
+    }
+
+    $row.find('input.manual_category_id').val(catId);
+    $row.find('input.manual_sub_category_id').val(subCatId);
+
+    var $combo = $row.find('select.manual_category_combo');
+    if (!$combo.length) {
+        return;
+    }
+
+    var comboVal = (catId || '') + '|' + (subCatId || '');
+    var $opt = $combo.find('option[value="' + comboVal + '"]');
+    if ($opt.length) {
+        $combo.val(comboVal).trigger('change');
+        return;
+    }
+
+    var matchedVal = '';
+    $combo.find('option').each(function() {
+        var $o = $(this);
+        var oCat = String($o.attr('data-category-id') || '').trim();
+        var oSub = String($o.attr('data-sub-category-id') || '').trim();
+        if (oCat === catId && oSub === subCatId) {
+            matchedVal = String($o.val() || '');
+            return false;
+        }
+    });
+    if (matchedVal !== '') {
+        $combo.val(matchedVal).trigger('change');
+    }
+}
+
+function applyResolvedProductEntryRuleToManualRow($row, rule) {
+    if (!$row || !$row.length || !rule) {
+        return;
+    }
+    if (rule.artist) {
+        $row.find('input[name*="[artist]"]').val(rule.artist).trigger('change');
+    }
+    applyManualRuleToRow($row, {
+        price: rule.selling_price || '',
+        category_id: rule.category_id || '',
+        sub_category_id: rule.sub_category_id || ''
+    });
+}
+
+function resolveProductEntryRule(title, categoryId, subCategoryId, callback) {
+    $.getJSON('/settings/product-entry-rules/resolve', {
+        title: title || '',
+        category_id: categoryId || '',
+        sub_category_id: subCategoryId || ''
+    }).done(function(resp) {
+        if (resp && resp.success && resp.rule && typeof callback === 'function') {
+            callback(resp.rule);
+        }
+    });
 }
 
 function initManualProductNameAutocomplete($scope) {
@@ -2410,9 +2487,12 @@ function initManualProductNameAutocomplete($scope) {
                 event.preventDefault();
                 var $row = $(this).closest('.manual_product_row');
                 $(this).val(ui.item.value || ui.item.label || '');
-                if (ui.item.price !== null && ui.item.price !== undefined && ui.item.price !== '') {
-                    $row.find('input[name*="[price]"]').val(ui.item.price).trigger('change');
-                }
+                applyManualRuleToRow($row, ui.item);
+                var catId = $row.find('input.manual_category_id').val() || '';
+                var subCatId = $row.find('input.manual_sub_category_id').val() || '';
+                resolveProductEntryRule($(this).val(), catId, subCatId, function(rule) {
+                    applyResolvedProductEntryRuleToManualRow($row, rule);
+                });
             }
         }).autocomplete('instance')._renderItem = function(ul, item) {
             var priceText = item.price ? ('<span class="text-success"> $' + item.price + '</span>') : '';

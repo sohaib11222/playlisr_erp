@@ -240,6 +240,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/settings/manual-item-price-rules', 'ManualItemPriceRuleController@store')->name('manual-item-price-rules.store');
     Route::put('/settings/manual-item-price-rules/{id}', 'ManualItemPriceRuleController@update')->name('manual-item-price-rules.update');
     Route::delete('/settings/manual-item-price-rules/{id}', 'ManualItemPriceRuleController@destroy')->name('manual-item-price-rules.destroy');
+    Route::get('/settings/product-entry-rules', 'ProductEntryRuleController@index')->name('product-entry-rules.index');
+    Route::post('/settings/product-entry-rules', 'ProductEntryRuleController@store')->name('product-entry-rules.store');
+    Route::put('/settings/product-entry-rules/{id}', 'ProductEntryRuleController@update')->name('product-entry-rules.update');
+    Route::delete('/settings/product-entry-rules/{id}', 'ProductEntryRuleController@destroy')->name('product-entry-rules.destroy');
+    Route::get('/settings/product-entry-rules/resolve', 'ProductEntryRuleController@resolve')->name('product-entry-rules.resolve');
     Route::get('/reset-mapping', 'SellController@resetMapping');
 
     // Export routes must be defined BEFORE resource route to avoid conflicts
@@ -317,6 +322,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/landed-cost-summary', 'ReportController@landedCostSummary');
     Route::get('/reports/purchase-order-vs-received', 'ReportController@purchaseOrderVsReceived');
     Route::get('/reports/item-transaction-history', 'ReportController@itemTransactionHistory');
+    Route::get('/reports/product-entry-productivity', 'ReportController@productEntryProductivity');
     
     Route::get('business-location/activate-deactivate/{location_id}', 'BusinessLocationController@activateDeactivateLocation');
 

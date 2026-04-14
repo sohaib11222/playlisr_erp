@@ -4552,6 +4552,93 @@ class ReportController extends Controller
     }
 
     /**
+     * Employee productivity report for product additions.
+     */
+    public function productEntryProductivity(Request $request)
+    {
+        if (!$this->businessUtil->is_admin(auth()->user()) && !auth()->user()->can('purchase_n_sell_report.view')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = $request->session()->get('user.business_id');
+        $start_date = $request->input('start_date');
+        $end_date = $request->input('end_date');
+        if (empty($start_date) || empty($end_date)) {
+            $today = \Carbon::today()->format('Y-m-d');
+            $start_date = $start_date ?: $today;
+            $end_date = $end_date ?: $today;
+        }
+
+        $users = User::where('business_id', $business_id)
+            ->select('id', DB::raw("CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')) as full_name"))
+            ->orderBy('first_name')
+            ->get();
+
+        $productsTableHasAddedVia = \Schema::hasColumn('products', 'added_via');
+        $massAddQuery = Product::where('business_id', $business_id)
+            ->whereDate('created_at', '>=', $start_date)
+            ->whereDate('created_at', '<=', $end_date);
+        if ($productsTableHasAddedVia) {
+            $massAddQuery->where('added_via', 'mass_add');
+        } else {
+            // Backward compatibility: avoid SQL error before migration is applied.
+            // Without added_via metadata, count is shown as 0 instead of failing.
+            $massAddQuery->whereRaw('1 = 0');
+        }
+        $mass_add = $massAddQuery
+            ->select('created_by', DB::raw('COUNT(*) as total'))
+            ->groupBy('created_by')
+            ->pluck('total', 'created_by');
+
+        $purchase_add = DB::table('purchase_lines as pl')
+            ->join('transactions as t', 'pl.transaction_id', '=', 't.id')
+            ->where('t.business_id', $business_id)
+            ->whereIn('t.type', ['purchase', 'opening_stock', 'purchase_transfer'])
+            ->whereDate('t.transaction_date', '>=', $start_date)
+            ->whereDate('t.transaction_date', '<=', $end_date)
+            ->select('t.created_by', DB::raw('COUNT(pl.id) as total'))
+            ->groupBy('t.created_by')
+            ->pluck('total', 't.created_by');
+
+        $rows = $users->map(function ($u) use ($mass_add, $purchase_add) {
+            $m = (int) ($mass_add[$u->id] ?? 0);
+            $p = (int) ($purchase_add[$u->id] ?? 0);
+            return (object) [
+                'user_id' => $u->id,
+                'employee' => trim((string) $u->full_name),
+                'mass_add_count' => $m,
+                'purchase_add_count' => $p,
+                'total_count' => $m + $p,
+            ];
+        })->sortByDesc('total_count')->values();
+
+        // Daily summary cards for current day.
+        $today = \Carbon::today()->format('Y-m-d');
+        $todayMassAddQuery = Product::where('business_id', $business_id)
+            ->whereDate('created_at', $today);
+        if ($productsTableHasAddedVia) {
+            $todayMassAddQuery->where('added_via', 'mass_add');
+        } else {
+            $todayMassAddQuery->whereRaw('1 = 0');
+        }
+        $today_mass_add = (int) $todayMassAddQuery->count();
+        $today_purchase_add = (int) DB::table('purchase_lines as pl')
+            ->join('transactions as t', 'pl.transaction_id', '=', 't.id')
+            ->where('t.business_id', $business_id)
+            ->whereIn('t.type', ['purchase', 'opening_stock', 'purchase_transfer'])
+            ->whereDate('t.transaction_date', $today)
+            ->count();
+
+        return view('report.product_entry_productivity')->with(compact(
+            'rows',
+            'start_date',
+            'end_date',
+            'today_mass_add',
+            'today_purchase_add'
+        ));
+    }
+
+    /**
      * Restrict accountant reports to admin users only.
      */
     protected function ensureAccountantReportAdminAccess()

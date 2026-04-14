@@ -18,6 +18,14 @@ $(document).on('change', '#sell_list_filter_location_id, #sell_list_filter_custo
     sell_table.ajax.reload();
 });
 
+let posSearchTimer = null;
+$(document).on('input', '#pos_text_search', function() {
+    clearTimeout(posSearchTimer);
+    posSearchTimer = setTimeout(function() {
+        sell_table.ajax.reload();
+    }, 250);
+});
+
 sell_table = $('#sell_table').DataTable({
         processing: true,
         serverSide: true,
@@ -58,6 +66,9 @@ sell_table = $('#sell_table').DataTable({
 
                 if($('#shipping_status').length) {
                     d.shipping_status = $('#shipping_status').val();
+                }
+                if ($('#pos_text_search').length) {
+                    d.pos_text_search = $('#pos_text_search').val();
                 }
 
                 if($('#only_subscriptions').length && $('#only_subscriptions').is(':checked')) {

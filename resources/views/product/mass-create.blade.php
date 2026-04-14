@@ -1310,6 +1310,121 @@
 
     // Enhanced bulk text parsing functionality with smart format detection
     function parseBulkProductText(text) {
+        function normalizeToken(s) {
+            return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+        }
+
+        function extractMoneyToken(rawLine) {
+            const src = String(rawLine || '');
+            // Match $10, $ 10.50, 10.50$, etc.
+            let m = src.match(/\$\s*([0-9]+(?:\.[0-9]{1,4})?)/);
+            if (m && m[1]) return m[1];
+            m = src.match(/\b([0-9]+(?:\.[0-9]{1,4})?)\s*\$/);
+            if (m && m[1]) return m[1];
+            return '';
+        }
+
+        function cleanMoney(v) {
+            return String(v || '').replace(/[$,]/g, '').trim();
+        }
+
+        function looksLikeMoney(v) {
+            const c = cleanMoney(v);
+            return c !== '' && /^[0-9]+(?:\.[0-9]{1,4})?$/.test(c);
+        }
+
+        function inferLocationToken(rawLine) {
+            const lower = String(rawLine || '').toLowerCase();
+            if (lower.indexOf('pico') !== -1) return 'Pico';
+            if (lower.indexOf('hollywood') !== -1) return 'Hollywood';
+            return '';
+        }
+
+        function normalizeParsedProductFields(product) {
+            // Pull price from any field that looks like a money token.
+            const priceCandidates = [
+                product.price,
+                product.sku,
+                product.listing_location,
+                extractMoneyToken(product.raw_line)
+            ];
+            let finalPrice = '';
+            for (let i = 0; i < priceCandidates.length; i++) {
+                if (looksLikeMoney(priceCandidates[i])) {
+                    finalPrice = cleanMoney(priceCandidates[i]);
+                    break;
+                }
+            }
+            if (finalPrice) {
+                product.price = finalPrice;
+            }
+
+            // Fix common shifted CSV case:
+            // Product, Artist, Category, Subcategory, $10, pico
+            // where $10 was incorrectly assigned to SKU and pico to price.
+            const locationFromRaw = inferLocationToken(product.raw_line);
+            const locationFromFields =
+                inferLocationToken(product.listing_location) ||
+                inferLocationToken(product.price) ||
+                inferLocationToken(product.sku);
+            const finalLocation = locationFromFields || locationFromRaw;
+            if (finalLocation) {
+                product.listing_location = finalLocation;
+            }
+
+            // If SKU is actually money/location text, clear it.
+            if (looksLikeMoney(product.sku) || inferLocationToken(product.sku)) {
+                product.sku = '';
+            }
+            // If price field still contains location text, keep numeric price only.
+            if (!looksLikeMoney(product.price) && finalPrice) {
+                product.price = finalPrice;
+            }
+        }
+
+        function inferHintsFromRawLine(rawLine, product) {
+            const lower = String(rawLine || '').toLowerCase();
+
+            // If user types $10, treat it as selling price by default.
+            if (!product.price) {
+                const m = lower.match(/\$\s*([0-9]+(?:\.[0-9]{1,4})?)/);
+                if (m && m[1]) {
+                    product.price = m[1];
+                }
+            }
+
+            // Lightweight genre/category inference from natural text.
+            const genreMap = [
+                { keys: ['used vinyl', 'used'], category: 'used vinyl' },
+                { keys: ['vinyl'], category: 'vinyl' },
+                { keys: ['r&b', 'rnb', 'r and b'], subcategory: 'r&b' },
+                { keys: ['rock'], subcategory: 'rock' },
+                { keys: ['jazz'], subcategory: 'jazz' },
+                { keys: ['hip hop', 'hiphop'], subcategory: 'hip hop' },
+                { keys: ['soul'], subcategory: 'soul' }
+            ];
+            genreMap.forEach(function(g) {
+                const hit = g.keys.some(function(k) { return lower.indexOf(k) !== -1; });
+                if (!hit) return;
+                if (!product.category && g.category) product.category = g.category;
+                if (!product.subcategory && g.subcategory) product.subcategory = g.subcategory;
+            });
+
+            // Location inference from free text.
+            if (!product.listing_location) {
+                if (lower.indexOf('pico') !== -1) {
+                    product.listing_location = 'Pico';
+                } else if (lower.indexOf('hollywood') !== -1) {
+                    product.listing_location = 'Hollywood';
+                }
+            }
+
+            // If category field accidentally contains price symbols, clean it.
+            if (product.category && /\$/.test(product.category)) {
+                product.category = normalizeToken(product.category);
+            }
+        }
+
         const lines = text.split('\n').filter(line => line.trim() !== '');
         const products = [];
         
@@ -1326,6 +1441,7 @@
                 price: '',
                 bin_position: '',
                 listing_location: '',
+                raw_line: line,
                 lineNumber: index + 1
             };
             
@@ -1417,6 +1533,9 @@
             if (product.price) {
                 product.price = product.price.replace(/[$,]/g, '').trim();
             }
+
+            inferHintsFromRawLine(line, product);
+            normalizeParsedProductFields(product);
             
             if (product.name) {
                 products.push(product);
@@ -1460,6 +1579,52 @@
     }
 
     function addProductFromParsedData(productData, rowIndex) {
+        function normalizeForMatch(s) {
+            return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+        }
+
+        function findBestCategoryComboValue($combo, product) {
+            if (!$combo || !$combo.length) {
+                return '';
+            }
+            const categoryHint = normalizeForMatch(product.category);
+            const subHint = normalizeForMatch(product.subcategory);
+            const raw = normalizeForMatch(product.raw_line);
+            let bestVal = '';
+            let bestScore = 0;
+
+            $combo.find('option').each(function() {
+                const $opt = $(this);
+                const val = String($opt.val() || '');
+                if (!val) return;
+                const label = normalizeForMatch($opt.text());
+                let score = 0;
+                if (categoryHint && label.indexOf(categoryHint) !== -1) score += 3;
+                if (subHint && label.indexOf(subHint) !== -1) score += 4;
+                if (raw && label && raw.indexOf(label) !== -1) score += 2;
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestVal = val;
+                }
+            });
+
+            return bestScore > 0 ? bestVal : '';
+        }
+
+        function findLocationIdsByText($locations, hintText) {
+            const q = normalizeForMatch(hintText);
+            if (!q) return [];
+            const ids = [];
+            $locations.find('option').each(function() {
+                const $opt = $(this);
+                const text = normalizeForMatch($opt.text());
+                if (text && (text.indexOf(q) !== -1 || q.indexOf(text) !== -1)) {
+                    ids.push(String($opt.val()));
+                }
+            });
+            return ids;
+        }
+
         return new Promise((resolve) => {
             $.ajax({
                 url: "{{ route('product.getMassProductRow') }}",
@@ -1494,36 +1659,20 @@
                     // Listing location
                     if (productData.listing_location) {
                         $row.find('input[name*="[listing_location]"]').val(productData.listing_location);
+                        const $locations = $row.find('.select2_business_locations');
+                        const locationIds = findLocationIdsByText($locations, productData.listing_location);
+                        if (locationIds.length) {
+                            $locations.val(locationIds).trigger('change');
+                        }
                     }
                     
-                    // Category - try to match by name
-                    if (productData.category) {
-                        const categorySelect = $row.find('.category-select');
-                        const categoryOption = categorySelect.find('option').filter(function() {
-                            return $(this).text().toLowerCase().includes(productData.category.toLowerCase());
-                        }).first();
-                        if (categoryOption.length) {
-                            categorySelect.val(categoryOption.val()).trigger('change');
-                            
-                            // Wait a bit for subcategory to load, then set it
-                            setTimeout(() => {
-                                if (productData.subcategory) {
-                                    const subCategorySelect = $row.find('.subcategory-select');
-                                    const subCategoryOption = subCategorySelect.find('option').filter(function() {
-                                        return $(this).text().toLowerCase().includes(productData.subcategory.toLowerCase());
-                                    }).first();
-                                    if (subCategoryOption.length) {
-                                        subCategorySelect.val(subCategoryOption.val()).trigger('change');
-                                    }
-                                }
-                                resolve();
-                            }, 500);
-                        } else {
-                            resolve();
-                        }
-                    } else {
-                        resolve();
+                    // Category/Subcategory: match against merged combo options.
+                    const $combo = $row.find('.category-combo-select');
+                    const comboVal = findBestCategoryComboValue($combo, productData);
+                    if (comboVal) {
+                        $combo.val(comboVal).trigger('change');
                     }
+                    resolve();
                     
                     // Reinitialize Select2
                     $row.find('.select2').select2();

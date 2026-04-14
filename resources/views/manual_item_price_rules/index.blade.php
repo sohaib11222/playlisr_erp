@@ -25,7 +25,7 @@
                         <label>Label</label>
                         <input type="text" name="label" class="form-control" placeholder="Coke" required>
                     </div>
-                    <div class="col-md-5">
+                    <div class="col-md-4">
                         <label>Keywords (comma-separated)</label>
                         <input type="text" name="keywords" class="form-control" placeholder="coke, coca cola" required>
                     </div>
@@ -33,20 +33,30 @@
                         <label>Price</label>
                         <input type="number" name="price" class="form-control" step="0.01" min="0" required>
                     </div>
+                    <div class="col-md-3">
+                        <label>Category / Subcategory (optional)</label>
+                        <select name="category_combo" class="form-control select2" style="width: 100%;">
+                            <option value="">None</option>
+                            @foreach($category_combos ?? [] as $combo)
+                                <option value="{{ $combo['id'] }}">{{ $combo['label'] }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                </div>
+                <div class="row" style="margin-top: 10px;">
                     <div class="col-md-1">
                         <label>Order</label>
                         <input type="number" name="sort_order" class="form-control" min="0" value="0">
                     </div>
-                    <div class="col-md-1">
+                    <div class="col-md-2">
                         <label>Active</label>
                         <select name="is_active" class="form-control">
                             <option value="1">Yes</option>
                             <option value="0">No</option>
                         </select>
                     </div>
-                </div>
-                <div class="row" style="margin-top: 10px;">
-                    <div class="col-md-12 text-right">
+                    <div class="col-md-9 text-right">
+                        <label style="display:block;">&nbsp;</label>
                         <button type="submit" class="btn btn-primary">Add Rule</button>
                     </div>
                 </div>
@@ -65,6 +75,7 @@
                         <th>Label</th>
                         <th>Keywords</th>
                         <th>Price</th>
+                        <th>Category / Subcategory</th>
                         <th>Order</th>
                         <th>Active</th>
                         <th style="width: 250px;">Actions</th>
@@ -79,6 +90,19 @@
                                 <td><input type="text" name="label" class="form-control" value="{{ $rule->label }}" required></td>
                                 <td><input type="text" name="keywords" class="form-control" value="{{ $rule->keywords }}" required></td>
                                 <td><input type="number" name="price" class="form-control" step="0.01" min="0" value="{{ $rule->price }}" required></td>
+                                @php
+                                    $selected_combo = (!empty($rule->category_id) || !empty($rule->sub_category_id))
+                                        ? ((int) ($rule->category_id ?: 0) . '|' . (int) ($rule->sub_category_id ?: 0))
+                                        : '';
+                                @endphp
+                                <td>
+                                    <select name="category_combo" class="form-control select2" style="width: 100%;">
+                                        <option value="">None</option>
+                                        @foreach($category_combos ?? [] as $combo)
+                                            <option value="{{ $combo['id'] }}" @if($selected_combo === (string) $combo['id']) selected @endif>{{ $combo['label'] }}</option>
+                                        @endforeach
+                                    </select>
+                                </td>
                                 <td><input type="number" name="sort_order" class="form-control" min="0" value="{{ $rule->sort_order }}"></td>
                                 <td>
                                     <select name="is_active" class="form-control">
@@ -97,12 +121,20 @@
                                 </td>
                         </tr>
                     @empty
-                        <tr><td colspan="6" class="text-center text-muted">No rules yet.</td></tr>
+                        <tr><td colspan="7" class="text-center text-muted">No rules yet.</td></tr>
                     @endforelse
                 </tbody>
             </table>
         </div>
     </div>
 </section>
+@endsection
+
+@section('javascript')
+<script>
+    $(document).ready(function() {
+        $('.select2').select2();
+    });
+</script>
 @endsection
 

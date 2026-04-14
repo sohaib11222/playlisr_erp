@@ -13,6 +13,14 @@
 <section class="content no-print">
     @component('components.filters', ['title' => __('report.filters')])
         @include('sell.partials.sell_list_filters')
+        <div class="row">
+            <div class="col-md-4">
+                <div class="form-group">
+                    <label>Text Search (recent transactions)</label>
+                    <input type="text" id="pos_text_search" class="form-control" placeholder="Invoice, customer, mobile, notes...">
+                </div>
+            </div>
+        </div>
     @endcomponent
 
     @component('components.widget', ['class' => 'box-primary', 'title' => __( 'sale.list_pos')])

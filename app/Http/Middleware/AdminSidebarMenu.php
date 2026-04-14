@@ -190,6 +190,11 @@ class AdminSidebarMenu
                                 'Manual Item Price Rules',
                                 ['icon' => 'fa fas fa-dollar-sign', 'active' => request()->segment(1) == 'settings' && request()->segment(2) == 'manual-item-price-rules']
                             );
+                            $sub->url(
+                                route('product-entry-rules.index'),
+                                'Product Entry Rules',
+                                ['icon' => 'fa fas fa-magic', 'active' => request()->segment(1) == 'settings' && request()->segment(2) == 'product-entry-rules']
+                            );
                         }
                         if (auth()->user()->can('discount.access')) {
                             $sub->url(
@@ -548,6 +553,11 @@ class AdminSidebarMenu
                                 action('ReportController@itemsReport'),
                                 __('lang_v1.items_report'),
                                 ['icon' => 'fa fas fa-tasks', 'active' => request()->segment(2) == 'items-report']
+                            );
+                            $sub->url(
+                                action('ReportController@productEntryProductivity'),
+                                'Employee Productivity',
+                                ['icon' => 'fa fas fa-user-clock', 'active' => request()->segment(2) == 'product-entry-productivity']
                             );
 
                             $sub->url(
