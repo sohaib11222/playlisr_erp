@@ -40,7 +40,7 @@ class ManualItemPriceRuleController extends Controller
             'category_combo' => 'nullable|string',
         ]);
 
-        $combo = $this->parseCategoryCombo($request->input('category_combo'));
+        $combo = Category::parseCategoryComboValue($request->input('category_combo'));
 
         ManualItemPriceRule::create([
             'business_id' => $request->session()->get('user.business_id'),
@@ -73,7 +73,7 @@ class ManualItemPriceRuleController extends Controller
 
         $business_id = $request->session()->get('user.business_id');
         $rule = ManualItemPriceRule::where('business_id', $business_id)->findOrFail($id);
-        $combo = $this->parseCategoryCombo($request->input('category_combo'));
+        $combo = Category::parseCategoryComboValue($request->input('category_combo'));
         $rule->label = trim((string) $request->input('label'));
         $rule->keywords = trim((string) $request->input('keywords'));
         $rule->price = (float) $request->input('price');
@@ -97,23 +97,6 @@ class ManualItemPriceRuleController extends Controller
         $rule->delete();
 
         return redirect()->back()->with('status', ['success' => 1, 'msg' => 'Manual item price rule deleted.']);
-    }
-
-    private function parseCategoryCombo($value)
-    {
-        $raw = trim((string) $value);
-        if ($raw === '') {
-            return ['category_id' => null, 'sub_category_id' => null];
-        }
-
-        $parts = explode('|', $raw);
-        $category_id = isset($parts[0]) ? (int) trim($parts[0]) : 0;
-        $sub_category_id = isset($parts[1]) ? (int) trim($parts[1]) : 0;
-
-        return [
-            'category_id' => $category_id > 0 ? $category_id : null,
-            'sub_category_id' => $sub_category_id > 0 ? $sub_category_id : null,
-        ];
     }
 }
 

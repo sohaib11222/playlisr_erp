@@ -91,9 +91,7 @@
                                 <td><input type="text" name="keywords" class="form-control" value="{{ $rule->keywords }}" required></td>
                                 <td><input type="number" name="price" class="form-control" step="0.01" min="0" value="{{ $rule->price }}" required></td>
                                 @php
-                                    $selected_combo = (!empty($rule->category_id) || !empty($rule->sub_category_id))
-                                        ? ((int) ($rule->category_id ?: 0) . '|' . (int) ($rule->sub_category_id ?: 0))
-                                        : '';
+                                    $selected_combo = \App\Category::formatCategoryComboOptionValue($rule->category_id, $rule->sub_category_id);
                                 @endphp
                                 <td>
                                     <select name="category_combo" class="form-control select2" style="width: 100%;">

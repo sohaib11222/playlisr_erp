@@ -73,7 +73,7 @@
       							<div class="input-group-addon"><b>@lang( 'lang_v1.size' )</b></div>
 								<input type="text" class="form-control" 
 									name="print[name_size]" 
-									value="10">
+									value="8">
 							</div>
 						</td>
 
@@ -103,7 +103,7 @@
       							<div class="input-group-addon"><b>@lang( 'lang_v1.size' )</b></div>
 								<input type="text" class="form-control" 
 									name="print[price_size]" 
-									value="17">
+									value="13">
 							</div>
 
 						</td>
@@ -158,7 +158,7 @@
 						<td>
 							<div class="checkbox">
 							    <label>
-							    	<input type="checkbox" name="print[purchase_date]" value="0"> <b>Print Purchase Date</b>
+							    	<input type="checkbox" checked name="print[purchase_date]" value="1"> <b>Print Purchase Date</b>
 							    </label>
 							</div>
 
@@ -166,7 +166,7 @@
       							<div class="input-group-addon"><b>@lang( 'lang_v1.size' )</b></div>
 								<input type="text" class="form-control" 
 									name="print[purchase_date_size]" 
-									value="12">
+									value="7">
 							</div>
 						</td>
 

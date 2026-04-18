@@ -7,6 +7,7 @@ use App\Business;
 use App\BusinessLocation;
 use App\Category;
 use App\Media;
+use App\ManualItemPriceRule;
 use App\Product;
 use App\ProductVariation;
 use App\PurchaseLine;
@@ -2857,13 +2858,20 @@ class ProductController extends Controller
         $business_locations = BusinessLocation::forDropdown($business_id);
         $units = Unit::forDropdown($business_id);
 
+        $manual_item_price_rules = ManualItemPriceRule::where('business_id', $business_id)
+            ->where('is_active', 1)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get(['label', 'keywords', 'price', 'category_id', 'sub_category_id']);
+
         return view('product.mass-create')->with(compact(
             'categories',
             'category_combos',
             'brands',
             'taxes',
             'business_locations',
-            'units'
+            'units',
+            'manual_item_price_rules'
         ));
     }
 

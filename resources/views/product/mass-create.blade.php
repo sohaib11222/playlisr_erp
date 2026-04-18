@@ -469,6 +469,9 @@
 
 @section('javascript')
 @php $asset_v = env('APP_VERSION'); @endphp
+<script>
+    window.manualItemPriceRules = @json($manual_item_price_rules ?? []);
+</script>
 <script src="{{ asset('js/product.js?v=' . $asset_v) }}"></script>
 
 <script type="text/javascript">
@@ -1672,11 +1675,13 @@
                     if (comboVal) {
                         $combo.val(comboVal).trigger('change');
                     }
-                    resolve();
-                    
+
                     // Reinitialize Select2
                     $row.find('.select2').select2();
                     window.setupProductNameSelect2();
+                    // Apply POS manual item price rules (window.manualItemPriceRules) + product entry rules from product.js
+                    $row.find('.product-name-autocomplete').trigger('blur');
+                    resolve();
                 },
                 error: function () {
                     console.error('Failed to add row for product:', productData.name);

@@ -89,16 +89,19 @@
 							{{$page_product->packing_date}}
 						</span>
 					@endif
-					@if(!empty($print['purchase_date']) && !empty($page_product->purchase_date))
-						<span style="font-size: {{$print['purchase_date_size'] ?? 12}}px">
-							<b>Purchase Date:</b>
-							{{$page_product->purchase_date}}
+					@if(array_key_exists('purchase_date', $print ?? []) && !empty($page_product->purchase_date))
+						@php
+							$purchaseDatePx = (int) ($print['purchase_date_size'] ?? 7);
+							if ($purchaseDatePx < 6) { $purchaseDatePx = 6; }
+							if ($purchaseDatePx > 24) { $purchaseDatePx = 24; }
+						@endphp
+						<span style="display: block; line-height: 1.1; margin: 1px 0 0 0; padding: 0; font-size: {{ $purchaseDatePx }}px;">
+							<b>Purchase Date:</b> {{ $page_product->purchase_date }}
 						</span>
 					@endif
-					<br>
 
 					{{-- Barcode --}}
-					<img style="max-width:90% !important;height: {{ $barcode_details->height * 0.24 }}in !important; display: block;" src="data:image/png;base64,{{DNS1D::getBarcodePNG($page_product->sub_sku, $page_product->barcode_type, 1,30, array(0, 0, 0), false)}}">
+					<img style="margin-top: 2px; max-width:90% !important;height: {{ $barcode_details->height * 0.24 }}in !important; display: block;" src="data:image/png;base64,{{DNS1D::getBarcodePNG($page_product->sub_sku, $page_product->barcode_type, 1,30, array(0, 0, 0), false)}}">
 					<span style="font-size: 10px !important">
 						{{ $page_product->sub_sku }}
 					</span>

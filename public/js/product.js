@@ -932,6 +932,86 @@ $(document).on('click', 'button.apply-all', function(){
         }
     }
 
+    /** POS Manual Item Price Rules (same admin list as POS) — apply on Mass Add product name blur */
+    function buildManualItemPriceKeywordRules() {
+        var source = typeof window.manualItemPriceRules !== 'undefined' ? window.manualItemPriceRules : null;
+        if (!Array.isArray(source)) {
+            return [];
+        }
+        return source.map(function(r) {
+            var keywordTokens = String(r.keywords || '')
+                .split(',')
+                .map(function(k) { return String(k).trim().toLowerCase(); })
+                .filter(Boolean);
+            return {
+                label: String(r.label || '').trim(),
+                keywords: keywordTokens,
+                price: String(r.price != null ? r.price : '').trim(),
+                category_id: r.category_id ? String(r.category_id).trim() : '',
+                sub_category_id: r.sub_category_id ? String(r.sub_category_id).trim() : ''
+            };
+        }).filter(function(r) {
+            return r.label && r.keywords.length > 0 && r.price !== '';
+        });
+    }
+
+    function findManualItemPriceRuleForTitle(title) {
+        var q = String(title || '').toLowerCase().trim();
+        if (!q) {
+            return null;
+        }
+        var rules = buildManualItemPriceKeywordRules();
+        var i;
+        for (i = 0; i < rules.length; i++) {
+            var rule = rules[i];
+            var matched = rule.keywords.some(function(k) {
+                return k && (q.indexOf(k) !== -1 || k.indexOf(q) !== -1);
+            });
+            if (matched) {
+                return rule;
+            }
+        }
+        return null;
+    }
+
+    function applyManualItemPriceRuleToMassAddRow($row, rule) {
+        if (!$row || !$row.length || !rule) {
+            return;
+        }
+        if (rule.price) {
+            var $dsp = $row.find('input[name*="[single_dsp_inc_tax]"]').first();
+            if ($dsp.length && !String($dsp.val() || '').trim()) {
+                $dsp.val(rule.price).trigger('change');
+            }
+        }
+        var catId = rule.category_id ? String(rule.category_id).trim() : '';
+        var subCatId = rule.sub_category_id ? String(rule.sub_category_id).trim() : '';
+        if (!catId && !subCatId) {
+            return;
+        }
+        catId = catId || '0';
+        subCatId = subCatId || '0';
+        var comboVal = catId + '_' + subCatId;
+        var $combo = $row.find('select.category-combo-select').first();
+        if (!$combo.length) {
+            return;
+        }
+        var $opt = $combo.find('option[value="' + comboVal + '"]');
+        if ($opt.length) {
+            $combo.val(comboVal).trigger('change');
+        } else {
+            $combo.find('option').each(function() {
+                var $o = $(this);
+                var oCat = String($o.attr('data-category-id') || '');
+                var oSub = String($o.attr('data-sub-category-id') || '');
+                if (oCat === catId && oSub === subCatId) {
+                    $combo.val(String($o.val() || '')).trigger('change');
+                    return false;
+                }
+            });
+        }
+    }
+
     $(document).on('blur', 'input[name="name"], .product-name-autocomplete, input[name*="[name]"]', function() {
         var $name = $(this);
         var title = String($name.val() || '').trim();
@@ -941,6 +1021,14 @@ $(document).on('click', 'button.apply-all', function(){
         var $scope = $name.closest('form, .product-row, .manual_product_row');
         if (!$scope.length) {
             $scope = $(document);
+        }
+
+        var $massRow = $name.closest('#product_rows_container .product-row');
+        if ($massRow.length) {
+            var manualRule = findManualItemPriceRuleForTitle(title);
+            if (manualRule) {
+                applyManualItemPriceRuleToMassAddRow($massRow, manualRule);
+            }
         }
 
         var $cat = readFirst($scope, ['input[name="category_id"]', 'input[name*="[category_id]"]']);

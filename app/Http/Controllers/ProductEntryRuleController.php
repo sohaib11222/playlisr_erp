@@ -40,7 +40,7 @@ class ProductEntryRuleController extends Controller
             'is_active' => 'nullable|in:0,1',
             'sort_order' => 'nullable|integer|min:0',
         ]);
-        $combo = $this->parseCategoryCombo($request->input('category_combo'));
+        $combo = Category::parseCategoryComboValue($request->input('category_combo'));
         ProductEntryRule::create([
             'business_id' => $request->session()->get('user.business_id'),
             'trigger_type' => $request->input('trigger_type'),
@@ -73,7 +73,7 @@ class ProductEntryRuleController extends Controller
         ]);
         $business_id = $request->session()->get('user.business_id');
         $rule = ProductEntryRule::where('business_id', $business_id)->findOrFail($id);
-        $combo = $this->parseCategoryCombo($request->input('category_combo'));
+        $combo = Category::parseCategoryComboValue($request->input('category_combo'));
         $rule->trigger_type = $request->input('trigger_type');
         $rule->trigger_value = trim((string) $request->input('trigger_value'));
         $rule->artist = trim((string) $request->input('artist'));
@@ -111,21 +111,6 @@ class ProductEntryRuleController extends Controller
             $request->input('sub_category_id')
         );
         return response()->json(['success' => true, 'rule' => $resolved]);
-    }
-
-    private function parseCategoryCombo($value)
-    {
-        $raw = trim((string) $value);
-        if ($raw === '') {
-            return ['category_id' => null, 'sub_category_id' => null];
-        }
-        $parts = explode('|', $raw);
-        $category_id = isset($parts[0]) ? (int) trim($parts[0]) : 0;
-        $sub_category_id = isset($parts[1]) ? (int) trim($parts[1]) : 0;
-        return [
-            'category_id' => $category_id > 0 ? $category_id : null,
-            'sub_category_id' => $sub_category_id > 0 ? $sub_category_id : null,
-        ];
     }
 }
 

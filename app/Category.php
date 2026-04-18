@@ -115,6 +115,51 @@ class Category extends Model
     }
 
     /**
+     * Parse a category combo value from flattenedProductCategoryCombos dropdown
+     * (format "categoryId_subCategoryId") or legacy "categoryId|subCategoryId".
+     *
+     * @param string|null $value
+     * @return array{category_id: int|null, sub_category_id: int|null}
+     */
+    public static function parseCategoryComboValue($value)
+    {
+        $raw = trim((string) $value);
+        if ($raw === '') {
+            return ['category_id' => null, 'sub_category_id' => null];
+        }
+
+        if (strpos($raw, '|') !== false) {
+            $parts = explode('|', $raw, 2);
+        } else {
+            $parts = explode('_', $raw, 2);
+        }
+
+        $category_id = isset($parts[0]) ? (int) trim($parts[0]) : 0;
+        $sub_category_id = isset($parts[1]) ? (int) trim((string) $parts[1]) : 0;
+
+        return [
+            'category_id' => $category_id > 0 ? $category_id : null,
+            'sub_category_id' => $sub_category_id > 0 ? $sub_category_id : null,
+        ];
+    }
+
+    /**
+     * Value for option[value] matching flattenedProductCategoryCombos "id" keys.
+     *
+     * @param int|null $category_id
+     * @param int|null $sub_category_id
+     * @return string
+     */
+    public static function formatCategoryComboOptionValue($category_id, $sub_category_id)
+    {
+        if (empty($category_id)) {
+            return '';
+        }
+
+        return (int) $category_id . '_' . (int) ($sub_category_id ?: 0);
+    }
+
+    /**
      * Category Dropdown
      *
      * @param int $business_id

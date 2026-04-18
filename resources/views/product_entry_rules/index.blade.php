@@ -93,9 +93,7 @@
                 <tbody>
                     @forelse($rules as $rule)
                         @php
-                            $selected_combo = (!empty($rule->category_id) || !empty($rule->sub_category_id))
-                                ? ((int) ($rule->category_id ?: 0) . '|' . (int) ($rule->sub_category_id ?: 0))
-                                : '';
+                            $selected_combo = \App\Category::formatCategoryComboOptionValue($rule->category_id, $rule->sub_category_id);
                         @endphp
                         <tr>
                             <form method="POST" action="{{ route('product-entry-rules.update', $rule->id) }}">
