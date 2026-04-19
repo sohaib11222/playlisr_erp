@@ -1,6 +1,24 @@
 @extends('layouts.app')
 @section('title', 'Buy from Customer Calculator')
 
+@php
+    $is_embed = request()->get('embed') == '1';
+@endphp
+
+@if($is_embed)
+@section('css')
+    {{-- When opened inside the POS modal iframe, hide the admin chrome so only the calculator shows. --}}
+    <style>
+        body, body.skin-blue, body.hold-transition { background: #fff !important; padding-top: 0 !important; }
+        .main-header, .main-sidebar, .main-footer, .content-header > h1 > small, .left-side { display: none !important; }
+        .content-wrapper { margin-left: 0 !important; min-height: auto !important; padding-top: 0 !important; }
+        .content-header { padding: 10px 15px 0 !important; }
+        section.content { padding: 10px 15px !important; }
+        .wrapper { min-height: auto !important; }
+    </style>
+@stop
+@endif
+
 @section('content')
 <section class="content-header">
     <h1>Buy from Customer <small>Offer calculator</small></h1>

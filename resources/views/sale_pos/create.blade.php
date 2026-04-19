@@ -87,6 +87,31 @@
 
 @include('sale_pos.partials.customer_account_modal')
 
+{{-- Buy Calculator popup (iframes /buy-from-customer?embed=1) --}}
+<div class="modal fade" id="buy_calculator_modal" tabindex="-1" role="dialog" aria-labelledby="buyCalculatorModalLabel">
+	<div class="modal-dialog modal-lg" role="document" style="width: 95%; max-width: 1200px;">
+		<div class="modal-content" style="min-height: 85vh;">
+			<div class="modal-header">
+				<button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+				<h4 class="modal-title" id="buyCalculatorModalLabel"><i class="fa fa-calculator"></i> Buy from Customer Calculator</h4>
+			</div>
+			<div class="modal-body" style="padding: 0;">
+				<iframe id="buy_calculator_iframe" src="about:blank" style="width: 100%; height: 80vh; border: 0;"></iframe>
+			</div>
+		</div>
+	</div>
+</div>
+<script>
+	$(document).on('show.bs.modal', '#buy_calculator_modal', function() {
+		var url = $('#open_buy_calculator_modal').data('url');
+		$('#buy_calculator_iframe').attr('src', url);
+	});
+	$(document).on('hidden.bs.modal', '#buy_calculator_modal', function() {
+		// Clear iframe on close so fresh session starts next time
+		$('#buy_calculator_iframe').attr('src', 'about:blank');
+	});
+</script>
+
 @stop
 @section('css')
 	<!-- POS: scrollable product table so totals/actions stay visible without page scroll -->
