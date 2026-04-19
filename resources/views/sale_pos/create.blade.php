@@ -110,6 +110,88 @@
 				border-top: 1px solid #d9dde3;
 			}
 		}
+
+		/* ============================================================
+		   POS page: unified typography + button sizing
+		   Scoped to section.content so it does NOT affect the rest
+		   of the ERP. Everything below only applies inside /pos/create.
+		   ============================================================ */
+		section.content,
+		section.content .box-body,
+		section.content .form-group,
+		section.content label,
+		section.content p,
+		section.content td,
+		section.content th,
+		section.content .control-label,
+		section.content .help-block,
+		section.content small {
+			font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+			font-size: 14px;
+			line-height: 1.45;
+			color: #2b3440;
+		}
+		section.content .form-control {
+			font-family: inherit;
+			font-size: 14px;
+			height: 38px;
+			padding: 6px 12px;
+			border-radius: 6px;
+		}
+		section.content label,
+		section.content .control-label {
+			font-weight: 600;
+			font-size: 13px;
+			letter-spacing: 0.2px;
+		}
+		section.content small,
+		section.content .help-block {
+			font-size: 12px;
+		}
+
+		/* Button normalization — one size, one radius, consistent weight.
+		   Excludes: the big POS-express finalize buttons (cash/card/checkout)
+		   which need to stay prominent, and the big search input group. */
+		section.content .btn:not(.pos-express-finalize):not(#pos-finalize):not(.btn-lg):not(#search_product):not(.input-group-btn > .btn) {
+			font-family: inherit;
+			font-size: 13px;
+			font-weight: 600;
+			padding: 7px 14px;
+			height: 36px;
+			line-height: 1.2;
+			border-radius: 6px;
+			border: 1px solid rgba(0, 0, 0, 0.08);
+			letter-spacing: 0.2px;
+		}
+		section.content .btn-xs:not(.pos-express-finalize) {
+			font-size: 12px;
+			padding: 5px 10px;
+			height: 30px;
+		}
+		/* Finalize / express checkout — keep bold + larger so they stand out */
+		section.content .btn.pos-express-finalize,
+		section.content .btn#pos-finalize {
+			font-family: inherit;
+			font-size: 15px;
+			font-weight: 700;
+			padding: 10px 18px;
+			min-height: 44px;
+			border-radius: 8px;
+			letter-spacing: 0.3px;
+		}
+
+		/* Tables inside POS — align line-heights for easier scanning */
+		section.content table.table-condensed td,
+		section.content table.table-condensed th {
+			padding: 8px 10px;
+			vertical-align: middle;
+		}
+
+		/* Inputs inside the pos product list row */
+		section.content table#pos_table input.form-control {
+			height: 34px;
+			font-size: 14px;
+		}
 	</style>
 	<!-- include module css -->
     @if(!empty($pos_module_data))
