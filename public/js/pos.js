@@ -2180,7 +2180,8 @@ $(document).ready(function() {
 
     setInterval(function () {
         if ($('span.curr_datetime').length) {
-            $('span.curr_datetime').html(__current_datetime());
+            // POS header always uses 12-hour format for readability
+            $('span.curr_datetime').html(moment().format('MM/DD/YYYY hh:mm A'));
         }
     }, 60000);
 

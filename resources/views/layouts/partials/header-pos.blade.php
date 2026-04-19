@@ -25,30 +25,46 @@
 @inject('request', 'Illuminate\Http\Request')
 <div class="col-md-12 no-print pos-header">
   <input type="hidden" id="pos_redirect_url" value="{{$pos_redirect_url}}">
+  <style>
+    .pos-header-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 6px 0; }
+    .pos-header-pill { display: inline-flex; align-items: center; padding: 8px 16px; border-radius: 999px; line-height: 1.2; white-space: nowrap; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+    .pos-header-pill i.fa { margin-right: 10px; font-size: 16px; }
+    .pos-header-pill-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; opacity: 0.75; margin-right: 8px; font-weight: 700; }
+    .pos-header-pill-value { font-size: 16px; font-weight: 700; }
+    .pos-header-pill-store { background: #e8f4fd; color: #1b6ca8; }
+    .pos-header-pill-user { background: #e7f7ef; color: #1f7a45; }
+    .pos-header-pill-time { background: #f3f4f6; color: #4b5563; }
+    .pos-header-pill-store select.form-control { display: inline-block; width: auto; min-width: 150px; height: 28px; padding: 0 8px; font-size: 15px; font-weight: 700; background-color: rgba(255,255,255,0.7); color: #1b6ca8; border: 1px solid rgba(27,108,168,0.25); border-radius: 6px; }
+  </style>
   <div class="row">
     <div class="col-md-6">
-      <div class="m-6 mt-5" style="display: flex;">
-        <p class="pos-header-store-user" style="font-size: 18px; font-weight: 700; margin-bottom: 0;">
-          <strong>Store:&nbsp;</strong>
-          @if(empty($transaction->location_id))
-            @if(count($business_locations) > 1)
-            <div style="width: 28%;margin-bottom: 5px;">
-               {!! Form::select('select_location_id', $business_locations, $default_location->id ?? null , ['class' => 'form-control input-sm',
-                'id' => 'select_location_id', 
-                'required', 'autofocus'], $bl_attributes); !!}
-            </div>
-            @else
-              {{$default_location->name}}
+      <div class="pos-header-bar">
+        <span class="pos-header-pill pos-header-pill-store">
+          <i class="fa fa-building" aria-hidden="true"></i>
+          <span class="pos-header-pill-label">Store</span>
+          <span class="pos-header-pill-value">
+            @if(empty($transaction->location_id))
+              @if(count($business_locations) > 1)
+                 {!! Form::select('select_location_id', $business_locations, $default_location->id ?? null , ['class' => 'form-control input-sm',
+                  'id' => 'select_location_id',
+                  'required', 'autofocus'], $bl_attributes); !!}
+              @else
+                {{$default_location->name}}
+              @endif
             @endif
-          @endif
-
-          @if(!empty($transaction->location_id)) {{$transaction->location->name}} @endif
-          &nbsp;&nbsp;|&nbsp;&nbsp;
-          <strong>User:&nbsp;</strong>{{ auth()->user()->first_name ?? '' }} {{ auth()->user()->last_name ?? '' }}
-          &nbsp;&nbsp;|&nbsp;&nbsp;
-          <span class="curr_datetime" style="font-size: 14px; font-weight: 500;">{{ @format_datetime('now') }}</span>
-          <i class="fa fa-keyboard hover-q text-muted" aria-hidden="true" data-container="body" data-toggle="popover" data-placement="bottom" data-content="@include('sale_pos.partials.keyboard_shortcuts_details')" data-html="true" data-trigger="hover" data-original-title="" title=""></i>
-        </p>
+            @if(!empty($transaction->location_id)) {{$transaction->location->name}} @endif
+          </span>
+        </span>
+        <span class="pos-header-pill pos-header-pill-user">
+          <i class="fa fa-user" aria-hidden="true"></i>
+          <span class="pos-header-pill-label">User</span>
+          <span class="pos-header-pill-value">{{ auth()->user()->first_name ?? '' }} {{ auth()->user()->last_name ?? '' }}</span>
+        </span>
+        <span class="pos-header-pill pos-header-pill-time">
+          <i class="fa fa-clock-o" aria-hidden="true"></i>
+          <span class="curr_datetime pos-header-pill-value">{{ \Carbon\Carbon::now()->format('m/d/Y h:i A') }}</span>
+        </span>
+        <i class="fa fa-keyboard hover-q text-muted" aria-hidden="true" data-container="body" data-toggle="popover" data-placement="bottom" data-content="@include('sale_pos.partials.keyboard_shortcuts_details')" data-html="true" data-trigger="hover" data-original-title="" title="" style="cursor: pointer; font-size: 16px;"></i>
       </div>
     </div>
     <div class="col-md-6">
