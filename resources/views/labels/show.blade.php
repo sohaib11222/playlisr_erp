@@ -73,7 +73,7 @@
       							<div class="input-group-addon"><b>@lang( 'lang_v1.size' )</b></div>
 								<input type="text" class="form-control" 
 									name="print[name_size]" 
-									value="8">
+									value="10">
 							</div>
 						</td>
 
@@ -103,7 +103,7 @@
       							<div class="input-group-addon"><b>@lang( 'lang_v1.size' )</b></div>
 								<input type="text" class="form-control" 
 									name="print[price_size]" 
-									value="13">
+									value="17">
 							</div>
 
 						</td>

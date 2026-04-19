@@ -6,24 +6,20 @@
 		<tr>
 		<!-- <columns column-count="{{$barcode_details->stickers_in_one_row}}" column-gap="{{$barcode_details->col_distance*1}}"> -->
 	@endif
-		<td align="center" valign="top" style="vertical-align: top;">
-			@php
-				$stickerW = $barcode_details->width * 1;
-				$stickerH = $barcode_details->height * 1;
-				// Barcode height: cap so long titles + date + code still fit (was 0.24 × sticker height — too tall on small labels)
-				$barcodeImgH = min($stickerH * 0.17, 0.38);
-			@endphp
-			<div class="label-sticker-outer" style="box-sizing: border-box; width: {{ $stickerW }}in; height: {{ $stickerH }}in; padding: 2px 3px 3px; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: flex-start;">
-				<div class="label-sticker-inner" style="width: 100%; max-width: 100%; text-align: center; line-height: 1.05; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 0; overflow: hidden; word-wrap: break-word; overflow-wrap: anywhere;">
+		<td align="center" valign="center">
+			<div style="overflow: hidden !important;display: flex; flex-wrap: wrap;align-content: center;width: {{$barcode_details->width * 1}}in; height: {{$barcode_details->height * 1}}in; justify-content: center;">
+				
+
+				<div>
 
 					{{-- Business Name --}}
 					@if(!empty($print['business_name']))
-						<b style="display: block !important; font-size: {{$print['business_name_size']}}px; margin: 0; padding: 0; line-height: 1.1;">{{$business_name}}</b>
+						<b style="display: block !important; font-size: {{$print['business_name_size']}}px">{{$business_name}}</b>
 					@endif
 
 					{{-- Product Name --}}
 					@if(!empty($print['name']))
-						<span style="display: block !important; font-size: {{$print['name_size']}}px; margin: 0; padding: 0; line-height: 1.08;">
+						<span style="display: block !important; font-size: {{$print['name_size']}}px">
 							{{$page_product->product_actual_name}}
 
 							@if(!empty($print['lot_number']) && !empty($page_product->lot_number))
@@ -36,68 +32,70 @@
 
 					{{-- Variation --}}
 					@if(!empty($print['variations']) && $page_product->is_dummy != 1)
-						<span style="display: block !important; font-size: {{$print['variations_size']}}px; margin: 0; padding: 0; line-height: 1.08;">
+						<span style="display: block !important; font-size: {{$print['variations_size']}}px">
 							{{$page_product->product_variation_name}}:<b>{{$page_product->variation_name}}</b>
 						</span>
 					@endif
 					
-					{{-- Genre (no "Genre:" prefix — saves vertical space) --}}
+					{{-- Genre --}}
 					@if(!empty($print['price']))
-						<span style="display: block !important; font-size: {{$print['name_size']}}px; margin: 0; padding: 0; line-height: 1.08;">
-							<b>{{$page_product->sub_category}}</b>
+						<span style="display: block !important; font-size: {{$print['name_size']}}px">
+							Genre:<b>{{$page_product->sub_category}}</b>
 						</span>
 
-					{{-- Artist (no "Artist:" prefix) --}}
+					{{-- Artist --}}
 					@if(!empty($page_product->artist))
-						<span style="display: block !important; font-size: {{$print['name_size']}}px; margin: 0; padding: 0; line-height: 1.08;">
-							<b>{{$page_product->artist}}</b>
+						<span style="display: block !important; font-size: {{$print['name_size']}}px">
+							Artist:<b>{{$page_product->artist}}</b>
 						</span>
 					@endif
 				@endif
 
 				{{-- Bin Position --}}
 				@if(!empty($page_product->bin_position))
-					<span style="display: block !important; font-size: {{$print['name_size'] ?? 12}}px; font-weight: bold; margin: 0; padding: 0; line-height: 1.08;">
-						{{ $page_product->bin_position }}
+					<span style="display: block !important; font-size: {{$print['name_size'] ?? 12}}px; font-weight: bold;">
+						Bin: {{ $page_product->bin_position }}
 					</span>
 				@endif
 
-				{{-- Price (amount only — no "Price" label) --}}
+				{{-- Price + purchase date on one line (no "Price" label) --}}
 					@if(!empty($print['price']))
-					<span style="display: block; font-size: {{$print['price_size']}}px; font-weight: bold; margin: 0; padding: 0; line-height: 1.05;">
-						{{session('currency')['symbol'] ?? ''}}
+					<span style="font-size: {{$print['price_size']}}px;">
+						<b>{{session('currency')['symbol'] ?? ''}}
 						@if($print['price_type'] == 'inclusive')
 							{{@num_format($page_product->sell_price_inc_tax)}}
 						@else
 							{{@num_format($page_product->default_sell_price)}}
+						@endif</b>
+						@if(!empty($page_product->purchase_date) && array_key_exists('purchase_date', $print ?? []))
+							<span style="font-size: {{ (int) ($print['purchase_date_size'] ?? 12) }}px;">&nbsp;<b>{{ $page_product->purchase_date }}</b></span>
 						@endif
 					</span>
+					@elseif(!empty($page_product->purchase_date) && array_key_exists('purchase_date', $print ?? []))
+					<span style="font-size: {{$print['purchase_date_size'] ?? 12}}px;"><b>{{ $page_product->purchase_date }}</b></span>
 					@endif
 					@if(!empty($print['exp_date']) && !empty($page_product->exp_date))
-						<span style="display: block; font-size: {{$print['exp_date_size']}}px; margin: 0; padding: 0; line-height: 1.05;">
+						<br>
+						<span style="font-size: {{$print['exp_date_size']}}px">
+							<b>@lang('product.exp_date'):</b>
 							{{$page_product->exp_date}}
 						</span>
+						@if($barcode_details->is_continuous)
+						<br>
+						@endif
 					@endif
 
 					@if(!empty($print['packing_date']) && !empty($page_product->packing_date))
-						<span style="display: block; font-size: {{$print['packing_date_size']}}px; margin: 0; padding: 0; line-height: 1.05;">
+						<span style="font-size: {{$print['packing_date_size']}}px">
+							<b>@lang('lang_v1.packing_date'):</b>
 							{{$page_product->packing_date}}
 						</span>
 					@endif
-					@if(array_key_exists('purchase_date', $print ?? []) && !empty($page_product->purchase_date))
-						@php
-							$purchaseDatePx = (int) ($print['purchase_date_size'] ?? 12);
-							if ($purchaseDatePx < 10) { $purchaseDatePx = 10; }
-							if ($purchaseDatePx > 36) { $purchaseDatePx = 36; }
-						@endphp
-						<span style="display: block; line-height: 1.05; margin: 0; padding: 0; font-size: {{ $purchaseDatePx }}px; font-weight: bold;">
-							{{ $page_product->purchase_date }}
-						</span>
-					@endif
+					<br>
 
-					{{-- Barcode + SKU: flex-shrink 0 so they stay readable; shorter bar image saves vertical space --}}
-					<img class="label-barcode-img" style="margin-top: 1px; flex-shrink: 0; max-width: 92% !important; width: auto; height: {{ $barcodeImgH }}in !important; max-height: {{ $barcodeImgH }}in !important; object-fit: contain; display: block;" src="data:image/png;base64,{{DNS1D::getBarcodePNG($page_product->sub_sku, $page_product->barcode_type, 1,30, array(0, 0, 0), false)}}" alt="">
-					<span style="font-size: 8px !important; line-height: 1 !important; margin: 0; padding: 0 0 1px; display: block;">
+					{{-- Barcode --}}
+					<img style="max-width:90% !important;height: {{ $barcode_details->height * 0.24 }}in !important; display: block;" src="data:image/png;base64,{{DNS1D::getBarcodePNG($page_product->sub_sku, $page_product->barcode_type, 1,30, array(0, 0, 0), false)}}">
+					<span style="font-size: 10px !important">
 						{{ $page_product->sub_sku }}
 					</span>
 				</div>
@@ -115,12 +113,6 @@
 
 	td{
 		border: 1px dotted lightgray;
-		vertical-align: top;
-	}
-	.label-sticker-outer,
-	.label-sticker-inner {
-		-webkit-print-color-adjust: exact;
-		print-color-adjust: exact;
 	}
 	@media print{
 		

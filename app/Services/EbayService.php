@@ -46,18 +46,19 @@ class EbayService
             $this->settings = $this->businessUtil->getApiSettings($this->businessId);
             
             $ebay = $this->settings['ebay'] ?? [];
-            $this->appId = $ebay['app_id'] ?? '';
-            $this->certId = $ebay['cert_id'] ?? '';
-            $this->devId = $ebay['dev_id'] ?? '';
+            // Prefer Business Settings UI; optional .env fallbacks (never commit real values)
+            $this->appId = $ebay['app_id'] ?? env('EBAY_APP_ID', '');
+            $this->certId = $ebay['cert_id'] ?? env('EBAY_CERT_ID', '');
+            $this->devId = $ebay['dev_id'] ?? env('EBAY_DEV_ID', '');
             
             $environment = $ebay['environment'] ?? 'sandbox';
             $this->baseUrl = $environment === 'production' 
                 ? self::PRODUCTION_BASE_URL 
                 : self::SANDBOX_BASE_URL;
         } else {
-            $this->appId = '';
-            $this->certId = '';
-            $this->devId = '';
+            $this->appId = env('EBAY_APP_ID', '');
+            $this->certId = env('EBAY_CERT_ID', '');
+            $this->devId = env('EBAY_DEV_ID', '');
             $this->baseUrl = self::SANDBOX_BASE_URL;
         }
     }

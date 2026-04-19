@@ -62,16 +62,14 @@
 				</span>
 			@endif
 
-			{{-- Price --}}
+			{{-- Price (amount only — no "Price" label) --}}
 			@if(!empty($print['price']))
-				<b>@lang('lang_v1.price'):</b>
-				{{session('currency')['symbol'] ?? ''}}
-
+				<b>{{session('currency')['symbol'] ?? ''}}
 				@if($print['price_type'] == 'inclusive')
 					{{@num_format($details['details']->sell_price_inc_tax)}}
 				@else
 					{{@num_format($details['details']->default_sell_price)}}
-				@endif
+				@endif</b>
 			@endif
 
 			<br>

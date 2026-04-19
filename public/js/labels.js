@@ -2,7 +2,7 @@ $(document).ready(function() {
     $('table#product_table tbody').find('.label-date-picker').each( function(){
         $(this).datepicker({
             autoclose: true
-        }).attr('placeholder', '');
+        });
     });
     //Add products
     if ($('#search_product_for_label').length > 0) {
@@ -43,7 +43,7 @@ $(document).ready(function() {
 
     $('button#labels_preview').click(function() {
         if ($('form#preview_setting_form table#product_table tbody tr').length > 0) {
-            // POST avoids URL length limits that dropped print[] flags (e.g. purchase date not showing).
+            // POST keeps all print[] / products[] fields (GET URLs can truncate and drop purchase_date, etc.)
             var form = document.getElementById('preview_setting_form');
             if (!form) {
                 return;
@@ -111,7 +111,7 @@ function get_label_product_row(product_id, variation_id) {
                 $('table#product_table tbody').find('.label-date-picker').each( function(){
                     $(this).datepicker({
                         autoclose: true
-                    }).attr('placeholder', '');
+                    });
                 });
             },
         });

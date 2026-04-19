@@ -109,7 +109,7 @@ class LabelsController extends Controller
                             FROM purchase_lines pl 
                             INNER JOIN transactions t ON pl.transaction_id = t.id 
                             WHERE pl.variation_id = variations.id 
-                                AND t.type = 'purchase' 
+                                AND t.type IN ('purchase', 'opening_stock')
                             ORDER BY t.transaction_date DESC, pl.id DESC 
                             LIMIT 1) as purchase_date")
                     )
@@ -166,11 +166,11 @@ class LabelsController extends Controller
                 if (!empty($value['purchase_date'])) {
                     $details->purchase_date = $value['purchase_date'];
                 }
-                if (empty($details->purchase_date ?? null)) {
+                if (empty($details->purchase_date ?? null) && !empty($value['variation_id'])) {
                     $pd = DB::table('purchase_lines as pl')
                         ->join('transactions as t', 'pl.transaction_id', '=', 't.id')
                         ->where('pl.variation_id', $value['variation_id'])
-                        ->where('t.type', 'purchase')
+                        ->whereIn('t.type', ['purchase', 'opening_stock'])
                         ->where('t.business_id', $business_id)
                         ->orderByDesc('t.transaction_date')
                         ->orderByDesc('pl.id')
