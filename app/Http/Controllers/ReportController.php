@@ -4569,7 +4569,11 @@ class ReportController extends Controller
             $end_date = $end_date ?: $today;
         }
 
+        // Only include users who are allowed to log in and whose status is active.
+        // Hides disabled / inactive / terminated accounts from the productivity report.
         $users = User::where('business_id', $business_id)
+            ->where('allow_login', 1)
+            ->where('status', 'active')
             ->select('id', DB::raw("CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')) as full_name"))
             ->orderBy('first_name')
             ->get();
