@@ -44,6 +44,10 @@
                     </div>
                 </div>
                 <div class="row" style="margin-top: 10px;">
+                    <div class="col-md-4">
+                        <label>Artist (optional)</label>
+                        <input type="text" name="artist" class="form-control" placeholder="Applied when keywords match" maxlength="255">
+                    </div>
                     <div class="col-md-1">
                         <label>Order</label>
                         <input type="number" name="sort_order" class="form-control" min="0" value="0">
@@ -55,7 +59,7 @@
                             <option value="0">No</option>
                         </select>
                     </div>
-                    <div class="col-md-9 text-right">
+                    <div class="col-md-5 text-right">
                         <label style="display:block;">&nbsp;</label>
                         <button type="submit" class="btn btn-primary">Add Rule</button>
                     </div>
@@ -76,6 +80,7 @@
                         <th>Keywords</th>
                         <th>Price</th>
                         <th>Category / Subcategory</th>
+                        <th>Artist</th>
                         <th>Order</th>
                         <th>Active</th>
                         <th style="width: 250px;">Actions</th>
@@ -101,6 +106,7 @@
                                         @endforeach
                                     </select>
                                 </td>
+                                <td><input type="text" name="artist" class="form-control" value="{{ $rule->artist }}" maxlength="255" placeholder="—"></td>
                                 <td><input type="number" name="sort_order" class="form-control" min="0" value="{{ $rule->sort_order }}"></td>
                                 <td>
                                     <select name="is_active" class="form-control">
@@ -119,7 +125,7 @@
                                 </td>
                         </tr>
                     @empty
-                        <tr><td colspan="7" class="text-center text-muted">No rules yet.</td></tr>
+                        <tr><td colspan="8" class="text-center text-muted">No rules yet.</td></tr>
                     @endforelse
                 </tbody>
             </table>

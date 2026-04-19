@@ -2365,7 +2365,8 @@ var MANUAL_ITEM_PRICE_KEYWORDS = [];
             keywords: keywordTokens,
             price: String(r.price || '').trim(),
             category_id: r.category_id ? String(r.category_id).trim() : '',
-            sub_category_id: r.sub_category_id ? String(r.sub_category_id).trim() : ''
+            sub_category_id: r.sub_category_id ? String(r.sub_category_id).trim() : '',
+            artist: r.artist ? String(r.artist).trim() : ''
         };
     }).filter(function(r) {
         return r.label && r.keywords.length > 0 && r.price !== '';
@@ -2388,7 +2389,8 @@ function getManualKeywordSuggestions(term) {
                 value: rule.label,
                 price: rule.price,
                 category_id: rule.category_id,
-                sub_category_id: rule.sub_category_id
+                sub_category_id: rule.sub_category_id,
+                artist: rule.artist || ''
             });
         }
     });
@@ -2402,6 +2404,13 @@ function applyManualRuleToRow($row, item) {
 
     if (item.price !== null && item.price !== undefined && item.price !== '') {
         $row.find('input[name*="[price]"]').val(item.price).trigger('change');
+    }
+
+    if (item.artist !== null && item.artist !== undefined && String(item.artist).trim() !== '') {
+        var $artistIn = $row.find('input[name*="[artist]"]');
+        if ($artistIn.length) {
+            $artistIn.val(String(item.artist).trim()).trigger('change');
+        }
     }
 
     var catId = item.category_id ? String(item.category_id).trim() : '';

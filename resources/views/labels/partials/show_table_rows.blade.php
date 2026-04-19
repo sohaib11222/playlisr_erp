@@ -27,16 +27,16 @@
         @if(request()->session()->get('business.enable_product_expiry') == 1)
             <td>
                 <input type="text" class="form-control label-date-picker"
-                name="products[{{$loop->index + $index}}][exp_date]" value="@if(isset($product->exp_date)){{@format_date($product->exp_date)}}@endif">
+                name="products[{{$loop->index + $index}}][exp_date]" value="@if(isset($product->exp_date)){{@format_date($product->exp_date)}}@endif" placeholder="" autocomplete="off">
             </td>
         @endif
         <td>
             <input type="text" class="form-control label-date-picker"
-            name="products[{{$loop->index + $index}}][packing_date]" value="">
+            name="products[{{$loop->index + $index}}][packing_date]" value="" placeholder="" autocomplete="off">
         </td>
         <td>
             <input type="text" class="form-control label-date-picker"
-            name="products[{{$loop->index + $index}}][purchase_date]" value="@if(isset($product->purchase_date)){{$product->purchase_date}}@endif">
+            name="products[{{$loop->index + $index}}][purchase_date]" value="@if(isset($product->purchase_date)){{$product->purchase_date}}@endif" placeholder="" autocomplete="off">
         </td>
         <td>
             {!! Form::select('products[' . $row_index . '][price_group_id]', $price_groups, null, ['class' => 'form-control', 'placeholder' => __('lang_v1.none')]); !!}

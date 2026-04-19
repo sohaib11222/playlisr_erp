@@ -2,7 +2,7 @@ $(document).ready(function() {
     $('table#product_table tbody').find('.label-date-picker').each( function(){
         $(this).datepicker({
             autoclose: true
-        });
+        }).attr('placeholder', '');
     });
     //Add products
     if ($('#search_product_for_label').length > 0) {
@@ -43,9 +43,23 @@ $(document).ready(function() {
 
     $('button#labels_preview').click(function() {
         if ($('form#preview_setting_form table#product_table tbody tr').length > 0) {
-            var url = base_path + '/labels/preview?' + $('form#preview_setting_form').serialize();
-
-            window.open(url, 'newwindow');
+            // POST avoids URL length limits that dropped print[] flags (e.g. purchase date not showing).
+            var form = document.getElementById('preview_setting_form');
+            if (!form) {
+                return;
+            }
+            var prevAction = form.getAttribute('action') || '';
+            var prevTarget = form.getAttribute('target');
+            form.setAttribute('action', base_path + '/labels/preview');
+            form.setAttribute('method', 'post');
+            form.setAttribute('target', '_blank');
+            form.submit();
+            form.setAttribute('action', prevAction || '#');
+            if (prevTarget) {
+                form.setAttribute('target', prevTarget);
+            } else {
+                form.removeAttribute('target');
+            }
 
             // $.ajax({
             //     method: 'get',
@@ -97,7 +111,7 @@ function get_label_product_row(product_id, variation_id) {
                 $('table#product_table tbody').find('.label-date-picker').each( function(){
                     $(this).datepicker({
                         autoclose: true
-                    });
+                    }).attr('placeholder', '');
                 });
             },
         });

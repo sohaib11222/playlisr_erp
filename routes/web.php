@@ -270,7 +270,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     //Print Labels
     Route::get('/labels/show', 'LabelsController@show')->name('labels.show');;
     Route::get('/labels/add-product-row', 'LabelsController@addProductRow');
-    Route::get('/labels/preview', 'LabelsController@preview');
+    Route::match(['get', 'post'], '/labels/preview', 'LabelsController@preview');
 
     //Reports...
     Route::get('/reports/get-stock-by-sell-price', 'ReportController@getStockBySellingPrice');

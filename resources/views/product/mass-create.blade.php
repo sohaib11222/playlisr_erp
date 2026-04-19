@@ -1168,8 +1168,7 @@
 
     window.setAsFreeTextProductRow = function(rowIndex) {
         $(`.btn-remove-product-selection[data-row-index="${rowIndex}"]`).remove();
-        $(`.product-name-autocomplete[data-row-index="${rowIndex}"]`).val("").attr('disabled', false);
-        $(`.product-row[data-row-index="${rowIndex}"] .td[data-hide-on-selection='yes']`).find('input,div,span,textarea,select').show();
+        $(`.product-name-autocomplete[data-row-index="${rowIndex}"]`).val("").prop('readonly', false);
         $(`.product-row[data-row-index="${rowIndex}"] .select2_business_locations`).val(null).trigger('change');
         $(`.product-row[data-row-index="${rowIndex}"] .product-id`).val('');
         $(`.product-row[data-row-index="${rowIndex}"] .variation-id`).val('');
@@ -1180,19 +1179,76 @@
         const item = ui.item;
         const openingLocations = item.opening_locations || [];
         const locationIds = openingLocations.map(n => n.id);
-        // Disable input
-        input.val(ui.item.text).attr('disabled', true);
 
-        // Show remove button
+        $(`.btn-remove-product-selection[data-row-index="${rowIndex}"]`).remove();
+
+        input.val(ui.item.text).prop('readonly', true);
+
         input.after(`<button type="button" class="btn btn-xs btn-remove-product-selection" data-row-index="${rowIndex}" style="min-width: 40px; font-size: 15px;">
             <i class="fa fa-times-circle"></i>
-        </button>`)
+        </button>`);
 
-        // Hide other columns
-        $(`.product-row[data-row-index="${rowIndex}"] .td[data-hide-on-selection='yes']`).find('input,div,span,textarea,select').hide();
-        $(`.product-row[data-row-index="${rowIndex}"] .select2_business_locations`).val(locationIds).trigger('change');
-        $(`.product-row[data-row-index="${rowIndex}"] .product-id`).val(item.product_id);
-        $(`.product-row[data-row-index="${rowIndex}"] .variation-id`).val(item.variation_id);
+        const $row = $(`.product-row[data-row-index="${rowIndex}"]`);
+
+        $row.find('input.sku-input').first().val(item.sub_sku || '');
+
+        var catId = item.category_id != null && item.category_id !== '' ? String(item.category_id) : '';
+        var subId = item.sub_category_id != null && item.sub_category_id !== '' ? String(item.sub_category_id) : '0';
+        if (catId === '') {
+            subId = '0';
+        }
+        var comboVal = catId + '_' + subId;
+        var $combo = $row.find('select.category-combo-select').first();
+        if ($combo.length && catId !== '') {
+            if ($combo.find('option[value="' + comboVal + '"]').length) {
+                $combo.val(comboVal).trigger('change');
+            } else {
+                var matched = '';
+                $combo.find('option').each(function() {
+                    var $o = $(this);
+                    if (String($o.attr('data-category-id') || '') === catId &&
+                        String($o.attr('data-sub-category-id') || '') === subId) {
+                        matched = String($o.val() || '');
+                        return false;
+                    }
+                });
+                if (matched) {
+                    $combo.val(matched).trigger('change');
+                } else {
+                    $(`#products_${rowIndex}_category_id`).val(catId);
+                    $(`#products_${rowIndex}_sub_category_id`).val(subId);
+                }
+            }
+        }
+
+        var sp = item.sell_price_inc_tax;
+        if (sp !== null && sp !== undefined && sp !== '') {
+            var spNum = parseFloat(sp);
+            if (!isNaN(spNum)) {
+                $row.find('input[name*="[single_dsp_inc_tax]"]').first().val(spNum.toFixed(2));
+            }
+        }
+        var pp = item.dpp_inc_tax;
+        if (pp !== null && pp !== undefined && pp !== '') {
+            var ppNum = parseFloat(pp);
+            if (!isNaN(ppNum)) {
+                $row.find('input[name*="[single_dpp_inc_tax]"]').first().val(ppNum.toFixed(4));
+            }
+        }
+        if (item.artist) {
+            $row.find('input[name*="[artist]"]').first().val(item.artist);
+        }
+
+        $row.find('.select2_business_locations').val(locationIds).trigger('change');
+        $row.find('.product-id').val(item.product_id);
+        $row.find('.variation-id').val(item.variation_id);
+
+        // Run keyword rules + Product Entry Rules (title → artist/prices/cat; cat/sub → prices) without hiding columns
+        setTimeout(function() {
+            if (typeof window.runProductEntryRulesForMassAddName === 'function') {
+                window.runProductEntryRulesForMassAddName($row.find('.product-name-autocomplete').first());
+            }
+        }, 50);
     }
 
     // DISABLED: eBay/Discogs price recommendations removed to reduce row height

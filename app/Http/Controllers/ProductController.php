@@ -2862,7 +2862,7 @@ class ProductController extends Controller
             ->where('is_active', 1)
             ->orderBy('sort_order')
             ->orderBy('id')
-            ->get(['label', 'keywords', 'price', 'category_id', 'sub_category_id']);
+            ->get(['label', 'keywords', 'price', 'category_id', 'sub_category_id', 'artist']);
 
         return view('product.mass-create')->with(compact(
             'categories',
@@ -3180,14 +3180,17 @@ class ProductController extends Controller
                 ->where('products.business_id', $business_id)
                 ->whereNull('variations.deleted_at')
                 ->select(
-                    'products.id as product_id',
-                    'products.name',
-                    'products.type',
-                    // 'products.sku as sku',
+                    DB::raw('MAX(products.id) as product_id'),
+                    DB::raw('MAX(products.name) as name'),
+                    DB::raw('MAX(products.type) as type'),
+                    DB::raw('MAX(products.category_id) as category_id'),
+                    DB::raw('MAX(products.sub_category_id) as sub_category_id'),
+                    DB::raw('MAX(products.artist) as artist'),
                     'variations.id as variation_id',
                     'variations.name as variation',
                     'variations.sell_price_inc_tax as price',
-                    'categories.name as catname',
+                    'variations.dpp_inc_tax',
+                    DB::raw('MAX(categories.name) as catname'),
                     'variations.sub_sku as sub_sku'
                 )
                 ->groupBy('variation_id');
@@ -3208,11 +3211,15 @@ class ProductController extends Controller
                 $products_array[$product->product_id]['type'] = $product->type;
                 $products_array[$product->product_id]['price'] = $product->price;
                 $products_array[$product->product_id]['catname'] = $product->catname;
+                $products_array[$product->product_id]['category_id'] = $product->category_id;
+                $products_array[$product->product_id]['sub_category_id'] = $product->sub_category_id;
+                $products_array[$product->product_id]['artist'] = $product->artist ?? '';
                 $products_array[$product->product_id]['variations'][] = [
                     'variation_id' => $product->variation_id,
                     'variation_name' => $product->variation,
                     'sub_sku' => $product->sub_sku,
-                    'price' => $product->sell_price_inc_tax,
+                    'price' => $product->price,
+                    'dpp_inc_tax' => $product->dpp_inc_tax,
                 ];
             }
 
@@ -3281,10 +3288,16 @@ class ProductController extends Controller
 
                         $i++;
                         $result[] = [ 'id' => $i,
-                            'text' => $text . ' - ' . $variation['sub_sku']. ' - '.$value['price'].' - '. $value['catname'],
+                            'text' => $text . ' - ' . $variation['sub_sku']. ' - '.($variation['price'] ?? $value['price'] ?? '').' - '. $value['catname'],
                             'product_id' => $key,
                             'variation_id' => $variation['variation_id'],
-                            'opening_locations' => $openingLocations
+                            'opening_locations' => $openingLocations,
+                            'category_id' => $value['category_id'] ?? null,
+                            'sub_category_id' => $value['sub_category_id'] ?? null,
+                            'artist' => $value['artist'] ?? '',
+                            'sub_sku' => $variation['sub_sku'] ?? '',
+                            'sell_price_inc_tax' => $variation['price'] ?? null,
+                            'dpp_inc_tax' => $variation['dpp_inc_tax'] ?? null,
                         ];
                     }
                     $i++;

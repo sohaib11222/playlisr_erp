@@ -548,16 +548,20 @@ class AdminSidebarMenu
                             );
                         }
 
+                        // Same access as ReportController@productEntryProductivity (admin or purchase/sell reports)
+                        if ($is_admin || auth()->user()->can('purchase_n_sell_report.view')) {
+                            $sub->url(
+                                action('ReportController@productEntryProductivity'),
+                                'Employee Productivity',
+                                ['icon' => 'fa fas fa-user-clock', 'active' => request()->segment(2) == 'product-entry-productivity']
+                            );
+                        }
+
                         if (auth()->user()->can('purchase_n_sell_report.view')) {
                             $sub->url(
                                 action('ReportController@itemsReport'),
                                 __('lang_v1.items_report'),
                                 ['icon' => 'fa fas fa-tasks', 'active' => request()->segment(2) == 'items-report']
-                            );
-                            $sub->url(
-                                action('ReportController@productEntryProductivity'),
-                                'Employee Productivity',
-                                ['icon' => 'fa fas fa-user-clock', 'active' => request()->segment(2) == 'product-entry-productivity']
                             );
 
                             $sub->url(

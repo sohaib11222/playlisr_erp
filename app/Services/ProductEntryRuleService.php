@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Category;
 use App\ProductEntryRule;
 
 class ProductEntryRuleService
@@ -55,15 +56,25 @@ class ProductEntryRuleService
         $trigger_l = mb_strtolower($trigger);
 
         if ($rule->trigger_type === 'category_combo') {
-            $parts = explode('|', $trigger_l);
-            $tCat = isset($parts[0]) ? (int) trim($parts[0]) : 0;
-            $tSub = isset($parts[1]) ? (int) trim($parts[1]) : 0;
-            if ($tCat > 0 && (int) $category_id !== $tCat) {
+            $parsed = Category::parseCategoryComboValue($rule->trigger_value);
+            $tCat = (int) ($parsed['category_id'] ?? 0);
+            $tSub = (int) ($parsed['sub_category_id'] ?? 0);
+            if ($tCat <= 0) {
                 return 0;
             }
-            if ($tSub > 0 && (int) $sub_category_id !== $tSub) {
+            $rowCat = (int) ($category_id ?? 0);
+            $rowSub = (int) ($sub_category_id ?? 0);
+            if ($rowCat !== $tCat) {
                 return 0;
             }
+            if ($tSub > 0 && $rowSub !== $tSub) {
+                return 0;
+            }
+            // Parent-only combo (sub 0): do not match when a subcategory is selected on the row
+            if ($tSub === 0 && $rowSub !== 0) {
+                return 0;
+            }
+
             return 70 + ($tSub > 0 ? 10 : 0);
         }
 

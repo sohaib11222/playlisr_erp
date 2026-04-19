@@ -908,28 +908,119 @@ $(document).on('click', 'button.apply-all', function(){
         });
     }
 
+    function applyProductEntryRuleCategoryToScope($scope, rule) {
+        if (!$scope || !$scope.length || !rule) {
+            return;
+        }
+        var hasOut =
+            (rule.category_id !== null && rule.category_id !== undefined && String(rule.category_id).trim() !== '') ||
+            (rule.sub_category_id !== null && rule.sub_category_id !== undefined && String(rule.sub_category_id).trim() !== '');
+        if (!hasOut) {
+            return;
+        }
+        var catId = rule.category_id != null ? String(rule.category_id).trim() : '';
+        var subCatId = rule.sub_category_id != null ? String(rule.sub_category_id).trim() : '';
+        if (!catId && !subCatId) {
+            return;
+        }
+        catId = catId || '0';
+        subCatId = subCatId || '0';
+        var comboVal = catId + '_' + subCatId;
+        var $combo = readFirst($scope, ['select.category-combo-select']);
+        if (!$combo.length) {
+            return;
+        }
+        if (String($combo.val() || '') === comboVal) {
+            return;
+        }
+        var $opt = $combo.find('option[value="' + comboVal + '"]');
+        if ($opt.length) {
+            $combo.val(comboVal).trigger('change');
+            return;
+        }
+        $combo.find('option').each(function() {
+            var $o = $(this);
+            var oCat = String($o.attr('data-category-id') || '');
+            var oSub = String($o.attr('data-sub-category-id') || '');
+            if (oCat === catId && oSub === subCatId) {
+                $combo.val(String($o.val() || '')).trigger('change');
+                return false;
+            }
+        });
+    }
+
     function applyRuleToScope($scope, rule) {
         if (!$scope || !$scope.length || !rule) {
             return;
         }
+        // category_combo rules match the row's current cat/sub — apply defaults even if fields already have values
+        var forceFromCategoryCombo = rule.trigger_type === 'category_combo';
+
         if (rule.artist) {
             var $artist = readFirst($scope, ['input.artist-autocomplete-input', 'input[name="artist"]', 'input[name*="[artist]"]']);
-            if ($artist.length && !$artist.val()) {
+            if ($artist.length && (forceFromCategoryCombo || !$artist.val())) {
                 $artist.val(rule.artist).trigger('change');
             }
         }
         if (rule.purchase_price !== null && rule.purchase_price !== undefined && rule.purchase_price !== '') {
             var $pp = readFirst($scope, ['input[name="single_dpp_inc_tax"]', 'input[name*="[single_dpp_inc_tax]"]']);
-            if ($pp.length && !$pp.val()) {
+            if ($pp.length && (forceFromCategoryCombo || !$pp.val())) {
                 $pp.val(rule.purchase_price).trigger('change');
             }
         }
         if (rule.selling_price !== null && rule.selling_price !== undefined && rule.selling_price !== '') {
             var $sp = readFirst($scope, ['input[name="single_dsp_inc_tax"]', 'input[name*="[single_dsp_inc_tax]"]']);
-            if ($sp.length && !$sp.val()) {
+            if ($sp.length && (forceFromCategoryCombo || !$sp.val())) {
                 $sp.val(rule.selling_price).trigger('change');
             }
         }
+        applyProductEntryRuleCategoryToScope($scope, rule);
+    }
+
+    /**
+     * Mass Add: keyword manual rules + Product Entry Rules from title + current cat/sub hidden fields.
+     * Used on blur, debounced input, and after picking an existing product from autocomplete.
+     */
+    function runProductEntryRulesForMassAddName($name) {
+        if (!$name || !$name.length) {
+            return;
+        }
+        var $massRow = $name.closest('#product_rows_container .product-row');
+        if (!$massRow.length) {
+            return;
+        }
+        var title = String($name.val() || '').trim();
+        if (!title) {
+            return;
+        }
+        var manualRule = findManualItemPriceRuleForTitle(title);
+        if (manualRule) {
+            applyManualItemPriceRuleToMassAddRow($massRow, manualRule);
+        }
+        var $cat = readFirst($massRow, ['input[name="category_id"]', 'input[name*="[category_id]"]']);
+        var $sub = readFirst($massRow, ['input[name="sub_category_id"]', 'input[name*="[sub_category_id]"]']);
+        var category_id = $cat.length ? $cat.val() : '';
+        var sub_category_id = $sub.length ? $sub.val() : '';
+        resolveProductEntryRule(title, category_id, sub_category_id, function(rule) {
+            applyRuleToScope($massRow, rule);
+        });
+    }
+
+    function resolveAndApplyProductEntryRulesToMassAddRow($row) {
+        if (!$row || !$row.length) {
+            return;
+        }
+        var $name = $row.find('.product-name-autocomplete, input[name*="[name]"]').first();
+        var title = String($name.val() || '').trim();
+        var rowIndex = $row.attr('data-row-index');
+        if (rowIndex === undefined || rowIndex === null) {
+            return;
+        }
+        var category_id = $('#products_' + rowIndex + '_category_id').val() || '';
+        var sub_category_id = $('#products_' + rowIndex + '_sub_category_id').val() || '';
+        resolveProductEntryRule(title, category_id, sub_category_id, function(rule) {
+            applyRuleToScope($row, rule);
+        });
     }
 
     /** POS Manual Item Price Rules (same admin list as POS) — apply on Mass Add product name blur */
@@ -948,7 +1039,8 @@ $(document).on('click', 'button.apply-all', function(){
                 keywords: keywordTokens,
                 price: String(r.price != null ? r.price : '').trim(),
                 category_id: r.category_id ? String(r.category_id).trim() : '',
-                sub_category_id: r.sub_category_id ? String(r.sub_category_id).trim() : ''
+                sub_category_id: r.sub_category_id ? String(r.sub_category_id).trim() : '',
+                artist: r.artist ? String(r.artist).trim() : ''
             };
         }).filter(function(r) {
             return r.label && r.keywords.length > 0 && r.price !== '';
@@ -984,6 +1076,12 @@ $(document).on('click', 'button.apply-all', function(){
                 $dsp.val(rule.price).trigger('change');
             }
         }
+        if (rule.artist && String(rule.artist).trim() !== '') {
+            var $art = $row.find('input[name*="[artist]"]').first();
+            if ($art.length && !String($art.val() || '').trim()) {
+                $art.val(String(rule.artist).trim()).trigger('change');
+            }
+        }
         var catId = rule.category_id ? String(rule.category_id).trim() : '';
         var subCatId = rule.sub_category_id ? String(rule.sub_category_id).trim() : '';
         if (!catId && !subCatId) {
@@ -994,6 +1092,10 @@ $(document).on('click', 'button.apply-all', function(){
         var comboVal = catId + '_' + subCatId;
         var $combo = $row.find('select.category-combo-select').first();
         if (!$combo.length) {
+            return;
+        }
+        // Do not replace category/sub already set (e.g. user picked a catalog product or chose cat first)
+        if (String($combo.val() || '').trim() !== '') {
             return;
         }
         var $opt = $combo.find('option[value="' + comboVal + '"]');
@@ -1018,17 +1120,15 @@ $(document).on('click', 'button.apply-all', function(){
         if (!title) {
             return;
         }
+        var $massRow = $name.closest('#product_rows_container .product-row');
+        if ($massRow.length) {
+            runProductEntryRulesForMassAddName($name);
+            return;
+        }
+
         var $scope = $name.closest('form, .product-row, .manual_product_row');
         if (!$scope.length) {
             $scope = $(document);
-        }
-
-        var $massRow = $name.closest('#product_rows_container .product-row');
-        if ($massRow.length) {
-            var manualRule = findManualItemPriceRuleForTitle(title);
-            if (manualRule) {
-                applyManualItemPriceRuleToMassAddRow($massRow, manualRule);
-            }
         }
 
         var $cat = readFirst($scope, ['input[name="category_id"]', 'input[name*="[category_id]"]']);
@@ -1040,4 +1140,43 @@ $(document).on('click', 'button.apply-all', function(){
             applyRuleToScope($scope, rule);
         });
     });
+
+    // Mass Add: while typing a title, apply keyword + entry rules (same as blur) without hiding fields
+    $(document).on('input', '#product_rows_container .product-name-autocomplete', function() {
+        var $name = $(this);
+        if ($name.prop('readonly')) {
+            return;
+        }
+        var t = $name.data('massAddTitleInputTimer');
+        if (t) {
+            clearTimeout(t);
+        }
+        $name.data('massAddTitleInputTimer', setTimeout(function() {
+            $name.removeData('massAddTitleInputTimer');
+            var v = String($name.val() || '').trim();
+            if (!v) {
+                return;
+            }
+            runProductEntryRulesForMassAddName($name);
+        }, 450));
+    });
+
+    // Mass Add: when category/subcategory changes, re-run Product Entry Rules (e.g. cat/sub → purchase price)
+    $(document).on('change', '#product_rows_container .category-combo-select', function() {
+        var $row = $(this).closest('.product-row');
+        if (!$row.length) {
+            return;
+        }
+        var t = $row.data('massAddCatRuleTimer');
+        if (t) {
+            clearTimeout(t);
+        }
+        $row.data('massAddCatRuleTimer', setTimeout(function() {
+            $row.removeData('massAddCatRuleTimer');
+            resolveAndApplyProductEntryRulesToMassAddRow($row);
+        }, 120));
+    });
+
+    window.runProductEntryRulesForMassAddName = runProductEntryRulesForMassAddName;
+    window.resolveAndApplyProductEntryRulesToMassAddRow = resolveAndApplyProductEntryRulesToMassAddRow;
 })();

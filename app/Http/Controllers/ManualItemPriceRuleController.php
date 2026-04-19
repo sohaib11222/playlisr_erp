@@ -38,6 +38,7 @@ class ManualItemPriceRuleController extends Controller
             'sort_order' => 'nullable|integer|min:0',
             'is_active' => 'nullable|in:0,1',
             'category_combo' => 'nullable|string',
+            'artist' => 'nullable|string|max:255',
         ]);
 
         $combo = Category::parseCategoryComboValue($request->input('category_combo'));
@@ -49,6 +50,7 @@ class ManualItemPriceRuleController extends Controller
             'price' => (float) $request->input('price'),
             'category_id' => $combo['category_id'],
             'sub_category_id' => $combo['sub_category_id'],
+            'artist' => $request->filled('artist') ? trim((string) $request->input('artist')) : null,
             'sort_order' => (int) $request->input('sort_order', 0),
             'is_active' => (int) $request->input('is_active', 1),
         ]);
@@ -69,6 +71,7 @@ class ManualItemPriceRuleController extends Controller
             'sort_order' => 'nullable|integer|min:0',
             'is_active' => 'nullable|in:0,1',
             'category_combo' => 'nullable|string',
+            'artist' => 'nullable|string|max:255',
         ]);
 
         $business_id = $request->session()->get('user.business_id');
@@ -79,6 +82,7 @@ class ManualItemPriceRuleController extends Controller
         $rule->price = (float) $request->input('price');
         $rule->category_id = $combo['category_id'];
         $rule->sub_category_id = $combo['sub_category_id'];
+        $rule->artist = $request->filled('artist') ? trim((string) $request->input('artist')) : null;
         $rule->sort_order = (int) $request->input('sort_order', 0);
         $rule->is_active = (int) $request->input('is_active', 1);
         $rule->save();

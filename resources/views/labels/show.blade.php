@@ -166,7 +166,7 @@
       							<div class="input-group-addon"><b>@lang( 'lang_v1.size' )</b></div>
 								<input type="text" class="form-control" 
 									name="print[purchase_date_size]" 
-									value="7">
+									value="12">
 							</div>
 						</td>
 

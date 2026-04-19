@@ -166,6 +166,20 @@ class LabelsController extends Controller
                 if (!empty($value['purchase_date'])) {
                     $details->purchase_date = $value['purchase_date'];
                 }
+                if (empty($details->purchase_date ?? null)) {
+                    $pd = DB::table('purchase_lines as pl')
+                        ->join('transactions as t', 'pl.transaction_id', '=', 't.id')
+                        ->where('pl.variation_id', $value['variation_id'])
+                        ->where('t.type', 'purchase')
+                        ->where('t.business_id', $business_id)
+                        ->orderByDesc('t.transaction_date')
+                        ->orderByDesc('pl.id')
+                        ->selectRaw("DATE_FORMAT(t.transaction_date, '%m/%d/%Y') as pd")
+                        ->value('pd');
+                    if (!empty($pd)) {
+                        $details->purchase_date = $pd;
+                    }
+                }
                 if (!empty($value['lot_number'])) {
                     $details->lot_number = $value['lot_number'];
                 }

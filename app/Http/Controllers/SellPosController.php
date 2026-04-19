@@ -291,7 +291,7 @@ class SellPosController extends Controller
             ->where('is_active', 1)
             ->orderBy('sort_order')
             ->orderBy('id')
-            ->get(['label', 'keywords', 'price', 'category_id', 'sub_category_id']);
+            ->get(['label', 'keywords', 'price', 'category_id', 'sub_category_id', 'artist']);
 
         return view('sale_pos.create')
             ->with(compact(
