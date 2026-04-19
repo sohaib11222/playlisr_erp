@@ -570,7 +570,11 @@ $(document).ready(function() {
             if (item.artist && item.artist.trim() !== '') {
                 displayName = item.artist + ' - ' + item.name;
             }
-            
+            // Append format (LP, CD, Cassette, etc.) if present
+            if (item.format && item.format.trim() !== '') {
+                displayName += ' [' + item.format + ']';
+            }
+
             if (item.enable_stock == 1 && item.qty_available <= 0 && !is_overselling_allowed && !for_so) {
                 var string = '<li class="ui-state-disabled">' + displayName;
                 if (item.type == 'variable') {

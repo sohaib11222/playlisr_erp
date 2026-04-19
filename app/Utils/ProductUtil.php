@@ -1940,6 +1940,7 @@ class ProductUtil extends Util
                 'products.id as product_id',
                 'products.name',
                 'products.artist',
+                'products.format',
                 'products.type',
                 'products.enable_stock',
                 'variations.id as variation_id',
