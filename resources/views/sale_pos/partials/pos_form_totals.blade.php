@@ -8,6 +8,13 @@
 				Use Store Credit
 			</button>
 		</div>
+		{{-- Whatnot transaction flag — moved here (above Bag Fee) per Sarah's request (2026-04-19) --}}
+		<div class="form-group" style="margin-bottom: 10px; padding: 8px 10px; border: 1px dashed #f39c12; border-radius: 4px; background: #fffbe6; display: inline-block;">
+			<label class="checkbox-inline" style="padding-left: 0;">
+				<input type="checkbox" name="is_whatnot" id="is_whatnot" value="1">
+				<strong style="margin-left: 6px; color: #8a6d3b;">Mark as Whatnot Transaction</strong>
+			</label>
+		</div>
 		@if(!empty($pos_settings['enable_plastic_bag_charge']))
 		<div class="form-group" style="margin-bottom: 12px;">
 			<div class="checkbox">
