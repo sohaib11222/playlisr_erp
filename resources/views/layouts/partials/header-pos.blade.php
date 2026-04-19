@@ -68,20 +68,20 @@
       </div>
     </div>
     <div class="col-md-6">
-      <a href="{{$go_back_url}}" title="{{ __('lang_v1.go_back') }}" class="btn btn-info btn-flat m-6 btn-xs m-5 pull-right">
-        <strong><i class="fa fa-backward fa-lg"></i></strong>
+      <a href="{{$go_back_url}}" title="{{ __('lang_v1.go_back') }}" class="btn btn-info btn-flat m-6 m-5 pull-right" style="padding: 6px 14px; font-weight: 700;">
+        <strong><i class="fa fa-backward fa-lg"></i>&nbsp; Back (Home)</strong>
       </a>
       @can('close_cash_register')
-      <button type="button" id="close_register" title="{{ __('cash_register.close_register') }}" class="btn btn-danger btn-flat m-6 btn-xs m-5 btn-modal pull-right" data-container=".close_register_modal" 
-          data-href="{{ action('CashRegisterController@getCloseRegister')}}">
-            <strong><i class="fa fa-window-close fa-lg"></i></strong>
+      <button type="button" id="close_register" title="{{ __('cash_register.close_register') }}" class="btn btn-danger btn-flat m-6 m-5 btn-modal pull-right" data-container=".close_register_modal"
+          data-href="{{ action('CashRegisterController@getCloseRegister')}}" style="padding: 6px 14px; font-weight: 700;">
+            <strong><i class="fa fa-window-close fa-lg" aria-hidden="true"></i>&nbsp; Close Register</strong>
       </button>
       @endcan
-      
+
       @can('view_cash_register')
-      <button type="button" id="register_details" title="{{ __('cash_register.register_details') }}" class="btn btn-success btn-flat m-6 btn-xs m-5 btn-modal pull-right" data-container=".register_details_modal" 
-          data-href="{{ action('CashRegisterController@getRegisterDetails')}}">
-            <strong><i class="fa fa-briefcase fa-lg" aria-hidden="true"></i></strong>
+      <button type="button" id="register_details" title="{{ __('cash_register.register_details') }}" class="btn btn-success btn-flat m-6 m-5 btn-modal pull-right" data-container=".register_details_modal"
+          data-href="{{ action('CashRegisterController@getRegisterDetails')}}" style="padding: 6px 14px; font-weight: 700;">
+            <strong><i class="fa fa-briefcase fa-lg" aria-hidden="true"></i>&nbsp; View Register</strong>
       </button>
       @endcan
 

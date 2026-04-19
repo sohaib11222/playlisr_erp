@@ -75,11 +75,33 @@
 		</div>
 		
 		<div class="form-group">
-			<div class="input-group">
+			<style>
+				/* Make the product search the most obvious input on the screen */
+				.pos-product-search-wrap { position: relative; }
+				.pos-product-search-label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px; color: #1b6ca8; font-weight: 700; margin-bottom: 6px; }
+				.pos-product-search-wrap .input-group-btn > .btn { height: 56px; font-size: 18px; }
+				.pos-product-search-wrap #search_product {
+					height: 56px;
+					font-size: 22px;
+					font-weight: 600;
+					padding: 10px 16px;
+					border: 2px solid #1b6ca8;
+					box-shadow: 0 0 0 3px rgba(27, 108, 168, 0.12);
+					background: #ffffff;
+				}
+				.pos-product-search-wrap #search_product:focus {
+					border-color: #13507a;
+					box-shadow: 0 0 0 4px rgba(27, 108, 168, 0.25);
+					outline: none;
+				}
+				.pos-product-search-wrap #search_product::placeholder { color: #8a9ba8; font-weight: 500; }
+			</style>
+			<label class="pos-product-search-label" for="search_product"><i class="fa fa-search"></i> Ring Up / Scan Product</label>
+			<div class="input-group pos-product-search-wrap">
 				<div class="input-group-btn">
 					<button type="button" class="btn btn-default bg-white btn-flat" data-toggle="modal" data-target="#configure_search_modal" title="{{__('lang_v1.configure_product_search')}}"><i class="fas fa-search-plus"></i></button>
 				</div>
-				{!! Form::text('search_product', null, ['class' => 'form-control mousetrap', 'id' => 'search_product', 'placeholder' => __('lang_v1.search_product_placeholder'),
+				{!! Form::text('search_product', null, ['class' => 'form-control mousetrap', 'id' => 'search_product', 'placeholder' => 'Type product name, artist, or scan barcode…',
 					'disabled' => is_null($default_location)? true : false,
 					'autofocus' => is_null($default_location)? false : true,
 				]) !!}

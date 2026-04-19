@@ -18,18 +18,21 @@
 					<span id="total_payable" class="text-success lead text-bold text-right">0</span>
 				</div>
 			@endif
+			{{-- Draft / Quotation / Suspend buttons hidden per Sarah's request (2026-04-19).
+				Kept commented for easy restoration if ever needed.
 			<button type="button" class="@if($is_mobile) col-xs-6 @endif btn bg-info text-white btn-default btn-flat @if($pos_settings['disable_draft'] != 0) hide @endif" id="pos-draft"><i class="fas fa-edit"></i> @lang('sale.draft')</button>
 			<button type="button" class="btn btn-default bg-yellow btn-flat @if($is_mobile) col-xs-6 @endif" id="pos-quotation"><i class="fas fa-edit"></i> @lang('lang_v1.quotation')</button>
 
 			@if(empty($pos_settings['disable_suspend']))
-				<button type="button" 
-				class="@if($is_mobile) col-xs-6 @endif btn bg-red btn-default btn-flat no-print pos-express-finalize" 
+				<button type="button"
+				class="@if($is_mobile) col-xs-6 @endif btn bg-red btn-default btn-flat no-print pos-express-finalize"
 				data-pay_method="suspend"
 				title="@lang('lang_v1.tooltip_suspend')" >
 				<i class="fas fa-pause" aria-hidden="true"></i>
 				@lang('lang_v1.suspend')
 				</button>
 			@endif
+			--}}
 
 			@if(empty($pos_settings['disable_credit_sale_button']))
 				<input type="hidden" name="is_credit_sale" value="0" id="is_credit_sale">
