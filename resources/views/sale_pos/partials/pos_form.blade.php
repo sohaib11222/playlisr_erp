@@ -1,24 +1,28 @@
+{{-- Layout per Jonathan 2026-04-20: Customer block + Sign Up Nivessa Bucks stacked
+     on the left, RING UP / SCAN PRODUCT directly UNDER the customer (not beside it).
+     Previously split col-md-5 / col-md-7 side-by-side; now single col stacking so the
+     eye flows top-to-bottom: pick customer → (see their account) → ring up item. --}}
 <div class="row">
-	<div class="col-md-5 pos-customer-block">
+	<div class="col-md-12 pos-customer-block">
 		<style>.pos-customer-block .select2-container { width: 100% !important; min-width: 0; margin-bottom: 8px; } .pos-customer-select2-dropdown { min-width: 320px !important; } .pos-customer-block .select2-selection__rendered { white-space: normal !important; word-break: break-word; }</style>
-		<div class="form-group">
+		<div class="form-group" style="max-width: 480px;">
 			<label class="control-label">@lang('contact.customer')</label>
 			<div class="input-group" style="margin-bottom: 4px;">
 				<span class="input-group-addon">
 					<i class="fa fa-user"></i>
 				</span>
-				<input type="hidden" id="default_customer_id" 
+				<input type="hidden" id="default_customer_id"
 				value="{{ $walk_in_customer['id'] ?? ''}}" >
-				<input type="hidden" id="default_customer_name" 
+				<input type="hidden" id="default_customer_name"
 				value="{{ $walk_in_customer['name'] ?? ''}}" >
-				<input type="hidden" id="default_customer_display_name" 
+				<input type="hidden" id="default_customer_display_name"
 				value="{{ $walk_in_display_name ?? $walk_in_customer['name'] ?? ''}}" >
-				<input type="hidden" id="default_customer_balance" 
+				<input type="hidden" id="default_customer_balance"
 				value="{{ $walk_in_customer['balance'] ?? ''}}" >
-				<input type="hidden" id="default_customer_address" 
+				<input type="hidden" id="default_customer_address"
 				value="{{ $walk_in_customer['shipping_address'] ?? ''}}" >
 				@if(!empty($walk_in_customer['price_calculation_type']) && $walk_in_customer['price_calculation_type'] == 'selling_price_group')
-					<input type="hidden" id="default_selling_price_group" 
+					<input type="hidden" id="default_selling_price_group"
 				value="{{ $walk_in_customer['selling_price_group_id'] ?? ''}}" >
 				@endif
 				{!! Form::select('contact_id',
@@ -33,7 +37,7 @@
 			<small class="text-danger hide contact_due_text"><strong>@lang('account.customer_due'):</strong> <span></span></small>
 		</div>
 	</div>
-	<div class="col-md-7">
+	<div class="col-md-12">
 		<!-- Customer Account Info Display -->
 		<div id="customer_account_info" class="customer-account-info" style="display: none; margin-bottom: 10px; padding: 8px; background-color: #f8f9fa; border-radius: 4px; border: 1px solid #dee2e6;">
 			<div class="row">
