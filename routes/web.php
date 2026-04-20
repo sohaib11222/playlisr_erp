@@ -338,6 +338,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/clover-vs-erp', 'ReportController@cloverVsErpReport');
     Route::get('/reports/employee-leaderboard', 'ReportController@employeeLeaderboard');
 
+    // Reports hub — organized index of all reports with per-user favorites
+    Route::get('/reports', 'ReportsHubController@index')->name('reports.hub');
+    Route::post('/reports/favorite', 'ReportsHubController@toggleFavorite')->name('reports.favorite');
+
     // Customer Wants (call-me-when-it-comes-in list)
     Route::get('/customer-wants', 'CustomerWantController@index')->name('customer-wants.index');
     Route::get('/customer-wants/create', 'CustomerWantController@create')->name('customer-wants.create');
