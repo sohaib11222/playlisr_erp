@@ -193,8 +193,22 @@
 
 		/* Inputs inside the pos product list row */
 		section.content table#pos_table input.form-control {
-			height: 34px;
-			font-size: 14px;
+			height: 40px;
+			font-size: 15px;
+		}
+
+		/* Qty +/- buttons — touch-friendly (cashiers tap these a lot). */
+		section.content table#pos_table .quantity-up,
+		section.content table#pos_table .quantity-down {
+			min-height: 40px;
+			min-width: 40px;
+			padding: 0;
+			font-size: 16px;
+			line-height: 1;
+		}
+		section.content table#pos_table .quantity-up i,
+		section.content table#pos_table .quantity-down i {
+			font-size: 16px;
 		}
 
 		/* Shrink the row-remove X (was way too large) */
@@ -232,20 +246,21 @@
 			max-height: 58vh;   /* a touch more breathing room for the cart */
 		}
 
-		/* De-emphasize the repeated smaller totals (Items / Without Tax / Tax) so the
-		   grand "Total (with Tax)" dominates visually. */
+		/* Totals row — labels and running values at the same size so a cashier's eye
+		   doesn't bounce. Darker text too; 12px muted gray was the main "inconsistent
+		   and hard to read" complaint. Grand total still dominates at 26px. */
 		section.content .pos_form_totals table.table-condensed td b {
 			font-weight: 600;
-			color: #6b7280;
-			font-size: 12px;
+			color: #1f2937;
+			font-size: 14px;
 			text-transform: uppercase;
 			letter-spacing: 0.4px;
 		}
 		section.content .pos_form_totals #pre_tax_amount,
 		section.content .pos_form_totals #order_tax_display {
-			font-weight: 500 !important;
-			font-size: 13px !important;
-			color: #6b7280 !important;
+			font-weight: 600 !important;
+			font-size: 14px !important;
+			color: #1f2937 !important;
 		}
 		section.content .pos_form_totals #total_with_tax {
 			font-weight: 800 !important;

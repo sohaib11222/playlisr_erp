@@ -427,6 +427,8 @@
 		</div>
 	</td>
 	<td class="text-center v-center">
-		<i class="fa fa-times text-danger pos_remove_row cursor-pointer" aria-hidden="true"></i>
+		<button type="button" class="btn btn-default pos_remove_row" aria-label="Remove line" style="min-height:36px; min-width:36px; padding:0; line-height:1;">
+			<i class="fa fa-times text-danger" aria-hidden="true"></i>
+		</button>
 	</td>
 </tr>

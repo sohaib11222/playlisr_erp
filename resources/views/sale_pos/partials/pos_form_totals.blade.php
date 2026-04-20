@@ -14,13 +14,25 @@
 	.pos-tot-summary .stat.grand .val { font-size:28px; font-weight:800; color:#065f46; }
 	.pos-tot-summary .stat.grand .lbl { color:#065f46; }
 	.pos-tot-summary .stat.grand { margin-left:auto; text-align:right; }
-	.pos-adjust-row { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; margin-top:10px; padding-top:10px; border-top:1px solid #f1f2f4; }
-	.pos-adjust-row .adj-group { display:inline-flex; align-items:center; gap:6px; font-size:13px; color:#4b5563; }
-	.pos-adjust-row .adj-group .adj-label { text-transform:uppercase; font-size:11px; letter-spacing:.5px; font-weight:700; color:#6b7280; }
-	.pos-adjust-row .adj-group .adj-value { font-weight:600; color:#111827; }
-	.pos-adjust-row .adj-btn { display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:6px; border:1px solid #e5e7eb; background:#fff; font-size:12px; font-weight:600; color:#374151; cursor:pointer; }
-	.pos-adjust-row .adj-btn:hover { background:#f9fafb; }
-	.pos-adjust-row .adj-btn i { font-size:11px; }
+	/* Adjustments — one tidy grid, every row reads the same: [label] [edit] [value].
+	   Previously Discount had three buttons (Edit + Manual + Preset) while Tax and
+	   Shipping had just one each — it looked scattered. Now: single edit button per
+	   row, consistent 14px label, consistent amount column on the right. */
+	.pos-adjust-grid { margin-top:12px; padding-top:10px; border-top:1px solid #f1f2f4; display:grid; grid-template-columns: auto 1fr auto; column-gap:14px; row-gap:6px; align-items:center; }
+	.pos-adjust-grid .adj-label { text-transform:uppercase; font-size:12px; letter-spacing:.5px; font-weight:700; color:#374151; }
+	.pos-adjust-grid .adj-value { text-align:right; font-weight:700; color:#111827; font-size:14px; white-space:nowrap; }
+	.pos-adjust-grid .adj-btn { display:inline-flex; align-items:center; gap:6px; padding:5px 12px; border-radius:6px; border:1px solid #e5e7eb; background:#fff; font-size:13px; font-weight:600; color:#374151; cursor:pointer; justify-self:start; }
+	.pos-adjust-grid .adj-btn:hover { background:#f9fafb; border-color:#cbd5e1; }
+	.pos-adjust-grid .adj-btn i { font-size:12px; }
+	/* Discount edit button sits behind a dropdown so Manual / Preset live under one
+	   menu instead of side-by-side "choose your discount" buttons — adds a deliberate
+	   beat before a price break goes on, and dedupes the "scattered" feel. */
+	.pos-adjust-grid .adj-discount-wrap { position:relative; }
+	.pos-adjust-grid .adj-discount-menu { display:none; position:absolute; top:calc(100% + 4px); left:0; background:#fff; border:1px solid #e5e7eb; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,.08); padding:4px; z-index:10; min-width:180px; }
+	.pos-adjust-grid .adj-discount-wrap.open .adj-discount-menu { display:block; }
+	.pos-adjust-grid .adj-discount-menu button { display:flex; align-items:center; gap:8px; width:100%; border:0; background:transparent; text-align:left; padding:8px 10px; border-radius:6px; font-size:13px; font-weight:500; color:#374151; cursor:pointer; }
+	.pos-adjust-grid .adj-discount-menu button:hover { background:#f3f4f6; }
+	.pos-adjust-grid .adj-discount-menu button i { width:14px; color:#6b7280; }
 </style>
 
 <div class="pos_form_totals">
@@ -55,47 +67,68 @@
 			<div class="stat grand"><span class="lbl">Total</span><span class="val" id="total_with_tax">0</span></div>
 		</div>
 
-		{{-- Adjustments — discount / tax / shipping (plus hidden form fields) --}}
-		<div class="pos-adjust-row">
+		{{-- Adjustments — one consistent grid: [label] [edit button] [running value]. --}}
+		<div class="pos-adjust-grid">
 			@if($is_discount_enabled)
-				<div class="adj-group">
-					<span class="adj-label">Discount</span>
-					@if($edit_discount)
-						<button type="button" class="adj-btn" id="pos-edit-discount" title="@lang('sale.edit_discount')" data-toggle="modal" data-target="#posEditDiscountModal"><i class="fa fa-edit"></i></button>
-					@endif
-					<button type="button" class="adj-btn" id="pos-manual-discount" title="Apply Manual Discount"><i class="fa fa-percent"></i> Manual</button>
-					<button type="button" class="adj-btn" id="pos-preset-discount" title="Apply Preset Discount"><i class="fa fa-tags"></i> Preset</button>
-					<span class="adj-value">− <span id="total_discount">0</span></span>
-				</div>
+				<span class="adj-label">Discount</span>
+				<span class="adj-discount-wrap" id="adj-discount-wrap">
+					<button type="button" class="adj-btn" id="adj-discount-toggle" aria-haspopup="true" aria-expanded="false"><i class="fa fa-pencil-alt"></i> Edit <i class="fa fa-caret-down" style="margin-left:2px;"></i></button>
+					<div class="adj-discount-menu" role="menu">
+						<button type="button" id="pos-manual-discount"><i class="fa fa-percent"></i> Manual discount</button>
+						<button type="button" id="pos-preset-discount"><i class="fa fa-tags"></i> Preset discount</button>
+						@if($edit_discount)
+							<button type="button" id="pos-edit-discount" data-toggle="modal" data-target="#posEditDiscountModal"><i class="fa fa-edit"></i> @lang('sale.edit_discount')</button>
+						@endif
+					</div>
+				</span>
+				<span class="adj-value">− <span id="total_discount">0</span></span>
 			@endif
 			@if($is_rp_enabled)
-				<div class="adj-group"><span class="adj-label">{{ session('business.rp_name') }}</span></div>
+				<span class="adj-label">{{ session('business.rp_name') }}</span>
+				<span></span>
+				<span class="adj-value"></span>
 			@endif
-			<div class="adj-group @if($pos_settings['disable_order_tax'] != 0) hide @endif">
-				<span class="adj-label">Order Tax</span>
-				<button type="button" class="adj-btn" title="@lang('sale.edit_order_tax')" data-toggle="modal" data-target="#posEditOrderTaxModal" id="pos-edit-tax"><i class="fa fa-edit"></i> Edit</button>
-				<span class="adj-value">+ <span id="order_tax">@if(empty($edit)) 0 @else {{$transaction->tax_amount}} @endif</span></span>
-			</div>
-			<div class="adj-group">
-				<span class="adj-label">Shipping</span>
-				<button type="button" class="adj-btn" title="@lang('sale.shipping')" data-toggle="modal" data-target="#posShippingModal"><i class="fa fa-edit"></i> Edit</button>
-				<span class="adj-value">+ <span id="shipping_charges_amount">0</span></span>
-			</div>
+			<span class="adj-label @if($pos_settings['disable_order_tax'] != 0) hide @endif">Order Tax</span>
+			<button type="button" class="adj-btn @if($pos_settings['disable_order_tax'] != 0) hide @endif" title="@lang('sale.edit_order_tax')" data-toggle="modal" data-target="#posEditOrderTaxModal" id="pos-edit-tax"><i class="fa fa-pencil-alt"></i> Edit</button>
+			<span class="adj-value @if($pos_settings['disable_order_tax'] != 0) hide @endif">+ <span id="order_tax">@if(empty($edit)) 0 @else {{$transaction->tax_amount}} @endif</span></span>
+
+			<span class="adj-label">Shipping</span>
+			<button type="button" class="adj-btn" title="@lang('sale.shipping')" data-toggle="modal" data-target="#posShippingModal"><i class="fa fa-pencil-alt"></i> Edit</button>
+			<span class="adj-value">+ <span id="shipping_charges_amount">0</span></span>
+
 			@if(in_array('types_of_service', $enabled_modules))
-				<div class="adj-group">
-					<span class="adj-label">Packing</span>
-					<button type="button" class="adj-btn service_modal_btn"><i class="fa fa-edit"></i></button>
-					<span class="adj-value">+ <span id="packing_charge_text">0</span></span>
-				</div>
+				<span class="adj-label">Packing</span>
+				<button type="button" class="adj-btn service_modal_btn"><i class="fa fa-pencil-alt"></i> Edit</button>
+				<span class="adj-value">+ <span id="packing_charge_text">0</span></span>
 			@endif
 			@if(!empty($pos_settings['amount_rounding_method']) && $pos_settings['amount_rounding_method'] > 0)
-				<div class="adj-group">
-					<span class="adj-label" id="round_off">Round off</span>
-					<span class="adj-value"><span id="round_off_text">0</span></span>
-					<input type="hidden" name="round_off_amount" id="round_off_amount" value=0>
-				</div>
+				<span class="adj-label" id="round_off">Round off</span>
+				<span></span>
+				<span class="adj-value"><span id="round_off_text">0</span><input type="hidden" name="round_off_amount" id="round_off_amount" value=0></span>
 			@endif
 		</div>
+		<script>
+		(function () {
+			$(document).on('click', '#adj-discount-toggle', function (e) {
+				e.stopPropagation();
+				$('#adj-discount-wrap').toggleClass('open');
+				var expanded = $('#adj-discount-wrap').hasClass('open');
+				$(this).attr('aria-expanded', expanded ? 'true' : 'false');
+			});
+			$(document).on('click', function (e) {
+				if (!$(e.target).closest('#adj-discount-wrap').length) {
+					$('#adj-discount-wrap').removeClass('open');
+					$('#adj-discount-toggle').attr('aria-expanded', 'false');
+				}
+			});
+			// Close the menu after a choice is made; the existing handlers in pos.js
+			// still fire via #pos-manual-discount / #pos-preset-discount / #pos-edit-discount.
+			$(document).on('click', '#pos-manual-discount, #pos-preset-discount, #pos-edit-discount', function () {
+				$('#adj-discount-wrap').removeClass('open');
+				$('#adj-discount-toggle').attr('aria-expanded', 'false');
+			});
+		})();
+		</script>
 
 		{{-- Hidden form inputs preserved exactly — pos.js reads/writes these --}}
 		<input type="hidden" name="discount_type" id="discount_type" value="@if(empty($edit)){{'percentage'}}@else{{$transaction->discount_type}}@endif" data-default="percentage">
