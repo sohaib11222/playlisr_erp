@@ -4,8 +4,10 @@
 	.pos-tot-flags { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
 	.pos-tot-chip { display:inline-flex; align-items:center; gap:8px; padding:7px 12px; border-radius:999px; background:#f3f4f6; border:1px solid #e5e7eb; font-size:13px; font-weight:600; color:#374151; cursor:pointer; }
 	.pos-tot-chip input[type="checkbox"] { margin:0; }
-	.pos-tot-chip.active-whatnot { background:#fef3c7; border-color:#f59e0b; color:#78350f; }
-	.pos-tot-chip.active-bag { background:#fce7f3; border-color:#ec4899; color:#831843; }
+	/* Brand palette: Nivessa mustard yellow + warm brown. Pink bag-fee chip
+	   was off-brand; now a muted tan that matches the site's cream hero. */
+	.pos-tot-chip.active-whatnot { background:#fef3c7; border-color:#f5ce3e; color:#5c3c10; }
+	.pos-tot-chip.active-bag { background:#faf0df; border-color:#b98b5c; color:#5c3c10; }
 	.pos-tot-chip.store-credit { background:#dcfce7; border-color:#22c55e; color:#14532d; }
 	.pos-tot-summary { display:flex; flex-wrap:wrap; align-items:baseline; gap:18px 24px; padding:6px 0; }
 	.pos-tot-summary > .stat { display:flex; flex-direction:column; line-height:1.2; }

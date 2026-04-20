@@ -192,7 +192,7 @@ class SellPosController extends Controller
         $register_details = $this->cashRegisterUtil->getCurrentCashRegister(auth()->user()->id);
 
         $walk_in_customer = $this->contactUtil->getWalkInCustomer($business_id);
-        $walk_in_display_name = 'Do you have a Nivessa rewards account?';
+        $walk_in_display_name = 'Ask for phone # to look up rewards account';
         
         $business_details = $this->businessUtil->getDetails($business_id);
         $taxes = TaxRate::forBusinessDropdown($business_id, true, true);
@@ -900,7 +900,7 @@ class SellPosController extends Controller
         }
 
         $walk_in_customer = $this->contactUtil->getWalkInCustomer($business_id);
-        $walk_in_display_name = 'Do you have a Nivessa rewards account?';
+        $walk_in_display_name = 'Ask for phone # to look up rewards account';
         
         $business_details = $this->businessUtil->getDetails($business_id);
 

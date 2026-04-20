@@ -22,7 +22,7 @@
 				value="{{ $walk_in_customer['selling_price_group_id'] ?? ''}}" >
 				@endif
 				{!! Form::select('contact_id',
-					[], null, ['class' => 'form-control mousetrap', 'id' => 'customer_id', 'placeholder' => 'Search by name, phone, or email…', 'required', 'style' => 'width: 100%;']) !!}
+					[], null, ['class' => 'form-control mousetrap', 'id' => 'customer_id', 'placeholder' => 'Phone # (or name / email)…', 'required', 'style' => 'width: 100%;']) !!}
 			</div>
 			<div style="margin-top: 10px;">
 				<button type="button" class="btn add_new_customer" data-name="" @if(!auth()->user()->can('customer.create')) disabled @endif title="Enroll this customer in Nivessa Bucks rewards">
@@ -345,7 +345,12 @@
 			var tbody = document.querySelector('#pos_table tbody');
 			var empty = document.getElementById('pos_cart_empty_state');
 			if (!tbody || !empty) return;
-			function toggle() { empty.style.display = tbody.children.length === 0 ? '' : 'none'; }
+			// Bag Fee row (data-plastic-bag="true") doesn't count — cart is still "empty"
+			// from the cashier's point of view when the only row is the auto bag fee.
+			function realRowCount() {
+				return tbody.querySelectorAll('tr:not([data-plastic-bag="true"])').length;
+			}
+			function toggle() { empty.style.display = realRowCount() === 0 ? '' : 'none'; }
 			toggle();
 			new MutationObserver(toggle).observe(tbody, { childList: true });
 		})();

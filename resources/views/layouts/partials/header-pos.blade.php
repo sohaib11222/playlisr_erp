@@ -26,20 +26,34 @@
 <div class="col-md-12 no-print pos-header">
   <input type="hidden" id="pos_redirect_url" value="{{$pos_redirect_url}}">
   <style>
+    /* Nivessa-branded header: cream wordmark on the left, pill colors tied
+       to the brand palette (deep brown + mustard). Per-store tint helps a
+       cashier tell at a glance whether they're on the Hollywood or Pico
+       register — mixups are costly. */
     .pos-header-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 6px 0; }
+    .pos-brand-mark { display:inline-flex; align-items:center; gap:8px; padding:6px 14px; border-radius:999px; background:#2b1e16; color:#f5ce3e; font-weight:800; font-size:13px; letter-spacing:2px; text-transform:uppercase; box-shadow:0 1px 2px rgba(0,0,0,.06); }
+    .pos-brand-mark::before { content:""; display:inline-block; width:14px; height:14px; border-radius:50%; background:#f5ce3e; box-shadow:inset 0 0 0 3px #2b1e16; }
     .pos-header-pill { display: inline-flex; align-items: center; padding: 8px 16px; border-radius: 999px; line-height: 1.2; white-space: nowrap; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
     .pos-header-pill i.fa { margin-right: 10px; font-size: 16px; }
     .pos-header-pill-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; opacity: 0.75; margin-right: 8px; font-weight: 700; }
     .pos-header-pill-value { font-size: 16px; font-weight: 700; }
-    .pos-header-pill-store { background: #e8f4fd; color: #1b6ca8; }
+    /* Store chip defaults to brand cream/brown; per-store modifiers override. */
+    .pos-header-pill-store { background: #faf0df; color: #5c3c10; }
+    .pos-header-pill-store.store-hollywood { background: #fde68a; color: #5c3c10; border: 1px solid #f5ce3e; }
+    .pos-header-pill-store.store-pico { background: #fed7aa; color: #7c2d12; border: 1px solid #fb923c; }
     .pos-header-pill-user { background: #e7f7ef; color: #1f7a45; }
     .pos-header-pill-time { background: #f3f4f6; color: #4b5563; }
-    .pos-header-pill-store select.form-control { display: inline-block; width: auto; min-width: 150px; height: 28px; padding: 0 8px; font-size: 15px; font-weight: 700; background-color: rgba(255,255,255,0.7); color: #1b6ca8; border: 1px solid rgba(27,108,168,0.25); border-radius: 6px; }
+    .pos-header-pill-store select.form-control { display: inline-block; width: auto; min-width: 150px; height: 28px; padding: 0 8px; font-size: 15px; font-weight: 700; background-color: rgba(255,255,255,0.7); color: inherit; border: 1px solid rgba(0,0,0,0.12); border-radius: 6px; }
   </style>
   <div class="row">
     <div class="col-md-6">
       <div class="pos-header-bar">
-        <span class="pos-header-pill pos-header-pill-store">
+        @php
+          $header_loc_name = !empty($transaction->location_id) ? ($transaction->location->name ?? '') : ($default_location->name ?? '');
+          $header_store_class = stripos($header_loc_name, 'hollywood') !== false ? 'store-hollywood' : (stripos($header_loc_name, 'pico') !== false ? 'store-pico' : '');
+        @endphp
+        <span class="pos-brand-mark" aria-hidden="true">Nivessa</span>
+        <span class="pos-header-pill pos-header-pill-store {{ $header_store_class }}" id="pos-header-store-chip">
           <i class="fa fa-building" aria-hidden="true"></i>
           <span class="pos-header-pill-label">Store</span>
           <span class="pos-header-pill-value">
@@ -55,6 +69,22 @@
             @if(!empty($transaction->location_id)) {{$transaction->location->name}} @endif
           </span>
         </span>
+        <script>
+        (function () {
+          // Keep the store chip tint in sync if the cashier switches locations mid-session.
+          var sel = document.getElementById('select_location_id');
+          var chip = document.getElementById('pos-header-store-chip');
+          if (!sel || !chip) return;
+          function syncTint() {
+            var name = (sel.options[sel.selectedIndex] && sel.options[sel.selectedIndex].text || '').toLowerCase();
+            chip.classList.remove('store-hollywood', 'store-pico');
+            if (name.indexOf('hollywood') !== -1) chip.classList.add('store-hollywood');
+            else if (name.indexOf('pico') !== -1) chip.classList.add('store-pico');
+          }
+          sel.addEventListener('change', syncTint);
+          syncTint();
+        })();
+        </script>
         <span class="pos-header-pill pos-header-pill-user">
           <i class="fa fa-user" aria-hidden="true"></i>
           <span class="pos-header-pill-label">User</span>

@@ -43,10 +43,12 @@
 					box-shadow: 0 2px 6px rgba(0,0,0,0.08);
 				}
 				.pos-payment-primary-row .btn-pay-primary i { font-size: 22px; }
+				/* Cash stays green (money = green is universal cashier expectation).
+				   Card switched from navy to Nivessa brown for brand consistency. */
 				.btn-pay-cash { background: #16a34a !important; color: #fff !important; border: none !important; }
 				.btn-pay-cash:hover { background: #15803d !important; color: #fff !important; }
-				.btn-pay-card { background: #1e3a8a !important; color: #fff !important; border: none !important; }
-				.btn-pay-card:hover { background: #1e40af !important; color: #fff !important; }
+				.btn-pay-card { background: #3a2a1f !important; color: #fff !important; border: none !important; }
+				.btn-pay-card:hover { background: #2b1e16 !important; color: #fff !important; }
 
 				/* "More payment options" menu — Credit Sale + Multi-Pay tucked here */
 				.pos-payment-more .dropdown-menu { min-width: 220px; padding: 4px 0; }
@@ -102,6 +104,20 @@
 						@endif
 					</ul>
 				</div>
+			</div>
+
+			{{-- Keyboard shortcut hint bar. The shortcuts existed all along but lived
+				 behind a hover popover in the header, so nobody saw them. Surfacing the
+				 most-used ones here teaches cashiers without cluttering the screen. --}}
+			<div class="pos-shortcut-hints" style="margin-top:10px; padding:8px 12px; background:#faf0df; border:1px solid #ecd9b5; border-radius:8px; font-size:12px; color:#5c3c10; display:flex; flex-wrap:wrap; gap:6px 14px; justify-content:center; align-items:center;">
+				<span style="font-weight:700; letter-spacing:.5px; text-transform:uppercase; font-size:10px; opacity:.8;">Shortcuts</span>
+				<span><kbd style="background:#fff; border:1px solid #d6c29a; border-radius:4px; padding:1px 6px; font-family:inherit; font-weight:700;">Shift+P</kbd> Pay</span>
+				<span><kbd style="background:#fff; border:1px solid #d6c29a; border-radius:4px; padding:1px 6px; font-family:inherit; font-weight:700;">Shift+E</kbd> Express</span>
+				<span><kbd style="background:#fff; border:1px solid #d6c29a; border-radius:4px; padding:1px 6px; font-family:inherit; font-weight:700;">Shift+I</kbd> Discount</span>
+				<span><kbd style="background:#fff; border:1px solid #d6c29a; border-radius:4px; padding:1px 6px; font-family:inherit; font-weight:700;">Shift+T</kbd> Tax</span>
+				<span><kbd style="background:#fff; border:1px solid #d6c29a; border-radius:4px; padding:1px 6px; font-family:inherit; font-weight:700;">F2</kbd> Qty</span>
+				<span><kbd style="background:#fff; border:1px solid #d6c29a; border-radius:4px; padding:1px 6px; font-family:inherit; font-weight:700;">F4</kbd> New item</span>
+				<span><kbd style="background:#fff; border:1px solid #d6c29a; border-radius:4px; padding:1px 6px; font-family:inherit; font-weight:700;">Shift+C</kbd> Cancel</span>
 			</div>
 
 			<div style="text-align:center; margin-top:8px;">
