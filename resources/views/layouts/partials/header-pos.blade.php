@@ -98,8 +98,43 @@
       </div>
     </div>
     <div class="col-md-6">
-      {{-- Admin / register actions collapsed into a single small dropdown to reclaim
-           prime real estate in the POS top bar. They're used a few times a day, not every sale. --}}
+      <style>
+        /* Close Register is a daily-end-of-shift action and cashiers keep forgetting
+           to do it. Pulled out of the Admin dropdown into its own pill so it can't
+           be missed. Brand mustard + brown so it reads as "important but not
+           destructive" (red would say "cancel" or "error"). */
+        .pos-close-register-btn {
+          display: inline-flex; align-items: center; gap: 8px;
+          padding: 7px 16px;
+          border-radius: 999px;
+          background: #f5ce3e;
+          color: #2b1e16 !important;
+          border: 1px solid #d4a92a;
+          font-weight: 800;
+          font-size: 13px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          line-height: 1.2;
+          box-shadow: 0 2px 4px rgba(245, 206, 62, 0.35);
+          margin: 5px 6px 0 0;
+          cursor: pointer;
+          text-decoration: none !important;
+        }
+        .pos-close-register-btn:hover {
+          background: #e5b92e;
+          color: #2b1e16 !important;
+          box-shadow: 0 3px 6px rgba(245, 206, 62, 0.5);
+        }
+        .pos-close-register-btn i { font-size: 14px; }
+      </style>
+
+      @can('close_cash_register')
+      <a href="#" id="close_register" class="pos-close-register-btn pull-right btn-modal" data-container=".close_register_modal" data-href="{{ action('CashRegisterController@getCloseRegister')}}" title="Close the register for this shift">
+        <i class="fa fa-lock" aria-hidden="true"></i> Close Register
+      </a>
+      @endcan
+
+      {{-- Remaining admin actions — less-frequent stuff stays tucked away. --}}
       <div class="dropdown pull-right" style="margin: 5px 6px 0 0;">
         <button type="button" class="btn btn-default btn-sm dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" title="Register / admin actions" style="padding: 6px 12px; font-weight: 600;">
           <i class="fa fa-bars" aria-hidden="true"></i>&nbsp; Admin <span class="caret"></span>
@@ -112,14 +147,6 @@
             </a>
           </li>
           @endcan
-          @can('close_cash_register')
-          <li>
-            <a href="#" id="close_register" class="btn-modal" data-container=".close_register_modal" data-href="{{ action('CashRegisterController@getCloseRegister')}}">
-              <i class="fa fa-window-close text-danger" aria-hidden="true"></i>&nbsp; Close Register
-            </a>
-          </li>
-          @endcan
-          <li role="separator" class="divider"></li>
           <li>
             <a href="{{$go_back_url}}" title="{{ __('lang_v1.go_back') }}">
               <i class="fa fa-backward text-info" aria-hidden="true"></i>&nbsp; Back to Home
