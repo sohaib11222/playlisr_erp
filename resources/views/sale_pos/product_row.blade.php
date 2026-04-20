@@ -31,14 +31,17 @@
 		@endphp
 
 		@if( ($edit_price || $edit_discount) && empty($is_direct_sell) )
+		{{-- Product name link: Bootstrap's .text-info is a light cyan that was
+			 unreadable on the cream cart background. Swap for chocolate brown
+			 with a subtle underline so it still reads as clickable. --}}
 		<div title="@lang('lang_v1.pos_edit_product_price_help')">
-		<span class="text-link text-info cursor-pointer" data-toggle="modal" data-target="#row_edit_product_price_modal_{{$row_count}}">
+		<span class="cursor-pointer" data-toggle="modal" data-target="#row_edit_product_price_modal_{{$row_count}}" style="color:#2b1e16; font-weight:600; border-bottom:1px dotted #8a6d3b;">
 			{!! $product_name !!}
-			&nbsp;<i class="fa fa-info-circle"></i>
+			&nbsp;<i class="fa fa-info-circle" style="color:#8a6d3b;"></i>
 		</span>
 		</div>
 		@else
-			{!! $product_name !!}
+			<span style="color:#2b1e16; font-weight:600;">{!! $product_name !!}</span>
 		@endif
 		<input type="hidden" class="enable_sr_no" value="{{$product->enable_sr_no}}">
 		<input type="hidden" 

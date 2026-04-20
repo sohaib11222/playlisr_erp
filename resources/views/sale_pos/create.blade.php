@@ -217,24 +217,30 @@
 			font-size: 13px;
 		}
 
-		/* Bag-fee row is auto-added and shouldn't look like a product. Shrink
-		   its padding and grey it out so a cashier's eye skips past it. */
-		section.content table#pos_table tr[data-plastic-bag="true"] td {
-			padding: 4px 8px !important;
-			font-size: 12px;
-			color: #6b7280;
-			background: #fafafa;
+		/* Bag-fee row is auto-added to the cart but Jonathan doesn't want it
+		   showing up like a product. Hide the row entirely — it's kept in the
+		   DOM so pos.js can still read the quantity/price for totals, it just
+		   doesn't render. The fee is still visible as the checkbox chip above
+		   the totals and a muted line in the adjustments list. */
+		section.content table#pos_table tr[data-plastic-bag="true"] {
+			display: none !important;
 		}
-		section.content table#pos_table tr[data-plastic-bag="true"] .product_name,
-		section.content table#pos_table tr[data-plastic-bag="true"] .product-name {
-			font-size: 12px !important;
-			font-weight: 500 !important;
-			color: #6b7280 !important;
-		}
-		section.content table#pos_table tr[data-plastic-bag="true"] .input-number { max-width: 100px; }
-		section.content table#pos_table tr[data-plastic-bag="true"] input.form-control { height: 24px; font-size: 12px; width: 40px; }
-		section.content table#pos_table tr[data-plastic-bag="true"] .quantity-up,
-		section.content table#pos_table tr[data-plastic-bag="true"] .quantity-down { min-height: 24px; min-width: 24px; font-size: 11px; }
+
+		/* Nivessa sells everything by the piece (1 record = 1 piece). The
+		   default product template still renders a sub-unit <select> ("Pieces")
+		   and a second "Quantity in Pc(s)*" input below the qty +/- controls,
+		   which Jonathan saw as "why do i need to enter qty twice?". Hide both
+		   — the hidden product_unit_id input still submits the unit, and the
+		   sub_unit_id / secondary_unit_quantity inputs keep their default
+		   values so nothing server-side breaks. */
+		section.content table#pos_table .sub_unit,
+		section.content table#pos_table input[name*="secondary_unit_quantity"],
+		section.content table#pos_table input[name*="secondary_unit_quantity"] ~ br,
+		section.content table#pos_table .quantity_in_unit_help,
+		section.content table#pos_table span:has(> input[name*="secondary_unit_quantity"]) { display:none !important; }
+		/* Fallback for browsers without :has() — hide any <br> or short-label
+		   text between qty input-group and its siblings. */
+		section.content table#pos_table .input-number + br { display:none; }
 
 		/* Shrink the row-remove X (was way too large) */
 		section.content table#pos_table .pos_remove_row,
