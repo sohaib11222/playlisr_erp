@@ -4825,7 +4825,7 @@ class ReportController extends Controller
                 COALESCE(SUM(CASE WHEN t.is_whatnot = 1 THEN t.final_total ELSE 0 END), 0) as whatnot_total,
                 SUM(CASE WHEN t.is_whatnot = 1 THEN 0 ELSE 1 END) as non_cnt,
                 COALESCE(SUM(CASE WHEN t.is_whatnot = 1 THEN 0 ELSE t.final_total END), 0) as non_total")
-            ->groupByRaw('DATE(t.transaction_date)');
+            ->groupBy(DB::raw('DATE(t.transaction_date)'));
 
         $daily_sort_map = ['day' => 'day', 'whatnot_cnt' => 'whatnot_cnt', 'whatnot_total' => 'whatnot_total', 'non_cnt' => 'non_cnt', 'non_total' => 'non_total'];
         if ($sort_table === 'daily' && isset($daily_sort_map[$sort])) {
