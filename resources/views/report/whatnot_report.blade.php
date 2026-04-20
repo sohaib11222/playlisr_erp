@@ -70,19 +70,41 @@
         </div>
     </div>
 
+    <style>
+        .sortable-col a { color: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+        .sortable-col a:hover { color: #1b6ca8; }
+        .sortable-col .sort-arrow { opacity: 0.4; font-size: 11px; }
+        .sortable-col.active a { color: #1b6ca8; font-weight: 700; }
+        .sortable-col.active .sort-arrow { opacity: 1; }
+    </style>
+    @php
+        $other = request()->except(['sort', 'dir', 'sort_table']);
+        $sortUrl = function ($table, $col) use ($sort, $sort_table, $dir, $other) {
+            $newDir = ($sort === $col && $sort_table === $table && $dir === 'asc') ? 'desc' : 'asc';
+            return action('ReportController@whatnotReport') . '?' . http_build_query(array_merge($other, ['sort' => $col, 'dir' => $newDir, 'sort_table' => $table]));
+        };
+        $arrow = function ($table, $col) use ($sort, $sort_table, $dir) {
+            if ($sort !== $col || $sort_table !== $table) return '<i class="fa fa-sort sort-arrow"></i>';
+            return $dir === 'asc' ? '<i class="fa fa-sort-up sort-arrow"></i>' : '<i class="fa fa-sort-down sort-arrow"></i>';
+        };
+        $colHead = function ($table, $col, $label, $class = '') use ($sort, $sort_table, $sortUrl, $arrow) {
+            $active = ($sort === $col && $sort_table === $table) ? 'active' : '';
+            return '<th class="sortable-col ' . $class . ' ' . $active . '"><a href="' . $sortUrl($table, $col) . '">' . $label . ' ' . $arrow($table, $col) . '</a></th>';
+        };
+    @endphp
     <div class="row">
         <div class="col-md-7">
             <div class="box box-solid">
-                <div class="box-header with-border"><h3 class="box-title">Daily breakdown</h3></div>
+                <div class="box-header with-border"><h3 class="box-title">Daily breakdown <small style="color:#6b7280;">click any column to sort</small></h3></div>
                 <div class="box-body table-responsive">
                     <table class="table table-bordered table-striped">
                         <thead>
                             <tr>
-                                <th>Date</th>
-                                <th class="text-right">Whatnot #</th>
-                                <th class="text-right">Whatnot $</th>
-                                <th class="text-right">Other #</th>
-                                <th class="text-right">Other $</th>
+                                {!! $colHead('daily', 'day', 'Date') !!}
+                                {!! $colHead('daily', 'whatnot_cnt', 'Whatnot #', 'text-right') !!}
+                                {!! $colHead('daily', 'whatnot_total', 'Whatnot $', 'text-right') !!}
+                                {!! $colHead('daily', 'non_cnt', 'Other #', 'text-right') !!}
+                                {!! $colHead('daily', 'non_total', 'Other $', 'text-right') !!}
                                 <th class="text-right">Total $</th>
                             </tr>
                         </thead>
@@ -106,14 +128,14 @@
         </div>
         <div class="col-md-5">
             <div class="box box-solid">
-                <div class="box-header with-border"><h3 class="box-title">Top Whatnot sellers (by employee)</h3></div>
+                <div class="box-header with-border"><h3 class="box-title">Top Whatnot sellers (by employee) <small style="color:#6b7280;">click to sort</small></h3></div>
                 <div class="box-body table-responsive">
                     <table class="table table-bordered table-striped">
                         <thead>
                             <tr>
-                                <th>Employee</th>
-                                <th class="text-right"># tx</th>
-                                <th class="text-right">Total $</th>
+                                {!! $colHead('top', 'employee', 'Employee') !!}
+                                {!! $colHead('top', 'cnt', '# tx', 'text-right') !!}
+                                {!! $colHead('top', 'total', 'Total $', 'text-right') !!}
                             </tr>
                         </thead>
                         <tbody>

@@ -56,19 +56,41 @@
             @php
                 $top_rph = $rows->isNotEmpty() ? max((float) ($rows->first()->revenue_per_hour ?? 0), 1) : 1;
             @endphp
+            <style>
+                .sortable-col a { color: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+                .sortable-col a:hover { color: #1b6ca8; }
+                .sortable-col .sort-arrow { opacity: 0.4; font-size: 11px; }
+                .sortable-col.active a { color: #1b6ca8; font-weight: 700; }
+                .sortable-col.active .sort-arrow { opacity: 1; }
+            </style>
+            @php
+                $other = request()->except(['sort', 'dir']);
+                $sortUrl = function ($col) use ($sort, $dir, $other) {
+                    $newDir = ($sort === $col && $dir === 'asc') ? 'desc' : 'asc';
+                    return action('ReportController@employeeLeaderboard') . '?' . http_build_query(array_merge($other, ['sort' => $col, 'dir' => $newDir]));
+                };
+                $arrow = function ($col) use ($sort, $dir) {
+                    if ($sort !== $col) return '<i class="fa fa-sort sort-arrow"></i>';
+                    return $dir === 'asc' ? '<i class="fa fa-sort-up sort-arrow"></i>' : '<i class="fa fa-sort-down sort-arrow"></i>';
+                };
+                $colHead = function ($col, $label, $class = '', $extra_style = '') use ($sort, $sortUrl, $arrow) {
+                    $active = $sort === $col ? 'active' : '';
+                    return '<th class="sortable-col ' . $class . ' ' . $active . '" style="' . $extra_style . '"><a href="' . $sortUrl($col) . '">' . $label . ' ' . $arrow($col) . '</a></th>';
+                };
+            @endphp
             <table class="table lb-table">
                 <thead>
                     <tr style="color:#6b7280; text-transform:uppercase; font-size:11px; letter-spacing:.5px;">
                         <th class="text-center">Rank</th>
-                        <th>Employee</th>
-                        <th class="text-right" style="background:#ecfdf5;">$ / hr</th>
-                        <th class="text-right" style="background:#ecfdf5;">Items / hr</th>
-                        <th class="text-right" style="background:#ecfdf5;">Tx / hr</th>
-                        <th class="text-right">Hours</th>
-                        <th class="text-right">Total $</th>
-                        <th class="text-right">Items rung</th>
-                        <th class="text-right">Avg $/tx</th>
-                        <th class="text-right">Items priced</th>
+                        {!! $colHead('employee', 'Employee') !!}
+                        {!! $colHead('revenue_per_hour', '$ / hr', 'text-right', 'background:#ecfdf5;') !!}
+                        {!! $colHead('items_per_hour', 'Items / hr', 'text-right', 'background:#ecfdf5;') !!}
+                        {!! $colHead('tx_per_hour', 'Tx / hr', 'text-right', 'background:#ecfdf5;') !!}
+                        {!! $colHead('hours_worked', 'Hours', 'text-right') !!}
+                        {!! $colHead('revenue', 'Total $', 'text-right') !!}
+                        {!! $colHead('items_rung', 'Items rung', 'text-right') !!}
+                        {!! $colHead('avg_tx', 'Avg $/tx', 'text-right') !!}
+                        {!! $colHead('priced_count', 'Items priced', 'text-right') !!}
                     </tr>
                 </thead>
                 <tbody>

@@ -4813,32 +4813,50 @@ class ReportController extends Controller
         $overall_total = ((float)($whatnot->total ?? 0)) + ((float)($non->total ?? 0));
         $whatnot_pct = $overall_total > 0 ? ((float)$whatnot->total / $overall_total) * 100 : 0;
 
+        // Column sort (whitelisted) — applies to whichever table has `sort_table` matching
+        $sort = $request->input('sort');
+        $dir  = strtolower($request->input('dir', 'desc')) === 'asc' ? 'asc' : 'desc';
+        $sort_table = $request->input('sort_table'); // 'daily' or 'top'
+
         // Daily breakdown
-        $daily = (clone $base)
+        $daily_q = (clone $base)
             ->selectRaw("DATE(t.transaction_date) as day,
                 SUM(CASE WHEN t.is_whatnot = 1 THEN 1 ELSE 0 END) as whatnot_cnt,
                 COALESCE(SUM(CASE WHEN t.is_whatnot = 1 THEN t.final_total ELSE 0 END), 0) as whatnot_total,
                 SUM(CASE WHEN t.is_whatnot = 1 THEN 0 ELSE 1 END) as non_cnt,
                 COALESCE(SUM(CASE WHEN t.is_whatnot = 1 THEN 0 ELSE t.final_total END), 0) as non_total")
-            ->groupByRaw('DATE(t.transaction_date)')
-            ->orderByDesc('day')
-            ->get();
+            ->groupByRaw('DATE(t.transaction_date)');
+
+        $daily_sort_map = ['day' => 'day', 'whatnot_cnt' => 'whatnot_cnt', 'whatnot_total' => 'whatnot_total', 'non_cnt' => 'non_cnt', 'non_total' => 'non_total'];
+        if ($sort_table === 'daily' && isset($daily_sort_map[$sort])) {
+            $daily_q->orderByRaw($daily_sort_map[$sort] . ' ' . $dir);
+        } else {
+            $daily_q->orderByDesc('day');
+        }
+        $daily = $daily_q->get();
 
         // Top Whatnot sellers (by employee who created the transaction)
-        $top_sellers = (clone $base)
+        $top_q = (clone $base)
             ->where('t.is_whatnot', 1)
             ->leftJoin('users as u', 't.created_by', '=', 'u.id')
             ->selectRaw("t.created_by, CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as employee,
                 COUNT(*) as cnt, COALESCE(SUM(t.final_total), 0) as total")
             ->groupBy('t.created_by', 'u.first_name', 'u.last_name')
-            ->orderByDesc('total')
-            ->limit(20)
-            ->get();
+            ->limit(20);
+
+        $top_sort_map = ['employee' => 'employee', 'cnt' => 'cnt', 'total' => 'total'];
+        if ($sort_table === 'top' && isset($top_sort_map[$sort])) {
+            $top_q->orderByRaw($top_sort_map[$sort] . ' ' . $dir);
+        } else {
+            $top_q->orderByDesc('total');
+        }
+        $top_sellers = $top_q->get();
 
         return view('report.whatnot_report')->with(compact(
             'whatnot', 'non', 'overall_total', 'whatnot_pct',
             'daily', 'top_sellers',
-            'start_date', 'end_date', 'location_id', 'business_locations'
+            'start_date', 'end_date', 'location_id', 'business_locations',
+            'sort', 'dir', 'sort_table'
         ));
     }
 
@@ -4990,8 +5008,21 @@ class ReportController extends Controller
 
         $rows = $this->buildLeaderboardRows($business_id, $start_str, $end_str);
 
+        // Optional column sort (URL params). Default is the builder's own order
+        // (revenue per hour desc, nulls last) — which preserves gold/silver/bronze.
+        $sort = $request->input('sort');
+        $dir  = strtolower($request->input('dir', 'desc')) === 'asc' ? 'asc' : 'desc';
+        $sort_keys = ['employee','revenue','tx_count','items_rung','avg_tx','priced_count','priced_revenue','hours_worked','revenue_per_hour','items_per_hour','tx_per_hour'];
+        if (in_array($sort, $sort_keys)) {
+            $rows = $rows->sortBy(function ($r) use ($sort) {
+                $v = $r->$sort ?? null;
+                // Null values sort after real values regardless of direction
+                return $v;
+            }, SORT_REGULAR, $dir === 'desc')->values();
+        }
+
         return view('report.employee_leaderboard')->with(compact(
-            'rows', 'period', 'start', 'end'
+            'rows', 'period', 'start', 'end', 'sort', 'dir'
         ));
     }
 
