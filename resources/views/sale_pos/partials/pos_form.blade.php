@@ -76,16 +76,27 @@
 		
 		<div class="form-group">
 			<style>
-				/* Make the product search the most obvious input on the screen */
-				.pos-product-search-wrap { position: relative; }
+				/* Product search — dominant, standalone row */
+				.pos-product-search-wrap { position: relative; display: flex; align-items: stretch; }
 				.pos-product-search-label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px; color: #1b6ca8; font-weight: 700; margin-bottom: 6px; }
-				.pos-product-search-wrap .input-group-btn > .btn { height: 56px; font-size: 18px; }
+				.pos-product-search-configbtn {
+					flex: 0 0 auto;
+					height: 56px; width: 52px;
+					border: 2px solid #1b6ca8; border-right: none;
+					background: #f0f7fc; color: #1b6ca8;
+					border-radius: 8px 0 0 8px;
+					display: inline-flex; align-items: center; justify-content: center;
+					cursor: pointer; font-size: 18px;
+				}
+				.pos-product-search-configbtn:hover { background: #e1eef8; }
 				.pos-product-search-wrap #search_product {
+					flex: 1 1 auto;
 					height: 56px;
 					font-size: 22px;
 					font-weight: 600;
 					padding: 10px 16px;
 					border: 2px solid #1b6ca8;
+					border-radius: 0 8px 8px 0;
 					box-shadow: 0 0 0 3px rgba(27, 108, 168, 0.12);
 					background: #ffffff;
 				}
@@ -95,30 +106,63 @@
 					outline: none;
 				}
 				.pos-product-search-wrap #search_product::placeholder { color: #8a9ba8; font-weight: 500; }
+
+				/* Secondary action row — sits below search, not inside it */
+				.pos-action-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+				.pos-action-row .btn { height: 40px; padding: 0 16px; font-weight: 600; font-size: 13px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; }
+				.pos-quick-preset {
+					background: linear-gradient(135deg, #fef3c7, #fde68a);
+					color: #78350f; border: 1px solid #f59e0b;
+				}
+				.pos-quick-preset:hover { background: linear-gradient(135deg, #fde68a, #fcd34d); color: #78350f; }
+				.pos-quick-preset .preset-price { font-size: 11px; opacity: 0.75; font-weight: 700; margin-left: 2px; }
 			</style>
 			<label class="pos-product-search-label" for="search_product"><i class="fa fa-search"></i> Ring Up / Scan Product</label>
-			<div class="input-group pos-product-search-wrap">
-				<div class="input-group-btn">
-					<button type="button" class="btn btn-default bg-white btn-flat" data-toggle="modal" data-target="#configure_search_modal" title="{{__('lang_v1.configure_product_search')}}"><i class="fas fa-search-plus"></i></button>
-				</div>
+			<div class="pos-product-search-wrap">
+				<button type="button" class="pos-product-search-configbtn" data-toggle="modal" data-target="#configure_search_modal" title="{{__('lang_v1.configure_product_search')}}"><i class="fas fa-search-plus"></i></button>
 				{!! Form::text('search_product', null, ['class' => 'form-control mousetrap', 'id' => 'search_product', 'placeholder' => 'Type product name, artist, or scan barcode…',
 					'disabled' => is_null($default_location)? true : false,
 					'autofocus' => is_null($default_location)? false : true,
 				]) !!}
-				<span class="input-group-btn">
-					<!-- Show button for weighing scale modal -->
-					@if(isset($pos_settings['enable_weighing_scale']) && $pos_settings['enable_weighing_scale'] == 1)
-						<button type="button" class="btn btn-default bg-white btn-flat" id="weighing_scale_btn" data-toggle="modal" data-target="#weighing_scale_modal" 
-						title="@lang('lang_v1.weighing_scale')"><i class="fa fa-digital-tachograph text-primary fa-lg"></i></button>
-					@endif
-
-					<button type="button" class="btn btn-default bg-white btn-flat pos_add_quick_product" data-href="{{action('ProductController@quickAdd')}}" data-container=".quick_add_product_modal"><i class="fa fa-plus-circle text-primary fa-lg"></i></button>
-					<button type="button" class="btn btn-default bg-white btn-flat pos_add_manual_product" title="Add Manual Item" data-href="/" data-container=".add_manual_product_modal">Add Manual Item</button>
-					<button type="button" class="btn btn-info btn-flat" id="open_buy_calculator_modal" title="Buy from Customer Calculator" data-toggle="modal" data-target="#buy_calculator_modal" data-url="{{ route('buy-from-customer.create') }}?embed=1">
-						<i class="fa fa-calculator"></i> Buy Calculator
-					</button>
-				</span>
 			</div>
+
+			<div class="pos-action-row">
+				@if(isset($pos_settings['enable_weighing_scale']) && $pos_settings['enable_weighing_scale'] == 1)
+					<button type="button" class="btn btn-default" id="weighing_scale_btn" data-toggle="modal" data-target="#weighing_scale_modal" title="@lang('lang_v1.weighing_scale')"><i class="fa fa-digital-tachograph text-primary"></i> Scale</button>
+				@endif
+				<button type="button" class="btn btn-default pos_add_quick_product" data-href="{{action('ProductController@quickAdd')}}" data-container=".quick_add_product_modal" title="Quick add product"><i class="fa fa-plus-circle text-primary"></i> New Product</button>
+				<button type="button" class="btn btn-default pos_add_manual_product" title="Add Manual Item" data-href="/" data-container=".add_manual_product_modal"><i class="fa fa-pen"></i> Add Manual Item</button>
+				<button type="button" class="btn btn-info" id="open_buy_calculator_modal" title="Buy from Customer Calculator" data-toggle="modal" data-target="#buy_calculator_modal" data-url="{{ route('buy-from-customer.create') }}?embed=1">
+					<i class="fa fa-calculator"></i> Buy Calculator
+				</button>
+
+				{{-- Quick-add presets for items always entered manually (soda, candy, pins, stickers).
+					 Clicking a tile opens the Add Manual Item modal with name + price pre-filled. --}}
+				<span style="flex: 1 1 auto;"></span>
+				<button type="button" class="btn pos-quick-preset" data-preset-name="Soda (can)" data-preset-price="2.00">Soda <span class="preset-price">$2</span></button>
+				<button type="button" class="btn pos-quick-preset" data-preset-name="Candy" data-preset-price="2.00">Candy <span class="preset-price">$2</span></button>
+				<button type="button" class="btn pos-quick-preset" data-preset-name="Pin" data-preset-price="3.00">Pin <span class="preset-price">$3</span></button>
+				<button type="button" class="btn pos-quick-preset" data-preset-name="Sticker" data-preset-price="3.00">Sticker <span class="preset-price">$3</span></button>
+			</div>
+
+			{{-- Wire up the quick-add tiles to open the existing Add Manual Item modal with name + price pre-filled. --}}
+			<script>
+			(function () {
+				$(document).on('click', '.pos-quick-preset', function () {
+					var name = $(this).data('preset-name');
+					var price = $(this).data('preset-price');
+					// Trigger the existing Add Manual Item flow first so the modal is built.
+					$('.pos_add_manual_product').trigger('click');
+					// Then fill the first row once the modal is shown.
+					$('#add_manual_product_modal').one('shown.bs.modal', function () {
+						var $row = $('#manual_products_container .manual_product_row').first();
+						if ($row.length === 0) return;
+						$row.find('input[name*="[name]"]').val(name).trigger('change').trigger('blur');
+						$row.find('input[name*="[price]"]').val(price).trigger('input').trigger('change');
+					});
+				});
+			})();
+			</script>
 		</div>
 	</div>
 </div>
