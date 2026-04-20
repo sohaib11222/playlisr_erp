@@ -4,9 +4,13 @@
 	.pos-tot-flags { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
 	.pos-tot-chip { display:inline-flex; align-items:center; gap:8px; padding:7px 12px; border-radius:999px; background:#f3f4f6; border:1px solid #e5e7eb; font-size:13px; font-weight:600; color:#374151; cursor:pointer; }
 	.pos-tot-chip input[type="checkbox"] { margin:0; }
-	/* Brand palette: Nivessa mustard yellow + warm brown. Pink bag-fee chip
-	   was off-brand; now a muted tan that matches the site's cream hero. */
-	.pos-tot-chip.active-whatnot { background:#fef3c7; border-color:#f5ce3e; color:#5c3c10; }
+	/* Brand palette: Nivessa mustard yellow + chocolate brown. Whatnot flag is
+	   the hero sale-type toggle — make it visually dominant in the brand's
+	   signature yellow/brown so cashiers default to checking it. Bag fee sits
+	   beside it in a softer tan so it reads as secondary. */
+	#whatnot_chip { background:#f5ce3e; border-color:#d4a92a; color:#2b1e16; font-weight:700; }
+	#whatnot_chip:hover { background:#eac232; }
+	.pos-tot-chip.active-whatnot { background:#e5b92e; border-color:#b5901f; color:#2b1e16; box-shadow:inset 0 0 0 1px rgba(0,0,0,.08); }
 	.pos-tot-chip.active-bag { background:#faf0df; border-color:#b98b5c; color:#5c3c10; }
 	.pos-tot-chip.store-credit { background:#dcfce7; border-color:#22c55e; color:#14532d; }
 	.pos-tot-summary { display:flex; flex-wrap:wrap; align-items:baseline; gap:18px 24px; padding:6px 0; }
@@ -85,11 +89,9 @@
 				</span>
 				<span class="adj-value">− <span id="total_discount">0</span></span>
 			@endif
-			@if($is_rp_enabled)
-				<span class="adj-label">{{ session('business.rp_name') }}</span>
-				<span></span>
-				<span class="adj-value"></span>
-			@endif
+			{{-- Removed: standalone NIVESSA BUCKS label row — had no value column, just
+			     a dangling label that read as a layout bug. Rewards are already handled
+			     in the discount flow (see DISCOUNT NIVESSA BUCKS (-) in the edit modal). --}}
 			<span class="adj-label @if($pos_settings['disable_order_tax'] != 0) hide @endif">Order Tax</span>
 			<button type="button" class="adj-btn @if($pos_settings['disable_order_tax'] != 0) hide @endif" title="@lang('sale.edit_order_tax')" data-toggle="modal" data-target="#posEditOrderTaxModal" id="pos-edit-tax"><i class="fa fa-pencil-alt"></i> Edit</button>
 			<span class="adj-value @if($pos_settings['disable_order_tax'] != 0) hide @endif">+ <span id="order_tax">@if(empty($edit)) 0 @else {{$transaction->tax_amount}} @endif</span></span>

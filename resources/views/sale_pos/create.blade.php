@@ -191,25 +191,50 @@
 			vertical-align: middle;
 		}
 
-		/* Inputs inside the pos product list row */
+		/* Inputs inside the pos product list row — compact qty cell. Jonathan
+		   said the previous 40px/15px was too big and was eating visual space. */
 		section.content table#pos_table input.form-control {
-			height: 40px;
-			font-size: 15px;
+			height: 32px;
+			font-size: 14px;
+			width: 54px;
+			text-align: center;
 		}
-
-		/* Qty +/- buttons — touch-friendly (cashiers tap these a lot). */
+		section.content table#pos_table .input-number {
+			max-width: 150px;
+			margin: 0 auto;
+		}
+		/* Qty +/- buttons — compact but still tap-friendly. */
 		section.content table#pos_table .quantity-up,
 		section.content table#pos_table .quantity-down {
-			min-height: 40px;
-			min-width: 40px;
+			min-height: 32px;
+			min-width: 32px;
 			padding: 0;
-			font-size: 16px;
+			font-size: 13px;
 			line-height: 1;
 		}
 		section.content table#pos_table .quantity-up i,
 		section.content table#pos_table .quantity-down i {
-			font-size: 16px;
+			font-size: 13px;
 		}
+
+		/* Bag-fee row is auto-added and shouldn't look like a product. Shrink
+		   its padding and grey it out so a cashier's eye skips past it. */
+		section.content table#pos_table tr[data-plastic-bag="true"] td {
+			padding: 4px 8px !important;
+			font-size: 12px;
+			color: #6b7280;
+			background: #fafafa;
+		}
+		section.content table#pos_table tr[data-plastic-bag="true"] .product_name,
+		section.content table#pos_table tr[data-plastic-bag="true"] .product-name {
+			font-size: 12px !important;
+			font-weight: 500 !important;
+			color: #6b7280 !important;
+		}
+		section.content table#pos_table tr[data-plastic-bag="true"] .input-number { max-width: 100px; }
+		section.content table#pos_table tr[data-plastic-bag="true"] input.form-control { height: 24px; font-size: 12px; width: 40px; }
+		section.content table#pos_table tr[data-plastic-bag="true"] .quantity-up,
+		section.content table#pos_table tr[data-plastic-bag="true"] .quantity-down { min-height: 24px; min-width: 24px; font-size: 11px; }
 
 		/* Shrink the row-remove X (was way too large) */
 		section.content table#pos_table .pos_remove_row,

@@ -77,7 +77,7 @@
 <div class="pos-quick-grid-title">Quick Add — Snacks & Swag</div>
 <div class="pos-quick-grid">
     <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Soda (can)" data-preset-price="2.00">
-        <i class="fa fa-wine-bottle"></i> Soda <span class="pos-quick-price">$2.00</span>
+        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🥤</span> Soda <span class="pos-quick-price">$2.00</span>
     </button>
     <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Energy Drink" data-preset-price="4.00">
         <i class="fa fa-bolt"></i> Energy Drink <span class="pos-quick-price">$4.00</span>
@@ -93,6 +93,12 @@
     </button>
     <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Patch" data-preset-price="3.00">
         <i class="fa fa-tshirt"></i> Patch <span class="pos-quick-price">$3.00</span>
+    </button>
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Water" data-preset-price="1.50">
+        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">💧</span> Water <span class="pos-quick-price">$1.50</span>
+    </button>
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Chips" data-preset-price="1.75">
+        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🥔</span> Chips <span class="pos-quick-price">$1.75</span>
     </button>
 </div>
 
