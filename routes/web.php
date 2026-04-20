@@ -327,6 +327,15 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/whatnot', 'ReportController@whatnotReport');
     Route::get('/reports/clover-vs-erp', 'ReportController@cloverVsErpReport');
 
+    // Customer Wants list ("call me when X comes in")
+    Route::get('/customer-wants', 'CustomerWantController@index')->name('customer_wants.index');
+    Route::get('/customer-wants/create', 'CustomerWantController@create')->name('customer_wants.create');
+    Route::post('/customer-wants', 'CustomerWantController@store')->name('customer_wants.store');
+    Route::get('/customer-wants/{id}/edit', 'CustomerWantController@edit')->name('customer_wants.edit');
+    Route::put('/customer-wants/{id}', 'CustomerWantController@update')->name('customer_wants.update');
+    Route::post('/customer-wants/{id}/fulfill', 'CustomerWantController@fulfill')->name('customer_wants.fulfill');
+    Route::delete('/customer-wants/{id}', 'CustomerWantController@destroy')->name('customer_wants.destroy');
+
     Route::get('business-location/activate-deactivate/{location_id}', 'BusinessLocationController@activateDeactivateLocation');
 
     //Business Location Settings...

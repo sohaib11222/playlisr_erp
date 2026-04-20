@@ -427,6 +427,23 @@ class HomeController extends Controller
             ->limit(15)
             ->get();
 
+        // ---- Active customer wants (peek for dashboard) ----
+        $active_wants = [];
+        if (\Schema::hasTable('customer_wants')) {
+            $active_wants = \DB::table('customer_wants as cw')
+                ->leftJoin('contacts as c', 'cw.contact_id', '=', 'c.id')
+                ->leftJoin('business_locations as bl', 'cw.location_id', '=', 'bl.id')
+                ->where('cw.business_id', $business_id)
+                ->where('cw.status', 'active')
+                ->selectRaw("cw.id, cw.artist, cw.title, cw.format, cw.priority, cw.phone, cw.created_at,
+                    bl.name as location_name,
+                    CONCAT(COALESCE(c.first_name, ''), ' ', COALESCE(c.last_name, '')) as customer")
+                ->orderByRaw("FIELD(cw.priority, 'high', 'normal', 'low')")
+                ->orderByDesc('cw.created_at')
+                ->limit(10)
+                ->get();
+        }
+
         // Most expensive items sold in the last 7 days (by unit price)
         $top_expensive_items = \DB::table('transaction_sell_lines as tsl')
             ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
@@ -456,7 +473,8 @@ class HomeController extends Controller
             'my_mtd_rung', 'my_lm_rung', 'my_rung_pct',
             'my_mtd_priced', 'my_lm_priced', 'my_priced_pct',
             'avg_per_employee',
-            'my_priced_rev_mtd', 'my_priced_rev_lm', 'my_priced_rev_lifetime', 'my_priced_rev_pct'
+            'my_priced_rev_mtd', 'my_priced_rev_lm', 'my_priced_rev_lifetime', 'my_priced_rev_pct',
+            'active_wants'
         ));
     }
 

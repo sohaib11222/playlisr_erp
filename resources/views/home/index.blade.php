@@ -276,6 +276,53 @@
         </div>
     </div>
 
+    {{-- Active customer wants — things to keep an eye out for in new inventory --}}
+    <div class="row">
+        <div class="col-md-12">
+            <div class="niv-card" style="border-left:4px solid #dc2626;">
+                <h3 style="color:#991b1b;"><i class="fa fa-hand-point-right"></i> Active Customer Wants <span class="niv-sub">call-me-when-it-comes-in list — <a href="{{ action('CustomerWantController@index') }}">see all / add new →</a></span></h3>
+                <table>
+                    <thead>
+                        <tr style="color:#7b8796; text-transform:uppercase; font-size:11px; letter-spacing:.5px;">
+                            <th>Priority</th>
+                            <th>Artist</th>
+                            <th>Title</th>
+                            <th>Format</th>
+                            <th>Customer</th>
+                            <th>Phone</th>
+                            <th>Store</th>
+                            <th>Added</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @forelse($active_wants as $w)
+                        <tr>
+                            <td>
+                                @if($w->priority === 'high')
+                                    <span class="label label-danger">HIGH</span>
+                                @elseif($w->priority === 'low')
+                                    <span class="label label-default">low</span>
+                                @else
+                                    <span class="label label-info">normal</span>
+                                @endif
+                            </td>
+                            <td>{{ $w->artist }}</td>
+                            <td><strong>{{ $w->title }}</strong></td>
+                            <td>@if($w->format)<span class="niv-chip niv-chip-{{ strtolower(preg_replace('/[^a-z0-9]/i','-', $w->format)) }}">{{ $w->format }}</span>@endif</td>
+                            <td>{{ trim($w->customer) ?: '—' }}</td>
+                            <td>{{ $w->phone }}</td>
+                            <td>{{ $w->location_name }}</td>
+                            <td class="niv-muted">{{ \Carbon\Carbon::parse($w->created_at)->diffForHumans() }}</td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="8" class="niv-muted">No active wants. <a href="{{ action('CustomerWantController@create') }}">Add one</a> when a customer asks for something you don't have in stock.</td></tr>
+                    @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
     <div class="row">
         <div class="col-md-12">
             <div class="niv-card">
