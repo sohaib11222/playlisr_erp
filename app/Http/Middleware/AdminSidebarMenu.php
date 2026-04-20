@@ -561,6 +561,12 @@ class AdminSidebarMenu
                                 'Dead Stock',
                                 ['icon' => 'fa fas fa-snowflake', 'active' => request()->segment(2) == 'dead-stock']
                             );
+
+                            $sub->url(
+                                action('ReportController@whatnotReport'),
+                                'Whatnot Sales',
+                                ['icon' => 'fa fas fa-tv', 'active' => request()->segment(2) == 'whatnot']
+                            );
                         }
 
                         if (auth()->user()->can('purchase_n_sell_report.view')) {

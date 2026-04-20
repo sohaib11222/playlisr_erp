@@ -4728,6 +4728,82 @@ class ReportController extends Controller
     }
 
     /**
+     * Whatnot Sales Report
+     *
+     * Compares Whatnot transactions vs non-Whatnot transactions for a given
+     * date range + optional location. Shows totals, counts, and a daily
+     * breakdown so the team can see live-auction revenue at a glance.
+     */
+    public function whatnotReport(Request $request)
+    {
+        if (!$this->businessUtil->is_admin(auth()->user()) && !auth()->user()->can('purchase_n_sell_report.view')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = $request->session()->get('user.business_id');
+        $start_date = $request->input('start_date');
+        $end_date = $request->input('end_date');
+        if (empty($start_date) || empty($end_date)) {
+            $start_date = $start_date ?: \Carbon::now()->startOfMonth()->format('Y-m-d');
+            $end_date = $end_date ?: \Carbon::now()->format('Y-m-d');
+        }
+        $location_id = $request->input('location_id');
+        $business_locations = BusinessLocation::forDropdown($business_id);
+
+        $base = DB::table('transactions as t')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereDate('t.transaction_date', '>=', $start_date)
+            ->whereDate('t.transaction_date', '<=', $end_date);
+
+        if (!empty($location_id)) {
+            $base->where('t.location_id', $location_id);
+        }
+
+        // Summary rollups
+        $whatnot = (clone $base)
+            ->where('t.is_whatnot', 1)
+            ->selectRaw('COUNT(*) as cnt, COALESCE(SUM(t.final_total), 0) as total')
+            ->first();
+        $non = (clone $base)
+            ->where(function ($q) { $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); })
+            ->selectRaw('COUNT(*) as cnt, COALESCE(SUM(t.final_total), 0) as total')
+            ->first();
+
+        $overall_total = ((float)($whatnot->total ?? 0)) + ((float)($non->total ?? 0));
+        $whatnot_pct = $overall_total > 0 ? ((float)$whatnot->total / $overall_total) * 100 : 0;
+
+        // Daily breakdown
+        $daily = (clone $base)
+            ->selectRaw("DATE(t.transaction_date) as day,
+                SUM(CASE WHEN t.is_whatnot = 1 THEN 1 ELSE 0 END) as whatnot_cnt,
+                COALESCE(SUM(CASE WHEN t.is_whatnot = 1 THEN t.final_total ELSE 0 END), 0) as whatnot_total,
+                SUM(CASE WHEN t.is_whatnot = 1 THEN 0 ELSE 1 END) as non_cnt,
+                COALESCE(SUM(CASE WHEN t.is_whatnot = 1 THEN 0 ELSE t.final_total END), 0) as non_total")
+            ->groupByRaw('DATE(t.transaction_date)')
+            ->orderByDesc('day')
+            ->get();
+
+        // Top Whatnot sellers (by employee who created the transaction)
+        $top_sellers = (clone $base)
+            ->where('t.is_whatnot', 1)
+            ->leftJoin('users as u', 't.created_by', '=', 'u.id')
+            ->selectRaw("t.created_by, CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as employee,
+                COUNT(*) as cnt, COALESCE(SUM(t.final_total), 0) as total")
+            ->groupBy('t.created_by', 'u.first_name', 'u.last_name')
+            ->orderByDesc('total')
+            ->limit(20)
+            ->get();
+
+        return view('report.whatnot_report')->with(compact(
+            'whatnot', 'non', 'overall_total', 'whatnot_pct',
+            'daily', 'top_sellers',
+            'start_date', 'end_date', 'location_id', 'business_locations'
+        ));
+    }
+
+    /**
      * Restrict accountant reports to admin users only.
      */
     protected function ensureAccountantReportAdminAccess()
