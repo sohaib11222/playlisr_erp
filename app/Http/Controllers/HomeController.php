@@ -205,12 +205,15 @@ class HomeController extends Controller
         $since_30 = \Carbon::now()->subDays(30)->toDateTimeString();
         $since_7  = \Carbon::now()->subDays(7)->toDateTimeString();
 
-        // Top categories per store (last 30 days, by revenue)
+        // Top categories per store (last 30 days, by revenue). Split by
+        // genre (sub_category) × condition/format (category) so rows read like
+        // "Rock · Sealed Vinyl" and "Rock · Used Vinyl" rather than just "Sealed Vinyl".
         $top_categories_by_location = [];
         $cat_rows = \DB::table('transaction_sell_lines as tsl')
             ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
             ->join('products as p', 'tsl.product_id', '=', 'p.id')
             ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
+            ->leftJoin('categories as sc', 'p.sub_category_id', '=', 'sc.id')
             ->leftJoin('business_locations as bl', 't.location_id', '=', 'bl.id')
             ->where('t.business_id', $business_id)
             ->where('t.type', 'sell')
@@ -218,17 +221,22 @@ class HomeController extends Controller
             ->where('t.transaction_date', '>=', $since_30)
             ->selectRaw("t.location_id, bl.name as location_name,
                 COALESCE(c.name, '(uncategorized)') as category,
+                COALESCE(sc.name, '') as genre,
                 SUM(tsl.quantity) as qty,
                 SUM(tsl.quantity * tsl.unit_price_inc_tax) as revenue")
-            ->groupBy('t.location_id', 'bl.name', 'c.name')
+            ->groupBy('t.location_id', 'bl.name', 'c.name', 'sc.name')
             ->orderByDesc('revenue')
             ->get();
         foreach ($cat_rows as $r) {
             $loc = $r->location_name ?: 'Unknown';
+            // Build a display label combining genre + category
+            $r->category = $r->genre !== ''
+                ? $r->genre . ' · ' . $r->category
+                : $r->category;
             if (!isset($top_categories_by_location[$loc])) {
                 $top_categories_by_location[$loc] = [];
             }
-            if (count($top_categories_by_location[$loc]) < 5) {
+            if (count($top_categories_by_location[$loc]) < 8) {
                 $top_categories_by_location[$loc][] = $r;
             }
         }
@@ -390,13 +398,20 @@ class HomeController extends Controller
         $ts_prev_start = $ts_now->copy()->subDays(59)->startOfDay()->toDateTimeString();
         $ts_prev_end   = $ts_now->copy()->subDays(30)->endOfDay()->toDateTimeString();
 
+        // "Genre" = sub_category (Rock, Pop, Hip Hop…); parent category is condition+format
+        // (Sealed Vinyl, Used Vinyl, CD…). Render as "Rock · Sealed Vinyl" so the user can
+        // distinguish Rock Sealed vs Rock Used.
         $ts_dim_select = [
-            'genres'  => "COALESCE(c.name, '(uncategorized)') as label",
+            'genres'  => "CASE
+                WHEN sc.name IS NOT NULL AND c.name IS NOT NULL THEN CONCAT(sc.name, ' · ', c.name)
+                WHEN c.name IS NOT NULL THEN c.name
+                ELSE '(uncategorized)'
+            END as label",
             'artists' => "COALESCE(NULLIF(p.artist, ''), '(unknown artist)') as label",
             'records' => "CONCAT(COALESCE(NULLIF(p.artist, ''), ''), CASE WHEN p.artist IS NOT NULL AND p.artist != '' THEN ' — ' ELSE '' END, p.name) as label",
         ];
         $ts_dim_group = [
-            'genres'  => ['c.name'],
+            'genres'  => ['sc.name', 'c.name'],
             'artists' => ['p.artist'],
             'records' => ['p.artist', 'p.name'],
         ];
@@ -406,6 +421,7 @@ class HomeController extends Controller
                 ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
                 ->join('products as p', 'tsl.product_id', '=', 'p.id')
                 ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
+                ->leftJoin('categories as sc', 'p.sub_category_id', '=', 'sc.id')
                 ->where('t.business_id', $business_id)
                 ->where('t.type', 'sell')
                 ->where('t.status', 'final')
