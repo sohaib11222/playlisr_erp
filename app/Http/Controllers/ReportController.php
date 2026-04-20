@@ -4868,23 +4868,43 @@ class ReportController extends Controller
         $location_id = $request->input('location_id');
         $business_locations = BusinessLocation::forDropdown($business_id);
 
-        // Payment methods considered "card / Clover" for reconciliation purposes.
-        // The ERP stores Clover payments under method = 'clover', and older
-        // POS rows may have method = 'card'. Include both so nothing is missed.
-        $card_methods = ['clover', 'card'];
+        // Which payment method(s) to count as "card/Clover" for this report.
+        // Defaults to a forgiving set of common card-like methods. User can
+        // switch via ?method= to inspect a specific method.
+        $default_card_methods = ['clover', 'card', 'custom_pay_1', 'custom_pay_2', 'custom_pay_3'];
+        $selected_method = $request->input('method', 'auto');
 
-        $base = DB::table('transaction_payments as tp')
+        // Base query for the selected date.
+        // IMPORTANT: filter on t.business_id (always populated) rather than
+        // tp.business_id (can be NULL on older rows). Also use transaction_date
+        // rather than paid_on — paid_on is sometimes NULL even on finalized sells.
+        $baseAll = DB::table('transaction_payments as tp')
             ->join('transactions as t', 'tp.transaction_id', '=', 't.id')
             ->leftJoin('users as u', 't.created_by', '=', 'u.id')
             ->leftJoin('business_locations as bl', 't.location_id', '=', 'bl.id')
-            ->where('tp.business_id', $business_id)
+            ->where('t.business_id', $business_id)
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
-            ->whereIn('tp.method', $card_methods)
-            ->whereDate('tp.paid_on', $date);
+            ->whereDate('t.transaction_date', $date);
 
         if (!empty($location_id)) {
-            $base->where('t.location_id', $location_id);
+            $baseAll->where('t.location_id', $location_id);
+        }
+
+        // Diagnostic: show what methods actually exist for this date — helps
+        // pinpoint what Clover payments are stored as on this install.
+        $methods_breakdown = (clone $baseAll)
+            ->selectRaw("COALESCE(tp.method, '(null)') as method, COUNT(*) as cnt, COALESCE(SUM(tp.amount), 0) as total")
+            ->groupBy('tp.method')
+            ->orderByDesc('total')
+            ->get();
+
+        // Apply the method filter for the employee / detail rollups.
+        $base = (clone $baseAll);
+        if ($selected_method === 'auto') {
+            $base->whereIn('tp.method', $default_card_methods);
+        } elseif ($selected_method !== 'all') {
+            $base->where('tp.method', $selected_method);
         }
 
         // Per-employee rollup
@@ -4899,17 +4919,19 @@ class ReportController extends Controller
 
         // Per-location detail rows (like the bottom section of Sarah's spreadsheet)
         $detail_rows = (clone $base)
-            ->selectRaw("tp.paid_on, tp.amount, tp.method, tp.card_type,
+            ->selectRaw("tp.paid_on, t.transaction_date, tp.amount, tp.method, tp.card_type,
                 t.invoice_no, t.location_id, bl.name as location_name,
                 CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as employee")
             ->orderByDesc('tp.paid_on')
+            ->orderByDesc('t.transaction_date')
             ->get();
 
         $grand_total = (float) $employee_rows->sum('erp_total');
 
         return view('report.clover_vs_erp_report')->with(compact(
             'employee_rows', 'detail_rows', 'date', 'location_id',
-            'business_locations', 'grand_total'
+            'business_locations', 'grand_total', 'methods_breakdown',
+            'selected_method', 'default_card_methods'
         ));
     }
 

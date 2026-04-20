@@ -22,7 +22,7 @@
                     <label>Date</label>
                     <input type="date" class="form-control" name="date" value="{{ $date }}">
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label>Location</label>
                     <select name="location_id" class="form-control">
                         <option value="">All locations</option>
@@ -32,10 +32,64 @@
                     </select>
                 </div>
                 <div class="col-md-3">
+                    <label>Payment method</label>
+                    <select name="method" class="form-control">
+                        <option value="auto" @if($selected_method==='auto') selected @endif>Auto (card + clover + custom_pay)</option>
+                        <option value="all" @if($selected_method==='all') selected @endif>All methods</option>
+                        @foreach($methods_breakdown as $m)
+                            <option value="{{ $m->method }}" @if($selected_method===$m->method) selected @endif>{{ $m->method }} ({{ $m->cnt }})</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="col-md-3">
                     <label style="display:block;">&nbsp;</label>
                     <button type="submit" class="btn btn-primary"><i class="fa fa-filter"></i> Apply</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    {{-- Diagnostic: payment methods actually seen for this date. Makes it obvious
+         when the query returns 0 why that is (wrong method filter, etc.). --}}
+    <div class="box box-solid">
+        <div class="box-header with-border"><h3 class="box-title">Payment methods seen on this date <small style="color:#6b7280;">helps spot data mismatches quickly</small></h3></div>
+        <div class="box-body table-responsive">
+            <table class="table table-condensed">
+                <thead>
+                    <tr style="color:#6b7280; text-transform:uppercase; font-size:11px; letter-spacing:.5px;">
+                        <th>Method (raw value in transaction_payments.method)</th>
+                        <th class="text-right"># payments</th>
+                        <th class="text-right">Total $</th>
+                        <th>Included in report?</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse($methods_breakdown as $m)
+                        @php
+                            if ($selected_method === 'all') { $included = true; }
+                            elseif ($selected_method === 'auto') { $included = in_array($m->method, $default_card_methods); }
+                            else { $included = $selected_method === $m->method; }
+                        @endphp
+                        <tr>
+                            <td><code>{{ $m->method }}</code></td>
+                            <td class="text-right">{{ $m->cnt }}</td>
+                            <td class="text-right">${{ number_format($m->total, 2) }}</td>
+                            <td>
+                                @if($included)
+                                    <span class="label label-success">Yes</span>
+                                @else
+                                    <span class="label label-default">No</span>
+                                @endif
+                            </td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="4" class="text-muted text-center">No finalized sell payments at all on this date.</td></tr>
+                    @endforelse
+                </tbody>
+            </table>
+            <small class="text-muted">
+                If your Clover payments show up under a method name that isn't selected (e.g. <code>custom_pay_1</code>), pick it from the "Payment method" dropdown above. Once we know the canonical name used on this install, we'll lock it in as the default.
+            </small>
         </div>
     </div>
 
