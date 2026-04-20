@@ -110,24 +110,28 @@
 			@endif
 		</div>
 		<script>
-		(function () {
-			$(document).on('click', '#adj-discount-toggle', function (e) {
-				e.stopPropagation();
-				$('#adj-discount-wrap').toggleClass('open');
-				var expanded = $('#adj-discount-wrap').hasClass('open');
-				$(this).attr('aria-expanded', expanded ? 'true' : 'false');
-			});
-			$(document).on('click', function (e) {
-				if (!$(e.target).closest('#adj-discount-wrap').length) {
+		/* jQuery loads after @yield('content') — wait for it, otherwise the
+		   Edit▾ dropdown click handler never binds and the discount menu
+		   looks broken. */
+		(function runWhenReady() {
+			if (typeof jQuery === 'undefined') { setTimeout(runWhenReady, 50); return; }
+			jQuery(function ($) {
+				$(document).on('click', '#adj-discount-toggle', function (e) {
+					e.stopPropagation();
+					$('#adj-discount-wrap').toggleClass('open');
+					var expanded = $('#adj-discount-wrap').hasClass('open');
+					$(this).attr('aria-expanded', expanded ? 'true' : 'false');
+				});
+				$(document).on('click', function (e) {
+					if (!$(e.target).closest('#adj-discount-wrap').length) {
+						$('#adj-discount-wrap').removeClass('open');
+						$('#adj-discount-toggle').attr('aria-expanded', 'false');
+					}
+				});
+				$(document).on('click', '#pos-manual-discount, #pos-preset-discount, #pos-edit-discount', function () {
 					$('#adj-discount-wrap').removeClass('open');
 					$('#adj-discount-toggle').attr('aria-expanded', 'false');
-				}
-			});
-			// Close the menu after a choice is made; the existing handlers in pos.js
-			// still fire via #pos-manual-discount / #pos-preset-discount / #pos-edit-discount.
-			$(document).on('click', '#pos-manual-discount, #pos-preset-discount, #pos-edit-discount', function () {
-				$('#adj-discount-wrap').removeClass('open');
-				$('#adj-discount-toggle').attr('aria-expanded', 'false');
+				});
 			});
 		})();
 		</script>

@@ -321,31 +321,9 @@
         @endif
     </div>
 
-    <script>
-    (function () {
-        var $module = $('.ts-module');
-        if (!$module.length) return;
-        var currentStore = $module.find('.ts-tab.active').data('store');
-        var currentDim   = $module.find('.ts-pill.active').data('dim');
-
-        function refresh() {
-            $module.find('.ts-body').hide();
-            $module.find('.ts-body[data-store="' + currentStore + '"][data-dim="' + currentDim + '"]').show();
-        }
-        $module.on('click', '.ts-tab', function () {
-            currentStore = $(this).data('store');
-            $module.find('.ts-tab').removeClass('active');
-            $(this).addClass('active');
-            refresh();
-        });
-        $module.on('click', '.ts-pill', function () {
-            currentDim = $(this).data('dim');
-            $module.find('.ts-pill').removeClass('active');
-            $(this).addClass('active');
-            refresh();
-        });
-    })();
-    </script>
+    {{-- Tab/pill click handler lives in @section('javascript') at the bottom of the
+         file, because jQuery is loaded AFTER @yield('content') by the layout. Running
+         inline here caused "$ is not defined" and broke every tab + pill click. --}}
     @endif
 
     {{-- OLD metrics kept below as secondary "business-wide" dashboard.
@@ -1168,6 +1146,32 @@
                 purchase_order_table.ajax.reload();
             });
         @endif
+
+        // "What's hot right now" — store tabs + dim pills. Moved here from inline
+        // because jQuery loads AFTER @yield('content') via javascripts.blade.php
+        // (line 119: @yield('javascript')), so an inline $(...) above throws
+        // "$ is not defined" and no handlers bind.
+        var $tsModule = $('.ts-module');
+        if ($tsModule.length) {
+            var tsCurrentStore = $tsModule.find('.ts-tab.active').data('store');
+            var tsCurrentDim   = $tsModule.find('.ts-pill.active').data('dim');
+            function tsRefresh() {
+                $tsModule.find('.ts-body').hide();
+                $tsModule.find('.ts-body[data-store="' + tsCurrentStore + '"][data-dim="' + tsCurrentDim + '"]').show();
+            }
+            $tsModule.on('click', '.ts-tab', function () {
+                tsCurrentStore = $(this).data('store');
+                $tsModule.find('.ts-tab').removeClass('active');
+                $(this).addClass('active');
+                tsRefresh();
+            });
+            $tsModule.on('click', '.ts-pill', function () {
+                tsCurrentDim = $(this).data('dim');
+                $tsModule.find('.ts-pill').removeClass('active');
+                $(this).addClass('active');
+                tsRefresh();
+            });
+        }
 
     });
     </script>

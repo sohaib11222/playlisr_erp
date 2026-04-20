@@ -111,13 +111,13 @@
 				 most-used ones here teaches cashiers without cluttering the screen. --}}
 			<div class="pos-shortcut-hints" style="margin-top:10px; padding:8px 12px; background:#faf0df; border:1px solid #ecd9b5; border-radius:8px; font-size:12px; color:#5c3c10; display:flex; flex-wrap:wrap; gap:6px 14px; justify-content:center; align-items:center;">
 				<span style="font-weight:700; letter-spacing:.5px; text-transform:uppercase; font-size:10px; opacity:.8;">Shortcuts</span>
-				<span><kbd style="background:#fff; border:1px solid #d6c29a; border-radius:4px; padding:1px 6px; font-family:inherit; font-weight:700;">Shift+P</kbd> Pay</span>
-				<span><kbd style="background:#fff; border:1px solid #d6c29a; border-radius:4px; padding:1px 6px; font-family:inherit; font-weight:700;">Shift+E</kbd> Express</span>
-				<span><kbd style="background:#fff; border:1px solid #d6c29a; border-radius:4px; padding:1px 6px; font-family:inherit; font-weight:700;">Shift+I</kbd> Discount</span>
-				<span><kbd style="background:#fff; border:1px solid #d6c29a; border-radius:4px; padding:1px 6px; font-family:inherit; font-weight:700;">Shift+T</kbd> Tax</span>
-				<span><kbd style="background:#fff; border:1px solid #d6c29a; border-radius:4px; padding:1px 6px; font-family:inherit; font-weight:700;">F2</kbd> Qty</span>
-				<span><kbd style="background:#fff; border:1px solid #d6c29a; border-radius:4px; padding:1px 6px; font-family:inherit; font-weight:700;">F4</kbd> New item</span>
-				<span><kbd style="background:#fff; border:1px solid #d6c29a; border-radius:4px; padding:1px 6px; font-family:inherit; font-weight:700;">Shift+C</kbd> Cancel</span>
+				<span><kbd style="background:#fff; color:#5c3c10; border:1px solid #d6c29a; border-radius:4px; padding:1px 6px; font-family:inherit; font-weight:700;">Shift+P</kbd> Pay</span>
+				<span><kbd style="background:#fff; color:#5c3c10; border:1px solid #d6c29a; border-radius:4px; padding:1px 6px; font-family:inherit; font-weight:700;">Shift+E</kbd> Express</span>
+				<span><kbd style="background:#fff; color:#5c3c10; border:1px solid #d6c29a; border-radius:4px; padding:1px 6px; font-family:inherit; font-weight:700;">Shift+I</kbd> Discount</span>
+				<span><kbd style="background:#fff; color:#5c3c10; border:1px solid #d6c29a; border-radius:4px; padding:1px 6px; font-family:inherit; font-weight:700;">Shift+T</kbd> Tax</span>
+				<span><kbd style="background:#fff; color:#5c3c10; border:1px solid #d6c29a; border-radius:4px; padding:1px 6px; font-family:inherit; font-weight:700;">F2</kbd> Qty</span>
+				<span><kbd style="background:#fff; color:#5c3c10; border:1px solid #d6c29a; border-radius:4px; padding:1px 6px; font-family:inherit; font-weight:700;">F4</kbd> New item</span>
+				<span><kbd style="background:#fff; color:#5c3c10; border:1px solid #d6c29a; border-radius:4px; padding:1px 6px; font-family:inherit; font-weight:700;">Shift+C</kbd> Cancel</span>
 			</div>
 
 			<div style="text-align:center; margin-top:8px;">

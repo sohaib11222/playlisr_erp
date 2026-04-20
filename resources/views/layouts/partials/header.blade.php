@@ -32,20 +32,13 @@
 
 
 
-        @if($request->segment(1) == 'pos')
-          @can('view_cash_register')
-          <button type="button" id="register_details" title="{{ __('cash_register.register_details') }}" data-toggle="tooltip" data-placement="bottom" class="btn btn-success btn-flat pull-left m-8 btn-sm mt-10 btn-modal" data-container=".register_details_modal" 
-          data-href="{{ action('CashRegisterController@getRegisterDetails')}}">
-            <strong><i class="fa fa-briefcase fa-lg" aria-hidden="true"></i></strong>
-          </button>
-          @endcan
-          @can('close_cash_register')
-          <button type="button" id="close_register" title="{{ __('cash_register.close_register') }}" data-toggle="tooltip" data-placement="bottom" class="btn btn-danger btn-flat pull-left m-8 btn-sm mt-10 btn-modal" data-container=".close_register_modal" 
-          data-href="{{ action('CashRegisterController@getCloseRegister')}}">
-            <strong><i class="fa fa-window-close fa-lg"></i></strong>
-          </button>
-          @endcan
-        @endif
+        {{-- Register buttons used to render on both the global header AND the
+             POS header when on /pos, producing duplicate IDs #register_details
+             and #close_register. jQuery's getElementById returned the first
+             match (the global header's), so the branded POS "Close Register"
+             pill was fighting the old header's button for the same ID and
+             some clicks resolved to the wrong handler. Global header now
+             defers register controls to the POS header entirely on POS pages. --}}
 
         @if(in_array('pos_sale', $enabled_modules))
           @can('sell.create')

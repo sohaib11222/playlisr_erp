@@ -99,9 +99,15 @@
 {{-- Quick-add handler — skips the modal entirely and hits the same backend
      endpoint the manual-item modal uses, so the item lands directly in the
      cart. After the row renders, MutationObserver below moves the bag-fee
-     row (if present) to the end so new items always appear above it. --}}
+     row (if present) to the end so new items always appear above it.
+
+     NOTE: jQuery loads at the bottom of the layout (after @yield('content')),
+     so an inline IIFE that calls $(...) throws "$ is not defined" and silently
+     detaches every handler below. Poll-wait-for-jQuery wrapper fixes it. --}}
 <script>
-(function () {
+(function runWhenReady() {
+    if (typeof jQuery === 'undefined') { setTimeout(runWhenReady, 50); return; }
+    jQuery(function ($) {
     $(document).on('click', '.pos-quick-preset', function () {
         var $btn = $(this);
         if ($btn.prop('disabled')) return;
@@ -160,6 +166,7 @@
         };
         new MutationObserver(reorder).observe(tbody, { childList: true });
     }
+    });
 })();
 </script>
 
