@@ -199,7 +199,236 @@ class HomeController extends Controller
 
         $common_settings = !empty(session('business.common_settings')) ? session('business.common_settings') : [];
 
-        return view('home.index', compact('sells_chart_1', 'sells_chart_2', 'widgets', 'all_locations', 'common_settings', 'is_admin'));
+        // ==========================================================
+        // Nivessa employee dashboard cards
+        // ==========================================================
+        $since_30 = \Carbon::now()->subDays(30)->toDateTimeString();
+        $since_7  = \Carbon::now()->subDays(7)->toDateTimeString();
+
+        // Top categories per store (last 30 days, by revenue)
+        $top_categories_by_location = [];
+        $cat_rows = \DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+            ->join('products as p', 'tsl.product_id', '=', 'p.id')
+            ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
+            ->leftJoin('business_locations as bl', 't.location_id', '=', 'bl.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->where('t.transaction_date', '>=', $since_30)
+            ->selectRaw("t.location_id, bl.name as location_name,
+                COALESCE(c.name, '(uncategorized)') as category,
+                SUM(tsl.quantity) as qty,
+                SUM(tsl.quantity * tsl.unit_price_inc_tax) as revenue")
+            ->groupBy('t.location_id', 'bl.name', 'c.name')
+            ->orderByDesc('revenue')
+            ->get();
+        foreach ($cat_rows as $r) {
+            $loc = $r->location_name ?: 'Unknown';
+            if (!isset($top_categories_by_location[$loc])) {
+                $top_categories_by_location[$loc] = [];
+            }
+            if (count($top_categories_by_location[$loc]) < 5) {
+                $top_categories_by_location[$loc][] = $r;
+            }
+        }
+
+        // What's selling — by format (LP, CD, cassette, DVD, magazine, etc.) last 30 days
+        $top_formats = \DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+            ->join('products as p', 'tsl.product_id', '=', 'p.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->where('t.transaction_date', '>=', $since_30)
+            ->whereNotNull('p.format')
+            ->where('p.format', '!=', '')
+            ->selectRaw("p.format,
+                SUM(tsl.quantity) as qty,
+                SUM(tsl.quantity * tsl.unit_price_inc_tax) as revenue")
+            ->groupBy('p.format')
+            ->orderByDesc('revenue')
+            ->limit(10)
+            ->get();
+
+        // Collections bought / what we bought — recent purchase transactions
+        $recent_purchases = \DB::table('transactions as t')
+            ->leftJoin('contacts as c', 't.contact_id', '=', 'c.id')
+            ->leftJoin('business_locations as bl', 't.location_id', '=', 'bl.id')
+            ->leftJoin('users as u', 't.created_by', '=', 'u.id')
+            ->where('t.business_id', $business_id)
+            ->whereIn('t.type', ['purchase', 'opening_stock', 'purchase_transfer'])
+            ->where('t.transaction_date', '>=', $since_30)
+            ->selectRaw("t.id, t.ref_no, t.transaction_date, t.final_total, t.type,
+                bl.name as location_name,
+                COALESCE(CONCAT(c.first_name, ' ', COALESCE(c.last_name, '')), c.name, c.supplier_business_name, '(unknown)') as supplier,
+                CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as employee")
+            ->orderByDesc('t.transaction_date')
+            ->limit(10)
+            ->get();
+
+        // Last 15 items sold
+        $last_sold_items = \DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+            ->join('products as p', 'tsl.product_id', '=', 'p.id')
+            ->leftJoin('business_locations as bl', 't.location_id', '=', 'bl.id')
+            ->leftJoin('users as u', 't.created_by', '=', 'u.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->selectRaw("t.transaction_date, t.invoice_no,
+                p.name, p.artist, p.format,
+                tsl.quantity, tsl.unit_price_inc_tax,
+                bl.name as location_name,
+                CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as employee")
+            ->orderByDesc('t.transaction_date')
+            ->limit(15)
+            ->get();
+
+        // Rewards / customer accounts created today (per creator / employee).
+        // NOTE: contacts table has no location_id column, so grouping is
+        // per-employee (created_by). True per-store attribution would need a
+        // schema change to track which store a customer was created at.
+        $today_start = \Carbon::today()->toDateTimeString();
+        $today_end = \Carbon::today()->endOfDay()->toDateTimeString();
+        $rewards_today = \DB::table('contacts as c')
+            ->leftJoin('users as u', 'c.created_by', '=', 'u.id')
+            ->where('c.business_id', $business_id)
+            ->whereIn('c.type', ['customer', 'both'])
+            ->whereBetween('c.created_at', [$today_start, $today_end])
+            ->selectRaw("c.created_by,
+                CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as employee,
+                COUNT(*) as cnt")
+            ->groupBy('c.created_by', 'u.first_name', 'u.last_name')
+            ->orderByDesc('cnt')
+            ->get();
+        $rewards_today_total = (int) $rewards_today->sum('cnt');
+
+        // ---- Personal productivity for the logged-in user (today) ----
+        $me_id = auth()->user()->id;
+        $my_priced_today = (int) \DB::table('products')
+            ->where('business_id', $business_id)
+            ->where('created_by', $me_id)
+            ->whereBetween('created_at', [$today_start, $today_end])
+            ->count();
+
+        $my_pos_items_today = (int) \DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.created_by', $me_id)
+            ->whereBetween('t.transaction_date', [$today_start, $today_end])
+            ->count();
+
+        $my_pos_tx_today = (int) \DB::table('transactions')
+            ->where('business_id', $business_id)
+            ->where('type', 'sell')
+            ->where('status', 'final')
+            ->where('created_by', $me_id)
+            ->whereBetween('transaction_date', [$today_start, $today_end])
+            ->count();
+
+        // ---- YoY + MoM progress stats (business-wide) ----
+        $now = \Carbon::now();
+        $mtd_start = $now->copy()->startOfMonth()->toDateString();
+        $mtd_end = $now->copy()->toDateString();
+        $last_month_same_start = $now->copy()->subMonthNoOverflow()->startOfMonth()->toDateString();
+        $last_month_same_end = $now->copy()->subMonthNoOverflow()->toDateString();
+        $ytd_start = $now->copy()->startOfYear()->toDateString();
+        $last_year_same_start = $now->copy()->subYear()->startOfYear()->toDateString();
+        $last_year_same_end = $now->copy()->subYear()->toDateString();
+
+        $sumSells = function ($start, $end) use ($business_id) {
+            return (float) \DB::table('transactions')
+                ->where('business_id', $business_id)
+                ->where('type', 'sell')
+                ->where('status', 'final')
+                ->whereDate('transaction_date', '>=', $start)
+                ->whereDate('transaction_date', '<=', $end)
+                ->sum('final_total');
+        };
+        $sales_mtd = $sumSells($mtd_start, $mtd_end);
+        $sales_lm_same = $sumSells($last_month_same_start, $last_month_same_end);
+        $sales_ytd = $sumSells($ytd_start, $mtd_end);
+        $sales_ly_same = $sumSells($last_year_same_start, $last_year_same_end);
+        $mom_pct = $sales_lm_same > 0 ? (($sales_mtd - $sales_lm_same) / $sales_lm_same) * 100 : null;
+        $yoy_pct = $sales_ly_same > 0 ? (($sales_ytd - $sales_ly_same) / $sales_ly_same) * 100 : null;
+
+        // ---- Personal month-over-month achievement ----
+        $my_countSellLines = function ($start, $end) use ($business_id, $me_id) {
+            return (int) \DB::table('transaction_sell_lines as tsl')
+                ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+                ->where('t.business_id', $business_id)
+                ->where('t.type', 'sell')
+                ->where('t.created_by', $me_id)
+                ->whereDate('t.transaction_date', '>=', $start)
+                ->whereDate('t.transaction_date', '<=', $end)
+                ->count();
+        };
+        $my_countPriced = function ($start, $end) use ($business_id, $me_id) {
+            return (int) \DB::table('products')
+                ->where('business_id', $business_id)
+                ->where('created_by', $me_id)
+                ->whereDate('created_at', '>=', $start)
+                ->whereDate('created_at', '<=', $end)
+                ->count();
+        };
+        $my_mtd_rung = $my_countSellLines($mtd_start, $mtd_end);
+        $my_lm_rung = $my_countSellLines($last_month_same_start, $last_month_same_end);
+        $my_mtd_priced = $my_countPriced($mtd_start, $mtd_end);
+        $my_lm_priced = $my_countPriced($last_month_same_start, $last_month_same_end);
+        $my_rung_pct = $my_lm_rung > 0 ? (($my_mtd_rung - $my_lm_rung) / $my_lm_rung) * 100 : null;
+        $my_priced_pct = $my_lm_priced > 0 ? (($my_mtd_priced - $my_lm_priced) / $my_lm_priced) * 100 : null;
+
+        // ---- Average $ per transaction per employee (this month) ----
+        $avg_per_employee = \DB::table('transactions as t')
+            ->leftJoin('users as u', 't.created_by', '=', 'u.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereDate('t.transaction_date', '>=', $mtd_start)
+            ->whereDate('t.transaction_date', '<=', $mtd_end)
+            ->selectRaw("t.created_by,
+                CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as employee,
+                COUNT(*) as tx_count,
+                COALESCE(SUM(t.final_total), 0) as total,
+                COALESCE(AVG(t.final_total), 0) as avg_tx")
+            ->groupBy('t.created_by', 'u.first_name', 'u.last_name')
+            ->havingRaw('COUNT(*) >= 3')
+            ->orderByDesc('avg_tx')
+            ->limit(15)
+            ->get();
+
+        // Most expensive items sold in the last 7 days (by unit price)
+        $top_expensive_items = \DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+            ->join('products as p', 'tsl.product_id', '=', 'p.id')
+            ->leftJoin('business_locations as bl', 't.location_id', '=', 'bl.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->where('t.transaction_date', '>=', $since_7)
+            ->selectRaw("t.transaction_date,
+                p.name, p.artist, p.format,
+                tsl.quantity, tsl.unit_price_inc_tax,
+                (tsl.quantity * tsl.unit_price_inc_tax) as line_total,
+                bl.name as location_name")
+            ->orderByDesc('tsl.unit_price_inc_tax')
+            ->limit(10)
+            ->get();
+
+        return view('home.index', compact(
+            'sells_chart_1', 'sells_chart_2', 'widgets', 'all_locations', 'common_settings', 'is_admin',
+            'top_categories_by_location', 'top_formats', 'recent_purchases',
+            'last_sold_items', 'top_expensive_items',
+            'rewards_today', 'rewards_today_total',
+            'my_priced_today', 'my_pos_items_today', 'my_pos_tx_today',
+            'sales_mtd', 'sales_lm_same', 'mom_pct',
+            'sales_ytd', 'sales_ly_same', 'yoy_pct',
+            'my_mtd_rung', 'my_lm_rung', 'my_rung_pct',
+            'my_mtd_priced', 'my_lm_priced', 'my_priced_pct',
+            'avg_per_employee'
+        ));
     }
 
     /**

@@ -8,6 +8,312 @@
     <h1>{{ __('home.welcome_message', ['name' => Session::get('user.first_name')]) }}
     </h1>
 </section>
+
+{{-- ============================================================
+     Nivessa employee dashboard (new) — what's selling, collections
+     bought, recent sales, top-dollar items. Lives above the classic
+     admin widgets below.
+     ============================================================ --}}
+@if(auth()->user()->can('dashboard.data'))
+<section class="content no-print" style="padding-bottom: 0;">
+    <style>
+        .niv-card { background:#fff; border:1px solid #e6e8ec; border-radius:10px; padding:14px 16px; margin-bottom:18px; box-shadow:0 1px 3px rgba(0,0,0,.03); }
+        .niv-card h3 { margin:0 0 10px 0; font-size:15px; text-transform:uppercase; letter-spacing:.6px; color:#1b6ca8; font-weight:700; border-bottom:1px solid #eef0f3; padding-bottom:8px; }
+        .niv-card h3 .niv-sub { font-size:11px; color:#7b8796; text-transform:none; letter-spacing:0; font-weight:500; margin-left:8px; }
+        .niv-card table { width:100%; font-size:13px; }
+        .niv-card table td, .niv-card table th { padding:6px 8px; vertical-align:top; }
+        .niv-card table tr + tr td { border-top:1px solid #f1f2f4; }
+        .niv-chip { display:inline-block; padding:2px 8px; border-radius:999px; background:#eef2f7; color:#3c5a73; font-size:11px; font-weight:600; }
+        .niv-chip.niv-chip-lp { background:#fde7f1; color:#9d174d; }
+        .niv-chip.niv-chip-cd { background:#e0f2fe; color:#075985; }
+        .niv-chip.niv-chip-cassette { background:#fff7ed; color:#9a3412; }
+        .niv-chip.niv-chip-dvd { background:#ecfeff; color:#155e75; }
+        .niv-chip.niv-chip-magazine { background:#f5f3ff; color:#5b21b6; }
+        .niv-muted { color:#7b8796; font-size:12px; }
+        .niv-money { font-weight:700; color:#1f7a45; }
+    </style>
+
+    {{-- Progress: MoM, YoY, and personal month-over-month --}}
+    <div class="row">
+        <div class="col-md-3">
+            <div class="niv-card" style="background:linear-gradient(135deg,#fff7ed,#ffedd5);">
+                <h3 style="color:#9a3412;"><i class="fa fa-chart-line"></i> Store Sales MTD</h3>
+                <div style="font-size:26px; font-weight:800; color:#9a3412;">${{ number_format($sales_mtd, 0) }}</div>
+                <div class="niv-muted" style="margin-top:4px;">
+                    @if(is_null($mom_pct))
+                        vs last month same range: ${{ number_format($sales_lm_same, 0) }}
+                    @else
+                        <strong style="color:{{ $mom_pct >= 0 ? '#065f46' : '#991b1b' }};">{{ $mom_pct >= 0 ? '▲' : '▼' }} {{ number_format(abs($mom_pct), 1) }}%</strong>
+                        vs last month (${{ number_format($sales_lm_same, 0) }})
+                    @endif
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="niv-card" style="background:linear-gradient(135deg,#f0f9ff,#e0f2fe);">
+                <h3 style="color:#075985;"><i class="fa fa-calendar-alt"></i> Store Sales YTD</h3>
+                <div style="font-size:26px; font-weight:800; color:#075985;">${{ number_format($sales_ytd, 0) }}</div>
+                <div class="niv-muted" style="margin-top:4px;">
+                    @if(is_null($yoy_pct))
+                        vs same range last year: ${{ number_format($sales_ly_same, 0) }}
+                    @else
+                        <strong style="color:{{ $yoy_pct >= 0 ? '#065f46' : '#991b1b' }};">{{ $yoy_pct >= 0 ? '▲' : '▼' }} {{ number_format(abs($yoy_pct), 1) }}%</strong>
+                        vs last year (${{ number_format($sales_ly_same, 0) }})
+                    @endif
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="niv-card" style="background:linear-gradient(135deg,#fef3c7,#fde68a);">
+                <h3 style="color:#78350f;"><i class="fa fa-trophy"></i> You — Priced MTD</h3>
+                <div style="font-size:26px; font-weight:800; color:#78350f;">{{ number_format($my_mtd_priced) }}</div>
+                <div class="niv-muted" style="margin-top:4px;">
+                    @if(is_null($my_priced_pct))
+                        last month: {{ number_format($my_lm_priced) }}
+                    @else
+                        <strong style="color:{{ $my_priced_pct >= 0 ? '#065f46' : '#991b1b' }};">{{ $my_priced_pct >= 0 ? '▲' : '▼' }} {{ number_format(abs($my_priced_pct), 1) }}%</strong>
+                        vs last month ({{ number_format($my_lm_priced) }})
+                    @endif
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="niv-card" style="background:linear-gradient(135deg,#faf5ff,#f3e8ff);">
+                <h3 style="color:#6b21a8;"><i class="fa fa-medal"></i> You — Rung Up MTD</h3>
+                <div style="font-size:26px; font-weight:800; color:#6b21a8;">{{ number_format($my_mtd_rung) }}</div>
+                <div class="niv-muted" style="margin-top:4px;">
+                    @if(is_null($my_rung_pct))
+                        last month: {{ number_format($my_lm_rung) }}
+                    @else
+                        <strong style="color:{{ $my_rung_pct >= 0 ? '#065f46' : '#991b1b' }};">{{ $my_rung_pct >= 0 ? '▲' : '▼' }} {{ number_format(abs($my_rung_pct), 1) }}%</strong>
+                        vs last month ({{ number_format($my_lm_rung) }})
+                    @endif
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Personal "today" stats + rewards accounts created today --}}
+    <div class="row">
+        <div class="col-md-3">
+            <div class="niv-card" style="background:linear-gradient(135deg,#eef2ff,#e0e7ff);">
+                <h3 style="color:#3730a3;"><i class="fa fa-tag"></i> You — Items Priced Today</h3>
+                <div style="font-size:36px; font-weight:800; color:#3730a3; line-height:1;">{{ number_format($my_priced_today) }}</div>
+                <div class="niv-muted" style="margin-top:4px;">Products you created today</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="niv-card" style="background:linear-gradient(135deg,#ecfdf5,#d1fae5);">
+                <h3 style="color:#065f46;"><i class="fa fa-cash-register"></i> You — Rung Up Today</h3>
+                <div style="font-size:36px; font-weight:800; color:#065f46; line-height:1;">{{ number_format($my_pos_items_today) }}</div>
+                <div class="niv-muted" style="margin-top:4px;">{{ $my_pos_tx_today }} transaction{{ $my_pos_tx_today == 1 ? '' : 's' }}, {{ $my_pos_items_today }} line items</div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="niv-card">
+                <h3><i class="fa fa-id-card"></i> Rewards Accounts Created Today <span class="niv-sub">{{ $rewards_today_total }} today — by employee</span></h3>
+                <table>
+                    <tbody>
+                    @forelse($rewards_today as $r)
+                        <tr>
+                            <td>{{ trim($r->employee) ?: '(unknown)' }}</td>
+                            <td class="text-right niv-money">{{ (int) $r->cnt }}</td>
+                        </tr>
+                    @empty
+                        <tr><td class="niv-muted">No new rewards accounts created yet today.</td></tr>
+                    @endforelse
+                    </tbody>
+                </table>
+                <div class="niv-muted" style="margin-top:6px; font-size:11px;">Note: attribution is by the employee who created the account; the system doesn't currently record which store it was created at (would need a small schema change).</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="niv-card">
+                <h3><i class="fa fa-star"></i> Top Selling Categories — by store <span class="niv-sub">last 30 days, by revenue</span></h3>
+                @forelse($top_categories_by_location as $loc => $cats)
+                    <div style="margin-bottom:12px;">
+                        <strong>{{ $loc }}</strong>
+                        <table>
+                            <tbody>
+                            @foreach($cats as $c)
+                                <tr>
+                                    <td>{{ $c->category }}</td>
+                                    <td class="text-right niv-muted">{{ number_format($c->qty, 0) }} sold</td>
+                                    <td class="text-right niv-money">${{ number_format($c->revenue, 0) }}</td>
+                                </tr>
+                            @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @empty
+                    <div class="niv-muted">No sales yet in the last 30 days.</div>
+                @endforelse
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="niv-card">
+                <h3><i class="fa fa-compact-disc"></i> What's Selling — by format <span class="niv-sub">last 30 days (LP / CD / Cassette / DVD / Magazine / …)</span></h3>
+                <table>
+                    <thead>
+                        <tr style="color:#7b8796; text-transform:uppercase; font-size:11px; letter-spacing:.5px;">
+                            <th>Format</th>
+                            <th class="text-right">Units sold</th>
+                            <th class="text-right">Revenue</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @forelse($top_formats as $f)
+                        @php
+                            $cls = strtolower(preg_replace('/[^a-z0-9]/i','-', $f->format));
+                        @endphp
+                        <tr>
+                            <td><span class="niv-chip niv-chip-{{ $cls }}">{{ $f->format }}</span></td>
+                            <td class="text-right">{{ number_format($f->qty, 0) }}</td>
+                            <td class="text-right niv-money">${{ number_format($f->revenue, 0) }}</td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="3" class="niv-muted">No format-tagged sales yet. Once products have a format set, this populates.</td></tr>
+                    @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="niv-card">
+                <h3><i class="fa fa-boxes"></i> Collections Bought <span class="niv-sub">what we bought — last 30 days</span></h3>
+                <table>
+                    <thead>
+                        <tr style="color:#7b8796; text-transform:uppercase; font-size:11px; letter-spacing:.5px;">
+                            <th>Date</th>
+                            <th>Seller</th>
+                            <th>Store</th>
+                            <th>Employee</th>
+                            <th class="text-right">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @forelse($recent_purchases as $p)
+                        <tr>
+                            <td>{{ \Carbon\Carbon::parse($p->transaction_date)->format('M j') }}</td>
+                            <td>{{ $p->supplier }}</td>
+                            <td>{{ $p->location_name }}</td>
+                            <td class="niv-muted">{{ trim($p->employee) ?: '—' }}</td>
+                            <td class="text-right niv-money">${{ number_format($p->final_total, 0) }}</td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="5" class="niv-muted">No purchases yet in the last 30 days.</td></tr>
+                    @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="niv-card">
+                <h3><i class="fa fa-gem"></i> Most Expensive Items Sold <span class="niv-sub">last 7 days, top 10 by unit price</span></h3>
+                <table>
+                    <thead>
+                        <tr style="color:#7b8796; text-transform:uppercase; font-size:11px; letter-spacing:.5px;">
+                            <th>Item</th>
+                            <th>Format</th>
+                            <th>Store</th>
+                            <th class="text-right">Unit price</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @forelse($top_expensive_items as $t)
+                        <tr>
+                            <td>
+                                <strong>{{ $t->artist ? $t->artist . ' — ' : '' }}{{ $t->name }}</strong>
+                                <div class="niv-muted">{{ \Carbon\Carbon::parse($t->transaction_date)->format('M j, h:i A') }}</div>
+                            </td>
+                            <td>@if($t->format)<span class="niv-chip niv-chip-{{ strtolower(preg_replace('/[^a-z0-9]/i','-', $t->format)) }}">{{ $t->format }}</span>@endif</td>
+                            <td>{{ $t->location_name }}</td>
+                            <td class="text-right niv-money">${{ number_format($t->unit_price_inc_tax, 0) }}</td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="4" class="niv-muted">No sales in the last 7 days.</td></tr>
+                    @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-12">
+            <div class="niv-card">
+                <h3><i class="fa fa-balance-scale"></i> Avg $ per Transaction — by Employee <span class="niv-sub">month-to-date, 3+ transactions only</span></h3>
+                <table>
+                    <thead>
+                        <tr style="color:#7b8796; text-transform:uppercase; font-size:11px; letter-spacing:.5px;">
+                            <th>Employee</th>
+                            <th class="text-right"># transactions</th>
+                            <th class="text-right">Total $</th>
+                            <th class="text-right">Avg $ / tx</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @forelse($avg_per_employee as $a)
+                        <tr>
+                            <td><strong>{{ trim($a->employee) ?: '(unknown)' }}</strong></td>
+                            <td class="text-right">{{ number_format($a->tx_count) }}</td>
+                            <td class="text-right">${{ number_format($a->total, 0) }}</td>
+                            <td class="text-right niv-money">${{ number_format($a->avg_tx, 2) }}</td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="4" class="niv-muted">No sales in this window yet.</td></tr>
+                    @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-12">
+            <div class="niv-card">
+                <h3><i class="fa fa-history"></i> Last 15 Items Sold <span class="niv-sub">live, across all stores</span></h3>
+                <table>
+                    <thead>
+                        <tr style="color:#7b8796; text-transform:uppercase; font-size:11px; letter-spacing:.5px;">
+                            <th>Time</th>
+                            <th>Item</th>
+                            <th>Format</th>
+                            <th>Store</th>
+                            <th>Cashier</th>
+                            <th class="text-right">Qty</th>
+                            <th class="text-right">Price</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @forelse($last_sold_items as $l)
+                        <tr>
+                            <td class="niv-muted">{{ \Carbon\Carbon::parse($l->transaction_date)->format('M j, h:i A') }}</td>
+                            <td><strong>{{ $l->artist ? $l->artist . ' — ' : '' }}{{ $l->name }}</strong></td>
+                            <td>@if($l->format)<span class="niv-chip niv-chip-{{ strtolower(preg_replace('/[^a-z0-9]/i','-', $l->format)) }}">{{ $l->format }}</span>@endif</td>
+                            <td>{{ $l->location_name }}</td>
+                            <td class="niv-muted">{{ trim($l->employee) ?: '—' }}</td>
+                            <td class="text-right">{{ number_format($l->quantity, 0) }}</td>
+                            <td class="text-right niv-money">${{ number_format($l->unit_price_inc_tax, 2) }}</td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="7" class="niv-muted">No sales yet.</td></tr>
+                    @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</section>
+@endif
 <!-- Main content -->
 <section class="content content-custom no-print">
     <br>
