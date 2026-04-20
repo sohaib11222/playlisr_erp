@@ -2,7 +2,13 @@
 
 @section('title', __('sale.pos_sale'))
 
+{{-- POS checkout redesign v2 (2026-04-20): pulls in the scoped stylesheet
+     that reskins this screen per nivessa_pos_redesign.html. Add the
+     body.pos-v2 hook so the CSS only applies here — safer than touching
+     the shared layout file. --}}
 @section('content')
+@include('sale_pos.partials._redesign_v2')
+<script>document.body.classList.add('pos-v2');</script>
 <section class="content no-print">
 	<input type="hidden" id="amount_rounding_method" value="{{$pos_settings['amount_rounding_method'] ?? ''}}">
 	@if(!empty($pos_settings['allow_overselling']))
