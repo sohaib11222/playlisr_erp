@@ -381,6 +381,117 @@ class HomeController extends Controller
         $my_priced_pct = $my_lm_priced > 0 ? (($my_mtd_priced - $my_lm_priced) / $my_lm_priced) * 100 : null;
 
         // ==========================================================
+        // Top Sellers by Store (genres / artists / records) module
+        // Windowed rollup with trend vs previous window.
+        // ==========================================================
+        $ts_now = \Carbon::now();
+        $ts_curr_start = $ts_now->copy()->subDays(29)->startOfDay()->toDateTimeString();
+        $ts_curr_end   = $ts_now->copy()->endOfDay()->toDateTimeString();
+        $ts_prev_start = $ts_now->copy()->subDays(59)->startOfDay()->toDateTimeString();
+        $ts_prev_end   = $ts_now->copy()->subDays(30)->endOfDay()->toDateTimeString();
+
+        $ts_dim_select = [
+            'genres'  => "COALESCE(c.name, '(uncategorized)') as label",
+            'artists' => "COALESCE(NULLIF(p.artist, ''), '(unknown artist)') as label",
+            'records' => "CONCAT(COALESCE(NULLIF(p.artist, ''), ''), CASE WHEN p.artist IS NOT NULL AND p.artist != '' THEN ' — ' ELSE '' END, p.name) as label",
+        ];
+        $ts_dim_group = [
+            'genres'  => ['c.name'],
+            'artists' => ['p.artist'],
+            'records' => ['p.artist', 'p.name'],
+        ];
+
+        $tsRollup = function ($location_filter, $dim, $start, $end) use ($business_id, $ts_dim_select, $ts_dim_group) {
+            $q = \DB::table('transaction_sell_lines as tsl')
+                ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+                ->join('products as p', 'tsl.product_id', '=', 'p.id')
+                ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
+                ->where('t.business_id', $business_id)
+                ->where('t.type', 'sell')
+                ->where('t.status', 'final')
+                ->whereBetween('t.transaction_date', [$start, $end]);
+            if ($location_filter === 'online') {
+                $q->where('t.is_whatnot', 1);
+            } elseif (!empty($location_filter)) {
+                $q->where('t.location_id', $location_filter)
+                  ->where(function ($w) { $w->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); });
+            }
+            $q->selectRaw($ts_dim_select[$dim] . ", SUM(tsl.quantity) as units, SUM(tsl.quantity * tsl.unit_price_inc_tax) as revenue")
+              ->groupBy($ts_dim_group[$dim])
+              ->orderByDesc('revenue')
+              ->limit(8);
+            return $q->get()->keyBy('label');
+        };
+
+        // Resolve physical locations by name so we can label tabs. Matches on
+        // common strings; if naming varies the tab simply falls back to the
+        // location name as-is.
+        $locs = \DB::table('business_locations')
+            ->where('business_id', $business_id)->get();
+        $findLoc = function ($needle) use ($locs) {
+            foreach ($locs as $l) {
+                if (stripos($l->name, $needle) !== false) return $l;
+            }
+            return null;
+        };
+        $loc_hollywood = $findLoc('hollywood');
+        $loc_pico      = $findLoc('pico');
+        $ts_stores = [];
+        if ($loc_hollywood) $ts_stores[] = ['key' => 'hollywood', 'label' => $loc_hollywood->name, 'filter' => $loc_hollywood->id];
+        if ($loc_pico)      $ts_stores[] = ['key' => 'pico',      'label' => $loc_pico->name,      'filter' => $loc_pico->id];
+        // Any other in-store locations we didn't match
+        foreach ($locs as $l) {
+            if (($loc_hollywood && $l->id === $loc_hollywood->id) || ($loc_pico && $l->id === $loc_pico->id)) continue;
+            $ts_stores[] = ['key' => 'loc'.$l->id, 'label' => $l->name, 'filter' => $l->id];
+        }
+        $ts_stores[] = ['key' => 'online', 'label' => 'Online (Whatnot)', 'filter' => 'online'];
+
+        // Build the rollups for every [store × dimension]
+        $ts_data = [];
+        foreach ($ts_stores as $s) {
+            foreach (['genres', 'artists', 'records'] as $dim) {
+                $curr = $tsRollup($s['filter'], $dim, $ts_curr_start, $ts_curr_end);
+                $prev = $tsRollup($s['filter'], $dim, $ts_prev_start, $ts_prev_end);
+                $top_rev = (float) ($curr->values()->first()->revenue ?? 1);
+                $rows = $curr->take(5)->values()->map(function ($r) use ($prev, $top_rev) {
+                    $prev_row = $prev->get($r->label);
+                    $prev_rev = $prev_row ? (float) $prev_row->revenue : 0;
+                    $pct = $prev_rev > 0 ? (((float)$r->revenue - $prev_rev) / $prev_rev) * 100 : null;
+                    $tag = 'steady'; $tag_emoji = '';
+                    if (!is_null($pct)) {
+                        if ($pct >= 20) { $tag = 'hot'; $tag_emoji = '🔥'; }
+                        elseif ($pct >= 5) { $tag = 'rising'; }
+                        elseif ($pct <= -5) { $tag = 'cooling'; }
+                    } elseif (!$prev_row && $r->revenue > 0) {
+                        $tag = 'new'; $tag_emoji = '✨';
+                    }
+                    return (object) [
+                        'label' => $r->label,
+                        'units' => (int) $r->units,
+                        'revenue' => (float) $r->revenue,
+                        'bar_pct' => $top_rev > 0 ? max(4, min(100, ((float)$r->revenue / $top_rev) * 100)) : 0,
+                        'trend_pct' => $pct,
+                        'tag' => $tag,
+                        'tag_emoji' => $tag_emoji,
+                    ];
+                });
+                $ts_data[$s['key']][$dim] = $rows;
+            }
+        }
+
+        // Auto-insight: biggest riser in the first store's genres list
+        $ts_insight = null;
+        if (!empty($ts_stores) && isset($ts_data[$ts_stores[0]['key']]['genres'])) {
+            $first_store_genres = $ts_data[$ts_stores[0]['key']]['genres'];
+            $risers = $first_store_genres->filter(function ($r) { return !is_null($r->trend_pct) && $r->trend_pct >= 10; })->sortByDesc('trend_pct')->values();
+            if ($risers->count() >= 2) {
+                $ts_insight = $risers[0]->label . ' and ' . $risers[1]->label . ' are heating up — good time to face those sections out.';
+            } elseif ($risers->count() === 1) {
+                $ts_insight = $risers[0]->label . ' is heating up (+' . number_format($risers[0]->trend_pct, 0) . '%) — good time to face it out.';
+            }
+        }
+
+        // ==========================================================
         // Nick-style personal progress dashboard
         // Per-employee $/hr today, vs 30-day avg, 7-day streak, goals
         // ==========================================================
@@ -645,7 +756,9 @@ class HomeController extends Controller
             'my_7day', 'my_streak_above', 'my_7day_best_rph', 'my_7day_best_day', 'my_beat_gap',
             'goal_priced_today', 'goal_rewards_today', 'rewards_me_today',
             'my_top_today', 'my_today_items_total',
-            'team_location_name', 'team_today_rev', 'team_goal', 'team_pct'
+            'team_location_name', 'team_today_rev', 'team_goal', 'team_pct',
+            // Top sellers by store module
+            'ts_stores', 'ts_data', 'ts_insight'
         ));
     }
 

@@ -214,6 +214,128 @@
         </div>
     </div>
 
+    {{-- ==========================================================
+         Top Sellers by Store — what's hot, what's moving, what to push
+         Store tabs (Hollywood / Pico / Online) × dimension tabs (Genres / Artists / Records)
+         ========================================================== --}}
+    @if(!empty($ts_stores))
+    <style>
+        .ts-module { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:20px 24px; margin-bottom:14px; box-shadow:0 1px 3px rgba(0,0,0,0.03); }
+        .ts-title { font-size:16px; font-weight:600; margin:0; }
+        .ts-sub { font-size:12px; color:#6b7280; margin:0 0 14px 0; }
+        .ts-tab-row { display:flex; gap:4px; margin-bottom:14px; border-bottom:1px solid #e5e7eb; }
+        .ts-tab { padding:8px 14px; font-size:13px; color:#6b7280; cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; }
+        .ts-tab.active { font-weight:600; color:#0f172a; border-bottom-color:#534ab7; }
+        .ts-pill-row { display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap; }
+        .ts-pill { padding:6px 12px; font-size:12px; color:#6b7280; border:1px solid #e5e7eb; border-radius:16px; cursor:pointer; background:#fff; }
+        .ts-pill.active { background:#eeedfe; color:#3c3489; border-color:transparent; font-weight:600; }
+        .ts-row { display:grid; grid-template-columns:24px 1fr 140px 80px 80px; gap:12px; align-items:center; padding:12px; background:#f8fafc; border-radius:8px; margin-bottom:8px; }
+        .ts-rank { font-size:13px; font-weight:600; color:#6b7280; text-align:center; }
+        .ts-label { font-size:14px; font-weight:500; margin:0; }
+        .ts-sub-num { font-size:11px; color:#6b7280; margin:2px 0 0 0; }
+        .ts-bar { height:8px; background:#e5e7eb; border-radius:4px; overflow:hidden; }
+        .ts-bar > div { height:100%; background:#534ab7; }
+        .ts-trend { display:flex; align-items:center; gap:4px; font-size:11px; font-weight:500; }
+        .ts-trend-up { color:#3b6d11; }
+        .ts-trend-up .arrow { width:0; height:0; border-left:4px solid transparent; border-right:4px solid transparent; border-bottom:6px solid #3b6d11; }
+        .ts-trend-down { color:#991b1b; }
+        .ts-trend-down .arrow { width:0; height:0; border-left:4px solid transparent; border-right:4px solid transparent; border-top:6px solid #991b1b; }
+        .ts-trend-flat { color:#6b7280; }
+        .ts-trend-flat .arrow { width:6px; height:2px; background:#6b7280; }
+        .ts-tag { font-size:11px; color:#6b7280; }
+        .ts-tag.hot { color:#9a3412; font-weight:600; }
+        .ts-tag.rising { color:#065f46; font-weight:600; }
+        .ts-tag.cooling { color:#991b1b; }
+        .ts-insight-row { display:flex; justify-content:space-between; align-items:center; margin-top:18px; padding-top:14px; border-top:1px solid #e5e7eb; }
+        .ts-insight { font-size:12px; color:#6b7280; margin:0; }
+        .ts-breakdown-link { font-size:12px; color:#185fa5; text-decoration:none; }
+    </style>
+
+    <div class="ts-module">
+        <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:2px;">
+            <div class="ts-title">What's hot right now</div>
+            <div class="ts-sub" style="margin-bottom:0;">Last 30 days</div>
+        </div>
+        <div class="ts-sub">Know what's moving, know what to push</div>
+
+        {{-- Store tabs --}}
+        <div class="ts-tab-row" id="ts-store-tabs">
+            @foreach($ts_stores as $i => $s)
+                <div class="ts-tab {{ $i === 0 ? 'active' : '' }}" data-store="{{ $s['key'] }}">{{ $s['label'] }}</div>
+            @endforeach
+        </div>
+
+        {{-- Dimension pills --}}
+        <div class="ts-pill-row" id="ts-dim-pills">
+            <div class="ts-pill active" data-dim="genres">Genres</div>
+            <div class="ts-pill" data-dim="artists">Artists</div>
+            <div class="ts-pill" data-dim="records">Individual records</div>
+        </div>
+
+        {{-- Rollup tables per [store × dim] — only one visible at a time --}}
+        @foreach($ts_stores as $i => $s)
+            @foreach(['genres', 'artists', 'records'] as $dim)
+                @php $rows = $ts_data[$s['key']][$dim] ?? collect(); @endphp
+                <div class="ts-body" data-store="{{ $s['key'] }}" data-dim="{{ $dim }}" style="display: {{ ($i === 0 && $dim === 'genres') ? 'block' : 'none' }};">
+                    @forelse($rows as $idx => $r)
+                        <div class="ts-row">
+                            <div class="ts-rank">{{ $idx + 1 }}</div>
+                            <div>
+                                <p class="ts-label">{{ $r->label }}</p>
+                                <p class="ts-sub-num">{{ number_format($r->units) }} units · ${{ number_format($r->revenue, 0) }}</p>
+                            </div>
+                            <div class="ts-bar"><div style="width:{{ $r->bar_pct }}%;"></div></div>
+                            @php
+                                if (is_null($r->trend_pct)) { $trend_cls = 'ts-trend-flat'; $trend_label = '—'; }
+                                elseif ($r->trend_pct >= 5) { $trend_cls = 'ts-trend-up'; $trend_label = '+' . number_format($r->trend_pct, 0) . '%'; }
+                                elseif ($r->trend_pct <= -5) { $trend_cls = 'ts-trend-down'; $trend_label = number_format($r->trend_pct, 0) . '%'; }
+                                else { $trend_cls = 'ts-trend-flat'; $trend_label = ($r->trend_pct >= 0 ? '+' : '') . number_format($r->trend_pct, 0) . '%'; }
+                            @endphp
+                            <div class="ts-trend {{ $trend_cls }}"><span class="arrow"></span>{{ $trend_label }}</div>
+                            <div class="ts-tag {{ $r->tag }}">{{ $r->tag_emoji ? $r->tag_emoji . ' ' : '' }}{{ $r->tag }}</div>
+                        </div>
+                    @empty
+                        <div class="ts-sub-num" style="padding:16px; text-align:center;">No sales in this window yet.</div>
+                    @endforelse
+                </div>
+            @endforeach
+        @endforeach
+
+        @if($ts_insight)
+        <div class="ts-insight-row">
+            <p class="ts-insight">💡 {{ $ts_insight }}</p>
+            <a href="{{ action('ReportController@categorySalesReport') }}" class="ts-breakdown-link">See full breakdown →</a>
+        </div>
+        @endif
+    </div>
+
+    <script>
+    (function () {
+        var $module = $('.ts-module');
+        if (!$module.length) return;
+        var currentStore = $module.find('.ts-tab.active').data('store');
+        var currentDim   = $module.find('.ts-pill.active').data('dim');
+
+        function refresh() {
+            $module.find('.ts-body').hide();
+            $module.find('.ts-body[data-store="' + currentStore + '"][data-dim="' + currentDim + '"]').show();
+        }
+        $module.on('click', '.ts-tab', function () {
+            currentStore = $(this).data('store');
+            $module.find('.ts-tab').removeClass('active');
+            $(this).addClass('active');
+            refresh();
+        });
+        $module.on('click', '.ts-pill', function () {
+            currentDim = $(this).data('dim');
+            $module.find('.ts-pill').removeClass('active');
+            $(this).addClass('active');
+            refresh();
+        });
+    })();
+    </script>
+    @endif
+
     {{-- OLD metrics kept below as secondary "business-wide" dashboard.
          Can be collapsed/removed once the personal dashboard proves out. --}}
 
