@@ -93,6 +93,35 @@
         </div>
     </div>
 
+    {{-- Revenue driven by items YOU barcoded / priced --}}
+    <div class="row">
+        <div class="col-md-12">
+            <div class="niv-card" style="background:linear-gradient(135deg,#fef9c3,#fde68a); border-color:#f59e0b;">
+                <h3 style="color:#78350f;"><i class="fa fa-dollar-sign"></i> $$ Generated From Items YOU Barcoded <span class="niv-sub">the more you price, the more you earn for the shop</span></h3>
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="niv-muted" style="text-transform:uppercase; font-size:11px; letter-spacing:.5px;">This month</div>
+                        <div style="font-size:32px; font-weight:800; color:#78350f;">${{ number_format($my_priced_rev_mtd, 0) }}</div>
+                        @if(!is_null($my_priced_rev_pct))
+                            <div class="niv-muted" style="margin-top:2px;">
+                                <strong style="color:{{ $my_priced_rev_pct >= 0 ? '#065f46' : '#991b1b' }};">{{ $my_priced_rev_pct >= 0 ? '▲' : '▼' }} {{ number_format(abs($my_priced_rev_pct), 1) }}%</strong>
+                                vs last month (${{ number_format($my_priced_rev_lm, 0) }})
+                            </div>
+                        @endif
+                    </div>
+                    <div class="col-md-4">
+                        <div class="niv-muted" style="text-transform:uppercase; font-size:11px; letter-spacing:.5px;">Last month</div>
+                        <div style="font-size:22px; font-weight:700; color:#78350f;">${{ number_format($my_priced_rev_lm, 0) }}</div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="niv-muted" style="text-transform:uppercase; font-size:11px; letter-spacing:.5px;">Lifetime</div>
+                        <div style="font-size:22px; font-weight:700; color:#78350f;">${{ number_format($my_priced_rev_lifetime, 0) }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- Personal "today" stats + rewards accounts created today --}}
     <div class="row">
         <div class="col-md-3">

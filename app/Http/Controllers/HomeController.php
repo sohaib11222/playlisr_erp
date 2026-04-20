@@ -380,6 +380,34 @@ class HomeController extends Controller
         $my_rung_pct = $my_lm_rung > 0 ? (($my_mtd_rung - $my_lm_rung) / $my_lm_rung) * 100 : null;
         $my_priced_pct = $my_lm_priced > 0 ? (($my_mtd_priced - $my_lm_priced) / $my_lm_priced) * 100 : null;
 
+        // ---- Revenue generated from items YOU barcoded/priced ----
+        // Sums the sell-line revenue on products created by the logged-in user.
+        $my_priced_revenue_q = \DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+            ->join('products as p', 'tsl.product_id', '=', 'p.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->where('p.created_by', $me_id);
+
+        $my_priced_rev_mtd = (float) (clone $my_priced_revenue_q)
+            ->whereDate('t.transaction_date', '>=', $mtd_start)
+            ->whereDate('t.transaction_date', '<=', $mtd_end)
+            ->selectRaw('COALESCE(SUM(tsl.quantity * tsl.unit_price_inc_tax), 0) as rev')
+            ->value('rev');
+
+        $my_priced_rev_lm = (float) (clone $my_priced_revenue_q)
+            ->whereDate('t.transaction_date', '>=', $last_month_same_start)
+            ->whereDate('t.transaction_date', '<=', $last_month_same_end)
+            ->selectRaw('COALESCE(SUM(tsl.quantity * tsl.unit_price_inc_tax), 0) as rev')
+            ->value('rev');
+
+        $my_priced_rev_lifetime = (float) (clone $my_priced_revenue_q)
+            ->selectRaw('COALESCE(SUM(tsl.quantity * tsl.unit_price_inc_tax), 0) as rev')
+            ->value('rev');
+
+        $my_priced_rev_pct = $my_priced_rev_lm > 0 ? (($my_priced_rev_mtd - $my_priced_rev_lm) / $my_priced_rev_lm) * 100 : null;
+
         // ---- Average $ per transaction per employee (this month) ----
         $avg_per_employee = \DB::table('transactions as t')
             ->leftJoin('users as u', 't.created_by', '=', 'u.id')
@@ -427,7 +455,8 @@ class HomeController extends Controller
             'sales_ytd', 'sales_ly_same', 'yoy_pct',
             'my_mtd_rung', 'my_lm_rung', 'my_rung_pct',
             'my_mtd_priced', 'my_lm_priced', 'my_priced_pct',
-            'avg_per_employee'
+            'avg_per_employee',
+            'my_priced_rev_mtd', 'my_priced_rev_lm', 'my_priced_rev_lifetime', 'my_priced_rev_pct'
         ));
     }
 
