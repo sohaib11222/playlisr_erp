@@ -326,6 +326,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/dead-stock', 'ReportController@deadStockReport');
     Route::get('/reports/whatnot', 'ReportController@whatnotReport');
     Route::get('/reports/clover-vs-erp', 'ReportController@cloverVsErpReport');
+    Route::get('/reports/employee-leaderboard', 'ReportController@employeeLeaderboard');
 
     // Customer Wants (call-me-when-it-comes-in list)
     Route::get('/customer-wants', 'CustomerWantController@index')->name('customer-wants.index');

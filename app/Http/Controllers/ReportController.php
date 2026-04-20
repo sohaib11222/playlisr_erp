@@ -4875,6 +4875,148 @@ class ReportController extends Controller
     }
 
     /**
+     * Employee Sales Leaderboard
+     *
+     * Ranks employees by sales revenue for a selected window. Also surfaces
+     * items rung, items priced, avg $/transaction, and revenue driven by
+     * items the employee personally barcoded. Used on /reports/employee-leaderboard
+     * and as a small "top 3" widget on the home dashboard.
+     */
+    public function employeeLeaderboard(Request $request)
+    {
+        if (!$this->businessUtil->is_admin(auth()->user()) && !auth()->user()->can('purchase_n_sell_report.view')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $business_id = $request->session()->get('user.business_id');
+        $period = $request->input('period', 'this_month');
+
+        // Resolve the window
+        $now = \Carbon::now();
+        switch ($period) {
+            case 'today':
+                $start = $now->copy()->startOfDay();
+                $end = $now->copy()->endOfDay();
+                break;
+            case 'yesterday':
+                $start = $now->copy()->subDay()->startOfDay();
+                $end = $now->copy()->subDay()->endOfDay();
+                break;
+            case 'this_week':
+                $start = $now->copy()->startOfWeek();
+                $end = $now->copy()->endOfDay();
+                break;
+            case 'last_7':
+                $start = $now->copy()->subDays(6)->startOfDay();
+                $end = $now->copy()->endOfDay();
+                break;
+            case 'last_30':
+                $start = $now->copy()->subDays(29)->startOfDay();
+                $end = $now->copy()->endOfDay();
+                break;
+            case 'this_quarter':
+                $start = $now->copy()->startOfQuarter();
+                $end = $now->copy()->endOfDay();
+                break;
+            case 'this_month':
+            default:
+                $start = $now->copy()->startOfMonth();
+                $end = $now->copy()->endOfDay();
+                $period = 'this_month';
+                break;
+        }
+        $start_str = $start->toDateTimeString();
+        $end_str = $end->toDateTimeString();
+
+        $rows = $this->buildLeaderboardRows($business_id, $start_str, $end_str);
+
+        return view('report.employee_leaderboard')->with(compact(
+            'rows', 'period', 'start', 'end'
+        ));
+    }
+
+    /**
+     * Internal: build the employee leaderboard rows for a business + window.
+     * Returned as a keyed-by-user Collection so it can power both the full
+     * page and the dashboard top-3 widget.
+     */
+    public function buildLeaderboardRows($business_id, $start, $end, $limit = null)
+    {
+        // Sales side — revenue + tx count + line count per employee (created_by)
+        $sales = \DB::table('transactions as t')
+            ->leftJoin('transaction_sell_lines as tsl', 'tsl.transaction_id', '=', 't.id')
+            ->leftJoin('users as u', 't.created_by', '=', 'u.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereBetween('t.transaction_date', [$start, $end])
+            ->selectRaw("t.created_by,
+                CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as employee,
+                COUNT(DISTINCT t.id) as tx_count,
+                COALESCE(SUM(tsl.quantity), 0) as items_rung,
+                COALESCE(SUM(t.final_total) / GREATEST(COUNT(DISTINCT t.id), 1), 0) as avg_tx,
+                COALESCE((SELECT SUM(t2.final_total) FROM transactions t2
+                    WHERE t2.business_id = t.business_id
+                      AND t2.type = 'sell' AND t2.status = 'final'
+                      AND t2.created_by = t.created_by
+                      AND t2.transaction_date BETWEEN ? AND ?), 0) as revenue")
+            ->addBinding($start, 'select')
+            ->addBinding($end, 'select')
+            ->groupBy('t.created_by', 'u.first_name', 'u.last_name')
+            ->get()
+            ->keyBy('created_by');
+
+        // Items priced in the window per user
+        $priced = \DB::table('products')
+            ->where('business_id', $business_id)
+            ->whereBetween('created_at', [$start, $end])
+            ->selectRaw('created_by, COUNT(*) as priced_count')
+            ->groupBy('created_by')
+            ->get()
+            ->keyBy('created_by');
+
+        // Revenue from items priced by the user, sold in this window
+        $priced_rev = \DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+            ->join('products as p', 'tsl.product_id', '=', 'p.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereBetween('t.transaction_date', [$start, $end])
+            ->selectRaw('p.created_by, COALESCE(SUM(tsl.quantity * tsl.unit_price_inc_tax), 0) as priced_revenue')
+            ->groupBy('p.created_by')
+            ->get()
+            ->keyBy('created_by');
+
+        // Merge keys from both sides (someone may have priced items but not sold any, and vice versa)
+        $user_ids = collect($sales->keys())->merge($priced->keys())->merge($priced_rev->keys())->unique()->values();
+
+        // Lookup user names for any user that appears only on the "priced" side
+        $users = \App\User::whereIn('id', $user_ids)->get()->keyBy('id');
+
+        $rows = $user_ids->map(function ($uid) use ($sales, $priced, $priced_rev, $users) {
+            $u = $users->get($uid);
+            $s = $sales->get($uid);
+            $name = $s->employee ?? trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
+            return (object) [
+                'user_id' => $uid,
+                'employee' => trim($name) ?: '(unknown)',
+                'tx_count' => (int) ($s->tx_count ?? 0),
+                'items_rung' => (int) ($s->items_rung ?? 0),
+                'revenue' => (float) ($s->revenue ?? 0),
+                'avg_tx' => (float) ($s->avg_tx ?? 0),
+                'priced_count' => (int) optional($priced->get($uid))->priced_count ?? 0,
+                'priced_revenue' => (float) optional($priced_rev->get($uid))->priced_revenue ?? 0,
+            ];
+        })->sortByDesc('revenue')->values();
+
+        if ($limit) {
+            $rows = $rows->take($limit);
+        }
+
+        return $rows;
+    }
+
+    /**
      * Restrict accountant reports to admin users only.
      */
     protected function ensureAccountantReportAdminAccess()

@@ -380,6 +380,12 @@ class HomeController extends Controller
         $my_rung_pct = $my_lm_rung > 0 ? (($my_mtd_rung - $my_lm_rung) / $my_lm_rung) * 100 : null;
         $my_priced_pct = $my_lm_priced > 0 ? (($my_mtd_priced - $my_lm_priced) / $my_lm_priced) * 100 : null;
 
+        // ---- Leaderboard top 3 this week (reuses ReportController logic) ----
+        $week_start = \Carbon::now()->startOfWeek()->toDateTimeString();
+        $week_end = \Carbon::now()->endOfDay()->toDateTimeString();
+        $leaderboard_top3 = app(\App\Http\Controllers\ReportController::class)
+            ->buildLeaderboardRows($business_id, $week_start, $week_end, 3);
+
         // ---- Active high-priority customer wants (from customer_wants table) ----
         $active_wants = [];
         $active_wants_count = 0;
@@ -496,7 +502,8 @@ class HomeController extends Controller
             'my_mtd_priced', 'my_lm_priced', 'my_priced_pct',
             'avg_per_employee',
             'my_priced_rev_mtd', 'my_priced_rev_lm', 'my_priced_rev_lifetime', 'my_priced_rev_pct',
-            'active_wants', 'active_wants_count'
+            'active_wants', 'active_wants_count',
+            'leaderboard_top3'
         ));
     }
 

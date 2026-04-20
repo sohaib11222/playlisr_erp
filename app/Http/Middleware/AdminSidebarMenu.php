@@ -578,6 +578,12 @@ class AdminSidebarMenu
                                 'Clover vs ERP Recon',
                                 ['icon' => 'fa fas fa-balance-scale', 'active' => request()->segment(2) == 'clover-vs-erp']
                             );
+
+                            $sub->url(
+                                action('ReportController@employeeLeaderboard'),
+                                'Employee Leaderboard',
+                                ['icon' => 'fa fas fa-trophy', 'active' => request()->segment(2) == 'employee-leaderboard']
+                            );
                         }
 
                         // Customer Wants — open to anyone with customer.view

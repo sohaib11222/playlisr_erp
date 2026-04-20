@@ -122,6 +122,34 @@
         </div>
     </div>
 
+    {{-- Top 3 leaderboard this week --}}
+    <div class="row">
+        <div class="col-md-12">
+            <div class="niv-card">
+                <h3><i class="fa fa-trophy" style="color:#f59e0b;"></i> This Week's Top 3 <span class="niv-sub">by sales revenue — race you to #1</span>
+                    <a href="{{ action('ReportController@employeeLeaderboard') }}" class="btn btn-xs btn-default pull-right" style="margin-top:-3px;">Full leaderboard</a>
+                </h3>
+                <div class="row">
+                    @php $medals = ['🥇', '🥈', '🥉']; $bgs = ['#fef9c3', '#e5e7eb', '#fed7aa']; $fgs = ['#78350f','#1f2937','#7c2d12']; @endphp
+                    @forelse($leaderboard_top3 as $i => $r)
+                        <div class="col-md-4">
+                            <div style="background:{{ $bgs[$i] }}; border-radius:10px; padding:14px 16px; display:flex; align-items:center; gap:12px;">
+                                <div style="font-size:36px;">{{ $medals[$i] }}</div>
+                                <div style="flex:1; min-width:0;">
+                                    <div style="font-weight:700; color:{{ $fgs[$i] }}; font-size:15px;">{{ $r->employee }}</div>
+                                    <div style="font-size:20px; font-weight:800; color:{{ $fgs[$i] }};">${{ number_format($r->revenue, 0) }}</div>
+                                    <div class="niv-muted" style="font-size:11px;">{{ number_format($r->tx_count) }} tx • {{ number_format($r->items_rung) }} items</div>
+                                </div>
+                            </div>
+                        </div>
+                    @empty
+                        <div class="col-md-12"><div class="niv-muted">No sales yet this week — be the first on the board.</div></div>
+                    @endforelse
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- Personal "today" stats + rewards accounts created today --}}
     <div class="row">
         <div class="col-md-3">
