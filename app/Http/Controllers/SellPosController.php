@@ -1943,34 +1943,66 @@ class SellPosController extends Controller
 
             $htmlRows = [];
             
+            // Default category fallback: the POS Quick Add tiles (Soda / Candy /
+            // Sticker / …) hit this endpoint without a category — cashiers
+            // shouldn't have to categorize a can of soda on every sale. Resolve
+            // the first product-category once outside the loop so every row in
+            // the batch reuses it.
+            $businessId = request()->session()->get('user.business_id');
+            $defaultCategoryId = null;
+            $defaultSubCategoryId = null;
+            if ($businessId) {
+                $defaultCat = \App\Category::where('business_id', $businessId)
+                                           ->where('category_type', 'product')
+                                           ->where('parent_id', 0)
+                                           ->orderBy('id', 'asc')
+                                           ->first();
+                if ($defaultCat) {
+                    $defaultCategoryId = $defaultCat->id;
+                    $defaultSubCat = \App\Category::where('business_id', $businessId)
+                                                  ->where('parent_id', $defaultCat->id)
+                                                  ->orderBy('id', 'asc')
+                                                  ->first();
+                    $defaultSubCategoryId = $defaultSubCat->id ?? null;
+                }
+            }
+
             foreach ($products as $index => $product) {
                 $current_row_count = $row_count + $index + 1;
-                
+
                 $productName = $product['name'] ?? '';
                 $artist = $product['artist'] ?? '';
                 $categoryId = $product['category_id'] ?? '';
                 $subCategoryId = $product['sub_category_id'] ?? '';
                 $price = $product['price'] ?? 0;
-                
+
+                // Fall back to the business's first category when the caller
+                // didn't pass one (Quick Add tiles). Sub-category stays null if
+                // the parent category has no children — the manual_product_row
+                // view already handles null sub-category with @if(!empty(...)).
+                if (empty($categoryId) && $defaultCategoryId) {
+                    $categoryId = $defaultCategoryId;
+                    if (empty($subCategoryId)) {
+                        $subCategoryId = $defaultSubCategoryId;
+                    }
+                }
+
                 // Validate required fields
                 if (empty($productName)) {
                     $output['success'] = false;
                     $output['msg'] = __('lang_v1.product_name_required') . ' (Row ' . ($index + 1) . ')';
                     return $output;
                 }
-                
+
                 if (empty($categoryId)) {
                     $output['success'] = false;
                     $output['msg'] = __('product.category') . ' ' . __('lang_v1.is_required') . ' (Row ' . ($index + 1) . ')';
                     return $output;
                 }
-                
-                if (empty($subCategoryId)) {
-                    $output['success'] = false;
-                    $output['msg'] = __('lang_v1.sub_category') . ' ' . __('lang_v1.is_required') . ' (Row ' . ($index + 1) . ')';
-                    return $output;
-                }
-                
+
+                // sub_category_id intentionally NOT required — some categories
+                // have no children, and the view handles null gracefully.
+
                 if (empty($price) || $price <= 0) {
                     $output['success'] = false;
                     $output['msg'] = __('lang_v1.valid_price_required') . ' (Row ' . ($index + 1) . ')';

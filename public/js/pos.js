@@ -1029,8 +1029,11 @@ $(document).ready(function() {
 
     //Finalize invoice, open payment modal
     $('button#pos-finalize').click(function() {
-        //Check if product is present or not.
-        if ($('table#pos_table tbody').find('.product_row').length <= 0) {
+        // Block empty sale. Bag-fee row is auto-added and has the same
+        // .product_row class, so exclude [data-plastic-bag="true"] from the
+        // count — a cart that contains only a bag fee is still "empty" from
+        // the cashier's point of view and shouldn't be recordable.
+        if ($('table#pos_table tbody').find('.product_row:not([data-plastic-bag="true"])').length <= 0) {
             toastr.warning(LANG.no_products_added);
             return false;
         }
@@ -1096,8 +1099,9 @@ $(document).ready(function() {
 
     //Finalize without showing payment options
     $('button.pos-express-finalize').click(function() {
-        //Check if product is present or not.
-        if ($('table#pos_table tbody').find('.product_row').length <= 0) {
+        // Block empty sale — see comment on #pos-finalize handler above; same
+        // reason for excluding the bag-fee row from the cart count.
+        if ($('table#pos_table tbody').find('.product_row:not([data-plastic-bag="true"])').length <= 0) {
             toastr.warning(LANG.no_products_added);
             return false;
         }
