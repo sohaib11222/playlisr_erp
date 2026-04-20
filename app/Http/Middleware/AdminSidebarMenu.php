@@ -521,6 +521,11 @@ class AdminSidebarMenu
                                 __('report.stock_report'),
                                 ['icon' => 'fa fas fa-hourglass-half', 'active' => request()->segment(2) == 'stock-report']
                             );
+                            $sub->url(
+                                action('InventoryCheckController@index'),
+                                'Inventory Check Assistant',
+                                ['icon' => 'fa fas fa-clipboard-check', 'active' => request()->segment(2) == 'inventory-check-assistant']
+                            );
                             if (session('business.enable_product_expiry') == 1) {
                                 $sub->url(
                                     action('ReportController@getStockExpiryReport'),

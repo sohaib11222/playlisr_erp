@@ -312,6 +312,16 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/adjust-product-stock', 'ReportController@adjustProductStock');
     Route::get('/reports/get-profit/{by?}', 'ReportController@getProfit');
     Route::get('/reports/items-report', 'ReportController@itemsReport');
+    Route::get('/reports/inventory-check-assistant', 'InventoryCheckController@index');
+    Route::get('/reports/inventory-check-assistant/data', 'InventoryCheckController@data');
+    Route::get('/reports/inventory-check-assistant/export', 'InventoryCheckController@export');
+    Route::get('/reports/inventory-check-assistant/notes', 'InventoryCheckController@listNotes');
+    Route::post('/reports/inventory-check-assistant/notes', 'InventoryCheckController@storeNote');
+    Route::delete('/reports/inventory-check-assistant/notes/{id}', 'InventoryCheckController@destroyNote');
+    Route::get('/reports/inventory-check-assistant/sessions', 'InventoryCheckController@listSessions');
+    Route::post('/reports/inventory-check-assistant/sessions', 'InventoryCheckController@storeSession');
+    Route::put('/reports/inventory-check-assistant/sessions/{id}', 'InventoryCheckController@updateSession');
+    Route::delete('/reports/inventory-check-assistant/sessions/{id}', 'InventoryCheckController@destroySession');
     Route::get('/reports/get-stock-value', 'ReportController@getStockValue');
     Route::get('/reports/inventory-valuation-summary', 'ReportController@inventoryValuationSummary');
     Route::get('/reports/inventory-valuation-detail', 'ReportController@inventoryValuationDetail');

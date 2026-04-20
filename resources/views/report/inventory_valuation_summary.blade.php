@@ -71,7 +71,26 @@ $(document).ready(function () {
             }
         },
         dom: 'Bfrtip',
-        buttons: ['csv', 'excel', 'print'],
+        buttons: [
+            {
+                extend: 'csv',
+                action: function (e, dt, node, config) {
+                    window.dtServerSideExportAllRows(dt, 'csv');
+                }
+            },
+            {
+                extend: 'excel',
+                action: function (e, dt, node, config) {
+                    window.dtServerSideExportAllRows(dt, 'excel');
+                }
+            },
+            {
+                extend: 'print',
+                action: function (e, dt, node, config) {
+                    window.dtServerSideExportAllRows(dt, 'print');
+                }
+            }
+        ],
         columns: [
             { data: 'product', name: 'product' },
             { data: 'sku', name: 'sku' },
