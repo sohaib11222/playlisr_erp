@@ -27,6 +27,10 @@
             @endslot
         @endcan
         @can('user.view')
+            <ul class="nav nav-tabs" id="users_status_tabs" style="margin-bottom:12px;">
+                <li class="active" data-status="active"><a href="#" onclick="return false;"><i class="fa fa-user-check"></i> Active</a></li>
+                <li data-status="archived"><a href="#" onclick="return false;"><i class="fa fa-archive"></i> Archived <small class="text-muted">(login not allowed)</small></a></li>
+            </ul>
             <div class="table-responsive">
                 <table class="table table-bordered table-striped" id="users_table">
                     <thead>
@@ -54,10 +58,14 @@
 <script type="text/javascript">
     //Roles table
     $(document).ready( function(){
+        var current_status = 'active';
         var users_table = $('#users_table').DataTable({
                     processing: true,
                     serverSide: true,
-                    ajax: '/users',
+                    ajax: {
+                        url: '/users',
+                        data: function (d) { d.status = current_status; }
+                    },
                     columnDefs: [ {
                         "targets": [4],
                         "orderable": false,
@@ -71,6 +79,15 @@
                         {"data":"action"}
                     ]
                 });
+        $('#users_status_tabs li').on('click', function () {
+            var $li = $(this);
+            if ($li.hasClass('active')) return;
+            $('#users_status_tabs li').removeClass('active');
+            $li.addClass('active');
+            current_status = $li.data('status');
+            users_table.ajax.reload();
+        });
+
         $(document).on('click', 'button.delete_user_button', function(){
             swal({
               title: LANG.sure,

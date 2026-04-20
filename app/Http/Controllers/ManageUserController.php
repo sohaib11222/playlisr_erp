@@ -49,6 +49,14 @@ class ManageUserController extends Controller
                         ->select(['id', 'username',
                             DB::raw("CONCAT(COALESCE(surname, ''), ' ', COALESCE(first_name, ''), ' ', COALESCE(last_name, '')) as full_name"), 'email', 'allow_login']);
 
+            // Active vs archived tab — archived = allow_login = 0 (disabled accounts)
+            $status = request()->input('status', 'active');
+            if ($status === 'archived') {
+                $users->where('allow_login', 0);
+            } else {
+                $users->where('allow_login', 1);
+            }
+
             return Datatables::of($users)
                 ->editColumn('username', '{{$username}} @if(empty($allow_login)) <span class="label bg-gray">@lang("lang_v1.login_not_allowed")</span>@endif')
                 ->addColumn(
