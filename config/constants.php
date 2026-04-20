@@ -66,8 +66,13 @@ return [
         'image/png' => '.png'
         
     ], //List of MIME type: https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types/Common_types
+    // Feature flags gating two version-gated reports from the upstream fork.
+    // Both routes + controller methods exist and work; they were just turned
+    // off by default. Enable the Sale Report (607) because Sarah uses it
+    // daily. Leaving Purchase Report (606) off since it's not requested — flip
+    // to true when needed.
     'show_report_606' => false,
-    'show_report_607' => false,
+    'show_report_607' => true,
     'whatsapp_base_url' => 'https://wa.me',
     'enable_crm_call_log' => false,
     'enable_product_bulk_edit' => true,  //Will be depreciated in future
