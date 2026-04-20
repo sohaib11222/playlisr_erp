@@ -21,11 +21,14 @@
 					<input type="hidden" id="default_selling_price_group" 
 				value="{{ $walk_in_customer['selling_price_group_id'] ?? ''}}" >
 				@endif
-				{!! Form::select('contact_id', 
-					[], null, ['class' => 'form-control mousetrap', 'id' => 'customer_id', 'placeholder' => 'Nivessa rewards account?', 'required', 'style' => 'width: 100%;']) !!}
+				{!! Form::select('contact_id',
+					[], null, ['class' => 'form-control mousetrap', 'id' => 'customer_id', 'placeholder' => 'Search by name, phone, or email…', 'required', 'style' => 'width: 100%;']) !!}
 			</div>
-			<div style="margin-top: 14px;">
-				<button type="button" class="btn btn-default bg-white btn-flat btn-sm add_new_customer" data-name=""  @if(!auth()->user()->can('customer.create')) disabled @endif><i class="fa fa-plus-circle text-primary"></i> create account/rewards</button>
+			<div style="margin-top: 10px;">
+				<button type="button" class="btn add_new_customer" data-name="" @if(!auth()->user()->can('customer.create')) disabled @endif title="Enroll this customer in Nivessa Bucks rewards">
+					<i class="fa fa-star"></i>&nbsp; Sign Up for Nivessa Bucks
+				</button>
+				<small class="text-muted" style="display:block; margin-top:4px;">Rewards on every purchase — ask every walk-in.</small>
 			</div>
 			<small class="text-danger hide contact_due_text"><strong>@lang('account.customer_due'):</strong> <span></span></small>
 		</div>
@@ -135,15 +138,11 @@
 				<button type="button" class="btn btn-info" id="open_buy_calculator_modal" title="Buy from Customer Calculator" data-toggle="modal" data-target="#buy_calculator_modal" data-url="{{ route('buy-from-customer.create') }}?embed=1">
 					<i class="fa fa-calculator"></i> Buy Calculator
 				</button>
-
-				{{-- Quick-add presets for items always entered manually (soda, candy, pins, stickers).
-					 Clicking a tile opens the Add Manual Item modal with name + price pre-filled. --}}
-				<span style="flex: 1 1 auto;"></span>
-				<button type="button" class="btn pos-quick-preset" data-preset-name="Soda (can)" data-preset-price="2.00">Soda <span class="preset-price">$2</span></button>
-				<button type="button" class="btn pos-quick-preset" data-preset-name="Candy" data-preset-price="2.00">Candy <span class="preset-price">$2</span></button>
-				<button type="button" class="btn pos-quick-preset" data-preset-name="Pin" data-preset-price="3.00">Pin <span class="preset-price">$3</span></button>
-				<button type="button" class="btn pos-quick-preset" data-preset-name="Sticker" data-preset-price="3.00">Sticker <span class="preset-price">$3</span></button>
 			</div>
+
+			{{-- Quick-add preset tiles now live at the top of the product grid sidebar
+				 (see sale_pos/partials/pos_sidebar.blade.php). Wiring script below still
+				 applies — it listens on .pos-quick-preset anywhere in the page. --}}
 
 			{{-- Wire up the quick-add tiles to open the existing Add Manual Item modal with name + price pre-filled. --}}
 			<script>

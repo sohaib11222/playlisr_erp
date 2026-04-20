@@ -68,22 +68,35 @@
       </div>
     </div>
     <div class="col-md-6">
-      <a href="{{$go_back_url}}" title="{{ __('lang_v1.go_back') }}" class="btn btn-info btn-flat m-6 m-5 pull-right" style="padding: 6px 14px; font-weight: 700;">
-        <strong><i class="fa fa-backward fa-lg"></i>&nbsp; Back (Home)</strong>
-      </a>
-      @can('close_cash_register')
-      <button type="button" id="close_register" title="{{ __('cash_register.close_register') }}" class="btn btn-danger btn-flat m-6 m-5 btn-modal pull-right" data-container=".close_register_modal"
-          data-href="{{ action('CashRegisterController@getCloseRegister')}}" style="padding: 6px 14px; font-weight: 700;">
-            <strong><i class="fa fa-window-close fa-lg" aria-hidden="true"></i>&nbsp; Close Register</strong>
-      </button>
-      @endcan
-
-      @can('view_cash_register')
-      <button type="button" id="register_details" title="{{ __('cash_register.register_details') }}" class="btn btn-success btn-flat m-6 m-5 btn-modal pull-right" data-container=".register_details_modal"
-          data-href="{{ action('CashRegisterController@getRegisterDetails')}}" style="padding: 6px 14px; font-weight: 700;">
-            <strong><i class="fa fa-briefcase fa-lg" aria-hidden="true"></i>&nbsp; View Register</strong>
-      </button>
-      @endcan
+      {{-- Admin / register actions collapsed into a single small dropdown to reclaim
+           prime real estate in the POS top bar. They're used a few times a day, not every sale. --}}
+      <div class="dropdown pull-right" style="margin: 5px 6px 0 0;">
+        <button type="button" class="btn btn-default btn-sm dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" title="Register / admin actions" style="padding: 6px 12px; font-weight: 600;">
+          <i class="fa fa-bars" aria-hidden="true"></i>&nbsp; Admin <span class="caret"></span>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-right" style="padding: 4px 0; min-width: 200px;">
+          @can('view_cash_register')
+          <li>
+            <a href="#" id="register_details" class="btn-modal" data-container=".register_details_modal" data-href="{{ action('CashRegisterController@getRegisterDetails')}}">
+              <i class="fa fa-briefcase text-success" aria-hidden="true"></i>&nbsp; View Register
+            </a>
+          </li>
+          @endcan
+          @can('close_cash_register')
+          <li>
+            <a href="#" id="close_register" class="btn-modal" data-container=".close_register_modal" data-href="{{ action('CashRegisterController@getCloseRegister')}}">
+              <i class="fa fa-window-close text-danger" aria-hidden="true"></i>&nbsp; Close Register
+            </a>
+          </li>
+          @endcan
+          <li role="separator" class="divider"></li>
+          <li>
+            <a href="{{$go_back_url}}" title="{{ __('lang_v1.go_back') }}">
+              <i class="fa fa-backward text-info" aria-hidden="true"></i>&nbsp; Back to Home
+            </a>
+          </li>
+        </ul>
+      </div>
 
 
 
