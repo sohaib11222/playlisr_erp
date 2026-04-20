@@ -380,6 +380,28 @@ class HomeController extends Controller
         $my_rung_pct = $my_lm_rung > 0 ? (($my_mtd_rung - $my_lm_rung) / $my_lm_rung) * 100 : null;
         $my_priced_pct = $my_lm_priced > 0 ? (($my_mtd_priced - $my_lm_priced) / $my_lm_priced) * 100 : null;
 
+        // ---- Active high-priority customer wants (from customer_wants table) ----
+        $active_wants = [];
+        $active_wants_count = 0;
+        if (\Schema::hasTable('customer_wants')) {
+            $active_wants = \DB::table('customer_wants as cw')
+                ->leftJoin('contacts as c', 'cw.contact_id', '=', 'c.id')
+                ->leftJoin('business_locations as bl', 'cw.location_id', '=', 'bl.id')
+                ->where('cw.business_id', $business_id)
+                ->where('cw.status', 'active')
+                ->selectRaw("cw.id, cw.artist, cw.title, cw.format, cw.priority, cw.phone, cw.notes,
+                    CONCAT(COALESCE(c.first_name, ''), ' ', COALESCE(c.last_name, '')) as customer,
+                    bl.name as location_name, cw.created_at")
+                ->orderByRaw("FIELD(cw.priority, 'high', 'normal', 'low')")
+                ->orderByDesc('cw.created_at')
+                ->limit(10)
+                ->get();
+            $active_wants_count = (int) \DB::table('customer_wants')
+                ->where('business_id', $business_id)
+                ->where('status', 'active')
+                ->count();
+        }
+
         // ---- Revenue generated from items YOU barcoded/priced ----
         // Sums the sell-line revenue on products created by the logged-in user.
         $my_priced_revenue_q = \DB::table('transaction_sell_lines as tsl')
@@ -474,7 +496,7 @@ class HomeController extends Controller
             'my_mtd_priced', 'my_lm_priced', 'my_priced_pct',
             'avg_per_employee',
             'my_priced_rev_mtd', 'my_priced_rev_lm', 'my_priced_rev_lifetime', 'my_priced_rev_pct',
-            'active_wants'
+            'active_wants', 'active_wants_count'
         ));
     }
 

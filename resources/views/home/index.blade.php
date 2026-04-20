@@ -355,6 +355,49 @@
 
     <div class="row">
         <div class="col-md-12">
+            <div class="niv-card" style="border-color:#ef4444;">
+                <h3 style="color:#991b1b;"><i class="fa fa-heart"></i> Active Customer Wants <span class="niv-sub">{{ $active_wants_count ?? 0 }} open — flag high priority</span>
+                    <a href="{{ action('CustomerWantController@index') }}" class="btn btn-xs btn-default pull-right" style="margin-top:-3px;"><i class="fa fa-list"></i> See all</a>
+                    <a href="{{ action('CustomerWantController@create') }}" class="btn btn-xs btn-primary pull-right" style="margin-top:-3px; margin-right:6px;"><i class="fa fa-plus"></i> Add want</a>
+                </h3>
+                <table>
+                    <thead>
+                        <tr style="color:#7b8796; text-transform:uppercase; font-size:11px; letter-spacing:.5px;">
+                            <th>Priority</th>
+                            <th>Artist</th>
+                            <th>Title</th>
+                            <th>Format</th>
+                            <th>Customer</th>
+                            <th>Phone</th>
+                            <th>Store</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @forelse($active_wants as $w)
+                        <tr @if($w->priority==='high') style="background:#fef2f2;" @endif>
+                            <td>
+                                @if($w->priority==='high')<span class="label label-danger">HIGH</span>
+                                @elseif($w->priority==='low')<span class="label label-default">low</span>
+                                @else<span class="label label-info">normal</span>@endif
+                            </td>
+                            <td>{{ $w->artist }}</td>
+                            <td><strong>{{ $w->title }}</strong>@if($w->notes)<div class="niv-muted"><small>{{ $w->notes }}</small></div>@endif</td>
+                            <td>{{ $w->format }}</td>
+                            <td>{{ trim($w->customer) ?: '—' }}</td>
+                            <td>{{ $w->phone }}</td>
+                            <td>{{ $w->location_name }}</td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="7" class="niv-muted">No active wants. When a customer asks you to call them when something comes in, add it here.</td></tr>
+                    @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-12">
             <div class="niv-card">
                 <h3><i class="fa fa-history"></i> Last 15 Items Sold <span class="niv-sub">live, across all stores</span></h3>
                 <table>

@@ -327,6 +327,15 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/whatnot', 'ReportController@whatnotReport');
     Route::get('/reports/clover-vs-erp', 'ReportController@cloverVsErpReport');
 
+    // Customer Wants (call-me-when-it-comes-in list)
+    Route::get('/customer-wants', 'CustomerWantController@index')->name('customer-wants.index');
+    Route::get('/customer-wants/create', 'CustomerWantController@create')->name('customer-wants.create');
+    Route::post('/customer-wants', 'CustomerWantController@store')->name('customer-wants.store');
+    Route::get('/customer-wants/{id}/edit', 'CustomerWantController@edit')->name('customer-wants.edit');
+    Route::put('/customer-wants/{id}', 'CustomerWantController@update')->name('customer-wants.update');
+    Route::post('/customer-wants/{id}/fulfill', 'CustomerWantController@fulfill')->name('customer-wants.fulfill');
+    Route::delete('/customer-wants/{id}', 'CustomerWantController@destroy')->name('customer-wants.destroy');
+
     // Customer Wants list ("call me when X comes in")
     Route::get('/customer-wants', 'CustomerWantController@index')->name('customer_wants.index');
     Route::get('/customer-wants/create', 'CustomerWantController@create')->name('customer_wants.create');

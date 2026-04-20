@@ -580,6 +580,15 @@ class AdminSidebarMenu
                             );
                         }
 
+                        // Customer Wants — open to anyone with customer.view
+                        if ($is_admin || auth()->user()->can('customer.view')) {
+                            $sub->url(
+                                action('CustomerWantController@index'),
+                                'Customer Wants',
+                                ['icon' => 'fa fas fa-heart', 'active' => request()->segment(1) == 'customer-wants']
+                            );
+                        }
+
                         if (auth()->user()->can('purchase_n_sell_report.view')) {
                             $sub->url(
                                 action('ReportController@itemsReport'),
