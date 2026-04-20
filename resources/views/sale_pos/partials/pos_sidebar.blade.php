@@ -74,17 +74,39 @@
     .pos-quick-tile .pos-quick-price { display: block; font-size: 14px; opacity: 0.85; margin-top: 4px; }
     .pos-quick-tile i { display: block; font-size: 22px; margin-bottom: 4px; }
 </style>
-<div class="pos-quick-grid-title">Quick Add — Snacks & Swag</div>
+<div class="pos-quick-grid-title">Quick Add — Snacks & Drinks</div>
 <div class="pos-quick-grid">
     <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Soda (can)" data-preset-price="2.00">
         <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🥤</span> Soda <span class="pos-quick-price">$2.00</span>
     </button>
-    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Energy Drink" data-preset-price="4.00">
-        <i class="fa fa-bolt"></i> Energy Drink <span class="pos-quick-price">$4.00</span>
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Ginger Beer" data-preset-price="3.00">
+        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🍺</span> Ginger Beer <span class="pos-quick-price">$3.00</span>
     </button>
-    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Candy" data-preset-price="2.00">
-        <i class="fa fa-candy-cane"></i> Candy <span class="pos-quick-price">$2.00</span>
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Energy Drink" data-preset-price="4.50">
+        <i class="fa fa-bolt"></i> Energy Drink <span class="pos-quick-price">$4.50</span>
     </button>
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Gatorade" data-preset-price="3.00">
+        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🏃</span> Gatorade <span class="pos-quick-price">$3.00</span>
+    </button>
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Arizona" data-preset-price="2.00">
+        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🍹</span> Arizona <span class="pos-quick-price">$2.00</span>
+    </button>
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Iced Coffee" data-preset-price="4.00">
+        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">☕</span> Iced Coffee <span class="pos-quick-price">$4.00</span>
+    </button>
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Airheads" data-preset-price="0.50">
+        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🍭</span> Airheads <span class="pos-quick-price">$0.50</span>
+    </button>
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Candy" data-preset-price="3.00">
+        <i class="fa fa-candy-cane"></i> Candy <span class="pos-quick-price">$3.00</span>
+    </button>
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Chips" data-preset-price="1.50">
+        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🥔</span> Chips <span class="pos-quick-price">$1.50</span>
+    </button>
+</div>
+
+<div class="pos-quick-grid-title" style="margin-top:14px;">Quick Add — Swag</div>
+<div class="pos-quick-grid">
     <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Pin" data-preset-price="3.00">
         <i class="fa fa-thumbtack"></i> Pin <span class="pos-quick-price">$3.00</span>
     </button>
@@ -93,12 +115,6 @@
     </button>
     <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Patch" data-preset-price="3.00">
         <i class="fa fa-tshirt"></i> Patch <span class="pos-quick-price">$3.00</span>
-    </button>
-    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Water" data-preset-price="1.50">
-        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">💧</span> Water <span class="pos-quick-price">$1.50</span>
-    </button>
-    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Chips" data-preset-price="1.75">
-        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🥔</span> Chips <span class="pos-quick-price">$1.75</span>
     </button>
 </div>
 

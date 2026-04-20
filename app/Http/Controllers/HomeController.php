@@ -460,7 +460,14 @@ class HomeController extends Controller
             if (($loc_hollywood && $l->id === $loc_hollywood->id) || ($loc_pico && $l->id === $loc_pico->id)) continue;
             $ts_stores[] = ['key' => 'loc'.$l->id, 'label' => $l->name, 'filter' => $l->id];
         }
-        $ts_stores[] = ['key' => 'online', 'label' => 'Online (Whatnot)', 'filter' => 'online'];
+        // Online channels. Whatnot rides the existing is_whatnot=1 flag.
+        // Discogs + nivessa.com shown as disabled placeholders until each
+        // channel has a way to tag its sales in the transactions table
+        // (is_discogs / is_nivessa_online or similar) — wiring those up
+        // is a prereq migration + import change, tracked as a follow-up.
+        $ts_stores[] = ['key' => 'whatnot', 'label' => 'Whatnot',      'filter' => 'online'];
+        $ts_stores[] = ['key' => 'discogs', 'label' => 'Discogs',      'filter' => '__placeholder__'];
+        $ts_stores[] = ['key' => 'nivessa', 'label' => 'nivessa.com',  'filter' => '__placeholder__'];
 
         // Build the rollups for every [store × dimension]
         $ts_data = [];
