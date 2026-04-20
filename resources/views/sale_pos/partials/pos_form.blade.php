@@ -135,9 +135,9 @@
 				@endif
 				<button type="button" class="btn btn-default pos_add_quick_product" data-href="{{action('ProductController@quickAdd')}}" data-container=".quick_add_product_modal" title="Quick add product"><i class="fa fa-plus-circle text-primary"></i> New Product</button>
 				<button type="button" class="btn btn-default pos_add_manual_product" title="Add Manual Item" data-href="/" data-container=".add_manual_product_modal"><i class="fa fa-pen"></i> Add Manual Item</button>
-				<button type="button" class="btn btn-info" id="open_buy_calculator_modal" title="Buy from Customer Calculator" data-toggle="modal" data-target="#buy_calculator_modal" data-url="{{ route('buy-from-customer.create') }}?embed=1">
-					<i class="fa fa-calculator"></i> Buy Calculator
-				</button>
+				<a href="{{ route('buy-from-customer.create') }}" target="_blank" rel="noopener" class="btn btn-info" title="Open Buy from Customer Calculator in a new tab">
+					<i class="fa fa-calculator"></i> Buy Calculator <i class="fa fa-external-link-alt" style="font-size: 11px; opacity: 0.7; margin-left: 4px;"></i>
+				</a>
 			</div>
 
 			{{-- Quick-add preset tiles now live at the top of the product grid sidebar
