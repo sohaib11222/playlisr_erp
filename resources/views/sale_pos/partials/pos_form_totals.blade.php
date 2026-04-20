@@ -1,144 +1,123 @@
-<div class="row pos_form_totals">
-	<div class="col-md-12">
-		<input type="hidden" name="store_credit_used_amount" id="store_credit_used_amount" value="0">
-		<div id="pos_store_credit_row" class="form-group" style="margin-bottom: 12px; display: none;">
-			<strong>Store Credit Available:</strong>
-			<span id="pos_store_credit_amount" class="text-success" style="font-weight: bold; margin-right: 8px;">$0.00</span>
-			<button type="button" class="btn btn-xs btn-success" id="btn_use_store_credit">
-				Use Store Credit
-			</button>
-		</div>
-		{{-- Whatnot transaction flag — moved here (above Bag Fee) per Sarah's request (2026-04-19) --}}
-		<div class="form-group" style="margin-bottom: 10px; padding: 8px 10px; border: 1px dashed #f39c12; border-radius: 4px; background: #fffbe6; display: inline-block;">
-			<label class="checkbox-inline" style="padding-left: 0;">
+<style>
+	/* Unified look for the totals/adjustments block — one font, one color system */
+	.pos-tot-block { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:14px 16px; margin-top:10px; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif; }
+	.pos-tot-flags { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+	.pos-tot-chip { display:inline-flex; align-items:center; gap:8px; padding:7px 12px; border-radius:999px; background:#f3f4f6; border:1px solid #e5e7eb; font-size:13px; font-weight:600; color:#374151; cursor:pointer; }
+	.pos-tot-chip input[type="checkbox"] { margin:0; }
+	.pos-tot-chip.active-whatnot { background:#fef3c7; border-color:#f59e0b; color:#78350f; }
+	.pos-tot-chip.active-bag { background:#fce7f3; border-color:#ec4899; color:#831843; }
+	.pos-tot-chip.store-credit { background:#dcfce7; border-color:#22c55e; color:#14532d; }
+	.pos-tot-summary { display:flex; flex-wrap:wrap; align-items:baseline; gap:18px 24px; padding:6px 0; }
+	.pos-tot-summary > .stat { display:flex; flex-direction:column; line-height:1.2; }
+	.pos-tot-summary .stat .lbl { font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#6b7280; font-weight:600; }
+	.pos-tot-summary .stat .val { font-size:15px; font-weight:600; color:#111827; margin-top:2px; }
+	.pos-tot-summary .stat.grand .val { font-size:28px; font-weight:800; color:#065f46; }
+	.pos-tot-summary .stat.grand .lbl { color:#065f46; }
+	.pos-tot-summary .stat.grand { margin-left:auto; text-align:right; }
+	.pos-adjust-row { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; margin-top:10px; padding-top:10px; border-top:1px solid #f1f2f4; }
+	.pos-adjust-row .adj-group { display:inline-flex; align-items:center; gap:6px; font-size:13px; color:#4b5563; }
+	.pos-adjust-row .adj-group .adj-label { text-transform:uppercase; font-size:11px; letter-spacing:.5px; font-weight:700; color:#6b7280; }
+	.pos-adjust-row .adj-group .adj-value { font-weight:600; color:#111827; }
+	.pos-adjust-row .adj-btn { display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:6px; border:1px solid #e5e7eb; background:#fff; font-size:12px; font-weight:600; color:#374151; cursor:pointer; }
+	.pos-adjust-row .adj-btn:hover { background:#f9fafb; }
+	.pos-adjust-row .adj-btn i { font-size:11px; }
+</style>
+
+<div class="pos_form_totals">
+	<input type="hidden" name="store_credit_used_amount" id="store_credit_used_amount" value="0">
+
+	<div class="pos-tot-block">
+		{{-- Sale-flag chips: Whatnot, Bag Fee, Store Credit (only shown when applicable) --}}
+		<div class="pos-tot-flags">
+			<label class="pos-tot-chip" id="whatnot_chip">
 				<input type="checkbox" name="is_whatnot" id="is_whatnot" value="1">
-				<strong style="margin-left: 6px; color: #8a6d3b;">Mark as Whatnot Transaction</strong>
+				<span>Mark as Whatnot</span>
 			</label>
-		</div>
-		@if(!empty($pos_settings['enable_plastic_bag_charge']))
-		<div class="form-group" style="margin-bottom: 12px;">
-			<div class="checkbox">
-				<label>
-					<input type="checkbox" id="add_plastic_bag" name="add_plastic_bag" value="1" checked>
-					<strong>Add Bag Fee</strong>
-					<span id="plastic_bag_price_display" class="text-muted">
-						(${{ number_format($pos_settings['plastic_bag_price'] ?? 0.10, 2) }})
-					</span>
-				</label>
+			@if(!empty($pos_settings['enable_plastic_bag_charge']))
+			<label class="pos-tot-chip active-bag" id="bag_chip">
+				<input type="checkbox" id="add_plastic_bag" name="add_plastic_bag" value="1" checked>
+				<span>Bag Fee <span id="plastic_bag_price_display" style="font-weight:500; opacity:.8;">(${{ number_format($pos_settings['plastic_bag_price'] ?? 0.10, 2) }})</span></span>
+				<input type="hidden" id="plastic_bag_price" value="{{ $pos_settings['plastic_bag_price'] ?? 0.10 }}">
+			</label>
+			@endif
+			<div id="pos_store_credit_row" class="pos-tot-chip store-credit" style="display:none; cursor:default;">
+				<span>Store credit:</span>
+				<span id="pos_store_credit_amount" style="font-weight:700;">$0.00</span>
+				<button type="button" class="adj-btn" id="btn_use_store_credit" style="padding:2px 8px;">Use it</button>
 			</div>
-			<input type="hidden" id="plastic_bag_price" value="{{ $pos_settings['plastic_bag_price'] ?? 0.10 }}">
 		</div>
-		@endif
-		<table class="table table-condensed" style="margin-top: 8px; margin-bottom: 8px; font-size: 14px;">
-			<tr>
-				<td style="white-space: nowrap;">
-					<b>@lang('sale.item'):</b>&nbsp;
-					<span class="total_quantity">0</span></td>
-				<td style="white-space: nowrap;">
-					<b>Without Tax:</b>&nbsp;
-					<span id="pre_tax_amount" class="text-dark" style="font-weight: bold; font-size: 20px;">0</span>
-				</td>
-				<td class="@if($pos_settings['disable_order_tax'] != 0) hide @endif" style="white-space: nowrap;">
-					<b>Tax:</b>&nbsp;
-					<span id="order_tax_display" style="font-weight: bold;">0</span>
-				</td>
-				<td style="white-space: nowrap;">
-					<b>Total (with Tax):</b>&nbsp;
-					<span id="total_with_tax" style="font-weight: bold; font-size: 15px;">0</span>
-				</td>
-			</tr>
-			<tr>
-				<td>
-					<b>
-						@if($is_discount_enabled)
-							@lang('sale.discount')
-							@show_tooltip(__('tooltip.sale_discount'))
-						@endif
-						@if($is_rp_enabled)
-							{{session('business.rp_name')}}
-						@endif
-						@if($is_discount_enabled)
-							(-):
-							@if($edit_discount)
-							<i class="fas fa-edit cursor-pointer" id="pos-edit-discount" title="@lang('sale.edit_discount')" aria-hidden="true" data-toggle="modal" data-target="#posEditDiscountModal"></i>
-							@endif
-							<button type="button" class="btn btn-xs btn-info" id="pos-manual-discount" title="Apply Manual Discount" style="margin-left: 5px;">
-								<i class="fa fa-percent"></i> Manual Discount
-							</button>
-							<button type="button" class="btn btn-xs btn-primary" id="pos-preset-discount" title="Apply Preset Discount" style="margin-left: 5px;">
-								<i class="fa fa-tags"></i> Preset Discount
-							</button>
-						
-							<span id="total_discount">0</span>
-						@endif
-							<input type="hidden" name="discount_type" id="discount_type" value="@if(empty($edit)){{'percentage'}}@else{{$transaction->discount_type}}@endif" data-default="percentage">
 
-							<input type="hidden" name="discount_amount" id="discount_amount" value="@if(empty($edit)) {{0}} @else {{@num_format($transaction->discount_amount)}} @endif" data-default="0">
+		{{-- Totals summary — Items / Subtotal / Tax / big Total --}}
+		<div class="pos-tot-summary">
+			<div class="stat"><span class="lbl">Items</span><span class="val total_quantity">0</span></div>
+			<div class="stat"><span class="lbl">Subtotal</span><span class="val" id="pre_tax_amount">0</span></div>
+			<div class="stat @if($pos_settings['disable_order_tax'] != 0) hide @endif"><span class="lbl">Tax</span><span class="val" id="order_tax_display">0</span></div>
+			<div class="stat grand"><span class="lbl">Total</span><span class="val" id="total_with_tax">0</span></div>
+		</div>
 
-							<input type="hidden" name="discount_reason" id="discount_reason" value="@if(empty($edit)){{''}}@else{{$transaction->discount_reason ?? ''}}@endif">
-
-							<input type="hidden" name="rp_redeemed" id="rp_redeemed" value="@if(empty($edit)){{'0'}}@else{{$transaction->rp_redeemed}}@endif">
-
-							<input type="hidden" name="rp_redeemed_amount" id="rp_redeemed_amount" value="@if(empty($edit)){{'0'}}@else {{$transaction->rp_redeemed_amount}} @endif">
-
-							</span>
-					</b> 
-				</td>
-				<td class="@if($pos_settings['disable_order_tax'] != 0) hide @endif">
-					<span>
-						<b>@lang('sale.order_tax')(+): @show_tooltip(__('tooltip.sale_tax'))</b>
-						<i class="fas fa-edit cursor-pointer" title="@lang('sale.edit_order_tax')" aria-hidden="true" data-toggle="modal" data-target="#posEditOrderTaxModal" id="pos-edit-tax" ></i> 
-						<span id="order_tax">
-							@if(empty($edit))
-								0
-							@else
-								{{$transaction->tax_amount}}
-							@endif
-						</span>
-
-						<input type="hidden" name="tax_rate_id" 
-							id="tax_rate_id" 
-							value="@if(empty($edit)) @if(!empty($business_details->default_sales_tax)){{$business_details->default_sales_tax}}@endif @else {{$transaction->tax_id}} @endif" 
-							data-default="@if(!empty($business_details->default_sales_tax)){{$business_details->default_sales_tax}}@endif">
-
-						<input type="hidden" name="tax_calculation_amount" id="tax_calculation_amount" 
-							value="@if(empty($edit)) {{@num_format($business_details->tax_calculation_amount)}} @else {{@num_format(optional($transaction->tax)->amount)}} @endif" data-default="{{$business_details->tax_calculation_amount}}">
-
-					</span>
-				</td>
-				<td>
-					<span>
-
-						<b>@lang('sale.shipping')(+): @show_tooltip(__('tooltip.shipping'))</b> 
-						<i class="fas fa-edit cursor-pointer"  title="@lang('sale.shipping')" aria-hidden="true" data-toggle="modal" data-target="#posShippingModal"></i>
-						<span id="shipping_charges_amount">0</span>
-						<input type="hidden" name="shipping_details" id="shipping_details" value="@if(empty($edit)){{''}}@else{{$transaction->shipping_details}}@endif" data-default="">
-
-						<input type="hidden" name="shipping_address" id="shipping_address" value="@if(empty($edit)){{''}}@else{{$transaction->shipping_address}}@endif">
-
-						<input type="hidden" name="shipping_status" id="shipping_status" value="@if(empty($edit)){{''}}@else{{$transaction->shipping_status}}@endif">
-
-						<input type="hidden" name="delivered_to" id="delivered_to" value="@if(empty($edit)){{''}}@else{{$transaction->delivered_to}}@endif">
-
-						<input type="hidden" name="shipping_charges" id="shipping_charges" value="@if(empty($edit)){{@num_format(0.00)}} @else{{@num_format($transaction->shipping_charges)}} @endif" data-default="0.00">
-					</span>
-				</td>
-				@if(in_array('types_of_service', $enabled_modules))
-					<td class="col-sm-3 col-xs-6 d-inline-table">
-						<b>@lang('lang_v1.packing_charge')(+):</b>
-						<i class="fas fa-edit cursor-pointer service_modal_btn"></i> 
-						<span id="packing_charge_text">
-							0
-						</span>
-					</td>
-				@endif
-				@if(!empty($pos_settings['amount_rounding_method']) && $pos_settings['amount_rounding_method'] > 0)
-				<td>
-					<b id="round_off">@lang('lang_v1.round_off'):</b> <span id="round_off_text">0</span>								
+		{{-- Adjustments — discount / tax / shipping (plus hidden form fields) --}}
+		<div class="pos-adjust-row">
+			@if($is_discount_enabled)
+				<div class="adj-group">
+					<span class="adj-label">Discount</span>
+					@if($edit_discount)
+						<button type="button" class="adj-btn" id="pos-edit-discount" title="@lang('sale.edit_discount')" data-toggle="modal" data-target="#posEditDiscountModal"><i class="fa fa-edit"></i></button>
+					@endif
+					<button type="button" class="adj-btn" id="pos-manual-discount" title="Apply Manual Discount"><i class="fa fa-percent"></i> Manual</button>
+					<button type="button" class="adj-btn" id="pos-preset-discount" title="Apply Preset Discount"><i class="fa fa-tags"></i> Preset</button>
+					<span class="adj-value">− <span id="total_discount">0</span></span>
+				</div>
+			@endif
+			@if($is_rp_enabled)
+				<div class="adj-group"><span class="adj-label">{{ session('business.rp_name') }}</span></div>
+			@endif
+			<div class="adj-group @if($pos_settings['disable_order_tax'] != 0) hide @endif">
+				<span class="adj-label">Order Tax</span>
+				<button type="button" class="adj-btn" title="@lang('sale.edit_order_tax')" data-toggle="modal" data-target="#posEditOrderTaxModal" id="pos-edit-tax"><i class="fa fa-edit"></i> Edit</button>
+				<span class="adj-value">+ <span id="order_tax">@if(empty($edit)) 0 @else {{$transaction->tax_amount}} @endif</span></span>
+			</div>
+			<div class="adj-group">
+				<span class="adj-label">Shipping</span>
+				<button type="button" class="adj-btn" title="@lang('sale.shipping')" data-toggle="modal" data-target="#posShippingModal"><i class="fa fa-edit"></i> Edit</button>
+				<span class="adj-value">+ <span id="shipping_charges_amount">0</span></span>
+			</div>
+			@if(in_array('types_of_service', $enabled_modules))
+				<div class="adj-group">
+					<span class="adj-label">Packing</span>
+					<button type="button" class="adj-btn service_modal_btn"><i class="fa fa-edit"></i></button>
+					<span class="adj-value">+ <span id="packing_charge_text">0</span></span>
+				</div>
+			@endif
+			@if(!empty($pos_settings['amount_rounding_method']) && $pos_settings['amount_rounding_method'] > 0)
+				<div class="adj-group">
+					<span class="adj-label" id="round_off">Round off</span>
+					<span class="adj-value"><span id="round_off_text">0</span></span>
 					<input type="hidden" name="round_off_amount" id="round_off_amount" value=0>
-				</td>
-				@endif
-			</tr>
-		</table>
+				</div>
+			@endif
+		</div>
+
+		{{-- Hidden form inputs preserved exactly — pos.js reads/writes these --}}
+		<input type="hidden" name="discount_type" id="discount_type" value="@if(empty($edit)){{'percentage'}}@else{{$transaction->discount_type}}@endif" data-default="percentage">
+		<input type="hidden" name="discount_amount" id="discount_amount" value="@if(empty($edit)) {{0}} @else {{@num_format($transaction->discount_amount)}} @endif" data-default="0">
+		<input type="hidden" name="discount_reason" id="discount_reason" value="@if(empty($edit)){{''}}@else{{$transaction->discount_reason ?? ''}}@endif">
+		<input type="hidden" name="rp_redeemed" id="rp_redeemed" value="@if(empty($edit)){{'0'}}@else{{$transaction->rp_redeemed}}@endif">
+		<input type="hidden" name="rp_redeemed_amount" id="rp_redeemed_amount" value="@if(empty($edit)){{'0'}}@else {{$transaction->rp_redeemed_amount}} @endif">
+		<input type="hidden" name="tax_rate_id" id="tax_rate_id" value="@if(empty($edit)) @if(!empty($business_details->default_sales_tax)){{$business_details->default_sales_tax}}@endif @else {{$transaction->tax_id}} @endif" data-default="@if(!empty($business_details->default_sales_tax)){{$business_details->default_sales_tax}}@endif">
+		<input type="hidden" name="tax_calculation_amount" id="tax_calculation_amount" value="@if(empty($edit)) {{@num_format($business_details->tax_calculation_amount)}} @else {{@num_format(optional($transaction->tax)->amount)}} @endif" data-default="{{$business_details->tax_calculation_amount}}">
+		<input type="hidden" name="shipping_details" id="shipping_details" value="@if(empty($edit)){{''}}@else{{$transaction->shipping_details}}@endif" data-default="">
+		<input type="hidden" name="shipping_address" id="shipping_address" value="@if(empty($edit)){{''}}@else{{$transaction->shipping_address}}@endif">
+		<input type="hidden" name="shipping_status" id="shipping_status" value="@if(empty($edit)){{''}}@else{{$transaction->shipping_status}}@endif">
+		<input type="hidden" name="delivered_to" id="delivered_to" value="@if(empty($edit)){{''}}@else{{$transaction->delivered_to}}@endif">
+		<input type="hidden" name="shipping_charges" id="shipping_charges" value="@if(empty($edit)){{@num_format(0.00)}} @else{{@num_format($transaction->shipping_charges)}} @endif" data-default="0.00">
 	</div>
+
+	{{-- Visual state of the Whatnot chip tracks the checkbox --}}
+	<script>
+	(function(){
+		function syncWhatnotChip(){ $('#whatnot_chip').toggleClass('active-whatnot', $('#is_whatnot').is(':checked')); }
+		$(document).on('change', '#is_whatnot', syncWhatnotChip);
+		syncWhatnotChip();
+	})();
+	</script>
 </div>

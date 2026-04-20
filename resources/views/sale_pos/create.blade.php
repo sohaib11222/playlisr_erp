@@ -197,6 +197,18 @@
 			font-size: 14px;
 		}
 
+		/* Shrink the row-remove X (was way too large) */
+		section.content table#pos_table .pos_remove_row,
+		section.content table#pos_table .fa-times,
+		section.content table#pos_table .fa-trash,
+		section.content table#pos_table .remove-row,
+		section.content table#pos_table a[title*="Remove"],
+		section.content table#pos_table button.pos_remove_row {
+			font-size: 14px !important;
+			color: #dc2626;
+		}
+		section.content table#pos_table thead th i.fa-times { font-size: 11px; opacity: 0.5; }
+
 		/* Hide the "ERP V4.7.8 | Copyright" footer on POS — every pixel counts here */
 		body footer.main-footer,
 		body > footer.no-print {
