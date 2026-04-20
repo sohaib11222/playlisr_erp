@@ -30,17 +30,19 @@
 			--}}
 
 			<style>
-				/* Prioritized payment actions — Cash + Card dominate, rest tucked away */
-				.pos-payment-primary-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 6px; }
+				/* Prioritized payment actions — Cash + Card dominate, rest tucked away.
+				   Cap to max-width so they don't stretch absurdly on wide screens. */
+				.pos-payment-primary-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 6px; justify-content: center; }
 				.pos-payment-primary-row .btn-pay-primary {
-					flex: 1 1 240px; min-height: 72px;
-					font-size: 20px; font-weight: 800;
-					border-radius: 12px;
-					text-transform: uppercase; letter-spacing: 0.8px;
+					flex: 0 1 280px; min-width: 200px; max-width: 320px;
+					min-height: 60px;
+					font-size: 18px; font-weight: 800;
+					border-radius: 10px;
+					text-transform: uppercase; letter-spacing: 0.6px;
 					display: inline-flex; align-items: center; justify-content: center; gap: 10px;
 					box-shadow: 0 2px 6px rgba(0,0,0,0.08);
 				}
-				.pos-payment-primary-row .btn-pay-primary i { font-size: 26px; }
+				.pos-payment-primary-row .btn-pay-primary i { font-size: 22px; }
 				.btn-pay-cash { background: #16a34a !important; color: #fff !important; border: none !important; }
 				.btn-pay-cash:hover { background: #15803d !important; color: #fff !important; }
 				.btn-pay-card { background: #1e3a8a !important; color: #fff !important; border: none !important; }
@@ -110,14 +112,15 @@
 				@endif
 			</div>
 
-			@if(!$is_mobile)
-			<div class="bg-navy pos-total text-white">
-			<span class="text">@lang('sale.total_payable')</span>
-			<input type="hidden" name="final_total" 
-										id="final_total_input" value=0>
-			<span id="total_payable" class="number">0</span>
+			{{-- Hidden shim: the bottom-left "Total Payable" chip was visually redundant
+				 with the big TOTAL (WITH TAX) in the totals row above, but lots of JS
+				 still reads/writes #total_payable and #final_total_input. Keep the
+				 elements present but invisible. --}}
+			<div class="bg-navy pos-total text-white" style="display:none;">
+				<span class="text">@lang('sale.total_payable')</span>
+				<input type="hidden" name="final_total" id="final_total_input" value=0>
+				<span id="total_payable" class="number">0</span>
 			</div>
-			@endif
 
 			@if(!isset($pos_settings['hide_recent_trans']) || $pos_settings['hide_recent_trans'] == 0)
 			<button type="button" class="pull-right btn btn-primary btn-flat @if($is_mobile) col-xs-6 @endif" data-toggle="modal" data-target="#recent_transactions_modal" id="recent-transactions"> <i class="fas fa-clock"></i> @lang('lang_v1.recent_transactions')</button>
