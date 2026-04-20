@@ -41,6 +41,13 @@ class Handler extends ExceptionHandler
             if (config('app.env') == 'demo') {
                 $this->sendEmail($exception); // sends an email in demo server
             }
+
+            // Forward unhandled exceptions to Sentry so we find out about crashes
+            // before a cashier or customer does. Controlled by SENTRY_LARAVEL_DSN
+            // in .env — if unset, the SDK silently no-ops.
+            if (app()->bound('sentry')) {
+                app('sentry')->captureException($exception);
+            }
         }
 
         parent::report($exception);
