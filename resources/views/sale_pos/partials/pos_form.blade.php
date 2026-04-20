@@ -309,7 +309,7 @@
 		<table class="table table-condensed table-bordered table-striped table-responsive" id="pos_table">
 			<thead>
 				<tr>
-					<th class="tex-center @if(!empty($pos_settings['inline_service_staff'])) col-md-3 @else col-md-4 @endif">	
+					<th class="tex-center @if(!empty($pos_settings['inline_service_staff'])) col-md-3 @else col-md-4 @endif">
 						@lang('sale.product') @show_tooltip(__('lang_v1.tooltip_sell_product_column'))
 					</th>
 					<th class="text-center col-md-3">
@@ -321,7 +321,7 @@
 						</th>
 					@endif
 					<th class="text-center col-md-2 {{$hide_tax}}">
-						@lang('lang_v1.purchase_price') 
+						@lang('lang_v1.purchase_price')
 					</th>
 					<th class="text-center col-md-2 {{$hide_tax}}">
 						@lang('sale.price_inc_tax')
@@ -329,10 +329,26 @@
 					<th class="text-center col-md-2">
 						@lang('sale.subtotal')
 					</th>
-					<th class="text-center"><i class="fas fa-times" aria-hidden="true"></i></th>
+					<th class="text-center" title="Remove item"><i class="fas fa-times" aria-hidden="true"></i></th>
 				</tr>
 			</thead>
 			<tbody></tbody>
 		</table>
+		{{-- Friendly empty-cart state — shown whenever #pos_table tbody has zero rows.
+			 Toggled by a small MutationObserver at the end of this partial. --}}
+		<div id="pos_cart_empty_state" style="text-align:center; padding:40px 20px; color:#9ca3af; background:#fafbfc; border:2px dashed #e5e7eb; border-radius:12px; margin:0 0 8px 0;">
+			<i class="fa fa-cart-plus" style="font-size:40px; color:#cbd5e1; display:block; margin-bottom:10px;"></i>
+			<div style="font-size:15px; font-weight:600; color:#6b7280;">Scan a barcode, search a product, or tap a quick-add tile to start ringing up.</div>
+		</div>
+		<script>
+		(function(){
+			var tbody = document.querySelector('#pos_table tbody');
+			var empty = document.getElementById('pos_cart_empty_state');
+			if (!tbody || !empty) return;
+			function toggle() { empty.style.display = tbody.children.length === 0 ? '' : 'none'; }
+			toggle();
+			new MutationObserver(toggle).observe(tbody, { childList: true });
+		})();
+		</script>
 	</div>
 </div>

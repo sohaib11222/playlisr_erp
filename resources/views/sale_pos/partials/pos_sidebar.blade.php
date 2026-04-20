@@ -1,3 +1,53 @@
+{{-- Customer rewards panel — mirrors the #customer_account_info block in the left column
+	 so the Nivessa Bucks balance is visible at a glance on the right side of the POS.
+	 Stays hidden until a customer is selected. A small script below syncs the values. --}}
+<div id="sidebar_customer_panel" style="display:none; background:linear-gradient(135deg,#fff7ed,#fde68a); border:2px solid #f59e0b; border-radius:12px; padding:14px 16px; margin-bottom:14px; box-shadow:0 2px 6px rgba(245,158,11,0.15);">
+	<div style="font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#92400e; font-weight:700;">
+		<i class="fa fa-star"></i> Nivessa Bucks — Customer
+	</div>
+	<div class="v-customer-name" style="font-size:17px; font-weight:800; color:#78350f; margin:4px 0 8px 0;"></div>
+	<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+		<div>
+			<div style="font-size:10px; text-transform:uppercase; letter-spacing:.5px; color:#92400e; font-weight:700;">Credit</div>
+			<div class="v-balance" style="font-size:17px; font-weight:800; color:#78350f;">$0.00</div>
+		</div>
+		<div>
+			<div style="font-size:10px; text-transform:uppercase; letter-spacing:.5px; color:#92400e; font-weight:700;">Gift cards</div>
+			<div class="v-gift" style="font-size:17px; font-weight:800; color:#78350f;">$0.00</div>
+		</div>
+		<div>
+			<div style="font-size:10px; text-transform:uppercase; letter-spacing:.5px; color:#92400e; font-weight:700;">Points</div>
+			<div class="v-points" style="font-size:17px; font-weight:800; color:#78350f;">0</div>
+		</div>
+		<div>
+			<div style="font-size:10px; text-transform:uppercase; letter-spacing:.5px; color:#92400e; font-weight:700;">Lifetime</div>
+			<div class="v-lifetime" style="font-size:14px; font-weight:700; color:#78350f;">$0.00</div>
+		</div>
+	</div>
+</div>
+<script>
+(function () {
+	// Sync the left-column #customer_account_info content into the sidebar panel.
+	var $src = $('#customer_account_info');
+	var $dst = $('#sidebar_customer_panel');
+	if (!$src.length || !$dst.length) return;
+	function sync() {
+		var visible = $src.is(':visible');
+		$dst.toggle(visible);
+		if (!visible) return;
+		$dst.find('.v-customer-name').text($('#customer_account_name').text().trim());
+		$dst.find('.v-balance').text($('#customer_account_balance').text().trim());
+		$dst.find('.v-gift').text($('#customer_gift_card_balance').text().trim());
+		$dst.find('.v-lifetime').text($('#customer_lifetime_purchases').text().trim());
+		$dst.find('.v-points').text($('#customer_loyalty_points').text().trim());
+	}
+	$(function () { sync(); });
+	if (typeof MutationObserver !== 'undefined') {
+		new MutationObserver(sync).observe($src[0], { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+	}
+})();
+</script>
+
 {{-- Quick-add preset tiles for items always entered manually (drinks, candy, pins, stickers).
      Clicking a tile opens the existing Add Manual Item modal pre-filled with name + price. --}}
 <style>
