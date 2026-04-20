@@ -33,34 +33,189 @@
         .niv-money { font-weight:700; color:#1f7a45; }
     </style>
 
-    {{-- HERO: $$ Generated From Items YOU Barcoded (first thing staff see when they log in) --}}
-    <div class="row">
-        <div class="col-md-12">
-            <div class="niv-card" style="background:linear-gradient(135deg,#fef9c3,#fde68a); border:2px solid #f59e0b; padding:22px 26px;">
-                <h3 style="color:#78350f; font-size:18px; margin-bottom:14px;"><i class="fa fa-dollar-sign"></i> $$ Generated From Items YOU Barcoded <span class="niv-sub">the more you price, the more you earn for the shop</span></h3>
-                <div class="row">
-                    <div class="col-md-5">
-                        <div class="niv-muted" style="text-transform:uppercase; font-size:12px; letter-spacing:.6px; font-weight:700;">This month</div>
-                        <div style="font-size:54px; font-weight:900; color:#78350f; line-height:1; margin:6px 0;">${{ number_format($my_priced_rev_mtd, 0) }}</div>
-                        @if(!is_null($my_priced_rev_pct))
-                            <div style="margin-top:8px; font-size:14px;">
-                                <strong style="color:{{ $my_priced_rev_pct >= 0 ? '#065f46' : '#991b1b' }}; font-size:16px;">{{ $my_priced_rev_pct >= 0 ? '▲' : '▼' }} {{ number_format(abs($my_priced_rev_pct), 1) }}%</strong>
-                                <span class="niv-muted">vs last month (${{ number_format($my_priced_rev_lm, 0) }})</span>
-                            </div>
+    {{-- ==========================================================
+         Nick-style personal progress dashboard
+         The first thing employees see when they log in.
+         Focus: personal progress vs your own past, not ranking.
+         ========================================================== --}}
+    <style>
+        .pp-card { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:18px 22px; margin-bottom:14px; box-shadow:0 1px 3px rgba(0,0,0,0.03); }
+        .pp-muted { color:#6b7280; font-size:12px; }
+        .pp-micro { font-size:11px; color:#6b7280; }
+        .pp-green { color:#3b6d11; }
+        .pp-green-bg { background:#c0dd97; color:#173404; }
+        .pp-green-bg-dark { background:#639922; color:#fff; }
+        .pp-gray-bg { background:#d3d1c7; color:#2c2c2a; }
+        .pp-arrow-up { display:inline-block; width:0; height:0; border-left:5px solid transparent; border-right:5px solid transparent; border-bottom:7px solid #3b6d11; margin-right:5px; vertical-align:middle; }
+        .pp-arrow-down { display:inline-block; width:0; height:0; border-left:5px solid transparent; border-right:5px solid transparent; border-top:7px solid #991b1b; margin-right:5px; vertical-align:middle; }
+        .pp-progress { height:8px; background:#e5e7eb; border-radius:4px; overflow:hidden; }
+        .pp-progress > div { height:100%; }
+        .pp-bar { height:74px; display:flex; align-items:flex-end; justify-content:center; border-radius:8px; padding-bottom:6px; font-size:11px; font-weight:600; }
+        .pp-rank { width:28px; height:28px; border-radius:4px; display:inline-flex; align-items:center; justify-content:center; color:#fff; font-size:13px; font-weight:600; flex:0 0 auto; }
+    </style>
+
+    <div class="pp-card" style="padding:22px 26px;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:18px;">
+            <div>
+                <div style="font-size:24px; font-weight:600; margin-bottom:2px;">What's up, {{ $me_first_name }} 🔥</div>
+                <div class="pp-muted">Keep crushin' it. {{ \Carbon\Carbon::now()->format('l, F j') }}</div>
+            </div>
+            <div class="pp-muted" style="text-align:right;">
+                <div>{{ $team_location_name ?? 'Store' }} · {{ \Carbon\Carbon::now()->format('g:ia') }}</div>
+                <div style="margin-top:2px;">Shift: {{ $my_today_hrs >= 0.01 ? number_format($my_today_hrs, 1) . 'h' : '—' }}</div>
+            </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1.3fr 1fr; gap:16px;">
+            <div style="background:#f8fafc; border-radius:10px; padding:16px 20px;">
+                <div class="pp-muted" style="margin-bottom:6px;">Today so far</div>
+                <div style="font-size:34px; font-weight:600; line-height:1;">
+                    @if(!is_null($my_today_rph))
+                        ${{ number_format($my_today_rph, 0) }}<span style="font-size:16px; color:#6b7280; font-weight:400;">/hr</span>
+                    @else
+                        <span style="color:#9ca3af; font-size:18px; font-weight:500;">No shift yet — open your register to start</span>
+                    @endif
+                </div>
+                @if(!is_null($my_vs_30d_pct))
+                    <div style="margin-top:10px;">
+                        @if($my_vs_30d_pct >= 0)
+                            <span class="pp-arrow-up"></span>
+                            <span style="font-size:12px; font-weight:500; color:#3b6d11;">+{{ number_format($my_vs_30d_pct, 0) }}% vs your 30-day avg</span>
+                        @else
+                            <span class="pp-arrow-down"></span>
+                            <span style="font-size:12px; font-weight:500; color:#991b1b;">{{ number_format($my_vs_30d_pct, 0) }}% vs your 30-day avg</span>
                         @endif
                     </div>
-                    <div class="col-md-3">
-                        <div class="niv-muted" style="text-transform:uppercase; font-size:12px; letter-spacing:.6px; font-weight:700;">Last month</div>
-                        <div style="font-size:30px; font-weight:800; color:#78350f; line-height:1; margin:6px 0;">${{ number_format($my_priced_rev_lm, 0) }}</div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="niv-muted" style="text-transform:uppercase; font-size:12px; letter-spacing:.6px; font-weight:700;">Lifetime</div>
-                        <div style="font-size:30px; font-weight:800; color:#78350f; line-height:1; margin:6px 0;">${{ number_format($my_priced_rev_lifetime, 0) }}</div>
-                    </div>
+                @elseif(!is_null($my_30d_rph_avg))
+                    <div style="margin-top:10px;" class="pp-micro">30-day avg: ${{ number_format($my_30d_rph_avg, 0) }}/hr</div>
+                @endif
+            </div>
+
+            <div style="background:#f8fafc; border-radius:10px; padding:16px 20px;">
+                <div class="pp-muted" style="margin-bottom:6px;">Your best this week</div>
+                <div style="font-size:22px; font-weight:600; line-height:1.2;">${{ number_format($my_7day_best_rph, 0) }}/hr</div>
+                @if($my_7day_best_day)
+                    <div class="pp-micro" style="margin:4px 0 0 0;">{{ $my_7day_best_day }} · ${{ number_format($my_beat_gap, 0) }} to beat it today</div>
+                @endif
+                <div class="pp-progress" style="margin-top:10px;">
+                    @php
+                        $beat_pct = $my_7day_best_rph > 0 && !is_null($my_today_rph) ? min(100, ($my_today_rph / $my_7day_best_rph) * 100) : 0;
+                    @endphp
+                    <div style="width:{{ $beat_pct }}%; background:#ba7517;"></div>
                 </div>
             </div>
         </div>
     </div>
+
+    {{-- 7-day streak --}}
+    <div class="pp-card">
+        <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px;">
+            <div style="font-size:14px; font-weight:600;">Your 7-day streak</div>
+            <div class="pp-muted">{{ $my_streak_above }} of 7 above your average</div>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(7, 1fr); gap:8px;">
+            @foreach($my_7day as $e)
+                @php
+                    if ($e->is_today) { $cls = 'pp-green-bg-dark'; }
+                    elseif (!is_null($e->rph) && $e->above_avg) { $cls = 'pp-green-bg'; }
+                    else { $cls = 'pp-gray-bg'; }
+                    $is_best = $my_7day_best_day === $e->day && !$e->is_today;
+                @endphp
+                <div style="text-align:center;">
+                    <div class="pp-bar {{ $cls }}" style="height: {{ max(36, $e->bar_pct * 0.74) }}px;">
+                        {{ is_null($e->rph) ? '—' : number_format($e->rph, 0) }}
+                    </div>
+                    <div class="pp-micro" style="margin-top:4px;">
+                        {{ $e->day }}{{ $is_best ? ' ★' : '' }}{{ $e->is_today ? ' · today' : '' }}
+                    </div>
+                </div>
+            @endforeach
+        </div>
+    </div>
+
+    {{-- Daily goals --}}
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+        <div class="pp-card" style="margin-bottom:0;">
+            <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px;">
+                <div class="pp-muted">Price {{ $goal_priced_today }} items today</div>
+                <div style="font-size:13px; font-weight:600;">{{ $my_priced_today }} / {{ $goal_priced_today }}</div>
+            </div>
+            <div class="pp-progress">
+                @php $priced_pct = min(100, ($my_priced_today / max(1, $goal_priced_today)) * 100); @endphp
+                <div style="width:{{ $priced_pct }}%; background:#534ab7;"></div>
+            </div>
+            <div class="pp-micro" style="margin-top:8px;">
+                @if($my_priced_today >= $goal_priced_today)
+                    🎉 Goal hit — keep going!
+                @else
+                    {{ $goal_priced_today - $my_priced_today }} more to hit your daily goal
+                @endif
+            </div>
+        </div>
+        <div class="pp-card" style="margin-bottom:0;">
+            <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px;">
+                <div class="pp-muted">Rewards signups</div>
+                <div style="font-size:13px; font-weight:600;">{{ $rewards_me_today }} / {{ $goal_rewards_today }}</div>
+            </div>
+            <div class="pp-progress">
+                @php $rew_pct = min(100, ($rewards_me_today / max(1, $goal_rewards_today)) * 100); @endphp
+                <div style="width:{{ $rew_pct }}%; background:#1d9e75;"></div>
+            </div>
+            <div class="pp-micro" style="margin-top:8px;">
+                @if($rewards_me_today >= $goal_rewards_today)
+                    🎯 Daily streak locked in
+                @else
+                    {{ $goal_rewards_today - $rewards_me_today }} more for the daily streak
+                @endif
+            </div>
+        </div>
+    </div>
+
+    {{-- Nice sales today (your top rings) --}}
+    <div class="pp-card">
+        <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px;">
+            <div style="font-size:14px; font-weight:600;">Nice sales today</div>
+            <div class="pp-micro">Your top rings{{ $my_today_items_total ? ', '.$my_top_today->count().' of '.$my_today_items_total : '' }}</div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+            @forelse($my_top_today as $i => $s)
+                @php $rank_bg = $i === 0 ? '#ba7517' : '#888780'; @endphp
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:#f8fafc; border-radius:8px;">
+                    <div style="display:flex; align-items:center; gap:10px; min-width:0;">
+                        <div class="pp-rank" style="background:{{ $rank_bg }};">{{ $i + 1 }}</div>
+                        <span style="font-size:13px;">{{ $s->artist ? $s->artist . ' — ' : '' }}{{ $s->name }}@if($s->format) <span class="pp-micro">[{{ $s->format }}]</span>@endif</span>
+                    </div>
+                    <span style="font-size:14px; font-weight:600; color:#3b6d11;">${{ number_format($s->price, 0) }}</span>
+                </div>
+            @empty
+                <div class="pp-micro" style="padding:8px 0;">Ring something up and your top sales will land here.</div>
+            @endforelse
+        </div>
+    </div>
+
+    {{-- Team goal today --}}
+    <div class="pp-card">
+        <div style="font-size:14px; font-weight:600; margin-bottom:4px;">{{ $team_location_name ?? 'Store' }} today — team</div>
+        <div class="pp-muted" style="margin-bottom:14px;">Everyone's in on this one</div>
+        <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px;">
+            <span style="font-size:13px;">${{ number_format($team_today_rev, 0) }} / ${{ number_format($team_goal, 0) }} daily goal</span>
+            <span style="font-size:13px; font-weight:600; color:#534ab7;">{{ number_format($team_pct, 0) }}%</span>
+        </div>
+        <div class="pp-progress" style="height:12px; border-radius:6px;">
+            <div style="width:{{ $team_pct }}%; background:#534ab7;"></div>
+        </div>
+        <div class="pp-micro" style="margin-top:10px;">
+            @php $rem = max(0, $team_goal - $team_today_rev); @endphp
+            @if($rem > 0)
+                ${{ number_format($rem, 0) }} to go · {{ \Carbon\Carbon::now()->diffForHumans(\Carbon\Carbon::now()->endOfDay(), ['parts' => 2, 'short' => true, 'syntax' => \Carbon\CarbonInterface::DIFF_ABSOLUTE]) }} left in the day
+            @else
+                🎉 Goal smashed — nice work
+            @endif
+        </div>
+    </div>
+
+    {{-- OLD metrics kept below as secondary "business-wide" dashboard.
+         Can be collapsed/removed once the personal dashboard proves out. --}}
 
     {{-- Progress: MoM, YoY, and personal month-over-month --}}
     <div class="row">

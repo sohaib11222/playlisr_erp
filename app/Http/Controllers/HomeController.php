@@ -380,6 +380,140 @@ class HomeController extends Controller
         $my_rung_pct = $my_lm_rung > 0 ? (($my_mtd_rung - $my_lm_rung) / $my_lm_rung) * 100 : null;
         $my_priced_pct = $my_lm_priced > 0 ? (($my_mtd_priced - $my_lm_priced) / $my_lm_priced) * 100 : null;
 
+        // ==========================================================
+        // Nick-style personal progress dashboard
+        // Per-employee $/hr today, vs 30-day avg, 7-day streak, goals
+        // ==========================================================
+        $now2 = \Carbon::now();
+        $tz  = null; // use server tz
+        $today_start_p = $now2->copy()->startOfDay();
+        $today_end_p   = $now2->copy()->endOfDay();
+
+        // Hours worked in a window for the logged-in user
+        $hoursForMe = function ($start, $end) use ($business_id, $me_id) {
+            $row = \DB::table('cash_registers')
+                ->where('business_id', $business_id)
+                ->where('user_id', $me_id)
+                ->where('created_at', '<=', $end)
+                ->where(function ($q) use ($start) {
+                    $q->where('closed_at', '>=', $start)->orWhereNull('closed_at');
+                })
+                ->selectRaw("COALESCE(SUM(
+                    TIMESTAMPDIFF(SECOND, GREATEST(created_at, ?), LEAST(COALESCE(closed_at, NOW()), ?))
+                ) / 3600.0, 0) as hrs")
+                ->addBinding([$start, $end], 'select')
+                ->value('hrs');
+            return (float) ($row ?? 0);
+        };
+        $revForMe = function ($start, $end) use ($business_id, $me_id) {
+            return (float) \DB::table('transactions')
+                ->where('business_id', $business_id)
+                ->where('type', 'sell')
+                ->where('status', 'final')
+                ->where('created_by', $me_id)
+                ->whereBetween('transaction_date', [$start, $end])
+                ->sum('final_total');
+        };
+
+        // Today
+        $my_today_hrs = $hoursForMe($today_start_p->toDateTimeString(), $today_end_p->toDateTimeString());
+        $my_today_rev = $revForMe($today_start_p->toDateTimeString(), $today_end_p->toDateTimeString());
+        $my_today_rph = $my_today_hrs >= 0.25 ? $my_today_rev / $my_today_hrs : null;
+
+        // Last 30 days (rolling) average $/hr
+        $p30_start = $now2->copy()->subDays(29)->startOfDay()->toDateTimeString();
+        $p30_end   = $now2->copy()->endOfDay()->toDateTimeString();
+        $p30_hrs = $hoursForMe($p30_start, $p30_end);
+        $p30_rev = $revForMe($p30_start, $p30_end);
+        $my_30d_rph_avg = $p30_hrs >= 0.25 ? $p30_rev / $p30_hrs : null;
+
+        $my_vs_30d_pct = (!is_null($my_today_rph) && !is_null($my_30d_rph_avg) && $my_30d_rph_avg > 0)
+            ? (($my_today_rph - $my_30d_rph_avg) / $my_30d_rph_avg) * 100
+            : null;
+
+        // 7-day streak — compute $/hr per day for the last 7 days ending today
+        $my_7day = [];
+        $my_7day_best_rph = 0;
+        $my_7day_best_day = null;
+        for ($i = 6; $i >= 0; $i--) {
+            $d = $now2->copy()->subDays($i);
+            $ds = $d->copy()->startOfDay()->toDateTimeString();
+            $de = $d->copy()->endOfDay()->toDateTimeString();
+            $h  = $hoursForMe($ds, $de);
+            $r  = $revForMe($ds, $de);
+            $rph = $h >= 0.25 ? $r / $h : null;
+            $entry = (object) [
+                'day'     => $d->format('D'),
+                'date'    => $d->format('Y-m-d'),
+                'is_today' => $i === 0,
+                'rph'     => $rph,
+                'above_avg' => !is_null($rph) && !is_null($my_30d_rph_avg) && $rph > $my_30d_rph_avg,
+            ];
+            $my_7day[] = $entry;
+            if (!is_null($rph) && $rph > $my_7day_best_rph) {
+                $my_7day_best_rph = $rph;
+                $my_7day_best_day = $d->format('D');
+            }
+        }
+        $my_streak_above = collect($my_7day)->filter(function ($e) { return $e->above_avg; })->count();
+        // Normalized bar heights
+        $my_7day_max_rph = max(1, collect($my_7day)->max(function ($e) { return $e->rph ?? 0; }));
+        foreach ($my_7day as $e) {
+            $e->bar_pct = $e->rph ? max(20, min(100, ($e->rph / $my_7day_max_rph) * 100)) : 18;
+        }
+        $my_beat_gap = !is_null($my_today_rph) ? max(0, $my_7day_best_rph - $my_today_rph) : $my_7day_best_rph;
+
+        // Daily goals (hardcoded for MVP — could become configurable later)
+        $goal_priced_today = 10;
+        $goal_rewards_today = 3;
+        $rewards_me_today = (int) \DB::table('contacts')
+            ->where('business_id', $business_id)
+            ->whereIn('type', ['customer', 'both'])
+            ->where('created_by', $me_id)
+            ->whereBetween('created_at', [$today_start, $today_end])
+            ->count();
+
+        // "Nice sales today" — your top 4 line items today
+        $my_top_today = \DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+            ->join('products as p', 'tsl.product_id', '=', 'p.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->where('t.created_by', $me_id)
+            ->whereBetween('t.transaction_date', [$today_start, $today_end])
+            ->selectRaw("p.artist, p.name, p.format, tsl.unit_price_inc_tax as price")
+            ->orderByDesc('tsl.unit_price_inc_tax')
+            ->limit(4)
+            ->get();
+        $my_today_items_total = (int) \DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->where('t.created_by', $me_id)
+            ->whereBetween('t.transaction_date', [$today_start, $today_end])
+            ->count();
+
+        // Team goal for my current location today (hardcoded $5,000 — could be configurable per location)
+        $my_default_loc_id = \DB::table('business_locations')
+            ->where('business_id', $business_id)
+            ->orderBy('id')
+            ->value('id');
+        $team_location_name = \DB::table('business_locations')
+            ->where('id', $my_default_loc_id)->value('name');
+        $team_today_rev = (float) \DB::table('transactions')
+            ->where('business_id', $business_id)
+            ->where('type', 'sell')
+            ->where('status', 'final')
+            ->where('location_id', $my_default_loc_id)
+            ->whereBetween('transaction_date', [$today_start, $today_end])
+            ->sum('final_total');
+        $team_goal = 5000;
+        $team_pct = $team_goal > 0 ? min(100, ($team_today_rev / $team_goal) * 100) : 0;
+
+        $me_first_name = auth()->user()->first_name ?? 'there';
+
         // ---- Leaderboard top 3 this week (reuses ReportController logic) ----
         $week_start = \Carbon::now()->startOfWeek()->toDateTimeString();
         $week_end = \Carbon::now()->endOfDay()->toDateTimeString();
@@ -503,7 +637,15 @@ class HomeController extends Controller
             'avg_per_employee',
             'my_priced_rev_mtd', 'my_priced_rev_lm', 'my_priced_rev_lifetime', 'my_priced_rev_pct',
             'active_wants', 'active_wants_count',
-            'leaderboard_top3'
+            'leaderboard_top3',
+            // Personal progress dashboard
+            'me_first_name',
+            'my_today_hrs', 'my_today_rev', 'my_today_rph',
+            'my_30d_rph_avg', 'my_vs_30d_pct',
+            'my_7day', 'my_streak_above', 'my_7day_best_rph', 'my_7day_best_day', 'my_beat_gap',
+            'goal_priced_today', 'goal_rewards_today', 'rewards_me_today',
+            'my_top_today', 'my_today_items_total',
+            'team_location_name', 'team_today_rev', 'team_goal', 'team_pct'
         ));
     }
 
