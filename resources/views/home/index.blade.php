@@ -4,9 +4,21 @@
 @section('content')
 
 <!-- Content Header (Page header) -->
+{{-- Collapse the big orange banner: the global skin-yellow rule adds 200px bottom padding
+     (with a matching -210px margin on .content-custom). Override locally so the welcome
+     line sits tight and the dashboard cards start right below. --}}
+<style>
+    .skin-yellow .content-wrapper .content-header-custom,
+    .skin-yellow-light .content-wrapper .content-header-custom {
+        padding: 12px 15px !important;
+    }
+    .skin-yellow .content-wrapper .content-custom,
+    .skin-yellow-light .content-wrapper .content-custom {
+        margin-top: 0 !important;
+    }
+</style>
 <section class="content-header content-header-custom">
-    <h1>{{ __('home.welcome_message', ['name' => Session::get('user.first_name')]) }}
-    </h1>
+    <h1 style="margin:0; font-size:20px;">{{ __('home.welcome_message', ['name' => Session::get('user.first_name')]) }}</h1>
 </section>
 
 {{-- ============================================================
@@ -343,7 +355,7 @@
     <div class="row">
         <div class="col-md-3">
             <div class="niv-card" style="background:linear-gradient(135deg,#fff7ed,#ffedd5);">
-                <h3 style="color:#9a3412;"><i class="fa fa-chart-line"></i> Store Sales MTD</h3>
+                <h3 style="color:#9a3412;"><i class="fa fa-chart-line"></i> All Stores — Sales MTD <span class="niv-sub">hollywood + pico combined</span></h3>
                 <div style="font-size:26px; font-weight:800; color:#9a3412;">${{ number_format($sales_mtd, 0) }}</div>
                 <div class="niv-muted" style="margin-top:4px;">
                     @if(is_null($mom_pct))
@@ -357,7 +369,7 @@
         </div>
         <div class="col-md-3">
             <div class="niv-card" style="background:linear-gradient(135deg,#f0f9ff,#e0f2fe);">
-                <h3 style="color:#075985;"><i class="fa fa-calendar-alt"></i> Store Sales YTD</h3>
+                <h3 style="color:#075985;"><i class="fa fa-calendar-alt"></i> All Stores — Sales YTD <span class="niv-sub">hollywood + pico combined</span></h3>
                 <div style="font-size:26px; font-weight:800; color:#075985;">${{ number_format($sales_ytd, 0) }}</div>
                 <div class="niv-muted" style="margin-top:4px;">
                     @if(is_null($yoy_pct))
@@ -584,53 +596,6 @@
                         </tr>
                     @empty
                         <tr><td colspan="4" class="niv-muted">No sales in the last 7 days.</td></tr>
-                    @endforelse
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-
-    {{-- Active customer wants — things to keep an eye out for in new inventory --}}
-    <div class="row">
-        <div class="col-md-12">
-            <div class="niv-card" style="border-left:4px solid #dc2626;">
-                <h3 style="color:#991b1b;"><i class="fa fa-hand-point-right"></i> Active Customer Wants <span class="niv-sub">call-me-when-it-comes-in list — <a href="{{ action('CustomerWantController@index') }}">see all / add new →</a></span></h3>
-                <table>
-                    <thead>
-                        <tr style="color:#7b8796; text-transform:uppercase; font-size:11px; letter-spacing:.5px;">
-                            <th>Priority</th>
-                            <th>Artist</th>
-                            <th>Title</th>
-                            <th>Format</th>
-                            <th>Customer</th>
-                            <th>Phone</th>
-                            <th>Store</th>
-                            <th>Added</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    @forelse($active_wants as $w)
-                        <tr>
-                            <td>
-                                @if($w->priority === 'high')
-                                    <span class="label label-danger">HIGH</span>
-                                @elseif($w->priority === 'low')
-                                    <span class="label label-default">low</span>
-                                @else
-                                    <span class="label label-info">normal</span>
-                                @endif
-                            </td>
-                            <td>{{ $w->artist }}</td>
-                            <td><strong>{{ $w->title }}</strong></td>
-                            <td>@if($w->format)<span class="niv-chip niv-chip-{{ strtolower(preg_replace('/[^a-z0-9]/i','-', $w->format)) }}">{{ $w->format }}</span>@endif</td>
-                            <td>{{ trim($w->customer) ?: '—' }}</td>
-                            <td>{{ $w->phone }}</td>
-                            <td>{{ $w->location_name }}</td>
-                            <td class="niv-muted">{{ \Carbon\Carbon::parse($w->created_at)->diffForHumans() }}</td>
-                        </tr>
-                    @empty
-                        <tr><td colspan="8" class="niv-muted">No active wants. <a href="{{ action('CustomerWantController@create') }}">Add one</a> when a customer asks for something you don't have in stock.</td></tr>
                     @endforelse
                     </tbody>
                 </table>
