@@ -353,32 +353,62 @@
 
     {{-- Progress: MoM, YoY, and personal month-over-month --}}
     <div class="row">
-        <div class="col-md-3">
-            <div class="niv-card" style="background:linear-gradient(135deg,#fff7ed,#ffedd5);">
-                <h3 style="color:#9a3412;"><i class="fa fa-chart-line"></i> All Stores — Sales MTD <span class="niv-sub">hollywood + pico combined</span></h3>
-                <div style="font-size:26px; font-weight:800; color:#9a3412;">${{ number_format($sales_mtd, 0) }}</div>
-                <div class="niv-muted" style="margin-top:4px;">
-                    @if(is_null($mom_pct))
-                        vs last month same range: ${{ number_format($sales_lm_same, 0) }}
-                    @else
-                        <strong style="color:{{ $mom_pct >= 0 ? '#065f46' : '#991b1b' }};">{{ $mom_pct >= 0 ? '▲' : '▼' }} {{ number_format(abs($mom_pct), 1) }}%</strong>
-                        vs last month (${{ number_format($sales_lm_same, 0) }})
-                    @endif
+        {{-- Combined Store Sales card — one tile, MTD/YTD toggle on top-right.
+             Avoids eating two slots in the grid (freed up col-md-3 for something else later). --}}
+        <div class="col-md-6">
+            <div class="niv-card" id="store-sales-card" style="background:linear-gradient(135deg,#fff7ed,#ffedd5);">
+                <style>
+                    .ss-toggle { display:inline-flex; background:rgba(255,255,255,0.7); border:1px solid rgba(154,52,18,0.2); border-radius:999px; padding:2px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; }
+                    .ss-toggle button { border:0; background:transparent; padding:4px 12px; border-radius:999px; color:#9a3412; cursor:pointer; font-weight:700; font-family:inherit; }
+                    .ss-toggle button.active { background:#9a3412; color:#fff; }
+                    #store-sales-card .ss-pane { display:none; }
+                    #store-sales-card .ss-pane.active { display:block; }
+                </style>
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+                    <h3 style="color:#9a3412; margin:0;">
+                        <i class="fa fa-chart-line"></i>
+                        <span class="ss-title-label">All Stores — Sales MTD</span>
+                        <span class="niv-sub">hollywood + pico combined</span>
+                    </h3>
+                    <div class="ss-toggle" role="tablist">
+                        <button type="button" class="active" data-range="mtd">MTD</button>
+                        <button type="button" data-range="ytd">YTD</button>
+                    </div>
                 </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="niv-card" style="background:linear-gradient(135deg,#f0f9ff,#e0f2fe);">
-                <h3 style="color:#075985;"><i class="fa fa-calendar-alt"></i> All Stores — Sales YTD <span class="niv-sub">hollywood + pico combined</span></h3>
-                <div style="font-size:26px; font-weight:800; color:#075985;">${{ number_format($sales_ytd, 0) }}</div>
-                <div class="niv-muted" style="margin-top:4px;">
-                    @if(is_null($yoy_pct))
-                        vs same range last year: ${{ number_format($sales_ly_same, 0) }}
-                    @else
-                        <strong style="color:{{ $yoy_pct >= 0 ? '#065f46' : '#991b1b' }};">{{ $yoy_pct >= 0 ? '▲' : '▼' }} {{ number_format(abs($yoy_pct), 1) }}%</strong>
-                        vs last year (${{ number_format($sales_ly_same, 0) }})
-                    @endif
+                <div class="ss-pane active" data-range="mtd">
+                    <div style="font-size:26px; font-weight:800; color:#9a3412;">${{ number_format($sales_mtd, 0) }}</div>
+                    <div class="niv-muted" style="margin-top:4px;">
+                        @if(is_null($mom_pct))
+                            vs last month same range: ${{ number_format($sales_lm_same, 0) }}
+                        @else
+                            <strong style="color:{{ $mom_pct >= 0 ? '#065f46' : '#991b1b' }};">{{ $mom_pct >= 0 ? '▲' : '▼' }} {{ number_format(abs($mom_pct), 1) }}%</strong>
+                            vs last month (${{ number_format($sales_lm_same, 0) }})
+                        @endif
+                    </div>
                 </div>
+                <div class="ss-pane" data-range="ytd">
+                    <div style="font-size:26px; font-weight:800; color:#9a3412;">${{ number_format($sales_ytd, 0) }}</div>
+                    <div class="niv-muted" style="margin-top:4px;">
+                        @if(is_null($yoy_pct))
+                            vs same range last year: ${{ number_format($sales_ly_same, 0) }}
+                        @else
+                            <strong style="color:{{ $yoy_pct >= 0 ? '#065f46' : '#991b1b' }};">{{ $yoy_pct >= 0 ? '▲' : '▼' }} {{ number_format(abs($yoy_pct), 1) }}%</strong>
+                            vs last year (${{ number_format($sales_ly_same, 0) }})
+                        @endif
+                    </div>
+                </div>
+                <script>
+                (function () {
+                    var $card = $('#store-sales-card');
+                    $card.on('click', '.ss-toggle button', function () {
+                        var range = $(this).data('range');
+                        $card.find('.ss-toggle button').removeClass('active');
+                        $(this).addClass('active');
+                        $card.find('.ss-pane').removeClass('active').filter('[data-range="' + range + '"]').addClass('active');
+                        $card.find('.ss-title-label').text(range === 'ytd' ? 'All Stores — Sales YTD' : 'All Stores — Sales MTD');
+                    });
+                })();
+                </script>
             </div>
         </div>
         <div class="col-md-3">
