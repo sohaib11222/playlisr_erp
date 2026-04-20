@@ -70,21 +70,45 @@
 
     <div class="box box-solid">
         <div class="box-header with-border">
-            <h3 class="box-title">Items not sold in the last {{ $days }} days (or never sold)</h3>
+            <h3 class="box-title">Items not sold in the last {{ $days }} days (or never sold) — click any column to sort</h3>
         </div>
         <div class="box-body table-responsive">
+            <style>
+                .sortable-col a { color: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+                .sortable-col a:hover { color: #1b6ca8; }
+                .sortable-col .sort-arrow { opacity: 0.4; font-size: 11px; }
+                .sortable-col.active a { color: #1b6ca8; font-weight: 700; }
+                .sortable-col.active .sort-arrow { opacity: 1; }
+            </style>
+            @php
+                $other = request()->except(['sort', 'dir', 'page']);
+                $sortUrl = function ($col) use ($sort, $dir, $other) {
+                    $newDir = ($sort === $col && $dir === 'asc') ? 'desc' : 'asc';
+                    return action('ReportController@deadStockReport') . '?' . http_build_query(array_merge($other, ['sort' => $col, 'dir' => $newDir]));
+                };
+                $arrow = function ($col) use ($sort, $dir) {
+                    if ($sort !== $col) return '<i class="fa fa-sort sort-arrow"></i>';
+                    return $dir === 'asc' ? '<i class="fa fa-sort-up sort-arrow"></i>' : '<i class="fa fa-sort-down sort-arrow"></i>';
+                };
+                $colHead = function ($col, $label, $class = '') use ($sort, $sortUrl, $arrow) {
+                    $active = $sort === $col ? 'active' : '';
+                    return '<th class="sortable-col ' . $class . ' ' . $active . '"><a href="' . $sortUrl($col) . '">' . $label . ' ' . $arrow($col) . '</a></th>';
+                };
+            @endphp
             <table class="table table-bordered table-striped">
                 <thead>
                     <tr>
-                        <th>Artist</th>
-                        <th>Title</th>
-                        <th>Format</th>
-                        <th>SKU</th>
-                        <th class="text-right">Qty on hand</th>
-                        <th class="text-right">Price</th>
-                        <th>Last sold</th>
-                        <th class="text-right">Days since</th>
-                        <th class="text-right">Tied-up value</th>
+                        {!! $colHead('artist', 'Artist') !!}
+                        {!! $colHead('title', 'Title') !!}
+                        {!! $colHead('format', 'Format') !!}
+                        {!! $colHead('sku', 'SKU') !!}
+                        {!! $colHead('qty', 'Qty on hand', 'text-right') !!}
+                        {!! $colHead('price', 'Price', 'text-right') !!}
+                        {!! $colHead('date_acquired', 'Date acquired') !!}
+                        {!! $colHead('days_on_hand', 'Days on hand', 'text-right') !!}
+                        {!! $colHead('last_sold', 'Last sold') !!}
+                        {!! $colHead('days_since', 'Days since', 'text-right') !!}
+                        {!! $colHead('tied_up_value', 'Tied-up value', 'text-right') !!}
                     </tr>
                 </thead>
                 <tbody>
@@ -96,6 +120,18 @@
                         <td>{{ $r->sub_sku }}</td>
                         <td class="text-right">{{ number_format($r->qty_available, 2) }} {{ $r->unit }}</td>
                         <td class="text-right">${{ number_format($r->selling_price, 2) }}</td>
+                        <td>
+                            @php $acq = $r->date_acquired ?: $r->product_created_at; @endphp
+                            @if($acq)
+                                {{ \Carbon\Carbon::parse($acq)->format('M j, Y') }}
+                                @if(!$r->date_acquired)<small class="text-muted" title="No purchase record found — showing product creation date">*</small>@endif
+                            @else
+                                —
+                            @endif
+                        </td>
+                        <td class="text-right">
+                            {{ $r->days_on_hand ? $r->days_on_hand : '—' }}
+                        </td>
                         <td>
                             @if($r->last_sold)
                                 {{ \Carbon\Carbon::parse($r->last_sold)->format('M j, Y') }}
@@ -109,7 +145,7 @@
                         <td class="text-right"><strong>${{ number_format($r->tied_up_value, 2) }}</strong></td>
                     </tr>
                     @empty
-                    <tr><td colspan="9" class="text-center text-muted">🎉 No dead stock in this window — every item on hand has sold recently.</td></tr>
+                    <tr><td colspan="11" class="text-center text-muted">🎉 No dead stock in this window — every item on hand has sold recently.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -117,6 +153,10 @@
             <div class="text-center">
                 {{ $rows->links() }}
             </div>
+
+            <small class="text-muted">
+                * If we couldn't find a purchase record for an item, we show when the product was first added to the system as an approximation of its acquisition date.
+            </small>
         </div>
     </div>
 </section>

@@ -4677,12 +4677,25 @@ class ReportController extends Controller
             ->select('tsl.variation_id', DB::raw('MAX(t.transaction_date) as last_sold'))
             ->groupBy('tsl.variation_id');
 
+        // Date-acquired subquery: MIN(transaction_date) per variation across purchases
+        // (purchase, opening_stock, purchase_transfer). Falls back to product created_at
+        // later in the view when no purchase record exists.
+        $acquiredSub = DB::table('purchase_lines as pl')
+            ->join('transactions as t', 'pl.transaction_id', '=', 't.id')
+            ->where('t.business_id', $business_id)
+            ->whereIn('t.type', ['purchase', 'opening_stock', 'purchase_transfer'])
+            ->select('pl.variation_id', DB::raw('MIN(t.transaction_date) as first_acquired'))
+            ->groupBy('pl.variation_id');
+
         $query = DB::table('variations as v')
             ->join('products as p', 'v.product_id', '=', 'p.id')
             ->join('variation_location_details as vld', 'v.id', '=', 'vld.variation_id')
             ->leftJoin('units as u', 'p.unit_id', '=', 'u.id')
             ->leftJoinSub($lastSaleSub, 'ls', function ($join) {
                 $join->on('v.id', '=', 'ls.variation_id');
+            })
+            ->leftJoinSub($acquiredSub, 'ac', function ($join) {
+                $join->on('v.id', '=', 'ac.variation_id');
             })
             ->where('p.business_id', $business_id)
             ->where('p.type', '!=', 'modifier')
@@ -4703,27 +4716,53 @@ class ReportController extends Controller
             'p.artist',
             'p.name',
             'p.format',
+            'p.created_at as product_created_at',
             'v.sub_sku',
             'vld.qty_available',
             'vld.location_id',
             'v.sell_price_inc_tax as selling_price',
             'ls.last_sold',
+            'ac.first_acquired as date_acquired',
             DB::raw('DATEDIFF(NOW(), ls.last_sold) as days_since_sold'),
+            DB::raw('DATEDIFF(NOW(), COALESCE(ac.first_acquired, p.created_at)) as days_on_hand'),
             DB::raw('(vld.qty_available * v.sell_price_inc_tax) as tied_up_value'),
             'u.short_name as unit'
         );
 
-        // Totals across the full filtered set (before pagination)
+        // Totals across the full filtered set (before pagination + sort)
         $totals_base = (clone $query);
         $totals = DB::query()
             ->fromSub($totals_base, 'x')
             ->selectRaw('COUNT(*) as total_variations, COALESCE(SUM(qty_available), 0) as total_qty, COALESCE(SUM(tied_up_value), 0) as total_value')
             ->first();
 
-        $rows = $query->orderByDesc('tied_up_value')->paginate(50)->appends($request->except('page'));
+        // Column sort: whitelist columns to prevent SQL injection
+        $sort = $request->input('sort', 'tied_up_value');
+        $dir  = strtolower($request->input('dir', 'desc')) === 'asc' ? 'asc' : 'desc';
+        $sort_map = [
+            'artist'          => 'p.artist',
+            'title'           => 'p.name',
+            'format'          => 'p.format',
+            'sku'             => 'v.sub_sku',
+            'qty'             => 'vld.qty_available',
+            'price'           => 'v.sell_price_inc_tax',
+            'last_sold'       => 'ls.last_sold',
+            'days_since'      => 'days_since_sold',
+            'date_acquired'   => 'ac.first_acquired',
+            'days_on_hand'    => 'days_on_hand',
+            'tied_up_value'   => 'tied_up_value',
+        ];
+        $sort_col = $sort_map[$sort] ?? 'tied_up_value';
+        if (in_array($sort_col, ['days_since_sold', 'days_on_hand', 'tied_up_value'])) {
+            $query->orderByRaw($sort_col . ' ' . $dir);
+        } else {
+            $query->orderBy($sort_col, $dir);
+        }
+
+        $rows = $query->paginate(50)->appends($request->except('page'));
 
         return view('report.dead_stock_report')->with(compact(
-            'rows', 'business_locations', 'days', 'location_id', 'totals'
+            'rows', 'business_locations', 'days', 'location_id', 'totals', 'sort', 'dir'
         ));
     }
 
