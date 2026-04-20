@@ -19,7 +19,7 @@
 	<div class="row mb-12">
 		<div class="col-md-12">
 			<div class="row">
-				<div class="@if(empty($pos_settings['hide_product_suggestion'])) col-md-7 @else col-md-10 col-md-offset-1 @endif no-padding pr-12">
+				<div class="@if(empty($pos_settings['hide_product_suggestion'])) col-md-8 @else col-md-10 col-md-offset-1 @endif no-padding pr-12">
 					<div class="box box-solid mb-12 @if(!isMobile()) mb-40 @endif">
 						<div class="box-body pb-0">
 							{!! Form::hidden('location_id', $default_location->id ?? null , ['id' => 'location_id', 'data-receipt_printer_type' => !empty($default_location->receipt_printer_type) ? $default_location->receipt_printer_type : 'browser', 'data-default_payment_accounts' => $default_location->default_payment_accounts ?? '']) !!}
@@ -43,7 +43,7 @@
 						</div>
 					</div>
 				@if(empty($pos_settings['hide_product_suggestion']) && !isMobile())
-				<div class="col-md-5 no-padding">
+				<div class="col-md-4 no-padding">
 					@include('sale_pos.partials.pos_sidebar')
 				</div>
 				@endif
@@ -87,30 +87,9 @@
 
 @include('sale_pos.partials.customer_account_modal')
 
-{{-- Buy Calculator popup (iframes /buy-from-customer?embed=1) --}}
-<div class="modal fade" id="buy_calculator_modal" tabindex="-1" role="dialog" aria-labelledby="buyCalculatorModalLabel">
-	<div class="modal-dialog modal-lg" role="document" style="width: 95%; max-width: 1200px;">
-		<div class="modal-content" style="min-height: 85vh;">
-			<div class="modal-header">
-				<button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
-				<h4 class="modal-title" id="buyCalculatorModalLabel"><i class="fa fa-calculator"></i> Buy from Customer Calculator</h4>
-			</div>
-			<div class="modal-body" style="padding: 0;">
-				<iframe id="buy_calculator_iframe" src="about:blank" style="width: 100%; height: 80vh; border: 0;"></iframe>
-			</div>
-		</div>
-	</div>
-</div>
-<script>
-	$(document).on('show.bs.modal', '#buy_calculator_modal', function() {
-		var url = $('#open_buy_calculator_modal').data('url');
-		$('#buy_calculator_iframe').attr('src', url);
-	});
-	$(document).on('hidden.bs.modal', '#buy_calculator_modal', function() {
-		// Clear iframe on close so fresh session starts next time
-		$('#buy_calculator_iframe').attr('src', 'about:blank');
-	});
-</script>
+{{-- Buy Calculator iframe modal removed (2026-04-19): iframe loaded blank for some users,
+     likely auth/cookie issues when the protected route is loaded inside an iframe.
+     Button now opens the calculator in a new tab — simpler + more reliable. --}}
 
 @stop
 @section('css')
@@ -217,6 +196,70 @@
 			height: 34px;
 			font-size: 14px;
 		}
+
+		/* Hide the "ERP V4.7.8 | Copyright" footer on POS — every pixel counts here */
+		body footer.main-footer,
+		body > footer.no-print {
+			display: none !important;
+		}
+
+		/* Make the cart (pos_table) the most prominent element — it's the actual sale. */
+		section.content table#pos_table {
+			font-size: 15px;
+		}
+		section.content table#pos_table tbody tr td {
+			padding: 10px 8px;
+			vertical-align: middle;
+		}
+		section.content table#pos_table tbody tr td .product_name,
+		section.content table#pos_table tbody tr td .product-name {
+			font-size: 15px;
+			font-weight: 600;
+		}
+		section.content .pos_product_div {
+			max-height: 58vh;   /* a touch more breathing room for the cart */
+		}
+
+		/* De-emphasize the repeated smaller totals (Items / Without Tax / Tax) so the
+		   grand "Total (with Tax)" dominates visually. */
+		section.content .pos_form_totals table.table-condensed td b {
+			font-weight: 600;
+			color: #6b7280;
+			font-size: 12px;
+			text-transform: uppercase;
+			letter-spacing: 0.4px;
+		}
+		section.content .pos_form_totals #pre_tax_amount,
+		section.content .pos_form_totals #order_tax_display {
+			font-weight: 500 !important;
+			font-size: 13px !important;
+			color: #6b7280 !important;
+		}
+		section.content .pos_form_totals #total_with_tax {
+			font-weight: 800 !important;
+			font-size: 26px !important;
+			color: #065f46 !important;
+		}
+
+		/* Make the "create account/rewards" CTA impossible to miss — we want cashiers
+		   to enroll walk-ins into Nivessa Bucks every chance they get. */
+		.pos-customer-block .add_new_customer {
+			background: linear-gradient(135deg, #fde68a, #f59e0b) !important;
+			color: #78350f !important;
+			border: 2px solid #f59e0b !important;
+			font-weight: 800 !important;
+			font-size: 13px !important;
+			padding: 8px 14px !important;
+			text-transform: uppercase !important;
+			letter-spacing: 0.5px !important;
+			border-radius: 8px !important;
+			box-shadow: 0 1px 3px rgba(245, 158, 11, 0.2) !important;
+		}
+		.pos-customer-block .add_new_customer:hover {
+			background: linear-gradient(135deg, #fcd34d, #d97706) !important;
+			color: #78350f !important;
+		}
+		.pos-customer-block .add_new_customer i { color: #78350f !important; }
 	</style>
 	<!-- include module css -->
     @if(!empty($pos_module_data))

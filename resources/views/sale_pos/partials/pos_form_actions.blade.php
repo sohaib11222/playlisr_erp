@@ -29,31 +29,86 @@
 			@endif
 			--}}
 
-			@if(empty($pos_settings['disable_credit_sale_button']))
-				<input type="hidden" name="is_credit_sale" value="0" id="is_credit_sale">
-				<button type="button" 
-				class="btn bg-purple btn-default btn-flat no-print pos-express-finalize @if($is_mobile) col-xs-6 @endif" 
-				data-pay_method="credit_sale"
-				title="@lang('lang_v1.tooltip_credit_sale')" >
-					<i class="fas fa-check" aria-hidden="true"></i> @lang('lang_v1.credit_sale')
+			<style>
+				/* Prioritized payment actions — Cash + Card dominate, rest tucked away */
+				.pos-payment-primary-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 6px; }
+				.pos-payment-primary-row .btn-pay-primary {
+					flex: 1 1 240px; min-height: 72px;
+					font-size: 20px; font-weight: 800;
+					border-radius: 12px;
+					text-transform: uppercase; letter-spacing: 0.8px;
+					display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+					box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+				}
+				.pos-payment-primary-row .btn-pay-primary i { font-size: 26px; }
+				.btn-pay-cash { background: #16a34a !important; color: #fff !important; border: none !important; }
+				.btn-pay-cash:hover { background: #15803d !important; color: #fff !important; }
+				.btn-pay-card { background: #1e3a8a !important; color: #fff !important; border: none !important; }
+				.btn-pay-card:hover { background: #1e40af !important; color: #fff !important; }
+
+				/* "More payment options" menu — Credit Sale + Multi-Pay tucked here */
+				.pos-payment-more .dropdown-menu { min-width: 220px; padding: 4px 0; }
+				.pos-payment-more .dropdown-menu a { padding: 10px 16px; font-weight: 600; }
+
+				/* Soften cancel to a subtle text link — avoid accidental clicks mid-sale */
+				#pos-cancel.pos-cancel-link {
+					background: transparent !important;
+					border: none !important;
+					color: #9ca3af !important;
+					padding: 6px 10px !important;
+					font-weight: 500;
+					font-size: 12px;
+					text-transform: uppercase; letter-spacing: 0.5px;
+					box-shadow: none !important;
+				}
+				#pos-cancel.pos-cancel-link:hover { color: #dc2626 !important; text-decoration: underline; }
+			</style>
+
+			<input type="hidden" name="is_credit_sale" value="0" id="is_credit_sale">
+
+			<div class="pos-payment-primary-row">
+				<button type="button"
+					class="btn btn-pay-primary btn-pay-cash pos-express-finalize @if($pos_settings['disable_express_checkout'] != 0 || !array_key_exists('cash', $payment_types)) hide @endif"
+					data-pay_method="cash"
+					title="@lang('tooltip.express_checkout')">
+					<i class="fas fa-money-bill-alt"></i> Cash
 				</button>
-			@endif
-			<button type="button" 
-				class="btn bg-maroon btn-default btn-flat no-print @if(!empty($pos_settings['disable_suspend'])) @endif pos-express-finalize @if(!array_key_exists('card', $payment_types)) hide @endif @if($is_mobile) col-xs-6 @endif" 
-				data-pay_method="card"
-				title="@lang('lang_v1.tooltip_express_checkout_card')" >
-				<i class="fas fa-credit-card" aria-hidden="true"></i> @lang('lang_v1.express_checkout_card')
-			</button>
+				<button type="button"
+					class="btn btn-pay-primary btn-pay-card pos-express-finalize @if(!array_key_exists('card', $payment_types)) hide @endif"
+					data-pay_method="card"
+					title="@lang('lang_v1.tooltip_express_checkout_card')">
+					<i class="fas fa-credit-card"></i> Card
+				</button>
 
-			<button type="button" class="btn bg-navy btn-default @if(!$is_mobile) @endif btn-flat no-print @if($pos_settings['disable_pay_checkout'] != 0) hide @endif @if($is_mobile) col-xs-6 @endif" id="pos-finalize" title="@lang('lang_v1.tooltip_checkout_multi_pay')"><i class="fas fa-money-check-alt" aria-hidden="true"></i> @lang('lang_v1.checkout_multi_pay') </button>
+				<div class="dropup pos-payment-more">
+					<button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" style="min-height:60px; padding:10px 16px; font-weight:700;">
+						<i class="fa fa-ellipsis-h"></i> More <span class="caret"></span>
+					</button>
+					<ul class="dropdown-menu dropdown-menu-right" style="padding:4px;">
+						{{-- Buttons (not links) so the original pos.js click handlers fire --}}
+						<li style="list-style:none;">
+							<button type="button" class="btn btn-link" id="pos-finalize" title="@lang('lang_v1.tooltip_checkout_multi_pay')" style="display:block; width:100%; text-align:left; padding:10px 16px; font-weight:600; text-decoration:none;">
+								<i class="fas fa-money-check-alt text-primary"></i> @lang('lang_v1.checkout_multi_pay')
+							</button>
+						</li>
+						@if(empty($pos_settings['disable_credit_sale_button']))
+						<li style="list-style:none;">
+							<button type="button" class="btn btn-link pos-express-finalize" data-pay_method="credit_sale" title="@lang('lang_v1.tooltip_credit_sale')" style="display:block; width:100%; text-align:left; padding:10px 16px; font-weight:600; text-decoration:none;">
+								<i class="fas fa-check text-purple"></i> @lang('lang_v1.credit_sale')
+							</button>
+						</li>
+						@endif
+					</ul>
+				</div>
+			</div>
 
-			<button type="button" class="btn btn-success @if(!$is_mobile) @endif btn-flat no-print @if($pos_settings['disable_express_checkout'] != 0 || !array_key_exists('cash', $payment_types)) hide @endif pos-express-finalize @if($is_mobile) col-xs-6 @endif" data-pay_method="cash" title="@lang('tooltip.express_checkout')"> <i class="fas fa-money-bill-alt" aria-hidden="true"></i> @lang('lang_v1.express_checkout_cash')</button>
-
-			@if(empty($edit))
-				<button type="button" class="btn btn-danger btn-flat @if($is_mobile) col-xs-6 @else btn-xs @endif" id="pos-cancel"> <i class="fas fa-window-close"></i> @lang('sale.cancel')</button>
-			@else
-				<button type="button" class="btn btn-danger btn-flat hide @if($is_mobile) col-xs-6 @else btn-xs @endif" id="pos-delete"> <i class="fas fa-trash-alt"></i> @lang('messages.delete')</button>
-			@endif
+			<div style="text-align:center; margin-top:8px;">
+				@if(empty($edit))
+					<button type="button" class="pos-cancel-link" id="pos-cancel"><i class="fas fa-times"></i> Cancel sale</button>
+				@else
+					<button type="button" class="pos-cancel-link hide" id="pos-delete"><i class="fas fa-trash-alt"></i> @lang('messages.delete')</button>
+				@endif
+			</div>
 
 			@if(!$is_mobile)
 			<div class="bg-navy pos-total text-white">

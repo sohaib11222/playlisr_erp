@@ -21,11 +21,14 @@
 					<input type="hidden" id="default_selling_price_group" 
 				value="{{ $walk_in_customer['selling_price_group_id'] ?? ''}}" >
 				@endif
-				{!! Form::select('contact_id', 
-					[], null, ['class' => 'form-control mousetrap', 'id' => 'customer_id', 'placeholder' => 'Nivessa rewards account?', 'required', 'style' => 'width: 100%;']) !!}
+				{!! Form::select('contact_id',
+					[], null, ['class' => 'form-control mousetrap', 'id' => 'customer_id', 'placeholder' => 'Search by name, phone, or email…', 'required', 'style' => 'width: 100%;']) !!}
 			</div>
-			<div style="margin-top: 14px;">
-				<button type="button" class="btn btn-default bg-white btn-flat btn-sm add_new_customer" data-name=""  @if(!auth()->user()->can('customer.create')) disabled @endif><i class="fa fa-plus-circle text-primary"></i> create account/rewards</button>
+			<div style="margin-top: 10px;">
+				<button type="button" class="btn add_new_customer" data-name="" @if(!auth()->user()->can('customer.create')) disabled @endif title="Enroll this customer in Nivessa Bucks rewards">
+					<i class="fa fa-star"></i>&nbsp; Sign Up for Nivessa Bucks
+				</button>
+				<small class="text-muted" style="display:block; margin-top:4px;">Rewards on every purchase — ask every walk-in.</small>
 			</div>
 			<small class="text-danger hide contact_due_text"><strong>@lang('account.customer_due'):</strong> <span></span></small>
 		</div>
@@ -76,16 +79,27 @@
 		
 		<div class="form-group">
 			<style>
-				/* Make the product search the most obvious input on the screen */
-				.pos-product-search-wrap { position: relative; }
+				/* Product search — dominant, standalone row */
+				.pos-product-search-wrap { position: relative; display: flex; align-items: stretch; }
 				.pos-product-search-label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px; color: #1b6ca8; font-weight: 700; margin-bottom: 6px; }
-				.pos-product-search-wrap .input-group-btn > .btn { height: 56px; font-size: 18px; }
+				.pos-product-search-configbtn {
+					flex: 0 0 auto;
+					height: 56px; width: 52px;
+					border: 2px solid #1b6ca8; border-right: none;
+					background: #f0f7fc; color: #1b6ca8;
+					border-radius: 8px 0 0 8px;
+					display: inline-flex; align-items: center; justify-content: center;
+					cursor: pointer; font-size: 18px;
+				}
+				.pos-product-search-configbtn:hover { background: #e1eef8; }
 				.pos-product-search-wrap #search_product {
+					flex: 1 1 auto;
 					height: 56px;
 					font-size: 22px;
 					font-weight: 600;
 					padding: 10px 16px;
 					border: 2px solid #1b6ca8;
+					border-radius: 0 8px 8px 0;
 					box-shadow: 0 0 0 3px rgba(27, 108, 168, 0.12);
 					background: #ffffff;
 				}
@@ -95,30 +109,59 @@
 					outline: none;
 				}
 				.pos-product-search-wrap #search_product::placeholder { color: #8a9ba8; font-weight: 500; }
+
+				/* Secondary action row — sits below search, not inside it */
+				.pos-action-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+				.pos-action-row .btn { height: 40px; padding: 0 16px; font-weight: 600; font-size: 13px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; }
+				.pos-quick-preset {
+					background: linear-gradient(135deg, #fef3c7, #fde68a);
+					color: #78350f; border: 1px solid #f59e0b;
+				}
+				.pos-quick-preset:hover { background: linear-gradient(135deg, #fde68a, #fcd34d); color: #78350f; }
+				.pos-quick-preset .preset-price { font-size: 11px; opacity: 0.75; font-weight: 700; margin-left: 2px; }
 			</style>
 			<label class="pos-product-search-label" for="search_product"><i class="fa fa-search"></i> Ring Up / Scan Product</label>
-			<div class="input-group pos-product-search-wrap">
-				<div class="input-group-btn">
-					<button type="button" class="btn btn-default bg-white btn-flat" data-toggle="modal" data-target="#configure_search_modal" title="{{__('lang_v1.configure_product_search')}}"><i class="fas fa-search-plus"></i></button>
-				</div>
+			<div class="pos-product-search-wrap">
+				<button type="button" class="pos-product-search-configbtn" data-toggle="modal" data-target="#configure_search_modal" title="{{__('lang_v1.configure_product_search')}}"><i class="fas fa-search-plus"></i></button>
 				{!! Form::text('search_product', null, ['class' => 'form-control mousetrap', 'id' => 'search_product', 'placeholder' => 'Type product name, artist, or scan barcode…',
 					'disabled' => is_null($default_location)? true : false,
 					'autofocus' => is_null($default_location)? false : true,
 				]) !!}
-				<span class="input-group-btn">
-					<!-- Show button for weighing scale modal -->
-					@if(isset($pos_settings['enable_weighing_scale']) && $pos_settings['enable_weighing_scale'] == 1)
-						<button type="button" class="btn btn-default bg-white btn-flat" id="weighing_scale_btn" data-toggle="modal" data-target="#weighing_scale_modal" 
-						title="@lang('lang_v1.weighing_scale')"><i class="fa fa-digital-tachograph text-primary fa-lg"></i></button>
-					@endif
-
-					<button type="button" class="btn btn-default bg-white btn-flat pos_add_quick_product" data-href="{{action('ProductController@quickAdd')}}" data-container=".quick_add_product_modal"><i class="fa fa-plus-circle text-primary fa-lg"></i></button>
-					<button type="button" class="btn btn-default bg-white btn-flat pos_add_manual_product" title="Add Manual Item" data-href="/" data-container=".add_manual_product_modal">Add Manual Item</button>
-					<button type="button" class="btn btn-info btn-flat" id="open_buy_calculator_modal" title="Buy from Customer Calculator" data-toggle="modal" data-target="#buy_calculator_modal" data-url="{{ route('buy-from-customer.create') }}?embed=1">
-						<i class="fa fa-calculator"></i> Buy Calculator
-					</button>
-				</span>
 			</div>
+
+			<div class="pos-action-row">
+				@if(isset($pos_settings['enable_weighing_scale']) && $pos_settings['enable_weighing_scale'] == 1)
+					<button type="button" class="btn btn-default" id="weighing_scale_btn" data-toggle="modal" data-target="#weighing_scale_modal" title="@lang('lang_v1.weighing_scale')"><i class="fa fa-digital-tachograph text-primary"></i> Scale</button>
+				@endif
+				<button type="button" class="btn btn-default pos_add_quick_product" data-href="{{action('ProductController@quickAdd')}}" data-container=".quick_add_product_modal" title="Quick add product"><i class="fa fa-plus-circle text-primary"></i> New Product</button>
+				<button type="button" class="btn btn-default pos_add_manual_product" title="Add Manual Item" data-href="/" data-container=".add_manual_product_modal"><i class="fa fa-pen"></i> Add Manual Item</button>
+				<a href="{{ route('buy-from-customer.create') }}" target="_blank" rel="noopener" class="btn btn-info" title="Open Buy from Customer Calculator in a new tab">
+					<i class="fa fa-calculator"></i> Buy Calculator <i class="fa fa-external-link-alt" style="font-size: 11px; opacity: 0.7; margin-left: 4px;"></i>
+				</a>
+			</div>
+
+			{{-- Quick-add preset tiles now live at the top of the product grid sidebar
+				 (see sale_pos/partials/pos_sidebar.blade.php). Wiring script below still
+				 applies — it listens on .pos-quick-preset anywhere in the page. --}}
+
+			{{-- Wire up the quick-add tiles to open the existing Add Manual Item modal with name + price pre-filled. --}}
+			<script>
+			(function () {
+				$(document).on('click', '.pos-quick-preset', function () {
+					var name = $(this).data('preset-name');
+					var price = $(this).data('preset-price');
+					// Trigger the existing Add Manual Item flow first so the modal is built.
+					$('.pos_add_manual_product').trigger('click');
+					// Then fill the first row once the modal is shown.
+					$('#add_manual_product_modal').one('shown.bs.modal', function () {
+						var $row = $('#manual_products_container .manual_product_row').first();
+						if ($row.length === 0) return;
+						$row.find('input[name*="[name]"]').val(name).trigger('change').trigger('blur');
+						$row.find('input[name*="[price]"]').val(price).trigger('input').trigger('change');
+					});
+				});
+			})();
+			</script>
 		</div>
 	</div>
 </div>
@@ -266,7 +309,7 @@
 		<table class="table table-condensed table-bordered table-striped table-responsive" id="pos_table">
 			<thead>
 				<tr>
-					<th class="tex-center @if(!empty($pos_settings['inline_service_staff'])) col-md-3 @else col-md-4 @endif">	
+					<th class="tex-center @if(!empty($pos_settings['inline_service_staff'])) col-md-3 @else col-md-4 @endif">
 						@lang('sale.product') @show_tooltip(__('lang_v1.tooltip_sell_product_column'))
 					</th>
 					<th class="text-center col-md-3">
@@ -278,7 +321,7 @@
 						</th>
 					@endif
 					<th class="text-center col-md-2 {{$hide_tax}}">
-						@lang('lang_v1.purchase_price') 
+						@lang('lang_v1.purchase_price')
 					</th>
 					<th class="text-center col-md-2 {{$hide_tax}}">
 						@lang('sale.price_inc_tax')
@@ -286,10 +329,26 @@
 					<th class="text-center col-md-2">
 						@lang('sale.subtotal')
 					</th>
-					<th class="text-center"><i class="fas fa-times" aria-hidden="true"></i></th>
+					<th class="text-center" title="Remove item"><i class="fas fa-times" aria-hidden="true"></i></th>
 				</tr>
 			</thead>
 			<tbody></tbody>
 		</table>
+		{{-- Friendly empty-cart state — shown whenever #pos_table tbody has zero rows.
+			 Toggled by a small MutationObserver at the end of this partial. --}}
+		<div id="pos_cart_empty_state" style="text-align:center; padding:40px 20px; color:#9ca3af; background:#fafbfc; border:2px dashed #e5e7eb; border-radius:12px; margin:0 0 8px 0;">
+			<i class="fa fa-cart-plus" style="font-size:40px; color:#cbd5e1; display:block; margin-bottom:10px;"></i>
+			<div style="font-size:15px; font-weight:600; color:#6b7280;">Scan a barcode, search a product, or tap a quick-add tile to start ringing up.</div>
+		</div>
+		<script>
+		(function(){
+			var tbody = document.querySelector('#pos_table tbody');
+			var empty = document.getElementById('pos_cart_empty_state');
+			if (!tbody || !empty) return;
+			function toggle() { empty.style.display = tbody.children.length === 0 ? '' : 'none'; }
+			toggle();
+			new MutationObserver(toggle).observe(tbody, { childList: true });
+		})();
+		</script>
 	</div>
 </div>
