@@ -555,6 +555,12 @@ class AdminSidebarMenu
                                 'Employee Productivity',
                                 ['icon' => 'fa fas fa-user-clock', 'active' => request()->segment(2) == 'product-entry-productivity']
                             );
+
+                            $sub->url(
+                                action('ReportController@deadStockReport'),
+                                'Dead Stock',
+                                ['icon' => 'fa fas fa-snowflake', 'active' => request()->segment(2) == 'dead-stock']
+                            );
                         }
 
                         if (auth()->user()->can('purchase_n_sell_report.view')) {

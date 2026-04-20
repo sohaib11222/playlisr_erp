@@ -4643,6 +4643,91 @@ class ReportController extends Controller
     }
 
     /**
+     * Dead Stock Report
+     *
+     * Shows variations that currently have stock on hand but haven't been sold
+     * (or haven't been sold within the user-selected window). Helps identify
+     * capital tied up in slow/dead inventory.
+     */
+    public function deadStockReport(Request $request)
+    {
+        if (!$this->businessUtil->is_admin(auth()->user()) && !auth()->user()->can('purchase_n_sell_report.view')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = $request->session()->get('user.business_id');
+
+        // User-selectable: 90, 180, 365 days (default 180)
+        $days = (int) $request->input('days', 180);
+        if (!in_array($days, [30, 60, 90, 180, 365, 730])) {
+            $days = 180;
+        }
+
+        $location_id = $request->input('location_id');
+        $business_locations = BusinessLocation::forDropdown($business_id);
+
+        $cutoff = \Carbon::now()->subDays($days)->toDateTimeString();
+
+        // Last-sold subquery: MAX(transaction_date) per variation across finalized sells
+        $lastSaleSub = DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->select('tsl.variation_id', DB::raw('MAX(t.transaction_date) as last_sold'))
+            ->groupBy('tsl.variation_id');
+
+        $query = DB::table('variations as v')
+            ->join('products as p', 'v.product_id', '=', 'p.id')
+            ->join('variation_location_details as vld', 'v.id', '=', 'vld.variation_id')
+            ->leftJoin('units as u', 'p.unit_id', '=', 'u.id')
+            ->leftJoinSub($lastSaleSub, 'ls', function ($join) {
+                $join->on('v.id', '=', 'ls.variation_id');
+            })
+            ->where('p.business_id', $business_id)
+            ->where('p.type', '!=', 'modifier')
+            ->where('vld.qty_available', '>', 0)
+            ->whereNull('v.deleted_at')
+            ->where(function ($q) use ($cutoff) {
+                $q->whereNull('ls.last_sold')
+                  ->orWhere('ls.last_sold', '<', $cutoff);
+            });
+
+        if (!empty($location_id)) {
+            $query->where('vld.location_id', $location_id);
+        }
+
+        $query->select(
+            'v.id as variation_id',
+            'p.id as product_id',
+            'p.artist',
+            'p.name',
+            'p.format',
+            'v.sub_sku',
+            'vld.qty_available',
+            'vld.location_id',
+            'v.sell_price_inc_tax as selling_price',
+            'ls.last_sold',
+            DB::raw('DATEDIFF(NOW(), ls.last_sold) as days_since_sold'),
+            DB::raw('(vld.qty_available * v.sell_price_inc_tax) as tied_up_value'),
+            'u.short_name as unit'
+        );
+
+        // Totals across the full filtered set (before pagination)
+        $totals_base = (clone $query);
+        $totals = DB::query()
+            ->fromSub($totals_base, 'x')
+            ->selectRaw('COUNT(*) as total_variations, COALESCE(SUM(qty_available), 0) as total_qty, COALESCE(SUM(tied_up_value), 0) as total_value')
+            ->first();
+
+        $rows = $query->orderByDesc('tied_up_value')->paginate(50)->appends($request->except('page'));
+
+        return view('report.dead_stock_report')->with(compact(
+            'rows', 'business_locations', 'days', 'location_id', 'totals'
+        ));
+    }
+
+    /**
      * Restrict accountant reports to admin users only.
      */
     protected function ensureAccountantReportAdminAccess()

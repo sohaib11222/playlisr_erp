@@ -323,7 +323,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/purchase-order-vs-received', 'ReportController@purchaseOrderVsReceived');
     Route::get('/reports/item-transaction-history', 'ReportController@itemTransactionHistory');
     Route::get('/reports/product-entry-productivity', 'ReportController@productEntryProductivity');
-    
+    Route::get('/reports/dead-stock', 'ReportController@deadStockReport');
+
     Route::get('business-location/activate-deactivate/{location_id}', 'BusinessLocationController@activateDeactivateLocation');
 
     //Business Location Settings...
