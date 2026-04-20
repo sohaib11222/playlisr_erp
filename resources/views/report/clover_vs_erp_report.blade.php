@@ -14,6 +14,12 @@
         The Clover side (live pull from the Clover API for per-employee totals and per-transaction detail) requires a backend sync that hasn't been built yet — once Sohaib wires it up, the Clover columns will populate here automatically and the manual diffing step goes away.
     </div>
 
+    @if($selected_method === 'auto' && isset($effective_method) && $effective_method === 'all')
+        <div class="alert alert-warning" style="border-left: 4px solid #f0ad4e;">
+            <strong>Heads up:</strong> none of this date's payment methods matched the built-in card/Clover list, so the report is showing <strong>all</strong> payment methods instead of auto-filtering. Pick the exact method from the dropdown above (e.g. the one Clover payments are stored as on this install) to narrow the results.
+        </div>
+    @endif
+
     <div class="box box-primary">
         <div class="box-header with-border"><h3 class="box-title">Filters</h3></div>
         <div class="box-body">

@@ -4887,9 +4887,16 @@ class ReportController extends Controller
         $business_locations = BusinessLocation::forDropdown($business_id);
 
         // Which payment method(s) to count as "card/Clover" for this report.
-        // Defaults to a forgiving set of common card-like methods. User can
-        // switch via ?method= to inspect a specific method.
-        $default_card_methods = ['clover', 'card', 'custom_pay_1', 'custom_pay_2', 'custom_pay_3'];
+        // Widened 2026-04-20 after Sarah saw the report come up empty — on
+        // her install, Clover payments land under names like "credit_sale",
+        // "stripe", "cheque" (custom-configured) and other custom_pay_* slots.
+        // Start forgiving; if nothing matches, auto-fallback to ALL methods
+        // below so the report is never blank when there ARE sales that day.
+        $default_card_methods = [
+            'clover', 'card', 'credit_card', 'credit_sale',
+            'custom_pay_1', 'custom_pay_2', 'custom_pay_3', 'custom_pay_4',
+            'custom_pay_5', 'custom_pay_6', 'custom_pay_7',
+        ];
         $selected_method = $request->input('method', 'auto');
 
         // Base query for the selected date.
@@ -4918,12 +4925,28 @@ class ReportController extends Controller
             ->get();
 
         // Apply the method filter for the employee / detail rollups.
-        $base = (clone $baseAll);
+        //
+        // Auto-fallback: if the user is on 'auto' and none of the day's
+        // payment methods intersect with our known card-like list, swap to
+        // 'all' so they see something instead of an empty report. Sarah was
+        // hitting this daily — Clover payments on her install are stored
+        // under method names that didn't match the old defaults.
+        $effective_method = $selected_method;
         if ($selected_method === 'auto') {
-            $base->whereIn('tp.method', $default_card_methods);
-        } elseif ($selected_method !== 'all') {
-            $base->where('tp.method', $selected_method);
+            $day_methods = $methods_breakdown->pluck('method')->map(fn($m) => (string) $m)->all();
+            $has_overlap = !empty(array_intersect($day_methods, $default_card_methods));
+            if (!$has_overlap && !empty($day_methods)) {
+                $effective_method = 'all';
+            }
         }
+
+        $base = (clone $baseAll);
+        if ($effective_method === 'auto') {
+            $base->whereIn('tp.method', $default_card_methods);
+        } elseif ($effective_method !== 'all') {
+            $base->where('tp.method', $effective_method);
+        }
+        // (when $effective_method === 'all', no method filter is applied)
 
         // Per-employee rollup
         $employee_rows = (clone $base)
@@ -4949,7 +4972,7 @@ class ReportController extends Controller
         return view('report.clover_vs_erp_report')->with(compact(
             'employee_rows', 'detail_rows', 'date', 'location_id',
             'business_locations', 'grand_total', 'methods_breakdown',
-            'selected_method', 'default_card_methods'
+            'selected_method', 'effective_method', 'default_card_methods'
         ));
     }
 
