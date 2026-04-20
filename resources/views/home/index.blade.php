@@ -137,8 +137,18 @@
                                 <div style="font-size:36px;">{{ $medals[$i] }}</div>
                                 <div style="flex:1; min-width:0;">
                                     <div style="font-weight:700; color:{{ $fgs[$i] }}; font-size:15px;">{{ $r->employee }}</div>
-                                    <div style="font-size:20px; font-weight:800; color:{{ $fgs[$i] }};">${{ number_format($r->revenue, 0) }}</div>
-                                    <div class="niv-muted" style="font-size:11px;">{{ number_format($r->tx_count) }} tx • {{ number_format($r->items_rung) }} items</div>
+                                    <div style="font-size:22px; font-weight:800; color:{{ $fgs[$i] }};">
+                                        @if(!is_null($r->revenue_per_hour))
+                                            ${{ number_format($r->revenue_per_hour, 0) }}<span style="font-size:14px; font-weight:700; opacity:.8;"> / hr</span>
+                                        @else
+                                            ${{ number_format($r->revenue, 0) }}
+                                        @endif
+                                    </div>
+                                    <div class="niv-muted" style="font-size:11px;">
+                                        ${{ number_format($r->revenue, 0) }} total
+                                        @if($r->hours_worked > 0) · {{ number_format($r->hours_worked, 1) }}h @endif
+                                        · {{ number_format($r->items_rung) }} items
+                                    </div>
                                 </div>
                             </div>
                         </div>

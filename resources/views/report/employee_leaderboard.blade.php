@@ -47,22 +47,28 @@
         .lb-bar-fill { background:linear-gradient(90deg,#10b981,#22c55e); height:100%; }
     </style>
 
+    <div class="alert alert-info" style="border-left: 4px solid #3c8dbc;">
+        <strong>Ranked by $ per hour.</strong> Hours worked come from each employee's cash-register open/close times, clipped to the selected window. Employees without register activity in this window are still shown but without a per-hour ranking (marked "—").
+    </div>
+
     <div class="box box-solid">
         <div class="box-body table-responsive">
             @php
-                $top_revenue = $rows->isNotEmpty() ? max((float) $rows->first()->revenue, 1) : 1;
+                $top_rph = $rows->isNotEmpty() ? max((float) ($rows->first()->revenue_per_hour ?? 0), 1) : 1;
             @endphp
             <table class="table lb-table">
                 <thead>
                     <tr style="color:#6b7280; text-transform:uppercase; font-size:11px; letter-spacing:.5px;">
                         <th class="text-center">Rank</th>
                         <th>Employee</th>
-                        <th class="text-right">Revenue</th>
-                        <th class="text-right"># tx</th>
+                        <th class="text-right" style="background:#ecfdf5;">$ / hr</th>
+                        <th class="text-right" style="background:#ecfdf5;">Items / hr</th>
+                        <th class="text-right" style="background:#ecfdf5;">Tx / hr</th>
+                        <th class="text-right">Hours</th>
+                        <th class="text-right">Total $</th>
                         <th class="text-right">Items rung</th>
                         <th class="text-right">Avg $/tx</th>
                         <th class="text-right">Items priced</th>
-                        <th class="text-right">$ from priced items</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -71,26 +77,40 @@
                             $rank = $i + 1;
                             $rank_cls = $rank === 1 ? 'lb-rank-1' : ($rank === 2 ? 'lb-rank-2' : ($rank === 3 ? 'lb-rank-3' : ''));
                             $row_cls = $r->user_id == $me ? 'lb-me' : '';
-                            $pct = $top_revenue > 0 ? min(($r->revenue / $top_revenue) * 100, 100) : 0;
+                            $pct = (!is_null($r->revenue_per_hour) && $top_rph > 0) ? min(($r->revenue_per_hour / $top_rph) * 100, 100) : 0;
+                            $no_hours = is_null($r->revenue_per_hour);
                         @endphp
                         <tr class="{{ $row_cls }}">
-                            <td class="lb-rank {{ $rank_cls }}">
-                                @if($rank===1) 🥇 @elseif($rank===2) 🥈 @elseif($rank===3) 🥉 @else {{ $rank }} @endif
+                            <td class="lb-rank {{ $no_hours ? '' : $rank_cls }}">
+                                @if($no_hours) —
+                                @elseif($rank===1) 🥇 @elseif($rank===2) 🥈 @elseif($rank===3) 🥉 @else {{ $rank }} @endif
                             </td>
                             <td>
                                 <strong>{{ $r->employee }}</strong>
                                 @if($r->user_id == $me)<span class="label label-primary" style="margin-left:6px;">you</span>@endif
-                                <div class="lb-bar"><div class="lb-bar-fill" style="width:{{ $pct }}%;"></div></div>
+                                @if(!$no_hours)<div class="lb-bar"><div class="lb-bar-fill" style="width:{{ $pct }}%;"></div></div>@endif
                             </td>
-                            <td class="text-right"><strong style="font-size:15px; color:#065f46;">${{ number_format($r->revenue, 0) }}</strong></td>
-                            <td class="text-right">{{ number_format($r->tx_count) }}</td>
+                            <td class="text-right" style="background:#ecfdf5;">
+                                @if(!is_null($r->revenue_per_hour))
+                                    <strong style="font-size:16px; color:#065f46;">${{ number_format($r->revenue_per_hour, 0) }}</strong>
+                                @else — @endif
+                            </td>
+                            <td class="text-right" style="background:#ecfdf5;">
+                                @if(!is_null($r->items_per_hour)) {{ number_format($r->items_per_hour, 1) }} @else — @endif
+                            </td>
+                            <td class="text-right" style="background:#ecfdf5;">
+                                @if(!is_null($r->tx_per_hour)) {{ number_format($r->tx_per_hour, 1) }} @else — @endif
+                            </td>
+                            <td class="text-right">
+                                @if($r->hours_worked > 0) {{ number_format($r->hours_worked, 1) }}h @else <span class="text-muted">—</span> @endif
+                            </td>
+                            <td class="text-right">${{ number_format($r->revenue, 0) }}</td>
                             <td class="text-right">{{ number_format($r->items_rung) }}</td>
                             <td class="text-right">${{ number_format($r->avg_tx, 2) }}</td>
                             <td class="text-right">{{ number_format($r->priced_count) }}</td>
-                            <td class="text-right">${{ number_format($r->priced_revenue, 0) }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="8" class="text-center text-muted">No sales in this window.</td></tr>
+                        <tr><td colspan="10" class="text-center text-muted">No activity in this window.</td></tr>
                     @endforelse
                 </tbody>
             </table>

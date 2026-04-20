@@ -4936,11 +4936,39 @@ class ReportController extends Controller
 
     /**
      * Internal: build the employee leaderboard rows for a business + window.
+     * Ranked by revenue per hour — hours come from cash_registers open/close.
      * Returned as a keyed-by-user Collection so it can power both the full
      * page and the dashboard top-3 widget.
      */
     public function buildLeaderboardRows($business_id, $start, $end, $limit = null)
     {
+        // Hours worked per user in this window, derived from cash_registers.
+        // A register's "shift" is created_at -> closed_at (or NOW() if still open).
+        // We clip each shift to the [start, end] window so partial overlaps are
+        // counted correctly when the window itself is short.
+        $hours_raw = \DB::table('cash_registers')
+            ->where('business_id', $business_id)
+            ->whereNotNull('user_id')
+            ->where(function ($q) use ($start, $end) {
+                $q->where('created_at', '<=', $end)
+                  ->where(function ($q2) use ($start) {
+                      $q2->where('closed_at', '>=', $start)
+                         ->orWhereNull('closed_at');
+                  });
+            })
+            ->selectRaw("user_id,
+                SUM(
+                    TIMESTAMPDIFF(
+                        SECOND,
+                        GREATEST(created_at, ?),
+                        LEAST(COALESCE(closed_at, NOW()), ?)
+                    )
+                ) / 3600.0 as hours")
+            ->addBinding($start, 'select')
+            ->addBinding($end, 'select')
+            ->groupBy('user_id')
+            ->get()
+            ->keyBy('user_id');
         // Sales side — revenue + tx count + line count per employee (created_by)
         $sales = \DB::table('transactions as t')
             ->leftJoin('transaction_sell_lines as tsl', 'tsl.transaction_id', '=', 't.id')
@@ -4993,21 +5021,40 @@ class ReportController extends Controller
         // Lookup user names for any user that appears only on the "priced" side
         $users = \App\User::whereIn('id', $user_ids)->get()->keyBy('id');
 
-        $rows = $user_ids->map(function ($uid) use ($sales, $priced, $priced_rev, $users) {
+        $rows = $user_ids->map(function ($uid) use ($sales, $priced, $priced_rev, $users, $hours_raw) {
             $u = $users->get($uid);
             $s = $sales->get($uid);
             $name = $s->employee ?? trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
+            $hours = (float) (optional($hours_raw->get($uid))->hours ?? 0);
+            $revenue = (float) ($s->revenue ?? 0);
+            $items_rung = (int) ($s->items_rung ?? 0);
+            $tx_count = (int) ($s->tx_count ?? 0);
+            $priced_count = (int) optional($priced->get($uid))->priced_count ?? 0;
+
+            // Use a minimum of 0.25h (15 min) when normalizing so very short
+            // shifts don't produce absurd per-hour numbers. Users with no
+            // register activity return null per-hour metrics (UI renders "—").
+            $hr_eff = $hours >= 0.25 ? $hours : null;
+
             return (object) [
                 'user_id' => $uid,
                 'employee' => trim($name) ?: '(unknown)',
-                'tx_count' => (int) ($s->tx_count ?? 0),
-                'items_rung' => (int) ($s->items_rung ?? 0),
-                'revenue' => (float) ($s->revenue ?? 0),
+                'tx_count' => $tx_count,
+                'items_rung' => $items_rung,
+                'revenue' => $revenue,
                 'avg_tx' => (float) ($s->avg_tx ?? 0),
-                'priced_count' => (int) optional($priced->get($uid))->priced_count ?? 0,
+                'priced_count' => $priced_count,
                 'priced_revenue' => (float) optional($priced_rev->get($uid))->priced_revenue ?? 0,
+                'hours_worked' => $hours,
+                'revenue_per_hour' => $hr_eff ? $revenue / $hr_eff : null,
+                'items_per_hour'   => $hr_eff ? $items_rung / $hr_eff : null,
+                'tx_per_hour'      => $hr_eff ? $tx_count / $hr_eff : null,
+                'priced_per_hour'  => $hr_eff ? $priced_count / $hr_eff : null,
             ];
-        })->sortByDesc('revenue')->values();
+        })
+        // Primary sort: revenue per hour (null goes last). Secondary: raw revenue.
+        ->sortBy(function ($r) { return $r->revenue_per_hour === null ? -1 : $r->revenue_per_hour; }, SORT_REGULAR, true)
+        ->values();
 
         if ($limit) {
             $rows = $rows->take($limit);
