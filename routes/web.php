@@ -325,6 +325,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/product-entry-productivity', 'ReportController@productEntryProductivity');
     Route::get('/reports/dead-stock', 'ReportController@deadStockReport');
     Route::get('/reports/whatnot', 'ReportController@whatnotReport');
+    Route::get('/reports/clover-vs-erp', 'ReportController@cloverVsErpReport');
 
     Route::get('business-location/activate-deactivate/{location_id}', 'BusinessLocationController@activateDeactivateLocation');
 

@@ -4804,6 +4804,77 @@ class ReportController extends Controller
     }
 
     /**
+     * Clover vs ERP Reconciliation Report (ERP side).
+     *
+     * Replaces the manual ERP-side extraction step in Sarah's daily recon.
+     * Given a date + optional location, pulls every ERP transaction that
+     * received a card / Clover payment and groups by the employee who
+     * created the transaction. Shows per-employee totals + individual
+     * payment detail.
+     *
+     * NOTE: The Clover side of the reconciliation (pulling every payment
+     * from Clover's API to diff against the ERP totals below) requires
+     * backend integration work from Sohaib (Clover Orders/Payments API
+     * pull + local cache). Until that's in place, this page gives the
+     * ERP side cleanly so the daily manual process is half-automated.
+     */
+    public function cloverVsErpReport(Request $request)
+    {
+        if (!$this->businessUtil->is_admin(auth()->user()) && !auth()->user()->can('purchase_n_sell_report.view')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = $request->session()->get('user.business_id');
+        $date = $request->input('date') ?: \Carbon::today()->format('Y-m-d');
+        $location_id = $request->input('location_id');
+        $business_locations = BusinessLocation::forDropdown($business_id);
+
+        // Payment methods considered "card / Clover" for reconciliation purposes.
+        // The ERP stores Clover payments under method = 'clover', and older
+        // POS rows may have method = 'card'. Include both so nothing is missed.
+        $card_methods = ['clover', 'card'];
+
+        $base = DB::table('transaction_payments as tp')
+            ->join('transactions as t', 'tp.transaction_id', '=', 't.id')
+            ->leftJoin('users as u', 't.created_by', '=', 'u.id')
+            ->leftJoin('business_locations as bl', 't.location_id', '=', 'bl.id')
+            ->where('tp.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereIn('tp.method', $card_methods)
+            ->whereDate('tp.paid_on', $date);
+
+        if (!empty($location_id)) {
+            $base->where('t.location_id', $location_id);
+        }
+
+        // Per-employee rollup
+        $employee_rows = (clone $base)
+            ->selectRaw("t.created_by,
+                CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as employee,
+                COUNT(tp.id) as cnt,
+                COALESCE(SUM(tp.amount), 0) as erp_total")
+            ->groupBy('t.created_by', 'u.first_name', 'u.last_name')
+            ->orderByDesc('erp_total')
+            ->get();
+
+        // Per-location detail rows (like the bottom section of Sarah's spreadsheet)
+        $detail_rows = (clone $base)
+            ->selectRaw("tp.paid_on, tp.amount, tp.method, tp.card_type,
+                t.invoice_no, t.location_id, bl.name as location_name,
+                CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as employee")
+            ->orderByDesc('tp.paid_on')
+            ->get();
+
+        $grand_total = (float) $employee_rows->sum('erp_total');
+
+        return view('report.clover_vs_erp_report')->with(compact(
+            'employee_rows', 'detail_rows', 'date', 'location_id',
+            'business_locations', 'grand_total'
+        ));
+    }
+
+    /**
      * Restrict accountant reports to admin users only.
      */
     protected function ensureAccountantReportAdminAccess()

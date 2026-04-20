@@ -567,6 +567,12 @@ class AdminSidebarMenu
                                 'Whatnot Sales',
                                 ['icon' => 'fa fas fa-tv', 'active' => request()->segment(2) == 'whatnot']
                             );
+
+                            $sub->url(
+                                action('ReportController@cloverVsErpReport'),
+                                'Clover vs ERP Recon',
+                                ['icon' => 'fa fas fa-balance-scale', 'active' => request()->segment(2) == 'clover-vs-erp']
+                            );
                         }
 
                         if (auth()->user()->can('purchase_n_sell_report.view')) {
