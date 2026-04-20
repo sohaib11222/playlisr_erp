@@ -378,10 +378,10 @@ class ProductController extends Controller
                     '<div style="white-space: nowrap;">@format_currency($min_price) @if($max_price != $min_price && $type == "variable") -  @format_currency($max_price)@endif </div>'
                 )
                 ->editColumn('updated_at', function($row) {
-                    return date('m/d/Y H:i', strtotime($row->updated_at));
+                    return date('m/d/Y h:i A', strtotime($row->updated_at));
                 })
                 ->addColumn('created_at', function ($row) {
-                    return date('m/d/Y H:i', strtotime($row->created_at));
+                    return date('m/d/Y h:i A', strtotime($row->created_at));
                 })
                 ->addColumn('created_by_name', function ($row) {
                     return $row->created_by_name ?? '';

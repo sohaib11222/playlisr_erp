@@ -67,7 +67,7 @@
                         </tr>
                         <tr>
                             <th>Created At:</th>
-                            <td>{{ $preorder->created_at->format('Y-m-d H:i:s') }}</td>
+                            <td>{{ $preorder->created_at->format('m/d/Y h:i A') }}</td>
                         </tr>
                     </table>
                 </div>
