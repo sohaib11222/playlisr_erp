@@ -44,9 +44,20 @@ $(document).ready(function() {
                         ui.item = ui.content[0];
                         $(this).data('ui-autocomplete')._trigger('select', 'autocompleteselect', ui);
                         $(this).autocomplete('close');
+                        return;
                     }
-                    // Otherwise: prices differ → fall through to the default
-                    // jQuery UI picker so the cashier chooses explicitly.
+                    // Prices differ: pick the most recently updated entry
+                    // (Sarah 2026-04-21: the newest price is the current
+                    // shelf price). Falls back to the first item if the
+                    // server didn't surface updated_at.
+                    var sorted = ui.content.slice().sort(function (a, b) {
+                        var ta = Date.parse(a.variation_updated_at || 0) || 0;
+                        var tb = Date.parse(b.variation_updated_at || 0) || 0;
+                        return tb - ta;
+                    });
+                    ui.item = sorted[0];
+                    $(this).data('ui-autocomplete')._trigger('select', 'autocompleteselect', ui);
+                    $(this).autocomplete('close');
                 },
                 select: function(event, ui) {
                     $(this).val(null);

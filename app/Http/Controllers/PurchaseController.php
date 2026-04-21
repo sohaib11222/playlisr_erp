@@ -951,14 +951,18 @@ class PurchaseController extends Controller
                 ->whereNull('variations.deleted_at')
                 ->select(
                     'products.id as product_id',
-                    'products.name', 
+                    'products.name',
                     'products.type',
                     // 'products.sku as sku',
                     'variations.id as variation_id',
                     'variations.name as variation',
                     'variations.sell_price_inc_tax as price',
                     'categories.name as catname',
-                    'variations.sub_sku as sub_sku'
+                    'variations.sub_sku as sub_sku',
+                    // variation_updated_at is returned so the label-print
+                    // autocomplete can auto-pick the most recently updated
+                    // entry when several duplicates match (Zak 2026-04-21).
+                    'variations.updated_at as variation_updated_at'
                 )
                 ->groupBy('variation_id');
 
@@ -982,8 +986,9 @@ class PurchaseController extends Controller
                         'variation_id' => $product->variation_id,
                         'variation_name' => $product->variation,
                         'sub_sku' => $product->sub_sku,
-                    'price' => $product->sell_price_inc_tax,
-                        ];
+                        'price' => $product->sell_price_inc_tax,
+                        'updated_at' => $product->variation_updated_at,
+                    ];
             }
 
             $result = [];
@@ -1009,6 +1014,9 @@ class PurchaseController extends Controller
                                             'text' => $text . ' - ' . $variation['sub_sku']. ' - '.$value['price'].' - '. $value['catname'],
                                             'product_id' => $key ,
                                             'variation_id' => $variation['variation_id'],
+                                            // Surfaced so the label-print autocomplete can
+                                            // tiebreak multi-match by most-recently-updated.
+                                            'variation_updated_at' => $variation['updated_at'] ?? null,
                                         ];
                     }
                     $i++;
