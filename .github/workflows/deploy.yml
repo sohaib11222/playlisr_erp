@@ -6,6 +6,8 @@
 #   DEPLOY_SSH_KEY    — private key (full PEM, begin/end lines included)
 # Optional secret:
 #   DEPLOY_PORT       — SSH port (omit for 22)
+# Optional repository variable (Settings → Variables):
+#   DEPLOY_GIT_REMOTE — git remote name if not "origin" (e.g. erp). If unset, server uses origin, then erp.
 #
 # Push to main: git pull + cache + queue restart (no migrate).
 # Manual "Run workflow": optional migrate.
@@ -61,10 +63,28 @@ jobs:
             export DEPLOY_DIR="$DEPLOY_PATH"
             export DEPLOY_BRANCH=main
             export DEPLOY_MIGRATE='${{ steps.flags.outputs.run_migrate }}'
+            export DEPLOY_GIT_REMOTE='${{ vars.DEPLOY_GIT_REMOTE }}'
+            # Git on the server uses SSH to github.com; trust its host key (separate from Actions→server SSH).
+            mkdir -p "$HOME/.ssh"
+            chmod 700 "$HOME/.ssh"
+            ssh-keyscan -t rsa,ecdsa,ed25519 github.com >> "$HOME/.ssh/known_hosts" 2>/dev/null || true
+            cd "$DEPLOY_PATH"
+            if [ -n "${DEPLOY_GIT_REMOTE:-}" ] && git remote get-url "${DEPLOY_GIT_REMOTE}" >/dev/null 2>&1; then
+              R="${DEPLOY_GIT_REMOTE}"
+            elif git remote get-url origin >/dev/null 2>&1; then
+              R=origin
+            elif git remote get-url erp >/dev/null 2>&1; then
+              R=erp
+            else
+              echo "No git remote 'origin' or 'erp'. Set repo variable DEPLOY_GIT_REMOTE or on server run: git remote -v"
+              git remote -v
+              exit 1
+            fi
+            export DEPLOY_GIT_REMOTE="$R"
+            echo "Using git remote: $R"
             if [ ! -f "$DEPLOY_PATH/scripts/deploy.sh" ]; then
               echo "First deploy: pulling repo so scripts/deploy.sh exists…"
-              cd "$DEPLOY_PATH"
-              git fetch origin main
-              git merge --ff-only origin/main || git pull --no-edit origin main
+              git fetch "$R" main
+              git merge --ff-only "$R/main" || git pull --no-edit "$R" main
             fi
             bash "$DEPLOY_PATH/scripts/deploy.sh"

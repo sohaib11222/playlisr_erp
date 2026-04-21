@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Server-side Laravel deploy. Intended path on production: /www/playlist.nivessa.com/app/scripts/deploy.sh
-# Env (optional): DEPLOY_DIR, DEPLOY_BRANCH, DEPLOY_MIGRATE (0|1)
+#
+# Env (optional):
+#   DEPLOY_DIR          — app root (default /www/playlist.nivessa.com/app)
+#   DEPLOY_BRANCH       — branch (default main)
+#   DEPLOY_MIGRATE      — 1 to run migrations
+#   DEPLOY_GIT_REMOTE   — remote name (default: origin if present, else erp, else fail)
 set -euo pipefail
 
 DEPLOY_DIR="${DEPLOY_DIR:-/www/playlist.nivessa.com/app}"
@@ -14,11 +19,31 @@ if [ ! -f artisan ]; then
   exit 1
 fi
 
-echo "deploy: $(date -u) — dir=$DEPLOY_DIR branch=$DEPLOY_BRANCH"
+resolve_git_remote() {
+  if [ -n "${DEPLOY_GIT_REMOTE:-}" ] && git remote get-url "${DEPLOY_GIT_REMOTE}" >/dev/null 2>&1; then
+    echo "${DEPLOY_GIT_REMOTE}"
+  elif git remote get-url origin >/dev/null 2>&1; then
+    echo origin
+  elif git remote get-url erp >/dev/null 2>&1; then
+    echo erp
+  else
+    echo "deploy: no usable git remote. Add 'origin' or 'erp', or set DEPLOY_GIT_REMOTE. Current remotes:" >&2
+    git remote -v >&2
+    exit 1
+  fi
+}
+
+GIT_REMOTE="$(resolve_git_remote)"
+echo "deploy: $(date -u) — dir=$DEPLOY_DIR branch=$DEPLOY_BRANCH remote=$GIT_REMOTE"
+
+# Trust github.com for git-over-SSH (first fetch on a new server fails without this).
+mkdir -p "$HOME/.ssh"
+chmod 700 "$HOME/.ssh"
+ssh-keyscan -t rsa,ecdsa,ed25519 github.com >> "$HOME/.ssh/known_hosts" 2>/dev/null || true
 
 # Update code only (fast). Fails if merge is required — avoids overwriting uncommitted server edits.
-git fetch origin "$DEPLOY_BRANCH"
-git merge --ff-only "origin/$DEPLOY_BRANCH"
+git fetch "$GIT_REMOTE" "$DEPLOY_BRANCH"
+git merge --ff-only "${GIT_REMOTE}/${DEPLOY_BRANCH}"
 
 if [ "$DEPLOY_MIGRATE" = "1" ]; then
   echo "deploy: migrate"
