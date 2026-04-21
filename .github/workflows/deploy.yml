@@ -8,18 +8,17 @@
 #   DEPLOY_PORT       — SSH port (omit for 22)
 # Optional repository variables (Settings → Variables → Actions):
 #   DEPLOY_GIT_REMOTE      — git remote name if not "origin" (e.g. erp). If unset, server uses origin, then erp.
-#   DEPLOY_SYNC_MODE       — ff-only (default) or reset. ff-only = safe; reset = hard reset to match GitHub.
+#   DEPLOY_SYNC_MODE       — ff-only (default) or reset (used by scripts/deploy.sh after bootstrap).
+#                           First run without scripts/deploy.sh always reset --hard to bootstrap.
 #   DEPLOY_SKIP_DRIFT_CHECK   — "true" = skip drift step entirely.
 #   DEPLOY_DRIFT_NON_BLOCKING — "true" = print drift report but do not fail deploy if issues found.
 #
-# Push to main: git pull + cache + queue restart (no migrate).
+# Deploy is manual only (no auto-deploy on push). Use "Server drift report" for diffs without deploying.
 # Manual "Run workflow": optional migrate.
 
 name: Deploy production
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       run_migrate:
@@ -115,13 +114,9 @@ jobs:
             export DEPLOY_GIT_REMOTE="$R"
             echo "Using git remote: $R"
             if [ ! -f "$DEPLOY_PATH/scripts/deploy.sh" ]; then
-              echo "First deploy: syncing repo (same rules as deploy.sh)…"
-              SYNC="${DEPLOY_SYNC_MODE:-ff-only}"
+              echo "Bootstrap: scripts/deploy.sh missing — aligning server to $R/main (git reset --hard) so deploy scripts exist."
+              echo "Tracked files match GitHub; gitignored files (e.g. .env) are not removed."
               git fetch "$R" main
-              if [ "$SYNC" = "reset" ]; then
-                git reset --hard "$R/main"
-              else
-                git merge --ff-only "$R/main"
-              fi
+              git reset --hard "$R/main"
             fi
             bash "$DEPLOY_PATH/scripts/deploy.sh"
