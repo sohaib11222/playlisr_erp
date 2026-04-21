@@ -48,6 +48,11 @@
 })();
 </script>
 
+{{-- Customer Wish List widget — only shown when a rewards account is loaded.
+     Pulls the contact's active wants + any in-stock matches from the ERP so
+     the cashier can say "oh hey, we got the Green Day LP in yesterday." --}}
+@include('sale_pos.partials.customer_wants_widget')
+
 {{-- Quick-add preset tiles for items always entered manually (drinks, candy, pins, stickers).
      Tapping a tile adds the preset straight to the cart — it DOES NOT open a modal. --}}
 <style>

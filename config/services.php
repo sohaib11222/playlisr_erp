@@ -34,4 +34,14 @@ return [
         'secret' => env('SPARKPOST_SECRET'),
     ],
 
+    // OpenPhone — used to SMS customers when their wanted records come in.
+    // Key lives in .env as OPENPHONE_API_KEY + OPENPHONE_FROM_NUMBER so it
+    // never accidentally lands in the repo. from_number must be an E.164
+    // number you own on OpenPhone (example: +13235551234).
+    'openphone' => [
+        'api_key' => env('OPENPHONE_API_KEY'),
+        'from_number' => env('OPENPHONE_FROM_NUMBER'),
+        'enabled' => env('OPENPHONE_ENABLED', true),
+    ],
+
 ];

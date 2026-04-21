@@ -351,6 +351,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/customer-wants/{id}/fulfill', 'CustomerWantController@fulfill')->name('customer-wants.fulfill');
     Route::delete('/customer-wants/{id}', 'CustomerWantController@destroy')->name('customer-wants.destroy');
 
+    // POS-facing endpoints — JSON, used by the customer-wants sidebar widget
+    // that renders on /pos/create when a rewards account is loaded.
+    Route::get('/customer-wants/for-contact/{contactId}', 'CustomerWantController@forContact')->name('customer-wants.for-contact');
+    Route::post('/customer-wants/from-pos', 'CustomerWantController@storeFromPos')->name('customer-wants.from-pos');
+    Route::post('/customer-wants/{id}/fulfill-ajax', 'CustomerWantController@fulfillAjax')->name('customer-wants.fulfill-ajax');
+
     // Customer Wants list ("call me when X comes in")
     Route::get('/customer-wants', 'CustomerWantController@index')->name('customer_wants.index');
     Route::get('/customer-wants/create', 'CustomerWantController@create')->name('customer_wants.create');
