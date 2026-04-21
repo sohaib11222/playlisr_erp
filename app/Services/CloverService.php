@@ -286,6 +286,99 @@ class CloverService
     }
 
     /**
+     * Pull payments from Clover for a given date range.
+     *
+     * Clover's /v3/merchants/{mid}/payments endpoint returns payments with
+     * createdTime as a millisecond epoch. We filter by a date range (UTC)
+     * using Clover's standard filter syntax:
+     *     ?filter=createdTime>=<ms>&filter=createdTime<=<ms>
+     * and expand employee so the employee name is on the response.
+     *
+     * Paginates via offset/limit — Clover caps individual responses at 1000
+     * elements; this method walks the offsets until fewer than $limit come
+     * back in a page, which is the idiomatic "no more pages" signal.
+     *
+     * @param  \Carbon\Carbon|string  $startDate  inclusive
+     * @param  \Carbon\Carbon|string  $endDate    inclusive
+     * @param  int                    $limit      per-page
+     * @return array  [ 'success' => bool, 'payments' => [...], 'msg' => string ]
+     */
+    public function getPayments($startDate, $endDate, $limit = 1000)
+    {
+        if (!$this->isConfigured()) {
+            return ['success' => false, 'msg' => 'Clover API credentials not configured.', 'payments' => []];
+        }
+
+        try {
+            $clover = $this->settings['clover'] ?? [];
+            $merchantId = $clover['merchant_id'] ?? '';
+            if (empty($merchantId)) {
+                return ['success' => false, 'msg' => 'Clover merchant ID not configured.', 'payments' => []];
+            }
+
+            $start = \Carbon\Carbon::parse($startDate)->startOfDay();
+            $end   = \Carbon\Carbon::parse($endDate)->endOfDay();
+            $startMs = $start->timestamp * 1000;
+            $endMs   = $end->timestamp * 1000;
+
+            $baseUrl = $this->getBaseUrl();
+            $allPayments = [];
+            $offset = 0;
+
+            do {
+                $qs = http_build_query([
+                    'expand' => 'employee',
+                    'limit'  => $limit,
+                    'offset' => $offset,
+                ]);
+                $filters = 'filter=' . rawurlencode('createdTime>=' . $startMs)
+                         . '&filter=' . rawurlencode('createdTime<=' . $endMs);
+
+                $url = $baseUrl . '/v3/merchants/' . $merchantId . '/payments?' . $qs . '&' . $filters;
+
+                $ch = curl_init($url);
+                curl_setopt_array($ch, [
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_HTTPHEADER     => $this->getApiHeaders(),
+                    CURLOPT_TIMEOUT        => 60,
+                ]);
+                $response = curl_exec($ch);
+                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                $error    = curl_error($ch);
+                curl_close($ch);
+
+                if ($error) {
+                    throw new \Exception('cURL error: ' . $error);
+                }
+                if ($httpCode !== 200) {
+                    throw new \Exception('HTTP ' . $httpCode . ': ' . substr((string) $response, 0, 400));
+                }
+
+                $data = json_decode($response, true);
+                $elements = $data['elements'] ?? [];
+                $allPayments = array_merge($allPayments, $elements);
+
+                // Advance or stop
+                $offset += $limit;
+                $pageWasFull = count($elements) === $limit;
+            } while ($pageWasFull);
+
+            return [
+                'success'  => true,
+                'payments' => $allPayments,
+                'count'    => count($allPayments),
+            ];
+        } catch (\Exception $e) {
+            Log::error('Clover getPayments error: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'msg'     => 'Error fetching payments: ' . $e->getMessage(),
+                'payments' => [],
+            ];
+        }
+    }
+
+    /**
      * Get customers from Clover
      *
      * @param int $limit Limit number of customers to fetch
