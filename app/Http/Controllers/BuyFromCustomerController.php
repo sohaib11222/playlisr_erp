@@ -34,8 +34,38 @@ class BuyFromCustomerController extends Controller
         $contacts = Contact::suppliersDropdown($business_id, true, true);
         $itemTypes = $this->calculator->getItemTypesForDropdown();
         $grades = $this->calculator->getGradesForDropdown();
+        $paymentMethods = $this->paymentMethodOptions();
+        $idTypes = $this->idTypeOptions();
 
-        return view('buy_from_customer.create', compact('locations', 'contacts', 'itemTypes', 'grades'));
+        return view('buy_from_customer.create', compact(
+            'locations', 'contacts', 'itemTypes', 'grades',
+            'paymentMethods', 'idTypes'
+        ));
+    }
+
+    /**
+     * Cashier-facing labels for payment methods. DB stores the key (e.g.
+     * "zelle_jon"), UI shows the value. Keep in sync with
+     * BuyCustomerOffer::PAYMENT_METHODS.
+     */
+    public function paymentMethodOptions()
+    {
+        return [
+            'cash'         => 'Cash',
+            'store_credit' => 'Store Credit',
+            'zelle_jon'    => 'Zelle (from Jon)',
+            'venmo_jon'    => 'Venmo (from Jon)',
+        ];
+    }
+
+    public function idTypeOptions()
+    {
+        return [
+            'drivers_license' => "Driver's License",
+            'passport'        => 'Passport',
+            'state_id'        => 'State ID',
+            'other'           => 'Other',
+        ];
     }
 
     public function calculate(Request $request)
@@ -53,8 +83,13 @@ class BuyFromCustomerController extends Controller
         $contacts = Contact::suppliersDropdown($business_id, true, true);
         $itemTypes = $this->calculator->getItemTypesForDropdown();
         $grades = $this->calculator->getGradesForDropdown();
+        $paymentMethods = $this->paymentMethodOptions();
+        $idTypes = $this->idTypeOptions();
 
-        return view('buy_from_customer.create', compact('locations', 'contacts', 'itemTypes', 'grades', 'calculation'))
+        return view('buy_from_customer.create', compact(
+                'locations', 'contacts', 'itemTypes', 'grades',
+                'paymentMethods', 'idTypes', 'calculation'
+            ))
             ->with('input_data', $request->all());
     }
 
@@ -133,9 +168,17 @@ class BuyFromCustomerController extends Controller
             'location_id' => 'nullable|integer',
             'seller_mode' => 'required|in:contact,phone',
             'contact_id' => 'nullable|integer',
+            // Legacy single "seller_name" kept for backwards compat; new intake
+            // splits into first/last + email + optional ID.
             'seller_name' => 'nullable|string|max:255',
+            'seller_first_name' => 'nullable|string|max:100',
+            'seller_last_name' => 'nullable|string|max:100',
             'seller_phone' => 'nullable|string|max:30',
+            'seller_email' => 'nullable|email|max:255',
+            'seller_id_type' => 'nullable|in:' . implode(',', BuyCustomerOffer::ID_TYPES),
+            'seller_id_last4' => 'nullable|string|max:4',
             'payout_type' => 'required|in:cash,store_credit',
+            'payment_method' => 'nullable|in:' . implode(',', BuyCustomerOffer::PAYMENT_METHODS),
             'lines' => 'required|array|min:1',
             'lines.*.item_type' => 'required|string|max:60',
             'lines.*.quantity' => 'required|numeric|min:0.0001',
@@ -147,11 +190,32 @@ class BuyFromCustomerController extends Controller
             'second_offer_credit' => 'nullable|numeric|min:0',
             'final_offer_cash' => 'nullable|numeric|min:0',
             'final_offer_credit' => 'nullable|numeric|min:0',
+            'final_price_paid' => 'nullable|numeric|min:0',
+            'override_reason' => 'nullable|string|max:2000',
+            // Item-count breakdown
+            'items_lp_count' => 'nullable|integer|min:0|max:9999',
+            'items_45_count' => 'nullable|integer|min:0|max:9999',
+            'items_cd_count' => 'nullable|integer|min:0|max:9999',
+            'items_cassette_count' => 'nullable|integer|min:0|max:9999',
+            'items_dvd_count' => 'nullable|integer|min:0|max:9999',
+            'items_bluray_count' => 'nullable|integer|min:0|max:9999',
+            'items_other_count' => 'nullable|integer|min:0|max:9999',
+            'condition_mint_nm_count' => 'nullable|integer|min:0|max:9999',
+            'condition_vg_plus_count' => 'nullable|integer|min:0|max:9999',
+            'condition_g_below_count' => 'nullable|integer|min:0|max:9999',
+            // Compliance — required on accept, optional on draft
+            'compliance_confirmed_ownership' => 'nullable|boolean',
+            'compliance_ack_final_sale' => 'nullable|boolean',
         ];
 
         if ($requireFinal) {
             $rules['final_offer_cash'] = 'required|numeric|min:0';
             $rules['final_offer_credit'] = 'required|numeric|min:0';
+            // On accept, both compliance checkboxes must be checked — this is
+            // the whole point of the intake redesign (legal cover).
+            $rules['compliance_confirmed_ownership'] = 'required|accepted';
+            $rules['compliance_ack_final_sale'] = 'required|accepted';
+            $rules['payment_method'] = 'required|in:' . implode(',', BuyCustomerOffer::PAYMENT_METHODS);
         }
 
         $request->validate($rules);
@@ -170,10 +234,34 @@ class BuyFromCustomerController extends Controller
         $offer->created_by = $user_id;
         $offer->contact_id = optional($contact)->id;
         $offer->seller_mode = $request->input('seller_mode', 'phone');
-        $offer->seller_name = $request->input('seller_name');
+        // Keep legacy seller_name populated by concatenating first + last if
+        // both provided — older reports/exports still read seller_name.
+        $firstName = trim((string) $request->input('seller_first_name', ''));
+        $lastName = trim((string) $request->input('seller_last_name', ''));
+        $combinedName = trim($firstName . ' ' . $lastName);
+        $offer->seller_name = $combinedName !== '' ? $combinedName : $request->input('seller_name');
+        $offer->seller_first_name = $firstName !== '' ? $firstName : null;
+        $offer->seller_last_name = $lastName !== '' ? $lastName : null;
         $offer->seller_phone = $request->input('seller_phone');
+        $offer->seller_email = $request->input('seller_email');
+        $offer->seller_id_type = $request->input('seller_id_type');
+        $offer->seller_id_last4 = $request->input('seller_id_last4');
         $offer->status = $status;
         $offer->payout_type = $request->input('payout_type', 'cash');
+        $offer->payment_method = $request->input('payment_method');
+
+        // Item + condition counts
+        foreach (['items_lp_count', 'items_45_count', 'items_cd_count',
+                  'items_cassette_count', 'items_dvd_count', 'items_bluray_count',
+                  'items_other_count',
+                  'condition_mint_nm_count', 'condition_vg_plus_count', 'condition_g_below_count'] as $countField) {
+            $offer->{$countField} = (int) $request->input($countField, 0);
+        }
+
+        $offer->final_price_paid = $request->input('final_price_paid');
+        $offer->override_reason = $request->input('override_reason');
+        $offer->compliance_confirmed_ownership = (bool) $request->input('compliance_confirmed_ownership');
+        $offer->compliance_ack_final_sale = (bool) $request->input('compliance_ack_final_sale');
         $offer->calculated_cash_total = $calculation['calculated_cash_total'];
         $offer->calculated_credit_total = $calculation['calculated_credit_total'];
         $offer->starting_offer_cash = $calculation['starting_offer_cash'];
