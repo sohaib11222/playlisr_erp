@@ -32,6 +32,17 @@
         </div>
     </div>
 
+    @if(config('nivessa_cogs.enabled'))
+        <div class="alert alert-info" style="border-left:4px solid #3c8dbc;">
+            <strong>COGS fallback is on.</strong> For products sold without a recorded
+            purchase price, cost is filled from the category-based assumption
+            map in <code>config/nivessa_cogs.php</code> (New Vinyl $17, Used
+            Vinyl $0.10, New CD $6, Used CD $0.10, etc.). Rows marked with
+            <strong style="color:#8a6d3b;">*</strong> used an assumed cost for
+            at least one sold unit. Edit the config to tune the assumptions.
+        </div>
+    @endif
+
     <div class="row">
         <div class="col-md-12">
             @component('components.widget', ['class' => 'box-primary'])
@@ -87,7 +98,16 @@ $(document).ready(function () {
             {
                 data: 'cost',
                 name: 'cost',
-                render: function(data) { return __currency_trans_from_en(data || 0, true); }
+                render: function(data, _type, row) {
+                    var val = __currency_trans_from_en(data || 0, true);
+                    // Append an asterisk + mustard color when the COGS fallback
+                    // kicked in, so accountants can distinguish real cost from
+                    // assumption-based cost at a glance.
+                    if (row.cost_is_assumed == 1) {
+                        return val + ' <strong style="color:#8a6d3b;" title="Includes assumed cost (no purchase price on file)">*</strong>';
+                    }
+                    return val;
+                }
             },
             {
                 data: 'gross_margin',
