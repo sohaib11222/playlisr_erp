@@ -129,7 +129,8 @@ class SellPosController extends Controller
         $business_locations = BusinessLocation::forDropdown($business_id, false);
         $customers = Contact::customersDropdown($business_id, false);
       
-        $sales_representative = User::forDropdown($business_id, false, false, true);
+        // only_active_login=true: POS list dropdown hides terminated / login-disabled users
+        $sales_representative = User::forDropdown($business_id, false, false, true, false, true);
         
         $is_cmsn_agent_enabled = request()->session()->get('business.sales_cmsn_agnt');
         $commission_agents = [];

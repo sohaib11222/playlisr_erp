@@ -163,17 +163,24 @@ class User extends Authenticatable
      *
      * @return array users
      */
-    public static function forDropdown($business_id, $prepend_none = true, $include_commission_agents = false, $prepend_all = false, $check_location_permission = false)
+    public static function forDropdown($business_id, $prepend_none = true, $include_commission_agents = false, $prepend_all = false, $check_location_permission = false, $only_active_login = false)
     {
         $query = User::where('business_id', $business_id)
                     ->user();
-                    
+
         if (!$include_commission_agents) {
             $query->where('is_cmmsn_agnt', 0);
         }
 
         if ($check_location_permission) {
             $query->onlyPermittedLocations();
+        }
+
+        // Only-active-and-login-allowed filter. Used by POS list-view
+        // dropdowns so terminated / inactive staff don't clutter the picker.
+        if ($only_active_login) {
+            $query->where('users.status', 'active')
+                  ->where('users.allow_login', 1);
         }
 
         $all_users = $query->select('id', DB::raw("CONCAT(COALESCE(surname, ''),' ',COALESCE(first_name, ''),' ',COALESCE(last_name,'')) as full_name"))->get();
