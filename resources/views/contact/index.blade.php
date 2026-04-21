@@ -553,6 +553,90 @@ $(document).off('click', '.add_store_credit_button').on('click', '.add_store_cre
     });
 });
 
+{{-- Adjust / remove store credit. Opens a custom dialog (not swal because
+     we need two inputs: signed amount + reason) and calls the new
+     /contacts/{id}/adjust-credit endpoint. Clyde's 2026-04-21 ask:
+     'how do we remove credit applied by accident?' --}}
+$(document).off('click', '.adjust_store_credit_button').on('click', '.adjust_store_credit_button', function (e) {
+    e.preventDefault();
+    var contactId = $(this).data('contact-id');
+    var currentBalance = parseFloat($(this).data('current-balance') || 0) || 0;
+    if (!contactId) { toastr.error('Contact ID not found'); return; }
+
+    // Build a one-off modal inline so we don't need a blade partial.
+    var $modal = $('#adjust_store_credit_modal');
+    if (!$modal.length) {
+        $modal = $(
+            '<div class="modal fade" id="adjust_store_credit_modal" tabindex="-1" role="dialog">' +
+              '<div class="modal-dialog"><div class="modal-content">' +
+                '<div class="modal-header">' +
+                  '<button type="button" class="close" data-dismiss="modal">&times;</button>' +
+                  '<h4 class="modal-title">Adjust store credit</h4>' +
+                '</div>' +
+                '<div class="modal-body">' +
+                  '<p style="font-size:13px;color:#666;margin-bottom:10px;">Current balance: <strong id="asc_current_balance">$0.00</strong></p>' +
+                  '<div class="form-group">' +
+                    '<label>Amount (use a minus sign to remove credit, e.g. <code>-25</code>):</label>' +
+                    '<input type="number" step="0.01" id="asc_amount" class="form-control" placeholder="e.g. -25 or 10">' +
+                  '</div>' +
+                  '<div class="form-group">' +
+                    '<label>Reason (required):</label>' +
+                    '<input type="text" id="asc_reason" class="form-control" placeholder="e.g. Applied by mistake — reversing">' +
+                  '</div>' +
+                  '<p id="asc_preview" style="font-size:12px;color:#555;margin:0;"></p>' +
+                '</div>' +
+                '<div class="modal-footer">' +
+                  '<button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>' +
+                  '<button type="button" class="btn btn-primary" id="asc_submit">Save adjustment</button>' +
+                '</div>' +
+              '</div></div>' +
+            '</div>'
+        );
+        $('body').append($modal);
+    }
+
+    $modal.find('#asc_current_balance').text('$' + currentBalance.toFixed(2));
+    $modal.find('#asc_amount').val('').data('contact-id', contactId).data('current-balance', currentBalance);
+    $modal.find('#asc_reason').val('');
+    $modal.find('#asc_preview').text('');
+    $modal.modal('show');
+});
+
+// Live preview of resulting balance as cashier types.
+$(document).on('input', '#asc_amount', function () {
+    var delta = parseFloat($(this).val() || 0) || 0;
+    var current = parseFloat($(this).data('current-balance') || 0) || 0;
+    var next = (current + delta).toFixed(2);
+    $('#asc_preview').text('New balance will be: $' + next);
+    $('#asc_preview').css('color', (parseFloat(next) < 0) ? '#b91c1c' : '#555');
+});
+
+$(document).off('click', '#asc_submit').on('click', '#asc_submit', function () {
+    var contactId = $('#asc_amount').data('contact-id');
+    var delta = parseFloat($('#asc_amount').val() || 0) || 0;
+    var reason = ($('#asc_reason').val() || '').trim();
+    if (!contactId) { toastr.error('No contact selected.'); return; }
+    if (!delta) { toastr.error('Enter a non-zero amount.'); return; }
+    if (!reason) { toastr.error('Reason is required.'); return; }
+
+    $.ajax({
+        method: 'POST',
+        url: '/contacts/' + contactId + '/adjust-credit',
+        dataType: 'json',
+        data: { amount: delta, reason: reason, _token: $('meta[name="csrf-token"]').attr('content') },
+        success: function (r) {
+            if (r.success) {
+                toastr.success(r.msg);
+                $('#adjust_store_credit_modal').modal('hide');
+                if (typeof customer_table !== 'undefined') { customer_table.ajax.reload(); }
+            } else {
+                toastr.error(r.msg || 'Unable to adjust credit.');
+            }
+        },
+        error: function () { toastr.error('Unable to adjust credit.'); }
+    });
+});
+
 $(document).off('click', '#modal_add_store_credit_btn').on('click', '#modal_add_store_credit_btn', function() {
     var contactId = $('#modal_store_credit_contact_id').val();
     var amount = parseFloat($('#modal_store_credit_amount').val()) || 0;

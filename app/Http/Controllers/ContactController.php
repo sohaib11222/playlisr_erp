@@ -337,8 +337,10 @@ class ContactController extends Controller
                     if (auth()->user()->can('customer.update')) {
                         $html .= '<a href="' . action('ContactController@edit', [$row->id]) . '" class="btn btn-xs btn-primary edit_contact_button">' .
                             '<i class="glyphicon glyphicon-edit"></i> ' . __("messages.edit") . '</a>';
-                        $html .= '<a href="#" class="btn btn-xs btn-success add_store_credit_button" data-contact-id="' . $row->id . '">' .
+                        $html .= '<a href="#" class="btn btn-xs btn-success add_store_credit_button" data-contact-id="' . $row->id . '" data-current-balance="' . (float) $row->balance . '">' .
                             '<i class="fa fa-plus-circle"></i> Store Credit</a>';
+                        $html .= '<a href="#" class="btn btn-xs btn-warning adjust_store_credit_button" data-contact-id="' . $row->id . '" data-current-balance="' . (float) $row->balance . '" title="Adjust / remove credit (with reason)">' .
+                            '<i class="fa fa-pen"></i> Adjust</a>';
                     }
                     if (!$row->is_default && auth()->user()->can('customer.delete')) {
                         $html .= '<a href="' . action('ContactController@destroy', [$row->id]) . '" class="btn btn-xs btn-danger delete_contact_button">' .
@@ -1823,6 +1825,71 @@ class ContactController extends Controller
                 'success' => true,
                 'msg' => 'Store credit added successfully.',
                 'new_balance' => (float) $contact->balance
+            ]);
+        } catch (\Exception $e) {
+            \Log::emergency("File:" . $e->getFile() . "Line:" . $e->getLine() . "Message:" . $e->getMessage());
+            return response()->json(['success' => false, 'msg' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Signed adjustment to a customer's store-credit balance. Positive
+     * numbers add, negative numbers subtract; a 'reason' is required so
+     * there's always an audit trail when cashiers undo mistaken credits
+     * (Clyde's 2026-04-21 ask: he applied credit by accident and had no
+     * way to reverse it).
+     *
+     * Refuses adjustments that would drive the balance negative — if
+     * you need to zero it out, query the current balance first.
+     */
+    public function adjustStoreCredit($id, Request $request)
+    {
+        if (!auth()->user()->can('customer.update') && !auth()->user()->can('supplier.update')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        try {
+            $business_id = request()->session()->get('user.business_id');
+            $contact = Contact::where('business_id', $business_id)->findOrFail($id);
+
+            $delta = (float) $request->input('amount', 0);
+            $reason = trim((string) $request->input('reason', ''));
+            if (abs($delta) < 0.01) {
+                return response()->json(['success' => false, 'msg' => 'Enter a non-zero amount.']);
+            }
+            if ($reason === '') {
+                return response()->json(['success' => false, 'msg' => 'Reason is required for credit adjustments.']);
+            }
+
+            $currentBalance = (float) $contact->balance;
+            $newBalance = round($currentBalance + $delta, 2);
+            if ($newBalance < 0) {
+                return response()->json([
+                    'success' => false,
+                    'msg' => 'Adjustment would drive balance below \$0 (current: $' . number_format($currentBalance, 2) . ').'
+                ]);
+            }
+
+            $contact->balance = $newBalance;
+
+            // Audit trail: append to the contact's additional_information /
+            // notes field so the history is never lost. One line per edit.
+            $sign = $delta >= 0 ? '+' : '−';
+            $stamp = now()->format('Y-m-d H:i');
+            $who = auth()->user()->first_name ?? 'unknown';
+            $line = sprintf(
+                '[%s] store-credit %s$%s by %s → new balance $%s. Reason: %s',
+                $stamp, $sign, number_format(abs($delta), 2),
+                $who, number_format($newBalance, 2), $reason
+            );
+            $contact->balance_notes = trim(($contact->balance_notes ?? '') . "\n" . $line);
+            $contact->save();
+
+            return response()->json([
+                'success' => true,
+                'msg' => 'Store credit adjusted. New balance: $' . number_format($newBalance, 2),
+                'new_balance' => $newBalance,
+                'delta' => $delta,
             ]);
         } catch (\Exception $e) {
             \Log::emergency("File:" . $e->getFile() . "Line:" . $e->getLine() . "Message:" . $e->getMessage());

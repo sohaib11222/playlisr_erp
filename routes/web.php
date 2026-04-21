@@ -116,6 +116,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/contacts/{id}/avatar', 'ContactController@updateAvatar');
     Route::post('/contacts/{id}/genres', 'ContactController@updateGenres');
     Route::post('/contacts/{id}/store-credit', 'ContactController@updateStoreCredit');
+    Route::post('/contacts/{id}/adjust-credit', 'ContactController@adjustStoreCredit')->name('contacts.adjustCredit');
     Route::get('/contacts/campaigns', 'ContactCampaignController@index');
     Route::post('/contacts/campaigns/send', 'ContactCampaignController@send');
     Route::resource('contacts', 'ContactController');
