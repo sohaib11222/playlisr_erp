@@ -54,6 +54,16 @@ class Kernel extends ConsoleKernel
         
         // StreetPulse daily upload (runs at 2:00 AM to upload yesterday's data)
         $schedule->command('streetpulse:upload-daily')->dailyAt('02:00');
+
+        // Customer wants — scan recently-added products against open wants
+        // and notify the customer when we find a match. Runs at 4 PM PST so
+        // the team's morning pricing push gets a same-day check-in, and the
+        // --days=2 window stays forgiving enough to catch anything that
+        // slipped past yesterday's run.
+        $schedule->command('wants:scan-matches --commit --days=2')
+            ->dailyAt('16:00')
+            ->timezone('America/Los_Angeles')
+            ->withoutOverlapping(50);
     }
 
     /**
