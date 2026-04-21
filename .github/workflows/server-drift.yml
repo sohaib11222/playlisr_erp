@@ -1,10 +1,19 @@
 # Server vs GitHub — difference report only. Never deploys or changes the server.
-# Run: Actions → Server drift report → Run workflow.
+#
+# When it runs:
+#   • Push to branch `main` — after each push (see `on.push` below; narrow with `paths` if too noisy).
+#   • Schedule — weekly (UTC); edit or remove the `cron` line if you do not want scheduled runs.
+#   • Manual — Actions → Server drift report → Run workflow.
 
 name: Server drift report
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+  schedule:
+    # Mondays 09:00 UTC — drift snapshot without a deploy
+    - cron: '0 9 * * 1'
 
 concurrency:
   group: server-drift
@@ -35,9 +44,12 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ steps.flags.outputs.ssh_port }}
-          script_stop: true
+          # If true, drone-ssh stops on first non-zero exit (e.g. `read` can return 1) and skips the rest of the report.
+          script_stop: false
           script: |
-            # No -e / pipefail: report must always finish; pipelines and tests must not abort the job.
+            # Full script runs as one unit; avoid per-command stop. No -e / pipefail.
+            set +e
+            set +o pipefail 2>/dev/null || true
             set -u
             DEPLOY_DIR=/www/playlist.nivessa.com/app
             DEPLOY_BRANCH=main
@@ -72,9 +84,13 @@ jobs:
             echo "Local HEAD: $(git rev-parse --short HEAD)  $(git log -1 --oneline)"
             echo "Remote ref: $(git rev-parse --short "$REF_REMOTE" 2>/dev/null || echo '(missing after fetch)')"
             echo ""
-            read -r COUNT_SERVER COUNT_GITHUB <<<"$(git rev-list --left-right --count "HEAD...${REF_REMOTE}" 2>/dev/null || echo "0 0")"
-            echo "Commits on SERVER not on GitHub: ${COUNT_SERVER:-0}"
-            echo "Commits on GitHub not on SERVER:  ${COUNT_GITHUB:-0}"
+            LR=$(git rev-list --left-right --count "HEAD...${REF_REMOTE}" 2>/dev/null || echo "0 0")
+            COUNT_SERVER=$(echo "$LR" | awk '{print $1}')
+            COUNT_GITHUB=$(echo "$LR" | awk '{print $2}')
+            COUNT_SERVER=${COUNT_SERVER:-0}
+            COUNT_GITHUB=${COUNT_GITHUB:-0}
+            echo "Commits on SERVER not on GitHub: $COUNT_SERVER"
+            echo "Commits on GitHub not on SERVER:  $COUNT_GITHUB"
             echo ""
             DIRTY="$(git status --porcelain 2>/dev/null || true)"
             if [ -n "$DIRTY" ]; then
