@@ -108,6 +108,27 @@
         margin-left: 4px;
     }
 
+    /* Hide adjust rows when their value is zero (toggled by JS below).
+       The CTA chips take their place. */
+    .pos-receipt .r-adjust-row.r-hidden { display: none !important; }
+    .r-adjust-cta {
+        display: flex; flex-wrap: wrap; gap: 6px;
+        margin: 4px 0 2px;
+    }
+    .r-adjust-cta.r-hidden { display: none; }
+    .r-adjust-chip {
+        display: inline-flex; align-items: center; gap: 4px;
+        padding: 3px 10px;
+        background: transparent;
+        border: 1px dashed #DFD2B3;
+        border-radius: 999px;
+        font-size: 11px; font-weight: 500; color: #8E8273;
+        cursor: pointer; line-height: 1.4;
+        font-family: inherit;
+    }
+    .r-adjust-chip i { font-size: 9px; }
+    .r-adjust-chip:hover { border-color: #8E8273; color: #5A5045; background: #FAF6EE; }
+
     /* Discount dropdown menu (Manual / Preset). */
     .adj-discount-wrap { position: relative; display: inline-block; }
     .adj-discount-menu {
@@ -285,9 +306,10 @@
         @endif
 
         <div class="pos-receipt">
-            {{-- Discount row --}}
+            {{-- Discount row — hidden unless a discount is applied.
+                 When zero, the '+ Add discount' chip below takes its place. --}}
             @if($is_discount_enabled)
-            <div class="r-row">
+            <div class="r-row r-adjust-row" id="pos-discount-row">
                 <span class="label">
                     Discount
                     <span class="adj-discount-wrap" id="adj-discount-wrap">
@@ -305,13 +327,27 @@
             </div>
             @endif
 
-            {{-- Shipping row --}}
-            <div class="r-row">
+            {{-- Shipping row — hidden unless shipping is applied. --}}
+            <div class="r-row r-adjust-row" id="pos-shipping-row">
                 <span class="label">
                     Shipping
                     <button type="button" class="edit" title="@lang('sale.shipping')" data-toggle="modal" data-target="#posShippingModal"><i class="fa fa-pencil-alt"></i> Edit</button>
                 </span>
                 <span class="amt">+ $<span id="shipping_charges_amount">0</span></span>
+            </div>
+
+            {{-- "+ Add discount / + Add shipping" chips. Only render when
+                 the corresponding row is hidden (zero). JS below toggles
+                 visibility based on the computed totals. --}}
+            <div class="r-adjust-cta" id="pos-adjust-cta">
+                @if($is_discount_enabled)
+                <button type="button" class="r-adjust-chip" id="pos-add-discount" aria-label="Add a discount to this sale">
+                    <i class="fa fa-plus"></i> Add discount
+                </button>
+                @endif
+                <button type="button" class="r-adjust-chip" id="pos-add-shipping" data-toggle="modal" data-target="#posShippingModal" aria-label="Add shipping to this sale">
+                    <i class="fa fa-plus"></i> Add shipping
+                </button>
             </div>
 
             {{-- Packing (only when types_of_service module is enabled) --}}
@@ -513,6 +549,46 @@
                 // Whatnot chip — light up when checked.
                 $(document).on('change', '#is_whatnot', function () {
                     $('#whatnot_chip').toggleClass('active-whatnot', this.checked);
+                });
+
+                // + Add discount / + Add shipping — hide the real receipt
+                // row until the cashier applies a non-zero value. Cuts clutter
+                // on the 99% of sales that don't use either. Re-runs every
+                // time pos.js recomputes totals (invoice_total_calculated).
+                function parseAmt(txt) {
+                    var n = parseFloat(String(txt || '0').replace(/[^0-9.\-]/g, ''));
+                    return isNaN(n) ? 0 : n;
+                }
+                function syncAdjustRows() {
+                    var discount = parseAmt($('#total_discount').text());
+                    var shipping = parseAmt($('#shipping_charges_amount').text());
+                    var $discountRow = $('#pos-discount-row');
+                    var $shippingRow = $('#pos-shipping-row');
+                    $discountRow.toggleClass('r-hidden', discount === 0);
+                    $shippingRow.toggleClass('r-hidden', shipping === 0);
+
+                    // CTA chips: hide each when its row is already visible.
+                    var $cta = $('#pos-adjust-cta');
+                    $('#pos-add-discount').toggle(discount === 0);
+                    $('#pos-add-shipping').toggle(shipping === 0);
+                    var anyChipVisible = $cta.children(':visible').length > 0;
+                    $cta.toggleClass('r-hidden', !anyChipVisible);
+                }
+                syncAdjustRows();
+                $(document).on('invoice_total_calculated', syncAdjustRows);
+                // Also resync after the discount / shipping modals close,
+                // since pos.js may update totals before the event fires.
+                $(document).on('hidden.bs.modal', '#posEditDiscountModal, #posShippingModal', function () {
+                    setTimeout(syncAdjustRows, 100);
+                });
+
+                // "+ Add discount" chip opens the same Manual/Preset
+                // dropdown that the inline Edit button opens, so cashiers
+                // don't have to learn two entry points.
+                $(document).on('click', '#pos-add-discount', function (e) {
+                    e.preventDefault();
+                    $('#pos-discount-row').removeClass('r-hidden');
+                    $('#adj-discount-toggle').trigger('click');
                 });
             });
         })();
