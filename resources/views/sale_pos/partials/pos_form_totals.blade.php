@@ -74,13 +74,18 @@
         min-width: 16px; text-align: center; font-weight: 700; font-size: 12px; color: #5A4410;
     }
 
-    /* Receipt rows — tight 3px padding, simple label : amount layout. */
-    .pos-receipt { margin: 0; }
-    .pos-receipt .row {
-        display: flex; justify-content: space-between; align-items: baseline;
-        padding: 3px 0; font-size: 13px; gap: 16px;
-        margin: 0;  /* Override Bootstrap's negative-margin .row */
+    /* Receipt rows — tight 3px padding, simple label : amount layout.
+       Using .r-row (not Bootstrap's .row) so the global grid negative
+       margins don't cramp the flex container. */
+    .pos-receipt { margin: 0; width: 100%; display: block; }
+    .pos-receipt .r-row {
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: baseline;
+        padding: 3px 0; margin: 0;
+        font-size: 13px; gap: 16px; width: 100%;
     }
+    .pos-receipt .r-row::before, .pos-receipt .r-row::after { display: none; content: none; }
     .pos-receipt .label { color: #5A5045; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
     .pos-receipt .amt { color: #1F1B16; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .pos-receipt .muted { color: #8E8273; font-size: 11px; font-weight: 400; }
@@ -94,9 +99,9 @@
     .pos-receipt .edit:hover { background: #F7F1E3; }
     .pos-receipt .edit i { font-size: 9px; margin-right: 2px; }
     .pos-receipt .divider { border-top: 1px dashed #DFD2B3; margin: 5px 0; }
-    .pos-receipt .row.subtotal { padding: 5px 0; }
-    .pos-receipt .row.subtotal .label { font-weight: 700; color: #1F1B16; font-size: 13px; }
-    .pos-receipt .row.subtotal .amt { font-weight: 700; font-size: 14px; }
+    .pos-receipt .r-row.subtotal { padding: 5px 0; }
+    .pos-receipt .r-row.subtotal .label { font-weight: 700; color: #1F1B16; font-size: 13px; }
+    .pos-receipt .r-row.subtotal .amt { font-weight: 700; font-size: 14px; }
     .pos-receipt .items-inline {
         font-size: 10px; color: #8E8273; font-weight: 500;
         background: #F7F1E3; padding: 1px 7px; border-radius: 999px;
@@ -120,15 +125,17 @@
     .adj-discount-menu button:hover { background: #F7F1E3; }
     .adj-discount-menu button i { width: 14px; color: #8E8273; }
 
-    /* Pre-Tax → Clover — the obvious bar. Most visible number on the page. */
+    /* Pre-Tax → Clover — the obvious bar. Most visible number on the page.
+       Mirrors nivessa_sale_column.html: label on left, big mustard amount
+       on right, black "KEY THIS INTO CLOVER" pill anchored to the top-left. */
     .pos-pretax-bar {
         position: relative;
         display: flex; align-items: center; justify-content: space-between; gap: 16px;
         background: #FFF2B3;
-        border: 2px solid #E8CF68;
+        border: 2px solid #F0DC7A;
         border-radius: 10px;
-        padding: 12px 16px;
-        margin: 10px 0 6px;
+        padding: 14px 18px;
+        margin: 12px 0 8px;
         box-shadow: 0 0 0 3px rgba(255, 242, 179, .4);
     }
     .pos-pretax-bar::before {
@@ -138,29 +145,40 @@
         font-size: 9px; font-weight: 800;
         letter-spacing: .14em; padding: 3px 9px;
         border-radius: 999px;
+        line-height: 1.2;
     }
     .pos-pretax-bar .pretax-label {
         display: flex; flex-direction: column; gap: 1px;
         color: #5A4410; font-weight: 700;
         font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+        line-height: 1.25;
     }
     .pos-pretax-bar .pretax-sub {
-        font-size: 10px; font-weight: 500; text-transform: none;
-        letter-spacing: 0; opacity: .72;
+        font-size: 9px; font-weight: 500; text-transform: none;
+        letter-spacing: 0; opacity: .75;
+        line-height: 1.2;
     }
-    .pos-pretax-bar .pretax-val {
+    /* Amount: $ and number same size, same weight, same color. Explicit
+       inheritance + line-height so nothing global can overlap the glyphs. */
+    .pos-pretax-bar .pretax-amt {
+        display: inline-flex; align-items: baseline; gap: 1px;
         color: #5A4410; font-weight: 800;
-        font-size: 26px; letter-spacing: -.02em;
+        font-size: 24px; line-height: 1.1;
+        letter-spacing: -.02em;
         font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+    }
+    .pos-pretax-bar .pretax-amt > span {
+        font: inherit; color: inherit; line-height: inherit; letter-spacing: inherit;
     }
 
     /* Grand total row */
-    .pos-receipt .row.grand { padding: 6px 0 2px; }
-    .pos-receipt .row.grand .label {
+    .pos-receipt .r-row.grand { padding: 6px 0 2px; }
+    .pos-receipt .r-row.grand .label {
         font-weight: 700; color: #1F1B16; font-size: 14px;
         display: flex; flex-direction: column; gap: 1px; align-items: flex-start;
     }
-    .pos-receipt .row.grand .amt {
+    .pos-receipt .r-row.grand .amt {
         font-size: 22px; font-weight: 800; letter-spacing: -.01em;
     }
 
@@ -248,7 +266,7 @@
         <div class="pos-receipt">
             {{-- Discount row --}}
             @if($is_discount_enabled)
-            <div class="row">
+            <div class="r-row">
                 <span class="label">
                     Discount
                     <span class="adj-discount-wrap" id="adj-discount-wrap">
@@ -267,7 +285,7 @@
             @endif
 
             {{-- Shipping row --}}
-            <div class="row">
+            <div class="r-row">
                 <span class="label">
                     Shipping
                     <button type="button" class="edit" title="@lang('sale.shipping')" data-toggle="modal" data-target="#posShippingModal"><i class="fa fa-pencil-alt"></i> Edit</button>
@@ -277,7 +295,7 @@
 
             {{-- Packing (only when types_of_service module is enabled) --}}
             @if(in_array('types_of_service', $enabled_modules))
-            <div class="row">
+            <div class="r-row">
                 <span class="label">
                     Packing
                     <button type="button" class="edit service_modal_btn"><i class="fa fa-pencil-alt"></i> Edit</button>
@@ -288,7 +306,7 @@
 
             {{-- Bag Fee row (shown in receipt when enabled) --}}
             @if(!empty($pos_settings['enable_plastic_bag_charge']))
-            <div class="row" id="pos-bag-fee-row">
+            <div class="r-row" id="pos-bag-fee-row">
                 <span class="label">Bag Fee <span class="muted" id="bag-fee-muted-label">(1 bag)</span></span>
                 <span class="amt">+ $<span id="bag-fee-amount">{{ number_format($pos_settings['plastic_bag_price'] ?? 0.10, 2) }}</span></span>
             </div>
@@ -296,7 +314,7 @@
 
             {{-- Round off (only when enabled) --}}
             @if(!empty($pos_settings['amount_rounding_method']) && $pos_settings['amount_rounding_method'] > 0)
-            <div class="row">
+            <div class="r-row">
                 <span class="label" id="round_off">Round off</span>
                 <span class="amt"><span id="round_off_text">0</span><input type="hidden" name="round_off_amount" id="round_off_amount" value=0></span>
             </div>
@@ -305,7 +323,7 @@
             <div class="divider"></div>
 
             {{-- Subtotal (item subtotal, bold, with items count chip inline) --}}
-            <div class="row subtotal">
+            <div class="r-row subtotal">
                 <span class="label">
                     Subtotal
                     <span class="items-inline"><span class="total_quantity">0</span> items</span>
@@ -318,14 +336,14 @@
                  — the exact value Clover expects). --}}
             <div class="pos-pretax-bar" title="Type this amount into the Clover terminal">
                 <div class="pretax-label">
-                    Pre-Tax → Clover
+                    <span>Pre-Tax → Clover</span>
                     <span class="pretax-sub">Type this amount into the Clover terminal</span>
                 </div>
-                <div class="pretax-val">$<span id="pre_tax_amount">0</span></div>
+                <div class="pretax-amt"><span class="pretax-cur">$</span><span id="pre_tax_amount">0.00</span></div>
             </div>
 
             {{-- Tax row --}}
-            <div class="row @if($pos_settings['disable_order_tax'] != 0) hide @endif">
+            <div class="r-row @if($pos_settings['disable_order_tax'] != 0) hide @endif">
                 <span class="label">
                     Tax
                     <button type="button" class="edit" title="@lang('sale.edit_order_tax')" data-toggle="modal" data-target="#posEditOrderTaxModal" id="pos-edit-tax"><i class="fa fa-pencil-alt"></i> Edit</button>
@@ -338,7 +356,7 @@
             <div class="divider"></div>
 
             {{-- Grand total --}}
-            <div class="row grand">
+            <div class="r-row grand">
                 <span class="label">
                     Total w/ Tax
                     <span class="muted" style="font-weight:400;">Subtotal + Tax</span>
