@@ -11,7 +11,12 @@ $(document).ready(function() {
                 source: '/purchases/get_products?check_enable_stock=false',
                 minLength: 2,
                 response: function(event, ui) {
-                    if (ui.content.length == 1) {
+                    // Zak's ask 2026-04-21: always auto-pick the first match
+                    // on the label-print page, even when several products
+                    // share a name (MJ at \$25 AND \$27 etc.). The picker
+                    // popup for multi-match was slowing him down for no
+                    // real benefit — he just wants to keep printing.
+                    if (ui.content.length >= 1) {
                         ui.item = ui.content[0];
                         $(this)
                             .data('ui-autocomplete')
