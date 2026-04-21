@@ -5133,8 +5133,20 @@ class ReportController extends Controller
         // Merge keys from both sides (someone may have priced items but not sold any, and vice versa)
         $user_ids = collect($sales->keys())->merge($priced->keys())->merge($priced_rev->keys())->unique()->values();
 
-        // Lookup user names for any user that appears only on the "priced" side
-        $users = \App\User::whereIn('id', $user_ids)->get()->keyBy('id');
+        // Lookup user names, filtered to ACTIVE employees only — Sarah asked
+        // to stop showing terminated / inactive accounts on the leaderboard
+        // (they clutter the rankings and are sometimes historical data from
+        // people who aren't with the company anymore). SoftDeletes on the
+        // model handles deleted_at automatically.
+        $users = \App\User::whereIn('id', $user_ids)
+            ->where('status', 'active')
+            ->get()
+            ->keyBy('id');
+
+        // Drop any user_ids that aren't active. Their sales/pricing still
+        // happened and still count toward business-wide totals elsewhere —
+        // but they don't deserve a row on the per-employee leaderboard.
+        $user_ids = $user_ids->filter(fn ($uid) => $users->has($uid))->values();
 
         $rows = $user_ids->map(function ($uid) use ($sales, $priced, $priced_rev, $users, $hours_raw) {
             $u = $users->get($uid);
