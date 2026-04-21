@@ -244,6 +244,63 @@
             </div>
             
             <hr>
+            <h5>Per-Location Clover (multi-store)</h5>
+            <p class="help-block">
+                If you run multiple stores with separate Clover merchant accounts (Hollywood + Pico, for
+                example), add each location's Merchant ID and Private Token below. When a cashier closes
+                their register, the ERP auto-fills "Total card slips" using the per-location creds for
+                that register. The single-merchant fields above are only used as a fallback when a
+                location isn't configured here.
+            </p>
+            @php
+                $locationsForClover = \App\BusinessLocation::where('business_id', $business_id)
+                    ->where('is_active', 1)
+                    ->orderBy('name')
+                    ->get();
+                $perLocationClover = $api_settings['clover']['locations'] ?? [];
+            @endphp
+            @if($locationsForClover->isEmpty())
+                <p class="text-muted">No active business locations — add locations under <strong>Business Settings → Locations</strong> first.</p>
+            @else
+                @foreach($locationsForClover as $loc)
+                    @php
+                        $locCreds = $perLocationClover[$loc->id] ?? [];
+                    @endphp
+                    <div class="row" style="background:#fafafa; border:1px solid #eee; border-radius:6px; padding:10px; margin:8px 0;">
+                        <div class="col-sm-12" style="margin-bottom:6px;">
+                            <strong><i class="fa fa-map-marker-alt"></i> {{ $loc->name }}</strong>
+                            <small class="text-muted">· location id {{ $loc->id }}</small>
+                        </div>
+                        <div class="col-sm-4">
+                            <div class="form-group">
+                                {!! Form::label("api_settings[clover][locations][{$loc->id}][merchant_id]", 'Merchant ID:') !!}
+                                {!! Form::text("api_settings[clover][locations][{$loc->id}][merchant_id]",
+                                    $locCreds['merchant_id'] ?? null,
+                                    ['class' => 'form-control', 'placeholder' => 'Clover merchant ID']) !!}
+                            </div>
+                        </div>
+                        <div class="col-sm-4">
+                            <div class="form-group">
+                                {!! Form::label("api_settings[clover][locations][{$loc->id}][private_token]", 'Private Token:') !!}
+                                {!! Form::text("api_settings[clover][locations][{$loc->id}][private_token]",
+                                    $locCreds['private_token'] ?? null,
+                                    ['class' => 'form-control', 'placeholder' => 'Ecommerce Private Token', 'type' => 'password']) !!}
+                            </div>
+                        </div>
+                        <div class="col-sm-4">
+                            <div class="form-group">
+                                {!! Form::label("api_settings[clover][locations][{$loc->id}][environment]", 'Environment:') !!}
+                                {!! Form::select("api_settings[clover][locations][{$loc->id}][environment]",
+                                    ['sandbox' => 'Sandbox', 'production' => 'Production'],
+                                    $locCreds['environment'] ?? 'production',
+                                    ['class' => 'form-control']) !!}
+                            </div>
+                        </div>
+                    </div>
+                @endforeach
+            @endif
+
+            <hr>
             <h5>Customer Import</h5>
             <p class="help-block">Import customers from Clover POS to your ERP system</p>
             <div class="row">
