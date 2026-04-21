@@ -3601,6 +3601,97 @@ class ReportController extends Controller
     }
 
     /**
+     * Full CSV export of the Purchase Report — bypasses DataTables pagination
+     * so Sabina gets every matching row, not just the current 100-row page
+     * (2026-04-21 ask). Same filter logic as purchaseReport() above, minus
+     * pagination, with all purchase_lines expanded (one item per row).
+     */
+    public function purchaseReportExport()
+    {
+        if ((!auth()->user()->can('purchase.view') && !auth()->user()->can('purchase.create') && !auth()->user()->can('view_own_purchase')) || empty(config('constants.show_report_606'))) {
+            abort(403, 'Unauthorized action.');
+        }
+        $business_id = request()->session()->get('user.business_id');
+
+        $q = \DB::table('transactions as t')
+            ->join('business_locations as bl', 't.location_id', '=', 'bl.id')
+            ->leftJoin('contacts as c', 't.contact_id', '=', 'c.id')
+            ->leftJoin('purchase_lines as pl', 'pl.transaction_id', '=', 't.id')
+            ->leftJoin('products as p', 'pl.product_id', '=', 'p.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'purchase');
+
+        $permitted = auth()->user()->permitted_locations();
+        if ($permitted !== 'all') {
+            $q->whereIn('t.location_id', $permitted);
+        }
+        if (!empty(request()->supplier_id)) $q->where('c.id', request()->supplier_id);
+        if (!empty(request()->location_id)) $q->where('t.location_id', request()->location_id);
+        if (!empty(request()->status)) $q->where('t.status', request()->status);
+        if (!empty(request()->payment_status) && request()->payment_status !== 'overdue') {
+            $q->where('t.payment_status', request()->payment_status);
+        }
+        if (!empty(request()->start_date) && !empty(request()->end_date)) {
+            $q->whereDate('t.transaction_date', '>=', request()->start_date)
+              ->whereDate('t.transaction_date', '<=', request()->end_date);
+        }
+        if (!auth()->user()->can('purchase.view') && auth()->user()->can('view_own_purchase')) {
+            $q->where('t.created_by', request()->session()->get('user.id'));
+        }
+
+        $rows = $q->orderByDesc('t.transaction_date')
+            ->select(
+                't.transaction_date', 't.ref_no', 't.status', 't.payment_status',
+                't.total_before_tax', 't.discount_amount', 't.tax_amount', 't.final_total',
+                'bl.name as location_name',
+                'c.name as supplier_name', 'c.contact_id as supplier_contact_id',
+                'p.name as product_name', 'p.artist as product_artist', 'p.sku as product_sku',
+                'pl.quantity as line_quantity', 'pl.purchase_price as line_purchase_price'
+            )
+            ->get();
+
+        $filename = 'purchase-report-' . now()->format('Y-m-d-Hi') . '.csv';
+
+        return response()->streamDownload(function () use ($rows) {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, [
+                'Date', 'Ref No', 'Location', 'Supplier', 'Supplier Contact ID',
+                'Status', 'Payment Status',
+                'Product', 'Artist', 'SKU',
+                'Line Qty', 'Line Unit Cost', 'Line Subtotal',
+                'Purchase Total Before Tax', 'Purchase Discount', 'Purchase Tax', 'Purchase Final Total',
+            ]);
+            foreach ($rows as $r) {
+                $lineSubtotal = ($r->line_quantity !== null && $r->line_purchase_price !== null)
+                    ? ($r->line_quantity * $r->line_purchase_price) : null;
+                fputcsv($out, [
+                    $r->transaction_date,
+                    $r->ref_no,
+                    $r->location_name,
+                    $r->supplier_name,
+                    $r->supplier_contact_id,
+                    $r->status,
+                    $r->payment_status,
+                    $r->product_name,
+                    $r->product_artist,
+                    $r->product_sku,
+                    $r->line_quantity,
+                    $r->line_purchase_price,
+                    $lineSubtotal,
+                    $r->total_before_tax,
+                    $r->discount_amount,
+                    $r->tax_amount,
+                    $r->final_total,
+                ]);
+            }
+            fclose($out);
+        }, $filename, [
+            'Content-Type' => 'text/csv',
+            'Cache-Control' => 'no-store',
+        ]);
+    }
+
+    /**
      * JSON side-by-side summary for the purchase report — $ spent + purchase
      * count + top 5 products per location. Driven by the same filters as the
      * main DataTable so cashiers can compare Hollywood vs Pico at a glance

@@ -93,6 +93,15 @@
         </div>
     @endcomponent
 
+    {{-- Full export button — bypasses DataTables' 100-row page limit so
+         Sabina gets every matching row in one CSV, not a slice. --}}
+    <div style="margin-bottom:10px; text-align:right;">
+        <button type="button" class="btn btn-success" id="pr-export-all-btn">
+            <i class="fa fa-file-excel"></i> Export all (CSV)
+        </button>
+        <span id="pr-export-hint" style="margin-left:8px; font-size:12px; color:#6b7280;"></span>
+    </div>
+
     @component('components.widget', ['class' => 'box-primary'])
         <div class="table-responsive">
     <table class="table table-bordered table-striped ajax_view" id="purchase_report_table">
@@ -253,6 +262,24 @@
             });
         }
         refreshPurchaseSummary();
+
+        // Export-all button — streams a full CSV of every matching row
+        // (not just the current 100-row DataTable page). Uses the same
+        // filter params the table + summary use.
+        $(document).on('click', '#pr-export-all-btn', function () {
+            var $btn = $(this);
+            var $hint = $('#pr-export-hint');
+            var original = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Preparing CSV…');
+            $hint.text('Large date ranges can take a minute.');
+            var qs = $.param(currentFilterParams());
+            window.location.href = '/reports/purchase-report/export?' + qs;
+            setTimeout(function () {
+                $btn.prop('disabled', false).html(original);
+                $hint.text('');
+            }, 4000);
+        });
+
         $('#purchase_list_filter_date_range').daterangepicker(
             dateRangeSettings,
             function (start, end) {
