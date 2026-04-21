@@ -142,26 +142,45 @@
 				<a href="{{ route('buy-from-customer.create') }}" target="_blank" rel="noopener" class="btn btn-info" title="Open Buy from Customer Calculator in a new tab">
 					<i class="fa fa-calculator"></i> Buy Calculator <i class="fa fa-external-link-alt" style="font-size: 11px; opacity: 0.7; margin-left: 4px;"></i>
 				</a>
+			</div>
 
-				{{-- Whatnot toggle — flags the whole sale as a Whatnot transaction.
-					 Lives here in the cart area (not the totals block) because it
-					 describes the cart, not the payment. Uses the same #is_whatnot
-					 id that pos.js / the store controller already read. --}}
-				<label class="btn btn-default pos-whatnot-toggle" id="whatnot_chip" title="Flag this whole transaction as a Whatnot sale">
-					<input type="checkbox" name="is_whatnot" id="is_whatnot" value="1" style="margin-right:6px; vertical-align:middle;">
-					<i class="fa fa-broadcast-tower"></i> Mark as Whatnot
+			{{-- Sale-type flag row — separate from the tool buttons above so
+				 it doesn't look like another "add something to cart" action.
+				 Sits on its own line above the product table; mustard when on. --}}
+			<div class="pos-sale-flag-row">
+				<label class="pos-whatnot-toggle" id="whatnot_chip" title="Flag this whole transaction as a Whatnot sale">
+					<input type="checkbox" name="is_whatnot" id="is_whatnot" value="1">
+					<i class="fa fa-broadcast-tower"></i>
+					<span>Mark entire sale as Whatnot</span>
 				</label>
 			</div>
 			<style>
-				.pos-whatnot-toggle { cursor: pointer; user-select: none; }
+				.pos-sale-flag-row {
+					margin: 10px 0 6px;
+					display: flex; justify-content: flex-end;
+				}
+				.pos-whatnot-toggle {
+					display: inline-flex; align-items: center; gap: 8px;
+					padding: 6px 14px;
+					background: #fff;
+					border: 1px dashed #d1d5db;
+					border-radius: 999px;
+					font-size: 12px; font-weight: 500; color: #6b7280;
+					cursor: pointer; user-select: none;
+					margin: 0;
+				}
+				.pos-whatnot-toggle input[type="checkbox"] { margin: 0; accent-color: #d4a92a; }
+				.pos-whatnot-toggle i { font-size: 11px; opacity: .7; }
+				.pos-whatnot-toggle:hover { border-color: #9ca3af; color: #374151; }
 				.pos-whatnot-toggle.active-whatnot,
 				#whatnot_chip.active-whatnot {
-					background: #f5ce3e !important;
-					border-color: #d4a92a !important;
-					color: #2b1e16 !important;
+					background: #f5ce3e;
+					border: 1px solid #d4a92a;
+					color: #2b1e16;
 					font-weight: 700;
 				}
-				.pos-whatnot-toggle.active-whatnot:hover { background: #eac232 !important; }
+				.pos-whatnot-toggle.active-whatnot i { opacity: 1; }
+				.pos-whatnot-toggle.active-whatnot:hover { background: #eac232; }
 			</style>
 
 			{{-- Quick-add preset tiles now live at the top of the product grid sidebar
