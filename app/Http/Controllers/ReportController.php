@@ -4141,6 +4141,17 @@ class ReportController extends Controller
         $business_id = $request->session()->get('user.business_id');
 
         if ($request->ajax()) {
+            // Build the cost-per-unit SQL expression once. When the Nivessa
+            // COGS fallback is enabled, missing/0 purchase prices are filled
+            // from the category-based assumption map (config/nivessa_cogs.php)
+            // so rows for products with N/A purchase price still contribute
+            // meaningfully to COGS, gross margin, and margin %. Without this,
+            // Lashyn's accountant saw wrong COGS because the system was
+            // silently dropping thousands of N/A rows.
+            $costExpr = \App\Helpers\CogsFallback::isEnabled()
+                ? \App\Helpers\CogsFallback::costWithFallback('pl.purchase_price_inc_tax', 'sc.name', 'c.name')
+                : 'COALESCE(pl.purchase_price_inc_tax, 0)';
+
             $query = DB::table('transaction_sell_lines as tsl')
                 ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
                 ->join('variations as v', 'tsl.variation_id', '=', 'v.id')
@@ -4148,6 +4159,10 @@ class ReportController extends Controller
                 ->leftJoin('product_variations as pv', 'v.product_variation_id', '=', 'pv.id')
                 ->leftJoin('transaction_sell_lines_purchase_lines as tspl', 'tsl.id', '=', 'tspl.sell_line_id')
                 ->leftJoin('purchase_lines as pl', 'tspl.purchase_line_id', '=', 'pl.id')
+                // Category joins so the COGS fallback CASE can inspect the
+                // sub-category (primary) and main category (fallback) names.
+                ->leftJoin('categories as sc', 'p.sub_category_id', '=', 'sc.id')
+                ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
                 ->where('t.business_id', $business_id)
                 ->where('t.type', 'sell')
                 ->where('t.status', 'final')
@@ -4160,9 +4175,13 @@ class ReportController extends Controller
                     DB::raw("CONCAT(COALESCE(pv.name, ''), CASE WHEN v.name IS NULL OR v.name = 'DUMMY' THEN '' ELSE CONCAT(' - ', v.name) END) as variation"),
                     DB::raw('SUM(tsl.quantity - tsl.quantity_returned) as qty_sold'),
                     DB::raw('SUM((tsl.quantity - tsl.quantity_returned) * tsl.unit_price_inc_tax) as revenue'),
-                    DB::raw('SUM(COALESCE(tspl.quantity, 0) * COALESCE(pl.purchase_price_inc_tax, 0)) as cost'),
-                    DB::raw('(SUM((tsl.quantity - tsl.quantity_returned) * tsl.unit_price_inc_tax) - SUM(COALESCE(tspl.quantity, 0) * COALESCE(pl.purchase_price_inc_tax, 0))) as gross_margin'),
-                    DB::raw('IF(SUM((tsl.quantity - tsl.quantity_returned) * tsl.unit_price_inc_tax) > 0, ((SUM((tsl.quantity - tsl.quantity_returned) * tsl.unit_price_inc_tax) - SUM(COALESCE(tspl.quantity, 0) * COALESCE(pl.purchase_price_inc_tax, 0))) / SUM((tsl.quantity - tsl.quantity_returned) * tsl.unit_price_inc_tax)) * 100, 0) as margin_percent')
+                    DB::raw("SUM(COALESCE(tspl.quantity, 0) * COALESCE({$costExpr}, 0)) as cost"),
+                    DB::raw("(SUM((tsl.quantity - tsl.quantity_returned) * tsl.unit_price_inc_tax) - SUM(COALESCE(tspl.quantity, 0) * COALESCE({$costExpr}, 0))) as gross_margin"),
+                    DB::raw("IF(SUM((tsl.quantity - tsl.quantity_returned) * tsl.unit_price_inc_tax) > 0, ((SUM((tsl.quantity - tsl.quantity_returned) * tsl.unit_price_inc_tax) - SUM(COALESCE(tspl.quantity, 0) * COALESCE({$costExpr}, 0))) / SUM((tsl.quantity - tsl.quantity_returned) * tsl.unit_price_inc_tax)) * 100, 0) as margin_percent"),
+                    // Flag so the UI can distinguish "real" COGS rows from
+                    // assumption-based ones. 1 = at least one sold line had
+                    // no purchase price and the fallback kicked in.
+                    DB::raw('MAX(CASE WHEN pl.purchase_price_inc_tax IS NULL OR pl.purchase_price_inc_tax = 0 THEN 1 ELSE 0 END) as cost_is_assumed')
                 )
                 ->groupBy('p.id', 'v.id', 'p.name', 'v.sub_sku', 'pv.name', 'v.name');
 
