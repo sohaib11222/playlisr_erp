@@ -340,6 +340,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/dead-stock', 'ReportController@deadStockReport');
     Route::get('/reports/whatnot', 'ReportController@whatnotReport');
     Route::get('/reports/clover-vs-erp', 'ReportController@cloverVsErpReport');
+    Route::get('/reports/clover-eod-reconciliation', 'ReportController@cloverEodReconciliation')->name('reports.clover-eod');
     Route::get('/reports/employee-leaderboard', 'ReportController@employeeLeaderboard');
 
     // Reports hub — organized index of all reports with per-user favorites

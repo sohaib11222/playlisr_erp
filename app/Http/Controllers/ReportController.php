@@ -5251,6 +5251,152 @@ class ReportController extends Controller
     }
 
     /**
+     * End-of-Day Clover Reconciliation — date-range view that compares ERP
+     * card payments against Clover's settled payments per day per location.
+     * Flags days whose variance exceeds \$1 so Sarah / Sabina don't have to
+     * open 30 single-day reports during weekly review.
+     *
+     * Data sources:
+     *   ERP side:    transaction_payments joined to transactions (type=sell,
+     *                status=final). Payment methods considered 'card-like':
+     *                clover, card, credit_card, credit_sale, custom_pay_1..7
+     *                (matches what the existing single-day cloverVsErpReport
+     *                already normalises for this install).
+     *   Clover side: clover_payments rows with result SUCCESS / APPROVED
+     *                (populated by the scheduled clover:sync-payments
+     *                command, which pulls from /v3/merchants/{mid}/payments).
+     *
+     * Status traffic-light:
+     *   |variance| < \$1   → reconciled (green)
+     *   |variance| < \$10  → minor      (yellow)
+     *   otherwise          → review     (red)
+     */
+    public function cloverEodReconciliation(Request $request)
+    {
+        if (!$this->businessUtil->is_admin(auth()->user()) && !auth()->user()->can('purchase_n_sell_report.view')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = $request->session()->get('user.business_id');
+        $business_locations = BusinessLocation::forDropdown($business_id);
+
+        $start = $request->input('start_date') ?: \Carbon::today()->copy()->subDays(6)->format('Y-m-d');
+        $end   = $request->input('end_date')   ?: \Carbon::today()->format('Y-m-d');
+        $location_id = $request->input('location_id');
+
+        $card_methods = [
+            'clover', 'card', 'credit_card', 'credit_sale',
+            'custom_pay_1', 'custom_pay_2', 'custom_pay_3', 'custom_pay_4',
+            'custom_pay_5', 'custom_pay_6', 'custom_pay_7',
+        ];
+
+        // ERP-side per (date, location) rollup. Using transaction_date rather
+        // than tp.paid_on since paid_on is occasionally NULL on older rows.
+        $erpQuery = \DB::table('transaction_payments as tp')
+            ->join('transactions as t', 'tp.transaction_id', '=', 't.id')
+            ->leftJoin('business_locations as bl', 't.location_id', '=', 'bl.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereIn('tp.method', $card_methods)
+            ->whereDate('t.transaction_date', '>=', $start)
+            ->whereDate('t.transaction_date', '<=', $end);
+        if (!empty($location_id)) {
+            $erpQuery->where('t.location_id', $location_id);
+        }
+        $erp_rows = $erpQuery
+            ->selectRaw("DATE(t.transaction_date) as day,
+                t.location_id, bl.name as location_name,
+                COUNT(tp.id) as erp_count,
+                COALESCE(SUM(tp.amount), 0) as erp_total")
+            ->groupBy(DB::raw('DATE(t.transaction_date)'), 't.location_id', 'bl.name')
+            ->get();
+
+        // Clover-side per (date, location) rollup. clover_payments doesn't
+        // carry a location_id directly — we reconcile by matching the Clover
+        // merchant_id to a business_locations row via api_settings (when
+        // per-location Clover creds are configured). For now we bucket all
+        // Clover rows into a single 'Clover' bucket per day and let the
+        // UI show it alongside each location.
+        $clover_rows = \DB::table('clover_payments')
+            ->where('business_id', $business_id)
+            ->where(function ($q) {
+                $q->whereNull('result')->orWhere('result', 'SUCCESS')->orWhere('result', 'APPROVED');
+            })
+            ->whereDate('paid_on', '>=', $start)
+            ->whereDate('paid_on', '<=', $end)
+            ->selectRaw("DATE(paid_on) as day,
+                COUNT(*) as clover_count,
+                COALESCE(SUM(amount), 0) as clover_total")
+            ->groupBy(DB::raw('DATE(paid_on)'))
+            ->get()
+            ->keyBy('day');
+
+        // Merge: one row per (day, location) with ERP data + the day's Clover
+        // bucket attached. Days with only Clover data (no ERP matches) still
+        // surface as review-flagged rows so nothing slips.
+        $rows = [];
+        $grand = ['erp' => 0.0, 'clover' => 0.0, 'variance' => 0.0, 'flagged_days' => 0];
+        foreach ($erp_rows as $r) {
+            $clover = $clover_rows[$r->day] ?? null;
+            $cloverTotal = (float) ($clover->clover_total ?? 0);
+            $cloverCount = (int) ($clover->clover_count ?? 0);
+            $erpTotal = (float) $r->erp_total;
+            $variance = round($erpTotal - $cloverTotal, 2);
+            $status = $this->reconciliationStatus($variance);
+            $rows[] = (object) [
+                'day' => $r->day,
+                'location_name' => $r->location_name ?: '(no location)',
+                'erp_count' => (int) $r->erp_count,
+                'erp_total' => $erpTotal,
+                'clover_count' => $cloverCount,
+                'clover_total' => $cloverTotal,
+                'variance' => $variance,
+                'status' => $status,
+            ];
+            $grand['erp'] += $erpTotal;
+            $grand['clover'] += $cloverTotal;
+            $grand['variance'] += $variance;
+            if ($status !== 'reconciled') $grand['flagged_days']++;
+        }
+        // Clover-only days (ERP had no card sales but Clover did).
+        $erp_days = collect($erp_rows)->pluck('day')->unique()->all();
+        foreach ($clover_rows as $day => $c) {
+            if (in_array($day, $erp_days, true)) continue;
+            $cloverTotal = (float) $c->clover_total;
+            $variance = round(0 - $cloverTotal, 2);
+            $rows[] = (object) [
+                'day' => $day,
+                'location_name' => '(Clover only — no ERP card sales)',
+                'erp_count' => 0,
+                'erp_total' => 0,
+                'clover_count' => (int) $c->clover_count,
+                'clover_total' => $cloverTotal,
+                'variance' => $variance,
+                'status' => $this->reconciliationStatus($variance),
+            ];
+            $grand['clover'] += $cloverTotal;
+            $grand['variance'] += $variance;
+            $grand['flagged_days']++;
+        }
+
+        // Most recent first.
+        usort($rows, fn($a, $b) => strcmp($b->day, $a->day) ?: strcmp($a->location_name, $b->location_name));
+
+        return view('report.clover_eod_reconciliation')->with(compact(
+            'rows', 'grand', 'start', 'end', 'location_id', 'business_locations'
+        ));
+    }
+
+    private function reconciliationStatus($variance)
+    {
+        $abs = abs($variance);
+        if ($abs < 1.00) return 'reconciled';
+        if ($abs < 10.00) return 'minor';
+        return 'review';
+    }
+
+    /**
      * Employee Sales Leaderboard
      *
      * Ranks employees by sales revenue for a selected window. Also surfaces
