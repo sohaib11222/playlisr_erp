@@ -9,6 +9,10 @@
 <!-- app css -->
 <link rel="stylesheet" href="{{ asset('css/app.css?v='.$asset_v) }}">
 
+{{-- Nivessa global theme layer — font, palette, navbar, sidebar.
+     Loads last so tokens + overrides win over vendor/app.css. --}}
+@include('layouts.partials._nivessa_theme')
+
 @if(isset($pos_layout) && $pos_layout)
 	<style type="text/css">
 		.content{
