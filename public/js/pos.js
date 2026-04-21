@@ -824,8 +824,15 @@ $(document).ready(function() {
         }
     );
 
-    //Remove row on click on remove row
-    $('table#pos_table tbody').on('click', 'i.pos_remove_row', function() {
+    //Remove row on click on remove row.
+    // Selector is .pos_remove_row (not i.pos_remove_row) so both styles work:
+    //  - Old markup: <i class="fa fa-trash pos_remove_row"> (still used in sell_return)
+    //  - New markup: <button class="pos_remove_row"><i class="fa fa-times"></i></button>
+    //    (used in sale_pos product_row + manual_product_row)
+    // Clicking the inner <i> icon bubbles up to the <button> via jQuery
+    // delegated events and matches there, so both the icon and the button
+    // trigger the remove.
+    $('table#pos_table tbody').on('click', '.pos_remove_row', function() {
         var $row = $(this).parents('tr');
         if ($row.attr('data-plastic-bag') === 'true') {
             $('#add_plastic_bag').prop('checked', false);
