@@ -153,7 +153,8 @@ class CustomerWantController extends Controller
     {
         $business_id = $request->session()->get('user.business_id');
 
-        $wants = CustomerWant::with(['location'])
+        // ---- Active wants ----
+        $active = CustomerWant::with(['location'])
             ->where('business_id', $business_id)
             ->where('contact_id', $contactId)
             ->where('status', 'active')
@@ -161,14 +162,55 @@ class CustomerWantController extends Controller
             ->orderByDesc('created_at')
             ->get();
 
-        // For each want, check if we have any products currently in stock
-        // that look like a match. Cheap LIKE on artist + title — close enough
-        // for the "do we have it?" prompt, not trying to be a precise search.
-        foreach ($wants as $w) {
+        foreach ($active as $w) {
             $w->possible_matches = $this->findMatchingProducts($business_id, $w);
         }
 
-        return response()->json(['wants' => $wants]);
+        // ---- Past wants (fulfilled / cancelled) — show last 5 only.
+        //      The POS preview doesn't need the full history; that lives
+        //      on the customer profile page. --
+        $past = CustomerWant::where('business_id', $business_id)
+            ->where('contact_id', $contactId)
+            ->whereIn('status', ['fulfilled', 'cancelled'])
+            ->orderByDesc('updated_at')
+            ->limit(5)
+            ->get();
+
+        // ---- Recent purchases — last 5 finalised sells for this contact.
+        //      Aggregated per transaction with top items listed so the
+        //      cashier can see "oh yeah, they bought Bowie last time". --
+        $recent_purchases = \DB::table('transactions as t')
+            ->leftJoin('business_locations as bl', 't.location_id', '=', 'bl.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.contact_id', $contactId)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->orderByDesc('t.transaction_date')
+            ->limit(5)
+            ->get([
+                't.id', 't.invoice_no', 't.transaction_date',
+                't.final_total', 'bl.name as location_name',
+            ]);
+
+        foreach ($recent_purchases as $tx) {
+            $tx->items = \DB::table('transaction_sell_lines as tsl')
+                ->join('products as p', 'tsl.product_id', '=', 'p.id')
+                ->where('tsl.transaction_id', $tx->id)
+                ->orderByDesc('tsl.quantity')
+                ->limit(3)
+                ->get(['p.name', 'p.artist', 'tsl.quantity', 'tsl.unit_price_inc_tax']);
+            $tx->item_count = (int) \DB::table('transaction_sell_lines')
+                ->where('transaction_id', $tx->id)
+                ->sum('quantity');
+        }
+
+        return response()->json([
+            'active'           => $active,
+            'past'             => $past,
+            'recent_purchases' => $recent_purchases,
+            // Back-compat for any old widget code that reads `wants`.
+            'wants'            => $active,
+        ]);
     }
 
     /**
