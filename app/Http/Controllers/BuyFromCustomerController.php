@@ -197,27 +197,65 @@ class BuyFromCustomerController extends Controller
 
     protected function resolveSellerContact(Request $request, $business_id, $user_id)
     {
+        // Direct picker — existing contact was chosen.
         $mode = $request->input('seller_mode');
         if ($mode === 'contact' && !empty($request->input('contact_id'))) {
             return Contact::where('business_id', $business_id)->find($request->input('contact_id'));
         }
 
+        // Walk-in seller. Phase 1 intake sends first + last + phone + email.
+        // Build the canonical name from first+last when available, fall back
+        // to legacy single seller_name, fall back to a stub if both are blank.
         $phone = trim((string) $request->input('seller_phone', ''));
-        if (empty($phone)) {
+        $email = trim((string) $request->input('seller_email', ''));
+        $first = trim((string) $request->input('seller_first_name', ''));
+        $last  = trim((string) $request->input('seller_last_name', ''));
+        $legacyName = trim((string) $request->input('seller_name', ''));
+        $combinedName = trim($first . ' ' . $last);
+        $name = $combinedName !== '' ? $combinedName : ($legacyName ?: null);
+
+        // Create a contact as long as we have at LEAST ONE of (phone, email,
+        // name). Previously this bailed out when phone was empty — which meant
+        // sellers who only gave name/email never got saved at all. Sarah
+        // flagged this as "put in seller info, nothing happens."
+        if (empty($phone) && empty($email) && empty($name)) {
             return null;
         }
 
-        $existing = Contact::where('business_id', $business_id)->where('mobile', $phone)->first();
+        // Match existing contacts by phone first, then by email. Keeps us
+        // from creating duplicate accounts when a repeat seller comes in.
+        $existing = null;
+        if (!empty($phone)) {
+            $existing = Contact::where('business_id', $business_id)->where('mobile', $phone)->first();
+        }
+        if (!$existing && !empty($email)) {
+            $existing = Contact::where('business_id', $business_id)->where('email', $email)->first();
+        }
         if ($existing) {
+            // Fill in any blanks on the existing record — if they gave us
+            // new info this time, save it. Doesn't overwrite existing data.
+            $dirty = false;
+            if (!empty($first) && empty($existing->first_name)) { $existing->first_name = $first; $dirty = true; }
+            if (!empty($last) && empty($existing->last_name))   { $existing->last_name  = $last;  $dirty = true; }
+            if (!empty($email) && empty($existing->email))      { $existing->email      = $email; $dirty = true; }
+            if (!empty($phone) && empty($existing->mobile))     { $existing->mobile     = $phone; $dirty = true; }
+            if ($dirty) $existing->save();
             return $existing;
         }
 
+        // New contact — save every field we have, not just name+mobile. This
+        // is what made "seller info isn't saved anywhere" true: email was
+        // silently dropped.
+        $fallbackName = $name ?: ('Walk-in Seller ' . ($phone ?: $email ?: uniqid('buy-')));
         return Contact::create([
-            'business_id' => $business_id,
-            'type' => 'supplier',
-            'name' => $request->input('seller_name') ?: ('Walk-in Seller ' . $phone),
-            'mobile' => $phone,
-            'created_by' => $user_id,
+            'business_id'    => $business_id,
+            'type'           => 'supplier',
+            'name'           => $fallbackName,
+            'first_name'     => $first ?: null,
+            'last_name'      => $last ?: null,
+            'mobile'         => $phone ?: null,
+            'email'          => $email ?: null,
+            'created_by'     => $user_id,
             'contact_status' => 'active',
         ]);
     }
