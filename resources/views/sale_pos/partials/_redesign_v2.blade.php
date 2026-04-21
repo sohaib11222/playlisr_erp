@@ -116,22 +116,12 @@ body.pos-v2 section.content > form {
 	margin: 0 auto;
 }
 
-/* Side-by-side grid: sale (fluid) + quick-add (360px).
-   Existing template uses col-md-8 / col-md-4 — enforce the proportions
-   and spacing from the mockup regardless of the underlying columns. */
-@media (min-width: 1100px) {
-	body.pos-v2 section.content > form > .row > .col-md-12 > .row {
-		display: grid !important;
-		grid-template-columns: minmax(0,1fr) 360px;
-		gap: 20px;
-		margin: 0 !important;
-	}
-	body.pos-v2 section.content > form > .row > .col-md-12 > .row > [class*="col-md-"] {
-		width: 100% !important;
-		float: none !important;
-		padding: 0 !important;
-	}
-}
+/* Grid layout override removed 2026-04-21.
+   Earlier version forced `grid-template-columns: minmax(0,1fr) 360px`
+   which clobbered Bootstrap's col-md-8 / col-md-4 layout after Sohaib's
+   buyer-calc deploy and pushed every POS element into a narrow right
+   column. Visual restyling below still applies; Bootstrap columns
+   handle the two-up layout natively. Safer. */
 
 /* ============ CARDS ============ */
 body.pos-v2 .box.box-solid,

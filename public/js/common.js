@@ -49,20 +49,27 @@ $(document).ready(function() {
     toastr.options.timeOut = "3000";
 
     //Play notification sound on success, error and warning
+    // Volumes tuned down per Sarah's request — the stock audio files are
+    // quite loud, especially on speakers near the register. Success is the
+    // most frequent (rings on every add-to-cart) so it's the quietest.
+    // Error/warning stay a bit louder since they actually need attention.
     toastr.options.onShown = function() {
         if ($(this).hasClass('toast-success')) {
             var audio = $('#success-audio')[0];
             if (audio !== undefined) {
+                audio.volume = 0.18;
                 audio.play();
             }
         } else if ($(this).hasClass('toast-error')) {
             var audio = $('#error-audio')[0];
             if (audio !== undefined) {
+                audio.volume = 0.35;
                 audio.play();
             }
         } else if ($(this).hasClass('toast-warning')) {
             var audio = $('#warning-audio')[0];
             if (audio !== undefined) {
+                audio.volume = 0.35;
                 audio.play();
             }
         }
