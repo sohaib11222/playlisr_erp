@@ -29,96 +29,17 @@
 			@endif
 			--}}
 
-			<style>
-				/* Prioritized payment actions — Cash + Card dominate, rest tucked away.
-				   Cap to max-width so they don't stretch absurdly on wide screens. */
-				.pos-payment-primary-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 6px; justify-content: center; }
-				.pos-payment-primary-row .btn-pay-primary {
-					flex: 0 1 280px; min-width: 200px; max-width: 320px;
-					min-height: 60px;
-					font-size: 18px; font-weight: 800;
-					border-radius: 10px;
-					text-transform: uppercase; letter-spacing: 0.6px;
-					display: inline-flex; align-items: center; justify-content: center; gap: 10px;
-					box-shadow: 0 2px 6px rgba(0,0,0,0.08);
-				}
-				.pos-payment-primary-row .btn-pay-primary i { font-size: 22px; }
-				/* Cash stays green (money = green is universal cashier expectation).
-				   Card switched from navy to Nivessa brown for brand consistency. */
-				.btn-pay-cash { background: #16a34a !important; color: #fff !important; border: none !important; }
-				.btn-pay-cash:hover { background: #15803d !important; color: #fff !important; }
-				.btn-pay-card { background: #3a2a1f !important; color: #fff !important; border: none !important; }
-				.btn-pay-card:hover { background: #2b1e16 !important; color: #fff !important; }
-
-				/* "More payment options" menu — Credit Sale + Multi-Pay tucked here */
-				.pos-payment-more .dropdown-menu { min-width: 220px; padding: 4px 0; }
-				.pos-payment-more .dropdown-menu a { padding: 10px 16px; font-weight: 600; }
-
-				/* Soften cancel to a subtle text link — avoid accidental clicks mid-sale */
-				#pos-cancel.pos-cancel-link {
-					background: transparent !important;
-					border: none !important;
-					color: #9ca3af !important;
-					padding: 6px 10px !important;
-					font-weight: 500;
-					font-size: 12px;
-					text-transform: uppercase; letter-spacing: 0.5px;
-					box-shadow: none !important;
-				}
-				#pos-cancel.pos-cancel-link:hover { color: #dc2626 !important; text-decoration: underline; }
-			</style>
-
+			{{-- Cash / Card / More buttons + Cancel Sale moved into the receipt
+				 card in pos_form_totals.blade.php (2026-04-21) so the whole sale
+				 column fits without scrolling. The hidden #is_credit_sale input
+				 and the edit-mode delete button stay here. --}}
 			<input type="hidden" name="is_credit_sale" value="0" id="is_credit_sale">
 
-			<div class="pos-payment-primary-row">
-				<button type="button"
-					class="btn btn-pay-primary btn-pay-cash pos-express-finalize @if($pos_settings['disable_express_checkout'] != 0 || !array_key_exists('cash', $payment_types)) hide @endif"
-					data-pay_method="cash"
-					title="@lang('tooltip.express_checkout')">
-					<i class="fas fa-money-bill-alt"></i> Cash
-				</button>
-				<button type="button"
-					class="btn btn-pay-primary btn-pay-card pos-express-finalize @if(!array_key_exists('card', $payment_types)) hide @endif"
-					data-pay_method="card"
-					title="@lang('lang_v1.tooltip_express_checkout_card')">
-					<i class="fas fa-credit-card"></i> Card
-				</button>
-
-				<div class="dropup pos-payment-more">
-					<button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" style="min-height:60px; padding:10px 16px; font-weight:700;">
-						<i class="fa fa-ellipsis-h"></i> More <span class="caret"></span>
-					</button>
-					<ul class="dropdown-menu dropdown-menu-right" style="padding:4px;">
-						{{-- Buttons (not links) so the original pos.js click handlers fire --}}
-						<li style="list-style:none;">
-							<button type="button" class="btn btn-link" id="pos-finalize" title="@lang('lang_v1.tooltip_checkout_multi_pay')" style="display:block; width:100%; text-align:left; padding:10px 16px; font-weight:600; text-decoration:none;">
-								<i class="fas fa-money-check-alt text-primary"></i> @lang('lang_v1.checkout_multi_pay')
-							</button>
-						</li>
-						@if(empty($pos_settings['disable_credit_sale_button']))
-						<li style="list-style:none;">
-							<button type="button" class="btn btn-link pos-express-finalize" data-pay_method="credit_sale" title="@lang('lang_v1.tooltip_credit_sale')" style="display:block; width:100%; text-align:left; padding:10px 16px; font-weight:600; text-decoration:none;">
-								<i class="fas fa-check text-purple"></i> @lang('lang_v1.credit_sale')
-							</button>
-						</li>
-						@endif
-					</ul>
-				</div>
-			</div>
-
-			{{-- Keyboard shortcut hint bar removed: the shortcut keys (Shift+P /
-				 Shift+E / F2 / F4 / etc.) listed in the app's keyboard settings
-				 aren't actually wired to Mousetrap.bind() anywhere in pos.js, so
-				 pressing them did nothing. Jonathan — "i have no idea what
-				 these are and they dont even work." Dead UI, deleted. --}}
-
+			@if(!empty($edit))
 			<div style="text-align:center; margin-top:8px;">
-				@if(empty($edit))
-					<button type="button" class="pos-cancel-link" id="pos-cancel"><i class="fas fa-times"></i> Cancel sale</button>
-				@else
-					<button type="button" class="pos-cancel-link hide" id="pos-delete"><i class="fas fa-trash-alt"></i> @lang('messages.delete')</button>
-				@endif
+				<button type="button" class="btn btn-default hide" id="pos-delete" style="background:transparent;border:0;color:#9ca3af;font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.5px;"><i class="fas fa-trash-alt"></i> @lang('messages.delete')</button>
 			</div>
+			@endif
 
 			{{-- Hidden shim: the bottom-left "Total Payable" chip was visually redundant
 				 with the big TOTAL (WITH TAX) in the totals row above, but lots of JS

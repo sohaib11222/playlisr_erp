@@ -232,8 +232,14 @@
         var pendingWantLabel = null;
 
         function currentContactId() {
-            var id = $('#customer_id').val();
-            return (id && parseInt(id, 10) > 0) ? parseInt(id, 10) : null;
+            // Treat the walk-in default customer as "no customer selected" —
+            // the wish-list panel should only appear once the cashier has
+            // explicitly looked up a real rewards customer.
+            var id = parseInt($('#customer_id').val(), 10);
+            var walkIn = parseInt($('#default_customer_id').val(), 10);
+            if (!id || id <= 0) return null;
+            if (walkIn && id === walkIn) return null;
+            return id;
         }
         function hide() { $('#cwl-panel').removeClass('cwl-open'); }
         function show() { $('#cwl-panel').addClass('cwl-open'); }
