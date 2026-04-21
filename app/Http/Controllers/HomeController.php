@@ -731,7 +731,7 @@ class HomeController extends Controller
                 ->leftJoin('business_locations as bl', 'cw.location_id', '=', 'bl.id')
                 ->where('cw.business_id', $business_id)
                 ->where('cw.status', 'active')
-                ->selectRaw("cw.id, cw.artist, cw.title, cw.format, cw.priority, cw.phone, cw.created_at,
+                ->selectRaw("cw.id, cw.artist, cw.title, cw.format, cw.priority, cw.phone, cw.notes, cw.created_at,
                     bl.name as location_name,
                     CONCAT(COALESCE(c.first_name, ''), ' ', COALESCE(c.last_name, '')) as customer")
                 ->orderByRaw("FIELD(cw.priority, 'high', 'normal', 'low')")
