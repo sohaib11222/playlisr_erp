@@ -37,11 +37,12 @@ jobs:
           port: ${{ steps.flags.outputs.ssh_port }}
           script_stop: true
           script: |
-            set -euo pipefail
+            # No -e / pipefail: report must always finish; pipelines and tests must not abort the job.
+            set -u
             DEPLOY_DIR=/www/playlist.nivessa.com/app
             DEPLOY_BRANCH=main
             export DEPLOY_GIT_REMOTE='${{ vars.DEPLOY_GIT_REMOTE }}'
-            cd "$DEPLOY_DIR"
+            cd "$DEPLOY_DIR" || { echo "Cannot cd to $DEPLOY_DIR"; exit 1; }
             if [ ! -d .git ]; then
               echo "Not a git repository: $DEPLOY_DIR"
               exit 1
@@ -61,7 +62,7 @@ jobs:
             mkdir -p "$HOME/.ssh"
             chmod 700 "$HOME/.ssh"
             ssh-keyscan -t rsa,ecdsa,ed25519 github.com >> "$HOME/.ssh/known_hosts" 2>/dev/null || true
-            git fetch "$GIT_REMOTE" "$DEPLOY_BRANCH" --prune 2>&1
+            git fetch "$GIT_REMOTE" "$DEPLOY_BRANCH" --prune 2>&1 || { echo "git fetch failed"; exit 1; }
             echo ""
             echo "========== SERVER vs GITHUB (drift report — read-only) =========="
             echo "Time (UTC): $(date -u)"
@@ -86,20 +87,22 @@ jobs:
             fi
             echo "--- Diff vs ${REF_REMOTE} (tree vs tree) ---"
             if git rev-parse "$REF_REMOTE" >/dev/null 2>&1; then
-              git diff --stat HEAD "${REF_REMOTE}" || true
+              git diff --stat HEAD "${REF_REMOTE}" 2>/dev/null || true
               echo ""
               echo "--- File list (max 200 lines) ---"
-              git diff --name-only HEAD "${REF_REMOTE}" 2>/dev/null | head -200
+              git diff --name-only HEAD "${REF_REMOTE}" 2>/dev/null | head -200 || true
             else
               echo "(cannot diff — remote ref missing)"
             fi
             echo ""
             echo "========== Summary (informational only) =========="
             ISSUES=0
-            [ -n "$DIRTY" ] && ISSUES=1
-            [ "${COUNT_SERVER:-0}" -gt 0 ] 2>/dev/null && ISSUES=1
+            if [ -n "$DIRTY" ]; then ISSUES=1; fi
+            if [ "${COUNT_SERVER:-0}" -gt 0 ]; then ISSUES=1; fi
             if git rev-parse "$REF_REMOTE" >/dev/null 2>&1; then
-              git merge-base --is-ancestor HEAD "$REF_REMOTE" 2>/dev/null || ISSUES=1
+              if ! git merge-base --is-ancestor HEAD "$REF_REMOTE" 2>/dev/null; then
+                ISSUES=1
+              fi
             fi
             if [ "$ISSUES" -eq 0 ]; then
               echo "OK for a typical fast-forward sync (review diffs above anyway)."
