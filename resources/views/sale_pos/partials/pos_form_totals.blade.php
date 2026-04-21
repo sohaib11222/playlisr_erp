@@ -361,7 +361,7 @@
                     Total w/ Tax
                     <span class="muted" style="font-weight:400;">Subtotal + Tax</span>
                 </span>
-                <span class="amt">$<span id="total_with_tax">0</span></span>
+                <span class="amt">$<span id="total_payable">0</span></span>
             </div>
         </div>
         {{-- Payment row — Cash / Card / More. Same classes & IDs as the

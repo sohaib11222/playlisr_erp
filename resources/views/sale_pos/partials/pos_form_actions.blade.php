@@ -41,15 +41,11 @@
 			</div>
 			@endif
 
-			{{-- Hidden shim: the bottom-left "Total Payable" chip was visually redundant
-				 with the big TOTAL (WITH TAX) in the totals row above, but lots of JS
-				 still reads/writes #total_payable and #final_total_input. Keep the
-				 elements present but invisible. --}}
-			<div class="bg-navy pos-total text-white" style="display:none;">
-				<span class="text">@lang('sale.total_payable')</span>
-				<input type="hidden" name="final_total" id="final_total_input" value=0>
-				<span id="total_payable" class="number">0</span>
-			</div>
+			{{-- Hidden form field for the final total (pos.js writes here on
+				 submit). The visible #total_payable span now lives in the
+				 receipt card (pos_form_totals) so the grand total actually
+				 renders the value pos.js writes. --}}
+			<input type="hidden" name="final_total" id="final_total_input" value=0>
 
 			@if(!isset($pos_settings['hide_recent_trans']) || $pos_settings['hide_recent_trans'] == 0)
 			<button type="button" class="pull-right btn btn-primary btn-flat @if($is_mobile) col-xs-6 @endif" data-toggle="modal" data-target="#recent_transactions_modal" id="recent-transactions"> <i class="fas fa-clock"></i> @lang('lang_v1.recent_transactions')</button>
