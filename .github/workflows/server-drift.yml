@@ -1,0 +1,53 @@
+# Compare the production server git tree to GitHub — report only, no deploy.
+# Run manually: Actions → Server drift report → Run workflow.
+
+name: Server drift report
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: server-drift
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Drift report (server vs GitHub)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: true
+          script: |
+            set -e
+            DEPLOY_PATH=/www/playlist.nivessa.com/app
+            export DEPLOY_DIR="$DEPLOY_PATH"
+            export DEPLOY_BRANCH=main
+            export DEPLOY_GIT_REMOTE='${{ vars.DEPLOY_GIT_REMOTE }}'
+            export GIT_DRIFT_REPORT_ONLY=1
+            mkdir -p "$HOME/.ssh"
+            chmod 700 "$HOME/.ssh"
+            ssh-keyscan -t rsa,ecdsa,ed25519 github.com >> "$HOME/.ssh/known_hosts" 2>/dev/null || true
+            if [ ! -f "$DEPLOY_PATH/scripts/git-drift-report.sh" ]; then
+              echo "scripts/git-drift-report.sh is not on the server yet. Push latest main and clone/pull, or copy the script once."
+              exit 0
+            fi
+            bash "$DEPLOY_PATH/scripts/git-drift-report.sh"

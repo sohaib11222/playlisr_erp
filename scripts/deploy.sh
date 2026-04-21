@@ -6,11 +6,17 @@
 #   DEPLOY_BRANCH       — branch (default main)
 #   DEPLOY_MIGRATE      — 1 to run migrations
 #   DEPLOY_GIT_REMOTE   — remote name (default: origin if present, else erp, else fail)
+#   DEPLOY_SYNC_MODE    — ff-only (default) | reset
+#                         ff-only: git merge --ff-only — does NOT overwrite uncommitted server
+#                                 changes; deploy fails if merge cannot fast-forward.
+#                         reset:   git reset --hard — working tree matches GitHub (tracked
+#                                 files only; .env and gitignored paths are untouched).
 set -euo pipefail
 
 DEPLOY_DIR="${DEPLOY_DIR:-/www/playlist.nivessa.com/app}"
 DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
 DEPLOY_MIGRATE="${DEPLOY_MIGRATE:-0}"
+DEPLOY_SYNC_MODE="${DEPLOY_SYNC_MODE:-ff-only}"
 
 cd "$DEPLOY_DIR"
 
@@ -34,16 +40,25 @@ resolve_git_remote() {
 }
 
 GIT_REMOTE="$(resolve_git_remote)"
-echo "deploy: $(date -u) — dir=$DEPLOY_DIR branch=$DEPLOY_BRANCH remote=$GIT_REMOTE"
+echo "deploy: $(date -u) — dir=$DEPLOY_DIR branch=$DEPLOY_BRANCH remote=$GIT_REMOTE sync=$DEPLOY_SYNC_MODE"
 
 # Trust github.com for git-over-SSH (first fetch on a new server fails without this).
 mkdir -p "$HOME/.ssh"
 chmod 700 "$HOME/.ssh"
 ssh-keyscan -t rsa,ecdsa,ed25519 github.com >> "$HOME/.ssh/known_hosts" 2>/dev/null || true
 
-# Update code only (fast). Fails if merge is required — avoids overwriting uncommitted server edits.
 git fetch "$GIT_REMOTE" "$DEPLOY_BRANCH"
-git merge --ff-only "${GIT_REMOTE}/${DEPLOY_BRANCH}"
+
+case "$DEPLOY_SYNC_MODE" in
+  reset)
+    echo "deploy: DEPLOY_SYNC_MODE=reset — matching GitHub exactly (tracked files only)"
+    git reset --hard "${GIT_REMOTE}/${DEPLOY_BRANCH}"
+    ;;
+  ff-only|*)
+    echo "deploy: DEPLOY_SYNC_MODE=ff-only — safe update (fails if server has diverged or dirty tree)"
+    git merge --ff-only "${GIT_REMOTE}/${DEPLOY_BRANCH}"
+    ;;
+esac
 
 if [ "$DEPLOY_MIGRATE" = "1" ]; then
   echo "deploy: migrate"

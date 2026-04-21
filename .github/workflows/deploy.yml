@@ -6,8 +6,11 @@
 #   DEPLOY_SSH_KEY    — private key (full PEM, begin/end lines included)
 # Optional secret:
 #   DEPLOY_PORT       — SSH port (omit for 22)
-# Optional repository variable (Settings → Variables):
-#   DEPLOY_GIT_REMOTE — git remote name if not "origin" (e.g. erp). If unset, server uses origin, then erp.
+# Optional repository variables (Settings → Variables → Actions):
+#   DEPLOY_GIT_REMOTE      — git remote name if not "origin" (e.g. erp). If unset, server uses origin, then erp.
+#   DEPLOY_SYNC_MODE       — ff-only (default) or reset. ff-only = safe; reset = hard reset to match GitHub.
+#   DEPLOY_SKIP_DRIFT_CHECK   — "true" = skip drift step entirely.
+#   DEPLOY_DRIFT_NON_BLOCKING — "true" = print drift report but do not fail deploy if issues found.
 #
 # Push to main: git pull + cache + queue restart (no migrate).
 # Manual "Run workflow": optional migrate.
@@ -49,6 +52,34 @@ jobs:
           chmod 700 ~/.ssh
           ssh-keyscan -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
 
+      - name: Server vs GitHub drift report (blocks deploy if issues)
+        id: drift
+        if: ${{ vars.DEPLOY_SKIP_DRIFT_CHECK != 'true' }}
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: true
+          script: |
+            set -e
+            DEPLOY_PATH=/www/playlist.nivessa.com/app
+            export DEPLOY_DIR="$DEPLOY_PATH"
+            export DEPLOY_BRANCH=main
+            export DEPLOY_GIT_REMOTE='${{ vars.DEPLOY_GIT_REMOTE }}'
+            if [ "${{ vars.DEPLOY_DRIFT_NON_BLOCKING }}" = "true" ]; then
+              export GIT_DRIFT_REPORT_ONLY=1
+            fi
+            mkdir -p "$HOME/.ssh"
+            chmod 700 "$HOME/.ssh"
+            ssh-keyscan -t rsa,ecdsa,ed25519 github.com >> "$HOME/.ssh/known_hosts" 2>/dev/null || true
+            if [ ! -f "$DEPLOY_PATH/scripts/git-drift-report.sh" ]; then
+              echo "Drift script missing on server — push scripts/git-drift-report.sh in main, then redeploy."
+              exit 0
+            fi
+            bash "$DEPLOY_PATH/scripts/git-drift-report.sh"
+
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -64,6 +95,7 @@ jobs:
             export DEPLOY_BRANCH=main
             export DEPLOY_MIGRATE='${{ steps.flags.outputs.run_migrate }}'
             export DEPLOY_GIT_REMOTE='${{ vars.DEPLOY_GIT_REMOTE }}'
+            export DEPLOY_SYNC_MODE='${{ vars.DEPLOY_SYNC_MODE }}'
             # Git on the server uses SSH to github.com; trust its host key (separate from Actions→server SSH).
             mkdir -p "$HOME/.ssh"
             chmod 700 "$HOME/.ssh"
@@ -83,8 +115,12 @@ jobs:
             export DEPLOY_GIT_REMOTE="$R"
             echo "Using git remote: $R"
             if [ ! -f "$DEPLOY_PATH/scripts/deploy.sh" ]; then
-              echo "First deploy: pulling repo so scripts/deploy.sh exists…"
+              echo "First deploy: syncing repo (same rules as deploy.sh)…"
+              SYNC="${DEPLOY_SYNC_MODE:-ff-only}"
               git fetch "$R" main
-              git merge --ff-only "$R/main" || git pull --no-edit "$R" main
+              case "$SYNC" in
+                reset) git reset --hard "$R/main" ;;
+                *) git merge --ff-only "$R/main" ;;
+              esac
             fi
             bash "$DEPLOY_PATH/scripts/deploy.sh"
