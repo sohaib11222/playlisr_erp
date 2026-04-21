@@ -1,0 +1,70 @@
+# Deploy to production over SSH when main is pushed, or manually with optional migrate.
+#
+# GitHub repository secrets (Settings → Secrets and variables → Actions):
+#   DEPLOY_HOST       — server hostname or IP
+#   DEPLOY_USER       — SSH user (e.g. playlist)
+#   DEPLOY_SSH_KEY    — private key (full PEM, begin/end lines included)
+# Optional secret:
+#   DEPLOY_PORT       — SSH port (omit for 22)
+#
+# Push to main: git pull + cache + queue restart (no migrate).
+# Manual "Run workflow": optional migrate.
+
+name: Deploy production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_migrate:
+        description: Run php artisan migrate --force on server
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve migrate flag and SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          echo "run_migrate=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_migrate == true && 1 || 0 }}" >> "$GITHUB_OUTPUT"
+          echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: true
+          script: |
+            set -e
+            DEPLOY_PATH=/www/playlist.nivessa.com/app
+            export DEPLOY_DIR="$DEPLOY_PATH"
+            export DEPLOY_BRANCH=main
+            export DEPLOY_MIGRATE='${{ steps.flags.outputs.run_migrate }}'
+            if [ ! -f "$DEPLOY_PATH/scripts/deploy.sh" ]; then
+              echo "First deploy: pulling repo so scripts/deploy.sh exists…"
+              cd "$DEPLOY_PATH"
+              git fetch origin main
+              git merge --ff-only origin/main || git pull --no-edit origin main
+            fi
+            bash "$DEPLOY_PATH/scripts/deploy.sh"
