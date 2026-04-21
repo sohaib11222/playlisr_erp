@@ -9,9 +9,15 @@
 <section class="content">
 
     <div class="alert alert-info" style="border-left: 4px solid #3c8dbc;">
-        <strong>How this works:</strong> this page shows the <strong>ERP side</strong> of your daily reconciliation — every card/Clover payment in the ERP for the selected date, rolled up by employee (like the "Employee / ERP" columns in your spreadsheet).
-        <br><br>
-        The Clover side (live pull from the Clover API for per-employee totals and per-transaction detail) requires a backend sync that hasn't been built yet — once Sohaib wires it up, the Clover columns will populate here automatically and the manual diffing step goes away.
+        <strong>How this works:</strong> this page reconciles <strong>ERP payments</strong> against <strong>Clover payments</strong> for the selected date, rolled up by employee — exactly what Fateen was doing by hand in the spreadsheet. Clover data is pulled via the Clover API by a scheduled job (<code>clover:sync-payments</code>) that runs every 30 min during business hours + 2:30 AM overnight.
+        @php
+            $last_clover_sync = \DB::table('clover_payments')->max('updated_at');
+        @endphp
+        @if($last_clover_sync)
+            <br><span style="font-size:12px; color:#3c8dbc;">Last Clover sync: {{ \Carbon\Carbon::parse($last_clover_sync)->diffForHumans() }} ({{ \Carbon\Carbon::parse($last_clover_sync)->format('M j, g:i A') }})</span>
+        @else
+            <br><span style="font-size:12px; color:#c0392b;">⚠ Clover sync has never run on this install. Add Clover API credentials to business settings and run <code>php artisan clover:sync-payments</code> once to prime the table.</span>
+        @endif
     </div>
 
     @if($selected_method === 'auto' && isset($effective_method) && $effective_method === 'all')
@@ -108,32 +114,58 @@
                 <thead>
                     <tr>
                         <th>Employee</th>
-                        <th class="text-right"># ERP payments</th>
-                        <th class="text-right">ERP total</th>
-                        <th class="text-right text-muted">Clover total <small>(pending)</small></th>
-                        <th class="text-right text-muted">Difference <small>(pending)</small></th>
+                        <th class="text-right"># ERP</th>
+                        <th class="text-right">ERP $</th>
+                        <th class="text-right"># Clover</th>
+                        <th class="text-right">Clover $</th>
+                        <th class="text-right">Difference (ERP − Clover)</th>
                     </tr>
                 </thead>
                 <tbody>
                     @forelse($employee_rows as $r)
+                        @php
+                            $diff = $r->diff ?? (($r->erp_total ?? 0) - ($r->clover_total ?? 0));
+                            $diffAbs = abs((float) $diff);
+                            // Color the diff: green if within $5 (usually a rounding/tip line),
+                            // yellow if $5-50, red over $50. Matches Sarah's eyeball rule.
+                            $diffClass = $diffAbs < 5 ? 'text-success' : ($diffAbs < 50 ? 'text-warning' : 'text-danger');
+                        @endphp
                         <tr>
                             <td><strong>{{ trim($r->employee) ?: '(unknown)' }}</strong></td>
                             <td class="text-right">{{ (int) $r->cnt }}</td>
                             <td class="text-right">${{ number_format($r->erp_total, 2) }}</td>
-                            <td class="text-right text-muted">—</td>
-                            <td class="text-right text-muted">—</td>
+                            <td class="text-right">{{ (int) ($r->clover_cnt ?? 0) }}</td>
+                            <td class="text-right">${{ number_format((float) ($r->clover_total ?? 0), 2) }}</td>
+                            <td class="text-right {{ $diffClass }}"><strong>{{ $diff >= 0 ? '+' : '' }}${{ number_format((float) $diff, 2) }}</strong></td>
                         </tr>
                     @empty
-                        <tr><td colspan="5" class="text-center text-muted">No ERP card/Clover payments recorded on this date.</td></tr>
+                        <tr><td colspan="6" class="text-center text-muted">No ERP card/Clover payments recorded on this date.</td></tr>
                     @endforelse
+                    @foreach($unmatched_clover ?? [] as $r)
+                        <tr style="background:#fff8e1;">
+                            <td><em>{{ $r->employee }}</em> <small class="text-muted">in Clover but no matching ERP employee</small></td>
+                            <td class="text-right">0</td>
+                            <td class="text-right">$0.00</td>
+                            <td class="text-right">{{ $r->clover_cnt }}</td>
+                            <td class="text-right">${{ number_format($r->clover_total, 2) }}</td>
+                            <td class="text-right text-danger"><strong>${{ number_format($r->diff, 2) }}</strong></td>
+                        </tr>
+                    @endforeach
                 </tbody>
                 <tfoot>
+                    @php
+                        $total_clover_cnt = $employee_rows->sum('clover_cnt') + collect($unmatched_clover ?? [])->sum('clover_cnt');
+                        $total_diff = $grand_total - ($clover_grand_total ?? 0);
+                    @endphp
                     <tr style="background: #f8f9fa; font-weight: bold;">
                         <td>Total</td>
                         <td class="text-right">{{ $employee_rows->sum('cnt') }}</td>
                         <td class="text-right">${{ number_format($grand_total, 2) }}</td>
-                        <td class="text-right text-muted">—</td>
-                        <td class="text-right text-muted">—</td>
+                        <td class="text-right">{{ $total_clover_cnt }}</td>
+                        <td class="text-right">${{ number_format($clover_grand_total ?? 0, 2) }}</td>
+                        <td class="text-right {{ abs($total_diff) < 5 ? 'text-success' : (abs($total_diff) < 50 ? 'text-warning' : 'text-danger') }}">
+                            {{ $total_diff >= 0 ? '+' : '' }}${{ number_format($total_diff, 2) }}
+                        </td>
                     </tr>
                 </tfoot>
             </table>

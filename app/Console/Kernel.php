@@ -51,9 +51,23 @@ class Kernel extends ConsoleKernel
             ->dailyAt('00:15')
             ->timezone('America/Los_Angeles')
             ->withoutOverlapping(180);
-        
+
         // StreetPulse daily upload (runs at 2:00 AM to upload yesterday's data)
         $schedule->command('streetpulse:upload-daily')->dailyAt('02:00');
+
+        // Clover → ERP payment sync. Runs every 30 min during business hours
+        // to keep the Clover-vs-ERP reconciliation report near-live, then once
+        // more overnight at 02:30 PST to pick up any late-night stragglers.
+        // Uses the default --days=2 window so a brief outage doesn't leave
+        // gaps — the next run re-fetches yesterday + today and upserts.
+        $schedule->command('clover:sync-payments')
+            ->cron('*/30 10-23 * * *')
+            ->timezone('America/Los_Angeles')
+            ->withoutOverlapping(25);
+        $schedule->command('clover:sync-payments --days=2')
+            ->dailyAt('02:30')
+            ->timezone('America/Los_Angeles')
+            ->withoutOverlapping(50);
 
         // Customer wants — scan recently-added products against open wants
         // and notify the customer when we find a match. Runs at 4 PM PST so

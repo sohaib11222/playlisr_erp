@@ -4967,7 +4967,7 @@ class ReportController extends Controller
         }
         // (when $effective_method === 'all', no method filter is applied)
 
-        // Per-employee rollup
+        // Per-employee rollup — ERP side (transaction_payments)
         $employee_rows = (clone $base)
             ->selectRaw("t.created_by,
                 CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as employee,
@@ -4976,6 +4976,77 @@ class ReportController extends Controller
             ->groupBy('t.created_by', 'u.first_name', 'u.last_name')
             ->orderByDesc('erp_total')
             ->get();
+
+        // Per-employee rollup — Clover side. Pulled from clover_payments
+        // (populated by the scheduled `clover:sync-payments` command). We
+        // group by normalized employee_name because Clover uses free-text
+        // names (e.g. "Henry", "Davis", "Luis") that don't match ERP's
+        // first_name + last_name structure. Reconciliation downstream joins
+        // on a case-insensitive prefix — good enough for a store with <20
+        // employees where first names don't collide.
+        $clover_rollup = \DB::table('clover_payments')
+            ->where('business_id', $business_id)
+            ->whereDate('paid_on', $date)
+            ->where(function ($q) {
+                $q->whereNull('result')->orWhere('result', 'SUCCESS')->orWhere('result', 'APPROVED');
+            })
+            ->selectRaw("LOWER(TRIM(COALESCE(employee_name, ''))) as emp_key,
+                COALESCE(MAX(employee_name), '(unknown)') as clover_employee,
+                COUNT(*) as clover_cnt,
+                COALESCE(SUM(amount), 0) as clover_total")
+            ->groupBy('emp_key')
+            ->get()
+            ->keyBy('emp_key');
+
+        // Fold Clover totals into the employee rollup. Match heuristic:
+        //   - Try ERP first_name lowercased == Clover emp_key
+        //   - Then ERP last_name lowercased == Clover emp_key
+        //   - Then substring match (Clover "Davis Bryant" finds "davis")
+        $claimed_clover_keys = [];
+        $employee_rows = $employee_rows->map(function ($row) use ($clover_rollup, &$claimed_clover_keys) {
+            $parts = preg_split('/\s+/', strtolower(trim($row->employee)));
+            $match = null;
+            foreach ($parts as $part) {
+                if ($part !== '' && isset($clover_rollup[$part]) && !isset($claimed_clover_keys[$part])) {
+                    $match = $clover_rollup[$part];
+                    $claimed_clover_keys[$part] = true;
+                    break;
+                }
+            }
+            if (!$match) {
+                // Loose substring match as last resort
+                foreach ($clover_rollup as $key => $cp) {
+                    if (isset($claimed_clover_keys[$key])) continue;
+                    foreach ($parts as $part) {
+                        if ($part !== '' && (strpos($key, $part) !== false || strpos($part, $key) !== false)) {
+                            $match = $cp;
+                            $claimed_clover_keys[$key] = true;
+                            break 2;
+                        }
+                    }
+                }
+            }
+            $row->clover_cnt = (int) ($match->clover_cnt ?? 0);
+            $row->clover_total = (float) ($match->clover_total ?? 0);
+            $row->diff = round(((float) $row->erp_total) - (float) $row->clover_total, 2);
+            return $row;
+        });
+
+        // Unclaimed Clover employees — these are names in Clover that didn't
+        // match any ERP employee. Surface them as extra rows so nothing hides.
+        $unmatched_clover = [];
+        foreach ($clover_rollup as $key => $cp) {
+            if (isset($claimed_clover_keys[$key])) continue;
+            $unmatched_clover[] = (object) [
+                'created_by' => null,
+                'employee' => '(Clover only) ' . ($cp->clover_employee ?: $key),
+                'cnt' => 0,
+                'erp_total' => 0,
+                'clover_cnt' => (int) $cp->clover_cnt,
+                'clover_total' => (float) $cp->clover_total,
+                'diff' => round(0 - (float) $cp->clover_total, 2),
+            ];
+        }
 
         // Per-location detail rows (like the bottom section of Sarah's spreadsheet)
         $detail_rows = (clone $base)
@@ -4987,10 +5058,14 @@ class ReportController extends Controller
             ->get();
 
         $grand_total = (float) $employee_rows->sum('erp_total');
+        $clover_grand_total = (float) (
+            $employee_rows->sum('clover_total') + collect($unmatched_clover)->sum('clover_total')
+        );
 
         return view('report.clover_vs_erp_report')->with(compact(
             'employee_rows', 'detail_rows', 'date', 'location_id',
-            'business_locations', 'grand_total', 'methods_breakdown',
+            'business_locations', 'grand_total', 'clover_grand_total',
+            'unmatched_clover', 'methods_breakdown',
             'selected_method', 'effective_method', 'default_card_methods'
         ));
     }
