@@ -3006,7 +3006,12 @@ function pos_each_row(row_obj) {
 function pos_total_row() {
     var total_quantity = 0;
     var price_total = get_subtotal();
-    $('table#pos_table tbody tr').each(function() {
+    // Bag Fee isn't a product — Sarah asked to exclude it from the ITEMS
+    // count on the totals block. The bag row carries data-plastic-bag="true"
+    // and auto-adds itself when the Bag Fee checkbox is on; counting it made
+    // a 1-item sale look like 2. Price total still includes the bag fee
+    // (that one stays in get_subtotal).
+    $('table#pos_table tbody tr:not([data-plastic-bag="true"])').each(function() {
         total_quantity = total_quantity + Math.floor(__read_number($(this).find('input.pos_quantity')) || 0);
     });
 
