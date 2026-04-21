@@ -10,13 +10,51 @@ class CloverService
 {
     private $businessUtil;
     private $businessId;
+    private $locationId;
     private $settings;
 
-    public function __construct($businessId = null)
+    /**
+     * @param int|null $businessId  Business to load settings for. Defaults to the session user's business.
+     * @param int|null $locationId  When set, the service prefers per-location Clover creds
+     *                              (settings.clover.locations.<locationId>). Falls back to the
+     *                              legacy top-level settings.clover.* if per-location isn't configured.
+     */
+    public function __construct($businessId = null, $locationId = null)
     {
         $this->businessUtil = new BusinessUtil();
         $this->businessId = $businessId ?? request()->session()->get('user.business_id');
+        $this->locationId = $locationId;
         $this->settings = $this->businessUtil->getApiSettings($this->businessId);
+    }
+
+    /**
+     * Set the location after construction — useful for workers / commands
+     * that iterate over locations with one service instance.
+     */
+    public function forLocation($locationId)
+    {
+        $this->locationId = $locationId;
+        return $this;
+    }
+
+    /**
+     * Returns the effective Clover credentials array for the current location.
+     * Order of precedence:
+     *   1. settings.clover.locations.<locationId>  (per-location override)
+     *   2. settings.clover                         (business-wide default / legacy)
+     *
+     * Keeps backward compatibility: if a business only has one Clover and no
+     * per-location mapping, all existing callers keep working unchanged.
+     */
+    private function getClover()
+    {
+        $clover = $this->settings['clover'] ?? [];
+        if ($this->locationId && !empty($clover['locations'][$this->locationId])) {
+            // Merge so per-location entries fall back to top-level for fields
+            // they don't override (e.g. environment).
+            return array_merge($clover, $clover['locations'][$this->locationId]);
+        }
+        return $clover;
     }
 
     /**
