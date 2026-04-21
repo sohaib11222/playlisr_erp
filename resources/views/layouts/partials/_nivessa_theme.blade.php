@@ -41,21 +41,21 @@
 	}
 
 	/* ---------- Typography ---------- */
-	/* Apply Inter Tight on body so every descendant inherits it. Using !important
-	   on body only (not on children) because AdminLTE's SourceSansPro declarations
-	   on body + .content-wrapper outrank a plain body selector. Individual
-	   components that explicitly set their own font-family (icon fonts, monospace
-	   code blocks) keep their override — inherit cascades through everything else. */
+	/* Apply Inter Tight, but WITHOUT !important on body. The earlier version
+	   used !important, which blocked the browser's fallback chain to icon
+	   fonts (FontAwesome) and emoji fonts site-wide — every icon and emoji
+	   rendered as a □ tofu square. Sarah: "none of our changes are here and
+	   it looks worse." Root cause was this one rule.
+	   Fix: drop the !important, include emoji + symbol fonts in the fallback
+	   stack, and let .fa/.glyphicon rules keep their own font-family. */
 	html, body {
-		font-family: "Inter Tight", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif !important;
+		font-family: "Inter Tight", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
 		font-feature-settings: "ss01", "cv11";
 	}
-	body.skin-blue-light .content-wrapper,
 	body .content-wrapper,
 	body .main-sidebar,
 	body .main-header,
 	body .modal,
-	body .wrapper,
 	body h1, body h2, body h3, body h4, body h5, body h6,
 	body .box,
 	body .box-body,
@@ -64,8 +64,11 @@
 	body input, body select, body textarea, body button, body .btn {
 		font-family: inherit;
 	}
-	/* Icon fonts must stay their own family so FontAwesome / AdminLTE icons render. */
+	/* Icon fonts MUST keep their own family. Extra-specific rule so any
+	   ancestor font-family doesn't accidentally win. Covers classic
+	   FontAwesome 4, FA5 Free/Solid/Regular/Brands, and Glyphicons. */
 	body .fa, body .fas, body .far, body .fab, body .fal,
+	body .fa-solid, body .fa-regular, body .fa-brands,
 	body [class^="fa-"], body [class*=" fa-"],
 	body .glyphicon, body [class^="glyphicon-"] {
 		font-family: 'FontAwesome', 'Font Awesome 5 Free', 'Font Awesome 5 Brands' !important;
