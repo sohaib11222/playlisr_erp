@@ -80,6 +80,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/business/test-clover-connection', 'CloverController@testConnection');
     Route::get('/business/preview-clover-customers', 'CloverController@previewCustomers');
     Route::post('/business/import-clover-customers', 'CloverController@importCustomers');
+    Route::get('/clover/shift-summary', 'CloverController@shiftSummary')->name('clover.shift-summary');
     
     Route::get('/business/settings', 'BusinessController@getBusinessSettings')->name('business.getBusinessSettings');
     Route::post('/business/update', 'BusinessController@postBusinessSettings')->name('business.postBusinessSettings');

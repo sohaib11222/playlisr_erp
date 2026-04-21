@@ -314,7 +314,49 @@ class CloverController extends Controller
             $address['zip'] ?? '',
             $address['country'] ?? ''
         ]);
-        
+
         return implode(', ', $parts);
+    }
+
+    /**
+     * Shift summary — credit-card slip count + total for the given register
+     * window. Auto-fills the 'Total card slips' field on the close-register
+     * modal so cashiers don't have to hand-count swipes.
+     *
+     * Query params:
+     *   location_id (required) — picks the per-location Clover creds
+     *   start       (required) — shift start (ISO date or unix seconds)
+     *   end         (required) — shift end   (same)
+     *
+     * Response: { success, card_slip_count, card_total, error? }
+     */
+    public function shiftSummary(Request $request)
+    {
+        $locationId = $request->get('location_id');
+        $start = $request->get('start');
+        $end   = $request->get('end');
+
+        if (empty($locationId) || empty($start) || empty($end)) {
+            return response()->json([
+                'success' => false,
+                'error' => 'location_id, start, and end are required.',
+                'card_slip_count' => 0,
+                'card_total' => 0,
+            ], 422);
+        }
+
+        try {
+            $cloverService = (new CloverService())->forLocation($locationId);
+            $summary = $cloverService->getCardSlipCountForShift($start, $end);
+            return response()->json($summary);
+        } catch (\Exception $e) {
+            Log::error('Clover shiftSummary error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Error: ' . $e->getMessage(),
+                'card_slip_count' => 0,
+                'card_total' => 0,
+            ]);
+        }
     }
 }

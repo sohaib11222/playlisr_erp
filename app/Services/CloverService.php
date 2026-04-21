@@ -65,7 +65,7 @@ class CloverService
      */
     public function isConfigured()
     {
-        $clover = $this->settings['clover'] ?? [];
+        $clover = $this->getClover();
         
         // Check for Ecommerce API Tokens (simpler method)
         if (!empty($clover['public_token']) && !empty($clover['private_token']) && !empty($clover['merchant_id'])) {
@@ -88,7 +88,7 @@ class CloverService
      */
     private function getAccessToken()
     {
-        $clover = $this->settings['clover'] ?? [];
+        $clover = $this->getClover();
         
         // Method 1: Use Ecommerce API Private Token (simpler, recommended)
         if (!empty($clover['private_token'])) {
@@ -154,7 +154,7 @@ class CloverService
         }
 
         try {
-            $clover = $this->settings['clover'] ?? [];
+            $clover = $this->getClover();
             $baseUrl = $clover['environment'] === 'production' 
                 ? 'https://api.clover.com' 
                 : 'https://sandbox.dev.clover.com';
@@ -243,7 +243,7 @@ class CloverService
         }
 
         try {
-            $clover = $this->settings['clover'] ?? [];
+            $clover = $this->getClover();
             $baseUrl = $clover['environment'] === 'production' 
                 ? 'https://api.clover.com' 
                 : 'https://sandbox.dev.clover.com';
@@ -294,7 +294,7 @@ class CloverService
      */
     private function getBaseUrl()
     {
-        $clover = $this->settings['clover'] ?? [];
+        $clover = $this->getClover();
         return $clover['environment'] === 'production' 
             ? 'https://api.clover.com' 
             : 'https://sandbox.dev.clover.com';
@@ -307,7 +307,7 @@ class CloverService
      */
     private function getApiHeaders()
     {
-        $clover = $this->settings['clover'] ?? [];
+        $clover = $this->getClover();
         $accessToken = $this->getAccessToken();
         $publicToken = $clover['public_token'] ?? '';
         
@@ -348,7 +348,7 @@ class CloverService
         }
 
         try {
-            $clover = $this->settings['clover'] ?? [];
+            $clover = $this->getClover();
             $merchantId = $clover['merchant_id'] ?? '';
             if (empty($merchantId)) {
                 return ['success' => false, 'msg' => 'Clover merchant ID not configured.', 'payments' => []];
@@ -433,7 +433,7 @@ class CloverService
         }
 
         try {
-            $clover = $this->settings['clover'] ?? [];
+            $clover = $this->getClover();
             $merchantId = $clover['merchant_id'] ?? '';
             
             if (empty($merchantId)) {
@@ -498,7 +498,7 @@ class CloverService
         }
 
         try {
-            $clover = $this->settings['clover'] ?? [];
+            $clover = $this->getClover();
             $merchantId = $clover['merchant_id'] ?? '';
             
             if (empty($merchantId)) {
@@ -537,6 +537,168 @@ class CloverService
                 'msg' => 'Error fetching customer orders: ' . $e->getMessage()
             ];
         }
+    }
+
+    /**
+     * Card-slip summary for a shift window. Pulls payments from Clover in
+     * the [$startTs, $endTs] range, filters to successful credit-card
+     * tenders only, and returns the slip count + total cents.
+     *
+     * Used by the close-register modal to auto-fill 'Total card slips' so
+     * cashiers don't have to eyeball-count swipes. Cash, gift-card, and
+     * other non-card tenders are excluded — per Sarah 2026-04-21: "total
+     * card slips should be all credit card transactions from clover not
+     * cash".
+     *
+     * @param  int|string|\DateTimeInterface $startTs  Shift start (unix seconds, ISO string, or DateTime)
+     * @param  int|string|\DateTimeInterface $endTs    Shift end (same formats)
+     * @return array  ['success' => bool, 'card_slip_count' => int,
+     *                 'card_total' => float (dollars), 'error' => ?string]
+     */
+    public function getCardSlipCountForShift($startTs, $endTs)
+    {
+        if (!$this->isConfigured()) {
+            return [
+                'success' => false,
+                'card_slip_count' => 0,
+                'card_total' => 0.0,
+                'error' => 'Clover not configured for this location.',
+            ];
+        }
+
+        $startMs = $this->toEpochMs($startTs);
+        $endMs   = $this->toEpochMs($endTs);
+        if ($startMs === null || $endMs === null || $endMs < $startMs) {
+            return [
+                'success' => false,
+                'card_slip_count' => 0,
+                'card_total' => 0.0,
+                'error' => 'Invalid shift window.',
+            ];
+        }
+
+        $clover = $this->getClover();
+        $merchantId = $clover['merchant_id'] ?? '';
+        $baseUrl = $this->getBaseUrl();
+
+        $count = 0;
+        $totalCents = 0;
+        $offset = 0;
+        $limit = 1000;   // Clover's max per page
+        $safetyCap = 10; // up to 10k payments per shift — way more than a real day
+
+        try {
+            for ($page = 0; $page < $safetyCap; $page++) {
+                $qs = http_build_query([
+                    'filter' => 'createdTime>=' . $startMs,
+                    'filter2' => 'createdTime<=' . $endMs,  // Clover accepts multiple filters
+                    'limit' => $limit,
+                    'offset' => $offset,
+                    'expand' => 'tender',
+                ]);
+                // http_build_query won't give us two `filter=` params, so build manually:
+                $qs = 'filter=' . rawurlencode('createdTime>=' . $startMs)
+                    . '&filter=' . rawurlencode('createdTime<=' . $endMs)
+                    . '&limit=' . $limit
+                    . '&offset=' . $offset
+                    . '&expand=tender';
+
+                $url = $baseUrl . '/v3/merchants/' . $merchantId . '/payments?' . $qs;
+                $ch = curl_init($url);
+                curl_setopt_array($ch, [
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_HTTPHEADER => $this->getApiHeaders(),
+                    CURLOPT_TIMEOUT => 15,
+                ]);
+                $response = curl_exec($ch);
+                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                $curlError = curl_error($ch);
+                curl_close($ch);
+
+                if ($curlError) {
+                    throw new \Exception('cURL error: ' . $curlError);
+                }
+                if ($httpCode < 200 || $httpCode >= 300) {
+                    throw new \Exception('Clover HTTP ' . $httpCode . ': ' . substr($response, 0, 200));
+                }
+
+                $data = json_decode($response, true) ?: [];
+                $elements = $data['elements'] ?? [];
+                if (empty($elements)) {
+                    break;
+                }
+
+                foreach ($elements as $p) {
+                    // Clover marks refunded/failed with non-zero result fields.
+                    // Skip anything that isn't a successful charge.
+                    if (!empty($p['voided']) || !empty($p['refunded']) || ($p['result'] ?? 'SUCCESS') !== 'SUCCESS') {
+                        continue;
+                    }
+                    if (!$this->isCreditCardTender($p['tender'] ?? [])) {
+                        continue;
+                    }
+                    $count++;
+                    $totalCents += (int) ($p['amount'] ?? 0);
+                }
+
+                if (count($elements) < $limit) {
+                    break;  // last page
+                }
+                $offset += $limit;
+            }
+        } catch (\Exception $e) {
+            Log::error('Clover getCardSlipCountForShift error: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'card_slip_count' => 0,
+                'card_total' => 0.0,
+                'error' => $e->getMessage(),
+            ];
+        }
+
+        return [
+            'success' => true,
+            'card_slip_count' => $count,
+            'card_total' => $totalCents / 100.0,
+            'error' => null,
+        ];
+    }
+
+    /**
+     * Is a Clover tender object a credit/debit card swipe (vs cash, gift
+     * card, house account, etc.)? Clover tags cards with labelKey values
+     * like "com.clover.tender.credit_card" / "credit_debit" / "mag_stripe".
+     */
+    private function isCreditCardTender(array $tender)
+    {
+        $key   = strtolower((string) ($tender['labelKey'] ?? ''));
+        $label = strtolower((string) ($tender['label'] ?? ''));
+        if ($key !== '') {
+            // Cash / gift card / store credit all have their own labelKeys;
+            // anything that isn't one of those and has 'card' or 'credit'
+            // or 'debit' in the key is treated as a card swipe.
+            if (strpos($key, 'cash') !== false) return false;
+            if (strpos($key, 'gift') !== false) return false;
+            if (strpos($key, 'check') !== false) return false;
+            if (strpos($key, 'card') !== false) return true;
+            if (strpos($key, 'credit') !== false) return true;
+            if (strpos($key, 'debit') !== false) return true;
+        }
+        // Fallback to the human label if labelKey was empty.
+        if (strpos($label, 'card') !== false) return true;
+        if (strpos($label, 'credit') !== false) return true;
+        if (strpos($label, 'debit') !== false) return true;
+        return false;
+    }
+
+    /** Coerce various timestamp inputs to Clover's createdTime format (epoch ms). */
+    private function toEpochMs($t)
+    {
+        if ($t === null || $t === '') return null;
+        if (is_int($t)) return $t < 10000000000 ? $t * 1000 : $t;  // seconds vs already-ms
+        if ($t instanceof \DateTimeInterface) return $t->getTimestamp() * 1000;
+        $parsed = strtotime((string) $t);
+        return $parsed === false ? null : $parsed * 1000;
     }
 
     /**
