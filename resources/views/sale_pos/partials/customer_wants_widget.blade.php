@@ -299,10 +299,18 @@
                 var past = data.past || [];
                 renderActive(active);
                 renderPast(past);
-                if (active.length > 0 || past.length > 0) {
-                    show();
+                // Show the panel for EVERY loaded customer — even ones with
+                // no wish list. When empty, the empty-state prompt + inline
+                // add form give the cashier a reason to ask "what are you
+                // looking for?" and capture it on the spot.
+                show();
+                if (active.length === 0 && past.length === 0) {
+                    // Force-expand the "add a new wish" details so the input
+                    // is visible immediately — no clicking needed.
+                    $('.cwl-add').attr('open', 'open');
+                    $('#cwl-empty').text("No wish list yet — ask what they're looking for and add it below.");
                 } else {
-                    hide();
+                    $('.cwl-add').removeAttr('open');
                 }
             }).fail(hide);
         }
