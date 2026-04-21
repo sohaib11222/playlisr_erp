@@ -11,6 +11,55 @@
 
 <!-- Main content -->
 <section class="content no-print">
+    {{-- Side-by-side store comparison (Sarah / Sabina's ask 2026-04-21):
+         a card per business location showing $ spent + purchase count +
+         top products in the selected date range. Respects every filter
+         above — whenever the DataTable reloads, so does this summary. --}}
+    <style>
+        .pr-summary-wrap { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 18px; }
+        .pr-summary-card {
+            flex: 1 1 300px; min-width: 300px;
+            background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+            box-shadow: 0 1px 2px rgba(0,0,0,.04);
+            padding: 14px 16px;
+        }
+        .pr-summary-card h4 {
+            margin: 0 0 8px; font-size: 14px; font-weight: 700;
+            letter-spacing: .02em; color: #1f2937;
+            display: flex; align-items: baseline; justify-content: space-between;
+        }
+        .pr-summary-card .pr-loc-sub { font-size: 11px; color: #6b7280; font-weight: 500; }
+        .pr-summary-stats { display: flex; gap: 14px; margin-bottom: 10px; }
+        .pr-summary-stat {
+            flex: 1; padding: 8px 10px;
+            background: #f9fafb; border-radius: 6px;
+        }
+        .pr-summary-stat .pr-label {
+            font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
+            color: #6b7280; font-weight: 600;
+        }
+        .pr-summary-stat .pr-value {
+            font-size: 18px; font-weight: 700; color: #111827;
+            font-variant-numeric: tabular-nums;
+        }
+        .pr-summary-card .pr-top-label {
+            font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
+            color: #6b7280; font-weight: 600; margin-top: 4px; margin-bottom: 4px;
+        }
+        .pr-top-item {
+            display: flex; justify-content: space-between; gap: 10px;
+            padding: 4px 0; font-size: 12px;
+            border-bottom: 1px solid #f3f4f6;
+        }
+        .pr-top-item:last-child { border-bottom: none; }
+        .pr-top-item .pr-name { color: #1f2937; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .pr-top-item .pr-qty { color: #6b7280; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .pr-summary-empty { padding: 10px 0; font-size: 12px; color: #9ca3af; text-align: center; }
+    </style>
+    <div class="pr-summary-wrap" id="pr-summary-wrap">
+        <div class="pr-summary-empty" style="width:100%;">Loading side-by-side summary…</div>
+    </div>
+
     @component('components.filters', ['title' => __('report.filters')])
         <div class="col-md-3">
             <div class="form-group">
@@ -139,18 +188,83 @@
                          #purchase_list_filter_status',
             function() {
                 purchase_report_table.ajax.reload();
+                refreshPurchaseSummary();
             }
         );
+
+        // Side-by-side store summary — refreshes whenever filters change so
+        // Sabina / Sarah can flip between date ranges and see HW vs Pico
+        // updated in place.
+        function currentFilterParams() {
+            var p = {
+                location_id: $('#purchase_list_filter_location_id').val() || '',
+                supplier_id: $('#purchase_list_filter_supplier_id').val() || '',
+                payment_status: $('#purchase_list_filter_payment_status').val() || '',
+                status: $('#purchase_list_filter_status').val() || '',
+                start_date: '',
+                end_date: '',
+            };
+            if ($('#purchase_list_filter_date_range').val() && $('#purchase_list_filter_date_range').data('daterangepicker')) {
+                p.start_date = $('#purchase_list_filter_date_range').data('daterangepicker').startDate.format('YYYY-MM-DD');
+                p.end_date   = $('#purchase_list_filter_date_range').data('daterangepicker').endDate.format('YYYY-MM-DD');
+            }
+            return p;
+        }
+        function refreshPurchaseSummary() {
+            var $wrap = $('#pr-summary-wrap');
+            $wrap.html('<div class="pr-summary-empty" style="width:100%;">Loading side-by-side summary…</div>');
+            $.get('/reports/purchase-report/summary', currentFilterParams()).done(function (resp) {
+                var locs = (resp && resp.locations) || [];
+                if (!locs.length) {
+                    $wrap.html('<div class="pr-summary-empty" style="width:100%;">No purchases in this range.</div>');
+                    return;
+                }
+                var html = '';
+                locs.forEach(function (loc) {
+                    var total = '$' + parseFloat(loc.total_spent || 0).toFixed(2);
+                    var beforeTax = '$' + parseFloat(loc.total_before_tax || 0).toFixed(2);
+                    var count = parseInt(loc.purchase_count || 0, 10);
+                    var top = (loc.top_products || []).map(function (p) {
+                        var name = (p.artist ? (p.artist + ' — ') : '') + (p.name || '');
+                        var qty = 'qty ' + parseFloat(p.qty || 0).toFixed(0);
+                        var spent = '$' + parseFloat(p.spent || 0).toFixed(2);
+                        return '<div class="pr-top-item">'
+                            + '<span class="pr-name" title="' + $('<div>').text(name).html() + '">' + $('<div>').text(name).html() + '</span>'
+                            + '<span class="pr-qty">' + qty + ' · ' + spent + '</span>'
+                            + '</div>';
+                    }).join('');
+                    if (!top) top = '<div class="pr-summary-empty">No line-item products (manual purchases only?)</div>';
+
+                    html += ''
+                        + '<div class="pr-summary-card">'
+                        + '  <h4><span>' + $('<div>').text(loc.location_name || '—').html() + '</span>'
+                        + '      <span class="pr-loc-sub">' + count + ' purchase' + (count === 1 ? '' : 's') + '</span></h4>'
+                        + '  <div class="pr-summary-stats">'
+                        + '    <div class="pr-summary-stat"><div class="pr-label">Total spent</div><div class="pr-value">' + total + '</div></div>'
+                        + '    <div class="pr-summary-stat"><div class="pr-label">Before tax</div><div class="pr-value">' + beforeTax + '</div></div>'
+                        + '  </div>'
+                        + '  <div class="pr-top-label">Top products bought</div>'
+                        + top
+                        + '</div>';
+                });
+                $wrap.html(html);
+            }).fail(function () {
+                $wrap.html('<div class="pr-summary-empty" style="width:100%; color:#b91c1c;">Failed to load summary. Check your filters and retry.</div>');
+            });
+        }
+        refreshPurchaseSummary();
         $('#purchase_list_filter_date_range').daterangepicker(
             dateRangeSettings,
             function (start, end) {
                 $('#purchase_list_filter_date_range').val(start.format(moment_date_format) + ' ~ ' + end.format(moment_date_format));
                purchase_report_table.ajax.reload();
+               refreshPurchaseSummary();
             }
         );
         $('#purchase_list_filter_date_range').on('cancel.daterangepicker', function(ev, picker) {
             $('#purchase_list_filter_date_range').val('');
             purchase_report_table.ajax.reload();
+            refreshPurchaseSummary();
         });
     });
 </script>

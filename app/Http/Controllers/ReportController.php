@@ -3601,6 +3601,95 @@ class ReportController extends Controller
     }
 
     /**
+     * JSON side-by-side summary for the purchase report — $ spent + purchase
+     * count + top 5 products per location. Driven by the same filters as the
+     * main DataTable so cashiers can compare Hollywood vs Pico at a glance
+     * (Sarah / Sabina's 2026-04-21 request).
+     */
+    public function purchaseReportSummary()
+    {
+        if ((!auth()->user()->can('purchase.view') && !auth()->user()->can('purchase.create') && !auth()->user()->can('view_own_purchase')) || empty(config('constants.show_report_606'))) {
+            abort(403, 'Unauthorized action.');
+        }
+        $business_id = request()->session()->get('user.business_id');
+
+        // Mirror the filter logic from purchaseReport() so the summary stays
+        // consistent with the DataTable shown below it.
+        $baseQuery = \DB::table('transactions as t')
+            ->join('business_locations as bl', 't.location_id', '=', 'bl.id')
+            ->leftJoin('contacts as c', 't.contact_id', '=', 'c.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'purchase');
+
+        $permitted = auth()->user()->permitted_locations();
+        if ($permitted !== 'all') {
+            $baseQuery->whereIn('t.location_id', $permitted);
+        }
+        if (!empty(request()->supplier_id)) {
+            $baseQuery->where('c.id', request()->supplier_id);
+        }
+        if (!empty(request()->location_id)) {
+            $baseQuery->where('t.location_id', request()->location_id);
+        }
+        if (!empty(request()->status)) {
+            $baseQuery->where('t.status', request()->status);
+        }
+        if (!empty(request()->payment_status) && request()->payment_status !== 'overdue') {
+            $baseQuery->where('t.payment_status', request()->payment_status);
+        }
+        if (!empty(request()->start_date) && !empty(request()->end_date)) {
+            $baseQuery->whereDate('t.transaction_date', '>=', request()->start_date)
+                      ->whereDate('t.transaction_date', '<=', request()->end_date);
+        }
+        if (!auth()->user()->can('purchase.view') && auth()->user()->can('view_own_purchase')) {
+            $baseQuery->where('t.created_by', request()->session()->get('user.id'));
+        }
+
+        // Per-location totals.
+        $byLocation = (clone $baseQuery)
+            ->select(
+                'bl.id as location_id',
+                'bl.name as location_name',
+                \DB::raw('COUNT(DISTINCT t.id) as purchase_count'),
+                \DB::raw('COALESCE(SUM(t.final_total), 0) as total_spent'),
+                \DB::raw('COALESCE(SUM(t.total_before_tax), 0) as total_before_tax')
+            )
+            ->groupBy('bl.id', 'bl.name')
+            ->orderByDesc('total_spent')
+            ->get();
+
+        // Top products per location — join the transaction lines. Limit the
+        // per-location slice to 5 items so the card stays compact.
+        foreach ($byLocation as $loc) {
+            $loc->top_products = \DB::table('transactions as t')
+                ->join('purchase_lines as pl', 'pl.transaction_id', '=', 't.id')
+                ->join('products as p', 'pl.product_id', '=', 'p.id')
+                ->where('t.business_id', $business_id)
+                ->where('t.type', 'purchase')
+                ->where('t.location_id', $loc->location_id)
+                ->when(!empty(request()->start_date) && !empty(request()->end_date), function ($q) {
+                    $q->whereDate('t.transaction_date', '>=', request()->start_date)
+                      ->whereDate('t.transaction_date', '<=', request()->end_date);
+                })
+                ->when(!empty(request()->supplier_id), function ($q) {
+                    $q->where('t.contact_id', request()->supplier_id);
+                })
+                ->groupBy('p.id', 'p.name', 'p.artist')
+                ->select(
+                    'p.name',
+                    'p.artist',
+                    \DB::raw('SUM(pl.quantity) as qty'),
+                    \DB::raw('SUM(pl.quantity * pl.purchase_price) as spent')
+                )
+                ->orderByDesc('qty')
+                ->limit(5)
+                ->get();
+        }
+
+        return response()->json(['locations' => $byLocation]);
+    }
+
+    /**
      * Shows sale report
      *
      * @return \Illuminate\Http\Response

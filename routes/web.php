@@ -276,6 +276,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/get-stock-by-sell-price', 'ReportController@getStockBySellingPrice');
     Route::get('/reports/category-sales-report', 'ReportController@categorySalesReport');
     Route::get('/reports/purchase-report', 'ReportController@purchaseReport');
+    Route::get('/reports/purchase-report/summary', 'ReportController@purchaseReportSummary')->name('reports.purchase-report.summary');
     Route::get('/reports/sale-report', 'ReportController@saleReport');
     Route::get('/reports/service-staff-report', 'ReportController@getServiceStaffReport');
     Route::get('/reports/service-staff-line-orders', 'ReportController@serviceStaffLineOrders');
