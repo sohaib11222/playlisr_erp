@@ -47,15 +47,12 @@
 				 renders the value pos.js writes. --}}
 			<input type="hidden" name="final_total" id="final_total_input" value=0>
 
-			@if(!isset($pos_settings['hide_recent_trans']) || $pos_settings['hide_recent_trans'] == 0)
-			<button type="button" class="pull-right btn btn-primary btn-flat @if($is_mobile) col-xs-6 @endif" data-toggle="modal" data-target="#recent_transactions_modal" id="recent-transactions"> <i class="fas fa-clock"></i> @lang('lang_v1.recent_transactions')</button>
-			@endif
+			{{-- Recent Transactions + Export Manual Products moved into the
+				 receipt card (pos_form_totals.blade.php) so they share the
+				 beige sale-column card instead of sitting on a separate
+				 gray bar. Empty bottom row — the wrapping div + pos-form-actions
+				 class stays for any other legacy markup that hooks it. --}}
 
-			<a href="{{ route('pos.exportManualProducts') }}" class="pull-right btn btn-success btn-flat @if($is_mobile) col-xs-6 @endif" style="margin-right: 10px;" title="Export manually added products from POS">
-				<i class="fas fa-file-excel"></i> Export Manual Products
-			</a>
-			
-			
 		</div>
 	</div>
 </div>

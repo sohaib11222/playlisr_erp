@@ -137,7 +137,7 @@
       {{-- Remaining admin actions — less-frequent stuff stays tucked away. --}}
       <div class="dropdown pull-right" style="margin: 5px 6px 0 0;">
         <button type="button" class="btn btn-default btn-sm dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" title="Register / admin actions" style="padding: 6px 12px; font-weight: 600;">
-          <i class="fa fa-bars" aria-hidden="true"></i>&nbsp; Admin <span class="caret"></span>
+          <i class="fa fa-bars" aria-hidden="true"></i>&nbsp;<span class="caret"></span>
         </button>
         <ul class="dropdown-menu dropdown-menu-right" style="padding: 4px 0; min-width: 200px;">
           @can('view_cash_register')

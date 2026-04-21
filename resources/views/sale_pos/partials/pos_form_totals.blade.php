@@ -233,6 +233,35 @@
     }
     .pos-pay-more .dropdown-menu .btn-link:hover { background: #F7F1E3; text-decoration: none; }
 
+    /* Utility row — Recent Transactions + Export Manual Products. Muted
+       dashed pills that sit inside the receipt card, visually subordinate
+       to the pay row and cancel link. */
+    .pos-util-row {
+        display: flex; flex-wrap: wrap; gap: 6px;
+        justify-content: center;
+        margin: 10px 0 0;
+        padding-top: 10px;
+        border-top: 1px dashed #ECE3CF;
+    }
+    .pos-util-btn {
+        display: inline-flex; align-items: center; gap: 5px;
+        padding: 4px 12px;
+        background: #FAF6EE;
+        border: 1px solid #ECE3CF;
+        border-radius: 999px;
+        font-size: 11px; font-weight: 500;
+        color: #5A5045; text-decoration: none;
+        cursor: pointer; line-height: 1.4;
+        font-family: inherit;
+    }
+    .pos-util-btn:hover, .pos-util-btn:focus {
+        background: #F7F1E3;
+        border-color: #DFD2B3;
+        color: #1F1B16;
+        text-decoration: none;
+    }
+    .pos-util-btn i { font-size: 10px; opacity: .7; }
+
     /* Cancel Sale — subtle text link right under the pay row. */
     .pos-cancel-wrap { text-align: center; margin-top: 8px; }
     .pos-cancel-wrap .pos-cancel-link {
@@ -464,6 +493,20 @@
             <button type="button" class="pos-cancel-link" id="pos-cancel"><i class="fas fa-times"></i> Cancel Sale</button>
         </div>
         @endif
+
+        {{-- Utility row: Recent Transactions + Export Manual Products.
+             Tucked subtly inside the receipt card instead of on a separate
+             bar below, per Sarah's 2026-04-21 ask. --}}
+        <div class="pos-util-row">
+            @if(!isset($pos_settings['hide_recent_trans']) || $pos_settings['hide_recent_trans'] == 0)
+            <button type="button" class="pos-util-btn" data-toggle="modal" data-target="#recent_transactions_modal" id="recent-transactions">
+                <i class="fas fa-clock"></i> Recent transactions
+            </button>
+            @endif
+            <a href="{{ route('pos.exportManualProducts') }}" class="pos-util-btn" title="Export manually added products from POS">
+                <i class="fas fa-file-excel"></i> Export manual products
+            </a>
+        </div>
 
         <script>
         /* Discount dropdown + tax-rate display + bag stepper — runs inline
