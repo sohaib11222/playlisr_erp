@@ -13,33 +13,37 @@ class CreateInventoryCheckTables extends Migration
      */
     public function up()
     {
-        Schema::create('inventory_check_notes', function (Blueprint $table) {
-            $table->increments('id');
-            $table->unsignedInteger('business_id')->index();
-            $table->unsignedInteger('location_id')->nullable()->index();
-            $table->string('note_type', 32);
-            $table->date('reference_date')->nullable();
-            $table->text('body');
-            $table->unsignedInteger('product_id')->nullable();
-            $table->unsignedInteger('variation_id')->nullable();
-            $table->unsignedInteger('created_by')->nullable();
-            $table->timestamps();
-        });
+        if (!Schema::hasTable('inventory_check_notes')) {
+            Schema::create('inventory_check_notes', function (Blueprint $table) {
+                $table->increments('id');
+                $table->unsignedInteger('business_id')->index();
+                $table->unsignedInteger('location_id')->nullable()->index();
+                $table->string('note_type', 32);
+                $table->date('reference_date')->nullable();
+                $table->text('body');
+                $table->unsignedInteger('product_id')->nullable();
+                $table->unsignedInteger('variation_id')->nullable();
+                $table->unsignedInteger('created_by')->nullable();
+                $table->timestamps();
+            });
+        }
 
-        Schema::create('inventory_check_sessions', function (Blueprint $table) {
-            $table->increments('id');
-            $table->unsignedInteger('business_id')->index();
-            $table->unsignedInteger('user_id')->index();
-            $table->string('name');
-            $table->unsignedInteger('location_id')->nullable();
-            $table->unsignedInteger('category_id')->nullable();
-            $table->unsignedInteger('supplier_id')->nullable();
-            $table->date('sale_start')->nullable();
-            $table->date('sale_end')->nullable();
-            $table->string('preset_key', 64)->nullable();
-            $table->text('state_json')->nullable();
-            $table->timestamps();
-        });
+        if (!Schema::hasTable('inventory_check_sessions')) {
+            Schema::create('inventory_check_sessions', function (Blueprint $table) {
+                $table->increments('id');
+                $table->unsignedInteger('business_id')->index();
+                $table->unsignedInteger('user_id')->index();
+                $table->string('name');
+                $table->unsignedInteger('location_id')->nullable();
+                $table->unsignedInteger('category_id')->nullable();
+                $table->unsignedInteger('supplier_id')->nullable();
+                $table->date('sale_start')->nullable();
+                $table->date('sale_end')->nullable();
+                $table->string('preset_key', 64)->nullable();
+                $table->text('state_json')->nullable();
+                $table->timestamps();
+            });
+        }
     }
 
     /**

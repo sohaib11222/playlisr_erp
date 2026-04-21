@@ -81,10 +81,11 @@ class BuyFromCustomerController extends Controller
         }
 
         $this->validateRequest($request, true);
+        $this->validateAcceptCompliance($request);
 
         DB::transaction(function () use ($request, $id) {
             $offer = $this->saveOffer($request, 'accepted', $id);
-            $purchase = $this->createPurchaseFromOffer($offer, $request->input('payout_type', 'cash'));
+            $purchase = $this->createPurchaseFromOffer($offer, $offer->payout_type);
             $offer->accepted_purchase_id = $purchase->id;
             $offer->save();
         });
@@ -119,7 +120,7 @@ class BuyFromCustomerController extends Controller
         }
 
         $business_id = request()->session()->get('user.business_id');
-        $offers = BuyCustomerOffer::with(['contact', 'createdBy', 'acceptedPurchase'])
+        $offers = BuyCustomerOffer::with(['contact', 'createdBy', 'acceptedPurchase', 'location'])
             ->where('business_id', $business_id)
             ->latest()
             ->paginate(30);
@@ -129,13 +130,24 @@ class BuyFromCustomerController extends Controller
 
     protected function validateRequest(Request $request, $requireFinal)
     {
+        if (!$request->has('payment_method') && $request->has('payout_type')) {
+            $request->merge([
+                'payment_method' => $request->input('payout_type') === 'store_credit' ? 'store_credit' : 'cash_in_store',
+            ]);
+        }
+
         $rules = [
             'location_id' => 'nullable|integer',
             'seller_mode' => 'required|in:contact,phone',
             'contact_id' => 'nullable|integer',
             'seller_name' => 'nullable|string|max:255',
+            'seller_first_name' => 'nullable|string|max:120',
+            'seller_last_name' => 'nullable|string|max:120',
             'seller_phone' => 'nullable|string|max:30',
-            'payout_type' => 'required|in:cash,store_credit',
+            'seller_email' => 'nullable|email|max:191',
+            'seller_id_type' => 'nullable|string|max:60',
+            'seller_id_last_four' => 'nullable|regex:/^[0-9]{1,4}$/',
+            'payment_method' => 'required|in:cash_in_store,store_credit,zelle_venmo',
             'lines' => 'required|array|min:1',
             'lines.*.item_type' => 'required|string|max:60',
             'lines.*.quantity' => 'required|numeric|min:0.0001',
@@ -147,6 +159,8 @@ class BuyFromCustomerController extends Controller
             'second_offer_credit' => 'nullable|numeric|min:0',
             'final_offer_cash' => 'nullable|numeric|min:0',
             'final_offer_credit' => 'nullable|numeric|min:0',
+            'notes' => 'nullable|string|max:5000',
+            'price_override_reason' => 'nullable|string|max:500',
         ];
 
         if ($requireFinal) {
@@ -155,6 +169,43 @@ class BuyFromCustomerController extends Controller
         }
 
         $request->validate($rules);
+
+        if ($requireFinal) {
+            $calc = $this->calculator->calculate($request->input('lines', []), $request->all());
+            $pm = $request->input('payment_method');
+            $suggested = $pm === 'store_credit' ? (float) $calc['calculated_credit_total'] : (float) $calc['calculated_cash_total'];
+            $final = $pm === 'store_credit' ? (float) $request->input('final_offer_credit') : (float) $request->input('final_offer_cash');
+            if (abs($final - $suggested) > 0.009) {
+                $request->validate([
+                    'price_override_reason' => 'required|string|max:500',
+                ]);
+            }
+        }
+    }
+
+    protected function validateAcceptCompliance(Request $request)
+    {
+        $request->validate([
+            'seller_signature_data' => 'required|string|min:80',
+            'compliance_items_owned' => 'accepted',
+            'compliance_sales_final' => 'accepted',
+        ]);
+    }
+
+    /**
+     * @return array{payout_type: string, payment_method: string}
+     */
+    protected function resolvePaymentFields(Request $request)
+    {
+        $pm = $request->input('payment_method');
+        if ($pm === 'store_credit') {
+            return ['payout_type' => 'store_credit', 'payment_method' => 'store_credit'];
+        }
+        if ($pm === 'zelle_venmo') {
+            return ['payout_type' => 'cash', 'payment_method' => 'zelle_venmo'];
+        }
+
+        return ['payout_type' => 'cash', 'payment_method' => 'cash_in_store'];
     }
 
     protected function saveOffer(Request $request, $status = 'draft', $offerId = null)
@@ -165,15 +216,29 @@ class BuyFromCustomerController extends Controller
         $calculation = $this->calculator->calculate($request->input('lines', []), $request->all());
 
         $offer = !empty($offerId) ? BuyCustomerOffer::where('business_id', $business_id)->findOrFail($offerId) : new BuyCustomerOffer();
+        $payment = $this->resolvePaymentFields($request);
+
+        $first = trim((string) $request->input('seller_first_name', ''));
+        $last = trim((string) $request->input('seller_last_name', ''));
+        $legacyName = trim((string) $request->input('seller_name', ''));
+        $combined = trim($first . ' ' . $last);
+        $sellerDisplayName = $combined !== '' ? $combined : ($legacyName !== '' ? $legacyName : null);
+
         $offer->business_id = $business_id;
         $offer->location_id = $request->input('location_id') ?: null;
         $offer->created_by = $user_id;
         $offer->contact_id = optional($contact)->id;
         $offer->seller_mode = $request->input('seller_mode', 'phone');
-        $offer->seller_name = $request->input('seller_name');
+        $offer->seller_name = $sellerDisplayName;
+        $offer->seller_first_name = $first ?: null;
+        $offer->seller_last_name = $last ?: null;
         $offer->seller_phone = $request->input('seller_phone');
+        $offer->seller_email = $request->input('seller_email') ?: null;
+        $offer->seller_id_type = $request->input('seller_id_type') ?: null;
+        $offer->seller_id_last_four = $request->input('seller_id_last_four') ?: null;
         $offer->status = $status;
-        $offer->payout_type = $request->input('payout_type', 'cash');
+        $offer->payout_type = $payment['payout_type'];
+        $offer->payment_method = $payment['payment_method'];
         $offer->calculated_cash_total = $calculation['calculated_cash_total'];
         $offer->calculated_credit_total = $calculation['calculated_credit_total'];
         $offer->starting_offer_cash = $calculation['starting_offer_cash'];
@@ -184,6 +249,16 @@ class BuyFromCustomerController extends Controller
         $offer->final_offer_credit = $calculation['final_offer_credit'];
         $offer->rejection_reason = $request->input('rejection_reason');
         $offer->notes = $request->input('notes');
+        $offer->price_override_reason = $request->input('price_override_reason') ?: null;
+        $offer->collection_summary_json = json_encode($calculation['collection_summary'] ?? []);
+        if ($request->filled('seller_signature_data')) {
+            $offer->seller_signature_data = $request->input('seller_signature_data');
+        }
+        if ($status === 'accepted') {
+            $offer->compliance_items_owned = $request->has('compliance_items_owned');
+            $offer->compliance_sales_final = $request->has('compliance_sales_final');
+            $offer->accepted_at = now();
+        }
         $offer->calculation_snapshot = json_encode($calculation['lines']);
         $offer->save();
 
@@ -282,7 +357,14 @@ class BuyFromCustomerController extends Controller
         $purchase->shipping_charges = 0;
         $purchase->final_total = $finalAmount;
         $purchase->created_by = $offer->created_by;
-        $purchase->additional_notes = 'Buy from customer offer #' . $offer->id . ' payout: ' . $payoutType;
+        $pmLabel = $offer->payment_method ?: $payoutType;
+        $purchase->additional_notes = sprintf(
+            'Buy from customer %s | payout: %s | payment: %s | record: %s',
+            $offer->id,
+            $payoutType,
+            $pmLabel,
+            $offer->buy_record_number
+        );
         $purchase->save();
 
         return $purchase;

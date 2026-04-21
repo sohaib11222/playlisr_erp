@@ -102,6 +102,7 @@ class BuyOfferCalculatorService
 
             $cashLine = round($cashLine, 2);
             $cashTotal += $cashLine;
+            $creditLine = round($cashLine * (float) $rules['credit_bonus_multiplier'], 2);
 
             $normalized[] = [
                 'line_order' => $i,
@@ -115,6 +116,7 @@ class BuyOfferCalculatorService
                 'standard_multiplier' => $standardMultiplier,
                 'unit_rate' => $unitRate > 0 ? $unitRate : null,
                 'line_cash_total' => $cashLine,
+                'line_credit_total' => $creditLine,
             ];
         }
 
@@ -123,6 +125,7 @@ class BuyOfferCalculatorService
 
         $result = [
             'lines' => $normalized,
+            'collection_summary' => $this->summarizeCollection($normalized),
             'calculated_cash_total' => $cashTotal,
             'calculated_credit_total' => $creditTotal,
             'starting_offer_cash' => (float) ($offerInputs['starting_offer_cash'] ?? $cashTotal),
@@ -134,6 +137,78 @@ class BuyOfferCalculatorService
         ];
 
         return $result;
+    }
+
+    /**
+     * Aggregate line rows for buy-record display (format counts + condition buckets).
+     *
+     * @param  array<int, array<string, mixed>>  $normalizedLines
+     * @return array{format_counts: array<string, float>, condition_buckets: array<string, float>}
+     */
+    public function summarizeCollection(array $normalizedLines)
+    {
+        $formats = [
+            'lp' => 0.0,
+            'rpm45' => 0.0,
+            'cd' => 0.0,
+            'cassette' => 0.0,
+            'dvd' => 0.0,
+            'bluray' => 0.0,
+            'other' => 0.0,
+        ];
+
+        $buckets = [
+            'mint_nm' => 0.0,
+            'vg_plus_vg' => 0.0,
+            'g_plus_below' => 0.0,
+        ];
+
+        foreach ($normalizedLines as $line) {
+            $t = (string) ($line['item_type'] ?? '');
+            $qty = (float) ($line['quantity'] ?? 0);
+            if ($qty <= 0) {
+                continue;
+            }
+
+            if (strpos($t, 'rpm45_') === 0) {
+                $formats['rpm45'] += $qty;
+            } elseif (strpos($t, 'cd_') === 0) {
+                $formats['cd'] += $qty;
+            } elseif (strpos($t, 'cassette_') === 0) {
+                $formats['cassette'] += $qty;
+            } elseif (strpos($t, 'dvd_') === 0) {
+                $formats['dvd'] += $qty;
+            } elseif (strpos($t, 'bluray_') === 0) {
+                $formats['bluray'] += $qty;
+            } elseif ($t === 'individual_vinyl' || strpos($t, 'bulk_vinyl_') === 0) {
+                $formats['lp'] += $qty;
+            } else {
+                $formats['other'] += $qty;
+            }
+
+            $grade = (string) ($line['condition_grade'] ?? '');
+            if ($grade === 'Mint' || $grade === 'Near Mint') {
+                $buckets['mint_nm'] += $qty;
+            } elseif ($grade === 'VG+' || $grade === 'VG') {
+                $buckets['vg_plus_vg'] += $qty;
+            } elseif ($grade === 'Good+') {
+                $buckets['g_plus_below'] += $qty;
+            } else {
+                $buckets['g_plus_below'] += $qty;
+            }
+        }
+
+        foreach ($formats as $k => $v) {
+            $formats[$k] = round($v, 4);
+        }
+        foreach ($buckets as $k => $v) {
+            $buckets[$k] = round($v, 4);
+        }
+
+        return [
+            'format_counts' => $formats,
+            'condition_buckets' => $buckets,
+        ];
     }
 }
 
