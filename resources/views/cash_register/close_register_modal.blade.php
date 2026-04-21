@@ -195,11 +195,69 @@
 						['class' => 'cr-hero-input input_number', 'required', 'placeholder' => '0.00', 'autofocus', 'data-decimal' => '1']) !!}
 				</div>
 
-				<div class="cr-card-slips">
+				<div class="cr-card-slips"
+					data-location-id="{{ $register_details->location_id }}"
+					data-shift-start="{{ $register_details->open_time }}"
+					data-shift-end="{{ \Carbon::now()->toDateTimeString() }}">
 					<label for="total_card_slips">Total card slips:</label>
 					{!! Form::number('total_card_slips', $register_details->total_card_slips, ['class' => '', 'id' => 'total_card_slips', 'min' => 0, 'placeholder' => '0']); !!}
-					<span class="cr-sub">count of swipes, not dollars</span>
+					<span class="cr-sub" id="cr-card-slips-sub">count of swipes, not dollars</span>
 				</div>
+				<script>
+				/* Clover auto-fill for 'Total card slips'. Fires once when the
+				   close-register modal renders: calls /clover/shift-summary
+				   with the register's location + shift window, drops the
+				   returned count into the input, and shows a small badge so
+				   the cashier knows the number came from Clover (editable
+				   if they want to override). Silently falls back to manual
+				   if Clover is down or not configured for this location. */
+				(function () {
+					function onReady(fn) {
+						if (typeof jQuery === 'undefined') { setTimeout(function () { onReady(fn); }, 50); return; }
+						jQuery(fn);
+					}
+					onReady(function ($) {
+						var $wrap = $('.cr-card-slips').last();
+						if (!$wrap.length || $wrap.data('clover-fetched')) return;
+						$wrap.data('clover-fetched', true);
+
+						var locationId = $wrap.data('location-id');
+						var start = $wrap.data('shift-start');
+						var end   = $wrap.data('shift-end');
+						if (!locationId || !start || !end) return;
+
+						var $input = $wrap.find('#total_card_slips');
+						var $sub = $wrap.find('#cr-card-slips-sub');
+						var originalSub = $sub.text();
+						$sub.text('Fetching from Clover…').css('color', '#8E8273');
+
+						$.get('/clover/shift-summary', {
+							location_id: locationId,
+							start: start,
+							end: end
+						}).done(function (r) {
+							if (r && r.success) {
+								$input.val(r.card_slip_count || 0);
+								var total = '$' + parseFloat(r.card_total || 0).toFixed(2);
+								$sub.html('✓ From Clover · ' + total + ' in credit-card payments <span style="opacity:.7;">(editable)</span>')
+									.css('color', '#2F6B3E');
+							} else {
+								$sub.text(originalSub + ' · Clover unavailable, enter manually')
+									.css('color', '#8A3A2E');
+							}
+						}).fail(function () {
+							$sub.text(originalSub + ' · Clover unavailable, enter manually')
+								.css('color', '#8A3A2E');
+						});
+
+						// If the cashier edits the field themselves, stop
+						// claiming the number came from Clover.
+						$input.on('input change', function () {
+							$sub.text(originalSub).css('color', '');
+						});
+					});
+				})();
+				</script>
 			</div>
 
 			{{-- Optional closing note --}}
