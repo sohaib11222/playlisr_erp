@@ -226,6 +226,27 @@
 <div class="pos_form_totals">
     <input type="hidden" name="store_credit_used_amount" id="store_credit_used_amount" value="0">
 
+    {{-- Hidden inputs pos.js reads when calculating discount / tax / shipping.
+         These used to live in the old pos_details.blade.php, which the
+         redesign replaced. Without them, pos_discount() returns NaN,
+         which zeros out pre-tax / tax / total. Keep them as hidden form
+         fields (functional contract with pos.js), even though the user-
+         facing Edit modals own the real UI. --}}
+    <input type="hidden" name="discount_type" id="discount_type" value="@if(empty($edit)){{'percentage'}}@else{{$transaction->discount_type}}@endif" data-default="percentage">
+    <input type="hidden" name="discount_amount" id="discount_amount" value="@if(empty($edit)){{@num_format($business_details->default_sales_discount)}}@else{{@num_format($transaction->discount_amount)}}@endif" data-default="{{$business_details->default_sales_discount}}">
+    <input type="hidden" name="rp_redeemed" id="rp_redeemed" value="@if(empty($edit)){{'0'}}@else{{$transaction->rp_redeemed}}@endif">
+    <input type="hidden" name="rp_redeemed_amount" id="rp_redeemed_amount" value="@if(empty($edit)){{'0'}}@else{{$transaction->rp_redeemed_amount}}@endif">
+    <input type="hidden" name="tax_rate_id" id="tax_rate_id" value="@if(empty($edit)){{$business_details->default_sales_tax}}@else{{$transaction->tax_id}}@endif" data-default="{{$business_details->default_sales_tax}}">
+    <input type="hidden" name="tax_calculation_amount" id="tax_calculation_amount" value="@if(empty($edit)){{@num_format($business_details->tax_calculation_amount)}}@else{{@num_format(optional($transaction->tax)->amount)}}@endif" data-default="{{$business_details->tax_calculation_amount}}">
+    <input type="hidden" name="shipping_details" id="shipping_details" value="@if(empty($edit)){{""}}@else{{$transaction->shipping_details}}@endif" data-default="">
+    <input type="hidden" name="shipping_address" id="shipping_address" value="@if(empty($edit)){{""}}@else{{$transaction->shipping_address}}@endif">
+    <input type="hidden" name="shipping_status" id="shipping_status" value="@if(empty($edit)){{""}}@else{{$transaction->shipping_status}}@endif">
+    <input type="hidden" name="delivered_to" id="delivered_to" value="@if(empty($edit)){{""}}@else{{$transaction->delivered_to}}@endif">
+    <input type="hidden" name="shipping_charges" id="shipping_charges" value="@if(empty($edit)){{@num_format(0.00)}}@else{{@num_format($transaction->shipping_charges)}}@endif" data-default="0.00">
+    @if(empty($pos_settings['amount_rounding_method']) || $pos_settings['amount_rounding_method'] <= 0)
+    <input type="hidden" name="round_off_amount" id="round_off_amount" value="0">
+    @endif
+
     <div class="pos-tot-block">
         {{-- Sale flags row — Store Credit chip (when applicable). "Mark as
              Whatnot" moved up into the cart/scan area (pos_form.blade.php)
