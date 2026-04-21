@@ -209,13 +209,10 @@
     <input type="hidden" name="store_credit_used_amount" id="store_credit_used_amount" value="0">
 
     <div class="pos-tot-block">
-        {{-- Sale flags row — Whatnot (subtle chip) + Store Credit (when applicable).
-             Bag Fee moved to its own toggle below (per mockup). --}}
+        {{-- Sale flags row — Store Credit chip (when applicable). "Mark as
+             Whatnot" moved up into the cart/scan area (pos_form.blade.php)
+             since it's a cart-scope flag, not a totals-scope one. --}}
         <div class="pos-tot-flags">
-            <label class="pos-tot-chip" id="whatnot_chip">
-                <input type="checkbox" name="is_whatnot" id="is_whatnot" value="1">
-                <span>Mark as Whatnot</span>
-            </label>
             @if(!empty($pos_settings['enable_plastic_bag_charge']))
             {{-- Hidden but kept so pos.js can read #bag_chip / #add_plastic_bag / #plastic_bag_price. --}}
             <label id="bag_chip" style="display:none;">

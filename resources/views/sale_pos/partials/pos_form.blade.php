@@ -142,7 +142,27 @@
 				<a href="{{ route('buy-from-customer.create') }}" target="_blank" rel="noopener" class="btn btn-info" title="Open Buy from Customer Calculator in a new tab">
 					<i class="fa fa-calculator"></i> Buy Calculator <i class="fa fa-external-link-alt" style="font-size: 11px; opacity: 0.7; margin-left: 4px;"></i>
 				</a>
+
+				{{-- Whatnot toggle — flags the whole sale as a Whatnot transaction.
+					 Lives here in the cart area (not the totals block) because it
+					 describes the cart, not the payment. Uses the same #is_whatnot
+					 id that pos.js / the store controller already read. --}}
+				<label class="btn btn-default pos-whatnot-toggle" id="whatnot_chip" title="Flag this whole transaction as a Whatnot sale">
+					<input type="checkbox" name="is_whatnot" id="is_whatnot" value="1" style="margin-right:6px; vertical-align:middle;">
+					<i class="fa fa-broadcast-tower"></i> Mark as Whatnot
+				</label>
 			</div>
+			<style>
+				.pos-whatnot-toggle { cursor: pointer; user-select: none; }
+				.pos-whatnot-toggle.active-whatnot,
+				#whatnot_chip.active-whatnot {
+					background: #f5ce3e !important;
+					border-color: #d4a92a !important;
+					color: #2b1e16 !important;
+					font-weight: 700;
+				}
+				.pos-whatnot-toggle.active-whatnot:hover { background: #eac232 !important; }
+			</style>
 
 			{{-- Quick-add preset tiles now live at the top of the product grid sidebar
 				 (see sale_pos/partials/pos_sidebar.blade.php). Wiring script below still
