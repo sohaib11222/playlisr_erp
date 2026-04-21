@@ -11,20 +11,42 @@ $(document).ready(function() {
                 source: '/purchases/get_products?check_enable_stock=false',
                 minLength: 2,
                 response: function(event, ui) {
-                    // Zak's ask 2026-04-21: always auto-pick the first match
-                    // on the label-print page, even when several products
-                    // share a name (MJ at \$25 AND \$27 etc.). The picker
-                    // popup for multi-match was slowing him down for no
-                    // real benefit — he just wants to keep printing.
-                    if (ui.content.length >= 1) {
-                        ui.item = ui.content[0];
-                        $(this)
-                            .data('ui-autocomplete')
-                            ._trigger('select', 'autocompleteselect', ui);
-                        $(this).autocomplete('close');
-                    } else if (ui.content.length == 0) {
+                    // Zak's ask 2026-04-21: stop popping the picker when
+                    // multiple products share a name but print the SAME
+                    // price (Studio One / MJ duplicates with matching
+                    // \$25.00 tags). When prices differ (\$25 vs \$27)
+                    // we still need to ask — printing the wrong price on
+                    // a shelf label is worse than one extra click.
+                    if (ui.content.length == 0) {
                         swal(LANG.no_products_found);
+                        return;
                     }
+                    if (ui.content.length == 1) {
+                        ui.item = ui.content[0];
+                        $(this).data('ui-autocomplete')._trigger('select', 'autocompleteselect', ui);
+                        $(this).autocomplete('close');
+                        return;
+                    }
+                    // Multi-match: extract price tokens from each result's
+                    // display text. The endpoint builds text as
+                    // "<name> - <sku> - <price> - <category>", so the 3rd
+                    // hyphen-separated chunk is reliably the price.
+                    var uniquePrices = {};
+                    for (var k = 0; k < ui.content.length; k++) {
+                        var parts = (ui.content[k].text || '').split(' - ');
+                        var priceChunk = parts.length >= 3 ? parts[2].trim() : '';
+                        var m = priceChunk.match(/[\d,]+(\.\d+)?/);
+                        var p = m ? m[0].replace(/,/g, '') : '';
+                        uniquePrices[p] = true;
+                    }
+                    if (Object.keys(uniquePrices).length <= 1) {
+                        // All matches print the same price → auto-pick first.
+                        ui.item = ui.content[0];
+                        $(this).data('ui-autocomplete')._trigger('select', 'autocompleteselect', ui);
+                        $(this).autocomplete('close');
+                    }
+                    // Otherwise: prices differ → fall through to the default
+                    // jQuery UI picker so the cashier chooses explicitly.
                 },
                 select: function(event, ui) {
                     $(this).val(null);
