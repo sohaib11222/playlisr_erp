@@ -1,4 +1,4 @@
-<div class="modal-dialog modal-lg" role="document">
+<div class="modal-dialog modal-lg nivessa-contact-modal" role="document">
   <div class="modal-content">
   @php
     $form_id = 'contact_add_form';
@@ -17,6 +17,96 @@
       $life_stages = [];
     }
   @endphp
+    {{-- Nivessa cream-and-brown palette, scoped to this modal so nothing
+         else in the ERP re-themes. Contact ID and Prefix inputs were
+         dropped per Sarah's 2026-04-21 request — Contact ID always
+         autogenerates, and we don't collect salutations. --}}
+    <style>
+      .nivessa-contact-modal .modal-content {
+        background: #FAF6EE;
+        border: 1px solid #ECE3CF;
+        border-radius: 12px;
+        box-shadow: 0 10px 30px rgba(31, 27, 22, .15);
+        font-family: "Inter Tight", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        color: #1F1B16;
+      }
+      .nivessa-contact-modal .modal-header {
+        background: #fff;
+        border-bottom: 1px solid #ECE3CF;
+        border-radius: 12px 12px 0 0;
+        padding: 14px 20px;
+      }
+      .nivessa-contact-modal .modal-title {
+        font-size: 15px; font-weight: 700;
+        letter-spacing: -.01em; color: #1F1B16;
+      }
+      .nivessa-contact-modal .modal-header .close {
+        color: #8E8273; opacity: .75;
+        text-shadow: none; font-weight: 400;
+      }
+      .nivessa-contact-modal .modal-header .close:hover { color: #1F1B16; opacity: 1; }
+      .nivessa-contact-modal .modal-body { padding: 18px 20px; }
+      .nivessa-contact-modal .form-group { margin-bottom: 14px; }
+      .nivessa-contact-modal .control-label,
+      .nivessa-contact-modal label {
+        font-size: 11px; font-weight: 600;
+        text-transform: uppercase; letter-spacing: .08em;
+        color: #5A5045; margin-bottom: 5px;
+      }
+      .nivessa-contact-modal label small.text-muted {
+        text-transform: none; letter-spacing: 0;
+        font-weight: 400; color: #8E8273;
+      }
+      .nivessa-contact-modal .input-group-addon {
+        background: #fff;
+        border: 1px solid #DFD2B3;
+        color: #8E8273;
+        border-right: 0;
+        border-radius: 7px 0 0 7px;
+      }
+      .nivessa-contact-modal .form-control {
+        background: #fff;
+        border: 1px solid #DFD2B3;
+        border-radius: 7px;
+        color: #1F1B16;
+        font-size: 14px;
+        height: 38px;
+        padding: 8px 12px;
+        box-shadow: none;
+      }
+      .nivessa-contact-modal .input-group .form-control {
+        border-left: 0;
+        border-radius: 0 7px 7px 0;
+      }
+      .nivessa-contact-modal .form-control:focus,
+      .nivessa-contact-modal .input-group .form-control:focus {
+        border-color: #F0DC7A;
+        box-shadow: 0 0 0 3px rgba(255, 242, 179, .5);
+      }
+      .nivessa-contact-modal .form-control::placeholder { color: #B8ADA0; }
+      .nivessa-contact-modal .modal-footer {
+        background: #fff;
+        border-top: 1px solid #ECE3CF;
+        border-radius: 0 0 12px 12px;
+        padding: 12px 20px;
+      }
+      .nivessa-contact-modal .btn-primary {
+        background: #1F1B16; border-color: #1F1B16;
+        color: #FAF6EE; font-weight: 600;
+        padding: 8px 18px; border-radius: 7px;
+      }
+      .nivessa-contact-modal .btn-primary:hover,
+      .nivessa-contact-modal .btn-primary:focus {
+        background: #0F0A06; border-color: #0F0A06; color: #FAF6EE;
+      }
+      .nivessa-contact-modal .btn-default {
+        background: #fff; border: 1px solid #DFD2B3;
+        color: #5A5045; font-weight: 500;
+        padding: 8px 16px; border-radius: 7px;
+      }
+      .nivessa-contact-modal .btn-default:hover { background: #F7F1E3; color: #1F1B16; }
+      .nivessa-contact-modal .help-block { color: #8E8273; font-size: 11px; margin-top: 3px; }
+    </style>
     {!! Form::open(['url' => $url, 'method' => 'post', 'id' => $form_id ]) !!}
 
     <div class="modal-header">
@@ -26,7 +116,7 @@
 
     <div class="modal-body">
         <div class="row">
-            <div class="col-md-4 contact_type_div">
+            <div class="col-md-6 contact_type_div">
                 <div class="form-group">
                     {!! Form::label('type', __('contact.contact_type') . ':*' ) !!}
                     <div class="input-group">
@@ -38,22 +128,11 @@
                 </div>
             </div>
 
-            <div class="col-md-4">
-                <div class="form-group">
-                    {!! Form::label('contact_id', __('lang_v1.contact_id') . ':') !!}
-                    <div class="input-group">
-                        <span class="input-group-addon">
-                            <i class="fa fa-id-badge"></i>
-                        </span>
-                        {!! Form::text('contact_id', null, ['class' => 'form-control','placeholder' => __('lang_v1.contact_id')]) !!}
-                    </div>
-                    <p class="help-block">
-                        @lang('lang_v1.leave_empty_to_autogenerate')
-                    </p>
-                </div>
-            </div>
+            {{-- Contact ID input removed — always autogenerates. --}}
+            <input type="hidden" name="contact_id" value="">
+
             <div class="clearfix customer_fields"></div>
-            <div class="col-md-4 business" style="display: none;">
+            <div class="col-md-6 business" style="display: none;">
                 <div class="form-group">
                     {!! Form::label('supplier_business_name', __('business.business_name') . ':') !!}
                     <div class="input-group">
@@ -67,19 +146,14 @@
 
             <div class="clearfix"></div>
 
-            <div class="col-md-3 individual" >
-                <div class="form-group">
-                    {!! Form::label('prefix', __( 'business.prefix' ) . ':') !!}
-                    {!! Form::text('prefix', null, ['class' => 'form-control', 'placeholder' => __( 'business.prefix_placeholder' ) ]) !!}
-                </div>
-            </div>
-            <div class="col-md-4 individual">
+            {{-- Prefix removed per mockup. --}}
+            <div class="col-md-6 individual">
                 <div class="form-group">
                     {!! Form::label('first_name', __( 'business.first_name' ) . ':*') !!}
                     {!! Form::text('first_name', null, ['class' => 'form-control', 'required', 'placeholder' => __( 'business.first_name' ) ]) !!}
                 </div>
             </div>
-            <div class="col-md-4 individual">
+            <div class="col-md-6 individual">
                 <div class="form-group">
                     {!! Form::label('last_name', __( 'business.last_name' ) . ':') !!}
                     {!! Form::text('last_name', null, ['class' => 'form-control', 'placeholder' => __( 'business.last_name' ) ]) !!}
@@ -87,7 +161,7 @@
             </div>
             <div class="clearfix"></div>
 
-            <div class="col-md-3">
+            <div class="col-md-6">
                 <div class="form-group">
                     {!! Form::label('mobile', __('contact.mobile') . ':') !!}
                     <small class="text-muted">(@lang('lang_v1.email_or_mobile_required'))</small>
@@ -101,7 +175,7 @@
             </div>
 
 
-            <div class="col-md-3">
+            <div class="col-md-6">
                 <div class="form-group">
                     {!! Form::label('email', __('business.email') . ':') !!}
                     <small class="text-muted">(@lang('lang_v1.email_or_mobile_required'))</small>
@@ -113,11 +187,12 @@
                     </div>
                 </div>
             </div>
-            <div class="col-md-3 customer_fields">
-                <div class="form-group">
-                    <label>
-                        {!! Form::checkbox('opt_in_marketing', 1, false, ['class' => 'input-icheck']) !!}
-                        <strong>Opt-in for stock alerts (email/SMS)</strong>
+            <div class="clearfix"></div>
+            <div class="col-md-12 customer_fields">
+                <div class="form-group" style="margin-bottom:0;">
+                    <label style="text-transform:none; letter-spacing:0; font-size:13px; font-weight:500; color:#1F1B16; cursor:pointer;">
+                        {!! Form::checkbox('opt_in_marketing', 1, false, ['class' => 'input-icheck', 'style' => 'margin-right:6px;']) !!}
+                        Opt-in for stock alerts (email/SMS)
                     </label>
                 </div>
             </div>
