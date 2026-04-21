@@ -118,9 +118,10 @@ jobs:
               echo "First deploy: syncing repo (same rules as deploy.sh)…"
               SYNC="${DEPLOY_SYNC_MODE:-ff-only}"
               git fetch "$R" main
-              case "$SYNC" in
-                reset) git reset --hard "$R/main" ;;
-                *) git merge --ff-only "$R/main" ;;
-              esac
+              if [ "$SYNC" = "reset" ]; then
+                git reset --hard "$R/main"
+              else
+                git merge --ff-only "$R/main"
+              fi
             fi
             bash "$DEPLOY_PATH/scripts/deploy.sh"

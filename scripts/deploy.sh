@@ -49,16 +49,13 @@ ssh-keyscan -t rsa,ecdsa,ed25519 github.com >> "$HOME/.ssh/known_hosts" 2>/dev/n
 
 git fetch "$GIT_REMOTE" "$DEPLOY_BRANCH"
 
-case "$DEPLOY_SYNC_MODE" in
-  reset)
-    echo "deploy: DEPLOY_SYNC_MODE=reset — matching GitHub exactly (tracked files only)"
-    git reset --hard "${GIT_REMOTE}/${DEPLOY_BRANCH}"
-    ;;
-  ff-only|*)
-    echo "deploy: DEPLOY_SYNC_MODE=ff-only — safe update (fails if server has diverged or dirty tree)"
-    git merge --ff-only "${GIT_REMOTE}/${DEPLOY_BRANCH}"
-    ;;
-esac
+if [ "$DEPLOY_SYNC_MODE" = "reset" ]; then
+  echo "deploy: DEPLOY_SYNC_MODE=reset — matching GitHub exactly (tracked files only)"
+  git reset --hard "${GIT_REMOTE}/${DEPLOY_BRANCH}"
+else
+  echo "deploy: DEPLOY_SYNC_MODE=ff-only — safe update (fails if server has diverged or dirty tree)"
+  git merge --ff-only "${GIT_REMOTE}/${DEPLOY_BRANCH}"
+fi
 
 if [ "$DEPLOY_MIGRATE" = "1" ]; then
   echo "deploy: migrate"
