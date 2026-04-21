@@ -29,10 +29,9 @@
 					[], null, ['class' => 'form-control mousetrap', 'id' => 'customer_id', 'placeholder' => 'Phone # (or name / email)…', 'required', 'style' => 'width: 100%;']) !!}
 			</div>
 			<div style="margin-top: 10px;">
-				<button type="button" class="btn add_new_customer" data-name="" @if(!auth()->user()->can('customer.create')) disabled @endif title="Enroll this customer in Nivessa Bucks rewards">
-					<i class="fa fa-star"></i>&nbsp; Sign Up for Nivessa Bucks
+				<button type="button" class="btn add_new_customer" data-name="" @if(!auth()->user()->can('customer.create')) disabled @endif title="Create a new Nivessa customer account">
+					<i class="fa fa-star"></i>&nbsp; Sign up for a Nivessa account
 				</button>
-				<small class="text-muted" style="display:block; margin-top:4px;">Rewards on every purchase — ask every walk-in.</small>
 			</div>
 			<small class="text-danger hide contact_due_text"><strong>@lang('account.customer_due'):</strong> <span></span></small>
 		</div>
