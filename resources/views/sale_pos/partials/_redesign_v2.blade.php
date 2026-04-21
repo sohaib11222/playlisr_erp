@@ -418,45 +418,11 @@ body.pos-v2 .pos-tot-summary .stat .val {
 	font-variant-numeric: tabular-nums;
 }
 
-/* Pre-tax hero */
-body.pos-v2 .pos-tot-summary .stat.pretax {
-	position: relative !important;
-	flex-direction: row !important; align-items: center !important;
-	background: var(--pos-accent) !important;
-	border: 2px solid var(--pos-accent-deep) !important;
-	border-radius: 12px !important;
-	padding: 18px 18px 14px !important;
-	margin: 14px 0 6px !important;
-	box-shadow: 0 0 0 3px rgba(232,207,104,.3), 0 2px 6px rgba(0,0,0,.08) !important;
-}
-body.pos-v2 .pos-tot-summary .stat.pretax::before {
-	content: "KEY THIS INTO CLOVER";
-	position: absolute; top: -9px; left: 14px;
-	background: var(--pos-ink); color: var(--pos-accent);
-	font-size: 10px; font-weight: 700;
-	letter-spacing: .14em; padding: 3px 10px;
-	border-radius: 999px;
-}
-body.pos-v2 .pos-tot-summary .stat.pretax .lbl {
-	color: var(--pos-accent-text) !important;
-	font-weight: 700 !important;
-	font-size: 13px !important;
-	text-transform: uppercase !important; letter-spacing: .08em !important;
-	display: flex !important; flex-direction: column !important;
-	align-items: flex-start !important; gap: 2px !important;
-}
-body.pos-v2 .pos-tot-summary .stat.pretax .lbl::after {
-	content: "Type this amount into the Clover terminal";
-	font-size: 10px; font-weight: 500;
-	text-transform: none; letter-spacing: 0;
-	color: var(--pos-accent-text); opacity: .7;
-}
-body.pos-v2 .pos-tot-summary .stat.pretax .val {
-	color: var(--pos-accent-text) !important;
-	font-weight: 800 !important;
-	font-size: 30px !important;
-	letter-spacing: -.02em !important;
-}
+/* Pre-Tax → Clover hero styles moved into pos_form_totals.blade.php as
+   .pos-pretax-bar (full-width horizontal bar outside the summary flex row,
+   matching the nivessa_pos_redesign.html mockup). The old .stat.pretax
+   markup is gone, so the v2 overrides here are dead — intentionally
+   removed 2026-04-21. */
 
 /* Grand total row */
 body.pos-v2 .pos-tot-summary .stat.grand {

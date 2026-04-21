@@ -31,19 +31,46 @@
 	.pos-tot-summary .stat .lbl { font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#6b7280; font-weight:600; }
 	.pos-tot-summary .stat .val { font-size:14px; font-weight:700; color:#111827; margin-top:3px; }
 
-	/* Pre-tax is the number cashiers type into the Clover device. It has to be
-	   the single most obvious number on the screen, not "Subtotal" in 14px. Mustard
-	   background + 26px value puts it at parity with the grand Total. */
-	.pos-tot-summary .stat.pretax {
-		background:#fdf3cf; border:1.5px solid #e5b92e; border-radius:8px;
-		padding:6px 12px; margin-left:auto;
-	}
-	.pos-tot-summary .stat.pretax .lbl { color:#5c3c10; font-size:11px; }
-	.pos-tot-summary .stat.pretax .val { font-size:26px; font-weight:800; color:#2b1e16; margin-top:1px; }
-
-	.pos-tot-summary .stat.grand { text-align:right; }
+	.pos-tot-summary .stat.grand { margin-left:auto; text-align:right; }
 	.pos-tot-summary .stat.grand .lbl { color:#065f46; }
 	.pos-tot-summary .stat.grand .val { font-size:22px; font-weight:800; color:#065f46; margin-top:1px; }
+
+	/* Pre-Tax → Clover — full-width horizontal bar per the nivessa mockup.
+	   Lives BELOW .pos-tot-summary (not inside it) so it spans the whole
+	   totals block rather than sharing a flex row with the summary cells.
+	   The "KEY THIS INTO CLOVER" pill is a pseudo-element so no extra DOM. */
+	.pos-pretax-bar {
+		position: relative;
+		display: flex; align-items: center; justify-content: space-between;
+		background: #FFF2B3;
+		border: 2px solid #E8CF68;
+		border-radius: 12px;
+		padding: 18px 22px;
+		margin: 16px 0 10px;
+		box-shadow: 0 0 0 3px rgba(232, 207, 104, .3), 0 2px 6px rgba(0,0,0,.08);
+	}
+	.pos-pretax-bar::before {
+		content: "KEY THIS INTO CLOVER";
+		position: absolute; top: -10px; left: 18px;
+		background: #1F1B16; color: #FFF2B3;
+		font-size: 10px; font-weight: 800;
+		letter-spacing: .14em; padding: 4px 10px;
+		border-radius: 999px;
+	}
+	.pos-pretax-bar .pretax-label { display: flex; flex-direction: column; gap: 3px; }
+	.pos-pretax-bar .pretax-main {
+		font-size: 14px; font-weight: 800;
+		text-transform: uppercase; letter-spacing: .08em;
+		color: #5A4410;
+	}
+	.pos-pretax-bar .pretax-sub {
+		font-size: 11px; color: #5A4410; opacity: .72;
+	}
+	.pos-pretax-bar .pretax-val {
+		font-size: 34px; font-weight: 800; color: #2B1E16;
+		letter-spacing: -.02em;
+		font-variant-numeric: tabular-nums;
+	}
 
 	/* Adjustments — flex rows. Each row: [label fixed-width][edit button][value pushed right].
 	   Labels share a fixed width so the edit buttons align vertically regardless of
@@ -115,15 +142,25 @@
 		     value Clover expects). --}}
 		<div class="pos-tot-summary">
 			<div class="stat"><span class="lbl">Items</span><span class="val total_quantity">0</span></div>
+			<div class="stat"><span class="lbl">Item subtotal</span><span class="val price_total">0</span></div>
 			<div class="stat @if($pos_settings['disable_order_tax'] != 0) hide @endif">
 				<span class="lbl">Tax <span id="tax_rate_display" style="opacity:.8; font-weight:700;"></span></span>
 				<span class="val" id="order_tax_display">0</span>
 			</div>
-			<div class="stat pretax" title="Type this number into the Clover device">
-				<span class="lbl">Pre-tax → Clover</span>
-				<span class="val" id="pre_tax_amount">0</span>
-			</div>
 			<div class="stat grand"><span class="lbl">Total w/ tax</span><span class="val" id="total_with_tax">0</span></div>
+		</div>
+
+		{{-- Pre-Tax → Clover: full-width horizontal bar below the summary
+		     row per Sarah's mockup. This is the one number cashiers have
+		     to read + type into the Clover device, so it gets its own
+		     dedicated bar with the "KEY THIS INTO CLOVER" badge. Value is
+		     populated by pos.js (same #pre_tax_amount hook as before). --}}
+		<div class="pos-pretax-bar" title="Type this amount into the Clover terminal">
+			<div class="pretax-label">
+				<span class="pretax-main">Pre-Tax → Clover</span>
+				<span class="pretax-sub">Type this amount into the Clover terminal</span>
+			</div>
+			<div class="pretax-val">$<span id="pre_tax_amount">0</span></div>
 		</div>
 
 		{{-- Adjustments — each row: [fixed-width label][edit button][value pushed right]. --}}
