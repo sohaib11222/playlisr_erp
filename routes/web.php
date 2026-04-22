@@ -332,7 +332,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/items-report', 'ReportController@itemsReport');
     Route::get('/reports/inventory-check-assistant', 'InventoryCheckController@index');
     Route::get('/reports/inventory-check-assistant/data', 'InventoryCheckController@data');
+    Route::get('/reports/inventory-check-assistant/buckets', 'InventoryCheckController@buckets');
     Route::get('/reports/inventory-check-assistant/export', 'InventoryCheckController@export');
+    Route::post('/reports/inventory-check-assistant/chart-import', 'InventoryCheckController@importChart');
+    Route::get('/reports/inventory-check-assistant/chart-latest/{source}', 'InventoryCheckController@latestChart');
+    Route::post('/reports/inventory-check-assistant/customer-want/{id}/fulfill', 'InventoryCheckController@fulfillCustomerWant');
     Route::get('/reports/inventory-check-assistant/notes', 'InventoryCheckController@listNotes');
     Route::post('/reports/inventory-check-assistant/notes', 'InventoryCheckController@storeNote');
     Route::delete('/reports/inventory-check-assistant/notes/{id}', 'InventoryCheckController@destroyNote');

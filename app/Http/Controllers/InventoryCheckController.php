@@ -4,12 +4,17 @@ namespace App\Http\Controllers;
 
 use App\BusinessLocation;
 use App\Category;
+use App\ChartPick;
+use App\ChartPickImport;
 use App\Contact;
+use App\CustomerWant;
 use App\InventoryCheckNote;
 use App\InventoryCheckSession;
+use App\Services\ChartPickParser;
 use App\Services\InventoryCheckService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Response;
 
 class InventoryCheckController extends Controller
@@ -17,9 +22,13 @@ class InventoryCheckController extends Controller
     /** @var InventoryCheckService */
     protected $inventoryCheckService;
 
-    public function __construct(InventoryCheckService $inventoryCheckService)
+    /** @var ChartPickParser */
+    protected $chartPickParser;
+
+    public function __construct(InventoryCheckService $inventoryCheckService, ChartPickParser $chartPickParser)
     {
         $this->inventoryCheckService = $inventoryCheckService;
+        $this->chartPickParser = $chartPickParser;
     }
 
     public function index()
@@ -47,6 +56,14 @@ class InventoryCheckController extends Controller
         $copyFormat = config('inventory_check.copy_line_format');
         $amsColumns = config('inventory_check.ams_export_columns', []);
 
+        // Freshness check for the pasted charts — surface "last imported" dates
+        $chartFreshness = ChartPickImport::where('business_id', $business_id)
+            ->selectRaw('source, MAX(week_of) as week_of, MAX(created_at) as imported_at')
+            ->groupBy('source')
+            ->get()
+            ->keyBy('source')
+            ->toArray();
+
         return view('report.inventory_check_assistant')->with(compact(
             'business_locations',
             'categories',
@@ -54,11 +71,15 @@ class InventoryCheckController extends Controller
             'presetOptions',
             'presetMeta',
             'copyFormat',
-            'amsColumns'
+            'amsColumns',
+            'chartFreshness'
         ));
     }
 
-    public function data(Request $request)
+    /**
+     * Bucketed candidate data — the "Order for this week" view.
+     */
+    public function buckets(Request $request)
     {
         if (!auth()->user()->can('stock_report.view')) {
             abort(403, 'Unauthorized action.');
@@ -66,13 +87,7 @@ class InventoryCheckController extends Controller
 
         $business_id = (int) $request->session()->get('user.business_id');
         $input = $request->only([
-            'location_id',
-            'category_id',
-            'category_ids',
-            'sale_start',
-            'sale_end',
-            'supplier_id',
-            'preset',
+            'location_id', 'category_id', 'category_ids', 'preset',
         ]);
 
         if (!empty($input['preset'])) {
@@ -85,7 +100,7 @@ class InventoryCheckController extends Controller
         }
 
         $permitted = auth()->user()->permitted_locations();
-        $result = $this->inventoryCheckService->buildCandidates($business_id, $input, $permitted);
+        $result = $this->inventoryCheckService->buildBuckets($business_id, $input, $permitted);
 
         return response()->json($result);
     }
@@ -98,13 +113,7 @@ class InventoryCheckController extends Controller
 
         $business_id = (int) $request->session()->get('user.business_id');
         $input = $request->only([
-            'location_id',
-            'category_id',
-            'category_ids',
-            'sale_start',
-            'sale_end',
-            'supplier_id',
-            'preset',
+            'location_id', 'category_id', 'category_ids', 'preset',
         ]);
 
         if (!empty($input['preset'])) {
@@ -117,29 +126,29 @@ class InventoryCheckController extends Controller
         }
 
         $permitted = auth()->user()->permitted_locations();
-        $result = $this->inventoryCheckService->buildCandidates($business_id, $input, $permitted);
-        $rows = $result['candidates'] ?? [];
+        $result = $this->inventoryCheckService->buildBuckets($business_id, $input, $permitted);
 
-        $columns = config('inventory_check.ams_export_columns', [
-            'sku', 'product', 'artist', 'format', 'location', 'current_stock', 'suggested_qty', 'source_tags', 'reason',
-        ]);
-
+        $columns = config('inventory_check.ams_export_columns', []);
         $self = $this;
-        $callback = function () use ($rows, $columns, $self) {
+
+        $callback = function () use ($result, $columns, $self) {
             $out = fopen('php://output', 'w');
             fwrite($out, "\xEF\xBB\xBF");
             fputcsv($out, $columns);
-            foreach ($rows as $r) {
-                $line = [];
-                foreach ($columns as $col) {
-                    $line[] = $self->exportColumnValue($col, $r);
+            foreach ($result['buckets'] as $key => $bucket) {
+                foreach ($bucket['items'] as $r) {
+                    $r['bucket'] = $key;
+                    $line = [];
+                    foreach ($columns as $col) {
+                        $line[] = $self->exportColumnValue($col, $r);
+                    }
+                    fputcsv($out, $line);
                 }
-                fputcsv($out, $line);
             }
             fclose($out);
         };
 
-        $filename = 'inventory_check_order_' . Carbon::now()->format('Y-m-d_His') . '.csv';
+        $filename = 'order_for_this_week_' . Carbon::now()->format('Y-m-d_His') . '.csv';
 
         return Response::stream($callback, 200, [
             'Content-Type' => 'text/csv; charset=UTF-8',
@@ -150,36 +159,129 @@ class InventoryCheckController extends Controller
     protected function exportColumnValue(string $col, array $r): string
     {
         switch ($col) {
-            case 'sku':
-                return (string) ($r['sku'] ?? '');
-            case 'product':
-                return (string) ($r['product'] ?? '');
-            case 'artist':
-                return (string) ($r['artist'] ?? '');
-            case 'format':
-                return (string) ($r['format'] ?? '');
-            case 'location':
-                return (string) ($r['location_name'] ?? '');
-            case 'category':
-                return (string) ($r['category_name'] ?? '');
-            case 'current_stock':
-                return (string) ($r['stock'] ?? '');
-            case 'sold_qty_window':
-                return (string) ($r['sold_qty_window'] ?? '');
-            case 'avg_sell_days':
-                return isset($r['avg_sell_days']) ? (string) $r['avg_sell_days'] : '';
-            case 'suggested_qty':
-                return (string) ($r['suggested_qty'] ?? '');
-            case 'source_tags':
-                return isset($r['tags']) ? implode('|', $r['tags']) : '';
-            case 'reason':
-                return isset($r['reasons']) ? implode('; ', $r['reasons']) : '';
-            case 'variation':
-                return (string) ($r['variation_label'] ?? '');
-            default:
-                return '';
+            case 'bucket': return (string) ($r['bucket'] ?? '');
+            case 'sku': return (string) ($r['sku'] ?? '');
+            case 'product': return (string) ($r['product'] ?? '');
+            case 'artist': return (string) ($r['artist'] ?? '');
+            case 'format': return (string) ($r['format'] ?? '');
+            case 'location': return (string) ($r['location_name'] ?? '');
+            case 'category': return (string) ($r['category_name'] ?? '');
+            case 'current_stock': return (string) ($r['stock'] ?? '');
+            case 'sold_qty_window': return (string) ($r['sold_qty_window'] ?? '');
+            case 'avg_sell_days': return isset($r['avg_sell_days']) ? (string) $r['avg_sell_days'] : '';
+            case 'suggested_qty': return (string) ($r['suggested_qty'] ?? '');
+            case 'source_tags': return isset($r['tags']) ? implode('|', $r['tags']) : '';
+            case 'reason': return (string) ($r['reason'] ?? '');
+            case 'variation': return (string) ($r['variation_label'] ?? '');
+            default: return '';
         }
     }
+
+    // ── Chart paste imports (Street Pulse / Universal Top) ────────────
+
+    public function importChart(Request $request)
+    {
+        if (!auth()->user()->can('stock_report.view')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $request->validate([
+            'source' => 'required|in:street_pulse,universal_top',
+            'body' => 'required|string|max:500000',
+            'week_of' => 'nullable|date',
+        ]);
+
+        $business_id = (int) $request->session()->get('user.business_id');
+        $source = $request->input('source');
+        $weekOf = $request->input('week_of') ?: Carbon::now()->format('Y-m-d');
+        $body = $request->input('body');
+
+        $rows = $this->chartPickParser->parse($body, $source);
+
+        return DB::transaction(function () use ($business_id, $source, $weekOf, $body, $rows) {
+            $import = ChartPickImport::create([
+                'business_id' => $business_id,
+                'source' => $source,
+                'week_of' => $weekOf,
+                'imported_by' => auth()->id(),
+                'row_count' => count($rows),
+                'raw_body' => mb_substr($body, 0, 65535),
+            ]);
+
+            // Replace any existing picks for this source+week (idempotent re-paste)
+            ChartPick::where('business_id', $business_id)
+                ->where('source', $source)
+                ->whereDate('week_of', $weekOf)
+                ->delete();
+
+            foreach ($rows as $row) {
+                ChartPick::create([
+                    'import_id' => $import->id,
+                    'business_id' => $business_id,
+                    'source' => $source,
+                    'week_of' => $weekOf,
+                    'chart_rank' => $row['rank'],
+                    'artist' => $row['artist'],
+                    'title' => $row['title'],
+                    'format' => $row['format'],
+                    'is_new_release' => $row['is_new_release'],
+                ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'source' => $source,
+                'week_of' => $weekOf,
+                'parsed_rows' => count($rows),
+                'import_id' => $import->id,
+            ]);
+        });
+    }
+
+    public function latestChart(Request $request, string $source)
+    {
+        if (!auth()->user()->can('stock_report.view')) {
+            abort(403, 'Unauthorized action.');
+        }
+        if (!in_array($source, ['street_pulse', 'universal_top'], true)) {
+            abort(404);
+        }
+
+        $business_id = (int) $request->session()->get('user.business_id');
+        $import = ChartPickImport::where('business_id', $business_id)
+            ->where('source', $source)
+            ->orderByDesc('week_of')
+            ->first();
+
+        return response()->json([
+            'import' => $import,
+            'row_count' => $import ? ChartPick::where('import_id', $import->id)->count() : 0,
+        ]);
+    }
+
+    // ── Customer Wants fulfillment from the ICA view ──────────────────
+
+    public function fulfillCustomerWant(Request $request, $id)
+    {
+        if (!auth()->user()->can('stock_report.view')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = (int) $request->session()->get('user.business_id');
+        $want = CustomerWant::where('business_id', $business_id)
+            ->where('id', (int) $id)
+            ->firstOrFail();
+
+        $want->status = 'fulfilled';
+        $want->fulfilled_by = auth()->id();
+        $want->fulfilled_at = Carbon::now();
+        $want->fulfilled_note = $request->input('note') ?: 'marked via Inventory Check Assistant';
+        $want->save();
+
+        return response()->json(['success' => true, 'customer_want' => $want]);
+    }
+
+    // ── Notes (Street Pulse annotations / one-off customer-request notes) ──
 
     public function listNotes(Request $request)
     {
@@ -244,6 +346,8 @@ class InventoryCheckController extends Controller
 
         return response()->json(['success' => true]);
     }
+
+    // ── Saved sessions ────────────────────────────────────────────────
 
     public function listSessions(Request $request)
     {

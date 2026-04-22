@@ -1,470 +1,362 @@
-(function ($) {
+/**
+ * Inventory Check Assistant — bucketed "Order for this week" view.
+ *
+ * Exposes no globals. Listens for the Apply button, renders bucket sections,
+ * handles chart paste imports, and supports export / copy / print.
+ */
+(function () {
     'use strict';
 
-    var rows = [];
-    var currentFilter = 'all';
-    var verified = {};
-    var selected = {};
-    var currentPreset = '';
+    const $root = document.getElementById('ica_buckets_root');
+    const $applyBtn = document.getElementById('ica_apply');
+    const $preset = document.getElementById('ica_preset');
+    const $location = document.getElementById('ica_location_id');
+    const $category = document.getElementById('ica_category_id');
+    const $exportStrip = document.getElementById('ica_export_strip');
+    const $summary = document.getElementById('ica_summary');
+    const $exportCsv = document.getElementById('ica_export_csv');
+    const $copyCart = document.getElementById('ica_copy_cart');
+    const $print = document.getElementById('ica_print');
 
-    function rowKey(r) {
-        return r.variation_id + '_' + r.location_id;
-    }
+    let lastResult = null;
 
-    function getFilters() {
-        var preset = $('#ica_preset').val() || '';
-        var loc = $('#ica_location_id').val();
-        var cat = $('#ica_category_id').val();
-        var sup = $('#ica_supplier_id').val();
-        return {
-            preset: preset || undefined,
-            location_id: loc || undefined,
-            category_id: cat || undefined,
-            supplier_id: sup || undefined,
-            sale_start: $('#ica_sale_start').val() || undefined,
-            sale_end: $('#ica_sale_end').val() || undefined
-        };
-    }
-
+    // ── Preset metadata → auto-populate location/category ─────────────
     function applyPresetMeta() {
-        var key = $('#ica_preset').val();
-        currentPreset = key || '';
-        if (!key || !window.ICA_PRESET_META || !window.ICA_PRESET_META[key]) {
+        const key = $preset.value;
+        if (!key) return;
+        const meta = (window.ICA_PRESET_META || {})[key];
+        if (!meta) return;
+        if (meta.location_id && $location) {
+            $location.value = String(meta.location_id);
+            if (window.jQuery) jQuery($location).trigger('change');
+        }
+        if (meta.category_ids && meta.category_ids.length === 1 && $category) {
+            $category.value = String(meta.category_ids[0]);
+            if (window.jQuery) jQuery($category).trigger('change');
+        }
+    }
+    if ($preset) $preset.addEventListener('change', applyPresetMeta);
+
+    // ── Build order list (main action) ────────────────────────────────
+    if ($applyBtn) {
+        $applyBtn.addEventListener('click', function () {
+            buildList();
+        });
+    }
+
+    function buildList() {
+        const params = new URLSearchParams();
+        if ($location && $location.value) params.append('location_id', $location.value);
+        if ($category && $category.value) params.append('category_id', $category.value);
+        if ($preset && $preset.value) params.append('preset', $preset.value);
+
+        $root.innerHTML = '<div class="text-center text-muted" style="padding: 30px;"><i class="fa fa-spinner fa-spin fa-2x"></i><p>Building…</p></div>';
+        $exportStrip.style.display = 'none';
+
+        fetch(window.ICA_BUCKETS_URL + '?' + params.toString(), {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin',
+        })
+            .then((r) => r.json())
+            .then((payload) => {
+                lastResult = payload;
+                renderBuckets(payload);
+                if (payload.buckets) $exportStrip.style.display = 'block';
+            })
+            .catch((err) => {
+                $root.innerHTML = '<div class="alert alert-danger">Failed to load: ' + (err && err.message ? err.message : 'unknown error') + '</div>';
+            });
+    }
+
+    // ── Rendering ────────────────────────────────────────────────────
+    function renderBuckets(payload) {
+        if (payload.meta && payload.meta.error === 'location_required') {
+            $root.innerHTML = '<div class="alert alert-warning"><strong>Pick a location first.</strong></div>';
             return;
         }
-        var m = window.ICA_PRESET_META[key];
-        if (m.location_id) {
-            $('#ica_location_id').val(String(m.location_id)).trigger('change');
-        }
-        if (m.sale_start) {
-            $('#ica_sale_start').val(m.sale_start);
-        }
-        if (m.sale_end) {
-            $('#ica_sale_end').val(m.sale_end);
-        }
-        if (m.supplier_id) {
-            $('#ica_supplier_id').val(String(m.supplier_id)).trigger('change');
-        }
-    }
 
-    function rowMatchesFilter(r) {
-        if (currentFilter === 'all') {
-            return true;
-        }
-        return (r.tags || []).indexOf(currentFilter) !== -1;
-    }
+        const order = ['fast_oos', 'street_pulse', 'universal_top', 'top_artist_new_releases', 'events_upcoming', 'long_oos_essentials', 'customer_wants'];
+        const buckets = payload.buckets || {};
 
-    function renderTable() {
-        var $tb = $('#ica_tbody');
-        $tb.empty();
-        var shown = 0;
-        rows.forEach(function (r) {
-            if (!rowMatchesFilter(r)) {
-                return;
-            }
-            shown++;
-            var k = rowKey(r);
-            var tags = (r.tags || []).map(function (t) {
-                return '<span class="label label-info">' + $('<div>').text(t).html() + '</span>';
-            }).join(' ');
-            var avg = r.avg_sell_days !== null && r.avg_sell_days !== undefined ? r.avg_sell_days : '—';
-            var chk = verified[k] ? 'checked' : '';
-            var sel = selected[k] ? 'checked' : '';
-            var tr =
-                '<tr data-key="' +
-                k +
-                '">' +
-                '<td class="no-print"><input type="checkbox" class="ica-row-select" data-key="' +
-                k +
-                '" ' +
-                sel +
-                '></td>' +
-                '<td class="no-print"><input type="checkbox" class="ica-row-verify" data-key="' +
-                k +
-                '" ' +
-                chk +
-                '></td>' +
-                '<td>' +
-                $('<div>').text(r.sku || '').html() +
-                '</td>' +
-                '<td>' +
-                $('<div>').text(r.product || '').html() +
-                '</td>' +
-                '<td>' +
-                $('<div>').text(r.artist || '').html() +
-                '</td>' +
-                '<td>' +
-                $('<div>').text(r.format || '').html() +
-                '</td>' +
-                '<td>' +
-                $('<div>').text(r.location_name || '').html() +
-                '</td>' +
-                '<td>' +
-                $('<div>').text(String(r.stock)).html() +
-                '</td>' +
-                '<td>' +
-                $('<div>').text(String(r.sold_qty_window)).html() +
-                '</td>' +
-                '<td>' +
-                $('<div>').text(String(avg)).html() +
-                '</td>' +
-                '<td>' +
-                tags +
-                '</td>' +
-                '<td>' +
-                $('<div>').text(String(r.suggested_qty)).html() +
-                '</td>' +
-                '</tr>';
-            $tb.append(tr);
+        let html = '';
+        let totalItems = 0;
+        let totalQty = 0;
+
+        order.forEach((key) => {
+            const b = buckets[key];
+            if (!b) return;
+            html += renderBucketSection(key, b);
+            totalItems += b.count || 0;
+            (b.items || []).forEach((it) => {
+                totalQty += parseInt(it.suggested_qty || 0, 10) || 0;
+            });
         });
-        if (!shown) {
-            $tb.append(
-                '<tr><td colspan="12" class="text-center text-muted">No rows for this filter.</td></tr>'
+
+        if (html === '') {
+            html = '<div class="alert alert-info">No candidates — try a different preset or paste this week\'s charts.</div>';
+        }
+
+        $root.innerHTML = html;
+        $summary.textContent = `${totalItems} items across ${order.filter(k => buckets[k] && buckets[k].count > 0).length} buckets · ${totalQty} total qty suggested`;
+
+        attachBucketHandlers();
+    }
+
+    function renderBucketSection(key, b) {
+        const countClass = (b.count || 0) === 0 ? 'zero' : '';
+        const rows = (b.items || []).map((it) => renderRow(key, it)).join('');
+        const body = (b.count || 0) === 0
+            ? `<div class="ica-bucket-empty">No items in this bucket${b.empty_reason ? ' (' + b.empty_reason.replace(/_/g, ' ') + ')' : ''}.</div>`
+            : `<table class="table table-condensed table-striped ica-row-table"><thead><tr>
+                <th><input type="checkbox" class="ica-select-all" data-bucket="${escapeHtml(key)}"></th>
+                <th>Product</th><th>Artist</th><th>Format</th><th>Stock</th><th>Sold (window)</th><th>Reason</th><th>Tags</th><th>Qty</th><th></th>
+              </tr></thead><tbody>${rows}</tbody></table>`;
+
+        return `
+            <div class="ica-bucket box box-default" data-bucket="${escapeHtml(key)}">
+                <div class="ica-bucket-header">
+                    <div>
+                        <h3>${escapeHtml(b.label || key)} <span class="ica-bucket-count ${countClass}">${b.count || 0}</span></h3>
+                        <span class="ica-why">${escapeHtml(b.why || '')}</span>
+                    </div>
+                    <div>
+                        <button type="button" class="btn btn-xs btn-default ica-collapse-toggle" title="Collapse">
+                            <i class="fa fa-chevron-up"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="ica-bucket-body">${body}</div>
+            </div>
+        `;
+    }
+
+    function renderRow(bucket, it) {
+        const stock = (it.stock === null || it.stock === undefined) ? '—' : it.stock;
+        const sold = (it.sold_qty_window === null || it.sold_qty_window === undefined) ? '—' : it.sold_qty_window;
+        const tags = (it.tags || []).map((t) => `<span class="ica-tag ${escapeHtml(t)}">${escapeHtml(t.replace(/_/g, ' '))}</span>`).join('');
+        const reason = escapeHtml(it.reason || '');
+        const product = escapeHtml(it.product || '—');
+        const artist = escapeHtml(it.artist || '—');
+        const format = escapeHtml(it.format || '');
+        const qty = parseInt(it.suggested_qty || 0, 10) || 0;
+        const rowKey = [bucket, it.variation_id || '', it.customer_want_id || '', it.artist || '', it.product || ''].join('|');
+
+        const extraCol = bucket === 'customer_wants' && it.customer_want_id
+            ? `<button type="button" class="btn btn-xs btn-success ica-fulfill-want" data-want-id="${it.customer_want_id}"><i class="fa fa-check"></i> Fulfilled</button>`
+            : (bucket === 'events_upcoming' && it.event_name ? `<small class="text-muted">${escapeHtml(it.event_name)} — ${escapeHtml(it.event_date)}</small>` : '');
+
+        return `<tr data-row-key="${escapeHtml(rowKey)}">
+            <td><input type="checkbox" class="ica-row-check" checked></td>
+            <td>${product}</td>
+            <td>${artist}</td>
+            <td>${format}</td>
+            <td>${stock}</td>
+            <td>${sold}</td>
+            <td><small>${reason}</small></td>
+            <td>${tags}</td>
+            <td><input type="number" class="form-control input-sm ica-qty-input" value="${qty}" min="0" max="99"></td>
+            <td>${extraCol}</td>
+        </tr>`;
+    }
+
+    function attachBucketHandlers() {
+        $root.querySelectorAll('.ica-collapse-toggle').forEach((btn) => {
+            btn.addEventListener('click', function () {
+                const bucketEl = btn.closest('.ica-bucket');
+                bucketEl.classList.toggle('ica-collapsed');
+                const icon = btn.querySelector('i');
+                if (icon) icon.className = bucketEl.classList.contains('ica-collapsed') ? 'fa fa-chevron-down' : 'fa fa-chevron-up';
+            });
+        });
+
+        $root.querySelectorAll('.ica-select-all').forEach((cb) => {
+            cb.addEventListener('change', function () {
+                const bucket = cb.dataset.bucket;
+                const rows = $root.querySelectorAll(`.ica-bucket[data-bucket="${cssEscape(bucket)}"] .ica-row-check`);
+                rows.forEach((r) => { r.checked = cb.checked; });
+            });
+        });
+
+        $root.querySelectorAll('.ica-fulfill-want').forEach((btn) => {
+            btn.addEventListener('click', function () {
+                const wantId = btn.dataset.wantId;
+                if (!wantId) return;
+                if (!confirm('Mark this customer want as fulfilled?')) return;
+                fetch(window.ICA_CUSTOMER_WANT_FULFILL_URL + '/' + encodeURIComponent(wantId) + '/fulfill', {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': window.ICA_CSRF,
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ note: 'via Inventory Check Assistant' }),
+                })
+                    .then((r) => r.json())
+                    .then(() => {
+                        const tr = btn.closest('tr');
+                        if (tr) tr.remove();
+                    });
+            });
+        });
+    }
+
+    // ── Chart freshness ──────────────────────────────────────────────
+    function renderFreshness() {
+        const fresh = window.ICA_CHART_FRESHNESS || {};
+        const fmt = (f) => f && f.week_of ? `Last imported ${f.week_of} (${f.imported_at ? String(f.imported_at).substring(0, 10) : ''})` : 'Not yet imported';
+        const sp = document.getElementById('ica_sp_freshness');
+        const ut = document.getElementById('ica_ut_freshness');
+        if (sp) sp.textContent = fmt(fresh.street_pulse);
+        if (ut) ut.textContent = fmt(fresh.universal_top);
+    }
+    renderFreshness();
+
+    // ── Chart paste imports ──────────────────────────────────────────
+    function importChart(source) {
+        const isSp = source === 'street_pulse';
+        const bodyEl = document.getElementById(isSp ? 'ica_sp_body' : 'ica_ut_body');
+        const weekEl = document.getElementById(isSp ? 'ica_sp_week' : 'ica_ut_week');
+        const btn = document.getElementById(isSp ? 'ica_sp_import' : 'ica_ut_import');
+        const body = bodyEl.value.trim();
+        const week = weekEl.value;
+        if (!body) { alert('Paste the chart body first.'); return; }
+
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Importing…';
+
+        fetch(window.ICA_CHART_IMPORT_URL, {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': window.ICA_CSRF,
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({ source: source, week_of: week, body: body }),
+        })
+            .then((r) => r.json())
+            .then((resp) => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa fa-upload"></i> Import';
+                if (resp && resp.success) {
+                    alert('Imported ' + resp.parsed_rows + ' rows for week of ' + resp.week_of + '.');
+                    if (window.jQuery) jQuery('#' + (isSp ? 'ica_sp_modal' : 'ica_ut_modal')).modal('hide');
+                    window.ICA_CHART_FRESHNESS = window.ICA_CHART_FRESHNESS || {};
+                    window.ICA_CHART_FRESHNESS[source] = { week_of: resp.week_of, imported_at: new Date().toISOString() };
+                    renderFreshness();
+                    if (lastResult) buildList();
+                } else {
+                    alert('Import failed. Check the body and try again.');
+                }
+            })
+            .catch(() => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa fa-upload"></i> Import';
+                alert('Import failed.');
+            });
+    }
+    const $spImport = document.getElementById('ica_sp_import');
+    const $utImport = document.getElementById('ica_ut_import');
+    if ($spImport) $spImport.addEventListener('click', () => importChart('street_pulse'));
+    if ($utImport) $utImport.addEventListener('click', () => importChart('universal_top'));
+
+    // ── Export / copy / print ───────────────────────────────────────
+    if ($exportCsv) {
+        $exportCsv.addEventListener('click', function () {
+            const params = new URLSearchParams();
+            if ($location.value) params.append('location_id', $location.value);
+            if ($category.value) params.append('category_id', $category.value);
+            if ($preset.value) params.append('preset', $preset.value);
+            window.location.href = window.ICA_EXPORT_URL + '?' + params.toString();
+        });
+    }
+
+    if ($copyCart) {
+        $copyCart.addEventListener('click', function () {
+            if (!lastResult) { alert('Build the list first.'); return; }
+            const lines = [];
+            const fmt = window.ICA_COPY_FORMAT || '{qty} x {sku} — {product}';
+            Object.keys(lastResult.buckets || {}).forEach((key) => {
+                const b = lastResult.buckets[key];
+                (b.items || []).forEach((it) => {
+                    const qty = parseInt(it.suggested_qty || 0, 10) || 0;
+                    if (qty < 1) return;
+                    const line = fmt
+                        .replace('{qty}', qty)
+                        .replace('{sku}', it.sku || '(no sku)')
+                        .replace('{product}', (it.artist ? it.artist + ' — ' : '') + (it.product || ''));
+                    lines.push(line);
+                });
+            });
+            const text = lines.join('\n');
+            if (!text) { alert('Nothing to copy.'); return; }
+            navigator.clipboard.writeText(text).then(
+                () => alert('Copied ' + lines.length + ' lines.'),
+                () => prompt('Copy manually:', text)
             );
-        }
-    }
-
-    function loadCandidates() {
-        var params = getFilters();
-        $('#ica_apply').prop('disabled', true);
-        $.ajax({
-            url: window.ICA_DATA_URL,
-            data: params,
-            dataType: 'json',
-            success: function (res) {
-                rows = res.candidates || [];
-                var meta = res.meta || {};
-                $('#ica_meta_line').text(
-                    'Window: ' +
-                        (meta.sale_start || '') +
-                        ' — ' +
-                        (meta.sale_end || '') +
-                        ' · Rows: ' +
-                        rows.length
-                );
-                renderTable();
-            },
-            error: function (xhr) {
-                alert('Could not load data: ' + (xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : xhr.statusText));
-            },
-            complete: function () {
-                $('#ica_apply').prop('disabled', false);
-            }
         });
     }
 
-    function buildExportUrl() {
-        var params = $.param(getFilters());
-        return window.ICA_EXPORT_URL + (params ? '?' + params : '');
+    if ($print) {
+        $print.addEventListener('click', function () { window.print(); });
     }
 
-    function copyForCart() {
-        var fmt = window.ICA_COPY_FORMAT || '{qty} x {sku} — {product}';
-        var lines = [];
-        rows.forEach(function (r) {
-            var k = rowKey(r);
-            if (!selected[k]) {
-                return;
-            }
-            var line = fmt
-                .replace('{qty}', String(r.suggested_qty))
-                .replace('{sku}', r.sku || '')
-                .replace('{product}', r.product || '');
-            lines.push(line);
-        });
-        if (!lines.length) {
-            alert('Select at least one row with the checkbox in the first column.');
-            return;
-        }
-        var text = lines.join('\n');
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(text).then(function () {
-                alert('Copied ' + lines.length + ' line(s) to clipboard.');
-            });
-        } else {
-            prompt('Copy:', text);
-        }
-    }
-
-    function collectStateJson() {
-        return JSON.stringify({
-            verified: verified,
-            selected: selected,
-            preset: currentPreset,
-            filters: getFilters()
-        });
-    }
-
-    function applyStateJson(str) {
-        try {
-            var o = JSON.parse(str || '{}');
-            verified = o.verified || {};
-            selected = o.selected || {};
-            if (o.filters) {
-                if (o.filters.location_id) {
-                    $('#ica_location_id').val(String(o.filters.location_id)).trigger('change');
-                }
-                if (o.filters.category_id) {
-                    $('#ica_category_id').val(String(o.filters.category_id)).trigger('change');
-                }
-                if (o.filters.supplier_id) {
-                    $('#ica_supplier_id').val(String(o.filters.supplier_id)).trigger('change');
-                }
-                if (o.filters.sale_start) {
-                    $('#ica_sale_start').val(o.filters.sale_start);
-                }
-                if (o.filters.sale_end) {
-                    $('#ica_sale_end').val(o.filters.sale_end);
-                }
-                if (o.filters.preset) {
-                    $('#ica_preset').val(o.filters.preset).trigger('change');
-                }
-            }
-            renderTable();
-        } catch (e) {
-            console.warn(e);
-        }
-    }
-
-    function refreshNotes() {
-        var loc = $('#ica_location_id').val();
-        $.get(
-            window.ICA_NOTES_URL,
-            { location_id: loc, note_type: 'street_pulse' },
-            function (res) {
-                var $el = $('#ica_notes_street');
-                $el.empty();
-                (res.data || []).forEach(function (n) {
-                    $el.append(
-                        '<div class="well well-sm">' +
-                            $('<div>').text(n.body).html() +
-                            ' <button type="button" class="btn btn-xs btn-link ica-del-note" data-id="' +
-                            n.id +
-                            '">Delete</button></div>'
-                    );
+    // ── Sessions ────────────────────────────────────────────────────
+    function loadSessions() {
+        fetch(window.ICA_SESSIONS_URL, { credentials: 'same-origin' })
+            .then((r) => r.json())
+            .then((resp) => {
+                const sel = document.getElementById('ica_session_select');
+                if (!sel) return;
+                sel.innerHTML = '<option value="">—</option>';
+                (resp.data || []).forEach((s) => {
+                    const opt = document.createElement('option');
+                    opt.value = s.id;
+                    opt.textContent = s.name + ' (' + (s.updated_at || '').substring(0, 10) + ')';
+                    sel.appendChild(opt);
                 });
-            }
-        );
-        $.get(
-            window.ICA_NOTES_URL,
-            { location_id: loc, note_type: 'customer_request' },
-            function (res) {
-                var $el = $('#ica_notes_customer');
-                $el.empty();
-                (res.data || []).forEach(function (n) {
-                    $el.append(
-                        '<div class="well well-sm">' +
-                            $('<div>').text(n.body).html() +
-                            ' <button type="button" class="btn btn-xs btn-link ica-del-note" data-id="' +
-                            n.id +
-                            '">Delete</button></div>'
-                    );
-                });
-            }
-        );
-    }
-
-    function refreshSessions() {
-        $.get(window.ICA_SESSIONS_URL, function (res) {
-            var $s = $('#ica_session_select');
-            $s.empty().append('<option value="">—</option>');
-            (res.data || []).forEach(function (s) {
-                $s.append(
-                    $('<option></option>').attr('value', s.id).text(s.name + ' (#' + s.id + ')')
-                );
             });
+    }
+    loadSessions();
+
+    const $saveSession = document.getElementById('ica_session_save');
+    if ($saveSession) {
+        $saveSession.addEventListener('click', function () {
+            const name = document.getElementById('ica_session_name').value.trim();
+            if (!name) { alert('Give it a name.'); return; }
+            fetch(window.ICA_SESSIONS_STORE, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': window.ICA_CSRF,
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({
+                    name: name,
+                    location_id: $location.value || null,
+                    category_id: $category.value || null,
+                    preset_key: $preset.value || null,
+                }),
+            })
+                .then((r) => r.json())
+                .then(() => loadSessions());
         });
     }
 
-    $(document).ready(function () {
-        if ($('#ica_table').length === 0) {
-            return;
-        }
+    // ── Util ─────────────────────────────────────────────────────────
+    function escapeHtml(s) {
+        if (s === null || s === undefined) return '';
+        return String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+    function cssEscape(s) {
+        return String(s).replace(/"/g, '\\"');
+    }
 
-        $('#ica_preset').on('change', applyPresetMeta);
-        $('#ica_apply').on('click', loadCandidates);
-
-        $('#ica_tab_filters button').on('click', function () {
-            $('#ica_tab_filters button').removeClass('active');
-            $(this).addClass('active');
-            currentFilter = $(this).data('filter');
-            renderTable();
-        });
-
-        $(document).on('change', '.ica-row-verify', function () {
-            var k = $(this).data('key');
-            verified[k] = $(this).is(':checked');
-        });
-        $(document).on('change', '.ica-row-select', function () {
-            var k = $(this).data('key');
-            selected[k] = $(this).is(':checked');
-        });
-        $('#ica_select_all').on('change', function () {
-            var on = $(this).is(':checked');
-            $('.ica-row-select:visible').prop('checked', on).trigger('change');
-        });
-
-        $('#ica_export_csv').on('click', function () {
-            window.location.href = buildExportUrl();
-        });
-        $('#ica_copy_cart').on('click', copyForCart);
-        $('#ica_print').on('click', function () {
-            window.print();
-        });
-
-        $('#ica_sp_save').on('click', function () {
-            var body = $('#ica_sp_body').val();
-            if (!body.trim()) {
-                return;
-            }
-            $.ajax({
-                url: window.ICA_NOTES_STORE,
-                method: 'POST',
-                headers: { 'X-CSRF-TOKEN': window.ICA_CSRF },
-                data: {
-                    _token: window.ICA_CSRF,
-                    note_type: 'street_pulse',
-                    body: body,
-                    location_id: $('#ica_location_id').val(),
-                    reference_date: $('#ica_sp_ref').val()
-                },
-                success: function () {
-                    $('#ica_sp_body').val('');
-                    refreshNotes();
-                }
-            });
-        });
-
-        $('#ica_cr_save').on('click', function () {
-            var body = $('#ica_cr_body').val();
-            if (!body.trim()) {
-                return;
-            }
-            $.ajax({
-                url: window.ICA_NOTES_STORE,
-                method: 'POST',
-                headers: { 'X-CSRF-TOKEN': window.ICA_CSRF },
-                data: {
-                    _token: window.ICA_CSRF,
-                    note_type: 'customer_request',
-                    body: body,
-                    location_id: $('#ica_location_id').val()
-                },
-                success: function () {
-                    $('#ica_cr_body').val('');
-                    refreshNotes();
-                }
-            });
-        });
-
-        $(document).on('click', '.ica-del-note', function () {
-            var id = $(this).data('id');
-            if (!confirm('Delete this note?')) {
-                return;
-            }
-            $.ajax({
-                url: '/reports/inventory-check-assistant/notes/' + id,
-                method: 'POST',
-                data: { _token: window.ICA_CSRF, _method: 'DELETE' },
-                success: function () {
-                    refreshNotes();
-                }
-            });
-        });
-
-        $('#ica_session_save').on('click', function () {
-            var name = $('#ica_session_name').val();
-            if (!name.trim()) {
-                alert('Enter a session name.');
-                return;
-            }
-            var f = getFilters();
-            var sid = $('#ica_session_select').val();
-            var payload = {
-                _token: window.ICA_CSRF,
-                name: name,
-                location_id: f.location_id,
-                category_id: f.category_id,
-                supplier_id: f.supplier_id,
-                sale_start: f.sale_start,
-                sale_end: f.sale_end,
-                preset_key: f.preset || null,
-                state_json: collectStateJson()
-            };
-            var req = {
-                method: 'POST',
-                headers: { 'X-CSRF-TOKEN': window.ICA_CSRF },
-                data: payload,
-                success: function () {
-                    refreshSessions();
-                    alert('Session saved.');
-                }
-            };
-            if (sid) {
-                req.url = '/reports/inventory-check-assistant/sessions/' + sid;
-                req.data._method = 'PUT';
-            } else {
-                req.url = window.ICA_SESSIONS_STORE;
-            }
-            $.ajax(req);
-        });
-
-        $('#ica_session_load').on('click', function () {
-            var id = $('#ica_session_select').val();
-            if (!id) {
-                return;
-            }
-            $.get(window.ICA_SESSIONS_URL, function (res) {
-                var s = (res.data || []).filter(function (x) {
-                    return String(x.id) === String(id);
-                })[0];
-                if (!s) {
-                    return;
-                }
-                $('#ica_session_name').val(s.name);
-                if (s.location_id) {
-                    $('#ica_location_id').val(String(s.location_id)).trigger('change');
-                }
-                if (s.category_id) {
-                    $('#ica_category_id').val(String(s.category_id)).trigger('change');
-                }
-                if (s.supplier_id) {
-                    $('#ica_supplier_id').val(String(s.supplier_id)).trigger('change');
-                }
-                if (s.sale_start) {
-                    $('#ica_sale_start').val(s.sale_start);
-                }
-                if (s.sale_end) {
-                    $('#ica_sale_end').val(s.sale_end);
-                }
-                if (s.preset_key) {
-                    $('#ica_preset').val(s.preset_key).trigger('change');
-                }
-                applyStateJson(s.state_json);
-                loadCandidates();
-            });
-        });
-
-        $('#ica_session_delete').on('click', function () {
-            var id = $('#ica_session_select').val();
-            if (!id || !confirm('Delete this session?')) {
-                return;
-            }
-            $.ajax({
-                url: '/reports/inventory-check-assistant/sessions/' + id,
-                method: 'POST',
-                data: { _token: window.ICA_CSRF, _method: 'DELETE' },
-                success: function () {
-                    refreshSessions();
-                }
-            });
-        });
-
-        $('#ica_location_id').on('change', function () {
-            refreshNotes();
-        });
-
-        refreshNotes();
-        refreshSessions();
-    });
-})(jQuery);
+})();
