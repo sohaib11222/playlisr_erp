@@ -278,6 +278,9 @@ class ProductController extends Controller
                 $products->whereDate('products.created_at', '<=', $end_date);
             }
 
+            $ebayConfigured = $this->ebayService->isConfigured();
+            $discogsConfigured = $this->discogsService->isConfigured();
+
             return Datatables::of($products)
                 ->addColumn(
                     'product_locations',
@@ -297,7 +300,7 @@ class ProductController extends Controller
                 })
                 ->addColumn(
                     'action',
-                    function ($row) use ($selling_price_group_count) {
+                    function ($row) use ($selling_price_group_count, $ebayConfigured, $discogsConfigured) {
                         // Compact grey actions group: Labels button + dropdown
                         $html = '<div class="btn-group btn-group-xs">';
 
@@ -326,6 +329,19 @@ class ProductController extends Controller
 
                         if ($row->is_inactive == 1) {
                             $html .= '<li><a href="' . action('ProductController@activate', [$row->id]) . '" class="activate-product"><i class="fas fa-check-circle"></i> ' . __("lang_v1.reactivate") . '</a></li>';
+                        }
+
+                        // Marketplace listings — push this product as a live listing on Discogs / eBay.
+                        // Endpoints are POST /products/{id}/list-to-{platform}; each takes the product's
+                        // current price/stock/name and hands off to the platform-specific service.
+                        if ($ebayConfigured || $discogsConfigured) {
+                            $html .= '<li class="divider"></li>';
+                        }
+                        if ($discogsConfigured) {
+                            $html .= '<li><a href="#" data-id="' . $row->id . '" class="list-to-discogs"><i class="fa fa-music"></i> List on Discogs</a></li>';
+                        }
+                        if ($ebayConfigured) {
+                            $html .= '<li><a href="#" data-id="' . $row->id . '" class="list-to-ebay"><i class="fa fa-shopping-cart"></i> List on eBay</a></li>';
                         }
 
                         if ($row->enable_stock == 1 && auth()->user()->can('product.opening_stock')) {

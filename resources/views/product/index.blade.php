@@ -1412,8 +1412,49 @@
             
             console.log('Redirecting to:', url);
             window.location.href = url;
-            
+
             return false;
+        });
+
+        // Per-row "List on Discogs" / "List on eBay" actions. Both endpoints take just the
+        // product ID and pull price/stock/name off the product record; no modal needed.
+        // The dropdown items are only rendered server-side when the respective service
+        // reports isConfigured(), so reaching this handler means credentials exist — any
+        // failure after that is a real marketplace-side error, surfaced via toastr.
+        $(document).on('click', '.list-to-discogs, .list-to-ebay', function(e) {
+            e.preventDefault();
+            var $link = $(this);
+            var productId = $link.data('id');
+            var isEbay = $link.hasClass('list-to-ebay');
+            var platform = isEbay ? 'ebay' : 'discogs';
+            var platformLabel = isEbay ? 'eBay' : 'Discogs';
+            var originalIcon = isEbay ? 'fa-shopping-cart' : 'fa-music';
+
+            if (!confirm('List this product on ' + platformLabel + '? This creates a real, live listing.')) {
+                return;
+            }
+
+            var $icon = $link.find('i');
+            $icon.removeClass('fa-shopping-cart fa-music').addClass('fa-spinner fa-spin');
+            $link.css('pointer-events', 'none');
+
+            $.ajax({
+                url: '/products/' + productId + '/list-to-' + platform,
+                method: 'POST',
+                data: {},
+                dataType: 'json'
+            }).done(function(result) {
+                if (result && result.success) {
+                    toastr.success(result.msg || 'Listed on ' + platformLabel + '.');
+                } else {
+                    toastr.error((result && result.msg) || 'Failed to list on ' + platformLabel + '.');
+                }
+            }).fail(function(xhr) {
+                toastr.error('Request failed: ' + (xhr.statusText || xhr.status));
+            }).always(function() {
+                $icon.removeClass('fa-spinner fa-spin').addClass(originalIcon);
+                $link.css('pointer-events', '');
+            });
         });
 
     </script>
