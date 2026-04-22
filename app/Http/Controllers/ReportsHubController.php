@@ -42,6 +42,7 @@ class ReportsHubController extends Controller
                 'title' => 'Inventory',
                 'icon'  => 'fa-warehouse',
                 'reports' => [
+                    ['key' => 'inventory-check-assistant', 'name' => 'Inventory Check Assistant', 'icon' => 'fa-magic',          'action' => 'InventoryCheckController@index',              'desc' => 'Unified reorder: most sold, fast sellers, empty tabs + AMS export.'],
                     ['key' => 'stock-report',          'name' => 'Stock Report',          'icon' => 'fa-boxes',              'action' => 'ReportController@getStockReport',             'desc' => 'Stock on hand by location.'],
                     ['key' => 'stock-details',         'name' => 'Stock Details',         'icon' => 'fa-box-open',           'action' => 'ReportController@getStockDetails',            'desc' => 'Line-level stock details.'],
                     ['key' => 'stock-adjustment',      'name' => 'Stock Adjustment Report', 'icon' => 'fa-sliders-h',        'action' => 'ReportController@getStockAdjustmentReport',   'desc' => 'Stock adjustments history.'],
