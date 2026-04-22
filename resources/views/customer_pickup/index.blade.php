@@ -43,6 +43,7 @@
                         <th>Paid?</th>
                         <th>Status</th>
                         <th>Picked Up By</th>
+                        <th>Created By</th>
                         <th>Action</th>
                     </tr>
                 </thead>
@@ -99,6 +100,7 @@
                 { data: 'is_paid_label', name: 'is_paid', orderable: false, searchable: false },
                 { data: 'status', name: 'status' },
                 { data: 'picked_up_info', name: 'picked_up_info', orderable: false, searchable: false },
+                { data: 'created_info', name: 'created_info', orderable: false, searchable: false },
                 { data: 'action', name: 'action', orderable: false, searchable: false },
             ],
             order: [[1, 'desc']],

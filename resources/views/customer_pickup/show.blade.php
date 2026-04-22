@@ -40,16 +40,20 @@
                         </tr>
                         <tr>
                             <th>Quantity:</th>
-                            <td>{{ $pickup->quantity }}</td>
+                            <td>{{ (int) $pickup->quantity }}</td>
                         </tr>
                         <tr>
                             <th>Hold Date:</th>
-                            <td>{{ \Carbon\Carbon::parse($pickup->hold_date)->format('Y-m-d') }}</td>
+                            <td>{{ $pickup->hold_date ? \Carbon\Carbon::parse($pickup->hold_date)->format('n/j/y') : '-' }}</td>
                         </tr>
                         <tr>
                             <th>Expected Pickup:</th>
                             <td>
-                                {{ $pickup->expected_pickup_date ? \Carbon\Carbon::parse($pickup->expected_pickup_date)->format('Y-m-d') : 'Not set' }}
+                                @php
+                                    $rawExpected = $pickup->expected_pickup_date;
+                                    $hasExpected = $rawExpected && !in_array(substr((string) $rawExpected, 0, 4), ['0000', '-000'], true);
+                                @endphp
+                                {{ $hasExpected ? \Carbon\Carbon::parse($rawExpected)->format('n/j/y') : 'Not set' }}
                                 @if($pickup->expected_pickup_time)
                                     &nbsp; <strong>{{ $pickup->expected_pickup_time }}</strong>
                                 @endif
@@ -80,7 +84,7 @@
                         @if($pickup->picked_up_at)
                         <tr>
                             <th>Picked Up At:</th>
-                            <td>{{ $pickup->picked_up_at->format('m/d/Y h:i A') }}</td>
+                            <td>{{ $pickup->picked_up_at->format('n/j/y g:i A') }}</td>
                         </tr>
                         @endif
                         @if($pickup->pickedUpByUser)
@@ -107,7 +111,7 @@
                         </tr>
                         <tr>
                             <th>Created At:</th>
-                            <td>{{ $pickup->created_at->format('m/d/Y h:i A') }}</td>
+                            <td>{{ $pickup->created_at->format('n/j/y g:i A') }}</td>
                         </tr>
                     </table>
                 </div>

@@ -28,6 +28,7 @@ class CustomerPickupController extends Controller
                 ->leftJoin('variations', 'customer_pickups.variation_id', '=', 'variations.id')
                 ->leftJoin('business_locations', 'customer_pickups.location_id', '=', 'business_locations.id')
                 ->leftJoin('users as picked_up_users', 'customer_pickups.picked_up_by_user_id', '=', 'picked_up_users.id')
+                ->leftJoin('users as creator_users', 'customer_pickups.created_by', '=', 'creator_users.id')
                 ->select(
                     'customer_pickups.*',
                     'contacts.name as customer_name',
@@ -35,7 +36,8 @@ class CustomerPickupController extends Controller
                     'products.name as product_name',
                     'variations.sub_sku',
                     'business_locations.name as location_name',
-                    DB::raw("COALESCE(NULLIF(TRIM(CONCAT(COALESCE(picked_up_users.first_name,''), ' ', COALESCE(picked_up_users.last_name,''))), ''), picked_up_users.username) as picked_up_cashier_name")
+                    DB::raw("COALESCE(NULLIF(TRIM(CONCAT(COALESCE(picked_up_users.first_name,''), ' ', COALESCE(picked_up_users.last_name,''))), ''), picked_up_users.username) as picked_up_cashier_name"),
+                    DB::raw("COALESCE(NULLIF(TRIM(CONCAT(COALESCE(creator_users.first_name,''), ' ', COALESCE(creator_users.last_name,''))), ''), creator_users.username) as created_by_name")
                 );
 
             if (request()->has('status') && request()->status != '') {
@@ -69,10 +71,19 @@ class CustomerPickupController extends Controller
                     return $labels[$row->status] ?? $row->status;
                 })
                 ->editColumn('hold_date', function ($row) {
-                    return \Carbon::parse($row->hold_date)->format('Y-m-d');
+                    // M/D/YY format — e.g. 4/26/26
+                    return $row->hold_date ? \Carbon::parse($row->hold_date)->format('n/j/y') : '-';
+                })
+                ->editColumn('quantity', function ($row) {
+                    // Integer only — no decimals ever
+                    return (int) $row->quantity;
                 })
                 ->editColumn('expected_pickup_date', function ($row) {
-                    $d = $row->expected_pickup_date ? \Carbon::parse($row->expected_pickup_date)->format('Y-m-d') : '';
+                    // Guard against null / zero-dates (previous rows showed -0001-11-30
+                    // because Carbon::parse(null) returns year -0001).
+                    $raw = $row->expected_pickup_date;
+                    $hasDate = $raw && !in_array(substr((string) $raw, 0, 4), ['0000', '-000'], true);
+                    $d = $hasDate ? \Carbon::parse($raw)->format('n/j/y') : '';
                     $t = $row->expected_pickup_time ? ' ' . $row->expected_pickup_time : '';
                     return trim($d . $t) ?: '-';
                 })
@@ -88,14 +99,24 @@ class CustomerPickupController extends Controller
                         $parts[] = '<strong>' . e(trim($row->picked_up_cashier_name)) . '</strong>';
                     }
                     if ($row->picked_up_at) {
-                        $parts[] = '<small>' . \Carbon::parse($row->picked_up_at)->format('m/d/Y h:i A') . '</small>';
+                        $parts[] = '<small>' . \Carbon::parse($row->picked_up_at)->format('n/j/y g:i A') . '</small>';
                     }
                     if ($row->picked_up_by_name) {
                         $parts[] = '<small>to: ' . e($row->picked_up_by_name) . '</small>';
                     }
                     return $parts ? implode('<br>', $parts) : '-';
                 })
-                ->rawColumns(['action', 'status', 'is_paid_label', 'picked_up_info'])
+                ->addColumn('created_info', function ($row) {
+                    $parts = [];
+                    if (!empty($row->created_by_name) && trim($row->created_by_name) !== '') {
+                        $parts[] = '<strong>' . e(trim($row->created_by_name)) . '</strong>';
+                    }
+                    if ($row->created_at) {
+                        $parts[] = '<small>' . \Carbon::parse($row->created_at)->format('n/j/y g:i A') . '</small>';
+                    }
+                    return $parts ? implode('<br>', $parts) : '-';
+                })
+                ->rawColumns(['action', 'status', 'is_paid_label', 'picked_up_info', 'created_info'])
                 ->make(true);
         }
 

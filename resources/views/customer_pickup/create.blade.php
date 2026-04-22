@@ -10,24 +10,42 @@
 
 <section class="content">
     {!! Form::open(['action' => 'CustomerPickupController@store', 'method' => 'post', 'id' => 'pickup_form']) !!}
+
+    {{-- Customer + Store --}}
     <div class="row">
         <div class="col-md-12">
-            <div class="box box-solid">
+            <div class="box box-primary">
+                <div class="box-header with-border">
+                    <h3 class="box-title"><i class="fa fa-user"></i> &nbsp;Customer &amp; Store</h3>
+                </div>
                 <div class="box-body">
                     <div class="row">
-                        <div class="col-md-6">
+                        <div class="col-md-8">
                             <div class="form-group">
                                 {!! Form::label('contact_id', 'Customer: *') !!}
                                 {!! Form::select('contact_id', $customers, null, ['class' => 'form-control select2', 'required', 'style' => 'width: 100%']); !!}
                             </div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <div class="form-group">
-                                {!! Form::label('location_id', 'Location:') !!}
-                                {!! Form::select('location_id', $locations, null, ['class' => 'form-control select2', 'placeholder' => 'Select location', 'style' => 'width: 100%']); !!}
+                                {!! Form::label('location_id', 'Store: *') !!}
+                                {!! Form::select('location_id', $locations, null, ['class' => 'form-control select2', 'placeholder' => 'Select store', 'required', 'style' => 'width: 100%']); !!}
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Product --}}
+    <div class="row">
+        <div class="col-md-12">
+            <div class="box box-primary">
+                <div class="box-header with-border">
+                    <h3 class="box-title"><i class="fa fa-compact-disc"></i> &nbsp;Item on Hold</h3>
+                </div>
+                <div class="box-body">
                     <div class="row">
                         <div class="col-md-6">
                             <div class="form-group">
@@ -35,19 +53,32 @@
                                 {!! Form::select('product_id', [], null, ['class' => 'form-control select2', 'id' => 'product_id', 'style' => 'width: 100%']); !!}
                             </div>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-4">
                             <div class="form-group">
                                 {!! Form::label('variation_id', 'Variation/SKU:') !!}
                                 {!! Form::select('variation_id', [], null, ['class' => 'form-control select2', 'id' => 'variation_id', 'style' => 'width: 100%']); !!}
                             </div>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-2">
                             <div class="form-group">
-                                {!! Form::label('quantity', 'Quantity: *') !!}
-                                {!! Form::text('quantity', 1, ['class' => 'form-control input_number', 'required']); !!}
+                                {!! Form::label('quantity', 'Qty: *') !!}
+                                {!! Form::number('quantity', 1, ['class' => 'form-control', 'required', 'min' => 1, 'step' => 1]); !!}
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Pickup schedule + paid --}}
+    <div class="row">
+        <div class="col-md-12">
+            <div class="box box-primary">
+                <div class="box-header with-border">
+                    <h3 class="box-title"><i class="fa fa-calendar-check"></i> &nbsp;Pickup Schedule</h3>
+                </div>
+                <div class="box-body">
                     <div class="row">
                         <div class="col-md-4">
                             <div class="form-group">
@@ -82,14 +113,20 @@
                             </div>
                         </div>
                     </div>
-                    <div class="row">
-                        <div class="col-md-12">
-                            <div class="form-group">
-                                {!! Form::label('notes', 'Notes:') !!}
-                                {!! Form::textarea('notes', null, ['class' => 'form-control', 'rows' => 3, 'placeholder' => 'e.g. called customer, put in hold bin, deposit taken, etc.']); !!}
-                            </div>
-                        </div>
-                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Notes --}}
+    <div class="row">
+        <div class="col-md-12">
+            <div class="box box-primary">
+                <div class="box-header with-border">
+                    <h3 class="box-title"><i class="fa fa-sticky-note"></i> &nbsp;Notes</h3>
+                </div>
+                <div class="box-body">
+                    {!! Form::textarea('notes', null, ['class' => 'form-control', 'rows' => 3, 'placeholder' => 'e.g. called customer, put in hold bin, deposit taken, etc.']); !!}
                 </div>
             </div>
         </div>
