@@ -48,6 +48,10 @@ Route::middleware(['setData'])->group(function () {
         ->name('confirm_payment');
 
     Route::get('/business/quickbooks/callback', 'QuickBooksController@callback')->name('business.quickbooks.callback');
+
+    // Clover webhook — signature-verified in the controller. Must be outside
+    // the auth group (Clover calls us) and outside CSRF (see VerifyCsrfToken::$except).
+    Route::post('/webhooks/clover', 'CloverController@webhook')->name('clover.webhook');
 });
 
 //Routes for authenticated users only
@@ -80,6 +84,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/business/test-clover-connection', 'CloverController@testConnection');
     Route::get('/business/preview-clover-customers', 'CloverController@previewCustomers');
     Route::post('/business/import-clover-customers', 'CloverController@importCustomers');
+    Route::post('/business/sync-clover-rewards', 'CloverController@syncRewards')->name('clover.sync-rewards');
+    Route::post('/business/clover/sync-now', 'CloverController@syncNow')->name('clover.sync-now');
     Route::get('/clover/shift-summary', 'CloverController@shiftSummary')->name('clover.shift-summary');
     
     Route::get('/business/settings', 'BusinessController@getBusinessSettings')->name('business.getBusinessSettings');

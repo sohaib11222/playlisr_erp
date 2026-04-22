@@ -69,6 +69,28 @@ class Kernel extends ConsoleKernel
             ->timezone('America/Los_Angeles')
             ->withoutOverlapping(50);
 
+        // Full bidirectional Clover ↔ ERP sync (items, orders, customers
+        // pulls + dirty-product/contact pushes). Every 15 min during business
+        // hours + a --days=2 rewalk at 02:45 PST as the safety net. Webhooks
+        // trigger intra-tick syncs via /webhooks/clover when configured.
+        $schedule->command('clover:sync')
+            ->cron('*/15 10-23 * * *')
+            ->timezone('America/Los_Angeles')
+            ->withoutOverlapping(30);
+        $schedule->command('clover:sync --days=2')
+            ->dailyAt('02:45')
+            ->timezone('America/Los_Angeles')
+            ->withoutOverlapping(90);
+
+        // Clover → ERP rewards / lifetime-spend sync. Walks every contact
+        // linked to a Clover customer and refreshes their loyalty_points,
+        // lifetime_purchases, and last_purchase_date from Clover (read-only).
+        // Runs at 03:00 PST after the overnight payment sync has settled.
+        $schedule->command('clover:sync-customer-rewards')
+            ->dailyAt('03:00')
+            ->timezone('America/Los_Angeles')
+            ->withoutOverlapping(90);
+
         // Customer wants — scan recently-added products against open wants
         // and notify the customer when we find a match. Runs at 4 PM PST so
         // the team's morning pricing push gets a same-day check-in, and the

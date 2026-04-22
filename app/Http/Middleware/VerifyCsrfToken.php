@@ -23,6 +23,7 @@ class VerifyCsrfToken extends BaseVerifier
         '/install/post-details',
         '/install/install-alternate',
         '/api/ecom/customers',
-        '/api/ecom/orders'
+        '/api/ecom/orders',
+        '/webhooks/clover',
     ];
 }

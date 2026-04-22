@@ -319,6 +319,144 @@ class CloverController extends Controller
     }
 
     /**
+     * Trigger the Clover → ERP rewards sync on demand (admin button).
+     *
+     * Queues the Artisan command inline so admins see the final counts in
+     * the UI. Inline is fine here — the run is O(linked-customers) and the
+     * daily cron still handles the bulk work overnight. If the customer
+     * roster ever outgrows a web request, flip this to dispatch a job.
+     */
+    public function syncRewards(Request $request)
+    {
+        try {
+            $exitCode = \Artisan::call('clover:sync-customer-rewards', [
+                '--business' => request()->session()->get('user.business_id'),
+            ]);
+            $output = \Artisan::output();
+
+            // Pull the summary line the command prints at the end — lets the
+            // UI show a one-line status without dumping the whole log.
+            $summary = '';
+            foreach (array_reverse(preg_split('/\r?\n/', trim($output))) as $line) {
+                $line = trim($line);
+                if ($line !== '') { $summary = $line; break; }
+            }
+
+            return response()->json([
+                'success' => $exitCode === 0,
+                'msg' => $summary ?: ($exitCode === 0 ? 'Sync complete.' : 'Sync failed.'),
+                'output' => $output,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Clover syncRewards error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'msg' => 'Error: ' . $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Webhook receiver for Clover. Two code paths:
+     *
+     *   1. Handshake (first time the webhook URL is saved in the Clover app
+     *      dashboard) — Clover posts { "verificationCode": "..." } and
+     *      expects that same code echoed back in the body. CloverService
+     *      detects this and surfaces the code via the out-param.
+     *
+     *   2. Real event — Clover posts
+     *        { "appId":"...", "merchants": { "<mid>": [ {objectId,type,ts}, ... ] } }
+     *      We signature-verify against settings.clover.webhook_secret and
+     *      kick the appropriate sync leg (items/orders/customers) so the
+     *      ERP reflects the change within seconds instead of waiting for
+     *      the next cron tick.
+     *
+     * Route: POST /webhooks/clover   (public, no auth middleware)
+     */
+    public function webhook(Request $request)
+    {
+        $raw = $request->getContent();
+        $headers = [];
+        foreach ($request->headers->all() as $name => $values) {
+            $headers[$name] = is_array($values) ? ($values[0] ?? '') : $values;
+        }
+
+        $handshake = null;
+        $clover = new CloverService();
+        if (!$clover->verifyWebhook($headers, $raw, $handshake)) {
+            Log::warning('Clover webhook signature mismatch');
+            return response('forbidden', 403);
+        }
+        if ($handshake !== null) {
+            // Clover's one-time handshake — echo the code so the URL is accepted.
+            return response($handshake, 200);
+        }
+
+        $body = json_decode($raw, true) ?: [];
+        $touched = [];
+        foreach (($body['merchants'] ?? []) as $_mid => $events) {
+            foreach ((array) $events as $e) {
+                // Clover objectIds look like "I:xxx" (item), "O:xxx" (order),
+                // "C:xxx" (customer). Map prefix → sync domain.
+                $prefix = strtoupper(substr((string) ($e['objectId'] ?? ''), 0, 1));
+                if ($prefix === 'I') $touched['items']     = true;
+                elseif ($prefix === 'O') $touched['orders']    = true;
+                elseif ($prefix === 'C') $touched['customers'] = true;
+            }
+        }
+
+        // Fire off the scoped sync — inline rather than queued so this works
+        // on single-server Nivessa setups without a queue worker. Each leg
+        // returns in seconds when nothing changed (the modifiedTime filter
+        // keeps the pull cheap).
+        foreach (array_keys($touched) as $domain) {
+            try {
+                \Illuminate\Support\Facades\Artisan::call('clover:sync', ['--only' => $domain]);
+            } catch (\Throwable $t) {
+                Log::error('Clover webhook dispatch failed', [
+                    'domain' => $domain, 'msg' => $t->getMessage(),
+                ]);
+            }
+        }
+
+        return response()->json(['success' => true, 'domains' => array_keys($touched)]);
+    }
+
+    /**
+     * Manual "Sync Everything Now" — runs the full bidirectional sync
+     * synchronously and returns the Artisan buffered output, same shape as
+     * cloverEodSyncNow. Used by the button on the integrations settings page.
+     *
+     * Route: POST /business/clover/sync-now
+     */
+    public function syncNow(Request $request)
+    {
+        $only = trim((string) $request->input('only', ''));   // items|orders|customers|push|''
+        $days = $request->input('days');
+
+        $args = ['--business' => request()->session()->get('user.business_id')];
+        if ($only !== '')                     $args['--only'] = $only;
+        if ($days !== null && $days !== '')   $args['--days'] = (int) $days;
+
+        $buffer = new \Symfony\Component\Console\Output\BufferedOutput();
+        try {
+            $exit = \Illuminate\Support\Facades\Artisan::call('clover:sync', $args, $buffer);
+            return response()->json([
+                'success'   => $exit === 0,
+                'exit_code' => $exit,
+                'output'    => $buffer->fetch() ?: '(no output)',
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Clover syncNow error: ' . $e->getMessage());
+            return response()->json([
+                'success'   => false,
+                'exit_code' => 1,
+                'output'    => 'Sync threw: ' . $e->getMessage() . "\n\n" . $buffer->fetch(),
+            ], 500);
+        }
+    }
+
+    /**
      * Shift summary — credit-card slip count + total for the given register
      * window. Auto-fills the 'Total card slips' field on the close-register
      * modal so cashiers don't have to hand-count swipes.

@@ -587,6 +587,163 @@ class CloverService
     }
 
     /**
+     * Fetch a single Clover customer, optionally expanding related objects.
+     * Used by the rewards sync which wants the metadata + address + orders
+     * in one hit. 404s are surfaced as a soft miss so callers can skip the
+     * contact without failing the whole run.
+     */
+    public function getCustomer($customerId, $expand = 'metadata,addresses,emailAddresses,phoneNumbers')
+    {
+        if (!$this->isConfigured()) {
+            return ['success' => false, 'msg' => 'Clover API credentials not configured.'];
+        }
+        $clover = $this->getClover();
+        $merchantId = $clover['merchant_id'] ?? '';
+        if (empty($merchantId)) {
+            return ['success' => false, 'msg' => 'Clover merchant ID not configured.'];
+        }
+
+        $url = $this->getBaseUrl() . '/v3/merchants/' . $merchantId . '/customers/' . rawurlencode($customerId);
+        if (!empty($expand)) {
+            $url .= '?expand=' . rawurlencode($expand);
+        }
+
+        $result = $this->curl($url);
+        if (empty($result['success'])) {
+            // If the curl helper reported an HTTP error, flag 404s so the
+            // caller can mark the contact as missing in Clover.
+            $notFound = is_string($result['msg'] ?? null) && strpos($result['msg'], 'HTTP 404') === 0;
+            return array_merge($result, ['not_found' => $notFound]);
+        }
+        return ['success' => true, 'customer' => $result['data'] ?? []];
+    }
+
+    /**
+     * Page through every Clover customer with metadata + address/contact
+     * fields expanded. Used by the rewards sync to pull the full roster in
+     * one shot instead of one HTTP call per contact.
+     *
+     * Caps at $safetyOffset to avoid runaway loops. Nivessa's real customer
+     * count is well under that.
+     */
+    public function getAllCustomersExpanded($limit = 100, $safetyOffset = 50000)
+    {
+        if (!$this->isConfigured()) {
+            return ['success' => false, 'customers' => [], 'msg' => 'Clover API credentials not configured.'];
+        }
+        $clover = $this->getClover();
+        $merchantId = $clover['merchant_id'] ?? '';
+        if (empty($merchantId)) {
+            return ['success' => false, 'customers' => [], 'msg' => 'Clover merchant ID not configured.'];
+        }
+
+        $all = [];
+        $offset = 0;
+        $expand = 'metadata,addresses,emailAddresses,phoneNumbers';
+        $baseUrl = $this->getBaseUrl();
+
+        while ($offset < $safetyOffset) {
+            $url = $baseUrl . '/v3/merchants/' . $merchantId . '/customers'
+                 . '?limit=' . $limit
+                 . '&offset=' . $offset
+                 . '&expand=' . rawurlencode($expand);
+
+            $result = $this->curl($url);
+            if (empty($result['success'])) {
+                Log::error('Clover getAllCustomersExpanded error: ' . ($result['msg'] ?? 'unknown'));
+                return ['success' => false, 'customers' => $all, 'msg' => $result['msg'] ?? 'unknown'];
+            }
+
+            $elements = $result['data']['elements'] ?? [];
+            if (empty($elements)) {
+                break;
+            }
+            $all = array_merge($all, $elements);
+            if (count($elements) < $limit) {
+                break;
+            }
+            $offset += $limit;
+        }
+
+        return ['success' => true, 'customers' => $all, 'count' => count($all)];
+    }
+
+    /**
+     * Extract the best-available reward-points value from a Clover customer
+     * payload (as returned by /customers or /customers/{id} with
+     * expand=metadata). Returns null when no points field was present —
+     * distinct from 0 — so callers can choose whether to overwrite.
+     *
+     * Different Clover loyalty / rewards apps write to different metadata
+     * keys; we check the ones seen in the wild.
+     */
+    public function extractRewardPoints(array $cloverCustomer)
+    {
+        $meta = $cloverCustomer['metadata'] ?? [];
+        if (!is_array($meta)) {
+            return null;
+        }
+        $candidates = ['rewardPoints', 'loyaltyPoints', 'points', 'pointBalance', 'rewards_points', 'reward_points'];
+        foreach ($candidates as $k) {
+            if (isset($meta[$k]) && is_numeric($meta[$k])) {
+                return (int) $meta[$k];
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Reduce a Clover customer's order history to the two numbers the ERP's
+     * loyalty card cares about: gross lifetime spend (dollars) and most-
+     * recent order date. Order totals are in cents on the Clover side.
+     */
+    public function getCustomerLifetimeStats($customerId)
+    {
+        $result = $this->getCustomerOrders($customerId);
+        if (empty($result['success'])) {
+            return [
+                'success' => false,
+                'lifetime_purchases' => 0.0,
+                'last_purchase_date' => null,
+                'order_count' => 0,
+                'msg' => $result['msg'] ?? 'Failed to fetch orders',
+            ];
+        }
+
+        $orders = $result['orders'] ?? [];
+        $totalCents = 0;
+        $mostRecentMs = 0;
+        foreach ($orders as $o) {
+            if (!empty($o['deleted'])) {
+                continue;
+            }
+            $totalCents += (int) ($o['total'] ?? 0);
+            $created = (int) ($o['createdTime'] ?? 0);
+            if ($created > $mostRecentMs) {
+                $mostRecentMs = $created;
+            }
+        }
+
+        $lastDate = null;
+        if ($mostRecentMs > 0) {
+            try {
+                $lastDate = \Carbon\Carbon::createFromTimestampMs($mostRecentMs)
+                    ->setTimezone(config('app.timezone'))
+                    ->toDateString();
+            } catch (\Exception $e) {
+                $lastDate = null;
+            }
+        }
+
+        return [
+            'success' => true,
+            'lifetime_purchases' => $totalCents / 100.0,
+            'last_purchase_date' => $lastDate,
+            'order_count' => count($orders),
+        ];
+    }
+
+    /**
      * Card-slip summary for a shift window. Pulls payments from Clover in
      * the [$startTs, $endTs] range, filters to successful credit-card
      * tenders only, and returns the slip count + total cents.
@@ -746,6 +903,287 @@ class CloverService
         if ($t instanceof \DateTimeInterface) return $t->getTimestamp() * 1000;
         $parsed = strtotime((string) $t);
         return $parsed === false ? null : $parsed * 1000;
+    }
+
+    /* ---------------------------------------------------------------------
+     * Items / Inventory (Clover ⇄ ERP)
+     * ------------------------------------------------------------------- */
+
+    /**
+     * Pull items from Clover. If $modifiedSince is set (Carbon|string|int),
+     * only items with modifiedTime>=that watermark come back — cheap
+     * incremental sync. Walks all pages via offset/limit.
+     */
+    public function getItems($modifiedSince = null, $limit = 1000)
+    {
+        if (!$this->isConfigured()) {
+            return ['success' => false, 'msg' => 'Clover not configured.', 'items' => []];
+        }
+        try {
+            $clover = $this->getClover();
+            $merchantId = $clover['merchant_id'] ?? '';
+            $baseUrl = $this->getBaseUrl();
+
+            $all = [];
+            $offset = 0;
+            $sinceMs = $modifiedSince ? $this->toEpochMs($modifiedSince) : null;
+
+            do {
+                $qs = 'limit=' . $limit . '&offset=' . $offset . '&expand=itemStock,categories';
+                if ($sinceMs) {
+                    $qs .= '&filter=' . rawurlencode('modifiedTime>=' . $sinceMs);
+                }
+                $url = $baseUrl . '/v3/merchants/' . $merchantId . '/items?' . $qs;
+                $resp = $this->curl($url, 'GET');
+                if (!$resp['success']) return $resp + ['items' => []];
+
+                $elements = $resp['data']['elements'] ?? [];
+                $all = array_merge($all, $elements);
+                $offset += $limit;
+                $full = count($elements) === $limit;
+            } while ($full);
+
+            return ['success' => true, 'items' => $all, 'count' => count($all)];
+        } catch (\Exception $e) {
+            Log::error('Clover getItems error: ' . $e->getMessage());
+            return ['success' => false, 'msg' => $e->getMessage(), 'items' => []];
+        }
+    }
+
+    /** Create a Clover item from an ERP product. Returns the new clover_item_id on success. */
+    public function createItem(array $item)
+    {
+        if (!$this->isConfigured()) return ['success' => false, 'msg' => 'Clover not configured.'];
+        $clover = $this->getClover();
+        $url = $this->getBaseUrl() . '/v3/merchants/' . $clover['merchant_id'] . '/items';
+        $body = $this->itemPayload($item);
+        $resp = $this->curl($url, 'POST', $body);
+        if ($resp['success']) {
+            $resp['clover_item_id'] = $resp['data']['id'] ?? null;
+        }
+        return $resp;
+    }
+
+    /** Patch an existing Clover item. */
+    public function updateItem($cloverItemId, array $item)
+    {
+        if (!$this->isConfigured()) return ['success' => false, 'msg' => 'Clover not configured.'];
+        $clover = $this->getClover();
+        $url = $this->getBaseUrl() . '/v3/merchants/' . $clover['merchant_id'] . '/items/' . $cloverItemId;
+        return $this->curl($url, 'POST', $this->itemPayload($item));  // Clover uses POST for updates
+    }
+
+    /**
+     * Set inventory quantity on a Clover item. Clover tracks stock on a
+     * separate /item_stocks/{itemId} endpoint — nullable because not every
+     * item tracks stock (gift cards, services, etc.).
+     */
+    public function updateItemStock($cloverItemId, $quantity)
+    {
+        if (!$this->isConfigured()) return ['success' => false, 'msg' => 'Clover not configured.'];
+        $clover = $this->getClover();
+        $url = $this->getBaseUrl() . '/v3/merchants/' . $clover['merchant_id']
+             . '/item_stocks/' . $cloverItemId;
+        return $this->curl($url, 'POST', ['quantity' => (int) round($quantity)]);
+    }
+
+    /** Build Clover's item body from a normalized ERP product array. */
+    private function itemPayload(array $item): array
+    {
+        $payload = [];
+        if (isset($item['name']))        $payload['name']      = (string) $item['name'];
+        if (isset($item['sku']))         $payload['sku']       = (string) $item['sku'];
+        if (isset($item['code']))        $payload['code']      = (string) $item['code'];
+        if (isset($item['price']))       $payload['price']     = (int) round(((float) $item['price']) * 100);
+        if (isset($item['hidden']))      $payload['hidden']    = (bool) $item['hidden'];
+        if (isset($item['priceType']))   $payload['priceType'] = (string) $item['priceType'];
+        return $payload;
+    }
+
+    /* ---------------------------------------------------------------------
+     * Orders (Clover → ERP)
+     * ------------------------------------------------------------------- */
+
+    /**
+     * Pull orders in a date range with line items expanded. Same pagination
+     * shape as getPayments(). state=locked filters to completed orders so we
+     * don't churn on in-progress carts.
+     */
+    public function getOrders($startDate, $endDate, $limit = 1000)
+    {
+        if (!$this->isConfigured()) {
+            return ['success' => false, 'msg' => 'Clover not configured.', 'orders' => []];
+        }
+        try {
+            $clover = $this->getClover();
+            $merchantId = $clover['merchant_id'] ?? '';
+            $baseUrl = $this->getBaseUrl();
+
+            $startMs = $this->toEpochMs($startDate);
+            $endMs   = $this->toEpochMs($endDate);
+
+            $all = [];
+            $offset = 0;
+            do {
+                $qs = 'limit=' . $limit . '&offset=' . $offset
+                    . '&expand=' . rawurlencode('lineItems,payments,customers,employee')
+                    . '&filter=' . rawurlencode('modifiedTime>=' . $startMs)
+                    . '&filter=' . rawurlencode('modifiedTime<=' . $endMs)
+                    . '&filter=' . rawurlencode('state=locked');
+                $url = $baseUrl . '/v3/merchants/' . $merchantId . '/orders?' . $qs;
+                $resp = $this->curl($url, 'GET');
+                if (!$resp['success']) return $resp + ['orders' => []];
+
+                $elements = $resp['data']['elements'] ?? [];
+                $all = array_merge($all, $elements);
+                $offset += $limit;
+                $full = count($elements) === $limit;
+            } while ($full);
+
+            return ['success' => true, 'orders' => $all, 'count' => count($all)];
+        } catch (\Exception $e) {
+            Log::error('Clover getOrders error: ' . $e->getMessage());
+            return ['success' => false, 'msg' => $e->getMessage(), 'orders' => []];
+        }
+    }
+
+    /* ---------------------------------------------------------------------
+     * Customers push (ERP → Clover)
+     * ------------------------------------------------------------------- */
+
+    public function createCustomer(array $contact)
+    {
+        if (!$this->isConfigured()) return ['success' => false, 'msg' => 'Clover not configured.'];
+        $clover = $this->getClover();
+        $url = $this->getBaseUrl() . '/v3/merchants/' . $clover['merchant_id'] . '/customers';
+        $resp = $this->curl($url, 'POST', $this->customerPayload($contact));
+        if ($resp['success']) {
+            $resp['clover_customer_id'] = $resp['data']['id'] ?? null;
+        }
+        return $resp;
+    }
+
+    public function updateCustomer($cloverCustomerId, array $contact)
+    {
+        if (!$this->isConfigured()) return ['success' => false, 'msg' => 'Clover not configured.'];
+        $clover = $this->getClover();
+        $url = $this->getBaseUrl() . '/v3/merchants/' . $clover['merchant_id']
+             . '/customers/' . $cloverCustomerId;
+        return $this->curl($url, 'POST', $this->customerPayload($contact));
+    }
+
+    private function customerPayload(array $c): array
+    {
+        $payload = [
+            'firstName' => (string) ($c['first_name'] ?? ''),
+            'lastName'  => (string) ($c['last_name'] ?? ''),
+        ];
+        // Clover accepts arrays of emails / phones / addresses; send a single
+        // primary one if we have it and let downstream merges do the rest.
+        if (!empty($c['email'])) {
+            $payload['emailAddresses'] = [['emailAddress' => $c['email']]];
+        }
+        if (!empty($c['mobile'])) {
+            $payload['phoneNumbers'] = [['phoneNumber' => $c['mobile']]];
+        }
+        $addr = array_filter([
+            'address1' => $c['address_line_1'] ?? null,
+            'address2' => $c['address_line_2'] ?? null,
+            'city'     => $c['city'] ?? null,
+            'state'    => $c['state'] ?? null,
+            'zip'      => $c['zip_code'] ?? null,
+            'country'  => $c['country'] ?? null,
+        ]);
+        if (!empty($addr)) {
+            $payload['addresses'] = [$addr];
+        }
+        return $payload;
+    }
+
+    /* ---------------------------------------------------------------------
+     * Webhook verification
+     * ------------------------------------------------------------------- */
+
+    /**
+     * Clover sends webhooks with an `X-Clover-Auth` header matching the
+     * "Webhook signing secret" configured in the app's Clover dashboard.
+     * We store the same secret in settings.clover.webhook_secret and
+     * string-compare in constant time.
+     *
+     * Clover also fires a one-time `verificationCode` handshake when the
+     * webhook URL is first saved. $handshakeCode returns non-null when the
+     * caller should echo it back as the response body (Clover's "verify"
+     * step); controller code treats that as the success path.
+     */
+    public function verifyWebhook(array $headers, string $rawBody, ?string &$handshakeCode = null): bool
+    {
+        $handshakeCode = null;
+
+        // Handshake: Clover posts a JSON body { "verificationCode": "..." }
+        $decoded = json_decode($rawBody, true);
+        if (is_array($decoded) && !empty($decoded['verificationCode'])) {
+            $handshakeCode = (string) $decoded['verificationCode'];
+            return true;
+        }
+
+        $clover = $this->getClover();
+        $expected = (string) ($clover['webhook_secret'] ?? '');
+        if ($expected === '') {
+            // No secret configured → accept but log loudly so Sarah sees it
+            // in settings. Better than 403-ing real events during onboarding.
+            Log::warning('Clover webhook received but no webhook_secret configured — accepting unauthenticated.');
+            return true;
+        }
+
+        $got = '';
+        foreach ($headers as $name => $value) {
+            if (strcasecmp($name, 'X-Clover-Auth') === 0) {
+                $got = is_array($value) ? (string) ($value[0] ?? '') : (string) $value;
+                break;
+            }
+        }
+        return hash_equals($expected, $got);
+    }
+
+    /* ---------------------------------------------------------------------
+     * Shared cURL helper. Centralizes headers, timeout, and error shape so
+     * we're not repeating the curl dance in every method above.
+     * ------------------------------------------------------------------- */
+
+    private function curl(string $url, string $method = 'GET', $body = null): array
+    {
+        try {
+            $ch = curl_init($url);
+            $opts = [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_HTTPHEADER     => $this->getApiHeaders(),
+                CURLOPT_TIMEOUT        => 60,
+            ];
+            if ($method === 'POST') {
+                $opts[CURLOPT_POST] = true;
+                $opts[CURLOPT_POSTFIELDS] = is_array($body) ? json_encode($body) : (string) $body;
+            } elseif ($method !== 'GET') {
+                $opts[CURLOPT_CUSTOMREQUEST] = $method;
+                if ($body !== null) {
+                    $opts[CURLOPT_POSTFIELDS] = is_array($body) ? json_encode($body) : (string) $body;
+                }
+            }
+            curl_setopt_array($ch, $opts);
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $error    = curl_error($ch);
+            curl_close($ch);
+
+            if ($error) {
+                return ['success' => false, 'msg' => 'cURL: ' . $error];
+            }
+            if ($httpCode < 200 || $httpCode >= 300) {
+                return ['success' => false, 'msg' => 'HTTP ' . $httpCode . ': ' . substr((string) $response, 0, 400)];
+            }
+            return ['success' => true, 'data' => json_decode((string) $response, true)];
+        } catch (\Exception $e) {
+            return ['success' => false, 'msg' => $e->getMessage()];
+        }
     }
 
     /**

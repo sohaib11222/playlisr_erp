@@ -212,14 +212,30 @@
                 <div class="col-sm-6">
                     <div class="form-group">
                         {!! Form::label('api_settings[clover][environment]', 'Environment:') !!}
-                        {!! Form::select('api_settings[clover][environment]', 
-                            ['sandbox' => 'Sandbox', 'production' => 'Production'], 
-                            !empty($api_settings['clover']['environment']) ? $api_settings['clover']['environment'] : 'production', 
+                        {!! Form::select('api_settings[clover][environment]',
+                            ['sandbox' => 'Sandbox', 'production' => 'Production'],
+                            !empty($api_settings['clover']['environment']) ? $api_settings['clover']['environment'] : 'production',
                             ['class' => 'form-control']) !!}
                     </div>
                 </div>
             </div>
-            
+
+            <div class="row">
+                <div class="col-sm-12">
+                    <div class="form-group">
+                        {!! Form::label('api_settings[clover][webhook_secret]', 'Webhook Signing Secret:') !!}
+                        {!! Form::text('api_settings[clover][webhook_secret]',
+                            !empty($api_settings['clover']['webhook_secret']) ? $api_settings['clover']['webhook_secret'] : null,
+                            ['class' => 'form-control', 'placeholder' => 'Paste from Clover Dashboard > Setup > Webhooks']) !!}
+                        <p class="help-block">
+                            Webhook URL to paste into Clover:
+                            <code>{{ url('/webhooks/clover') }}</code>
+                            — items / orders / customers events fire instant syncs. Leave the secret blank to skip signature checks (not recommended).
+                        </p>
+                    </div>
+                </div>
+            </div>
+
             <hr>
             <h5>Alternative: OAuth Method (Advanced)</h5>
             <p class="help-block">Only use if you need OAuth-based authentication instead of Ecommerce API Tokens</p>
@@ -311,9 +327,26 @@
                     <button type="button" class="btn btn-success" id="import_clover_customers_btn" style="margin-left: 10px;">
                         <i class="fa fa-download"></i> Import Customers from Clover
                     </button>
+                    <button type="button" class="btn btn-warning" id="sync_clover_rewards_btn" style="margin-left: 10px;">
+                        <i class="fa fa-refresh"></i> Sync Rewards &amp; Lifetime Spend
+                    </button>
+                    <button type="button" class="btn btn-info" id="clover_sync_all_btn" style="margin-left: 10px;">
+                        <i class="fa fa-exchange"></i> Sync Everything Now
+                    </button>
                 </div>
             </div>
+            <p class="help-block" style="margin-top: 8px;">
+                <strong>Sync Rewards:</strong> read-only pull of Clover loyalty points + order history into each linked ERP contact's
+                <em>Loyalty Points</em>, <em>Lifetime Purchases</em>, and <em>Last Purchase Date</em>. Also runs nightly at 3:00 AM PST.
+            </p>
+            <p class="help-block" style="margin-top: 4px;">
+                <strong>Sync Everything:</strong> bidirectional — pulls items/orders/customers from Clover + pushes any ERP products
+                or customers that changed since the last sync. Runs automatically every 15 min during business hours and in real
+                time when Clover webhooks fire.
+            </p>
             <div id="clover_connection_status" style="margin-top: 10px;"></div>
+            <div id="clover_rewards_sync_status" style="margin-top: 10px;"></div>
+            <div id="clover_sync_all_status" style="margin-top: 10px;"></div>
         </div>
     </div>
 
@@ -766,6 +799,79 @@
                     btn.prop('disabled', false).html('<i class="fa fa-plug"></i> Test Connection');
                     $('#clover_connection_status').html(
                         '<div class="alert alert-danger"><i class="fa fa-times"></i> Error testing connection</div>'
+                    );
+                }
+            });
+        });
+
+        // Sync Clover Rewards + Lifetime Spend — read-only pull into contact
+        // loyalty fields. Runs inline so the result lands in the status pane;
+        // the nightly cron still handles the routine refresh.
+        $('#sync_clover_rewards_btn').on('click', function() {
+            var btn = $(this);
+            btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Syncing...');
+            $('#clover_rewards_sync_status').html(
+                '<div class="alert alert-info"><i class="fa fa-spinner fa-spin"></i> Pulling Clover customer roster and order history — this can take a minute...</div>'
+            );
+
+            $.ajax({
+                url: '/business/sync-clover-rewards',
+                method: 'POST',
+                data: { _token: '{{ csrf_token() }}' },
+                dataType: 'json',
+                timeout: 600000,
+                success: function(response) {
+                    btn.prop('disabled', false).html('<i class="fa fa-refresh"></i> Sync Rewards &amp; Lifetime Spend');
+                    var cssClass = response.success ? 'alert-success' : 'alert-danger';
+                    var icon = response.success ? 'fa-check' : 'fa-times';
+                    var msg = response.msg || (response.success ? 'Sync complete.' : 'Sync failed.');
+                    $('#clover_rewards_sync_status').html(
+                        '<div class="alert ' + cssClass + '"><i class="fa ' + icon + '"></i> ' + msg + '</div>'
+                    );
+                },
+                error: function(xhr, textStatus) {
+                    btn.prop('disabled', false).html('<i class="fa fa-refresh"></i> Sync Rewards &amp; Lifetime Spend');
+                    $('#clover_rewards_sync_status').html(
+                        '<div class="alert alert-danger"><i class="fa fa-times"></i> Error: ' + (textStatus || 'request failed') + '</div>'
+                    );
+                }
+            });
+        });
+
+        // Sync Everything — full bidirectional Clover ↔ ERP sync (items,
+        // orders, customers + ERP-side push of dirty products/contacts).
+        // Inline so the Artisan output lands in the status pane; the cron
+        // still keeps things fresh every 15 min.
+        $('#clover_sync_all_btn').on('click', function() {
+            var btn = $(this);
+            btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Syncing...');
+            $('#clover_sync_all_status').html(
+                '<div class="alert alert-info"><i class="fa fa-spinner fa-spin"></i> Pulling items, orders, customers + pushing any ERP changes — this can take a minute or two...</div>'
+            );
+
+            $.ajax({
+                url: '/business/clover/sync-now',
+                method: 'POST',
+                data: { _token: '{{ csrf_token() }}' },
+                dataType: 'json',
+                timeout: 600000,
+                success: function(response) {
+                    btn.prop('disabled', false).html('<i class="fa fa-exchange"></i> Sync Everything Now');
+                    var cssClass = response.success ? 'alert-success' : 'alert-danger';
+                    var icon = response.success ? 'fa-check' : 'fa-times';
+                    var output = (response.output || '').replace(/[<>&]/g, function(c) {
+                        return { '<':'&lt;', '>':'&gt;', '&':'&amp;' }[c];
+                    });
+                    $('#clover_sync_all_status').html(
+                        '<div class="alert ' + cssClass + '"><i class="fa ' + icon + '"></i> ' +
+                        (response.success ? 'Sync complete.' : 'Sync finished with errors.') +
+                        '<pre style="margin-top:8px; max-height:240px; overflow:auto; font-size:12px;">' + output + '</pre></div>'
+                    );
+                },
+                error: function(xhr, textStatus) {
+                    btn.prop('disabled', false).html('<i class="fa fa-exchange"></i> Sync Everything Now');
+                    $('#clover_sync_all_status').html(
+                        '<div class="alert alert-danger"><i class="fa fa-times"></i> Error: ' + (textStatus || 'request failed') + '</div>'
                     );
                 }
             });
