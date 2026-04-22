@@ -18,6 +18,41 @@
 
 <!-- Main content -->
 <section class="content">
+    @if($type == 'customer')
+        {{-- Hero search — Sarah 2026-04-22: the default DataTables filter box
+             is tiny and sits top-right, so cashiers don't realize it's the
+             search. This big obvious input drives the same table.search()
+             API and debounces so we don't hammer the server. --}}
+        <style>
+            .contact-hero-search-wrap {
+                background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+                padding: 14px 16px; margin-bottom: 14px; box-shadow: 0 1px 2px rgba(0,0,0,.04);
+            }
+            .contact-hero-search-label {
+                display: block; font-size: 11px; font-weight: 700; text-transform: uppercase;
+                letter-spacing: .06em; color: #6b7280; margin-bottom: 6px;
+            }
+            .contact-hero-search-label i { color: #5A5045; margin-right: 6px; }
+            #contact_hero_search {
+                width: 100%; height: 54px; font-size: 18px; font-weight: 500;
+                padding: 10px 16px; border: 2px solid #d1d5db; border-radius: 8px;
+                background: #fff; transition: border-color .15s, box-shadow .15s;
+            }
+            #contact_hero_search:focus {
+                outline: none; border-color: #1b6ca8;
+                box-shadow: 0 0 0 3px rgba(27, 108, 168, .18);
+            }
+            #contact_hero_search::placeholder { color: #9ca3af; font-weight: 400; }
+        </style>
+        <div class="contact-hero-search-wrap">
+            <label class="contact-hero-search-label" for="contact_hero_search">
+                <i class="fa fa-search"></i> Search customers — name, phone, email, contact ID
+            </label>
+            <input type="text" id="contact_hero_search" class="form-control"
+                   placeholder="e.g. Sarah Hedvat · 510-809-6346 · sarah@example.com · CO0068"
+                   autocomplete="off">
+        </div>
+    @endif
     @component('components.filters', ['title' => __('report.filters')])
     @if($type == 'customer')
         <div class="col-md-3">
@@ -170,6 +205,24 @@
 <!-- /.content -->
 @stop
 @section('javascript')
+{{-- Hero-search wiring (customer list). Drives the same DataTables
+     `search()` API the built-in filter uses, so it goes to the server
+     via the standard `search[value]` param — backend already filters
+     on contact_id / name / mobile / email / supplier_business_name. --}}
+<script>
+$(function () {
+    var heroTimer = null;
+    $(document).on('input', '#contact_hero_search', function () {
+        clearTimeout(heroTimer);
+        var val = $(this).val();
+        heroTimer = setTimeout(function () {
+            if (typeof contact_table !== 'undefined' && contact_table) {
+                contact_table.search(val).draw();
+            }
+        }, 250);
+    });
+});
+</script>
 @if(!empty($api_key))
 <script>
   // This example adds a search box to a map, using the Google Place Autocomplete

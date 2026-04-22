@@ -342,10 +342,11 @@ class ContactController extends Controller
                     if (auth()->user()->can('customer.update')) {
                         $html .= '<a href="' . action('ContactController@edit', [$row->id]) . '" class="btn btn-xs btn-primary edit_contact_button">' .
                             '<i class="glyphicon glyphicon-edit"></i> ' . __("messages.edit") . '</a>';
-                        $html .= '<a href="#" class="btn btn-xs btn-success add_store_credit_button" data-contact-id="' . $row->id . '" data-current-balance="' . (float) $row->balance . '">' .
-                            '<i class="fa fa-plus-circle"></i> Store Credit</a>';
-                        $html .= '<a href="#" class="btn btn-xs btn-warning adjust_store_credit_button" data-contact-id="' . $row->id . '" data-current-balance="' . (float) $row->balance . '" title="Adjust / remove credit (with reason)">' .
-                            '<i class="fa fa-pen"></i> Adjust</a>';
+                        // Store-credit add/adjust moved to the customer detail
+                        // page (Sarah 2026-04-22): keeping it here duplicated the
+                        // workflow and encouraged "easy-add" clicks from the list
+                        // without the full customer context. Cashiers now click
+                        // View → Credits & Adjustments panel to add or adjust.
                     }
                     if (!$row->is_default && auth()->user()->can('customer.delete')) {
                         $html .= '<a href="' . action('ContactController@destroy', [$row->id]) . '" class="btn btn-xs btn-danger delete_contact_button">' .
