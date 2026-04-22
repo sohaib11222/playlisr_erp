@@ -736,16 +736,60 @@ class CloverService
             ];
         }
 
-        try {
-            // Try to fetch a small number of customers to test connection
-            $result = $this->getCustomers(1, 0);
-            return $result;
-        } catch (\Exception $e) {
-            return [
-                'success' => false,
-                'msg' => 'Connection test failed: ' . $e->getMessage()
-            ];
+        // If a specific location is scoped, test just that one.
+        if ($this->locationId) {
+            return $this->probeConfiguredLocation($this->locationId);
         }
+
+        // Otherwise: if top-level creds are set, test those; if only
+        // per-location creds are set, probe each location and report all.
+        $topLevel = $this->settings['clover'] ?? [];
+        if ($this->locationIsConfigured($topLevel)) {
+            try {
+                return $this->getCustomers(1, 0);
+            } catch (\Exception $e) {
+                return ['success' => false, 'msg' => 'Connection test failed: ' . $e->getMessage()];
+            }
+        }
+
+        $allLocs = $this->settings['clover']['locations'] ?? [];
+        if (empty($allLocs)) {
+            return ['success' => false, 'msg' => 'Clover API credentials not configured.'];
+        }
+
+        $results = [];
+        $okCount = 0;
+        foreach ($allLocs as $locId => $locCreds) {
+            if (!$this->locationIsConfigured((array) $locCreds)) continue;
+            $probe = $this->probeConfiguredLocation($locId);
+            $locName = optional(\App\BusinessLocation::find($locId))->name ?? ('Location #' . $locId);
+            if (!empty($probe['success'])) {
+                $okCount++;
+                $results[] = '✓ ' . $locName;
+            } else {
+                $results[] = '✗ ' . $locName . ' — ' . ($probe['msg'] ?? 'unknown error');
+            }
+        }
+        return [
+            'success' => $okCount > 0 && $okCount === count($results),
+            'msg' => empty($results)
+                ? 'No per-location Clover credentials found.'
+                : implode(' · ', $results),
+        ];
+    }
+
+    /** Scope to a location, try a cheap read, restore prior scope. */
+    private function probeConfiguredLocation($locationId)
+    {
+        $prev = $this->locationId;
+        $this->locationId = $locationId;
+        try {
+            $result = $this->getCustomers(1, 0);
+        } catch (\Exception $e) {
+            $result = ['success' => false, 'msg' => 'Connection failed: ' . $e->getMessage()];
+        }
+        $this->locationId = $prev;
+        return $result;
     }
 }
 
