@@ -1,5 +1,5 @@
 # Deploy to production over SSH on every push to `main`, or manually with optional migrate.
-# No Composer — only git sync, optional migrate, Laravel caches, queue restart (see scripts/deploy.sh).
+# No Composer — git sync, optional migrate, `php artisan optimize:clear`, queue restart (see scripts/deploy.sh).
 #
 # GitHub repository secrets (Settings → Secrets and variables → Actions):
 #   DEPLOY_HOST       — server hostname or IP

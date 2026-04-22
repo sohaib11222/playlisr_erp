@@ -63,9 +63,8 @@ if [ "$DEPLOY_MIGRATE" = "1" ]; then
   php artisan migrate --force --no-interaction
 fi
 
-echo "deploy: cache (Laravel 5.8 — no view:cache)"
-php artisan config:cache
-php artisan route:cache
+echo "deploy: optimize:clear (clears config/route/view/cache/compiled — avoids route:cache Closure errors)"
+php artisan optimize:clear --no-interaction
 
 php artisan queue:restart 2>/dev/null || true
 
