@@ -31,21 +31,28 @@
 			border-color: #6366f1 !important;
 			box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15) !important;
 		}
-		/* Sarah 2026-04-22 (UX): "i just want it simple to type into 1 box and
-		   list pops up". When the dropdown is open, hide the
-		   currently-selected walk-in display so the search input visually
-		   TAKES OVER the slot — cashiers see one box (the input) + the list
-		   below, not a confusing two-row stack where the top row looks
-		   clickable but isn't.
-		   select2 adds .select2-container--open on the container when open,
-		   so we scope the hide to that state only. The underlying <select>
-		   still holds the walk-in value so the form submits fine. */
+		/* Sarah 2026-04-22 (UX): "i just want it simple to type into 1 box
+		   and list pops up" + "customer bar still has a dropdown". Strip
+		   the select-y chrome entirely so the field reads as a plain
+		   search input:
+		   1. Hide the ▼ dropdown arrow always (no more "this is a select"
+		      affordance — the field is a search box now).
+		   2. When the dropdown is open, hide the currently-selected
+		      walk-in text + the × clear so the search input takes over
+		      the slot visually. One box, list pops up below.
+		   3. Style the closed state so the walk-in display reads as a
+		      placeholder-style hint, not a hard-selected value.
+		   The underlying <select> still holds the walk-in value so the
+		   form submits a contact_id as before. */
+		.pos-customer-block .select2-selection__arrow {
+			display: none !important;
+		}
+		.pos-customer-block .select2-selection--single {
+			padding-right: 12px !important;
+		}
 		.pos-customer-block .select2-container--open .select2-selection__rendered,
 		.pos-customer-block .select2-container--open .select2-selection__clear {
 			visibility: hidden;
-		}
-		.pos-customer-block .select2-container--open .select2-selection__arrow {
-			opacity: 0.4;
 		}
 		</style>
 		<div class="form-group" style="max-width: 480px;">
