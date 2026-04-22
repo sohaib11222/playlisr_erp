@@ -39,6 +39,10 @@
     .rf-line-name .qty { color: #5A5045; font-weight: 600; margin-right: 6px; }
     .rf-line-price { color: #1F1B16; font-variant-numeric: tabular-nums;
         white-space: nowrap; font-weight: 500; }
+    .rf-manual-tag { display: inline-block; margin-left: 6px; padding: 1px 6px;
+        border-radius: 4px; background: #F7E8C2; color: #8B6A1A;
+        font-size: 10px; font-weight: 700; text-transform: uppercase;
+        letter-spacing: .06em; vertical-align: middle; }
 
     .rf-foot { display: flex; justify-content: space-between; align-items: baseline;
         gap: 10px; flex-wrap: wrap; padding-top: 10px; margin-top: 8px;
@@ -116,11 +120,17 @@
                     @foreach($sale->sell_lines as $line)
                         @php
                             $product = $line->product;
-                            $name = $product->name ?? 'Manual item';
-                            // Prefer "Artist — Album" when the product has an artist relation/field.
+                            // Prefer product relation (real inventory item); fall back to
+                            // per-line product_name/product_artist captured for manual items.
+                            $baseName = $product->name ?? ($line->product_name ?? 'Manual item');
+                            $baseArtist = null;
                             if ($product && !empty($product->artist) && is_string($product->artist)) {
-                                $name = $product->artist . ' — ' . $product->name;
+                                $baseArtist = $product->artist;
+                            } elseif (!empty($line->product_artist)) {
+                                $baseArtist = $line->product_artist;
                             }
+                            $name = $baseArtist ? ($baseArtist . ' — ' . $baseName) : $baseName;
+                            $isManual = empty($product);
                             $qty = (float) $line->quantity;
                             $unit = (float) ($line->unit_price_inc_tax ?: $line->unit_price);
                             $lineDisc = 0;
@@ -135,6 +145,7 @@
                             <span class="rf-line-name">
                                 @if($qty > 1)<span class="qty">{{ rtrim(rtrim(number_format($qty, 2, '.', ''), '0'), '.') }}×</span>@endif
                                 {{ $name }}
+                                @if($isManual)<span class="rf-manual-tag" title="Manual item (not from inventory)">manual</span>@endif
                             </span>
                             <span class="rf-line-price">${{ number_format($lineTotal, 2) }}</span>
                         </li>
