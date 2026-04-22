@@ -5563,30 +5563,149 @@ class ReportController extends Controller
         // Per-cashier breakdown, split by location — matches the format Sarah
         // has been using in her daily "clover vs erp" spreadsheet (one tab
         // per day, two side-by-side panels: Pico cashiers | Hollywood
-        // cashiers, each with Employee / Clover / ERP / Difference). Only
-        // computed when the user asks for a single day, since that's how her
-        // reconciliation ritual actually works.
-        $employee_breakdown = null;
-        if ($start === $end) {
-            $employee_breakdown = $this->cloverEodEmployeeBreakdown(
-                $business_id, $start, $location_id, $card_methods, $used_all_methods
-            );
-        }
+        // cashiers, each with Employee / Clover / ERP / Difference). Works
+        // across any date range: single day renders one block, multi-day
+        // renders one block per day with the most recent at top.
+        $employee_breakdown_by_day = $this->cloverEodEmployeeBreakdownRange(
+            $business_id, $start, $end, $location_id, $card_methods, $used_all_methods
+        );
 
         return view('report.clover_eod_reconciliation')->with(compact(
             'rows', 'grand', 'start', 'end', 'location_id', 'business_locations',
-            'employee_breakdown'
+            'employee_breakdown_by_day'
         ));
     }
 
     /**
-     * Per-cashier Clover vs ERP totals for a single day, grouped by location.
-     * Mirrors Sarah's daily xlsx layout — left side Pico, right side Hollywood,
-     * each with Employee | Clover $ | ERP $ | Difference.
-     *
-     * Names are normalized on first-name (case-insensitive first token) because
-     * Clover stores "luis casanova" while ERP stores "Luis", "Zakary" vs "Zak",
-     * etc. This matches the way Sarah eyeballs the sheet.
+     * Per-cashier Clover vs ERP totals for a date range, grouped by day and
+     * then by location. Returns an ordered array (most recent day first) of
+     * [ 'day' => 'YYYY-MM-DD', 'locations' => [...] ] entries, where each
+     * location entry is the same shape as cloverEodEmployeeBreakdown returns
+     * for a single day. Pulls ERP + Clover each in a single grouped query
+     * across the range (not per-day) so a 30-day backfill is 2 queries
+     * instead of 60.
+     */
+    private function cloverEodEmployeeBreakdownRange($business_id, $start, $end, $location_id, array $card_methods, $used_all_methods)
+    {
+        $erpQ = \DB::table('transaction_payments as tp')
+            ->join('transactions as t', 'tp.transaction_id', '=', 't.id')
+            ->leftJoin('business_locations as bl', 't.location_id', '=', 'bl.id')
+            ->leftJoin('users as u', 't.created_by', '=', 'u.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereDate('t.transaction_date', '>=', $start)
+            ->whereDate('t.transaction_date', '<=', $end);
+        if (!$used_all_methods) {
+            $erpQ->whereIn('tp.method', $card_methods);
+        }
+        if (!empty($location_id)) {
+            $erpQ->where('t.location_id', $location_id);
+        }
+        $erpRows = $erpQ->selectRaw("DATE(t.transaction_date) as day,
+                t.location_id, bl.name as location_name,
+                COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, 'Unknown') as employee_name,
+                COUNT(tp.id) as erp_count,
+                COALESCE(SUM(tp.amount), 0) as erp_total")
+            ->groupBy(DB::raw('DATE(t.transaction_date)'), 't.location_id', 'bl.name', 'employee_name')
+            ->get();
+
+        $cloverQ = \DB::table('clover_payments as cp')
+            ->leftJoin('business_locations as bl', 'cp.location_id', '=', 'bl.id')
+            ->where('cp.business_id', $business_id)
+            ->where(function ($q) {
+                $q->whereNull('cp.result')->orWhere('cp.result', 'SUCCESS')->orWhere('cp.result', 'APPROVED');
+            })
+            ->whereDate('cp.paid_on', '>=', $start)
+            ->whereDate('cp.paid_on', '<=', $end);
+        if (!empty($location_id)) {
+            $cloverQ->where(function ($q) use ($location_id) {
+                $q->where('cp.location_id', $location_id)->orWhereNull('cp.location_id');
+            });
+        }
+        $cloverRows = $cloverQ->selectRaw("DATE(cp.paid_on) as day,
+                cp.location_id, bl.name as location_name,
+                COALESCE(NULLIF(TRIM(cp.employee_name), ''), 'Unknown') as employee_name,
+                COUNT(*) as clover_count,
+                COALESCE(SUM(cp.amount), 0) as clover_total")
+            ->groupBy(DB::raw('DATE(cp.paid_on)'), 'cp.location_id', 'bl.name', 'employee_name')
+            ->get();
+
+        $firstName = function ($full) {
+            $full = trim((string) $full);
+            if ($full === '') return 'unknown';
+            $parts = preg_split('/\s+/', $full);
+            return strtolower($parts[0] ?? 'unknown');
+        };
+
+        // Bucket into [day][locKey][empKey] => running totals.
+        $buckets = [];
+        foreach ($erpRows as $r) {
+            $day = $r->day;
+            $locKey = $r->location_id ?: 0;
+            $empKey = $firstName($r->employee_name);
+            $buckets[$day][$locKey]['location_name'] = $r->location_name ?: '(no location)';
+            if (!isset($buckets[$day][$locKey]['employees'][$empKey])) {
+                $buckets[$day][$locKey]['employees'][$empKey] = [
+                    'display_name' => ucfirst($empKey),
+                    'erp_total' => 0.0, 'erp_count' => 0,
+                    'clover_total' => 0.0, 'clover_count' => 0,
+                ];
+            }
+            $buckets[$day][$locKey]['employees'][$empKey]['erp_total'] += (float) $r->erp_total;
+            $buckets[$day][$locKey]['employees'][$empKey]['erp_count'] += (int) $r->erp_count;
+        }
+        foreach ($cloverRows as $r) {
+            $day = $r->day;
+            $locKey = $r->location_id ?: 0;
+            $empKey = $firstName($r->employee_name);
+            $buckets[$day][$locKey]['location_name'] = $buckets[$day][$locKey]['location_name']
+                ?? ($r->location_name ?: '(unlinked Clover MID)');
+            if (!isset($buckets[$day][$locKey]['employees'][$empKey])) {
+                $buckets[$day][$locKey]['employees'][$empKey] = [
+                    'display_name' => ucfirst($empKey),
+                    'erp_total' => 0.0, 'erp_count' => 0,
+                    'clover_total' => 0.0, 'clover_count' => 0,
+                ];
+            }
+            $buckets[$day][$locKey]['employees'][$empKey]['clover_total'] += (float) $r->clover_total;
+            $buckets[$day][$locKey]['employees'][$empKey]['clover_count'] += (int) $r->clover_count;
+        }
+
+        // Finalize: compute differences, sort employees by abs-diff desc,
+        // sort locations alphabetically, sort days most-recent first.
+        $out = [];
+        foreach ($buckets as $day => $locs) {
+            $dayLocs = [];
+            foreach ($locs as $locKey => $loc) {
+                $emps = $loc['employees'] ?? [];
+                $emps = array_map(function ($e) {
+                    $e['difference'] = round($e['clover_total'] - $e['erp_total'], 2);
+                    return $e;
+                }, $emps);
+                uasort($emps, fn($a, $b) => abs($b['difference']) <=> abs($a['difference']));
+                $totals = [
+                    'clover_total' => array_sum(array_column($emps, 'clover_total')),
+                    'erp_total'    => array_sum(array_column($emps, 'erp_total')),
+                ];
+                $totals['difference'] = round($totals['clover_total'] - $totals['erp_total'], 2);
+                $dayLocs[] = [
+                    'location_id' => $locKey,
+                    'location_name' => $loc['location_name'],
+                    'employees' => array_values($emps),
+                    'totals' => $totals,
+                ];
+            }
+            usort($dayLocs, fn($a, $b) => strcmp($a['location_name'], $b['location_name']));
+            $out[] = ['day' => $day, 'locations' => $dayLocs];
+        }
+        usort($out, fn($a, $b) => strcmp($b['day'], $a['day']));
+        return $out;
+    }
+
+    /**
+     * Legacy single-day helper kept in place for any callers that still want
+     * the old shape. New code should use cloverEodEmployeeBreakdownRange.
      */
     private function cloverEodEmployeeBreakdown($business_id, $day, $location_id, array $card_methods, $used_all_methods)
     {

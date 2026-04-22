@@ -81,12 +81,13 @@
 
     {{-- Per-cashier side-by-side breakdown — mirrors Sarah's daily xlsx
          (PICO on the left, HOLLYWOOD on the right, Employee / Clover / ERP /
-         Diff per row). Only rendered for single-day selections since that's
-         how her reconciliation ritual works. Multi-day ranges still show the
-         rollup table below. --}}
-    @if(!empty($employee_breakdown))
+         Diff per row). Rendered once per day across the selected range,
+         most recent first; single-day selections just show one block. --}}
+    @if(!empty($employee_breakdown_by_day))
         <style>
-            .eod-loc-wrap { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 18px; }
+            .eod-day-block { margin-bottom: 22px; }
+            .eod-day-head { margin: 4px 0 10px; font-size: 13px; color: #6b7280; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+            .eod-loc-wrap { display: flex; flex-wrap: wrap; gap: 16px; }
             .eod-loc-card { flex: 1 1 420px; min-width: 420px; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; }
             .eod-loc-card h3 { margin: 0 0 8px; font-size: 15px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #111827; }
             .eod-loc-card table { width: 100%; font-size: 13px; border-collapse: collapse; }
@@ -99,50 +100,55 @@
             .eod-diff-bad { color: #b91c1c; }
             .eod-loc-empty { color: #9ca3af; font-size: 12px; padding: 8px 0; text-align: center; }
         </style>
-        <h4 style="margin: 4px 0 10px; font-size: 13px; color: #6b7280; font-weight: 600;">Per-cashier breakdown for {{ $start }}</h4>
-        <div class="eod-loc-wrap">
-            @foreach($employee_breakdown as $loc)
-                @php
-                    $ldiff = $loc['totals']['difference'];
-                    $lcls  = abs($ldiff) < 1 ? 'eod-diff-ok' : (abs($ldiff) < 10 ? 'eod-diff-warn' : 'eod-diff-bad');
-                @endphp
-                <div class="eod-loc-card">
-                    <h3>{{ $loc['location_name'] }}</h3>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Employee</th>
-                                <th class="num">Clover</th>
-                                <th class="num">ERP</th>
-                                <th class="num">Difference</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @forelse($loc['employees'] as $e)
-                                @php
-                                    $d = $e['difference'];
-                                    $cls = abs($d) < 1 ? 'eod-diff-ok' : (abs($d) < 10 ? 'eod-diff-warn' : 'eod-diff-bad');
-                                @endphp
-                                <tr>
-                                    <td>{{ $e['display_name'] }}</td>
-                                    <td class="num">${{ number_format($e['clover_total'], 2) }}</td>
-                                    <td class="num">${{ number_format($e['erp_total'], 2) }}</td>
-                                    <td class="num {{ $cls }}">{{ $d >= 0 ? '+' : '' }}${{ number_format($d, 2) }}</td>
-                                </tr>
-                            @empty
-                                <tr><td colspan="4" class="eod-loc-empty">No cashier activity for this day.</td></tr>
-                            @endforelse
-                            <tr class="totals">
-                                <td>Total</td>
-                                <td class="num">${{ number_format($loc['totals']['clover_total'], 2) }}</td>
-                                <td class="num">${{ number_format($loc['totals']['erp_total'], 2) }}</td>
-                                <td class="num {{ $lcls }}">{{ $ldiff >= 0 ? '+' : '' }}${{ number_format($ldiff, 2) }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
+        <h4 style="margin: 10px 0 6px; font-size: 14px; color: #111827; font-weight: 700;">Per-cashier breakdown</h4>
+        @foreach($employee_breakdown_by_day as $dayBlock)
+            <div class="eod-day-block">
+                <div class="eod-day-head">{{ \Carbon\Carbon::parse($dayBlock['day'])->format('D, M j, Y') }}</div>
+                <div class="eod-loc-wrap">
+                    @foreach($dayBlock['locations'] as $loc)
+                        @php
+                            $ldiff = $loc['totals']['difference'];
+                            $lcls  = abs($ldiff) < 1 ? 'eod-diff-ok' : (abs($ldiff) < 10 ? 'eod-diff-warn' : 'eod-diff-bad');
+                        @endphp
+                        <div class="eod-loc-card">
+                            <h3>{{ $loc['location_name'] }}</h3>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Employee</th>
+                                        <th class="num">Clover</th>
+                                        <th class="num">ERP</th>
+                                        <th class="num">Difference</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @forelse($loc['employees'] as $e)
+                                        @php
+                                            $d = $e['difference'];
+                                            $cls = abs($d) < 1 ? 'eod-diff-ok' : (abs($d) < 10 ? 'eod-diff-warn' : 'eod-diff-bad');
+                                        @endphp
+                                        <tr>
+                                            <td>{{ $e['display_name'] }}</td>
+                                            <td class="num">${{ number_format($e['clover_total'], 2) }}</td>
+                                            <td class="num">${{ number_format($e['erp_total'], 2) }}</td>
+                                            <td class="num {{ $cls }}">{{ $d >= 0 ? '+' : '' }}${{ number_format($d, 2) }}</td>
+                                        </tr>
+                                    @empty
+                                        <tr><td colspan="4" class="eod-loc-empty">No cashier activity.</td></tr>
+                                    @endforelse
+                                    <tr class="totals">
+                                        <td>Total</td>
+                                        <td class="num">${{ number_format($loc['totals']['clover_total'], 2) }}</td>
+                                        <td class="num">${{ number_format($loc['totals']['erp_total'], 2) }}</td>
+                                        <td class="num {{ $lcls }}">{{ $ldiff >= 0 ? '+' : '' }}${{ number_format($ldiff, 2) }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    @endforeach
                 </div>
-            @endforeach
-        </div>
+            </div>
+        @endforeach
         <p class="help-block" style="margin-top:-6px; margin-bottom: 18px;">
             <strong>Difference = Clover − ERP.</strong>
             A positive value means Clover settled more than the ERP recorded
