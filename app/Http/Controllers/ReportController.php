@@ -5554,6 +5554,68 @@ class ReportController extends Controller
     }
 
     /**
+     * Web-triggerable wrapper around the `clover:sync-payments` artisan
+     * command so Sarah can kick the sync from the reconciliation page
+     * (2026-04-22: "Clover data is not pulling in yet"). Captures stdout
+     * and returns it verbatim so a failed API call, missing credentials,
+     * or a zero-payment day is all visible in the UI instead of buried
+     * in /storage/logs/laravel.log.
+     *
+     * Admin-only; always runs with --days=2 so it matches the scheduled
+     * overnight job.
+     */
+    public function cloverEodSyncNow(Request $request)
+    {
+        if (!$this->businessUtil->is_admin(auth()->user())) {
+            return response()->json(['success' => false, 'output' => 'Unauthorized.'], 403);
+        }
+
+        $days = max(1, min(30, (int) $request->input('days', 2)));
+
+        $buffer = new \Symfony\Component\Console\Output\BufferedOutput();
+        try {
+            $exitCode = \Illuminate\Support\Facades\Artisan::call(
+                'clover:sync-payments',
+                ['--days' => $days],
+                $buffer
+            );
+            $output = $buffer->fetch();
+
+            // Count how many rows actually landed in the last `$days`
+            // window so we can tell the caller whether the sync produced
+            // data — helps distinguish "sync ran, Clover returned 0
+            // payments" from "sync errored out".
+            $business_id = $request->session()->get('user.business_id');
+            $since = \Carbon::now()->subDays($days)->startOfDay();
+            $rowsCreatedInWindow = \DB::table('clover_payments')
+                ->where('business_id', $business_id)
+                ->where('created_at', '>=', $since)
+                ->count();
+            $rowsInWindow = \DB::table('clover_payments')
+                ->where('business_id', $business_id)
+                ->where('paid_on', '>=', $since->toDateString())
+                ->count();
+
+            return response()->json([
+                'success' => $exitCode === 0,
+                'exit_code' => $exitCode,
+                'days' => $days,
+                'output' => $output ?: '(no output — check logs)',
+                'rows_recently_written' => $rowsCreatedInWindow,
+                'rows_in_window' => $rowsInWindow,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'exit_code' => 1,
+                'output' => 'Sync threw an exception: ' . $e->getMessage()
+                    . "\nFile: " . $e->getFile() . ':' . $e->getLine()
+                    . "\n\nPartial output:\n" . $buffer->fetch(),
+            ], 500);
+        }
+    }
+
+    /**
      * Employee Sales Leaderboard
      *
      * Ranks employees by sales revenue for a selected window. Also surfaces

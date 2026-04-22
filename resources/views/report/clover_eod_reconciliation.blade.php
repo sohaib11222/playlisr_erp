@@ -35,6 +35,22 @@
         </div>
     @endcomponent
 
+    {{-- Sync-now button — Sarah 2026-04-22: Clover column was $0 across
+         every day because the scheduled clover:sync-payments wasn't
+         running (or credentials aren't set). This button fires the
+         same command on demand and prints the raw stdout so a failed
+         API call / missing creds / zero-payment day are all visible
+         instead of buried in a log file. Admin-only on the backend. --}}
+    <div style="margin-bottom:12px; text-align:right;">
+        <button type="button" class="btn btn-default" id="eod_sync_now_btn">
+            <i class="fa fa-sync"></i> Sync Clover now (last 2 days)
+        </button>
+        <span id="eod_sync_status" style="margin-left:8px; font-size:12px; color:#6b7280;"></span>
+    </div>
+    <div id="eod_sync_output" style="display:none; margin-bottom:14px;">
+        <div style="background:#111827; color:#e5e7eb; padding:12px 14px; border-radius:8px; font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace; font-size:12px; white-space:pre-wrap; max-height:260px; overflow:auto;" id="eod_sync_output_pre"></div>
+    </div>
+
     {{-- Grand totals banner --}}
     @php
         $variance = round($grand['erp'] - $grand['clover'], 2);
@@ -195,6 +211,46 @@ $(function () {
         var loc = $('#eod_location_id').val() || '';
         var qs = $.param({start_date: startFmt, end_date: endFmt, location_id: loc});
         window.location.href = '/reports/clover-eod-reconciliation?' + qs;
+    });
+
+    // Sync-now handler — POSTs to the web-wrapped artisan command and
+    // pipes stdout into the black console block. On success we reload
+    // so the report picks up the new clover_payments rows.
+    $('#eod_sync_now_btn').on('click', function () {
+        var $btn = $(this);
+        var $status = $('#eod_sync_status');
+        var $out = $('#eod_sync_output');
+        var $pre = $('#eod_sync_output_pre');
+        var original = $btn.html();
+        $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Syncing…');
+        $status.text('Reaching Clover API, this can take 20–60 seconds…').css('color', '#6b7280');
+        $out.hide();
+
+        $.ajax({
+            url: '/reports/clover-eod-reconciliation/sync-now',
+            method: 'POST',
+            dataType: 'json',
+            data: { _token: $('meta[name="csrf-token"]').attr('content'), days: 2 }
+        }).done(function (r) {
+            $pre.text(r.output || '(no output)');
+            $out.show();
+            var msg = r.success
+                ? 'Done · ' + (r.rows_recently_written || 0) + ' rows written (this call) · '
+                    + (r.rows_in_window || 0) + ' rows now in the 2-day window. Reloading…'
+                : 'Sync exited with code ' + (r.exit_code || '?') + ' — see output below.';
+            $status.text(msg).css('color', r.success ? '#166534' : '#b91c1c');
+            if (r.success && (r.rows_recently_written || 0) > 0) {
+                setTimeout(function () { window.location.reload(); }, 1500);
+            }
+        }).fail(function (xhr) {
+            var out = '';
+            try { out = (xhr.responseJSON && xhr.responseJSON.output) || xhr.responseText; } catch (e) {}
+            $pre.text(out || ('HTTP ' + xhr.status + ' — ' + xhr.statusText));
+            $out.show();
+            $status.text('Sync failed — see output below.').css('color', '#b91c1c');
+        }).always(function () {
+            $btn.prop('disabled', false).html(original);
+        });
     });
 });
 </script>
