@@ -339,7 +339,10 @@
     {{-- Progress: MoM, YoY, and personal month-over-month --}}
     {{-- Store scope toggle for the two All-Stores cards below. Flipping this
          swaps the visible scope block inside each card — no page reload.
-         Sarah 2026-04-22: wanted to see Hollywood vs Pico vs combined. --}}
+         Sarah 2026-04-22: wanted to see Hollywood vs Pico vs combined.
+         Admin-only: the two store-revenue cards (MTD + YTD) and their
+         scope toggle are hidden from non-admin employees. --}}
+    @if($is_admin)
     <style>
         .sales-scope { display:flex; align-items:center; gap:6px; margin-bottom:10px; flex-wrap:wrap; }
         .sales-scope-label { font-size:12px; color:#6b7280; margin-right:4px; }
@@ -358,10 +361,12 @@
             </div>
         </div>
     </div>
+    @endif
     <div class="row">
         {{-- All-Stores sales: MTD + YTD shown side-by-side. Each card embeds
              one body per scope (all / hollywood / pico) and the toggle above
-             flips which one is visible. --}}
+             flips which one is visible. Admin-only. --}}
+        @if($is_admin)
         <div class="col-md-3">
             <div class="niv-card" style="background:linear-gradient(135deg,#fff7ed,#ffedd5);">
                 <h3 style="color:#9a3412; margin:0;">
@@ -406,6 +411,7 @@
                 @endforeach
             </div>
         </div>
+        @endif
         <div class="col-md-3">
             <div class="niv-card" style="background:linear-gradient(135deg,#fef3c7,#fde68a);">
                 <h3 style="color:#78350f;"><i class="fa fa-trophy"></i> You — Priced MTD</h3>
