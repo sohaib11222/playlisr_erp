@@ -163,6 +163,38 @@ $(document).ready(function() {
         },
     });
 
+    // Sarah 2026-04-22 (follow-up): "when i click on the customer bar in pos
+    // create it doesnt always work". The walk-in customer is preselected so
+    // the field renders as a "filled" select2 with a × clear button and the
+    // display text "Ask for phone # to look up rewards account". Clicks were
+    // landing on dead zones — the .fa-user input-group addon, the gap between
+    // the rendered text and the × / arrow, or on the × itself (which just
+    // clears without opening). Cashiers would click once, nothing happened,
+    // and they'd give up.
+    //
+    // Fix: any click inside the customer block opens the search dropdown and
+    // puts focus in the search input so they can immediately type. Excludes
+    // the "Sign up for a Nivessa account" button and the clear-account CTA
+    // so those keep their own behavior.
+    $(document).on('click', '.pos-customer-block', function(e) {
+        var $tgt = $(e.target);
+        if ($tgt.closest('.add_new_customer, #clear_customer_btn, #view_customer_details_btn, #customer_account_info, .select2-selection__clear').length) {
+            return;
+        }
+        var $sel = $('select#customer_id');
+        if (!$sel.length) { return; }
+        var isOpen = $sel.data('select2') && $sel.data('select2').isOpen && $sel.data('select2').isOpen();
+        if (!isOpen) {
+            $sel.select2('open');
+        }
+        // Guarantee the search input has focus so the next keystroke goes
+        // straight into the query (select2 normally does this, but the race
+        // with set_default_customer's change-trigger sometimes steals focus).
+        setTimeout(function() {
+            $('.select2-container--open .select2-search__field').focus();
+        }, 0);
+    });
+
     // Clear selected account and immediately allow searching a different one.
     $(document).on('click', '#clear_customer_btn', function() {
         var $customerSelect = $('select#customer_id');
