@@ -5620,8 +5620,7 @@ class ReportController extends Controller
                 tp.method,
                 tp.amount,
                 t.location_id,
-                bl.name as location_name,
-                t.is_walk_in")
+                bl.name as location_name")
             ->orderByDesc('t.transaction_date')
             ->limit(500)
             ->get()
