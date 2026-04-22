@@ -4914,26 +4914,26 @@ function validateManualProductForm() {
             }
 
             if (trimmedName.length < 3) {
-                toastr.error('Product name must be at least 3 characters — describe what was sold');
+                toastr.error('Please describe the item in a few more words (e.g. "Airheads candy")');
                 isValid = false;
                 return false;
             }
 
-            // Reject lazy placeholder names so manual items get a real description.
-            var lazyNames = [
+            // Nudge cashiers toward a real description rather than a placeholder.
+            var genericNames = [
                 'manual', 'manual item', 'manual items', 'item', 'items',
                 'misc', 'miscellaneous', 'misc item', 'n/a', 'na', 'none',
                 'test', 'thing', 'stuff', 'product', 'unknown', '-', '--', '...'
             ];
-            if (lazyNames.indexOf(trimmedName.toLowerCase()) !== -1) {
-                toastr.error('"' + trimmedName + '" is too vague — describe what was sold (e.g. "Airheads candy")');
+            if (genericNames.indexOf(trimmedName.toLowerCase()) !== -1) {
+                toastr.error('Please describe what was sold — e.g. "Airheads candy" instead of "' + trimmedName + '"');
                 isValid = false;
                 return false;
             }
 
-            // Reject pure digits / single symbols as a name.
+            // Reject pure digits / punctuation — the name needs actual words.
             if (/^[0-9\W_]+$/.test(trimmedName)) {
-                toastr.error('Product name needs actual letters — describe what was sold');
+                toastr.error('Please add a short description with words (e.g. "Soda can")');
                 isValid = false;
                 return false;
             }

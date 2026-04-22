@@ -36,7 +36,7 @@
                                            maxlength="150"
                                            placeholder="e.g. Airheads candy, Used Sharpie, Soda can">
                                     <small class="text-muted" style="display:block;margin-top:4px;">
-                                        Describe what was sold — no lazy names (no "manual", "item", "misc", "n/a").
+                                        Describe what was sold (e.g. "Airheads candy"). Generic names like "manual" or "item" aren't accepted.
                                     </small>
                                 </td>
                                 <td>

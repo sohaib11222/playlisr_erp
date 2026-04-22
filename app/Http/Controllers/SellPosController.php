@@ -2060,25 +2060,25 @@ class SellPosController extends Controller
 
                 if (mb_strlen($productName) < 3) {
                     $output['success'] = false;
-                    $output['msg'] = 'Product name must be at least 3 characters — describe what was sold (Row ' . ($index + 1) . ')';
+                    $output['msg'] = 'Please describe the item in a few more words, e.g. "Airheads candy" (Row ' . ($index + 1) . ')';
                     return $output;
                 }
 
-                // Reject lazy placeholder names so manual items get a real description.
-                $lazyNames = [
+                // Nudge cashiers toward a real description rather than a placeholder.
+                $genericNames = [
                     'manual', 'manual item', 'manual items', 'item', 'items',
                     'misc', 'miscellaneous', 'misc item', 'n/a', 'na', 'none',
                     'test', 'thing', 'stuff', 'product', 'unknown', '-', '--', '...'
                 ];
-                if (in_array(mb_strtolower($productName), $lazyNames, true)) {
+                if (in_array(mb_strtolower($productName), $genericNames, true)) {
                     $output['success'] = false;
-                    $output['msg'] = '"' . $productName . '" is too vague — describe what was sold (e.g. "Airheads candy") (Row ' . ($index + 1) . ')';
+                    $output['msg'] = 'Please describe what was sold — e.g. "Airheads candy" instead of "' . $productName . '" (Row ' . ($index + 1) . ')';
                     return $output;
                 }
 
                 if (preg_match('/^[\d\W_]+$/u', $productName)) {
                     $output['success'] = false;
-                    $output['msg'] = 'Product name needs actual letters — describe what was sold (Row ' . ($index + 1) . ')';
+                    $output['msg'] = 'Please add a short description with words, e.g. "Soda can" (Row ' . ($index + 1) . ')';
                     return $output;
                 }
 
