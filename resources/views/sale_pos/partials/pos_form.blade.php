@@ -4,7 +4,34 @@
      eye flows top-to-bottom: pick customer → (see their account) → ring up item. --}}
 <div class="row">
 	<div class="col-md-12 pos-customer-block">
-		<style>.pos-customer-block .select2-container { width: 100% !important; min-width: 0; margin-bottom: 8px; } .pos-customer-select2-dropdown { min-width: 320px !important; } .pos-customer-block .select2-selection__rendered { white-space: normal !important; word-break: break-word; }</style>
+		<style>
+		.pos-customer-block .select2-container { width: 100% !important; min-width: 0; margin-bottom: 8px; }
+		.pos-customer-select2-dropdown { min-width: 320px !important; }
+		.pos-customer-block .select2-selection__rendered { white-space: normal !important; word-break: break-word; }
+		/* Sarah 2026-04-22: guarantee the AJAX search input inside the customer
+		   dropdown is visible + full-width. Some themes collapse .select2-search
+		   or style .select2-search__field too small, leaving the dropdown looking
+		   like a dead placeholder row. */
+		.pos-customer-select2-dropdown .select2-search {
+			display: block !important;
+			padding: 8px !important;
+			background: #fff;
+		}
+		.pos-customer-select2-dropdown .select2-search__field {
+			display: block !important;
+			width: 100% !important;
+			box-sizing: border-box !important;
+			padding: 7px 10px !important;
+			border: 1px solid #d1d5db !important;
+			border-radius: 4px !important;
+			font-size: 14px !important;
+			outline: none !important;
+		}
+		.pos-customer-select2-dropdown .select2-search__field:focus {
+			border-color: #6366f1 !important;
+			box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15) !important;
+		}
+		</style>
 		<div class="form-group" style="max-width: 480px;">
 			<label class="control-label">@lang('contact.customer')</label>
 			<div class="input-group" style="margin-bottom: 4px;">

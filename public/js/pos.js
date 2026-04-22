@@ -163,19 +163,20 @@ $(document).ready(function() {
         },
     });
 
-    // Sarah 2026-04-22 (follow-up): "when i click on the customer bar in pos
-    // create it doesnt always work". The walk-in customer is preselected so
-    // the field renders as a "filled" select2 with a × clear button and the
-    // display text "Ask for phone # to look up rewards account". Clicks were
-    // landing on dead zones — the .fa-user input-group addon, the gap between
-    // the rendered text and the × / arrow, or on the × itself (which just
-    // clears without opening). Cashiers would click once, nothing happened,
-    // and they'd give up.
+    // Sarah 2026-04-22 (3rd pass): "when i click on the customer bar it
+    // pops up a dropdown with just ✓ Phone # (or name / email)… — i just
+    // want to type in". Root cause: the walk-in customer is preselected
+    // and the Laravel Form::select placeholder adds a blank `<option>`,
+    // so when select2 opens it shows the PLACEHOLDER row as a result
+    // (with a checkmark) and the AJAX search input is pushed into a
+    // sliver at the top that's easy to miss. Cashiers see a useless
+    // dropdown row and don't realize they can type.
     //
-    // Fix: any click inside the customer block opens the search dropdown and
-    // puts focus in the search input so they can immediately type. Excludes
-    // the "Sign up for a Nivessa account" button and the clear-account CTA
-    // so those keep their own behavior.
+    // Fix: clicking the customer block clears the current (walk-in) value,
+    // opens the dropdown fresh (so no placeholder row renders), focuses
+    // the search input, and restores the walk-in silently if they dismiss
+    // without picking anyone. Exclude the sign-up / clear / info-panel
+    // controls so those keep their own behavior.
     $(document).on('click', '.pos-customer-block', function(e) {
         var $tgt = $(e.target);
         if ($tgt.closest('.add_new_customer, #clear_customer_btn, #view_customer_details_btn, #customer_account_info, .select2-selection__clear').length) {
@@ -183,16 +184,34 @@ $(document).ready(function() {
         }
         var $sel = $('select#customer_id');
         if (!$sel.length) { return; }
-        var isOpen = $sel.data('select2') && $sel.data('select2').isOpen && $sel.data('select2').isOpen();
-        if (!isOpen) {
-            $sel.select2('open');
-        }
-        // Guarantee the search input has focus so the next keystroke goes
-        // straight into the query (select2 normally does this, but the race
-        // with set_default_customer's change-trigger sometimes steals focus).
+
+        // Remember the current value (usually the walk-in) so we can put
+        // it back if the cashier dismisses the dropdown without picking.
+        var restoreVal = $sel.val();
+        var restoreOpt = restoreVal ? $sel.find('option[value="' + restoreVal + '"]').clone() : null;
+
+        // Clear without firing the account-loaded side effects. select2's
+        // namespaced change.select2 updates its own UI; the unnamespaced
+        // 'change' event (which loadCustomerAccountInfo listens for) stays
+        // quiet so we don't thrash the UI.
+        $sel.val(null).trigger('change.select2');
+
+        $sel.select2('open');
         setTimeout(function() {
             $('.select2-container--open .select2-search__field').focus();
-        }, 0);
+        }, 10);
+
+        // If they close without picking, silently restore the walk-in so
+        // the form is still submittable with a default customer. One-shot
+        // so we don't stack handlers across clicks.
+        $sel.one('select2:close', function() {
+            if (!$sel.val() && restoreVal) {
+                if (restoreOpt && !$sel.find('option[value="' + restoreVal + '"]').length) {
+                    $sel.append(restoreOpt);
+                }
+                $sel.val(restoreVal).trigger('change.select2');
+            }
+        });
     });
 
     // Clear selected account and immediately allow searching a different one.
