@@ -87,6 +87,32 @@ class CloverService
         return false;
     }
 
+    /**
+     * Return the list of scopes that have Clover creds configured for this business.
+     *
+     * Each element is either:
+     *   - null  → top-level single-merchant creds are set
+     *   - int   → per-location creds are set for that ERP location_id
+     *
+     * Used by the sync command so a multi-store business (Hollywood + Pico,
+     * each with its own Clover account) pulls payments from every configured
+     * merchant, not just the top-level one.
+     */
+    public function getConfiguredScopes(): array
+    {
+        $scopes = [];
+        $topLevel = $this->settings['clover'] ?? [];
+        if ($this->locationIsConfigured($topLevel)) {
+            $scopes[] = null;
+        }
+        foreach ($this->settings['clover']['locations'] ?? [] as $locId => $locCreds) {
+            if ($this->locationIsConfigured((array) $locCreds)) {
+                $scopes[] = (int) $locId;
+            }
+        }
+        return $scopes;
+    }
+
     /** One merged creds array → is it enough to call Clover? */
     private function locationIsConfigured(array $clover)
     {

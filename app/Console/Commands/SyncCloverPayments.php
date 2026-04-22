@@ -54,19 +54,40 @@ class SyncCloverPayments extends Command
                 continue;
             }
 
-            $result = $clover->getPayments($start, $end);
-            if (empty($result['success'])) {
-                $this->error('  ' . ($result['msg'] ?? 'unknown error'));
+            // Clover can be configured two ways per business (and occasionally
+            // both): one top-level merchant, or separate merchants per location
+            // (e.g. Hollywood + Pico, each with its own Clover account). Pull
+            // once per configured scope using that scope's merchant_id/token,
+            // and tag upserted rows with the ERP location_id so per-location
+            // reports roll up correctly.
+            $scopes = $clover->getConfiguredScopes();
+            if (empty($scopes)) {
+                $this->warn('  skipped: no valid Clover scopes found (unexpected).');
                 continue;
             }
 
-            $payments = $result['payments'] ?? [];
-            $this->line('  fetched ' . count($payments) . ' payments');
-            $total += count($payments);
+            foreach ($scopes as $scopeLocId) {
+                $scoped = new CloverService($businessId);
+                if ($scopeLocId !== null) {
+                    $scoped->forLocation($scopeLocId);
+                }
+                $label = $scopeLocId === null ? '(top-level merchant)' : "location_id={$scopeLocId}";
+                $this->line("  · {$label}");
 
-            $upserted = $this->upsertPayments($businessId, $payments);
-            $upsertedTotal += $upserted;
-            $this->line("  upserted {$upserted} rows");
+                $result = $scoped->getPayments($start, $end);
+                if (empty($result['success'])) {
+                    $this->error('    ' . ($result['msg'] ?? 'unknown error'));
+                    continue;
+                }
+
+                $payments = $result['payments'] ?? [];
+                $this->line('    fetched ' . count($payments) . ' payments');
+                $total += count($payments);
+
+                $upserted = $this->upsertPayments($businessId, $payments, $scopeLocId);
+                $upsertedTotal += $upserted;
+                $this->line("    upserted {$upserted} rows");
+            }
         }
 
         $this->info("\nDone. Fetched {$total} · upserted {$upsertedTotal}.");
@@ -109,7 +130,7 @@ class SyncCloverPayments extends Command
      *
      * Returns the number of rows touched (inserted + updated).
      */
-    private function upsertPayments(int $businessId, array $payments): int
+    private function upsertPayments(int $businessId, array $payments, ?int $locationId = null): int
     {
         $count = 0;
         foreach ($payments as $p) {
@@ -143,12 +164,12 @@ class SyncCloverPayments extends Command
                 ['clover_payment_id' => $id],
                 [
                     'business_id' => $businessId,
-                    // Clover has its own "device" abstraction; we leave
-                    // location_id null and let the reconciliation report
-                    // decide which ERP location a payment belongs to via
-                    // employee join. Filling this would require a Clover
-                    // device-id → ERP location map (future work).
-                    'location_id' => null,
+                    // Populated when we pulled this payment via a per-location
+                    // Clover merchant scope — lets the EOD report roll up
+                    // Clover totals per ERP location instead of bucketing them
+                    // globally. Null when the payment came from a top-level
+                    // (single-merchant) scope.
+                    'location_id' => $locationId,
                     'clover_order_id' => $p['order']['id'] ?? null,
                     'clover_employee_id' => $employee['id'] ?? null,
                     'employee_name' => $employeeName ?: null,

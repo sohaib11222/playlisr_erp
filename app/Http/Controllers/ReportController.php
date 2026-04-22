@@ -5458,40 +5458,64 @@ class ReportController extends Controller
             ->groupBy(DB::raw('DATE(t.transaction_date)'), 't.location_id', 'bl.name')
             ->get();
 
-        // Clover-side per (date, location) rollup. clover_payments doesn't
-        // carry a location_id directly — we reconcile by matching the Clover
-        // merchant_id to a business_locations row via api_settings (when
-        // per-location Clover creds are configured). For now we bucket all
-        // Clover rows into a single 'Clover' bucket per day and let the
-        // UI show it alongside each location.
-        $clover_rows = \DB::table('clover_payments')
+        // Clover-side per (date, location) rollup. Rows pulled via per-location
+        // Clover creds get their ERP location_id stamped at sync time, so we
+        // can match Hollywood-Clover ↔ Hollywood-ERP on the same day. Legacy
+        // rows synced before that (and any rows from a top-level single-
+        // merchant scope) have location_id=NULL; we bucket those under
+        // loc_key=0 and fall back to them when no per-location match exists
+        // so historical data doesn't disappear.
+        $cloverQuery = \DB::table('clover_payments')
             ->where('business_id', $business_id)
             ->where(function ($q) {
                 $q->whereNull('result')->orWhere('result', 'SUCCESS')->orWhere('result', 'APPROVED');
             })
             ->whereDate('paid_on', '>=', $start)
-            ->whereDate('paid_on', '<=', $end)
-            ->selectRaw("DATE(paid_on) as day,
+            ->whereDate('paid_on', '<=', $end);
+        if (!empty($location_id)) {
+            $cloverQuery->where(function ($q) use ($location_id) {
+                $q->where('location_id', $location_id)->orWhereNull('location_id');
+            });
+        }
+        $clover_rows_raw = $cloverQuery
+            ->selectRaw("DATE(paid_on) as day, COALESCE(location_id, 0) as loc_key,
                 COUNT(*) as clover_count,
                 COALESCE(SUM(amount), 0) as clover_total")
-            ->groupBy(DB::raw('DATE(paid_on)'))
-            ->get()
-            ->keyBy('day');
+            ->groupBy(DB::raw('DATE(paid_on)'), DB::raw('COALESCE(location_id, 0)'))
+            ->get();
 
-        // Merge: one row per (day, location) with ERP data + the day's Clover
-        // bucket attached. Days with only Clover data (no ERP matches) still
-        // surface as review-flagged rows so nothing slips.
+        // Index by [day][loc_key]. loc_key = 0 is the NULL-location bucket.
+        $clover_by_day_loc = [];
+        foreach ($clover_rows_raw as $cr) {
+            $clover_by_day_loc[$cr->day][(int) $cr->loc_key] = $cr;
+        }
+
+        // Merge: one row per (day, location) with ERP data + the matching
+        // per-location Clover bucket attached. Falls back to the NULL-
+        // location bucket when a per-location match isn't available. Each
+        // bucket is claimed at most once per day so we don't double-count
+        // when ERP has multiple locations.
         $rows = [];
         $grand = ['erp' => 0.0, 'clover' => 0.0, 'variance' => 0.0, 'flagged_days' => 0];
+        $claimed = []; // [day => [loc_key => true]]
         foreach ($erp_rows as $r) {
-            $clover = $clover_rows[$r->day] ?? null;
+            $day = $r->day;
+            $locId = (int) $r->location_id;
+            $clover = null;
+            if (isset($clover_by_day_loc[$day][$locId]) && empty($claimed[$day][$locId])) {
+                $clover = $clover_by_day_loc[$day][$locId];
+                $claimed[$day][$locId] = true;
+            } elseif (isset($clover_by_day_loc[$day][0]) && empty($claimed[$day][0])) {
+                $clover = $clover_by_day_loc[$day][0];
+                $claimed[$day][0] = true;
+            }
             $cloverTotal = (float) ($clover->clover_total ?? 0);
             $cloverCount = (int) ($clover->clover_count ?? 0);
             $erpTotal = (float) $r->erp_total;
             $variance = round($erpTotal - $cloverTotal, 2);
             $status = $this->reconciliationStatus($variance);
             $rows[] = (object) [
-                'day' => $r->day,
+                'day' => $day,
                 'location_name' => $r->location_name ?: '(no location)',
                 'erp_count' => (int) $r->erp_count,
                 'erp_total' => $erpTotal,
@@ -5505,25 +5529,32 @@ class ReportController extends Controller
             $grand['variance'] += $variance;
             if ($status !== 'reconciled') $grand['flagged_days']++;
         }
-        // Clover-only days (ERP had no card sales but Clover did).
-        $erp_days = collect($erp_rows)->pluck('day')->unique()->all();
-        foreach ($clover_rows as $day => $c) {
-            if (in_array($day, $erp_days, true)) continue;
-            $cloverTotal = (float) $c->clover_total;
-            $variance = round(0 - $cloverTotal, 2);
-            $rows[] = (object) [
-                'day' => $day,
-                'location_name' => '(Clover only — no ERP card sales)',
-                'erp_count' => 0,
-                'erp_total' => 0,
-                'clover_count' => (int) $c->clover_count,
-                'clover_total' => $cloverTotal,
-                'variance' => $variance,
-                'status' => $this->reconciliationStatus($variance),
-            ];
-            $grand['clover'] += $cloverTotal;
-            $grand['variance'] += $variance;
-            $grand['flagged_days']++;
+        // Unclaimed Clover buckets — Clover recorded sales but no ERP card
+        // sales matched. Surface these so discrepancies aren't swallowed.
+        foreach ($clover_by_day_loc as $day => $buckets) {
+            foreach ($buckets as $locKey => $c) {
+                if (!empty($claimed[$day][$locKey])) continue;
+                $cloverTotal = (float) $c->clover_total;
+                $variance = round(0 - $cloverTotal, 2);
+                $locLabel = $locKey === 0
+                    ? '(Clover only — no ERP card sales)'
+                    : (optional(BusinessLocation::find($locKey))->name
+                        ? optional(BusinessLocation::find($locKey))->name . ' (Clover only)'
+                        : '(Clover only — no ERP card sales)');
+                $rows[] = (object) [
+                    'day' => $day,
+                    'location_name' => $locLabel,
+                    'erp_count' => 0,
+                    'erp_total' => 0,
+                    'clover_count' => (int) $c->clover_count,
+                    'clover_total' => $cloverTotal,
+                    'variance' => $variance,
+                    'status' => $this->reconciliationStatus($variance),
+                ];
+                $grand['clover'] += $cloverTotal;
+                $grand['variance'] += $variance;
+                $grand['flagged_days']++;
+            }
         }
 
         // Most recent first.
