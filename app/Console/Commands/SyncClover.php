@@ -65,20 +65,49 @@ class SyncClover extends Command
             // location (Nivessa: Hollywood + Pico). Walk each configured
             // scope and instantiate a location-scoped service so the right
             // merchant_id/private_token are used for each leg.
+            //
+            // Each domain is wrapped in its own try/catch so a missing
+            // column (deploy hasn't run migrations yet) or a transient
+            // Clover API hiccup on one leg doesn't tank the whole sync —
+            // previously a 42S22 "Unknown column clover_order_id" killed
+            // the entire run the first time it executed on a host where
+            // the migrations hadn't been applied.
             $scopes = $probe->getConfiguredScopes() ?: [null];
             foreach ($scopes as $scope) {
                 $scopeLabel = $scope === null ? 'top-level' : ('location #' . $scope);
                 $this->line("  · scope: {$scopeLabel}");
                 $clover = (new CloverService($businessId))->forLocation($scope);
 
-                if ($only === '' || $only === 'items')     $this->syncItems($clover, $businessId, $scope, $days);
-                if ($only === '' || $only === 'orders')    $this->syncOrders($clover, $businessId, $scope, $days);
-                if ($only === '' || $only === 'customers') $this->syncCustomers($clover, $businessId, $scope, $days);
-                if ($only === '' || $only === 'push')      $this->pushPending($clover, $businessId, $scope);
+                $this->runLeg($only, 'items',     fn() => $this->syncItems($clover, $businessId, $scope, $days));
+                $this->runLeg($only, 'orders',    fn() => $this->syncOrders($clover, $businessId, $scope, $days));
+                $this->runLeg($only, 'customers', fn() => $this->syncCustomers($clover, $businessId, $scope, $days));
+                $this->runLeg($only, 'push',      fn() => $this->pushPending($clover, $businessId, $scope));
             }
         }
 
         return 0;
+    }
+
+    /**
+     * Run one sync leg with isolated error handling — called for each of
+     * items/orders/customers/push. Skips if $only filters it out, logs +
+     * prints a one-liner on any exception (including the missing-column
+     * case when migrations haven't been applied yet), and keeps going.
+     */
+    private function runLeg(string $only, string $leg, \Closure $fn): void
+    {
+        if ($only !== '' && $only !== $leg) return;
+        try {
+            $fn();
+        } catch (\Throwable $t) {
+            $msg = $t->getMessage();
+            if (stripos($msg, 'Unknown column') !== false && stripos($msg, 'clover_') !== false) {
+                $this->warn("  [{$leg}] skipped — run `php artisan migrate --force` to add the Clover link columns, then retry.");
+            } else {
+                $this->error("  [{$leg}] failed — " . $msg);
+            }
+            Log::error("Clover sync leg failed: {$leg}", ['msg' => $msg]);
+        }
     }
 
     /* -------------------- items pull -------------------- */

@@ -11,37 +11,10 @@
 @section('content')
 @include('sale_pos.partials._redesign_v2')
 <script>document.body.classList.add('pos-v2');</script>
-{{-- Sarah 2026-04-22 LAYOUT HOTFIX — inlined here (not in _redesign_v2)
-     so the rules land even if the @include compiled-view cache is
-     stale. Two rules: paint .content-wrapper cream so the grey halo
-     around the POS form disappears, and force the inner POS row into
-     a flex two-up layout so Quick Add sits on the right (not stacked
-     below the cart). --}}
-<style>
-	body.pos-v2 .content-wrapper { background: #FAF6EE !important; }
-	@media (min-width: 768px) {
-		form#add_pos_sell_form > .row.mb-12 > .col-md-12 > .row {
-			display: flex !important;
-			flex-wrap: nowrap !important;
-			align-items: flex-start !important;
-		}
-		form#add_pos_sell_form > .row.mb-12 > .col-md-12 > .row > .col-sm-8,
-		form#add_pos_sell_form > .row.mb-12 > .col-md-12 > .row > .col-md-8,
-		form#add_pos_sell_form > .row.mb-12 > .col-md-12 > .row > .col-md-10 {
-			flex: 1 1 auto !important;
-			width: auto !important;
-			min-width: 0 !important;
-			float: none !important;
-		}
-		form#add_pos_sell_form > .row.mb-12 > .col-md-12 > .row > .col-sm-4,
-		form#add_pos_sell_form > .row.mb-12 > .col-md-12 > .row > .col-md-4 {
-			flex: 0 0 360px !important;
-			width: 360px !important;
-			max-width: 360px !important;
-			float: none !important;
-		}
-	}
-</style>
+{{-- Sarah 2026-04-22 LAYOUT HOTFIX — the rules live in a real static
+     file under /public/css/ so nginx serves them directly. Takes PHP
+     OPcache / Blade compile cache out of the loop entirely. --}}
+<link rel="stylesheet" href="{{ asset('css/pos-create-layout.css?v=' . $asset_v) }}">
 <section class="content no-print">
 	<input type="hidden" id="amount_rounding_method" value="{{$pos_settings['amount_rounding_method'] ?? ''}}">
 	@if(!empty($pos_settings['allow_overselling']))

@@ -253,6 +253,86 @@
             if it hasn't run recently the Clover column will lag behind.
         </p>
     @endcomponent
+
+    {{-- Why Unknown? drill-down — Sarah 2026-04-22: "why is employee
+         unknown sometimes?". Lists the raw rows that bucketed as Unknown
+         on either side, with the underlying cause so she can tell benign
+         walk-in / online-checkout from actual data problems (deleted
+         users, broken imports). Collapsed by default so the panel stays
+         small unless she cares. --}}
+    @if(!empty($unknown_rows) && (count($unknown_rows['erp'] ?? []) > 0 || count($unknown_rows['clover'] ?? []) > 0))
+        @component('components.widget', ['class' => 'box-warning', 'title' => 'Why Unknown? &mdash; ' . (count($unknown_rows['erp']) + count($unknown_rows['clover'])) . ' row(s)'])
+            <p class="help-block" style="margin-top:-6px;">
+                Each row below is a payment that bucketed as <em>Unknown</em> in the per-cashier breakdown.
+                <strong>ERP side</strong> means <code>transactions.created_by</code> is null or the user row is gone — commonly walk-in flows or automated imports.
+                <strong>Clover side</strong> means the payment came in without an employee pin — usually online Clover checkout, self-checkout, or a card-on-file charge.
+            </p>
+
+            @if(count($unknown_rows['erp']) > 0)
+                <h5 style="margin-top:12px;">ERP ({{ count($unknown_rows['erp']) }})</h5>
+                <div class="table-responsive">
+                    <table class="table table-condensed table-striped">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Invoice</th>
+                                <th>Location</th>
+                                <th>Method</th>
+                                <th class="text-right">Amount</th>
+                                <th>Cause</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($unknown_rows['erp'] as $r)
+                                <tr>
+                                    <td>{{ $r->day }}</td>
+                                    <td>
+                                        <a href="{{ route('sell.printInvoice', $r->transaction_id) }}" target="_blank">{{ $r->invoice_no ?: ('#' . $r->transaction_id) }}</a>
+                                    </td>
+                                    <td>{{ $r->location_name ?: '(no location)' }}</td>
+                                    <td>{{ strtoupper($r->method ?? '') }}</td>
+                                    <td class="text-right">${{ number_format((float) $r->amount, 2) }}</td>
+                                    <td>{{ $r->cause }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            @endif
+
+            @if(count($unknown_rows['clover']) > 0)
+                <h5 style="margin-top:12px;">Clover ({{ count($unknown_rows['clover']) }})</h5>
+                <div class="table-responsive">
+                    <table class="table table-condensed table-striped">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Clover payment</th>
+                                <th>Location</th>
+                                <th>Tender</th>
+                                <th>Card</th>
+                                <th class="text-right">Amount</th>
+                                <th>Cause</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($unknown_rows['clover'] as $r)
+                                <tr>
+                                    <td>{{ $r->day }}</td>
+                                    <td><code style="font-size:11px;">{{ $r->clover_payment_id }}</code></td>
+                                    <td>{{ $r->location_name ?: '(no location)' }}</td>
+                                    <td>{{ $r->tender_type }}</td>
+                                    <td>{{ $r->card_type }}{{ $r->card_last4 ? ' ****' . $r->card_last4 : '' }}</td>
+                                    <td class="text-right">${{ number_format((float) $r->amount, 2) }}</td>
+                                    <td>{{ $r->cause }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            @endif
+        @endcomponent
+    @endif
 </section>
 @stop
 

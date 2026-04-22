@@ -5570,10 +5570,107 @@ class ReportController extends Controller
             $business_id, $start, $end, $location_id, $card_methods, $used_all_methods
         );
 
+        // Drill-down data for the "Why Unknown?" panel — the raw rows that
+        // bucketed as Unknown on either side, with the underlying cause so
+        // Sarah can tell walk-ins / online orders from data issues.
+        $unknown_rows = $this->cloverEodUnknownRows(
+            $business_id, $start, $end, $location_id, $card_methods, $used_all_methods
+        );
+
         return view('report.clover_eod_reconciliation')->with(compact(
             'rows', 'grand', 'start', 'end', 'location_id', 'business_locations',
-            'employee_breakdown_by_day'
+            'employee_breakdown_by_day', 'unknown_rows'
         ));
+    }
+
+    /**
+     * List every ERP card sale and every Clover payment in the window whose
+     * employee_name resolves to Unknown, with the underlying cause. Feeds
+     * the "Why Unknown?" drill-down on the reconciliation report so Sarah
+     * can eyeball whether Unknowns are benign (walk-in / online checkout)
+     * or a real data problem (deleted user, broken import).
+     *
+     * @return array ['erp' => [...], 'clover' => [...]]
+     */
+    private function cloverEodUnknownRows($business_id, $start, $end, $location_id, array $card_methods, $used_all_methods)
+    {
+        // ERP side — a payment is "Unknown" when the joined users row is
+        // missing (deleted user or null created_by on the transaction).
+        $erpQ = \DB::table('transaction_payments as tp')
+            ->join('transactions as t', 'tp.transaction_id', '=', 't.id')
+            ->leftJoin('business_locations as bl', 't.location_id', '=', 'bl.id')
+            ->leftJoin('users as u', 't.created_by', '=', 'u.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereDate('t.transaction_date', '>=', $start)
+            ->whereDate('t.transaction_date', '<=', $end)
+            ->whereNull('u.id');  // the join failed → Unknown on the report
+        if (!$used_all_methods) {
+            $erpQ->whereIn('tp.method', $card_methods);
+        }
+        if (!empty($location_id)) {
+            $erpQ->where('t.location_id', $location_id);
+        }
+        $erpRows = $erpQ->selectRaw("
+                DATE(t.transaction_date) as day,
+                t.id as transaction_id,
+                t.invoice_no,
+                t.created_by,
+                tp.method,
+                tp.amount,
+                t.location_id,
+                bl.name as location_name,
+                t.is_walk_in")
+            ->orderByDesc('t.transaction_date')
+            ->limit(500)
+            ->get()
+            ->map(function ($r) {
+                $r->cause = $r->created_by === null
+                    ? 'transactions.created_by is null (no cashier attached)'
+                    : ('users row #' . $r->created_by . ' deleted or missing');
+                return $r;
+            });
+
+        // Clover side — employee_name empty at sync time. Usually a Clover
+        // online order, self-checkout, or a payment run without a staff pin.
+        $cloverQ = \DB::table('clover_payments as cp')
+            ->leftJoin('business_locations as bl', 'cp.location_id', '=', 'bl.id')
+            ->where('cp.business_id', $business_id)
+            ->whereDate('cp.paid_on', '>=', $start)
+            ->whereDate('cp.paid_on', '<=', $end)
+            ->where(function ($q) {
+                $q->whereNull('cp.employee_name')
+                  ->orWhereRaw("TRIM(cp.employee_name) = ''");
+            })
+            ->where(function ($q) {
+                $q->whereNull('cp.result')->orWhere('cp.result', 'SUCCESS')->orWhere('cp.result', 'APPROVED');
+            });
+        if (!empty($location_id)) {
+            $cloverQ->where('cp.location_id', $location_id);
+        }
+        $cloverRows = $cloverQ->selectRaw("
+                cp.paid_on as day,
+                cp.clover_payment_id,
+                cp.clover_order_id,
+                cp.tender_type,
+                cp.card_type,
+                cp.card_last4,
+                cp.amount,
+                cp.location_id,
+                bl.name as location_name")
+            ->orderByDesc('cp.paid_at')
+            ->limit(500)
+            ->get()
+            ->map(function ($r) {
+                $r->cause = 'Clover payment had no employee pin (likely online / self-checkout / card-on-file)';
+                return $r;
+            });
+
+        return [
+            'erp' => $erpRows,
+            'clover' => $cloverRows,
+        ];
     }
 
     /**
