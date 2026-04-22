@@ -66,17 +66,38 @@ class CloverService
     public function isConfigured()
     {
         $clover = $this->getClover();
-        
-        // Check for Ecommerce API Tokens (simpler method)
-        if (!empty($clover['public_token']) && !empty($clover['private_token']) && !empty($clover['merchant_id'])) {
+
+        if ($this->locationIsConfigured($clover)) {
             return true;
         }
-        
-        // Check for OAuth credentials (alternative method)
-        if (!empty($clover['app_id']) && !empty($clover['app_secret']) && !empty($clover['merchant_id'])) {
-            return true;
+
+        // No specific location scoped — also accept "any per-location entry
+        // has creds". Keeps the settings-page Test Connection banner from
+        // crying 'not configured' when the business has set up per-location
+        // creds but left the top-level single-merchant fields empty.
+        if (!$this->locationId) {
+            $allLocs = $this->settings['clover']['locations'] ?? [];
+            foreach ($allLocs as $locCreds) {
+                if ($this->locationIsConfigured((array) $locCreds)) {
+                    return true;
+                }
+            }
         }
-        
+
+        return false;
+    }
+
+    /** One merged creds array → is it enough to call Clover? */
+    private function locationIsConfigured(array $clover)
+    {
+        // Private token alone is enough — Clover's Ecommerce API uses it as
+        // the bearer. Older installs also used public_token; still accepted.
+        if (!empty($clover['merchant_id'])) {
+            if (!empty($clover['private_token'])) return true;
+            if (!empty($clover['public_token']) && !empty($clover['private_token'])) return true;
+            if (!empty($clover['app_id']) && !empty($clover['app_secret'])) return true;
+            if (!empty($clover['access_token'])) return true;
+        }
         return false;
     }
 
