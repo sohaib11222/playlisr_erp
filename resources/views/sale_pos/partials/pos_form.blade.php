@@ -330,8 +330,8 @@
 			</style>
 			<script>
 				// Sarah 2026-04-22 (take 3): Root cause of "whatnot button isnt
-				// working" — this script runs inside @section('content'), which
-				// is yielded by app.blade.php BEFORE layouts/partials/
+				// working" — this script runs inside the content section,
+				// which is yielded by app.blade.php BEFORE layouts/partials/
 				// javascripts.blade.php loads jQuery. So `$` was undefined when
 				// the IIFE executed, the whole block threw "ReferenceError: $
 				// is not defined", and no click/change handlers ever got
@@ -339,6 +339,12 @@
 				// at create:19xx + 32xx.) Poll for jQuery and run once it's
 				// there — below-the-fold scripts bind as soon as vendor.js
 				// finishes parsing.
+				// NOTE: Do NOT write at-section / at-yield / at-extends anywhere
+				// in this file (even inside JS comments) — Blade compiles those
+				// directives regardless of their lexical context, and having an
+				// at-section('content') inside create.blade.php's content yield
+				// re-starts the section mid-render and breaks the whole page
+				// layout. We hit that earlier today.
 				(function waitForJq(attempts) {
 					if (typeof window.jQuery === 'undefined') {
 						if ((attempts || 0) > 300) return; // ~6s max
