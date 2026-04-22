@@ -246,10 +246,12 @@
 				}
 				.pos-channel-chip i { font-size: 11px; opacity: .7; }
 				.pos-channel-chip:hover { border-color: #9ca3af; color: #374151; }
-				/* Active styles per channel — mustard for Whatnot (was the
-				   previous visual), subtle tints for the others. */
+				/* Active styles per channel — each one clearly filled so the
+				   cashier can see at a glance which channel this sale is tagged
+				   as. In Store is the default; uses Nivessa-friendly dark green
+				   so it reads as "confirmed / default" rather than "alert". */
 				.pos-channel-chip.is-active[data-channel="in_store"] {
-					background: #eef2ff; border: 1px solid #a5b4fc; color: #312e81; font-weight: 700;
+					background: #166534; border: 1px solid #14532d; color: #fff; font-weight: 700;
 				}
 				.pos-channel-chip.is-active[data-channel="whatnot"] {
 					background: #f5ce3e; border: 1px solid #d4a92a; color: #2b1e16; font-weight: 700;
