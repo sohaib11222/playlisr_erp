@@ -70,6 +70,22 @@
         </div>
     </div>
 
+    {{-- ── Pull from inbox (auto-fetch runner) ───────────────────── --}}
+    <div class="row no-print">
+        <div class="col-md-12">
+            @component('components.widget', ['class' => 'box-info', 'title' => '📥 Auto-fetch from inbox'])
+            <p class="text-muted small">Pulls last 7 days of Street Pulse + UMe Universal emails from sarah@nivessa.com via IMAP → parses attachments &amp; body → populates the two charts above. Runs every Wednesday 08:15 PST automatically; button below triggers it on demand.</p>
+            <button type="button" class="btn btn-primary btn-sm" id="ica_run_import" data-dry-run="1">
+                <i class="fa fa-bolt"></i> Run test (dry-run)
+            </button>
+            <button type="button" class="btn btn-success btn-sm" id="ica_run_import_real" data-dry-run="0">
+                <i class="fa fa-download"></i> Run for real
+            </button>
+            <pre id="ica_run_import_output" style="display:none; margin-top:12px; max-height:300px; overflow:auto; font-size:11px; background:#f9f9f9; padding:8px;"></pre>
+            @endcomponent
+        </div>
+    </div>
+
     {{-- ── Export strip (sticky) ──────────────────────────────────── --}}
     <div class="row no-print">
         <div class="col-md-12">
@@ -259,6 +275,7 @@
     window.ICA_CHART_IMPORT_URL = "{{ url('reports/inventory-check-assistant/chart-import') }}";
     window.ICA_CHART_LATEST_URL = "{{ url('reports/inventory-check-assistant/chart-latest') }}";
     window.ICA_CUSTOMER_WANT_FULFILL_URL = "{{ url('reports/inventory-check-assistant/customer-want') }}";
+    window.ICA_RUN_EMAIL_IMPORT_URL = "{{ url('reports/inventory-check-assistant/run-email-import') }}";
     window.ICA_SESSIONS_URL = "{{ action('InventoryCheckController@listSessions') }}";
     window.ICA_SESSIONS_STORE = "{{ action('InventoryCheckController@storeSession') }}";
     window.ICA_CSRF = "{{ csrf_token() }}";

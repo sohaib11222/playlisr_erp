@@ -14,6 +14,7 @@ use App\Services\ChartPickParser;
 use App\Services\InventoryCheckService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Response;
 use Illuminate\Support\Facades\Schema;
@@ -273,6 +274,44 @@ class InventoryCheckController extends Controller
         return response()->json([
             'import' => $import,
             'row_count' => $import ? ChartPick::where('import_id', $import->id)->count() : 0,
+        ]);
+    }
+
+    // ── Run the email-import command from the browser ─────────────────
+
+    public function runEmailImport(Request $request)
+    {
+        if (!auth()->user()->can('stock_report.view')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $dryRun = $request->boolean('dry_run');
+        $since = max(1, (int) $request->input('since', 7));
+        $businessId = (int) $request->session()->get('user.business_id');
+
+        $args = [
+            '--since' => $since,
+            '--business-id' => $businessId,
+        ];
+        if ($dryRun) {
+            $args['--dry-run'] = true;
+        }
+
+        try {
+            $exit = Artisan::call('charts:import-from-email', $args);
+            $output = Artisan::output();
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+
+        return response()->json([
+            'success' => $exit === 0,
+            'exit_code' => $exit,
+            'dry_run' => $dryRun,
+            'output' => $output,
         ]);
     }
 

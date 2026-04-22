@@ -261,6 +261,50 @@
     if ($spImport) $spImport.addEventListener('click', () => importChart('street_pulse'));
     if ($utImport) $utImport.addEventListener('click', () => importChart('universal_top'));
 
+    // ── Run email import (auto-fetch trigger) ───────────────────────
+    function runEmailImport(btn, dryRun) {
+        const outputEl = document.getElementById('ica_run_import_output');
+        const origHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Running…';
+        if (outputEl) { outputEl.style.display = 'block'; outputEl.textContent = 'Connecting to IMAP, searching recent emails…'; }
+
+        fetch(window.ICA_RUN_EMAIL_IMPORT_URL, {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': window.ICA_CSRF,
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({ dry_run: dryRun ? 1 : 0, since: 7 }),
+        })
+            .then((r) => r.json())
+            .then((resp) => {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+                if (outputEl) {
+                    const header = resp.success
+                        ? `✅ Exit code ${resp.exit_code} (${resp.dry_run ? 'dry run' : 'committed'})`
+                        : `❌ Failed (${resp.error || 'exit ' + resp.exit_code})`;
+                    outputEl.textContent = header + '\n\n' + (resp.output || '(no output)');
+                }
+                if (resp.success && !resp.dry_run && lastResult) buildList();
+            })
+            .catch((err) => {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+                if (outputEl) outputEl.textContent = 'Request failed: ' + (err && err.message ? err.message : 'unknown');
+            });
+    }
+    const $runDry = document.getElementById('ica_run_import');
+    const $runReal = document.getElementById('ica_run_import_real');
+    if ($runDry) $runDry.addEventListener('click', () => runEmailImport($runDry, true));
+    if ($runReal) $runReal.addEventListener('click', () => {
+        if (!confirm('Run the import and write chart_picks to the database?')) return;
+        runEmailImport($runReal, false);
+    });
+
     // ── Export / copy / print ───────────────────────────────────────
     if ($exportCsv) {
         $exportCsv.addEventListener('click', function () {
