@@ -5665,6 +5665,146 @@ class ReportController extends Controller
         return $result;
     }
 
+    /**
+     * Walk-in buy history — drill-down for the "Walk-in buys" chip on the
+     * Purchase Report's per-location cards (Sarah 2026-04-22 "let me click
+     * on walk in buys to see a history of the collections we bought").
+     *
+     * Same filter surface as purchaseReportSummary() so dates / location
+     * chips in the UI seamlessly drive what the modal shows. Qualifies as
+     * a walk-in buy when EITHER:
+     *   (a) additional_notes starts with "Buy from customer" — current
+     *       BuyFromCustomerController stamps this format; OR
+     *   (b) contact name is one of the generic walk-in / customer
+     *       labels the legacy in-store flow used.
+     *
+     * Returns purchase txns + their purchase_lines (product name, artist,
+     * qty, unit cost) so the modal can show what was actually in each
+     * collection, not just a dollar total.
+     */
+    public function purchaseReportWalkinHistory(Request $request)
+    {
+        if ((!auth()->user()->can('purchase.view') && !auth()->user()->can('purchase.create') && !auth()->user()->can('view_own_purchase')) || empty(config('constants.show_report_606'))) {
+            abort(403, 'Unauthorized action.');
+        }
+        $business_id = $request->session()->get('user.business_id');
+
+        $q = \DB::table('transactions as t')
+            ->leftJoin('contacts as c', 't.contact_id', '=', 'c.id')
+            ->leftJoin('business_locations as bl', 't.location_id', '=', 'bl.id')
+            ->leftJoin('users as u', 't.created_by', '=', 'u.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'purchase')
+            ->where(function ($q) {
+                $q->where('t.additional_notes', 'like', 'Buy from customer%')
+                  ->orWhereRaw("LOWER(COALESCE(c.name,'')) IN ('walk-in', 'walkin customer', 'walk in customer', 'customer')")
+                  ->orWhere('c.name', 'like', 'Walk-In%');
+            });
+
+        $permitted = auth()->user()->permitted_locations();
+        if ($permitted !== 'all') {
+            $q->whereIn('t.location_id', $permitted);
+        }
+        if (!empty($request->location_id)) {
+            $q->where('t.location_id', $request->location_id);
+        }
+        if (!empty($request->start_date) && !empty($request->end_date)) {
+            $q->whereDate('t.transaction_date', '>=', $request->start_date)
+              ->whereDate('t.transaction_date', '<=', $request->end_date);
+        }
+
+        $txns = $q->orderByDesc('t.transaction_date')
+            ->limit(200)
+            ->select(
+                't.id',
+                't.transaction_date',
+                't.final_total',
+                't.total_before_tax',
+                't.additional_notes',
+                't.status',
+                't.payment_status',
+                'bl.name as location_name',
+                'c.name as seller_name',
+                'c.mobile as seller_mobile',
+                \DB::raw("TRIM(CONCAT_WS(' ', COALESCE(u.first_name,''), COALESCE(u.last_name,''))) as cashier_name")
+            )
+            ->get();
+
+        // Pull all the purchase_lines for the resulting set in one shot,
+        // then attach to the owning txn — avoids N+1.
+        $ids = $txns->pluck('id')->all();
+        $lines = collect([]);
+        if (!empty($ids)) {
+            $hasLegacyArtist = \Illuminate\Support\Facades\Schema::hasColumn('purchase_lines', 'legacy_artist');
+            $hasLegacyTitle  = \Illuminate\Support\Facades\Schema::hasColumn('purchase_lines', 'legacy_title');
+            $selectCols = [
+                'pl.transaction_id',
+                'pl.quantity',
+                'pl.purchase_price',
+                'p.name as product_name',
+                'p.artist as product_artist',
+                'p.sku as product_sku',
+            ];
+            if ($hasLegacyArtist) $selectCols[] = 'pl.legacy_artist';
+            if ($hasLegacyTitle)  $selectCols[] = 'pl.legacy_title';
+
+            $lines = \DB::table('purchase_lines as pl')
+                ->leftJoin('products as p', 'pl.product_id', '=', 'p.id')
+                ->whereIn('pl.transaction_id', $ids)
+                ->select($selectCols)
+                ->get()
+                ->groupBy('transaction_id');
+        }
+
+        // Parse the "Buy from customer {offer_id} | payout: {X} | payment:
+        // {Y} | record: {Z}" notes format — the numbers / labels in there
+        // are the most reliable way to show payout-type + buy record
+        // number on the modal.
+        $payload = $txns->map(function ($t) use ($lines) {
+            $offer_id = null; $payout = null; $pm = null; $record = null;
+            if ($t->additional_notes && preg_match('/Buy from customer (\d+)/', $t->additional_notes, $m)) $offer_id = $m[1];
+            if ($t->additional_notes && preg_match('/payout: ([^|]+)/', $t->additional_notes, $m)) $payout = trim($m[1]);
+            if ($t->additional_notes && preg_match('/payment: ([^|]+)/', $t->additional_notes, $m)) $pm = trim($m[1]);
+            if ($t->additional_notes && preg_match('/record: (\S+)/', $t->additional_notes, $m)) $record = trim($m[1]);
+
+            return [
+                'id' => $t->id,
+                'date' => $t->transaction_date,
+                'total' => (float) $t->final_total,
+                'location_name' => $t->location_name,
+                'seller_name' => $t->seller_name ?: '(walk-in, no contact)',
+                'seller_mobile' => $t->seller_mobile,
+                'cashier_name' => $t->cashier_name ?: 'unknown',
+                'status' => $t->status,
+                'payment_status' => $t->payment_status,
+                'offer_id' => $offer_id,
+                'payout_type' => $payout,
+                'payment_method' => $pm,
+                'buy_record' => $record,
+                'lines' => ($lines->get($t->id) ?? collect([]))->map(function ($l) {
+                    $name = $l->product_name;
+                    $artist = $l->product_artist;
+                    if (empty($name)  && !empty($l->legacy_title))  $name  = $l->legacy_title;
+                    if (empty($artist) && !empty($l->legacy_artist)) $artist = $l->legacy_artist;
+                    return [
+                        'artist' => $artist,
+                        'name'   => $name,
+                        'sku'    => $l->product_sku,
+                        'qty'    => (float) $l->quantity,
+                        'unit'   => (float) $l->purchase_price,
+                        'subtotal' => (float) $l->quantity * (float) $l->purchase_price,
+                    ];
+                })->values(),
+            ];
+        });
+
+        return response()->json([
+            'count' => $payload->count(),
+            'limit' => 200,
+            'txns' => $payload->values(),
+        ]);
+    }
+
     private function reconciliationStatus($variance)
     {
         $abs = abs($variance);

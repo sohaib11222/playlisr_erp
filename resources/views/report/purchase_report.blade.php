@@ -116,6 +116,60 @@
     body.pr-v2 .pr-channel-chip .pr-chip-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--pr-ink); }
     body.pr-v2 .pr-channel-chip.pr-chip-walkin .pr-chip-dot { background: #2F6B3E; }
     body.pr-v2 .pr-channel-chip.pr-chip-bin .pr-chip-dot { background: #8E8273; }
+    body.pr-v2 button.pr-channel-chip { cursor: default; font-family: inherit; }
+    body.pr-v2 button.pr-channel-chip.pr-chip-link { cursor: pointer; transition: transform .08s, box-shadow .12s; }
+    body.pr-v2 button.pr-channel-chip.pr-chip-link:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(31,27,22,.08); border-color: var(--pr-ink-3); }
+    body.pr-v2 button.pr-channel-chip[disabled] { opacity: .55; cursor: not-allowed; }
+
+    <!-- Walk-in history modal — cream palette, table of txns, collapsible lines -->
+    body.pr-v2 .pr-walkin-modal {
+        display: none; position: fixed; inset: 0;
+        background: rgba(31,27,22,.55); z-index: 1050;
+        align-items: flex-start; justify-content: center;
+        padding: 48px 16px; overflow-y: auto;
+    }
+    body.pr-v2 .pr-walkin-modal.is-open { display: flex; }
+    body.pr-v2 .pr-walkin-dialog {
+        background: var(--pr-surface);
+        border: 1px solid var(--pr-line); border-radius: 14px;
+        width: 100%; max-width: 960px;
+        box-shadow: 0 20px 60px rgba(31,27,22,.35);
+        overflow: hidden;
+    }
+    body.pr-v2 .pr-walkin-head {
+        background: var(--pr-surface-2);
+        padding: 16px 22px; border-bottom: 1px solid var(--pr-line);
+        display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+    }
+    body.pr-v2 .pr-walkin-head h3 { margin: 0; font-size: 17px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--pr-ink); }
+    body.pr-v2 .pr-walkin-head .pr-walkin-sub { font-size: 12px; color: var(--pr-ink-3); }
+    body.pr-v2 .pr-walkin-close {
+        background: transparent; border: none; font-size: 22px; color: var(--pr-ink-2); cursor: pointer; line-height: 1;
+    }
+    body.pr-v2 .pr-walkin-body { padding: 8px 0; max-height: 70vh; overflow-y: auto; }
+    body.pr-v2 .pr-walkin-row {
+        padding: 14px 22px; border-bottom: 1px solid var(--pr-line);
+        display: grid; grid-template-columns: 1fr auto; gap: 6px 14px; cursor: pointer;
+        transition: background .1s;
+    }
+    body.pr-v2 .pr-walkin-row:hover { background: #FDF9EF; }
+    body.pr-v2 .pr-walkin-row:last-child { border-bottom: none; }
+    body.pr-v2 .pr-walkin-row .pr-walkin-seller { font-weight: 700; color: var(--pr-ink); font-size: 14px; }
+    body.pr-v2 .pr-walkin-row .pr-walkin-meta { font-size: 11px; color: var(--pr-ink-3); }
+    body.pr-v2 .pr-walkin-row .pr-walkin-total { font-weight: 800; font-size: 15px; color: var(--pr-ink); font-variant-numeric: tabular-nums; text-align: right; }
+    body.pr-v2 .pr-walkin-row .pr-walkin-payout { font-size: 10px; color: var(--pr-accent-text); background: var(--pr-accent); padding: 2px 8px; border-radius: 999px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+    body.pr-v2 .pr-walkin-lines {
+        grid-column: 1 / -1;
+        margin-top: 8px; padding: 8px 10px;
+        background: var(--pr-surface-2); border-radius: 8px;
+        font-size: 12px; display: none;
+    }
+    body.pr-v2 .pr-walkin-row.is-expanded .pr-walkin-lines { display: block; }
+    body.pr-v2 .pr-walkin-lines table { width: 100%; }
+    body.pr-v2 .pr-walkin-lines th { text-align: left; color: var(--pr-ink-3); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; padding: 4px 6px; border-bottom: 1px solid var(--pr-line); }
+    body.pr-v2 .pr-walkin-lines td { padding: 5px 6px; border-bottom: 1px solid var(--pr-line); color: var(--pr-ink); font-variant-numeric: tabular-nums; }
+    body.pr-v2 .pr-walkin-lines tr:last-child td { border-bottom: none; }
+    body.pr-v2 .pr-walkin-empty { padding: 40px 22px; text-align: center; color: var(--pr-ink-3); font-size: 13px; font-style: italic; }
 </style>
 
 <!-- Content Header (Page header) -->
@@ -159,6 +213,24 @@
             color: var(--pr-accent-text); box-shadow: 0 0 0 3px rgba(232,207,104,.18);
         }
     </style>
+    {{-- Walk-in history modal — populated on demand when a Walk-in chip is
+         clicked. Scoped list of collection-buy transactions for that
+         location, expandable per row to show the collection's line items. --}}
+    <div class="pr-walkin-modal" id="pr-walkin-modal" role="dialog" aria-hidden="true">
+        <div class="pr-walkin-dialog">
+            <div class="pr-walkin-head">
+                <div>
+                    <h3 id="pr-walkin-title">Walk-in buys</h3>
+                    <div class="pr-walkin-sub" id="pr-walkin-subtitle">&nbsp;</div>
+                </div>
+                <button type="button" class="pr-walkin-close" id="pr-walkin-close" aria-label="Close">&times;</button>
+            </div>
+            <div class="pr-walkin-body" id="pr-walkin-body">
+                <div class="pr-walkin-empty">Loading walk-in history…</div>
+            </div>
+        </div>
+    </div>
+
     <div class="pr-summary-wrap" id="pr-summary-wrap">
         <div class="pr-summary-empty" style="width:100%;">Loading side-by-side summary…</div>
     </div>
@@ -220,16 +292,13 @@
         <thead>
             <tr>
                 <th>Store</th>
-                <th>@lang('lang_v1.contact_id')</th>
-                <th>@lang('purchase.supplier')</th>
-                <th>@lang('purchase.ref_no')</th>
-                <th>@lang('purchase.purchase_date') (@lang('lang_v1.year_month'))</th>
-                <th>@lang('purchase.purchase_date') (@lang('lang_v1.day'))</th>
-                <th>@lang('lang_v1.payment_date') (@lang('lang_v1.year_month'))</th>
-                <th>@lang('lang_v1.payment_date') (@lang('lang_v1.day'))</th>
-                <th>@lang('sale.total') (@lang('product.exc_of_tax'))</th>
-                <th>@lang('sale.tax')</th>
-                <th>@lang('sale.total') (@lang('product.inc_of_tax'))</th>
+                <th>Date</th>
+                <th>Ref</th>
+                <th>Supplier</th>
+                <th>Paid</th>
+                <th class="text-right">Subtotal</th>
+                <th class="text-right">Tax</th>
+                <th class="text-right">Total</th>
             </tr>
         </thead>
     </table>
@@ -294,16 +363,33 @@
             },
             columns: [
                 { data: 'location_name', name: 'BS.name' },
-                { data: 'contact_id', name: 'contacts.contact_id' },
-                { data: 'name', name: 'contacts.name' },
+                // Consolidated date — compose Y/M + day into a single column
+                // so the table isn't eaten by 4 redundant date sub-cells.
+                // Sarah 2026-04-22: "rename columns to consolidate, shorter
+                // names".
+                { data: 'purchase_year_month', name: 'transaction_date',
+                  render: function (d, type, row) {
+                    if (!d && !row.purchase_day) return '';
+                    return (d || '') + (row.purchase_day ? '-' + row.purchase_day : '');
+                  } },
                 { data: 'ref_no', name: 'ref_no' },
-                { data: 'purchase_year_month', name: 'transaction_date' },
-                { data: 'purchase_day', name: 'transaction_date' },
-                { data: 'payment_year_month', searching: false },
-                { data: 'payment_day', searching: false },
-                { data: 'total_before_tax', name: 'total_before_tax' },
-                { data: 'tax_amount', name: 'tax_amount' },
-                { data: 'final_total', name: 'final_total' },
+                // Supplier cell shows name with contact_id as subtext so
+                // we can drop the dedicated contact_id column.
+                { data: 'name', name: 'contacts.name',
+                  render: function (d, type, row) {
+                    if (type !== 'display') return d || '';
+                    var nm = $('<div>').text(d || '—').html();
+                    var cid = row.contact_id ? ('<br><small style="color:#8E8273;">' + $('<div>').text(row.contact_id).html() + '</small>') : '';
+                    return nm + cid;
+                  } },
+                { data: 'payment_year_month', searching: false, orderable: false,
+                  render: function (d, type, row) {
+                    if (!d && !row.payment_day) return '<span style="color:#8E8273;">—</span>';
+                    return (d || '') + (row.payment_day ? '-' + row.payment_day : '');
+                  } },
+                { data: 'total_before_tax', name: 'total_before_tax', className: 'text-right' },
+                { data: 'tax_amount', name: 'tax_amount', className: 'text-right' },
+                { data: 'final_total', name: 'final_total', className: 'text-right' },
             ],
             fnDrawCallback: function(oSettings) {
                 __currency_convert_recursively($('#purchase_report_table'));
@@ -423,10 +509,19 @@
                     // come from the server under loc.walkin_summary.
                     var walkin = loc.walkin_summary || {count: 0, spent: 0};
                     var distrib = loc.distributor_summary || {count: 0, spent: 0};
+                    // Walk-in chip is clickable — opens a history modal scoped
+                    // to this location. Sarah 2026-04-22.
+                    var walkinClickable = (walkin.count > 0);
                     var chips = ''
                         + '<div class="pr-channels">'
                         + '  <span class="pr-channel-chip"><span class="pr-chip-dot"></span><span class="pr-chip-label">Distributors</span>' + money(distrib.spent) + ' · ' + intFmt(distrib.count) + ' PO' + (distrib.count === 1 ? '' : 's') + '</span>'
-                        + '  <span class="pr-channel-chip pr-chip-walkin"><span class="pr-chip-dot"></span><span class="pr-chip-label">Walk-in buys</span>' + money(walkin.spent) + ' · ' + intFmt(walkin.count) + ' buy' + (walkin.count === 1 ? '' : 's') + '</span>'
+                        + '  <button type="button" class="pr-channel-chip pr-chip-walkin' + (walkinClickable ? ' pr-chip-link' : '') + '"'
+                        +      ' data-location-id="' + (loc.location_id || '') + '"'
+                        +      ' data-location-name="' + esc(loc.location_name || '') + '"'
+                        +      (walkinClickable ? '' : ' disabled')
+                        + '    ><span class="pr-chip-dot"></span><span class="pr-chip-label">Walk-in buys</span>' + money(walkin.spent) + ' · ' + intFmt(walkin.count) + ' buy' + (walkin.count === 1 ? '' : 's')
+                        +     (walkinClickable ? ' <i class="fa fa-chevron-right" style="margin-left:4px; font-size:9px; opacity:.6;"></i>' : '')
+                        + '  </button>'
                         + '  <span class="pr-channel-chip pr-chip-bin"><span class="pr-chip-dot"></span><span class="pr-chip-label">Bulk bins</span>' + money(bin.spent) + ' · qty ' + intFmt(bin.qty) + '</span>'
                         + '</div>';
 
@@ -505,6 +600,95 @@
             refreshPurchaseSummary();
             $('.pr-date-chip').removeClass('is-active');
             $('.pr-date-chip[data-range="all_time"]').addClass('is-active');
+        });
+
+        // Walk-in buys drill-down — Sarah 2026-04-22 "let me click on walk
+        // in buys to see the collections we bought". Fetches the history
+        // scoped to the clicked location (respecting the active date
+        // range) and renders one row per buy, expandable to line items.
+        $(document).on('click', '.pr-chip-walkin.pr-chip-link', function () {
+            var locId = $(this).data('location-id');
+            var locName = $(this).data('location-name') || '';
+            var params = currentFilterParams();
+            if (locId) params.location_id = locId;
+            var $body = $('#pr-walkin-body');
+            $body.html('<div class="pr-walkin-empty">Loading walk-in history…</div>');
+            $('#pr-walkin-title').text('Walk-in buys — ' + locName);
+            $('#pr-walkin-subtitle').text(
+                (params.start_date && params.end_date)
+                    ? (params.start_date + '  →  ' + params.end_date)
+                    : 'All time'
+            );
+            $('#pr-walkin-modal').addClass('is-open').attr('aria-hidden', 'false');
+
+            $.get('/reports/purchase-report/walkin-history', params).done(function (resp) {
+                var txns = (resp && resp.txns) || [];
+                if (!txns.length) {
+                    $body.html('<div class="pr-walkin-empty">No walk-in buys at this location in the selected range.</div>');
+                    return;
+                }
+                var html = '';
+                txns.forEach(function (t) {
+                    var dateStr = (t.date || '').replace('T', ' ').replace(/:\d\d\..*$/, '');
+                    var payout = t.payout_type ? ('<span class="pr-walkin-payout">' + esc(t.payout_type) + '</span>') : '';
+                    var linesHtml = '';
+                    if ((t.lines || []).length) {
+                        linesHtml = '<table><thead><tr>'
+                            + '<th>Artist</th><th>Title</th><th style="text-align:right;">Qty</th><th style="text-align:right;">Unit</th><th style="text-align:right;">Subtotal</th>'
+                            + '</tr></thead><tbody>';
+                        t.lines.forEach(function (l) {
+                            linesHtml += '<tr>'
+                                + '<td>' + esc(l.artist || '—') + '</td>'
+                                + '<td>' + esc(l.name || '—') + '</td>'
+                                + '<td style="text-align:right;">' + intFmt(l.qty) + '</td>'
+                                + '<td style="text-align:right;">' + money(l.unit) + '</td>'
+                                + '<td style="text-align:right;">' + money(l.subtotal) + '</td>'
+                                + '</tr>';
+                        });
+                        linesHtml += '</tbody></table>';
+                    } else {
+                        linesHtml = '<div style="color:#8E8273; font-style:italic;">No line items recorded for this buy.</div>';
+                    }
+
+                    var metaBits = [];
+                    if (t.cashier_name) metaBits.push('by ' + t.cashier_name);
+                    if (t.buy_record)   metaBits.push('record ' + t.buy_record);
+                    if (t.payment_method) metaBits.push(t.payment_method);
+                    if (t.seller_mobile) metaBits.push(t.seller_mobile);
+
+                    html += '<div class="pr-walkin-row" data-txn-id="' + t.id + '">'
+                        + '  <div>'
+                        + '    <div class="pr-walkin-seller">' + esc(t.seller_name) + ' ' + payout + '</div>'
+                        + '    <div class="pr-walkin-meta">' + esc(dateStr) + (metaBits.length ? ' · ' + esc(metaBits.join(' · ')) : '') + '</div>'
+                        + '  </div>'
+                        + '  <div class="pr-walkin-total">' + money(t.total) + '</div>'
+                        + '  <div class="pr-walkin-lines">' + linesHtml + '</div>'
+                        + '</div>';
+                });
+                if (resp.count >= resp.limit) {
+                    html += '<div class="pr-walkin-empty" style="color:#8E8273;">Showing the most recent ' + resp.limit + ' — narrow the date range to see older buys.</div>';
+                }
+                $body.html(html);
+            }).fail(function (xhr) {
+                $body.html('<div class="pr-walkin-empty" style="color:#8A3A2E;">Failed to load history (HTTP ' + xhr.status + ').</div>');
+            });
+        });
+
+        // Expand / collapse a walk-in row to show its line items.
+        $(document).on('click', '.pr-walkin-row', function (e) {
+            if ($(e.target).closest('.pr-walkin-lines').length) return;
+            $(this).toggleClass('is-expanded');
+        });
+
+        // Close handlers — X button, click backdrop, Esc key.
+        $(document).on('click', '#pr-walkin-close', function () {
+            $('#pr-walkin-modal').removeClass('is-open').attr('aria-hidden', 'true');
+        });
+        $(document).on('click', '.pr-walkin-modal', function (e) {
+            if (e.target === this) $(this).removeClass('is-open').attr('aria-hidden', 'true');
+        });
+        $(document).on('keydown', function (e) {
+            if (e.key === 'Escape') $('#pr-walkin-modal').removeClass('is-open').attr('aria-hidden', 'true');
         });
 
         // Quick-range chip handler. Computes a moment() start/end for the
