@@ -51,6 +51,15 @@
         <button type="button" class="btn btn-default" id="eod_sync_now_btn">
             <i class="fa fa-sync"></i> Sync Clover now
         </button>
+        {{-- Sync Everything — full bidirectional sync (items, orders,
+             customers + push dirty products/contacts). Lives next to the
+             payments-only button because that's the first place Sarah
+             looks when numbers feel off, and "resync all" is usually the
+             shotgun answer. Reuses /business/clover/sync-now wired in
+             CloverController. --}}
+        <button type="button" class="btn btn-info" id="eod_sync_all_btn" style="margin-left:6px;">
+            <i class="fa fa-exchange"></i> Sync everything
+        </button>
         <span id="eod_sync_status" style="margin-left:8px; font-size:12px; color:#6b7280;"></span>
     </div>
     <div id="eod_sync_output" style="display:none; margin-bottom:14px;">
@@ -87,18 +96,22 @@
         <style>
             .eod-day-block { margin-bottom: 22px; }
             .eod-day-head { margin: 4px 0 10px; font-size: 13px; color: #6b7280; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
-            .eod-loc-wrap { display: flex; flex-wrap: wrap; gap: 16px; }
-            .eod-loc-card { flex: 1 1 420px; min-width: 420px; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; }
+            .eod-loc-wrap { display: flex; flex-direction: column; gap: 16px; }
+            .eod-loc-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; overflow-x: auto; }
             .eod-loc-card h3 { margin: 0 0 8px; font-size: 15px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #111827; }
-            .eod-loc-card table { width: 100%; font-size: 13px; border-collapse: collapse; }
-            .eod-loc-card th { text-align: left; color: #6b7280; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; border-bottom: 1px solid #e5e7eb; padding: 5px 6px; }
-            .eod-loc-card td { padding: 6px; border-bottom: 1px solid #f3f4f6; font-variant-numeric: tabular-nums; }
+            .eod-loc-card table { width: 100%; font-size: 12px; border-collapse: collapse; min-width: 1080px; }
+            .eod-loc-card th { text-align: left; color: #6b7280; font-weight: 600; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid #e5e7eb; padding: 5px 6px; white-space: nowrap; }
+            .eod-loc-card td { padding: 6px; border-bottom: 1px solid #f3f4f6; font-variant-numeric: tabular-nums; white-space: nowrap; }
             .eod-loc-card td.num { text-align: right; }
+            .eod-loc-card td.muted { color: #9ca3af; }
             .eod-loc-card tr.totals td { border-top: 2px solid #d1d5db; border-bottom: none; font-weight: 700; background: #f9fafb; }
+            .eod-loc-card th.group { background: #f9fafb; color: #111827; font-size: 10px; }
+            .eod-loc-card th.sep, .eod-loc-card td.sep { border-left: 1px solid #e5e7eb; }
             .eod-diff-ok { color: #166534; }
             .eod-diff-warn { color: #b45309; }
             .eod-diff-bad { color: #b91c1c; }
             .eod-loc-empty { color: #9ca3af; font-size: 12px; padding: 8px 0; text-align: center; }
+            .eod-shift-open-pill { display: inline-block; padding: 1px 6px; background: #fef3c7; color: #92400e; border-radius: 10px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
         </style>
         <h4 style="margin: 10px 0 6px; font-size: 14px; color: #111827; font-weight: 700;">Per-cashier breakdown</h4>
         @foreach($employee_breakdown_by_day as $dayBlock)
@@ -116,9 +129,16 @@
                                 <thead>
                                     <tr>
                                         <th>Employee</th>
-                                        <th class="num">Clover</th>
+                                        <th>Shift</th>
+                                        <th class="num sep">Open $</th>
+                                        <th class="num">Cash sales</th>
+                                        <th class="num">Collection buys</th>
+                                        <th class="num sep">Clover</th>
                                         <th class="num">ERP</th>
-                                        <th class="num">Difference</th>
+                                        <th class="num">Card diff</th>
+                                        <th class="num sep">End $ (reported)</th>
+                                        <th class="num">Expected</th>
+                                        <th class="num">Cash variance</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -126,21 +146,46 @@
                                         @php
                                             $d = $e['difference'];
                                             $cls = abs($d) < 1 ? 'eod-diff-ok' : (abs($d) < 10 ? 'eod-diff-warn' : 'eod-diff-bad');
+                                            $cv = $e['cash_variance'] ?? null;
+                                            $cvCls = $cv === null ? '' : (abs($cv) < 1 ? 'eod-diff-ok' : (abs($cv) < 10 ? 'eod-diff-warn' : 'eod-diff-bad'));
+                                            $fmt = function($t) {
+                                                if (!$t) return '—';
+                                                try { return \Carbon\Carbon::parse($t)->format('g:i a'); } catch (\Exception $ex) { return '—'; }
+                                            };
+                                            $shiftDisplay = !empty($e['shift_start'])
+                                                ? $fmt($e['shift_start']) . ' → ' . ($e['shift_status'] === 'open'
+                                                    ? '<span class="eod-shift-open-pill">open</span>'
+                                                    : $fmt($e['shift_end']))
+                                                : '—';
                                         @endphp
                                         <tr>
                                             <td>{{ $e['display_name'] }}</td>
-                                            <td class="num">${{ number_format($e['clover_total'], 2) }}</td>
+                                            <td class="{{ empty($e['shift_start']) ? 'muted' : '' }}">{!! $shiftDisplay !!}</td>
+                                            <td class="num sep {{ is_null($e['opening_cash']) ? 'muted' : '' }}">{{ is_null($e['opening_cash']) ? '—' : '$' . number_format($e['opening_cash'], 2) }}</td>
+                                            <td class="num {{ !$e['has_shift'] ? 'muted' : '' }}">{{ !$e['has_shift'] ? '—' : '$' . number_format($e['cash_sales'], 2) }}</td>
+                                            <td class="num {{ !$e['has_shift'] ? 'muted' : '' }}">{{ !$e['has_shift'] ? '—' : '$' . number_format($e['collection_buys_all'], 2) }}</td>
+                                            <td class="num sep">${{ number_format($e['clover_total'], 2) }}</td>
                                             <td class="num">${{ number_format($e['erp_total'], 2) }}</td>
                                             <td class="num {{ $cls }}">{{ $d >= 0 ? '+' : '' }}${{ number_format($d, 2) }}</td>
+                                            <td class="num sep {{ is_null($e['reported_ending_cash']) ? 'muted' : '' }}">{{ is_null($e['reported_ending_cash']) ? '—' : '$' . number_format($e['reported_ending_cash'], 2) }}</td>
+                                            <td class="num {{ is_null($e['expected_ending_cash']) ? 'muted' : '' }}">{{ is_null($e['expected_ending_cash']) ? '—' : '$' . number_format($e['expected_ending_cash'], 2) }}</td>
+                                            <td class="num {{ $cvCls }}">{{ is_null($cv) ? '—' : (($cv >= 0 ? '+' : '') . '$' . number_format($cv, 2)) }}</td>
                                         </tr>
                                     @empty
-                                        <tr><td colspan="4" class="eod-loc-empty">No cashier activity.</td></tr>
+                                        <tr><td colspan="11" class="eod-loc-empty">No cashier activity.</td></tr>
                                     @endforelse
                                     <tr class="totals">
                                         <td>Total</td>
-                                        <td class="num">${{ number_format($loc['totals']['clover_total'], 2) }}</td>
+                                        <td></td>
+                                        <td class="num sep"></td>
+                                        <td class="num"></td>
+                                        <td class="num"></td>
+                                        <td class="num sep">${{ number_format($loc['totals']['clover_total'], 2) }}</td>
                                         <td class="num">${{ number_format($loc['totals']['erp_total'], 2) }}</td>
                                         <td class="num {{ $lcls }}">{{ $ldiff >= 0 ? '+' : '' }}${{ number_format($ldiff, 2) }}</td>
+                                        <td class="num sep"></td>
+                                        <td class="num"></td>
+                                        <td class="num"></td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -150,13 +195,16 @@
             </div>
         @endforeach
         <p class="help-block" style="margin-top:-6px; margin-bottom: 18px;">
-            <strong>Difference = Clover − ERP.</strong>
-            A positive value means Clover settled more than the ERP recorded
-            (usually a transaction was run on Clover but never reached the
-            POS), negative means the ERP recorded more than Clover settled
-            (often a tender booked as card in POS that didn't actually swipe
-            through Clover). Cashier names are matched on first name so
-            "luis casanova" on Clover and "Luis" in ERP line up on the same row.
+            <strong>Card diff = Clover − ERP.</strong> Positive means Clover
+            settled more than the POS recorded; negative means the POS booked
+            a card tender that didn't swipe through Clover. <strong>Cash
+            variance = reported ending cash − expected.</strong> Expected
+            opens the register at the opening count, adds cash sales, subtracts
+            cash-paid collection buys and cash refunds — anything left is the
+            cashier's short/over. A shift showing "—" in the cash columns
+            means the employee rang sales on someone else's open register,
+            so there's no drawer to audit for them individually. Open shifts
+            hide variance until they're closed. Names match on first name.
         </p>
     @endif
 
@@ -265,6 +313,42 @@ $(function () {
             $pre.text(out || ('HTTP ' + xhr.status + ' — ' + xhr.statusText));
             $out.show();
             $status.text('Sync failed — see output below.').css('color', '#b91c1c');
+        }).always(function () {
+            $btn.prop('disabled', false).html(original);
+        });
+    });
+
+    // Sync-everything handler — fires the umbrella clover:sync command
+    // (items + orders + customers pull + ERP→Clover push). Reuses the
+    // same output block as the payments sync above. Does not auto-reload
+    // since this report is scoped to payments; user reloads if they want.
+    $('#eod_sync_all_btn').on('click', function () {
+        var $btn = $(this);
+        var $status = $('#eod_sync_status');
+        var $out = $('#eod_sync_output');
+        var $pre = $('#eod_sync_output_pre');
+        var original = $btn.html();
+        $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Syncing everything…');
+        $status.text('Pulling items/orders/customers + pushing dirty rows — 1–3 minutes…').css('color', '#6b7280');
+        $out.hide();
+
+        $.ajax({
+            url: '/business/clover/sync-now',
+            method: 'POST',
+            dataType: 'json',
+            timeout: 600000,
+            data: { _token: $('meta[name="csrf-token"]').attr('content') }
+        }).done(function (r) {
+            $pre.text(r.output || '(no output)');
+            $out.show();
+            $status.text(r.success ? 'Full sync complete.' : 'Full sync exited with errors — see output.')
+                   .css('color', r.success ? '#166534' : '#b91c1c');
+        }).fail(function (xhr) {
+            var out = '';
+            try { out = (xhr.responseJSON && xhr.responseJSON.output) || xhr.responseText; } catch (e) {}
+            $pre.text(out || ('HTTP ' + xhr.status + ' — ' + xhr.statusText));
+            $out.show();
+            $status.text('Full sync failed — see output below.').css('color', '#b91c1c');
         }).always(function () {
             $btn.prop('disabled', false).html(original);
         });
