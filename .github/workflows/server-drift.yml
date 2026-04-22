@@ -1,16 +1,14 @@
 # Server vs GitHub — difference report only. Never deploys or changes the server.
 #
 # When it runs:
-#   • Push to branch `main` — after each push (see `on.push` below; narrow with `paths` if too noisy).
-#   • Schedule — weekly (UTC); edit or remove the `cron` line if you do not want scheduled runs.
+#   • Schedule — weekly (UTC); edit or remove the `cron` line if unwanted.
 #   • Manual — Actions → Server drift report → Run workflow.
+# (Push to main triggers Deploy production only, not this workflow, to avoid double SSH.)
 
 name: Server drift report
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
   schedule:
     # Mondays 09:00 UTC — drift snapshot without a deploy
     - cron: '0 9 * * 1'

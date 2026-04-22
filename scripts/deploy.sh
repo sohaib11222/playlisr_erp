@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Server-side Laravel deploy. Intended path on production: /www/playlist.nivessa.com/app/scripts/deploy.sh
+# Does not run Composer — vendor stays as on the server unless you update it separately.
 #
 # Env (optional):
 #   DEPLOY_DIR          — app root (default /www/playlist.nivessa.com/app)
