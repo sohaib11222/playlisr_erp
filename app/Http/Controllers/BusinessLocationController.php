@@ -223,6 +223,9 @@ class BusinessLocationController extends Controller
         $business_id = request()->session()->get('user.business_id');
         $location = BusinessLocation::where('business_id', $business_id)
                                     ->find($id);
+        if (empty($location)) {
+            abort(404, 'Business location not found or not accessible.');
+        }
         $invoice_layouts = InvoiceLayout::where('business_id', $business_id)
                             ->get()
                             ->pluck('name', 'id');
