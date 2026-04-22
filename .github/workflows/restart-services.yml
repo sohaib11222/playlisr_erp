@@ -23,8 +23,11 @@ on:
           - restart_fpm_nginx
           - restart_fpm_nginx_mysql
 
+# Use a restart-only concurrency group so this workflow does NOT queue behind
+# a stuck Deploy production run. Emergency tool — waiting 10 minutes for a
+# deploy that is hung on a dead server defeats the purpose.
 concurrency:
-  group: production-deploy
+  group: production-restart
   cancel-in-progress: false
 
 jobs:
