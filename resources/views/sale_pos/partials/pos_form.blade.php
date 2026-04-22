@@ -344,23 +344,23 @@
 					}
 					$(document).on('change', '.pos-channel-picker input[name="channel"]', syncChannelChips);
 
-					// Sarah 2026-04-22: "whatnot button isnt working". The radio
-					// input is position:absolute + pointer-events:none so some
-					// browsers were not firing `change` reliably when the label
-					// was clicked. Explicit click handler on the chip itself
-					// forces the radio state + triggers change so the yellow
-					// is-active class always lights up on click.
+					// Sarah 2026-04-22 (take 2): "whatnot button isnt working" —
+					// still not turning yellow. Previous fix relied on the
+					// radio's `change` event firing via label→radio default
+					// activation, but with pointer-events:none on the radio
+					// some browsers (+ some Chrome extension combos) never
+					// dispatched change, so syncChannelChips() was not being
+					// called. Take the default behavior out of the loop:
+					// preventDefault on the click, explicitly set the radio
+					// states ourselves, then call syncChannelChips directly.
+					// No reliance on the DOM event dance.
 					$(document).on('click', '.pos-channel-chip', function (e) {
+						e.preventDefault();
 						var channel = $(this).data('channel');
 						if (!channel) return;
-						var $radio = $(this).find('input[type="radio"][name="channel"]');
-						if (!$radio.prop('checked')) {
-							$radio.prop('checked', true).trigger('change');
-						} else {
-							// Already checked — still resync chrome in case the
-							// initial page-load state drifted.
-							syncChannelChips();
-						}
+						$('.pos-channel-picker input[type="radio"][name="channel"]').prop('checked', false);
+						$(this).find('input[type="radio"][name="channel"]').prop('checked', true);
+						syncChannelChips();
 					});
 
 					$(function () { syncChannelChips(); });

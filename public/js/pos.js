@@ -99,7 +99,14 @@ $(document).ready(function() {
     // stops lying about "no results" at the start of every search.
     $('select#customer_id').select2({
         width: '100%',
-        allowClear: true,
+        // Sarah 2026-04-22 (take 2): the ✗ "clear" chrome made the closed
+        // state still read as a select widget (a value is selected, you can
+        // clear it) rather than a plain text input with a placeholder.
+        // Walk-in is the default — there's nothing meaningful to clear to —
+        // so dropping the ✗ entirely. Sarah can still swap customers by
+        // typing; to re-set walk-in there's the "Clear Account" button on
+        // the customer snapshot panel.
+        allowClear: false,
         // Sarah 2026-04-22 (v3): telling select2 it has a placeholder is
         // what finally fixes the "clicking shows a useless ✓ Phone #…
         // row" bug. Without this, the Laravel Form::select placeholder
