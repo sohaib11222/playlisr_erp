@@ -5577,6 +5577,85 @@ class ReportController extends Controller
     }
 
     /**
+     * Per-cashier cash-register shift data for a date range, keyed by
+     * (day, location, employee first-name) so it can be joined with the
+     * Clover/ERP breakdown below. One shift = one cash_registers row; a
+     * cashier opening & closing twice in a day is aggregated (earliest
+     * open, latest close, summed cash flows).
+     *
+     * Returns [ day => [ locKey => [ empKey => [shift_start, shift_end,
+     * opening_cash, cash_sales, cash_buys, cash_refunds,
+     * expected_ending_cash, reported_ending_cash] ] ] ].
+     */
+    private function cloverEodShiftData($business_id, $start, $end, $location_id)
+    {
+        $q = \DB::table('cash_registers as cr')
+            ->leftJoin('users as u', 'cr.user_id', '=', 'u.id')
+            ->leftJoin('cash_register_transactions as crt', 'cr.id', '=', 'crt.cash_register_id')
+            ->where('cr.business_id', $business_id)
+            ->whereDate('cr.created_at', '>=', $start)
+            ->whereDate('cr.created_at', '<=', $end);
+        if (!empty($location_id)) {
+            $q->where('cr.location_id', $location_id);
+        }
+        $rows = $q->selectRaw("
+                DATE(cr.created_at) as day,
+                cr.location_id,
+                cr.id as register_id,
+                COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, 'Unknown') as employee_name,
+                cr.created_at as opened_at,
+                cr.closed_at as closed_at,
+                cr.closing_amount as reported_ending_cash,
+                SUM(CASE WHEN crt.pay_method='cash' AND crt.transaction_type='initial' THEN crt.amount ELSE 0 END) as opening_cash,
+                SUM(CASE WHEN crt.pay_method='cash' AND crt.transaction_type='sell' AND crt.type='credit' THEN crt.amount ELSE 0 END) as cash_sales,
+                SUM(CASE WHEN crt.transaction_type='purchase' AND crt.type='debit' THEN crt.amount ELSE 0 END) as collection_buys_all,
+                SUM(CASE WHEN crt.pay_method='cash' AND crt.transaction_type='purchase' AND crt.type='debit' THEN crt.amount ELSE 0 END) as cash_buys,
+                SUM(CASE WHEN crt.pay_method='cash' AND crt.transaction_type='refund' AND crt.type='debit' THEN crt.amount ELSE 0 END) as cash_refunds,
+                SUM(CASE WHEN crt.pay_method='cash' THEN CASE WHEN crt.type='credit' THEN crt.amount ELSE -crt.amount END ELSE 0 END) as cash_net
+            ")
+            ->groupBy('cr.id', DB::raw('DATE(cr.created_at)'), 'cr.location_id',
+                'employee_name', 'cr.created_at', 'cr.closed_at', 'cr.closing_amount')
+            ->get();
+
+        $firstName = function ($full) {
+            $full = trim((string) $full);
+            if ($full === '') return 'unknown';
+            $parts = preg_split('/\s+/', $full);
+            return strtolower($parts[0] ?? 'unknown');
+        };
+
+        $out = [];
+        foreach ($rows as $s) {
+            $day = $s->day;
+            $locKey = $s->location_id ?: 0;
+            $empKey = $firstName($s->employee_name);
+            if (!isset($out[$day][$locKey][$empKey])) {
+                $out[$day][$locKey][$empKey] = [
+                    'shift_start' => null, 'shift_end' => null,
+                    'shift_status' => 'closed',
+                    'opening_cash' => 0.0, 'cash_sales' => 0.0,
+                    'cash_buys' => 0.0, 'cash_refunds' => 0.0,
+                    'collection_buys_all' => 0.0,
+                    'expected_ending_cash' => 0.0, 'reported_ending_cash' => 0.0,
+                ];
+            }
+            $row = &$out[$day][$locKey][$empKey];
+            if (!$row['shift_start'] || $s->opened_at < $row['shift_start']) $row['shift_start'] = $s->opened_at;
+            if ($s->closed_at && (!$row['shift_end'] || $s->closed_at > $row['shift_end'])) $row['shift_end'] = $s->closed_at;
+            if (empty($s->closed_at)) $row['shift_status'] = 'open';
+            $row['opening_cash'] += (float) $s->opening_cash;
+            $row['cash_sales'] += (float) $s->cash_sales;
+            $row['cash_buys'] += (float) $s->cash_buys;
+            $row['cash_refunds'] += (float) $s->cash_refunds;
+            $row['collection_buys_all'] += (float) $s->collection_buys_all;
+            $row['expected_ending_cash'] += (float) $s->cash_net;
+            $row['reported_ending_cash'] += (float) $s->reported_ending_cash;
+            unset($row);
+        }
+        return $out;
+    }
+
+    /**
      * Per-cashier Clover vs ERP totals for a date range, grouped by day and
      * then by location. Returns an ordered array (most recent day first) of
      * [ 'day' => 'YYYY-MM-DD', 'locations' => [...] ] entries, where each
@@ -5650,6 +5729,11 @@ class ReportController extends Controller
                     'display_name' => ucfirst($empKey),
                     'erp_total' => 0.0, 'erp_count' => 0,
                     'clover_total' => 0.0, 'clover_count' => 0,
+                    'shift_start' => null, 'shift_end' => null, 'shift_status' => null,
+                    'opening_cash' => null, 'cash_sales' => 0.0,
+                    'cash_buys' => 0.0, 'collection_buys_all' => 0.0,
+                    'expected_ending_cash' => null, 'reported_ending_cash' => null,
+                    'cash_variance' => null, 'has_shift' => false,
                 ];
             }
             $buckets[$day][$locKey]['employees'][$empKey]['erp_total'] += (float) $r->erp_total;
@@ -5666,10 +5750,63 @@ class ReportController extends Controller
                     'display_name' => ucfirst($empKey),
                     'erp_total' => 0.0, 'erp_count' => 0,
                     'clover_total' => 0.0, 'clover_count' => 0,
+                    'shift_start' => null, 'shift_end' => null, 'shift_status' => null,
+                    'opening_cash' => null, 'cash_sales' => 0.0,
+                    'cash_buys' => 0.0, 'collection_buys_all' => 0.0,
+                    'expected_ending_cash' => null, 'reported_ending_cash' => null,
+                    'cash_variance' => null, 'has_shift' => false,
                 ];
             }
             $buckets[$day][$locKey]['employees'][$empKey]['clover_total'] += (float) $r->clover_total;
             $buckets[$day][$locKey]['employees'][$empKey]['clover_count'] += (int) $r->clover_count;
+        }
+
+        // Overlay cash-register shift data so each employee row gets
+        // shift_start/end, opening + expected + reported cash, and
+        // collection-buy totals alongside the Clover/ERP numbers. Missing
+        // shifts stay null (shown as "—" in the UI) so a cashier who
+        // rang sales on someone else's open register is still visible,
+        // just without their own drawer audit.
+        $shiftData = $this->cloverEodShiftData($business_id, $start, $end, $location_id);
+        foreach ($shiftData as $day => $locs) {
+            foreach ($locs as $locKey => $emps) {
+                foreach ($emps as $empKey => $shift) {
+                    if (!isset($buckets[$day][$locKey]['employees'][$empKey])) {
+                        $buckets[$day][$locKey]['employees'][$empKey] = [
+                            'display_name' => ucfirst($empKey),
+                            'erp_total' => 0.0, 'erp_count' => 0,
+                            'clover_total' => 0.0, 'clover_count' => 0,
+                            'shift_start' => null, 'shift_end' => null, 'shift_status' => null,
+                            'opening_cash' => null, 'cash_sales' => 0.0,
+                            'cash_buys' => 0.0, 'collection_buys_all' => 0.0,
+                            'expected_ending_cash' => null, 'reported_ending_cash' => null,
+                            'cash_variance' => null, 'has_shift' => false,
+                        ];
+                        $buckets[$day][$locKey]['location_name'] = $buckets[$day][$locKey]['location_name']
+                            ?? '(no location)';
+                    }
+                    $e = &$buckets[$day][$locKey]['employees'][$empKey];
+                    $e['has_shift'] = true;
+                    $e['shift_start'] = $shift['shift_start'];
+                    $e['shift_end'] = $shift['shift_end'];
+                    $e['shift_status'] = $shift['shift_status'];
+                    $e['opening_cash'] = (float) $shift['opening_cash'];
+                    $e['cash_sales'] = (float) $shift['cash_sales'];
+                    $e['cash_buys'] = (float) $shift['cash_buys'];
+                    $e['collection_buys_all'] = (float) $shift['collection_buys_all'];
+                    $e['expected_ending_cash'] = (float) $shift['expected_ending_cash'];
+                    $e['reported_ending_cash'] = (float) $shift['reported_ending_cash'];
+                    // Variance only meaningful for CLOSED shifts — open shifts
+                    // haven't had a reported count yet so the diff is noise.
+                    if ($shift['shift_status'] === 'closed') {
+                        $e['cash_variance'] = round(
+                            (float) $shift['reported_ending_cash'] - (float) $shift['expected_ending_cash'],
+                            2
+                        );
+                    }
+                    unset($e);
+                }
+            }
         }
 
         // Finalize: compute differences, sort employees by abs-diff desc,
@@ -5758,17 +5895,32 @@ class ReportController extends Controller
             return strtolower($parts[0] ?? 'unknown');
         };
 
+        // Default employee-row skeleton — must match the shape the view
+        // reads ($e['opening_cash'], $e['cash_sales'], etc.). Keeping every
+        // key initialized to null/0 here means the single-day code path
+        // renders even when there's no matching cash-register shift to
+        // overlay. (Previously those keys were missing and the blade blew
+        // up with "Undefined index: opening_cash".)
+        $blankEmp = function (string $empKey) {
+            return [
+                'display_name' => ucfirst($empKey),
+                'erp_total' => 0.0, 'erp_count' => 0,
+                'clover_total' => 0.0, 'clover_count' => 0,
+                'shift_start' => null, 'shift_end' => null, 'shift_status' => null,
+                'opening_cash' => null, 'cash_sales' => 0.0,
+                'cash_buys' => 0.0, 'collection_buys_all' => 0.0,
+                'expected_ending_cash' => null, 'reported_ending_cash' => null,
+                'cash_variance' => null, 'has_shift' => false,
+            ];
+        };
+
         $byLoc = [];
         foreach ($erpRows as $r) {
             $locKey = $r->location_id ?: 0;
             $empKey = $firstName($r->employee_name);
             $byLoc[$locKey]['location_name'] = $r->location_name ?: '(no location)';
             if (!isset($byLoc[$locKey]['employees'][$empKey])) {
-                $byLoc[$locKey]['employees'][$empKey] = [
-                    'display_name' => ucfirst($empKey),
-                    'erp_total' => 0.0, 'erp_count' => 0,
-                    'clover_total' => 0.0, 'clover_count' => 0,
-                ];
+                $byLoc[$locKey]['employees'][$empKey] = $blankEmp($empKey);
             }
             $byLoc[$locKey]['employees'][$empKey]['erp_total']  += (float) $r->erp_total;
             $byLoc[$locKey]['employees'][$empKey]['erp_count']  += (int) $r->erp_count;
@@ -5778,14 +5930,43 @@ class ReportController extends Controller
             $empKey = $firstName($r->employee_name);
             $byLoc[$locKey]['location_name'] = $byLoc[$locKey]['location_name'] ?? ($r->location_name ?: '(unlinked Clover MID)');
             if (!isset($byLoc[$locKey]['employees'][$empKey])) {
-                $byLoc[$locKey]['employees'][$empKey] = [
-                    'display_name' => ucfirst($empKey),
-                    'erp_total' => 0.0, 'erp_count' => 0,
-                    'clover_total' => 0.0, 'clover_count' => 0,
-                ];
+                $byLoc[$locKey]['employees'][$empKey] = $blankEmp($empKey);
             }
             $byLoc[$locKey]['employees'][$empKey]['clover_total'] += (float) $r->clover_total;
             $byLoc[$locKey]['employees'][$empKey]['clover_count'] += (int) $r->clover_count;
+        }
+
+        // Overlay shift data for the single day so the new cash columns
+        // (opening / expected / reported / variance) light up for cashiers
+        // who had an actual register open. Same helper the range variant
+        // uses — called with start=end=$day so it returns a single-day map.
+        $shiftData = $this->cloverEodShiftData($business_id, $day, $day, $location_id);
+        $dayShifts = $shiftData[$day] ?? [];
+        foreach ($dayShifts as $locKey => $emps) {
+            foreach ($emps as $empKey => $shift) {
+                if (!isset($byLoc[$locKey]['employees'][$empKey])) {
+                    $byLoc[$locKey]['employees'][$empKey] = $blankEmp($empKey);
+                    $byLoc[$locKey]['location_name'] = $byLoc[$locKey]['location_name'] ?? '(no location)';
+                }
+                $e = &$byLoc[$locKey]['employees'][$empKey];
+                $e['has_shift'] = true;
+                $e['shift_start'] = $shift['shift_start'];
+                $e['shift_end'] = $shift['shift_end'];
+                $e['shift_status'] = $shift['shift_status'];
+                $e['opening_cash'] = (float) $shift['opening_cash'];
+                $e['cash_sales'] = (float) $shift['cash_sales'];
+                $e['cash_buys'] = (float) $shift['cash_buys'];
+                $e['collection_buys_all'] = (float) $shift['collection_buys_all'];
+                $e['expected_ending_cash'] = (float) $shift['expected_ending_cash'];
+                $e['reported_ending_cash'] = (float) $shift['reported_ending_cash'];
+                if ($shift['shift_status'] === 'closed') {
+                    $e['cash_variance'] = round(
+                        (float) $shift['reported_ending_cash'] - (float) $shift['expected_ending_cash'],
+                        2
+                    );
+                }
+                unset($e);
+            }
         }
 
         // Finalize: sort employees by abs-difference desc so biggest mismatches
