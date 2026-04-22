@@ -3481,6 +3481,7 @@ class ReportController extends Controller
                         'transactions.ref_no',
                         'contacts.name',
                         'contacts.contact_id',
+                        'BS.name as location_name',
                         'final_total',
                         'total_before_tax',
                         'discount_amount',

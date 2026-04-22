@@ -1,11 +1,12 @@
 @extends('layouts.app')
-@section('title', 'Report 606 (' . __('lang_v1.purchase') . ')')
+@section('title', 'Purchases by Store')
 
 @section('content')
 
 <!-- Content Header (Page header) -->
 <section class="content-header no-print">
-    <h1>Report 606 (@lang('lang_v1.purchase'))
+    <h1>Purchases by Store
+        <small style="font-size:13px; color:#6b7280;">— how much each location spent on inventory, and what they bought</small>
     </h1>
 </section>
 
@@ -107,6 +108,7 @@
     <table class="table table-bordered table-striped ajax_view" id="purchase_report_table">
         <thead>
             <tr>
+                <th>Store</th>
                 <th>@lang('lang_v1.contact_id')</th>
                 <th>@lang('purchase.supplier')</th>
                 <th>@lang('purchase.ref_no')</th>
@@ -115,10 +117,8 @@
                 <th>@lang('lang_v1.payment_date') (@lang('lang_v1.year_month'))</th>
                 <th>@lang('lang_v1.payment_date') (@lang('lang_v1.day'))</th>
                 <th>@lang('sale.total') (@lang('product.exc_of_tax'))</th>
-                <th>@lang('sale.discount')</th>
                 <th>@lang('sale.tax')</th>
                 <th>@lang('sale.total') (@lang('product.inc_of_tax'))</th>
-                <th>@lang('lang_v1.payment_method')</th>
             </tr>
         </thead>
     </table>
@@ -172,6 +172,7 @@
                 },
             },
             columns: [
+                { data: 'location_name', name: 'BS.name' },
                 { data: 'contact_id', name: 'contacts.contact_id' },
                 { data: 'name', name: 'contacts.name' },
                 { data: 'ref_no', name: 'ref_no' },
@@ -180,10 +181,8 @@
                 { data: 'payment_year_month', searching: false },
                 { data: 'payment_day', searching: false },
                 { data: 'total_before_tax', name: 'total_before_tax' },
-                { data: 'discount_amount', name: 'discount_amount' },
                 { data: 'tax_amount', name: 'tax_amount' },
                 { data: 'final_total', name: 'final_total' },
-                { data: 'payment_method', name: 'payment_method' },
             ],
             fnDrawCallback: function(oSettings) {
                 __currency_convert_recursively($('#purchase_report_table'));
