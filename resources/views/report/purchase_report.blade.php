@@ -131,6 +131,34 @@
          a card per business location showing $ spent + purchase count +
          top products in the selected date range. Respects every filter
          above — whenever the DataTable reloads, so does this summary. --}}
+    {{-- Quick date toggles — Sarah 2026-04-22 "date toggles above each store".
+         Sits just above the per-store cards so you can flip between common
+         ranges without opening the daterangepicker. Clicking a chip updates
+         the range, reloads both the DataTable and the summary, and keeps the
+         chip state in sync. "All time" clears the range. --}}
+    <div class="pr-date-toggles" id="pr-date-toggles" style="margin-bottom:12px; display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+        <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#8E8273; margin-right:4px;">Quick range:</span>
+        <button type="button" class="pr-date-chip" data-range="today">Today</button>
+        <button type="button" class="pr-date-chip" data-range="this_week">This week</button>
+        <button type="button" class="pr-date-chip is-active" data-range="this_month">This month</button>
+        <button type="button" class="pr-date-chip" data-range="last_month">Last month</button>
+        <button type="button" class="pr-date-chip" data-range="last_30">Last 30 days</button>
+        <button type="button" class="pr-date-chip" data-range="ytd">Year to date</button>
+        <button type="button" class="pr-date-chip" data-range="all_time">All time</button>
+    </div>
+    <style>
+        body.pr-v2 .pr-date-chip {
+            background: #fff; border: 1px solid var(--pr-line-2); color: var(--pr-ink-2);
+            padding: 6px 14px; border-radius: 999px; font-size: 12px; font-weight: 600;
+            cursor: pointer; transition: background .1s, border-color .1s, color .1s;
+            font-family: inherit;
+        }
+        body.pr-v2 .pr-date-chip:hover { background: var(--pr-surface-2); border-color: var(--pr-ink-3); color: var(--pr-ink); }
+        body.pr-v2 .pr-date-chip.is-active {
+            background: var(--pr-accent); border-color: var(--pr-accent-deep);
+            color: var(--pr-accent-text); box-shadow: 0 0 0 3px rgba(232,207,104,.18);
+        }
+    </style>
     <div class="pr-summary-wrap" id="pr-summary-wrap">
         <div class="pr-summary-empty" style="width:100%;">Loading side-by-side summary…</div>
     </div>
@@ -473,6 +501,44 @@
         })();
         $('#purchase_list_filter_date_range').on('cancel.daterangepicker', function(ev, picker) {
             $('#purchase_list_filter_date_range').val('');
+            purchase_report_table.ajax.reload();
+            refreshPurchaseSummary();
+            $('.pr-date-chip').removeClass('is-active');
+            $('.pr-date-chip[data-range="all_time"]').addClass('is-active');
+        });
+
+        // Quick-range chip handler. Computes a moment() start/end for the
+        // requested preset, pushes it into the daterangepicker + input text,
+        // then triggers the same reload path the manual picker uses so the
+        // DataTable + summary cards stay in lock-step.
+        $(document).on('click', '.pr-date-chip', function () {
+            var range = $(this).data('range');
+            var start = null, end = null;
+            switch (range) {
+                case 'today':      start = moment().startOf('day');                     end = moment().endOf('day');                     break;
+                case 'this_week':  start = moment().startOf('isoWeek');                 end = moment().endOf('day');                     break;
+                case 'this_month': start = moment().startOf('month');                   end = moment().endOf('day');                     break;
+                case 'last_month': start = moment().subtract(1, 'month').startOf('month'); end = moment().subtract(1, 'month').endOf('month'); break;
+                case 'last_30':    start = moment().subtract(29, 'days').startOf('day');   end = moment().endOf('day');                     break;
+                case 'ytd':        start = moment().startOf('year');                    end = moment().endOf('day');                     break;
+                case 'all_time':   start = null;                                         end = null;                                      break;
+            }
+            $('.pr-date-chip').removeClass('is-active');
+            $(this).addClass('is-active');
+
+            var $input = $('#purchase_list_filter_date_range');
+            var dp = $input.data('daterangepicker');
+            if (start && end) {
+                if (dp) {
+                    dp.setStartDate(start);
+                    dp.setEndDate(end);
+                }
+                $input.val(start.format(moment_date_format) + ' ~ ' + end.format(moment_date_format));
+            } else {
+                // All time — clear the range text so currentFilterParams
+                // sends empty start_date/end_date.
+                $input.val('');
+            }
             purchase_report_table.ajax.reload();
             refreshPurchaseSummary();
         });
