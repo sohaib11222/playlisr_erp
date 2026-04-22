@@ -389,6 +389,7 @@ $(document).ready(function() {
                 { data: 'email', name: 'email', defaultContent: '', orderable: false },
             { data: 'created_at', name: 'contacts.created_at' },
                 { data: 'mobile', name: 'mobile', defaultContent: '', orderable: false },
+                { data: 'store_credit', name: 'balance', orderable: false, defaultContent: '$0.00' },
                 { data: 'lifetime_purchases', name: 'lifetime_purchases', orderable: false, defaultContent: '0' },
                 { data: 'loyalty_points', name: 'loyalty_points', orderable: false, defaultContent: '0' },
                 { data: 'loyalty_tier', name: 'loyalty_tier', orderable: false, defaultContent: 'Bronze' },

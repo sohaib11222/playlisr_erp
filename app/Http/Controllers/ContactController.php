@@ -330,7 +330,12 @@ class ContactController extends Controller
                 'action',
                 function ($row) {
                     // Use direct buttons instead of dropdown for better click reliability on customer list.
-                    $html = '<div class="btn-group">' .
+                    // 2026-04-22: Sarah reported the yellow Adjust button was missing —
+                    // it was rendering but clipped by the narrow Action column
+                    // (5 btn-xs buttons in a single-line .btn-group overflow). Switching
+                    // to an inline-flex wrap so every button stays visible and clickable
+                    // even on a narrow screen.
+                    $html = '<div class="btn-group" style="display:inline-flex;flex-wrap:wrap;gap:4px;min-width:230px;">' .
                         '<a href="' . action('ContactController@show', [$row->id]) . '" class="btn btn-xs btn-info">' .
                         '<i class="fa fa-user"></i> View</a>';
 
@@ -394,6 +399,17 @@ class ContactController extends Controller
             ->editColumn('mobile', function ($row) {
                 return $row->mobile ?? '';
             })
+            ->addColumn('store_credit', function ($row) {
+                // Customer balance IS the store-credit pool. Surface it in the list
+                // so Sarah can see at a glance who has credit on account without
+                // having to click into each profile. Green for positive, muted
+                // for zero.
+                $bal = (float) ($row->balance ?? 0);
+                $color = $bal > 0 ? '#166534' : '#9ca3af';
+                $weight = $bal > 0 ? '600' : '400';
+                return '<span style="color:' . $color . ';font-weight:' . $weight . ';font-variant-numeric:tabular-nums;">'
+                    . $this->transactionUtil->num_f($bal, true) . '</span>';
+            })
             ->addColumn('lifetime_purchases', function ($row) {
                 $lifetime = $row->lifetime_purchases ?? 0;
                 return $this->transactionUtil->num_f($lifetime, true);
@@ -445,7 +461,7 @@ class ContactController extends Controller
         if (!$reward_enabled) {
             $contacts->removeColumn('total_rp');
         }
-        return $contacts->rawColumns(['action', 'opening_balance', 'credit_limit', 'pay_term', 'due', 'return_due', 'name', 'balance'])
+        return $contacts->rawColumns(['action', 'opening_balance', 'credit_limit', 'pay_term', 'due', 'return_due', 'name', 'balance', 'store_credit', 'preorders_count'])
                         ->make(true);
     }
 

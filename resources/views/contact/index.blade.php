@@ -132,6 +132,7 @@
                             <th>@lang('business.email')</th>
                             <th>@lang('lang_v1.added_on')</th>
                             <th>@lang('contact.mobile')</th>
+                            <th>Store Credit</th>
                             <th>Lifetime Purchases</th>
                             <th>Loyalty Points</th>
                             <th>Loyalty Tier</th>
