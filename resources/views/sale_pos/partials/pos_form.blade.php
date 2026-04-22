@@ -158,44 +158,98 @@
 				</a>
 			</div>
 
-			{{-- Sale-type flag row — separate from the tool buttons above so
-				 it doesn't look like another "add something to cart" action.
-				 Sits on its own line above the product table; mustard when on. --}}
+			{{-- Sarah 2026-04-22: Channel selector replaces the single
+				 "Mark as Whatnot" checkbox. Cashiers pick where this sale
+				 originated: In Store (default, most walk-in sales), Whatnot,
+				 Discogs, or eBay. Hidden #is_whatnot input is kept for
+				 backward compatibility with filters / reports that still
+				 read it (TransactionUtil also derives is_whatnot from
+				 channel server-side). --}}
 			<div class="pos-sale-flag-row">
-				<label class="pos-whatnot-toggle" id="whatnot_chip" title="Flag this whole transaction as a Whatnot sale">
-					<input type="checkbox" name="is_whatnot" id="is_whatnot" value="1">
-					<i class="fa fa-broadcast-tower"></i>
-					<span>Mark entire sale as Whatnot</span>
-				</label>
+				<div class="pos-channel-picker" role="radiogroup" aria-label="Sales channel">
+					<span class="pos-channel-label">Channel:</span>
+					@php
+						$pos_channels = [
+							'in_store' => ['label' => 'In Store', 'icon' => 'fa-store'],
+							'whatnot'  => ['label' => 'Whatnot',  'icon' => 'fa-broadcast-tower'],
+							'discogs'  => ['label' => 'Discogs',  'icon' => 'fa-compact-disc'],
+							'ebay'     => ['label' => 'eBay',     'icon' => 'fa-tag'],
+						];
+					@endphp
+					@foreach($pos_channels as $value => $meta)
+						<label class="pos-channel-chip" data-channel="{{ $value }}">
+							<input type="radio" name="channel" value="{{ $value }}" {{ $value === 'in_store' ? 'checked' : '' }}>
+							<i class="fa {{ $meta['icon'] }}"></i>
+							<span>{{ $meta['label'] }}</span>
+						</label>
+					@endforeach
+					{{-- Kept in sync by JS; legacy code reads this directly. --}}
+					<input type="hidden" name="is_whatnot" id="is_whatnot" value="0">
+				</div>
 			</div>
 			<style>
 				.pos-sale-flag-row {
 					margin: 10px 0 6px;
 					display: flex; justify-content: flex-end;
 				}
-				.pos-whatnot-toggle {
-					display: inline-flex; align-items: center; gap: 8px;
-					padding: 6px 14px;
+				.pos-channel-picker {
+					display: inline-flex; align-items: center; gap: 6px;
+					flex-wrap: wrap;
+				}
+				.pos-channel-label {
+					font-size: 12px; font-weight: 600; color: #374151;
+					margin-right: 4px;
+				}
+				.pos-channel-chip {
+					display: inline-flex; align-items: center; gap: 6px;
+					padding: 5px 12px;
 					background: #fff;
 					border: 1px dashed #d1d5db;
 					border-radius: 999px;
 					font-size: 12px; font-weight: 500; color: #6b7280;
 					cursor: pointer; user-select: none;
 					margin: 0;
+					transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 				}
-				.pos-whatnot-toggle input[type="checkbox"] { margin: 0; accent-color: #d4a92a; }
-				.pos-whatnot-toggle i { font-size: 11px; opacity: .7; }
-				.pos-whatnot-toggle:hover { border-color: #9ca3af; color: #374151; }
-				.pos-whatnot-toggle.active-whatnot,
-				#whatnot_chip.active-whatnot {
-					background: #f5ce3e;
-					border: 1px solid #d4a92a;
-					color: #2b1e16;
-					font-weight: 700;
+				.pos-channel-chip input[type="radio"] {
+					position: absolute; opacity: 0; pointer-events: none;
 				}
-				.pos-whatnot-toggle.active-whatnot i { opacity: 1; }
-				.pos-whatnot-toggle.active-whatnot:hover { background: #eac232; }
+				.pos-channel-chip i { font-size: 11px; opacity: .7; }
+				.pos-channel-chip:hover { border-color: #9ca3af; color: #374151; }
+				/* Active styles per channel — mustard for Whatnot (was the
+				   previous visual), subtle tints for the others. */
+				.pos-channel-chip.is-active[data-channel="in_store"] {
+					background: #eef2ff; border: 1px solid #a5b4fc; color: #312e81; font-weight: 700;
+				}
+				.pos-channel-chip.is-active[data-channel="whatnot"] {
+					background: #f5ce3e; border: 1px solid #d4a92a; color: #2b1e16; font-weight: 700;
+				}
+				.pos-channel-chip.is-active[data-channel="discogs"] {
+					background: #333; border: 1px solid #000; color: #fff; font-weight: 700;
+				}
+				.pos-channel-chip.is-active[data-channel="ebay"] {
+					background: #e53238; border: 1px solid #c62828; color: #fff; font-weight: 700;
+				}
+				.pos-channel-chip.is-active i { opacity: 1; }
 			</style>
+			<script>
+				(function () {
+					// Keep .is-active in sync with the checked radio + keep
+					// the hidden is_whatnot input in lockstep with channel
+					// so legacy reports stay accurate even before they're
+					// migrated off is_whatnot.
+					function syncChannelChips() {
+						var $checked = $('.pos-channel-picker input[name="channel"]:checked');
+						var val = $checked.val() || 'in_store';
+						$('.pos-channel-chip').each(function () {
+							$(this).toggleClass('is-active', $(this).data('channel') === val);
+						});
+						$('#is_whatnot').val(val === 'whatnot' ? 1 : 0);
+					}
+					$(document).on('change', '.pos-channel-picker input[name="channel"]', syncChannelChips);
+					$(function () { syncChannelChips(); });
+				})();
+			</script>
 
 			{{-- Quick-add preset tiles now live at the top of the product grid sidebar
 				 (see sale_pos/partials/pos_sidebar.blade.php). Wiring script below still

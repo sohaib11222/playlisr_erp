@@ -274,6 +274,23 @@ class SellController extends Controller
                 $sells->where('transactions.is_whatnot', 1);
             }
 
+            // Sarah 2026-04-22: channel filter for the POS list.
+            // Accepts a single value ('whatnot') or comma-separated set
+            // ('whatnot,discogs') so a future multi-select chip Just Works.
+            // Guarded on column existence — push-before-migrate safe.
+            if (request()->filled('channel') && \Schema::hasColumn('transactions', 'channel')) {
+                $channels = collect(explode(',', (string) request()->input('channel')))
+                    ->map(function ($c) { return trim($c); })
+                    ->filter(function ($c) {
+                        return in_array($c, ['in_store', 'whatnot', 'discogs', 'ebay'], true);
+                    })
+                    ->values()
+                    ->all();
+                if (!empty($channels)) {
+                    $sells->whereIn('transactions.channel', $channels);
+                }
+            }
+
             $only_pending_shipments = request()->only_pending_shipments == 'true' ? true : false;
             if ($only_pending_shipments) {
                 $sells->where('transactions.shipping_status', '!=', 'delivered')
@@ -618,6 +635,22 @@ class SellController extends Controller
                     }
                     return '';
                 })
+                // Sarah 2026-04-22: Channel pill (In Store / Whatnot /
+                // Discogs / eBay). In-store rows render empty so the
+                // column stays visually quiet for the common case.
+                ->addColumn('channel', function ($row) {
+                    $ch = $row->channel ?? 'in_store';
+                    if ($ch === 'whatnot') {
+                        return '<span class="label" style="background:#f5ce3e;color:#2b1e16;">Whatnot</span>';
+                    }
+                    if ($ch === 'discogs') {
+                        return '<span class="label" style="background:#333;color:#fff;">Discogs</span>';
+                    }
+                    if ($ch === 'ebay') {
+                        return '<span class="label" style="background:#e53238;color:#fff;">eBay</span>';
+                    }
+                    return '<span class="label" style="background:#e5e7eb;color:#374151;">In Store</span>';
+                })
                 ->setRowAttr([
                     'data-href' => function ($row) {
                         if (auth()->user()->can("sell.view") || auth()->user()->can("view_own_sell_only")) {
@@ -627,7 +660,7 @@ class SellController extends Controller
                         }
                     }]);
 
-            $rawColumns = ['final_total', 'action', 'total_paid', 'total_remaining', 'payment_status', 'invoice_no', 'discount_amount', 'tax_amount', 'total_before_tax', 'shipping_status', 'types_of_service_name', 'payment_methods', 'return_due', 'conatct_name', 'status', 'is_whatnot'];
+            $rawColumns = ['final_total', 'action', 'total_paid', 'total_remaining', 'payment_status', 'invoice_no', 'discount_amount', 'tax_amount', 'total_before_tax', 'shipping_status', 'types_of_service_name', 'payment_methods', 'return_due', 'conatct_name', 'status', 'is_whatnot', 'channel'];
                 
             return $datatable->rawColumns($rawColumns)
                       ->make(true);

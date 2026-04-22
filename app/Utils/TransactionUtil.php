@@ -58,7 +58,15 @@ class TransactionUtil extends Util
             $pay_term_number = $contact->pay_term_number;
             $pay_term_type = $contact->pay_term_type;
         }
-        $transaction = Transaction::create([
+
+        // Sarah 2026-04-22: derive channel once so we can conditionally
+        // include it in the insert only if the migration has run. See
+        // migration 2026_04_22_063000_add_channel_to_transactions_table.
+        $resolved_channel = in_array($input['channel'] ?? null, ['in_store', 'whatnot', 'discogs', 'ebay'], true)
+            ? $input['channel']
+            : (!empty($input['is_whatnot']) ? 'whatnot' : 'in_store');
+
+        $transaction_data = [
             'business_id' => $business_id,
             'location_id' => $input['location_id'],
             'type' => $sale_type,
@@ -135,7 +143,17 @@ class TransactionUtil extends Util
             'prefer_payment_account' => !empty($input['prefer_payment_account']) ? $input['prefer_payment_account'] : null,
             'is_export' => !empty($input['is_export']) ? 1 : 0,
             'export_custom_fields_info' => (!empty($input['is_export']) && !empty($input['export_custom_fields_info'])) ? $input['export_custom_fields_info'] : null,
-            'is_whatnot' => !empty($input['is_whatnot']) ? 1 : 0,
+            // Sarah 2026-04-22: 'channel' supersedes is_whatnot — captures
+            // the sales channel for every POS sale (in_store / whatnot /
+            // discogs / ebay). is_whatnot is derived from channel so legacy
+            // reports (HomeController, ReportController, SellController) keep
+            // working until they're migrated over. Guarded with hasColumn so
+            // a push-before-migrate doesn't crash inserts; migration is in
+            // 2026_04_22_063000_add_channel_to_transactions_table.php.
+            'is_whatnot' => (
+                ($input['channel'] ?? null) === 'whatnot'
+                || !empty($input['is_whatnot'])
+            ) ? 1 : 0,
             'additional_expense_value_1' => isset($input['additional_expense_value_1']) ? $uf_data ? $this->num_uf($input['additional_expense_value_1']) : $input['additional_expense_value_1'] : 0,
             'additional_expense_value_2' => isset($input['additional_expense_value_2']) ? $uf_data ? $this->num_uf($input['additional_expense_value_2']) : $input['additional_expense_value_2'] : 0,
             'additional_expense_value_3' => isset($input['additional_expense_value_3']) ? $uf_data ? $this->num_uf($input['additional_expense_value_3']) : $input['additional_expense_value_3'] : 0,
@@ -145,7 +163,15 @@ class TransactionUtil extends Util
             'additional_expense_key_3' => !empty($input['additional_expense_key_3']) ? $input['additional_expense_key_3'] : null,
             'additional_expense_key_4' => !empty($input['additional_expense_key_4']) ? $input['additional_expense_key_4'] : null,
 
-        ]);
+        ];
+
+        // Only set `channel` if the column exists on this server — stops a
+        // push-before-migrate from breaking every new POS sale.
+        if (\Schema::hasColumn('transactions', 'channel')) {
+            $transaction_data['channel'] = $resolved_channel;
+        }
+
+        $transaction = Transaction::create($transaction_data);
 
         return $transaction;
     }
@@ -5032,6 +5058,14 @@ class TransactionUtil extends Util
                     'transactions.is_export',
                     'transactions.is_whatnot'
                 );
+
+        // Sarah 2026-04-22: channel column is added by migration
+        // 2026_04_22_063000_add_channel_to_transactions_table. Guard so
+        // un-migrated servers still render the POS list; the DataTable
+        // fallback in SellController handles a missing value.
+        if (\Schema::hasColumn('transactions', 'channel')) {
+            $sells->addSelect('transactions.channel');
+        }
 
         if ($sale_type == 'sell') {
             $sells->where('transactions.status', 'final');

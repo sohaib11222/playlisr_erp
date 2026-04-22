@@ -590,10 +590,10 @@
                 });
                 setTimeout(refreshBagRow, 300);
 
-                // Whatnot chip — light up when checked.
-                $(document).on('change', '#is_whatnot', function () {
-                    $('#whatnot_chip').toggleClass('active-whatnot', this.checked);
-                });
+                // Sarah 2026-04-22: #is_whatnot is now a hidden input kept
+                // in sync by the Channel picker (pos_form.blade.php). No
+                // visual chip to light up anymore — the Channel pill
+                // handles its own active state.
 
                 // + Add discount / + Add shipping — hide the real receipt
                 // row until the cashier applies a non-zero value. Cuts clutter

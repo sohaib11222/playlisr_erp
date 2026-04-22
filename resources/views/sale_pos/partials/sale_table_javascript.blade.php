@@ -100,7 +100,12 @@ sell_table = $('#sell_table').DataTable({
             { data: 'staff_note', name: 'staff_note'},
             { data: 'shipping_details', name: 'shipping_details'},
             { data: 'table_name', name: 'tables.name', @if(empty($is_tables_enabled)) visible: false @endif },
-            { data: 'waiter', name: 'ss.first_name', @if(empty($is_service_staff_enabled)) visible: false @endif }
+            { data: 'waiter', name: 'ss.first_name', @if(empty($is_service_staff_enabled)) visible: false @endif },
+            // Sarah 2026-04-22: Sales channel (In Store / Whatnot / Discogs / eBay).
+            // orderable:false on purpose — the channel column only exists
+            // after migration 2026_04_22_063000 runs, so we skip server-side
+            // ORDER BY to keep un-migrated servers rendering the list.
+            { data: 'channel', orderable: false, searchable: false }
         ],
         "fnDrawCallback": function (oSettings) {
             __currency_convert_recursively($('#sell_table'));
