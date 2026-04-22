@@ -3855,6 +3855,47 @@ class ReportController extends Controller
                 ->select(\DB::raw('COUNT(DISTINCT p.id) as n'))
                 ->first();
             $loc->distinct_products = (int) ($distinct->n ?? 0);
+
+            // Walk-in / collection-buy split — Sarah 2026-04-22 asked to
+            // separate in-store buy-from-customer transactions from
+            // distributor invoices so she can see "how much we spent
+            // buying used records off walk-in customers" without it
+            // being buried under supplier totals. BuyFromCustomerController
+            // stamps "Buy from customer" into additional_notes when
+            // creating the purchase txn; we count matches there + the
+            // generic walk-in / customer contact names that legacy
+            // workflows use.
+            $walkinQ = \DB::table('transactions as t')
+                ->leftJoin('contacts as c', 't.contact_id', '=', 'c.id')
+                ->where('t.business_id', $business_id)
+                ->where('t.type', 'purchase')
+                ->where('t.location_id', $loc->location_id)
+                ->when(!empty(request()->start_date) && !empty(request()->end_date), function ($q) {
+                    $q->whereDate('t.transaction_date', '>=', request()->start_date)
+                      ->whereDate('t.transaction_date', '<=', request()->end_date);
+                })
+                ->where(function ($q) {
+                    $q->where('t.additional_notes', 'like', 'Buy from customer%')
+                      ->orWhereRaw("LOWER(COALESCE(c.name,'')) IN ('walk-in', 'walkin customer', 'walk in customer', 'customer')")
+                      ->orWhere('c.name', 'like', 'Walk-In%');
+                });
+            $walkin = (clone $walkinQ)
+                ->selectRaw('COUNT(DISTINCT t.id) as cnt, COALESCE(SUM(t.final_total), 0) as spent')
+                ->first();
+            $loc->walkin_summary = [
+                'count' => (int) ($walkin->cnt ?? 0),
+                'spent' => (float) ($walkin->spent ?? 0),
+            ];
+
+            // Distributor = everything in this location's purchase total
+            // that ISN'T a walk-in. Derive by subtraction so the two
+            // channel chips always add up to the card's Total spent.
+            $distributorCount = max(0, ((int) $loc->purchase_count) - (int) ($walkin->cnt ?? 0));
+            $distributorSpent = max(0, ((float) $loc->total_spent) - (float) ($walkin->spent ?? 0));
+            $loc->distributor_summary = [
+                'count' => $distributorCount,
+                'spent' => $distributorSpent,
+            ];
         }
 
         return response()->json(['locations' => $byLocation]);

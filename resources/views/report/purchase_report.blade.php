@@ -2,11 +2,126 @@
 @section('title', 'Purchases by Store')
 
 @section('content')
+{{-- Nivessa cream/brown palette — matches POS checkout v2 (Sarah 2026-04-22
+     "redo the UI to look like create pos"). Scoped under body.pr-v2 so the
+     reskin doesn't bleed to other reports. --}}
+<script>document.body.classList.add('pr-v2');</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+    body.pr-v2 {
+        --pr-bg: #FAF6EE;
+        --pr-surface: #FFFFFF;
+        --pr-surface-2: #F7F1E3;
+        --pr-ink: #1F1B16;
+        --pr-ink-2: #5A5045;
+        --pr-ink-3: #8E8273;
+        --pr-line: #ECE3CF;
+        --pr-line-2: #DFD2B3;
+        --pr-accent: #FFF2B3;
+        --pr-accent-deep: #E8CF68;
+        --pr-accent-text: #5A4410;
+        --pr-success: #2F6B3E;
+        --pr-danger:  #8A3A2E;
+        background: var(--pr-bg);
+        font-family: "Inter Tight", system-ui, sans-serif;
+        color: var(--pr-ink);
+    }
+    body.pr-v2 .content-header h1,
+    body.pr-v2 .content h1,
+    body.pr-v2 .content h3,
+    body.pr-v2 .content h4,
+    body.pr-v2 .content label,
+    body.pr-v2 .content .control-label { color: var(--pr-ink); font-family: inherit; }
+    body.pr-v2 .content-header h1 small { color: var(--pr-ink-3) !important; }
+
+    body.pr-v2 .box { background: var(--pr-surface) !important; border: 1px solid var(--pr-line) !important; border-radius: 10px !important; box-shadow: 0 1px 2px rgba(31,27,22,.06) !important; }
+    body.pr-v2 .box-header { background: var(--pr-surface-2) !important; border-bottom: 1px solid var(--pr-line) !important; border-radius: 10px 10px 0 0 !important; color: var(--pr-ink-2) !important; }
+
+    body.pr-v2 .form-control { border: 1px solid var(--pr-line-2); background: #fff; color: var(--pr-ink); border-radius: 8px; }
+    body.pr-v2 .form-control:focus { border-color: var(--pr-accent-deep); box-shadow: 0 0 0 3px rgba(232,207,104,.25); outline: none; }
+    body.pr-v2 .select2-container--default .select2-selection--single { border: 1px solid var(--pr-line-2); border-radius: 8px; height: 36px; }
+
+    body.pr-v2 .btn-primary { background: var(--pr-ink); border-color: var(--pr-ink); color: #fff; border-radius: 8px; font-weight: 600; }
+    body.pr-v2 .btn-primary:hover { background: var(--pr-ink-2); border-color: var(--pr-ink-2); }
+    body.pr-v2 .btn-success { background: var(--pr-success); border-color: var(--pr-success); color: #fff; border-radius: 8px; font-weight: 600; }
+    body.pr-v2 .btn-default { background: #fff; border: 1px solid var(--pr-line-2); color: var(--pr-ink-2); border-radius: 8px; }
+
+    body.pr-v2 table.table thead th { background: var(--pr-surface-2); color: var(--pr-ink-2); border-bottom: 1px solid var(--pr-line-2); font-weight: 700; text-transform: uppercase; font-size: 11px; letter-spacing: .04em; }
+    body.pr-v2 table.table tbody td { color: var(--pr-ink); border-top: 1px solid var(--pr-line); font-variant-numeric: tabular-nums; }
+    body.pr-v2 table.table tbody tr:nth-child(odd) td { background: #FDF9EF; }
+
+    <!-- Summary cards (Pico / Hollywood) — cream palette -->
+    .pr-summary-wrap { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 22px; }
+    body.pr-v2 .pr-summary-card {
+        flex: 1 1 380px; min-width: 320px;
+        background: var(--pr-surface);
+        border: 1px solid var(--pr-line);
+        border-radius: 14px;
+        box-shadow: 0 2px 6px rgba(31,27,22,.05);
+        padding: 18px 20px;
+        position: relative;
+    }
+    body.pr-v2 .pr-summary-card::before {
+        content: '';
+        position: absolute; top: 0; left: 0; right: 0; height: 4px;
+        background: var(--pr-accent); border-radius: 14px 14px 0 0;
+    }
+    body.pr-v2 .pr-summary-card h4 {
+        margin: 6px 0 12px; font-size: 15px; font-weight: 800;
+        letter-spacing: .06em; text-transform: uppercase; color: var(--pr-ink);
+        display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+    }
+    body.pr-v2 .pr-summary-card .pr-loc-sub { font-size: 11px; color: var(--pr-ink-3); font-weight: 500; text-transform: none; letter-spacing: 0; }
+    .pr-summary-stats { display: flex; gap: 12px; margin-bottom: 14px; }
+    body.pr-v2 .pr-summary-stat {
+        flex: 1; padding: 10px 12px;
+        background: var(--pr-surface-2); border: 1px solid var(--pr-line);
+        border-radius: 10px;
+    }
+    body.pr-v2 .pr-summary-stat .pr-label {
+        font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
+        color: var(--pr-ink-3); font-weight: 700;
+    }
+    body.pr-v2 .pr-summary-stat .pr-value {
+        font-size: 22px; font-weight: 800; color: var(--pr-ink);
+        font-variant-numeric: tabular-nums; margin-top: 2px;
+    }
+    body.pr-v2 .pr-summary-card .pr-top-label {
+        font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
+        color: var(--pr-ink-3); font-weight: 700; margin: 14px 0 6px;
+        padding-bottom: 4px; border-bottom: 1px solid var(--pr-line);
+    }
+    body.pr-v2 .pr-top-item {
+        display: flex; justify-content: space-between; gap: 12px;
+        padding: 6px 0; font-size: 13px;
+        border-bottom: 1px solid var(--pr-line);
+    }
+    body.pr-v2 .pr-top-item:last-child { border-bottom: none; }
+    body.pr-v2 .pr-top-item .pr-name { color: var(--pr-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+    body.pr-v2 .pr-top-item .pr-qty { color: var(--pr-ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
+    body.pr-v2 .pr-summary-empty { padding: 12px 0; font-size: 12px; color: var(--pr-ink-3); text-align: center; font-style: italic; }
+
+    <!-- Channel chips — distributor / walk-in / bins summary row -->
+    body.pr-v2 .pr-channels { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 14px; }
+    body.pr-v2 .pr-channel-chip {
+        background: var(--pr-accent-soft, #FFF9DB); border: 1px solid var(--pr-accent-deep);
+        border-radius: 999px; padding: 5px 11px;
+        font-size: 11px; font-weight: 600; color: var(--pr-accent-text);
+        font-variant-numeric: tabular-nums;
+        display: inline-flex; align-items: center; gap: 6px;
+    }
+    body.pr-v2 .pr-channel-chip .pr-chip-label { font-weight: 700; text-transform: uppercase; letter-spacing: .04em; font-size: 10px; }
+    body.pr-v2 .pr-channel-chip .pr-chip-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--pr-ink); }
+    body.pr-v2 .pr-channel-chip.pr-chip-walkin .pr-chip-dot { background: #2F6B3E; }
+    body.pr-v2 .pr-channel-chip.pr-chip-bin .pr-chip-dot { background: #8E8273; }
+</style>
 
 <!-- Content Header (Page header) -->
 <section class="content-header no-print">
     <h1>Purchases by Store
-        <small style="font-size:13px; color:#6b7280;">— how much each location spent on inventory, and what they bought</small>
+        <small style="font-size:13px; color:#8E8273;">— how much each location spent on inventory, and what they bought</small>
     </h1>
 </section>
 
@@ -16,47 +131,6 @@
          a card per business location showing $ spent + purchase count +
          top products in the selected date range. Respects every filter
          above — whenever the DataTable reloads, so does this summary. --}}
-    <style>
-        .pr-summary-wrap { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 18px; }
-        .pr-summary-card {
-            flex: 1 1 300px; min-width: 300px;
-            background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
-            box-shadow: 0 1px 2px rgba(0,0,0,.04);
-            padding: 14px 16px;
-        }
-        .pr-summary-card h4 {
-            margin: 0 0 8px; font-size: 14px; font-weight: 700;
-            letter-spacing: .02em; color: #1f2937;
-            display: flex; align-items: baseline; justify-content: space-between;
-        }
-        .pr-summary-card .pr-loc-sub { font-size: 11px; color: #6b7280; font-weight: 500; }
-        .pr-summary-stats { display: flex; gap: 14px; margin-bottom: 10px; }
-        .pr-summary-stat {
-            flex: 1; padding: 8px 10px;
-            background: #f9fafb; border-radius: 6px;
-        }
-        .pr-summary-stat .pr-label {
-            font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
-            color: #6b7280; font-weight: 600;
-        }
-        .pr-summary-stat .pr-value {
-            font-size: 18px; font-weight: 700; color: #111827;
-            font-variant-numeric: tabular-nums;
-        }
-        .pr-summary-card .pr-top-label {
-            font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
-            color: #6b7280; font-weight: 600; margin-top: 4px; margin-bottom: 4px;
-        }
-        .pr-top-item {
-            display: flex; justify-content: space-between; gap: 10px;
-            padding: 4px 0; font-size: 12px;
-            border-bottom: 1px solid #f3f4f6;
-        }
-        .pr-top-item:last-child { border-bottom: none; }
-        .pr-top-item .pr-name { color: #1f2937; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .pr-top-item .pr-qty { color: #6b7280; font-variant-numeric: tabular-nums; white-space: nowrap; }
-        .pr-summary-empty { padding: 10px 0; font-size: 12px; color: #9ca3af; text-align: center; }
-    </style>
     <div class="pr-summary-wrap" id="pr-summary-wrap">
         <div class="pr-summary-empty" style="width:100%;">Loading side-by-side summary…</div>
     </div>
@@ -264,7 +338,16 @@
                 }
                 // Helper: HTML-escape arbitrary text before injection.
                 var esc = function (s) { return $('<div>').text(s == null ? '' : String(s)).html(); };
-                var money = function (n) { return '$' + parseFloat(n || 0).toFixed(2); };
+                // Always format with thousand separators — Sarah 2026-04-22:
+                // "commas by the numbers, had to read it all". $45303.37 is
+                // hard to scan; $45,303.37 is not.
+                var money = function (n) {
+                    var num = parseFloat(n || 0);
+                    return '$' + num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                };
+                var intFmt = function (n) {
+                    return parseInt(n || 0, 10).toLocaleString('en-US');
+                };
 
                 var html = '';
                 locs.forEach(function (loc) {
@@ -280,7 +363,7 @@
                         var name = (p.artist ? (p.artist + ' — ') : '') + (p.name || '');
                         return '<div class="pr-top-item">'
                             + '<span class="pr-name" title="' + esc(name) + '">' + esc(name) + '</span>'
-                            + '<span class="pr-qty">' + money(p.spent) + ' · qty ' + parseFloat(p.qty || 0).toFixed(0) + '</span>'
+                            + '<span class="pr-qty">' + money(p.spent) + ' · qty ' + intFmt(p.qty) + '</span>'
                             + '</div>';
                     }).join('');
                     if (!top) top = '<div class="pr-summary-empty">No line-item products in this range.</div>';
@@ -290,8 +373,8 @@
                     var bin = loc.bin_summary || {qty: 0, spent: 0};
                     var binRow = (bin.qty > 0 || bin.spent > 0) ? (
                         '<div class="pr-top-item" style="margin-top:4px;">'
-                        + '<span class="pr-name" style="font-style:italic;color:#9ca3af;">Bulk / clearance bins</span>'
-                        + '<span class="pr-qty">' + money(bin.spent) + ' · qty ' + parseFloat(bin.qty || 0).toFixed(0) + '</span>'
+                        + '<span class="pr-name" style="font-style:italic;color:#8E8273;">Bulk / clearance bins</span>'
+                        + '<span class="pr-qty">' + money(bin.spent) + ' · qty ' + intFmt(bin.qty) + '</span>'
                         + '</div>'
                     ) : '';
 
@@ -306,15 +389,29 @@
                     }).join('');
                     if (!suppliers) suppliers = '<div class="pr-summary-empty">No supplier activity.</div>';
 
+                    // Channel chips — distributor vs walk-in vs bins. Sarah
+                    // 2026-04-22 asked to surface in-store collection buys
+                    // separately from distributor invoices. Walk-in rollups
+                    // come from the server under loc.walkin_summary.
+                    var walkin = loc.walkin_summary || {count: 0, spent: 0};
+                    var distrib = loc.distributor_summary || {count: 0, spent: 0};
+                    var chips = ''
+                        + '<div class="pr-channels">'
+                        + '  <span class="pr-channel-chip"><span class="pr-chip-dot"></span><span class="pr-chip-label">Distributors</span>' + money(distrib.spent) + ' · ' + intFmt(distrib.count) + ' PO' + (distrib.count === 1 ? '' : 's') + '</span>'
+                        + '  <span class="pr-channel-chip pr-chip-walkin"><span class="pr-chip-dot"></span><span class="pr-chip-label">Walk-in buys</span>' + money(walkin.spent) + ' · ' + intFmt(walkin.count) + ' buy' + (walkin.count === 1 ? '' : 's') + '</span>'
+                        + '  <span class="pr-channel-chip pr-chip-bin"><span class="pr-chip-dot"></span><span class="pr-chip-label">Bulk bins</span>' + money(bin.spent) + ' · qty ' + intFmt(bin.qty) + '</span>'
+                        + '</div>';
+
                     html += ''
                         + '<div class="pr-summary-card">'
                         + '  <h4><span>' + esc(loc.location_name || '—') + '</span>'
-                        + '      <span class="pr-loc-sub">' + count + ' purchase' + (count === 1 ? '' : 's')
-                        + '        · ' + distinct + ' unique product' + (distinct === 1 ? '' : 's') + '</span></h4>'
+                        + '      <span class="pr-loc-sub">' + intFmt(count) + ' purchase' + (count === 1 ? '' : 's')
+                        + '        · ' + intFmt(distinct) + ' unique product' + (distinct === 1 ? '' : 's') + '</span></h4>'
                         + '  <div class="pr-summary-stats">'
                         + '    <div class="pr-summary-stat"><div class="pr-label">Total spent</div><div class="pr-value">' + total + '</div></div>'
                         + '    <div class="pr-summary-stat"><div class="pr-label">Before tax</div><div class="pr-value">' + beforeTax + '</div></div>'
                         + '  </div>'
+                        + chips
                         + '  <div class="pr-top-label">Top suppliers</div>'
                         + suppliers
                         + '  <div class="pr-top-label" style="margin-top:10px;">Top products bought ($-ranked, bins excluded)</div>'
