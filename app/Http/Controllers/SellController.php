@@ -292,15 +292,27 @@ class SellController extends Controller
                 // transaction's line items — Sarah 2026-04-22 wants to
                 // find recent sales by artist or album title without
                 // remembering invoice numbers.
+                //
+                // Previous version INNER JOINed products, which dropped
+                // historical-import rows (product_id null → legacy_artist /
+                // legacy_title on the line itself). Using leftJoin + a
+                // Schema::hasColumn guard so the search is robust whether
+                // the legacy columns have been migrated yet or not.
+                $hasLegacyArtist = \Illuminate\Support\Facades\Schema::hasColumn('transaction_sell_lines', 'legacy_artist');
+                $hasLegacyTitle  = \Illuminate\Support\Facades\Schema::hasColumn('transaction_sell_lines', 'legacy_title');
+
                 $matchingTxIds = \DB::table('transaction_sell_lines as tsl')
-                    ->join('products as p', 'tsl.product_id', '=', 'p.id')
-                    ->where(function ($q) use ($like) {
+                    ->leftJoin('products as p', 'tsl.product_id', '=', 'p.id')
+                    ->where(function ($q) use ($like, $hasLegacyArtist, $hasLegacyTitle) {
                         $q->where('p.name', 'like', $like)
-                          ->orWhere('p.artist', 'like', $like)
-                          ->orWhere('tsl.legacy_artist', 'like', $like)
-                          ->orWhere('tsl.legacy_title', 'like', $like);
+                          ->orWhere('p.artist', 'like', $like);
+                        if ($hasLegacyArtist) $q->orWhere('tsl.legacy_artist', 'like', $like);
+                        if ($hasLegacyTitle)  $q->orWhere('tsl.legacy_title', 'like', $like);
                     })
-                    ->pluck('tsl.transaction_id');
+                    ->pluck('tsl.transaction_id')
+                    ->unique()
+                    ->values()
+                    ->all();
 
                 $sells->where(function ($q) use ($like, $matchingTxIds) {
                     $q->where('transactions.invoice_no', 'like', $like)
@@ -309,7 +321,7 @@ class SellController extends Controller
                         ->orWhere('transactions.staff_note', 'like', $like)
                         ->orWhere('contacts.name', 'like', $like)
                         ->orWhere('contacts.mobile', 'like', $like);
-                    if (!empty($matchingTxIds) && count($matchingTxIds) > 0) {
+                    if (!empty($matchingTxIds)) {
                         $q->orWhereIn('transactions.id', $matchingTxIds);
                     }
                 });
