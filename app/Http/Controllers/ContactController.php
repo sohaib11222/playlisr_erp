@@ -1857,7 +1857,26 @@ class ContactController extends Controller
                 ]);
             }
 
-            $contact->balance = (float) $contact->balance + $amount;
+            $newBalance = (float) $contact->balance + $amount;
+            $contact->balance = $newBalance;
+
+            // Audit trail — Sarah 2026-04-22: the green "Add Store Credit"
+            // button previously wrote the new balance with no history, so
+            // when a balance shows up later there's no way to tell which
+            // cashier added it or why. Match the adjustStoreCredit() audit
+            // format so the balance_notes column tells one coherent story.
+            if (\Illuminate\Support\Facades\Schema::hasColumn('contacts', 'balance_notes')) {
+                $stamp = now()->format('Y-m-d H:i');
+                $who = auth()->user()->first_name ?? 'unknown';
+                $reason = trim((string) $request->input('reason', ''));
+                $line = sprintf(
+                    '[%s] store-credit +$%s by %s → new balance $%s.%s',
+                    $stamp, number_format($amount, 2),
+                    $who, number_format($newBalance, 2),
+                    $reason !== '' ? ' Reason: ' . $reason : ''
+                );
+                $contact->balance_notes = trim(($contact->balance_notes ?? '') . "\n" . $line);
+            }
             $contact->save();
 
             return response()->json([

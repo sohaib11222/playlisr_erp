@@ -507,6 +507,29 @@ section.content.cp-page { background: transparent !important; padding: 20px 24px
             <span>Store Credit <small style="color:#9ca3af;font-weight:400;">(available to apply at checkout)</small></span>
             <span class="cp-credit-val cp-credit-positive"><span class="display_currency" data-currency_symbol="true" id="cp_advance_balance">{{ $contact->balance ?? 0 }}</span></span>
         </div>
+
+        {{-- Store-credit audit trail — Sarah 2026-04-22: "how does this guy have
+             $125 store credit?" We now append a line to contacts.balance_notes
+             every time someone uses the green Add or yellow Adjust button, so
+             the history is visible at a glance. Legacy credit (added before
+             this audit existed) will show nothing here — the balance is real
+             but its origin predates tracking. --}}
+        @if(!empty($contact->balance_notes))
+            <div style="margin-top:14px; padding:10px 12px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
+                <div style="font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:#6b7280; font-weight:700; margin-bottom:6px;">
+                    Credit history
+                </div>
+                <pre style="margin:0; font-size:12px; color:#374151; font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace; white-space:pre-wrap; word-break:break-word; background:transparent; border:none; padding:0;">{{ trim($contact->balance_notes) }}</pre>
+            </div>
+        @elseif(($contact->balance ?? 0) > 0)
+            <div style="margin-top:14px; padding:10px 12px; background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; font-size:12px; color:#9a3412;">
+                <strong>No credit history yet.</strong> This balance of
+                <span class="display_currency" data-currency_symbol="true">{{ $contact->balance }}</span>
+                was added before audit tracking existed (pre-2026-04-22). Every
+                credit add / adjust from today onward will log a line here with
+                the cashier's name, amount, and reason.
+            </div>
+        @endif
     </div>
 
 </div>
