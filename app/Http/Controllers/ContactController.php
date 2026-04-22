@@ -676,6 +676,39 @@ class ContactController extends Controller
         $tier_progress = 0;
 
         if (in_array($contact->type, ['customer', 'both'])) {
+            // Historical-sales imports wrote the original artist/title into
+            // legacy_artist / legacy_title on the sell line rather than
+            // creating a Product row (so imports don't pollute inventory).
+            // These columns come from the 2026_04_21_141217 migration —
+            // guard with Schema::hasColumn so the page still renders on
+            // environments where migrations haven't been run yet
+            // (2026-04-22: unguarded select was 500'ing /contacts/{id}).
+            $hasLegacyArtist = \Illuminate\Support\Facades\Schema::hasColumn('transaction_sell_lines', 'legacy_artist');
+            $hasLegacyTitle  = \Illuminate\Support\Facades\Schema::hasColumn('transaction_sell_lines', 'legacy_title');
+
+            $selectCols = [
+                'transaction_sell_lines.id',
+                'p.name as product_name',
+                'p.artist',
+                'p.image as product_image',
+                't.transaction_date',
+                't.invoice_no',
+                'transaction_sell_lines.unit_price_inc_tax',
+                'transaction_sell_lines.quantity',
+                'bl.name as location_name',
+                DB::raw("CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,'')) as staff_name"),
+            ];
+            if ($hasLegacyArtist) {
+                $selectCols[] = 'transaction_sell_lines.legacy_artist';
+            } else {
+                $selectCols[] = DB::raw("NULL as legacy_artist");
+            }
+            if ($hasLegacyTitle) {
+                $selectCols[] = 'transaction_sell_lines.legacy_title';
+            } else {
+                $selectCols[] = DB::raw("NULL as legacy_title");
+            }
+
             $sell_lines_query = \App\TransactionSellLine::join('transactions as t', 'transaction_sell_lines.transaction_id', '=', 't.id')
                 ->leftJoin('products as p', 'transaction_sell_lines.product_id', '=', 'p.id')
                 ->leftJoin('business_locations as bl', 't.location_id', '=', 'bl.id')
@@ -685,27 +718,7 @@ class ContactController extends Controller
                 ->where('t.type', 'sell')
                 ->where('t.status', 'final')
                 ->whereNull('t.return_parent_id')
-                ->select(
-                    'transaction_sell_lines.id',
-                    'p.name as product_name',
-                    'p.artist',
-                    'p.image as product_image',
-                    // Historical-sales imports wrote the original artist/title
-                    // into legacy_artist / legacy_title on the sell line rather
-                    // than creating a Product record (so they don't pollute
-                    // inventory). Pull those through so the Recent Purchases
-                    // widget can fall back to them when p.artist is null
-                    // (Sarah 2026-04-22 — was showing every imported line as
-                    // "Unknown Artist").
-                    'transaction_sell_lines.legacy_artist',
-                    'transaction_sell_lines.legacy_title',
-                    't.transaction_date',
-                    't.invoice_no',
-                    'transaction_sell_lines.unit_price_inc_tax',
-                    'transaction_sell_lines.quantity',
-                    'bl.name as location_name',
-                    DB::raw("CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,'')) as staff_name")
-                )
+                ->select($selectCols)
                 ->orderBy('t.transaction_date', 'desc');
 
             $recent_purchases = (clone $sell_lines_query)->limit(4)->get();

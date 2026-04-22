@@ -88,6 +88,15 @@ $(document).ready(function() {
     });
     
     //get customer
+    // Sarah 2026-04-22: "clicking the customer search doesn't always work".
+    // Root cause: select2's minimumInputLength was 1 but the backend
+    // (/contacts/customers) requires 2+ chars and returns [] for a 1-char
+    // query. So typing the first digit of a phone number fired an AJAX
+    // that came back empty, select2 rendered the "Add X as new customer"
+    // fallback, and cashiers thought the search was broken — until they
+    // typed a second character. Aligning the frontend threshold to 2 and
+    // showing a friendly "keep typing" hint for 0-1 chars so the UI
+    // stops lying about "no results" at the start of every search.
     $('select#customer_id').select2({
         width: '100%',
         allowClear: true,
@@ -95,7 +104,7 @@ $(document).ready(function() {
         ajax: {
             url: '/contacts/customers',
             dataType: 'json',
-            delay: 250,
+            delay: 200,
             data: function(params) {
                 return {
                     q: params.term, // search term
@@ -107,8 +116,16 @@ $(document).ready(function() {
                     results: data,
                 };
             },
+            error: function (xhr) {
+                // Surface server failures so a silent 500 stops looking
+                // like "nothing matched".
+                if (typeof toastr !== 'undefined') {
+                    toastr.error('Customer search failed — try again. ' +
+                        (xhr && xhr.status ? '(status ' + xhr.status + ')' : ''));
+                }
+            }
         },
-        templateResult: function (data) { 
+        templateResult: function (data) {
             var template = '';
             if (data.supplier_business_name) {
                 template += data.supplier_business_name + "<br>";
@@ -122,8 +139,12 @@ $(document).ready(function() {
 
             return  template;
         },
-        minimumInputLength: 1,
+        minimumInputLength: 2,
         language: {
+            inputTooShort: function () {
+                return 'Keep typing — 2+ letters or digits (phone, name, or contact ID)…';
+            },
+            searching: function () { return 'Searching customers…'; },
             noResults: function() {
                 var name = $('#customer_id')
                     .data('select2')
