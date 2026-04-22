@@ -1,3 +1,7 @@
+// Build stamp so Sarah can confirm in DevTools Console which pos.js is
+// actually loaded. If the log below doesn't appear on /pos/create, the
+// browser is serving a cached copy; hard-refresh or bump asset_version.
+console.log('[pos.js v482] customer bar: allowClear=false + templateSelection; whatnot: preventDefault + manual radio flip');
 $(document).ready(function() {
     customer_set = false;
     window.pos_submit_in_progress = false;
