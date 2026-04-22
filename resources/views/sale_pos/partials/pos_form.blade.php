@@ -54,7 +54,22 @@
 			</div>
 			<div class="row" style="margin-top: 5px;">
 				<div class="col-xs-6 col-sm-6 col-md-3">
-					<small><strong>Credit:</strong> <span id="customer_account_balance" class="text-danger">$0.00</span></small>
+					<small>
+						<strong>Credit:</strong>
+						<span id="customer_account_balance" class="text-danger">$0.00</span>
+						{{-- Inline "Use it" button — Sarah 2026-04-22: applying credit
+						     belongs right next to the credit amount in the customer
+						     snapshot, not buried down in the receipt card. Hidden
+						     until balance > 0; clicks forward to #btn_use_store_credit
+						     so application logic stays in one place. --}}
+						<button type="button"
+						        id="inline_use_store_credit_btn"
+						        class="btn btn-xs btn-success"
+						        style="display:none; margin-left:6px; padding:1px 8px; font-size:11px; font-weight:600;"
+						        title="Apply this credit to the current sale">
+							Use it
+						</button>
+					</small>
 				</div>
 				<div class="col-xs-6 col-sm-6 col-md-3">
 					<small><strong>Gift Cards:</strong> <span id="customer_gift_card_balance" class="text-success">$0.00</span></small>

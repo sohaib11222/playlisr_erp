@@ -235,14 +235,20 @@ $(document).ready(function() {
             return;
         }
         var amt = parseFloat(balance || 0) || 0;
+        // Inline "Use it" pill sitting next to the Credit amount in the
+        // customer snapshot — Sarah 2026-04-22 wanted it here, not buried in
+        // the totals card. Show/hide in lock-step with the totals-card row.
+        var $inline = $('#inline_use_store_credit_btn');
         if (amt > 0) {
             $('#pos_store_credit_amount').text(__currency_trans_from_en(amt, true));
             $('#btn_use_store_credit').data('credit-amount', amt);
             $row.show();
+            if ($inline.length) { $inline.data('credit-amount', amt).show(); }
         } else {
             $('#pos_store_credit_amount').text(__currency_trans_from_en(0, true));
             $('#btn_use_store_credit').data('credit-amount', 0);
             $row.hide();
+            if ($inline.length) { $inline.data('credit-amount', 0).hide(); }
         }
     }
 
@@ -962,6 +968,14 @@ $(document).ready(function() {
     }
     // Exposed for global reset_pos_form (defined outside this ready closure).
     window.set_store_credit_cash_cta = set_store_credit_cash_cta;
+
+    // Forward the inline "Use it" button (next to Credit in the customer
+    // snapshot) to the main handler so all the application logic lives in
+    // one place. Sarah 2026-04-22 relocated the CTA here.
+    $(document).on('click', '#inline_use_store_credit_btn', function (e) {
+        e.preventDefault();
+        $('#btn_use_store_credit').trigger('click');
+    });
 
     // Use store credit: apply on same screen (no popup); deduct from customer when Cash/Finalize is used
     $(document).on('click', '#btn_use_store_credit', function () {
