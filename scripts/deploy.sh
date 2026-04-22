@@ -63,7 +63,8 @@ if [ "$DEPLOY_MIGRATE" = "1" ]; then
   php artisan migrate --force --no-interaction
 fi
 
-echo "deploy: optimize:clear (clears config/route/view/cache/compiled — avoids route:cache Closure errors)"
+# Do not use config:cache or route:cache here — Closure routes break route:cache.
+echo "deploy: post-git maintenance v2 — ONLY optimize:clear (no config:cache / route:cache)"
 php artisan optimize:clear --no-interaction
 
 php artisan queue:restart 2>/dev/null || true
