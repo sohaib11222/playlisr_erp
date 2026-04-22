@@ -71,7 +71,7 @@ return [
     // off by default. Enable the Sale Report (607) because Sarah uses it
     // daily. Leaving Purchase Report (606) off since it's not requested — flip
     // to true when needed.
-    'show_report_606' => false,
+    'show_report_606' => true,
     'show_report_607' => true,
     'whatsapp_base_url' => 'https://wa.me',
     'enable_crm_call_log' => false,
