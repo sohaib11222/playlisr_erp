@@ -55,6 +55,15 @@ class Kernel extends ConsoleKernel
         // StreetPulse daily upload (runs at 2:00 AM to upload yesterday's data)
         $schedule->command('streetpulse:upload-daily')->dailyAt('02:00');
 
+        // Weekly pull of Street Pulse + UMe Universal chart emails from
+        // sarah@nivessa.com → chart_picks table, feeding the Inventory
+        // Check Assistant. Wednesdays 08:15 PST: Street Pulse lands Tue
+        // night, UMe arrives Monday — running Wed morning catches both.
+        $schedule->command('charts:import-from-email')
+            ->weeklyOn(3, '08:15')
+            ->timezone('America/Los_Angeles')
+            ->withoutOverlapping(30);
+
         // Clover → ERP payment sync. Runs every 30 min during business hours
         // to keep the Clover-vs-ERP reconciliation report near-live, then once
         // more overnight at 02:30 PST to pick up any late-night stragglers.

@@ -118,6 +118,42 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Email auto-fetch (Street Pulse + UMe Universal weekly charts)
+    |--------------------------------------------------------------------------
+    | Required env vars to enable:
+    |   INVENTORY_CHECK_IMAP_HOST=imap.gmail.com
+    |   INVENTORY_CHECK_IMAP_PORT=993
+    |   INVENTORY_CHECK_IMAP_USERNAME=sarah@nivessa.com
+    |   INVENTORY_CHECK_IMAP_PASSWORD=<gmail app password>   # 16 chars, no spaces
+    |   INVENTORY_CHECK_IMAP_ENCRYPTION=ssl
+    |
+    | Generate the app password at:
+    |   https://myaccount.google.com/apppasswords
+    | (requires 2-Step Verification on the Google account). Label it
+    | "Nivessa ERP chart import" so you can revoke it cleanly later.
+    |
+    | Also requires the PHP imap extension. Install with:
+    |   sudo apt install php8.1-imap && sudo service php8.1-fpm restart
+    | (adjust for your PHP version).
+    */
+    'email' => [
+        'host' => env('INVENTORY_CHECK_IMAP_HOST', 'imap.gmail.com'),
+        'port' => (int) env('INVENTORY_CHECK_IMAP_PORT', 993),
+        'username' => env('INVENTORY_CHECK_IMAP_USERNAME', ''),
+        'password' => env('INVENTORY_CHECK_IMAP_PASSWORD', ''),
+        'encryption' => env('INVENTORY_CHECK_IMAP_ENCRYPTION', 'ssl'),
+        'sources' => [
+            'street_pulse' => [
+                'from' => env('INVENTORY_CHECK_STREETPULSE_FROM', 'info@streetpulse.com'),
+            ],
+            'universal_top' => [
+                'from' => env('INVENTORY_CHECK_UNIVERSAL_FROM', 'Tony.Kulzer@umusic.com'),
+            ],
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Legacy keys retained for backward compat with older blade version
     |--------------------------------------------------------------------------
     */
