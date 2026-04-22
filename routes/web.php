@@ -134,7 +134,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::resource('preorders', 'PreorderController');
     Route::get('/preorders/customer/{contact_id}', 'PreorderController@getCustomerPreorders');
     Route::post('/preorders/{id}/fulfill', 'PreorderController@fulfill');
-    
+
+    // Customer Pickups
+    Route::resource('customer-pickups', 'CustomerPickupController');
+    Route::get('/customer-pickups/customer/{contact_id}', 'CustomerPickupController@getCustomerPickups');
+    Route::post('/customer-pickups/{id}/mark-picked-up', 'CustomerPickupController@markPickedUp');
+
     // Loyalty Tiers
     Route::resource('loyalty-tiers', 'LoyaltyTierController');
 

@@ -89,6 +89,12 @@ class AdminSidebarMenu
                                 'Customer Wants',
                                 ['icon' => 'fa fas fa-hand-point-right', 'active' => request()->segment(1) == 'customer-wants']
                             );
+
+                            $sub->url(
+                                action('CustomerPickupController@index'),
+                                'Customer Pickups',
+                                ['icon' => 'fa fas fa-box', 'active' => request()->segment(1) == 'customer-pickups']
+                            );
                         }
 
 
