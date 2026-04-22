@@ -149,6 +149,23 @@ $(document).ready(function() {
 
             return  template;
         },
+        // Sarah 2026-04-22: "customer bar is confusing w the dropdown i want
+        // it to be a simple box u type into not a dropdown". When the
+        // walk-in customer is selected (the default for most sales), show
+        // placeholder-style greyed-out prompt text instead of "Walk-In
+        // Customer" — so the field reads as an empty search box cashiers
+        // can type into, not as a pre-filled select widget. For real
+        // customers, keep the selected name + phone so the snapshot above
+        // the receipt stays clear about who's being rung up.
+        templateSelection: function (data, container) {
+            var defaultId = $('#default_customer_id').val();
+            if (data && data.id && defaultId && String(data.id) === String(defaultId)) {
+                $(container).addClass('is-walk-in-placeholder');
+                return 'Type phone # or name to find a customer…';
+            }
+            $(container).removeClass('is-walk-in-placeholder');
+            return data.text || '';
+        },
         minimumInputLength: 2,
         language: {
             inputTooShort: function () {

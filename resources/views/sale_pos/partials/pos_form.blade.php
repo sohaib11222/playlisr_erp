@@ -8,6 +8,33 @@
 		.pos-customer-block .select2-container { width: 100% !important; min-width: 0; margin-bottom: 8px; }
 		.pos-customer-select2-dropdown { min-width: 320px !important; }
 		.pos-customer-block .select2-selection__rendered { white-space: normal !important; word-break: break-word; }
+		/* Sarah 2026-04-22: "customer bar is confusing w the dropdown i want
+		   it to be a simple box u type into not a dropdown". Style the
+		   closed state so the field reads as a plain text input with a
+		   placeholder, not as a fancy select widget with a pre-selected
+		   "Walk-In Customer" value. The underlying <select> still holds the
+		   walk-in id so the form submits correctly; we just swap the
+		   visible text to the placeholder via templateSelection (see
+		   pos.js) and strip the select-chrome styling here. */
+		.pos-customer-block .select2-selection--single .select2-selection__rendered.is-walk-in-placeholder {
+			color: #9ca3af !important; font-style: italic; font-weight: 400;
+		}
+		.pos-customer-block .select2-selection--single {
+			background: #fff !important;
+			border: 1px solid #d1d5db !important;
+			border-radius: 6px !important;
+			height: 42px !important;
+			display: flex !important; align-items: center;
+		}
+		.pos-customer-block .select2-selection--single:hover {
+			border-color: #9ca3af !important;
+			cursor: text;
+		}
+		.pos-customer-block .select2-container--focus .select2-selection--single,
+		.pos-customer-block .select2-container--open .select2-selection--single {
+			border-color: #6366f1 !important;
+			box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15) !important;
+		}
 		/* Sarah 2026-04-22: guarantee the AJAX search input inside the customer
 		   dropdown is visible + full-width. Some themes collapse .select2-search
 		   or style .select2-search__field too small, leaving the dropdown looking
@@ -316,6 +343,26 @@
 						$('#is_whatnot').val(val === 'whatnot' ? 1 : 0);
 					}
 					$(document).on('change', '.pos-channel-picker input[name="channel"]', syncChannelChips);
+
+					// Sarah 2026-04-22: "whatnot button isnt working". The radio
+					// input is position:absolute + pointer-events:none so some
+					// browsers were not firing `change` reliably when the label
+					// was clicked. Explicit click handler on the chip itself
+					// forces the radio state + triggers change so the yellow
+					// is-active class always lights up on click.
+					$(document).on('click', '.pos-channel-chip', function (e) {
+						var channel = $(this).data('channel');
+						if (!channel) return;
+						var $radio = $(this).find('input[type="radio"][name="channel"]');
+						if (!$radio.prop('checked')) {
+							$radio.prop('checked', true).trigger('change');
+						} else {
+							// Already checked — still resync chrome in case the
+							// initial page-load state drifted.
+							syncChannelChips();
+						}
+					});
+
 					$(function () { syncChannelChips(); });
 				})();
 			</script>
