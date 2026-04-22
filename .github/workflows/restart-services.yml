@@ -1,0 +1,143 @@
+# One-click SSH into production to diagnose a hung site and restart PHP-FPM + nginx.
+# Use when playlist.nivessa.com accepts TLS but HTTP requests hang / time out,
+# or when the POS "something went wrong" toast fires on every sale.
+#
+# Safe to run during business hours: restarts are ~1s, idempotent, and the
+# "diagnose only" option skips restarts entirely so you can read the state first.
+#
+# Uses the same secrets as Deploy production:
+#   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, (optional DEPLOY_PORT)
+
+name: Restart services
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: What to do on the server
+        required: true
+        default: restart_fpm_nginx
+        type: choice
+        options:
+          - diagnose_only
+          - restart_fpm_nginx
+          - restart_fpm_nginx_mysql
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  restart:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Diagnose and (optionally) restart services
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          script: |
+            set +e
+            MODE='${{ github.event.inputs.mode }}'
+            echo "=== mode: $MODE ==="
+            echo
+            echo "=== uptime / load ==="
+            uptime
+            echo
+            echo "=== disk ==="
+            df -h / /www 2>/dev/null | head -10
+            echo
+            echo "=== memory ==="
+            free -h 2>/dev/null || vm_stat | head -5
+            echo
+            echo "=== php-fpm service (auto-detect) ==="
+            FPM_SVC=$(systemctl list-units --type=service --all --no-legend 2>/dev/null \
+              | awk '{print $1}' | grep -E 'php[0-9.]*-fpm\.service|^php-fpm\.service' | head -1)
+            echo "detected fpm service: ${FPM_SVC:-<none>}"
+            if [ -n "$FPM_SVC" ]; then
+              systemctl status "$FPM_SVC" --no-pager -n 20 2>&1 | head -40
+            fi
+            echo
+            echo "=== nginx ==="
+            systemctl status nginx --no-pager -n 10 2>&1 | head -25
+            echo
+            echo "=== mysql / mariadb ==="
+            MYSQL_SVC=$(systemctl list-units --type=service --all --no-legend 2>/dev/null \
+              | awk '{print $1}' | grep -E '^(mysql|mariadb|mysqld)\.service' | head -1)
+            echo "detected mysql service: ${MYSQL_SVC:-<none>}"
+            if [ -n "$MYSQL_SVC" ]; then
+              systemctl status "$MYSQL_SVC" --no-pager -n 10 2>&1 | head -25
+            fi
+            echo
+            echo "=== php-fpm worker count ==="
+            ps -eo pid,user,stat,start,%cpu,%mem,cmd 2>/dev/null | grep -E 'php-?fpm' | grep -v grep | head -30
+            echo "fpm worker total: $(ps -eo cmd | grep -E 'php-?fpm' | grep -v grep | wc -l)"
+            echo
+            echo "=== last 40 lines of Laravel log ==="
+            LOG=/www/playlist.nivessa.com/app/storage/logs/laravel.log
+            if [ -r "$LOG" ]; then
+              tail -n 40 "$LOG"
+            else
+              echo "laravel.log not readable at $LOG"
+              ls -la /www/playlist.nivessa.com/app/storage/logs/ 2>&1 | tail -10
+            fi
+            echo
+            echo "=== last 30 lines of nginx error log ==="
+            sudo -n tail -n 30 /var/log/nginx/error.log 2>/dev/null \
+              || tail -n 30 /var/log/nginx/error.log 2>/dev/null \
+              || echo "(nginx error log not readable without sudo)"
+            echo
+
+            if [ "$MODE" = "diagnose_only" ]; then
+              echo "=== diagnose-only mode — no restart ==="
+              exit 0
+            fi
+
+            echo "=== restarting php-fpm ==="
+            if [ -n "$FPM_SVC" ]; then
+              sudo -n systemctl restart "$FPM_SVC" 2>&1 \
+                && echo "restarted $FPM_SVC" \
+                || echo "RESTART FAILED for $FPM_SVC (no passwordless sudo?) — try: sudo systemctl restart $FPM_SVC"
+            else
+              echo "no fpm service detected — skipping"
+            fi
+            echo
+            echo "=== restarting nginx ==="
+            sudo -n systemctl restart nginx 2>&1 \
+              && echo "restarted nginx" \
+              || echo "RESTART FAILED for nginx"
+            echo
+
+            if [ "$MODE" = "restart_fpm_nginx_mysql" ] && [ -n "$MYSQL_SVC" ]; then
+              echo "=== restarting $MYSQL_SVC ==="
+              sudo -n systemctl restart "$MYSQL_SVC" 2>&1 \
+                && echo "restarted $MYSQL_SVC" \
+                || echo "RESTART FAILED for $MYSQL_SVC"
+              echo
+            fi
+
+            echo "=== post-restart HTTP smoke test ==="
+            for i in 1 2 3; do
+              sleep 2
+              code=$(curl -sS -o /dev/null -w '%{http_code}|%{time_total}s' --max-time 15 https://playlist.nivessa.com/ || echo "000|timeout")
+              echo "attempt $i: $code"
+            done
+            echo
+            echo "=== done ==="
