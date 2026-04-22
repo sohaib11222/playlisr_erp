@@ -307,7 +307,14 @@
                             <div class="ts-tag {{ $r->tag }}">{{ $r->tag_emoji ? $r->tag_emoji . ' ' : '' }}{{ $r->tag }}</div>
                         </div>
                     @empty
-                        <div class="ts-sub-num" style="padding:16px; text-align:center;">No sales in this window yet.</div>
+                        @if($s['filter'] === '__placeholder__')
+                            <div class="ts-sub-num" style="padding:16px; text-align:center; line-height:1.5;">
+                                <strong>{{ $s['label'] }} isn't wired into the ERP yet.</strong><br>
+                                Sales from this channel aren't tagged on transactions, so there's nothing to roll up. Once an <code>is_{{ $s['key'] }}</code> flag (or <code>source='{{ $s['key'] }}'</code>) is set during import, this tab will fill in automatically.
+                            </div>
+                        @else
+                            <div class="ts-sub-num" style="padding:16px; text-align:center;">No sales in this window yet.</div>
+                        @endif
                     @endforelse
                 </div>
             @endforeach
@@ -330,43 +337,73 @@
          Can be collapsed/removed once the personal dashboard proves out. --}}
 
     {{-- Progress: MoM, YoY, and personal month-over-month --}}
+    {{-- Store scope toggle for the two All-Stores cards below. Flipping this
+         swaps the visible scope block inside each card — no page reload.
+         Sarah 2026-04-22: wanted to see Hollywood vs Pico vs combined. --}}
+    <style>
+        .sales-scope { display:flex; align-items:center; gap:6px; margin-bottom:10px; flex-wrap:wrap; }
+        .sales-scope-label { font-size:12px; color:#6b7280; margin-right:4px; }
+        .sales-scope-btn { padding:5px 12px; font-size:12px; color:#6b7280; border:1px solid #e5e7eb; border-radius:16px; cursor:pointer; background:#fff; }
+        .sales-scope-btn.active { background:#ffedd5; color:#9a3412; border-color:#fdba74; font-weight:600; }
+        .sales-scope-body { display:none; }
+        .sales-scope-body.active { display:block; }
+    </style>
+    <div class="row sales-scope-row">
+        <div class="col-md-6">
+            <div class="sales-scope" id="sales-scope-toggle">
+                <span class="sales-scope-label"><i class="fa fa-store"></i> Store:</span>
+                @foreach($sales_scope_keys as $i => $key)
+                    <button type="button" class="sales-scope-btn {{ $i === 0 ? 'active' : '' }}" data-scope="{{ $key }}">{{ $sales_scope[$key]['label'] }}</button>
+                @endforeach
+            </div>
+        </div>
+    </div>
     <div class="row">
-        {{-- All-Stores sales: MTD + YTD shown side-by-side (Sarah asked for both,
-             the previous toggle was broken because the inline $(...) below ran
-             before jQuery loaded). Each card is col-md-3 so the two together
-             take the same col-md-6 slot the toggle card used to occupy. --}}
+        {{-- All-Stores sales: MTD + YTD shown side-by-side. Each card embeds
+             one body per scope (all / hollywood / pico) and the toggle above
+             flips which one is visible. --}}
         <div class="col-md-3">
             <div class="niv-card" style="background:linear-gradient(135deg,#fff7ed,#ffedd5);">
                 <h3 style="color:#9a3412; margin:0;">
                     <i class="fa fa-chart-line"></i> All Stores — MTD
-                    <span class="niv-sub">hollywood + pico combined</span>
+                    <span class="niv-sub sales-scope-sub" data-scope-sub></span>
                 </h3>
-                <div style="font-size:26px; font-weight:800; color:#9a3412; margin-top:6px;">${{ number_format($sales_mtd, 0) }}</div>
-                <div class="niv-muted" style="margin-top:4px;">
-                    @if(is_null($mom_pct))
-                        vs last month same range: ${{ number_format($sales_lm_same, 0) }}
-                    @else
-                        <strong style="color:{{ $mom_pct >= 0 ? '#065f46' : '#991b1b' }};">{{ $mom_pct >= 0 ? '▲' : '▼' }} {{ number_format(abs($mom_pct), 1) }}%</strong>
-                        vs last month (${{ number_format($sales_lm_same, 0) }})
-                    @endif
-                </div>
+                @foreach($sales_scope_keys as $i => $key)
+                    @php $s = $sales_scope[$key]; @endphp
+                    <div class="sales-scope-body {{ $i === 0 ? 'active' : '' }}" data-scope="{{ $key }}">
+                        <div style="font-size:26px; font-weight:800; color:#9a3412; margin-top:6px;">${{ number_format($s['mtd'], 0) }}</div>
+                        <div class="niv-muted" style="margin-top:4px;">
+                            @if(is_null($s['mom_pct']))
+                                vs last month same range: ${{ number_format($s['lm'], 0) }}
+                            @else
+                                <strong style="color:{{ $s['mom_pct'] >= 0 ? '#065f46' : '#991b1b' }};">{{ $s['mom_pct'] >= 0 ? '▲' : '▼' }} {{ number_format(abs($s['mom_pct']), 1) }}%</strong>
+                                vs last month (${{ number_format($s['lm'], 0) }})
+                            @endif
+                        </div>
+                    </div>
+                @endforeach
             </div>
         </div>
         <div class="col-md-3">
             <div class="niv-card" style="background:linear-gradient(135deg,#fff7ed,#ffedd5);">
                 <h3 style="color:#9a3412; margin:0;">
                     <i class="fa fa-chart-line"></i> All Stores — YTD
-                    <span class="niv-sub">hollywood + pico combined</span>
+                    <span class="niv-sub sales-scope-sub" data-scope-sub></span>
                 </h3>
-                <div style="font-size:26px; font-weight:800; color:#9a3412; margin-top:6px;">${{ number_format($sales_ytd, 0) }}</div>
-                <div class="niv-muted" style="margin-top:4px;">
-                    @if(is_null($yoy_pct))
-                        vs same range last year: ${{ number_format($sales_ly_same, 0) }}
-                    @else
-                        <strong style="color:{{ $yoy_pct >= 0 ? '#065f46' : '#991b1b' }};">{{ $yoy_pct >= 0 ? '▲' : '▼' }} {{ number_format(abs($yoy_pct), 1) }}%</strong>
-                        vs last year (${{ number_format($sales_ly_same, 0) }})
-                    @endif
-                </div>
+                @foreach($sales_scope_keys as $i => $key)
+                    @php $s = $sales_scope[$key]; @endphp
+                    <div class="sales-scope-body {{ $i === 0 ? 'active' : '' }}" data-scope="{{ $key }}">
+                        <div style="font-size:26px; font-weight:800; color:#9a3412; margin-top:6px;">${{ number_format($s['ytd'], 0) }}</div>
+                        <div class="niv-muted" style="margin-top:4px;">
+                            @if(is_null($s['yoy_pct']))
+                                vs same range last year: ${{ number_format($s['ly'], 0) }}
+                            @else
+                                <strong style="color:{{ $s['yoy_pct'] >= 0 ? '#065f46' : '#991b1b' }};">{{ $s['yoy_pct'] >= 0 ? '▲' : '▼' }} {{ number_format(abs($s['yoy_pct']), 1) }}%</strong>
+                                vs last year (${{ number_format($s['ly'], 0) }})
+                            @endif
+                        </div>
+                    </div>
+                @endforeach
             </div>
         </div>
         <div class="col-md-3">
@@ -1153,6 +1190,24 @@
                 $tsModule.find('.ts-pill').removeClass('active');
                 $(this).addClass('active');
                 tsRefresh();
+            });
+        }
+
+        // All-Stores MTD/YTD scope toggle. Swap the visible .sales-scope-body
+        // inside each card and update the header sublabel.
+        var $scopeToggle = $('#sales-scope-toggle');
+        if ($scopeToggle.length) {
+            function salesScopeApply(scope) {
+                $('.sales-scope-body').removeClass('active');
+                $('.sales-scope-body[data-scope="' + scope + '"]').addClass('active');
+                var label = $scopeToggle.find('.sales-scope-btn[data-scope="' + scope + '"]').text();
+                $('[data-scope-sub]').text(label.toLowerCase());
+            }
+            salesScopeApply($scopeToggle.find('.sales-scope-btn.active').data('scope'));
+            $scopeToggle.on('click', '.sales-scope-btn', function () {
+                $scopeToggle.find('.sales-scope-btn').removeClass('active');
+                $(this).addClass('active');
+                salesScopeApply($(this).data('scope'));
             });
         }
 

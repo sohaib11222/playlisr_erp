@@ -346,21 +346,60 @@ class HomeController extends Controller
         $last_year_same_start = $now->copy()->subYear()->startOfYear()->toDateString();
         $last_year_same_end = $now->copy()->subYear()->toDateString();
 
-        $sumSells = function ($start, $end) use ($business_id) {
-            return (float) \DB::table('transactions')
+        // Resolve Hollywood / Pico location IDs so the All-Stores MTD/YTD cards
+        // can toggle between combined, Hollywood-only, and Pico-only views
+        // (Sarah 2026-04-22: wanted to see per-store breakdown).
+        $sales_locs = \DB::table('business_locations')
+            ->where('business_id', $business_id)->get();
+        $sales_findLoc = function ($needle) use ($sales_locs) {
+            foreach ($sales_locs as $l) {
+                if (stripos($l->name, $needle) !== false) return $l;
+            }
+            return null;
+        };
+        $sales_loc_hollywood = $sales_findLoc('hollywood');
+        $sales_loc_pico      = $sales_findLoc('pico');
+
+        $sumSells = function ($start, $end, $location_id = null) use ($business_id) {
+            $q = \DB::table('transactions')
                 ->where('business_id', $business_id)
                 ->where('type', 'sell')
                 ->where('status', 'final')
                 ->whereDate('transaction_date', '>=', $start)
-                ->whereDate('transaction_date', '<=', $end)
-                ->sum('final_total');
+                ->whereDate('transaction_date', '<=', $end);
+            if (!is_null($location_id)) {
+                $q->where('location_id', $location_id);
+            }
+            return (float) $q->sum('final_total');
         };
-        $sales_mtd = $sumSells($mtd_start, $mtd_end);
-        $sales_lm_same = $sumSells($last_month_same_start, $last_month_same_end);
-        $sales_ytd = $sumSells($ytd_start, $mtd_end);
-        $sales_ly_same = $sumSells($last_year_same_start, $last_year_same_end);
-        $mom_pct = $sales_lm_same > 0 ? (($sales_mtd - $sales_lm_same) / $sales_lm_same) * 100 : null;
-        $yoy_pct = $sales_ly_same > 0 ? (($sales_ytd - $sales_ly_same) / $sales_ly_same) * 100 : null;
+
+        $sales_scope_defs = [
+            ['key' => 'all',       'label' => 'Hollywood + Pico', 'loc_id' => null],
+        ];
+        if ($sales_loc_hollywood) {
+            $sales_scope_defs[] = ['key' => 'hollywood', 'label' => $sales_loc_hollywood->name, 'loc_id' => $sales_loc_hollywood->id];
+        }
+        if ($sales_loc_pico) {
+            $sales_scope_defs[] = ['key' => 'pico', 'label' => $sales_loc_pico->name, 'loc_id' => $sales_loc_pico->id];
+        }
+
+        $sales_scope = [];
+        foreach ($sales_scope_defs as $def) {
+            $mtd = $sumSells($mtd_start, $mtd_end, $def['loc_id']);
+            $lm  = $sumSells($last_month_same_start, $last_month_same_end, $def['loc_id']);
+            $ytd = $sumSells($ytd_start, $mtd_end, $def['loc_id']);
+            $ly  = $sumSells($last_year_same_start, $last_year_same_end, $def['loc_id']);
+            $sales_scope[$def['key']] = [
+                'label'   => $def['label'],
+                'mtd'     => $mtd,
+                'lm'      => $lm,
+                'ytd'     => $ytd,
+                'ly'      => $ly,
+                'mom_pct' => $lm > 0 ? (($mtd - $lm) / $lm) * 100 : null,
+                'yoy_pct' => $ly > 0 ? (($ytd - $ly) / $ly) * 100 : null,
+            ];
+        }
+        $sales_scope_keys = array_column($sales_scope_defs, 'key');
 
         // ---- Personal month-over-month achievement ----
         $my_countSellLines = function ($start, $end) use ($business_id, $me_id) {
@@ -439,19 +478,12 @@ class HomeController extends Controller
             return $q->get()->keyBy('label');
         };
 
-        // Resolve physical locations by name so we can label tabs. Matches on
-        // common strings; if naming varies the tab simply falls back to the
-        // location name as-is.
-        $locs = \DB::table('business_locations')
-            ->where('business_id', $business_id)->get();
-        $findLoc = function ($needle) use ($locs) {
-            foreach ($locs as $l) {
-                if (stripos($l->name, $needle) !== false) return $l;
-            }
-            return null;
-        };
-        $loc_hollywood = $findLoc('hollywood');
-        $loc_pico      = $findLoc('pico');
+        // Physical locations were resolved earlier (see $sales_loc_* / $sales_locs
+        // above); reuse them here so the ts tabs stay in sync with the MTD/YTD
+        // cards.
+        $locs = $sales_locs;
+        $loc_hollywood = $sales_loc_hollywood;
+        $loc_pico      = $sales_loc_pico;
         $ts_stores = [];
         if ($loc_hollywood) $ts_stores[] = ['key' => 'hollywood', 'label' => $loc_hollywood->name, 'filter' => $loc_hollywood->id];
         if ($loc_pico)      $ts_stores[] = ['key' => 'pico',      'label' => $loc_pico->name,      'filter' => $loc_pico->id];
@@ -747,8 +779,7 @@ class HomeController extends Controller
             'last_sold_items', 'top_expensive_items',
             'rewards_today', 'rewards_today_total',
             'my_priced_today', 'my_pos_items_today', 'my_pos_tx_today',
-            'sales_mtd', 'sales_lm_same', 'mom_pct',
-            'sales_ytd', 'sales_ly_same', 'yoy_pct',
+            'sales_scope', 'sales_scope_keys',
             'my_mtd_rung', 'my_lm_rung', 'my_rung_pct',
             'my_mtd_priced', 'my_lm_priced', 'my_priced_pct',
             'avg_per_employee',
