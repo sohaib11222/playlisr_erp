@@ -37,7 +37,10 @@ jobs:
         env:
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
         run: |
-          echo "run_migrate=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_migrate == true && 1 || 0 }}" >> "$GITHUB_OUTPUT"
+          # inputs come through as strings even when declared type: boolean,
+          # so the old `== true` comparison silently always evaluated false —
+          # meaning the "Run migrate" checkbox on workflow_dispatch did nothing.
+          echo "run_migrate=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_migrate == 'true' && 1 || 0 }}" >> "$GITHUB_OUTPUT"
           echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
 
       - name: Add server to known_hosts
