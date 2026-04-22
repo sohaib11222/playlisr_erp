@@ -286,6 +286,12 @@ class AdminSidebarMenu
                                         __('sale.list_pos'),
                                         ['icon' => 'fa fas fa-list', 'active' => request()->segment(1) == 'pos' && request()->segment(2) == null]
                                     );
+
+                                    $sub->url(
+                                        action('SellPosController@recentSalesFeed'),
+                                        'Recent Sales Feed',
+                                        ['icon' => 'fa fas fa-stream', 'active' => request()->segment(1) == 'pos' && request()->segment(2) == 'recent-feed']
+                                    );
                                 }
 
                                 $sub->url(

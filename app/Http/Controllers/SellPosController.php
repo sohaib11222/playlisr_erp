@@ -155,6 +155,41 @@ class SellPosController extends Controller
     }
 
     /**
+     * Recent Sales Feed — most recent sells with line items expanded inline.
+     * No per-sale clicking required; each sale renders every product sold.
+     */
+    public function recentSalesFeed(Request $request)
+    {
+        if (!auth()->user()->can('sell.view') && !auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = $request->session()->get('user.business_id');
+        $limit = (int) $request->get('limit', 30);
+        $location_id = $request->get('location_id');
+
+        $business_locations = BusinessLocation::forDropdown($business_id, false);
+
+        $sales = Transaction::where('transactions.business_id', $business_id)
+            ->where('transactions.type', 'sell')
+            ->where('transactions.status', 'final')
+            ->when($location_id, fn($q) => $q->where('transactions.location_id', $location_id))
+            ->with([
+                'sell_lines' => fn($q) => $q->whereNull('parent_sell_line_id'),
+                'sell_lines.product',
+                'sell_lines.variations',
+                'sell_lines.variations.product_variation',
+                'contact',
+                'location',
+            ])
+            ->orderByDesc('transaction_date')
+            ->limit($limit)
+            ->get();
+
+        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'limit', 'location_id'));
+    }
+
+    /**
      * Show the form for creating a new resource.
      *
      * @return \Illuminate\Http\Response

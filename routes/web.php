@@ -253,7 +253,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/pos/export-csv', 'SellPosController@exportPosSalesCsv')->name('pos.exportCsv');
     Route::get('/pos/export-excel', 'SellPosController@exportPosSalesExcel')->name('pos.exportExcel');
     Route::get('/pos/export-manual-products', 'SellPosController@exportManualProducts')->name('pos.exportManualProducts');
-    
+
+    Route::get('/pos/recent-feed', 'SellPosController@recentSalesFeed')->name('pos.recentFeed');
+
     Route::resource('pos', 'SellPosController');
 
     Route::resource('roles', 'RoleController');
