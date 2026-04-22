@@ -69,4 +69,25 @@ php artisan optimize:clear --no-interaction
 
 php artisan queue:restart 2>/dev/null || true
 
+# Reset FPM OPcache via an in-FPM endpoint. `artisan optimize:clear`
+# runs CLI-side and can't touch the OPcache that actually serves the
+# live site, so stale compiled Blade bytecode would otherwise keep
+# serving old HTML after a deploy. The endpoint auths against APP_KEY
+# from .env so only the deploy user (who can read .env) can trigger it.
+if [ -r "$DEPLOY_DIR/.env" ]; then
+  APP_KEY=$(grep '^APP_KEY=' "$DEPLOY_DIR/.env" | head -1 | cut -d '=' -f 2-)
+  APP_KEY="${APP_KEY%\"}"
+  APP_KEY="${APP_KEY#\"}"
+  if [ -n "$APP_KEY" ]; then
+    echo "deploy: resetting FPM OPcache via /opcache-reset.php"
+    curl -fsS --max-time 10 --get --data-urlencode "t=${APP_KEY}" \
+      "https://playlist.nivessa.com/opcache-reset.php" \
+      || echo "deploy: opcache reset request failed (continuing — next request will still work, just slower)"
+  else
+    echo "deploy: APP_KEY empty in .env, skipping FPM OPcache reset"
+  fi
+else
+  echo "deploy: .env not readable, skipping FPM OPcache reset"
+fi
+
 echo "deploy: done"
