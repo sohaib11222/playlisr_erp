@@ -50,9 +50,28 @@
 		.pos-customer-block .select2-selection--single {
 			padding-right: 12px !important;
 		}
-		.pos-customer-block .select2-container--open .select2-selection__rendered,
-		.pos-customer-block .select2-container--open .select2-selection__clear {
-			visibility: hidden;
+		/* Sarah 2026-04-22 (one-box UX): the cashier should see exactly
+		   ONE box — the search input. When the dropdown is open, collapse
+		   the selection slot to zero (height 0 + no border/padding) so
+		   the dropdown's search input becomes the only visible field.
+		   The underlying <select> still holds the walk-in value so the
+		   form submits correctly; closing the dropdown un-collapses the
+		   slot and the walk-in display returns. */
+		.pos-customer-block .select2-container--open .select2-selection--single {
+			height: 0 !important;
+			min-height: 0 !important;
+			padding: 0 !important;
+			border: 0 !important;
+			overflow: hidden !important;
+		}
+		/* Dropdown sits flush in the slot the selection just vacated. */
+		.pos-customer-select2-dropdown {
+			margin-top: 0 !important;
+			border-top: 1px solid #d1d5db !important;
+		}
+		.pos-customer-select2-dropdown .select2-search__field {
+			border-color: #6366f1 !important;
+			box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15) !important;
 		}
 		</style>
 		<div class="form-group" style="max-width: 480px;">
@@ -209,21 +228,19 @@
 			</div>
 
 			{{-- Sarah 2026-04-22: Channel selector replaces the single
-				 "Mark as Whatnot" checkbox. Cashiers pick where this sale
-				 originated: In Store (default, most walk-in sales), Whatnot,
-				 Discogs, or eBay. Hidden #is_whatnot input is kept for
-				 backward compatibility with filters / reports that still
-				 read it (TransactionUtil also derives is_whatnot from
-				 channel server-side). --}}
+				 "Mark as Whatnot" checkbox. Only In Store (default) and
+				 Whatnot — Discogs/eBay come in via their own syncs, so
+				 cashiers never tag those at the register. Hidden
+				 #is_whatnot input is kept for backward compatibility with
+				 filters / reports that still read it (TransactionUtil
+				 also derives is_whatnot from channel server-side). --}}
 			<div class="pos-sale-flag-row">
 				<div class="pos-channel-picker" role="radiogroup" aria-label="Sales channel">
 					<span class="pos-channel-label">Channel:</span>
 					@php
 						$pos_channels = [
 							'in_store' => ['label' => 'In Store', 'icon' => 'fa-store'],
-							'whatnot'  => ['label' => 'Whatnot',  'icon' => 'fa-broadcast-tower'],
-							'discogs'  => ['label' => 'Discogs',  'icon' => 'fa-compact-disc'],
-							'ebay'     => ['label' => 'eBay',     'icon' => 'fa-tag'],
+							'whatnot'  => ['label' => 'Whatnot',  'icon' => null],
 						];
 					@endphp
 					@foreach($pos_channels as $value => $meta)
@@ -232,7 +249,9 @@
 						     somehow doesn't run. --}}
 						<label class="pos-channel-chip{{ $value === 'in_store' ? ' is-active' : '' }}" data-channel="{{ $value }}">
 							<input type="radio" name="channel" value="{{ $value }}" {{ $value === 'in_store' ? 'checked' : '' }}>
-							<i class="fa {{ $meta['icon'] }}"></i>
+							@if(!empty($meta['icon']))
+								<i class="fa {{ $meta['icon'] }}"></i>
+							@endif
 							<span>{{ $meta['label'] }}</span>
 						</label>
 					@endforeach
@@ -244,6 +263,7 @@
 				.pos-sale-flag-row {
 					margin: 10px 0 6px;
 					display: flex; justify-content: flex-end;
+					position: relative; z-index: 5;
 				}
 				.pos-channel-picker {
 					display: inline-flex; align-items: center; gap: 6px;
@@ -277,13 +297,7 @@
 					background: #166534; border: 1px solid #14532d; color: #fff; font-weight: 700;
 				}
 				.pos-channel-chip.is-active[data-channel="whatnot"] {
-					background: #f5ce3e; border: 1px solid #d4a92a; color: #2b1e16; font-weight: 700;
-				}
-				.pos-channel-chip.is-active[data-channel="discogs"] {
-					background: #333; border: 1px solid #000; color: #fff; font-weight: 700;
-				}
-				.pos-channel-chip.is-active[data-channel="ebay"] {
-					background: #e53238; border: 1px solid #c62828; color: #fff; font-weight: 700;
+					background: #fcd34d; border: 1px solid #d4a92a; color: #2b1e16; font-weight: 700;
 				}
 				.pos-channel-chip.is-active i { opacity: 1; }
 			</style>
