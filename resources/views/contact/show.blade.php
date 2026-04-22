@@ -296,12 +296,36 @@ section.content.cp-page { background: transparent !important; padding: 20px 24px
             @foreach($recent_purchases as $rp)
                 @php
                     $img = !empty($rp->product_image) ? asset('/uploads/img/' . rawurlencode($rp->product_image)) : asset('/img/default.png');
+                    // Resolve display artist + album with graceful fallbacks:
+                    //   1) Product.artist + Product.name (normal POS sale)
+                    //   2) legacy_artist + legacy_title (historical imports)
+                    //   3) Split "ARTIST / ALBUM" out of product_name if the
+                    //      line came in as a single combined string
+                    //   4) "—" for artist so we stop showing "Unknown Artist"
+                    //      on every imported row (Sarah 2026-04-22)
+                    $displayArtist = trim((string) ($rp->artist ?? ''));
+                    $displayAlbum  = trim((string) ($rp->product_name ?? ''));
+                    if ($displayArtist === '' && !empty($rp->legacy_artist)) {
+                        $displayArtist = trim((string) $rp->legacy_artist);
+                    }
+                    if (!empty($rp->legacy_title) && ($displayAlbum === '' || $displayAlbum === 'Product')) {
+                        $displayAlbum = trim((string) $rp->legacy_title);
+                    }
+                    if ($displayArtist === '' && strpos($displayAlbum, ' / ') !== false) {
+                        [$a, $b] = array_map('trim', explode(' / ', $displayAlbum, 2));
+                        if ($a !== '' && $b !== '') {
+                            $displayArtist = $a;
+                            $displayAlbum = $b;
+                        }
+                    }
+                    if ($displayArtist === '') $displayArtist = '—';
+                    if ($displayAlbum === '')  $displayAlbum = 'Product';
                 @endphp
                 <div class="cp-recent-card">
                     <img src="{{ $img }}" class="cp-recent-img" alt="">
                     <div class="cp-recent-info">
-                        <div class="cp-recent-artist">{{ $rp->artist ?: 'Unknown Artist' }}</div>
-                        <div class="cp-recent-album">{{ $rp->product_name ?: 'Product' }}</div>
+                        <div class="cp-recent-artist">{{ $displayArtist }}</div>
+                        <div class="cp-recent-album">{{ $displayAlbum }}</div>
                         <div class="cp-recent-meta">{{ \Carbon\Carbon::parse($rp->transaction_date)->format('M d') }} &bull; <span class="display_currency" data-currency_symbol="true">{{ $rp->unit_price_inc_tax }}</span></div>
                     </div>
                 </div>
@@ -479,7 +503,10 @@ section.content.cp-page { background: transparent !important; padding: 20px 24px
             <div class="cp-credit-row"><span>Total Purchase</span><span class="cp-credit-val"><span class="display_currency" data-currency_symbol="true">{{ $contact->total_purchase ?? 0 }}</span></span></div>
             <div class="cp-credit-row"><span>Purchase Paid</span><span class="cp-credit-val"><span class="display_currency" data-currency_symbol="true">{{ $contact->purchase_paid ?? 0 }}</span></span></div>
         @endif
-        <div class="cp-credit-row"><span>Advance Balance</span><span class="cp-credit-val cp-credit-positive"><span class="display_currency" data-currency_symbol="true" id="cp_advance_balance">{{ $contact->balance ?? 0 }}</span></span></div>
+        <div class="cp-credit-row">
+            <span>Store Credit <small style="color:#9ca3af;font-weight:400;">(available to apply at checkout)</small></span>
+            <span class="cp-credit-val cp-credit-positive"><span class="display_currency" data-currency_symbol="true" id="cp_advance_balance">{{ $contact->balance ?? 0 }}</span></span>
+        </div>
     </div>
 
 </div>

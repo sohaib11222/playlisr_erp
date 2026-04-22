@@ -690,6 +690,15 @@ class ContactController extends Controller
                     'p.name as product_name',
                     'p.artist',
                     'p.image as product_image',
+                    // Historical-sales imports wrote the original artist/title
+                    // into legacy_artist / legacy_title on the sell line rather
+                    // than creating a Product record (so they don't pollute
+                    // inventory). Pull those through so the Recent Purchases
+                    // widget can fall back to them when p.artist is null
+                    // (Sarah 2026-04-22 — was showing every imported line as
+                    // "Unknown Artist").
+                    'transaction_sell_lines.legacy_artist',
+                    'transaction_sell_lines.legacy_title',
                     't.transaction_date',
                     't.invoice_no',
                     'transaction_sell_lines.unit_price_inc_tax',
