@@ -18,13 +18,31 @@ $(document).on('change', '#sell_list_filter_location_id, #sell_list_filter_custo
     sell_table.ajax.reload();
 });
 
+// POS list hero search. Listen on both `input` (modern typing events)
+// and `keyup` (fallback) since some Chrome extensions / IME flows
+// swallow `input` in ways that left Sarah's search doing nothing
+// even though typing was visible in the box.
 let posSearchTimer = null;
-$(document).on('input', '#pos_text_search', function() {
+function __posTextSearchReload() {
     clearTimeout(posSearchTimer);
-    posSearchTimer = setTimeout(function() {
-        sell_table.ajax.reload();
+    posSearchTimer = setTimeout(function () {
+        if (typeof sell_table === 'undefined' || !sell_table) return;
+        var q = ($('#pos_text_search').val() || '').trim();
+        // Show a small "searching / X results" status under the input so
+        // it's obvious the search is live (and not a dead text box).
+        $('#pos_text_search_status').text(q ? 'Searching…' : '');
+        sell_table.one('xhr.dt', function (e, settings, json) {
+            var n = json && typeof json.recordsFiltered !== 'undefined'
+                ? json.recordsFiltered
+                : (json && json.data ? json.data.length : 0);
+            $('#pos_text_search_status').text(
+                q ? (n + ' sale' + (n === 1 ? '' : 's') + ' match "' + q + '"') : ''
+            );
+        });
+        sell_table.ajax.reload(null, false); // keep current page
     }, 250);
-});
+}
+$(document).on('input keyup', '#pos_text_search', __posTextSearchReload);
 
 sell_table = $('#sell_table').DataTable({
         processing: true,

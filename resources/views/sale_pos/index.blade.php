@@ -132,6 +132,10 @@
                    placeholder="e.g. Bowie · Madonna Living on a Prayer · 510-809-6346 · INV-12345"
                    autocomplete="off">
         </div>
+        {{-- Live count so Sarah sees whether the search actually ran.
+             Populated by sale_table_javascript on every xhr.dt. --}}
+        <div id="pos_text_search_status"
+             style="margin-top:8px; font-size:12px; color:#8E8273; font-weight:600; letter-spacing:.04em; min-height:16px;"></div>
     </div>
 
     @component('components.filters', ['title' => __('report.filters')])
