@@ -204,7 +204,10 @@
 						];
 					@endphp
 					@foreach($pos_channels as $value => $meta)
-						<label class="pos-channel-chip" data-channel="{{ $value }}">
+						{{-- is-active rendered server-side so the default pill
+						     is highlighted even if the sync script below
+						     somehow doesn't run. --}}
+						<label class="pos-channel-chip{{ $value === 'in_store' ? ' is-active' : '' }}" data-channel="{{ $value }}">
 							<input type="radio" name="channel" value="{{ $value }}" {{ $value === 'in_store' ? 'checked' : '' }}>
 							<i class="fa {{ $meta['icon'] }}"></i>
 							<span>{{ $meta['label'] }}</span>
