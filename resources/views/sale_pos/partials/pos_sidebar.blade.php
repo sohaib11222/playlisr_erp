@@ -81,44 +81,44 @@
 </style>
 <div class="pos-quick-grid-title">Quick Add — Snacks & Drinks</div>
 <div class="pos-quick-grid">
-    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Soda (can)" data-preset-price="2.00">
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Soda (can)" data-preset-price="2.00" data-preset-category="Snacks & Drinks">
         <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🥤</span> Soda <span class="pos-quick-price">$2.00</span>
     </button>
-    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Ginger Beer" data-preset-price="3.00">
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Ginger Beer" data-preset-price="3.00" data-preset-category="Snacks &amp; Drinks">
         <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🍺</span> Ginger Beer <span class="pos-quick-price">$3.00</span>
     </button>
-    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Energy Drink" data-preset-price="4.50">
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Energy Drink" data-preset-price="4.50" data-preset-category="Snacks &amp; Drinks">
         <i class="fa fa-bolt"></i> Energy Drink <span class="pos-quick-price">$4.50</span>
     </button>
-    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Gatorade" data-preset-price="3.00">
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Gatorade" data-preset-price="3.00" data-preset-category="Snacks &amp; Drinks">
         <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🏃</span> Gatorade <span class="pos-quick-price">$3.00</span>
     </button>
-    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Arizona" data-preset-price="2.00">
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Arizona" data-preset-price="2.00" data-preset-category="Snacks &amp; Drinks">
         <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🍹</span> Arizona <span class="pos-quick-price">$2.00</span>
     </button>
-    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Iced Coffee" data-preset-price="4.00">
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Iced Coffee" data-preset-price="4.00" data-preset-category="Snacks &amp; Drinks">
         <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">☕</span> Iced Coffee <span class="pos-quick-price">$4.00</span>
     </button>
-    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Airheads" data-preset-price="0.50">
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Airheads" data-preset-price="0.50" data-preset-category="Snacks &amp; Drinks">
         <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🍭</span> Airheads <span class="pos-quick-price">$0.50</span>
     </button>
-    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Candy" data-preset-price="3.00">
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Candy" data-preset-price="3.00" data-preset-category="Snacks &amp; Drinks">
         <i class="fa fa-candy-cane"></i> Candy <span class="pos-quick-price">$3.00</span>
     </button>
-    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Chips" data-preset-price="1.50">
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Chips" data-preset-price="1.50" data-preset-category="Snacks &amp; Drinks">
         <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🥔</span> Chips <span class="pos-quick-price">$1.50</span>
     </button>
 </div>
 
 <div class="pos-quick-grid-title" style="margin-top:14px;">Quick Add — Swag</div>
 <div class="pos-quick-grid">
-    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Pin" data-preset-price="3.00">
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Pin" data-preset-price="3.00" data-preset-category="Swag">
         <i class="fa fa-thumbtack"></i> Pin <span class="pos-quick-price">$3.00</span>
     </button>
-    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Sticker" data-preset-price="3.00">
-        <i class="fa fa-sticky-note"></i> Sticker <span class="pos-quick-price">$3.00</span>
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Sticker" data-preset-price="2.00" data-preset-category="Swag">
+        <i class="fa fa-sticky-note"></i> Sticker <span class="pos-quick-price">$2.00</span>
     </button>
-    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Patch" data-preset-price="3.00">
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Patch" data-preset-price="3.00" data-preset-category="Swag">
         <i class="fa fa-tshirt"></i> Patch <span class="pos-quick-price">$3.00</span>
     </button>
 </div>
@@ -140,6 +140,7 @@
         if ($btn.prop('disabled')) return;
         var name = $btn.data('preset-name');
         var price = parseFloat($btn.data('preset-price') || 0);
+        var category = $btn.data('preset-category') || '';
         if (!name || !price) return;
         $btn.prop('disabled', true);
 
@@ -155,7 +156,10 @@
                     name: name,
                     artist: '',
                     price: price.toFixed(2),
-                    quantity: 1
+                    quantity: 1,
+                    // Each Quick Add tile declares its category by name;
+                    // backend resolves/creates the matching Category row.
+                    category_name: String(category)
                 }]
             },
             dataType: 'json'

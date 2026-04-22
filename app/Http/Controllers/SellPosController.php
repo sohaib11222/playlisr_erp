@@ -1975,11 +1975,37 @@ class SellPosController extends Controller
                 $artist = $product['artist'] ?? '';
                 $categoryId = $product['category_id'] ?? '';
                 $subCategoryId = $product['sub_category_id'] ?? '';
+                $categoryName = trim((string) ($product['category_name'] ?? ''));
                 $price = $product['price'] ?? 0;
 
+                // Prefer the caller's declared category name (Quick Add tiles
+                // post 'Snacks & Drinks' / 'Swag'). Look up an existing
+                // top-level Category with that exact name; create it on the
+                // fly if it doesn't exist. This stops new Quick Add items
+                // from landing in whatever happens to be the first category
+                // alphabetically (e.g. 'Children's CDs'), which is what was
+                // happening for Sarah's snacks/drinks / swag before this.
+                if (empty($categoryId) && $categoryName !== '' && $businessId) {
+                    $byName = \App\Category::where('business_id', $businessId)
+                        ->where('category_type', 'product')
+                        ->where('parent_id', 0)
+                        ->whereRaw('LOWER(name) = ?', [mb_strtolower($categoryName)])
+                        ->first();
+                    if (!$byName) {
+                        $byName = \App\Category::create([
+                            'business_id' => $businessId,
+                            'name' => $categoryName,
+                            'category_type' => 'product',
+                            'parent_id' => 0,
+                            'created_by' => request()->session()->get('user.id'),
+                        ]);
+                    }
+                    $categoryId = $byName->id;
+                }
+
                 // Fall back to the business's first category when the caller
-                // didn't pass one (Quick Add tiles). Sub-category stays null if
-                // the parent category has no children — the manual_product_row
+                // didn't pass one AND no named category resolved. Sub-category
+                // stays null if the parent has no children — the manual_product_row
                 // view already handles null sub-category with @if(!empty(...)).
                 if (empty($categoryId) && $defaultCategoryId) {
                     $categoryId = $defaultCategoryId;
