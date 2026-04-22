@@ -346,14 +346,34 @@
             }, 4000);
         });
 
+        // Override the global dateRangeSettings (which defaults to
+        // financial_year = 01/01 – 12/31) so this report opens with the
+        // current month — the useful default for a purchasing review.
+        // Keep all the preset ranges + locale from the global, just
+        // swap the startDate/endDate.
+        var purchaseReportDateRangeSettings = $.extend({}, dateRangeSettings, {
+            startDate: moment().startOf('month'),
+            endDate: moment(),
+        });
         $('#purchase_list_filter_date_range').daterangepicker(
-            dateRangeSettings,
+            purchaseReportDateRangeSettings,
             function (start, end) {
                 $('#purchase_list_filter_date_range').val(start.format(moment_date_format) + ' ~ ' + end.format(moment_date_format));
                purchase_report_table.ajax.reload();
                refreshPurchaseSummary();
             }
         );
+        // Ensure the input text actually shows the this-month default
+        // immediately on page load (the widget doesn't fire the callback
+        // for its initial value).
+        (function () {
+            var dp = $('#purchase_list_filter_date_range').data('daterangepicker');
+            if (dp) {
+                $('#purchase_list_filter_date_range').val(
+                    dp.startDate.format(moment_date_format) + ' ~ ' + dp.endDate.format(moment_date_format)
+                );
+            }
+        })();
         $('#purchase_list_filter_date_range').on('cancel.daterangepicker', function(ev, picker) {
             $('#purchase_list_filter_date_range').val('');
             purchase_report_table.ajax.reload();
