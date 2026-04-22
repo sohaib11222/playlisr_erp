@@ -28,11 +28,16 @@
                             <tr class="manual_product_row" data-row="0">
                                 <td>1</td>
                                 <td>
-                                    <input type="text" 
-                                           name="products[0][name]" 
-                                           class="form-control manual-product-name-input" 
-                                           required 
-                                           placeholder="Product Name">
+                                    <input type="text"
+                                           name="products[0][name]"
+                                           class="form-control manual-product-name-input"
+                                           required
+                                           minlength="3"
+                                           maxlength="150"
+                                           placeholder="e.g. Airheads candy, Used Sharpie, Soda can">
+                                    <small class="text-muted" style="display:block;margin-top:4px;">
+                                        Describe what was sold — no lazy names (no "manual", "item", "misc", "n/a").
+                                    </small>
                                 </td>
                                 <td>
                                     <input type="text" 

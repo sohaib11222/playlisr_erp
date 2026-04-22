@@ -4905,13 +4905,39 @@ function validateManualProductForm() {
         
         if (productName || price) {
             hasValidProduct = true;
-            
-            if (!productName || productName.trim() === '') {
+
+            var trimmedName = (productName || '').trim();
+            if (trimmedName === '') {
                 toastr.error('Product name is required for all products');
                 isValid = false;
                 return false;
             }
-            
+
+            if (trimmedName.length < 3) {
+                toastr.error('Product name must be at least 3 characters — describe what was sold');
+                isValid = false;
+                return false;
+            }
+
+            // Reject lazy placeholder names so manual items get a real description.
+            var lazyNames = [
+                'manual', 'manual item', 'manual items', 'item', 'items',
+                'misc', 'miscellaneous', 'misc item', 'n/a', 'na', 'none',
+                'test', 'thing', 'stuff', 'product', 'unknown', '-', '--', '...'
+            ];
+            if (lazyNames.indexOf(trimmedName.toLowerCase()) !== -1) {
+                toastr.error('"' + trimmedName + '" is too vague — describe what was sold (e.g. "Airheads candy")');
+                isValid = false;
+                return false;
+            }
+
+            // Reject pure digits / single symbols as a name.
+            if (/^[0-9\W_]+$/.test(trimmedName)) {
+                toastr.error('Product name needs actual letters — describe what was sold');
+                isValid = false;
+                return false;
+            }
+
             if (!categoryId || String(categoryId).trim() === '') {
                 toastr.error('Category is required for all products');
                 isValid = false;

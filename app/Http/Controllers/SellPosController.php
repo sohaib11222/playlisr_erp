@@ -2051,9 +2051,34 @@ class SellPosController extends Controller
                 }
 
                 // Validate required fields
-                if (empty($productName)) {
+                $productName = trim((string) $productName);
+                if ($productName === '') {
                     $output['success'] = false;
                     $output['msg'] = __('lang_v1.product_name_required') . ' (Row ' . ($index + 1) . ')';
+                    return $output;
+                }
+
+                if (mb_strlen($productName) < 3) {
+                    $output['success'] = false;
+                    $output['msg'] = 'Product name must be at least 3 characters — describe what was sold (Row ' . ($index + 1) . ')';
+                    return $output;
+                }
+
+                // Reject lazy placeholder names so manual items get a real description.
+                $lazyNames = [
+                    'manual', 'manual item', 'manual items', 'item', 'items',
+                    'misc', 'miscellaneous', 'misc item', 'n/a', 'na', 'none',
+                    'test', 'thing', 'stuff', 'product', 'unknown', '-', '--', '...'
+                ];
+                if (in_array(mb_strtolower($productName), $lazyNames, true)) {
+                    $output['success'] = false;
+                    $output['msg'] = '"' . $productName . '" is too vague — describe what was sold (e.g. "Airheads candy") (Row ' . ($index + 1) . ')';
+                    return $output;
+                }
+
+                if (preg_match('/^[\d\W_]+$/u', $productName)) {
+                    $output['success'] = false;
+                    $output['msg'] = 'Product name needs actual letters — describe what was sold (Row ' . ($index + 1) . ')';
                     return $output;
                 }
 
