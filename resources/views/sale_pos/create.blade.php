@@ -25,7 +25,7 @@
 	<div class="row mb-12">
 		<div class="col-md-12">
 			<div class="row">
-				<div class="@if(empty($pos_settings['hide_product_suggestion'])) col-md-8 @else col-md-10 col-md-offset-1 @endif no-padding pr-12">
+				<div class="@if(empty($pos_settings['hide_product_suggestion'])) col-sm-8 @else col-md-10 col-md-offset-1 @endif no-padding pr-12">
 					<div class="box box-solid mb-12 @if(!isMobile()) mb-40 @endif">
 						<div class="box-body pb-0">
 							{!! Form::hidden('location_id', $default_location->id ?? null , ['id' => 'location_id', 'data-receipt_printer_type' => !empty($default_location->receipt_printer_type) ? $default_location->receipt_printer_type : 'browser', 'data-default_payment_accounts' => $default_location->default_payment_accounts ?? '']) !!}
@@ -49,7 +49,10 @@
 						</div>
 					</div>
 				@if(empty($pos_settings['hide_product_suggestion']) && !isMobile())
-				<div class="col-md-4 no-padding">
+				{{-- Sarah 2026-04-22: col-sm-4 so the Quick Add sidebar stays on
+				     the right at viewports as narrow as 768px. See matching
+				     col-sm-8 comment above. --}}
+				<div class="col-sm-4 no-padding">
 					@include('sale_pos.partials.pos_sidebar')
 				</div>
 				@endif
