@@ -5290,6 +5290,29 @@ class ReportController extends Controller
             'custom_pay_5', 'custom_pay_6', 'custom_pay_7',
         ];
 
+        // Peek at what methods actually exist in this range so we can auto-
+        // fallback to 'all methods' if this install stores Clover payments
+        // under a method name none of the defaults recognise (same issue the
+        // single-day cloverVsErpReport solves with its auto-fallback —
+        // mirrored here so the EOD view isn't blank when the single-day
+        // view is populated).
+        $peekQuery = \DB::table('transaction_payments as tp')
+            ->join('transactions as t', 'tp.transaction_id', '=', 't.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereDate('t.transaction_date', '>=', $start)
+            ->whereDate('t.transaction_date', '<=', $end);
+        if (!empty($location_id)) {
+            $peekQuery->where('t.location_id', $location_id);
+        }
+        $day_methods = $peekQuery->distinct()->pluck('tp.method')->map(fn($m) => (string) $m)->all();
+        $has_overlap = !empty(array_intersect($day_methods, $card_methods));
+        $used_all_methods = false;
+        if (!$has_overlap && !empty($day_methods)) {
+            $used_all_methods = true;
+        }
+
         // ERP-side per (date, location) rollup. Using transaction_date rather
         // than tp.paid_on since paid_on is occasionally NULL on older rows.
         $erpQuery = \DB::table('transaction_payments as tp')
@@ -5298,9 +5321,11 @@ class ReportController extends Controller
             ->where('t.business_id', $business_id)
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
-            ->whereIn('tp.method', $card_methods)
             ->whereDate('t.transaction_date', '>=', $start)
             ->whereDate('t.transaction_date', '<=', $end);
+        if (!$used_all_methods) {
+            $erpQuery->whereIn('tp.method', $card_methods);
+        }
         if (!empty($location_id)) {
             $erpQuery->where('t.location_id', $location_id);
         }
