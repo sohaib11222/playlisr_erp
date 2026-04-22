@@ -152,7 +152,6 @@
                     <div>
                         <label class="pos-list-whatnot-chip" id="whatnot_only_chip">
                             <input type="checkbox" id="sell_list_filter_is_whatnot" name="sell_list_filter_is_whatnot" value="1">
-                            <i class="fa fa-broadcast-tower" style="opacity:.7;"></i>
                             <span>Whatnot transactions only</span>
                         </label>
                     </div>
@@ -204,10 +203,34 @@
 <script src="{{ asset('js/payment.js?v=' . $asset_v) }}"></script>
 <script>
 // Visual toggle for the whatnot chip + trigger DataTable reload.
-// The DataTable ajax function reads #sell_list_filter_is_whatnot by name;
-// keeping the id the same means the existing reload handler still works.
+// Sarah 2026-04-22: the chip was only toggling CSS — the table's ajax
+// `data` callback never read the checkbox, so checking the pill did
+// nothing on the server. Now we set `is_whatnot` on the ajax params via
+// DataTables' modifier and reload. Param name matches what SellController
+// reads (request()->input('is_whatnot')).
 $(document).on('change', '#sell_list_filter_is_whatnot', function () {
     $('#whatnot_only_chip').toggleClass('is-on', this.checked);
+    if (typeof sell_table !== 'undefined' && sell_table) {
+        sell_table.ajax.reload();
+    }
 });
+// Patch the sell_table ajax.data to include the checkbox state. We do
+// this by wrapping the existing `data` function so the rest of the table
+// init in sale_table_javascript.blade.php doesn't need to change.
+(function () {
+    var tryWire = setInterval(function () {
+        if (typeof sell_table === 'undefined' || !sell_table) return;
+        var settings = sell_table.settings()[0];
+        var origData = settings.ajax.data;
+        if (!origData || origData._is_whatnot_patched) { clearInterval(tryWire); return; }
+        settings.ajax.data = function (d) {
+            if (typeof origData === 'function') origData(d);
+            d.is_whatnot = $('#sell_list_filter_is_whatnot').is(':checked') ? 1 : 0;
+            return d;
+        };
+        settings.ajax.data._is_whatnot_patched = true;
+        clearInterval(tryWire);
+    }, 120);
+})();
 </script>
 @endsection
