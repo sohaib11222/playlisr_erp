@@ -5,7 +5,9 @@
 {{-- POS checkout redesign v2 (2026-04-20): pulls in the scoped stylesheet
      that reskins this screen per nivessa_pos_redesign.html. Add the
      body.pos-v2 hook so the CSS only applies here — safer than touching
-     the shared layout file. --}}
+     the shared layout file.
+     2026-04-22: bumped to force Blade recompile after _redesign_v2 CSS
+     changes (compiled-view cache was holding the pre-hotfix inline). --}}
 @section('content')
 @include('sale_pos.partials._redesign_v2')
 <script>document.body.classList.add('pos-v2');</script>

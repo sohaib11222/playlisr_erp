@@ -33,7 +33,7 @@ return [
     'document_size_limit' => '5000000', //in Bytes,
     'image_size_limit' => '5000000', //in Bytes
 
-    'asset_version' => 486,
+    'asset_version' => 487,
 
     'disable_purchase_in_other_currency' => true,
     
