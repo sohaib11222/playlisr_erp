@@ -10,6 +10,10 @@ class CustomerPickup extends Model
 
     protected $dates = ['picked_up_at'];
 
+    protected $casts = [
+        'is_paid' => 'boolean',
+    ];
+
     public function business()
     {
         return $this->belongsTo(Business::class);
@@ -43,5 +47,13 @@ class CustomerPickup extends Model
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    /**
+     * Cashier / user who marked the pickup as complete.
+     */
+    public function pickedUpByUser()
+    {
+        return $this->belongsTo(User::class, 'picked_up_by_user_id');
     }
 }

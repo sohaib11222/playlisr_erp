@@ -32,8 +32,14 @@ class CreateCustomerPickupsTable extends Migration
                 $table->enum('status', ['ready', 'picked_up', 'cancelled'])->default('ready');
                 $table->date('hold_date');
                 $table->date('expected_pickup_date')->nullable();
+                // Free-text time window e.g. "5-6pm", "after 3pm" — not a strict TIME
+                // because the real-world use is "sometime in this window"
+                $table->string('expected_pickup_time', 50)->nullable();
+                $table->boolean('is_paid')->default(1);
                 $table->timestamp('picked_up_at')->nullable();
                 $table->string('picked_up_by_name')->nullable();
+                $table->integer('picked_up_by_user_id')->unsigned()->nullable();
+                $table->foreign('picked_up_by_user_id')->references('id')->on('users')->onDelete('set null');
                 $table->text('notes')->nullable();
                 $table->integer('created_by')->unsigned();
                 $table->foreign('created_by')->references('id')->on('users')->onDelete('cascade');

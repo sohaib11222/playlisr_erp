@@ -33,14 +33,16 @@
             <table class="table table-bordered table-striped table-hover" id="pickup_table">
                 <thead>
                     <tr>
+                        <th>Store</th>
                         <th>Hold Date</th>
                         <th>Customer</th>
                         <th>Product</th>
                         <th>SKU</th>
                         <th>Qty</th>
-                        <th>Location</th>
                         <th>Expected Pickup</th>
+                        <th>Paid?</th>
                         <th>Status</th>
+                        <th>Picked Up By</th>
                         <th>Action</th>
                     </tr>
                 </thead>
@@ -60,7 +62,8 @@
                 <div class="modal-body">
                     <div class="form-group">
                         <label>Picked up by (name, optional):</label>
-                        <input type="text" class="form-control" name="picked_up_by_name" placeholder="Who picked it up?">
+                        <input type="text" class="form-control" name="picked_up_by_name" placeholder="Who physically picked it up?">
+                        <small class="help-block">Your cashier name + timestamp are captured automatically.</small>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -86,17 +89,19 @@
                 }
             },
             columns: [
+                { data: 'location_name', name: 'business_locations.name', defaultContent: '-' },
                 { data: 'hold_date', name: 'hold_date' },
-                { data: 'customer_name', name: 'customer_name' },
-                { data: 'product_name', name: 'product_name' },
-                { data: 'sub_sku', name: 'sub_sku' },
+                { data: 'customer_name', name: 'contacts.name' },
+                { data: 'product_name', name: 'products.name', defaultContent: '-' },
+                { data: 'sub_sku', name: 'variations.sub_sku', defaultContent: '-' },
                 { data: 'quantity', name: 'quantity' },
-                { data: 'location_name', name: 'location_name' },
                 { data: 'expected_pickup_date', name: 'expected_pickup_date' },
+                { data: 'is_paid_label', name: 'is_paid', orderable: false, searchable: false },
                 { data: 'status', name: 'status' },
+                { data: 'picked_up_info', name: 'picked_up_info', orderable: false, searchable: false },
                 { data: 'action', name: 'action', orderable: false, searchable: false },
             ],
-            order: [[0, 'desc']],
+            order: [[1, 'desc']],
         });
 
         $('#status_filter').on('change', function() {

@@ -27,7 +27,7 @@
                             </td>
                         </tr>
                         <tr>
-                            <th>Location:</th>
+                            <th>Store:</th>
                             <td>{{ $pickup->location->name ?? 'N/A' }}</td>
                         </tr>
                         <tr>
@@ -47,8 +47,23 @@
                             <td>{{ \Carbon\Carbon::parse($pickup->hold_date)->format('Y-m-d') }}</td>
                         </tr>
                         <tr>
-                            <th>Expected Pickup Date:</th>
-                            <td>{{ $pickup->expected_pickup_date ? \Carbon\Carbon::parse($pickup->expected_pickup_date)->format('Y-m-d') : 'Not set' }}</td>
+                            <th>Expected Pickup:</th>
+                            <td>
+                                {{ $pickup->expected_pickup_date ? \Carbon\Carbon::parse($pickup->expected_pickup_date)->format('Y-m-d') : 'Not set' }}
+                                @if($pickup->expected_pickup_time)
+                                    &nbsp; <strong>{{ $pickup->expected_pickup_time }}</strong>
+                                @endif
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>Paid?</th>
+                            <td>
+                                @if($pickup->is_paid)
+                                    <span class="label label-success">Paid</span>
+                                @else
+                                    <span class="label label-default">Unpaid</span>
+                                @endif
+                            </td>
                         </tr>
                         <tr>
                             <th>Status:</th>
@@ -68,9 +83,15 @@
                             <td>{{ $pickup->picked_up_at->format('m/d/Y h:i A') }}</td>
                         </tr>
                         @endif
+                        @if($pickup->pickedUpByUser)
+                        <tr>
+                            <th>Processed by Cashier:</th>
+                            <td>{{ $pickup->pickedUpByUser->user_full_name ?? $pickup->pickedUpByUser->username ?? '-' }}</td>
+                        </tr>
+                        @endif
                         @if($pickup->picked_up_by_name)
                         <tr>
-                            <th>Picked Up By:</th>
+                            <th>Picked Up By (customer):</th>
                             <td>{{ $pickup->picked_up_by_name }}</td>
                         </tr>
                         @endif

@@ -27,13 +27,15 @@ class CustomerPickupController extends Controller
                 ->leftJoin('products', 'customer_pickups.product_id', '=', 'products.id')
                 ->leftJoin('variations', 'customer_pickups.variation_id', '=', 'variations.id')
                 ->leftJoin('business_locations', 'customer_pickups.location_id', '=', 'business_locations.id')
+                ->leftJoin('users as picked_up_users', 'customer_pickups.picked_up_by_user_id', '=', 'picked_up_users.id')
                 ->select(
                     'customer_pickups.*',
                     'contacts.name as customer_name',
                     'contacts.mobile',
                     'products.name as product_name',
                     'variations.sub_sku',
-                    'business_locations.name as location_name'
+                    'business_locations.name as location_name',
+                    DB::raw("COALESCE(NULLIF(TRIM(CONCAT(COALESCE(picked_up_users.first_name,''), ' ', COALESCE(picked_up_users.last_name,''))), ''), picked_up_users.username) as picked_up_cashier_name")
                 );
 
             if (request()->has('status') && request()->status != '') {
@@ -70,9 +72,30 @@ class CustomerPickupController extends Controller
                     return \Carbon::parse($row->hold_date)->format('Y-m-d');
                 })
                 ->editColumn('expected_pickup_date', function ($row) {
-                    return $row->expected_pickup_date ? \Carbon::parse($row->expected_pickup_date)->format('Y-m-d') : '-';
+                    $d = $row->expected_pickup_date ? \Carbon::parse($row->expected_pickup_date)->format('Y-m-d') : '';
+                    $t = $row->expected_pickup_time ? ' ' . $row->expected_pickup_time : '';
+                    return trim($d . $t) ?: '-';
                 })
-                ->rawColumns(['action', 'status'])
+                ->addColumn('is_paid_label', function ($row) {
+                    return $row->is_paid
+                        ? '<span class="label label-success">Paid</span>'
+                        : '<span class="label label-default">Unpaid</span>';
+                })
+                ->addColumn('picked_up_info', function ($row) {
+                    if ($row->status != 'picked_up') return '-';
+                    $parts = [];
+                    if (!empty($row->picked_up_cashier_name) && trim($row->picked_up_cashier_name) !== '') {
+                        $parts[] = '<strong>' . e(trim($row->picked_up_cashier_name)) . '</strong>';
+                    }
+                    if ($row->picked_up_at) {
+                        $parts[] = '<small>' . \Carbon::parse($row->picked_up_at)->format('m/d/Y h:i A') . '</small>';
+                    }
+                    if ($row->picked_up_by_name) {
+                        $parts[] = '<small>to: ' . e($row->picked_up_by_name) . '</small>';
+                    }
+                    return $parts ? implode('<br>', $parts) : '-';
+                })
+                ->rawColumns(['action', 'status', 'is_paid_label', 'picked_up_info'])
                 ->make(true);
         }
 
@@ -110,6 +133,8 @@ class CustomerPickupController extends Controller
                 'quantity' => 'required|numeric|min:0.01',
                 'hold_date' => 'required|date',
                 'expected_pickup_date' => 'nullable|date',
+                'expected_pickup_time' => 'nullable|string|max:50',
+                'is_paid' => 'nullable',
                 'notes' => 'nullable|string',
             ]);
 
@@ -123,6 +148,8 @@ class CustomerPickupController extends Controller
             $pickup->status = 'ready';
             $pickup->hold_date = $request->hold_date;
             $pickup->expected_pickup_date = $request->expected_pickup_date;
+            $pickup->expected_pickup_time = $request->expected_pickup_time;
+            $pickup->is_paid = $request->has('is_paid') ? 1 : 0;
             $pickup->notes = $request->notes;
             $pickup->created_by = auth()->user()->id;
             $pickup->save();
@@ -149,7 +176,7 @@ class CustomerPickupController extends Controller
     {
         $business_id = request()->session()->get('user.business_id');
         $pickup = CustomerPickup::where('business_id', $business_id)
-            ->with(['contact', 'product', 'variation', 'creator', 'location', 'transaction'])
+            ->with(['contact', 'product', 'variation', 'creator', 'location', 'transaction', 'pickedUpByUser'])
             ->findOrFail($id);
 
         return view('customer_pickup.show', compact('pickup'));
@@ -208,6 +235,8 @@ class CustomerPickupController extends Controller
                 'quantity' => 'required|numeric|min:0.01',
                 'hold_date' => 'required|date',
                 'expected_pickup_date' => 'nullable|date',
+                'expected_pickup_time' => 'nullable|string|max:50',
+                'is_paid' => 'nullable',
                 'notes' => 'nullable|string',
             ]);
 
@@ -218,6 +247,8 @@ class CustomerPickupController extends Controller
             $pickup->quantity = $request->quantity;
             $pickup->hold_date = $request->hold_date;
             $pickup->expected_pickup_date = $request->expected_pickup_date;
+            $pickup->expected_pickup_time = $request->expected_pickup_time;
+            $pickup->is_paid = $request->has('is_paid') ? 1 : 0;
             $pickup->notes = $request->notes;
             $pickup->save();
 
@@ -286,6 +317,7 @@ class CustomerPickupController extends Controller
                 $pickup->status = 'picked_up';
                 $pickup->picked_up_at = now();
                 $pickup->picked_up_by_name = $request->input('picked_up_by_name');
+                $pickup->picked_up_by_user_id = auth()->user()->id;
                 $pickup->save();
                 $output = [
                     'success' => true,

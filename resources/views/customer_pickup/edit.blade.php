@@ -49,16 +49,34 @@
                         </div>
                     </div>
                     <div class="row">
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <div class="form-group">
                                 {!! Form::label('hold_date', 'Hold Date: *') !!}
                                 {!! Form::text('hold_date', \Carbon\Carbon::parse($pickup->hold_date)->format('Y-m-d'), ['class' => 'form-control date-picker', 'required']); !!}
                             </div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <div class="form-group">
                                 {!! Form::label('expected_pickup_date', 'Expected Pickup Date:') !!}
                                 {!! Form::text('expected_pickup_date', $pickup->expected_pickup_date ? \Carbon\Carbon::parse($pickup->expected_pickup_date)->format('Y-m-d') : null, ['class' => 'form-control date-picker', 'placeholder' => 'Optional']); !!}
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                {!! Form::label('expected_pickup_time', 'Pickup Time:') !!}
+                                {!! Form::text('expected_pickup_time', $pickup->expected_pickup_time, ['class' => 'form-control', 'placeholder' => 'e.g. 5-6pm', 'maxlength' => 50]); !!}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <div class="checkbox">
+                                    <label>
+                                        {!! Form::checkbox('is_paid', 1, (bool) $pickup->is_paid) !!}
+                                        <strong>Paid?</strong> &nbsp;<small class="text-muted">— uncheck if customer still owes</small>
+                                    </label>
+                                </div>
                             </div>
                         </div>
                     </div>

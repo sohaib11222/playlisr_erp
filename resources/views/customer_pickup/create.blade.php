@@ -49,17 +49,36 @@
                         </div>
                     </div>
                     <div class="row">
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <div class="form-group">
                                 {!! Form::label('hold_date', 'Hold Date: *') !!}
                                 {!! Form::text('hold_date', \Carbon\Carbon::now()->format('Y-m-d'), ['class' => 'form-control date-picker', 'required']); !!}
-                                <small class="help-block">When the item was set aside for the customer</small>
+                                <small class="help-block">When item was set aside</small>
                             </div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <div class="form-group">
                                 {!! Form::label('expected_pickup_date', 'Expected Pickup Date:') !!}
                                 {!! Form::text('expected_pickup_date', null, ['class' => 'form-control date-picker', 'placeholder' => 'Optional']); !!}
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                {!! Form::label('expected_pickup_time', 'Pickup Time:') !!}
+                                {!! Form::text('expected_pickup_time', null, ['class' => 'form-control', 'placeholder' => 'e.g. 5-6pm, after 3pm', 'maxlength' => 50]); !!}
+                                <small class="help-block">Free-text window</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <div class="checkbox">
+                                    <label>
+                                        {!! Form::checkbox('is_paid', 1, true) !!}
+                                        <strong>Paid?</strong> &nbsp;<small class="text-muted">— uncheck if customer still owes</small>
+                                    </label>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -67,7 +86,7 @@
                         <div class="col-md-12">
                             <div class="form-group">
                                 {!! Form::label('notes', 'Notes:') !!}
-                                {!! Form::textarea('notes', null, ['class' => 'form-control', 'rows' => 3, 'placeholder' => 'e.g. paid in full, called customer, etc.']); !!}
+                                {!! Form::textarea('notes', null, ['class' => 'form-control', 'rows' => 3, 'placeholder' => 'e.g. called customer, put in hold bin, deposit taken, etc.']); !!}
                             </div>
                         </div>
                     </div>
