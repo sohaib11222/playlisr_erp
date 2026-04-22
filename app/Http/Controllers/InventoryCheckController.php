@@ -16,6 +16,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Response;
+use Illuminate\Support\Facades\Schema;
 
 class InventoryCheckController extends Controller
 {
@@ -56,13 +57,20 @@ class InventoryCheckController extends Controller
         $copyFormat = config('inventory_check.copy_line_format');
         $amsColumns = config('inventory_check.ams_export_columns', []);
 
-        // Freshness check for the pasted charts — surface "last imported" dates
-        $chartFreshness = ChartPickImport::where('business_id', $business_id)
-            ->selectRaw('source, MAX(week_of) as week_of, MAX(created_at) as imported_at')
-            ->groupBy('source')
-            ->get()
-            ->keyBy('source')
-            ->toArray();
+        // Freshness check for the pasted charts — surface "last imported" dates.
+        // Guarded: tables may not exist if migrations haven't run yet on this deploy.
+        $chartFreshness = [];
+        $migrationsMissing = false;
+        if (Schema::hasTable('chart_pick_imports')) {
+            $chartFreshness = ChartPickImport::where('business_id', $business_id)
+                ->selectRaw('source, MAX(week_of) as week_of, MAX(created_at) as imported_at')
+                ->groupBy('source')
+                ->get()
+                ->keyBy('source')
+                ->toArray();
+        } else {
+            $migrationsMissing = true;
+        }
 
         return view('report.inventory_check_assistant')->with(compact(
             'business_locations',
@@ -72,7 +80,8 @@ class InventoryCheckController extends Controller
             'presetMeta',
             'copyFormat',
             'amsColumns',
-            'chartFreshness'
+            'chartFreshness',
+            'migrationsMissing'
         ));
     }
 
@@ -190,6 +199,14 @@ class InventoryCheckController extends Controller
             'body' => 'required|string|max:500000',
             'week_of' => 'nullable|date',
         ]);
+
+        if (!Schema::hasTable('chart_pick_imports') || !Schema::hasTable('chart_picks')) {
+            return response()->json([
+                'success' => false,
+                'error' => 'migrations_missing',
+                'message' => 'chart_picks tables not yet created on this server. Run "php artisan migrate" and try again.',
+            ], 503);
+        }
 
         $business_id = (int) $request->session()->get('user.business_id');
         $source = $request->input('source');

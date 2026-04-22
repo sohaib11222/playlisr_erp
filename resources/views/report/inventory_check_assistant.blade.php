@@ -9,6 +9,13 @@
 
 <section class="content">
 
+    @if(!empty($migrationsMissing))
+    <div class="alert alert-warning">
+        <strong>Database migration required.</strong> The chart-import tables don't exist yet on this server. SSH in and run
+        <code>php artisan migrate</code>, then refresh this page. Fast-moving OOS + Events + Long OOS buckets work now; Street Pulse / Universal / New releases sections stay empty until the migration runs.
+    </div>
+    @endif
+
     {{-- ── Top filter bar ─────────────────────────────────────────── --}}
     <div class="row no-print">
         <div class="col-md-12">

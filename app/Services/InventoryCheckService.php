@@ -9,6 +9,7 @@ use App\Contact;
 use App\CustomerWant;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class InventoryCheckService
 {
@@ -229,6 +230,16 @@ class InventoryCheckService
 
     protected function bucketChartPicks(int $business_id, int $locationId, string $source, array $topArtists, $permittedLocations): array
     {
+        if (!Schema::hasTable('chart_picks')) {
+            return [
+                'label' => $source === 'street_pulse' ? '📬 Street Pulse picks' : '🌍 Universal top',
+                'why' => 'chart_picks table not yet migrated — run php artisan migrate.',
+                'items' => [],
+                'count' => 0,
+                'empty_reason' => 'migrations_missing',
+            ];
+        }
+
         $week = ChartPick::where('business_id', $business_id)
             ->where('source', $source)
             ->max('week_of');
@@ -395,6 +406,16 @@ class InventoryCheckService
 
     protected function bucketTopArtistNewReleases(int $business_id, int $locationId, array $topArtists, $permittedLocations): array
     {
+        if (!Schema::hasTable('chart_picks')) {
+            return [
+                'label' => '🎵 New releases from your top artists',
+                'why' => 'chart_picks table not yet migrated — run php artisan migrate.',
+                'items' => [],
+                'count' => 0,
+                'empty_reason' => 'migrations_missing',
+            ];
+        }
+
         $latestWeeks = ChartPick::where('business_id', $business_id)
             ->selectRaw('source, MAX(week_of) as w')
             ->groupBy('source')
