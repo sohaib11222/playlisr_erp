@@ -46,6 +46,49 @@
     }
     body.pos-list-v2 table.dataTable tbody td { color: #1F1B16; }
 
+    /* Hero search — matches /pos/create's 'Ring Up / Scan Product' input.
+       Dominant element on the page, Nivessa cream around it, mustard focus
+       ring, monster-sized type so it's the first thing cashiers see. */
+    .pos-list-hero {
+        background: #FFFFFF;
+        border: 1px solid #ECE3CF;
+        border-radius: 12px;
+        padding: 18px 20px;
+        margin-bottom: 18px;
+        box-shadow: 0 1px 2px rgba(31,27,22,.06);
+    }
+    .pos-list-hero-label {
+        display: block;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: .12em;
+        color: #8E8273;
+        font-weight: 700;
+        margin-bottom: 8px;
+    }
+    .pos-list-hero-label i { margin-right: 6px; color: #5A5045; }
+    .pos-list-hero-wrap { position: relative; }
+    .pos-list-hero-wrap #pos_text_search {
+        width: 100%;
+        height: 58px;
+        font-size: 20px;
+        font-weight: 600;
+        padding: 10px 18px;
+        border: 2px solid #DFD2B3 !important;
+        border-radius: 10px !important;
+        background: #FAF6EE;
+        color: #1F1B16;
+        box-shadow: none;
+        transition: border-color .15s, box-shadow .15s, background .15s;
+    }
+    .pos-list-hero-wrap #pos_text_search:focus {
+        border-color: #F0DC7A !important;
+        background: #FFFFFF;
+        box-shadow: 0 0 0 4px rgba(255, 242, 179, .55) !important;
+        outline: none;
+    }
+    .pos-list-hero-wrap #pos_text_search::placeholder { color: #B8ADA0; font-weight: 500; }
+
     /* Whatnot-only checkbox chip — mustard pill styled like the POS-create
        Mark as Whatnot toggle for visual consistency. */
     .pos-list-whatnot-chip {
@@ -75,6 +118,22 @@
 
 <!-- Main content -->
 <section class="content no-print">
+
+    {{-- Hero search — mirrors the 'Ring Up / Scan Product' input on /pos/create
+         so the POS list page has the same dominant search input the cashiers
+         already know. Searches invoice / customer / notes + line-item artist
+         + line-item album title across recent transactions. --}}
+    <div class="pos-list-hero">
+        <label class="pos-list-hero-label" for="pos_text_search">
+            <i class="fa fa-search"></i> Search recent sales — invoice, customer, artist, or album
+        </label>
+        <div class="pos-list-hero-wrap">
+            <input type="text" id="pos_text_search" class="form-control"
+                   placeholder="e.g. Bowie · Madonna Living on a Prayer · 510-809-6346 · INV-12345"
+                   autocomplete="off">
+        </div>
+    </div>
+
     @component('components.filters', ['title' => __('report.filters')])
         {{-- Only show the filters we want on the POS list. Payment status,
              shipping status, 'only subscriptions', and the whatnot-as-select
@@ -87,12 +146,6 @@
             'created_by',
         ]])
         <div class="row">
-            <div class="col-md-4">
-                <div class="form-group">
-                    <label>Text Search (recent transactions)</label>
-                    <input type="text" id="pos_text_search" class="form-control" placeholder="Invoice, customer, mobile, notes...">
-                </div>
-            </div>
             <div class="col-md-4">
                 <div class="form-group">
                     <label>&nbsp;</label>

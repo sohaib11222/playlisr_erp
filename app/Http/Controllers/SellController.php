@@ -287,13 +287,31 @@ class SellController extends Controller
 
             if (!empty(request()->input('pos_text_search'))) {
                 $search = trim((string) request()->input('pos_text_search'));
-                $sells->where(function ($q) use ($search) {
-                    $q->where('transactions.invoice_no', 'like', '%' . $search . '%')
-                        ->orWhere('transactions.ref_no', 'like', '%' . $search . '%')
-                        ->orWhere('transactions.additional_notes', 'like', '%' . $search . '%')
-                        ->orWhere('transactions.staff_note', 'like', '%' . $search . '%')
-                        ->orWhere('contacts.name', 'like', '%' . $search . '%')
-                        ->orWhere('contacts.mobile', 'like', '%' . $search . '%');
+                $like = '%' . $search . '%';
+                // Widen from invoice/customer/notes to also match the
+                // transaction's line items — Sarah 2026-04-22 wants to
+                // find recent sales by artist or album title without
+                // remembering invoice numbers.
+                $matchingTxIds = \DB::table('transaction_sell_lines as tsl')
+                    ->join('products as p', 'tsl.product_id', '=', 'p.id')
+                    ->where(function ($q) use ($like) {
+                        $q->where('p.name', 'like', $like)
+                          ->orWhere('p.artist', 'like', $like)
+                          ->orWhere('tsl.legacy_artist', 'like', $like)
+                          ->orWhere('tsl.legacy_title', 'like', $like);
+                    })
+                    ->pluck('tsl.transaction_id');
+
+                $sells->where(function ($q) use ($like, $matchingTxIds) {
+                    $q->where('transactions.invoice_no', 'like', $like)
+                        ->orWhere('transactions.ref_no', 'like', $like)
+                        ->orWhere('transactions.additional_notes', 'like', $like)
+                        ->orWhere('transactions.staff_note', 'like', $like)
+                        ->orWhere('contacts.name', 'like', $like)
+                        ->orWhere('contacts.mobile', 'like', $like);
+                    if (!empty($matchingTxIds) && count($matchingTxIds) > 0) {
+                        $q->orWhereIn('transactions.id', $matchingTxIds);
+                    }
                 });
             }
             
