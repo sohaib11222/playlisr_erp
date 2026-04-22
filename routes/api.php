@@ -22,3 +22,19 @@ Route::middleware('auth:api')->get('/user', function (Request $request) {
 Route::post('test' , function(){
    \Log::info(request()->all());
 });
+
+/*
+|--------------------------------------------------------------------------
+| Nivessa website (jonhedvat/server) bridge
+|--------------------------------------------------------------------------
+| The website API proxies gift-card and (later) store-credit operations
+| here so the ERP stays the single source of truth. All routes are guarded
+| by a shared bearer token (see config/services.php: nivessa_web).
+*/
+Route::prefix('v1/nivessa-web')
+    ->middleware('verify.nivessa_web')
+    ->group(function () {
+        Route::post('gift-cards/lookup', [\App\Http\Controllers\Api\NivessaGiftCardController::class, 'lookup']);
+        Route::post('gift-cards/charge', [\App\Http\Controllers\Api\NivessaGiftCardController::class, 'charge']);
+        Route::post('gift-cards/issue',  [\App\Http\Controllers\Api\NivessaGiftCardController::class, 'issue']);
+    });
