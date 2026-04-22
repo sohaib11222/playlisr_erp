@@ -3750,10 +3750,27 @@ class ReportController extends Controller
             ->orderByDesc('total_spent')
             ->get();
 
-        // Top products per location — join the transaction lines. Limit the
-        // per-location slice to 5 items so the card stays compact.
+        // Bulk-bin / clearance SKUs that flood the top-products list with
+        // useless rows ("DISCOUNT BIN ($1)", "Various Artists — Hip Hop
+        // Clearance", etc.) — Sarah 2026-04-22 called the old output "not
+        // helping" because these drowned out the actual interesting
+        // purchases (real artists, real albums). We pull them out into a
+        // separate "bulk bin" bucket and surface real purchases by $ spent
+        // instead of by qty.
+        $binFilters = [
+            'p.name LIKE ?', 'p.name LIKE ?', 'p.name LIKE ?',
+            'p.artist LIKE ?', 'p.artist LIKE ?',
+        ];
+        $binBindings = [
+            '%DISCOUNT BIN%',
+            '%Clearance%',
+            '%Discount Bin%',
+            'Various Artists%',
+            'VARIOUS%',
+        ];
+
         foreach ($byLocation as $loc) {
-            $loc->top_products = \DB::table('transactions as t')
+            $lineQuery = \DB::table('transactions as t')
                 ->join('purchase_lines as pl', 'pl.transaction_id', '=', 't.id')
                 ->join('products as p', 'pl.product_id', '=', 'p.id')
                 ->where('t.business_id', $business_id)
@@ -3765,6 +3782,18 @@ class ReportController extends Controller
                 })
                 ->when(!empty(request()->supplier_id), function ($q) {
                     $q->where('t.contact_id', request()->supplier_id);
+                });
+
+            // Top REAL products — exclude the bin filters, sort by $ spent
+            // so a $1k Thriller order floats above a 1000-unit clearance
+            // pallet. This is the list Sabina actually wants to eyeball.
+            $loc->top_products = (clone $lineQuery)
+                ->where(function ($q) use ($binFilters, $binBindings) {
+                    foreach ($binFilters as $i => $clause) {
+                        $q->where(function ($qq) use ($clause, $binBindings, $i) {
+                            $qq->whereRaw('NOT (' . $clause . ')', [$binBindings[$i]]);
+                        });
+                    }
                 })
                 ->groupBy('p.id', 'p.name', 'p.artist')
                 ->select(
@@ -3773,9 +3802,59 @@ class ReportController extends Controller
                     \DB::raw('SUM(pl.quantity) as qty'),
                     \DB::raw('SUM(pl.quantity * pl.purchase_price) as spent')
                 )
-                ->orderByDesc('qty')
+                ->orderByDesc('spent')
+                ->limit(8)
+                ->get();
+
+            // Bulk-bin totals — one summary row so the bin volume is still
+            // visible (Sarah still needs to know "we dropped $X on clearance
+            // bins this month") without hogging the top-products slot.
+            $bin = (clone $lineQuery)
+                ->where(function ($q) use ($binFilters, $binBindings) {
+                    $q->where(function ($inner) use ($binFilters, $binBindings) {
+                        foreach ($binFilters as $i => $clause) {
+                            $inner->orWhereRaw($clause, [$binBindings[$i]]);
+                        }
+                    });
+                })
+                ->selectRaw('COALESCE(SUM(pl.quantity), 0) as qty,
+                             COALESCE(SUM(pl.quantity * pl.purchase_price), 0) as spent')
+                ->first();
+            $loc->bin_summary = $bin ? [
+                'qty' => (int) ($bin->qty ?? 0),
+                'spent' => (float) ($bin->spent ?? 0),
+            ] : ['qty' => 0, 'spent' => 0];
+
+            // Top suppliers by $ spent — usually the more actionable cut
+            // for Sabina ("who we bought from" > "what we bought") because
+            // purchasing reviews start with vendor relationships.
+            $loc->top_suppliers = \DB::table('transactions as t')
+                ->leftJoin('contacts as c', 't.contact_id', '=', 'c.id')
+                ->where('t.business_id', $business_id)
+                ->where('t.type', 'purchase')
+                ->where('t.location_id', $loc->location_id)
+                ->when(!empty(request()->start_date) && !empty(request()->end_date), function ($q) {
+                    $q->whereDate('t.transaction_date', '>=', request()->start_date)
+                      ->whereDate('t.transaction_date', '<=', request()->end_date);
+                })
+                ->groupBy('c.id', 'c.name', 'c.supplier_business_name')
+                ->select(
+                    'c.name',
+                    'c.supplier_business_name',
+                    \DB::raw('COUNT(t.id) as purchase_count'),
+                    \DB::raw('COALESCE(SUM(t.final_total), 0) as spent')
+                )
+                ->orderByDesc('spent')
                 ->limit(5)
                 ->get();
+
+            // Distinct-products count so "bought 47 unique albums" is
+            // visible alongside "1413 purchases" — tells very different
+            // stories.
+            $distinct = (clone $lineQuery)
+                ->select(\DB::raw('COUNT(DISTINCT p.id) as n'))
+                ->first();
+            $loc->distinct_products = (int) ($distinct->n ?? 0);
         }
 
         return response()->json(['locations' => $byLocation]);

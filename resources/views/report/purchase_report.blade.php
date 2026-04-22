@@ -89,7 +89,16 @@
         <div class="col-md-3">
             <div class="form-group">
                 {!! Form::label('purchase_list_filter_date_range', __('report.date_range') . ':') !!}
-                {!! Form::text('purchase_list_filter_date_range', null, ['placeholder' => __('lang_v1.select_a_date_range'), 'class' => 'form-control', 'readonly']); !!}
+                @php
+                    // Default to this month so the cards don't show lifetime totals
+                    // (Sarah 2026-04-22 — "this is not helping"; $376K lifetime
+                    // isn't actionable, $X for April is). Cashier can clear
+                    // via the daterangepicker's Cancel button to see lifetime.
+                    $defaultStart = \Carbon::now()->startOfMonth()->format('m/d/Y');
+                    $defaultEnd   = \Carbon::now()->format('m/d/Y');
+                    $defaultRange = $defaultStart . ' ~ ' . $defaultEnd;
+                @endphp
+                {!! Form::text('purchase_list_filter_date_range', $defaultRange, ['placeholder' => __('lang_v1.select_a_date_range'), 'class' => 'form-control', 'readonly', 'id' => 'purchase_list_filter_date_range']) !!}
             </div>
         </div>
     @endcomponent
@@ -157,13 +166,23 @@
 
                     var start = '';
                     var end = '';
-                    if ($('#purchase_list_filter_date_range').val()) {
-                        start = $('input#purchase_list_filter_date_range')
-                            .data('daterangepicker')
-                            .startDate.format('YYYY-MM-DD');
-                        end = $('input#purchase_list_filter_date_range')
-                            .data('daterangepicker')
-                            .endDate.format('YYYY-MM-DD');
+                    // Prefer the daterangepicker data if initialized;
+                    // otherwise parse the prefilled MM/DD/YYYY range so the
+                    // initial table load respects this-month default.
+                    var raw = ($('#purchase_list_filter_date_range').val() || '').trim();
+                    var dp = $('input#purchase_list_filter_date_range').data('daterangepicker');
+                    if (dp) {
+                        start = dp.startDate.format('YYYY-MM-DD');
+                        end = dp.endDate.format('YYYY-MM-DD');
+                    } else if (raw.indexOf(' ~ ') !== -1) {
+                        var parts = raw.split(' ~ ');
+                        var toIso = function (s) {
+                            var m = s.trim().split('/');
+                            if (m.length === 3) return m[2] + '-' + m[0].padStart(2,'0') + '-' + m[1].padStart(2,'0');
+                            return '';
+                        };
+                        start = toIso(parts[0]);
+                        end = toIso(parts[1]);
                     }
                     d.start_date = start;
                     d.end_date = end;
@@ -215,6 +234,22 @@
             if ($('#purchase_list_filter_date_range').val() && $('#purchase_list_filter_date_range').data('daterangepicker')) {
                 p.start_date = $('#purchase_list_filter_date_range').data('daterangepicker').startDate.format('YYYY-MM-DD');
                 p.end_date   = $('#purchase_list_filter_date_range').data('daterangepicker').endDate.format('YYYY-MM-DD');
+            } else {
+                // Daterangepicker hasn't initialized yet (first paint) — parse
+                // the default value out of the text input so the initial summary
+                // call uses this-month instead of falling back to lifetime.
+                var raw = ($('#purchase_list_filter_date_range').val() || '').trim();
+                if (raw.indexOf(' ~ ') !== -1) {
+                    var parts = raw.split(' ~ ');
+                    // Input format is MM/DD/YYYY, API wants YYYY-MM-DD.
+                    var toIso = function (s) {
+                        var m = s.trim().split('/');
+                        if (m.length === 3) return m[2] + '-' + m[0].padStart(2,'0') + '-' + m[1].padStart(2,'0');
+                        return '';
+                    };
+                    p.start_date = toIso(parts[0]);
+                    p.end_date = toIso(parts[1]);
+                }
             }
             return p;
         }
@@ -227,32 +262,64 @@
                     $wrap.html('<div class="pr-summary-empty" style="width:100%;">No purchases in this range.</div>');
                     return;
                 }
+                // Helper: HTML-escape arbitrary text before injection.
+                var esc = function (s) { return $('<div>').text(s == null ? '' : String(s)).html(); };
+                var money = function (n) { return '$' + parseFloat(n || 0).toFixed(2); };
+
                 var html = '';
                 locs.forEach(function (loc) {
-                    var total = '$' + parseFloat(loc.total_spent || 0).toFixed(2);
-                    var beforeTax = '$' + parseFloat(loc.total_before_tax || 0).toFixed(2);
+                    var total = money(loc.total_spent);
+                    var beforeTax = money(loc.total_before_tax);
                     var count = parseInt(loc.purchase_count || 0, 10);
+                    var distinct = parseInt(loc.distinct_products || 0, 10);
+
+                    // Top real products — ordered by $ spent server-side, with
+                    // bulk-bin SKUs stripped out so Thriller / SZA / Kanye
+                    // actually show instead of "DISCOUNT BIN ($1)" flooding.
                     var top = (loc.top_products || []).map(function (p) {
                         var name = (p.artist ? (p.artist + ' — ') : '') + (p.name || '');
-                        var qty = 'qty ' + parseFloat(p.qty || 0).toFixed(0);
-                        var spent = '$' + parseFloat(p.spent || 0).toFixed(2);
                         return '<div class="pr-top-item">'
-                            + '<span class="pr-name" title="' + $('<div>').text(name).html() + '">' + $('<div>').text(name).html() + '</span>'
-                            + '<span class="pr-qty">' + qty + ' · ' + spent + '</span>'
+                            + '<span class="pr-name" title="' + esc(name) + '">' + esc(name) + '</span>'
+                            + '<span class="pr-qty">' + money(p.spent) + ' · qty ' + parseFloat(p.qty || 0).toFixed(0) + '</span>'
                             + '</div>';
                     }).join('');
-                    if (!top) top = '<div class="pr-summary-empty">No line-item products (manual purchases only?)</div>';
+                    if (!top) top = '<div class="pr-summary-empty">No line-item products in this range.</div>';
+
+                    // Bulk-bin summary line — keeps bin spend visible without
+                    // hogging the top-products slot.
+                    var bin = loc.bin_summary || {qty: 0, spent: 0};
+                    var binRow = (bin.qty > 0 || bin.spent > 0) ? (
+                        '<div class="pr-top-item" style="margin-top:4px;">'
+                        + '<span class="pr-name" style="font-style:italic;color:#9ca3af;">Bulk / clearance bins</span>'
+                        + '<span class="pr-qty">' + money(bin.spent) + ' · qty ' + parseFloat(bin.qty || 0).toFixed(0) + '</span>'
+                        + '</div>'
+                    ) : '';
+
+                    // Top suppliers — usually the more useful cut.
+                    var suppliers = (loc.top_suppliers || []).map(function (s) {
+                        var nm = s.supplier_business_name || s.name || '—';
+                        var cnt = parseInt(s.purchase_count || 0, 10);
+                        return '<div class="pr-top-item">'
+                            + '<span class="pr-name" title="' + esc(nm) + '">' + esc(nm) + '</span>'
+                            + '<span class="pr-qty">' + money(s.spent) + ' · ' + cnt + ' PO' + (cnt === 1 ? '' : 's') + '</span>'
+                            + '</div>';
+                    }).join('');
+                    if (!suppliers) suppliers = '<div class="pr-summary-empty">No supplier activity.</div>';
 
                     html += ''
                         + '<div class="pr-summary-card">'
-                        + '  <h4><span>' + $('<div>').text(loc.location_name || '—').html() + '</span>'
-                        + '      <span class="pr-loc-sub">' + count + ' purchase' + (count === 1 ? '' : 's') + '</span></h4>'
+                        + '  <h4><span>' + esc(loc.location_name || '—') + '</span>'
+                        + '      <span class="pr-loc-sub">' + count + ' purchase' + (count === 1 ? '' : 's')
+                        + '        · ' + distinct + ' unique product' + (distinct === 1 ? '' : 's') + '</span></h4>'
                         + '  <div class="pr-summary-stats">'
                         + '    <div class="pr-summary-stat"><div class="pr-label">Total spent</div><div class="pr-value">' + total + '</div></div>'
                         + '    <div class="pr-summary-stat"><div class="pr-label">Before tax</div><div class="pr-value">' + beforeTax + '</div></div>'
                         + '  </div>'
-                        + '  <div class="pr-top-label">Top products bought</div>'
+                        + '  <div class="pr-top-label">Top suppliers</div>'
+                        + suppliers
+                        + '  <div class="pr-top-label" style="margin-top:10px;">Top products bought ($-ranked, bins excluded)</div>'
                         + top
+                        + binRow
                         + '</div>';
                 });
                 $wrap.html(html);
