@@ -1,7 +1,7 @@
 // Build stamp so Sarah can confirm in DevTools Console which pos.js is
 // actually loaded. If the log below doesn't appear on /pos/create, the
 // browser is serving a cached copy; hard-refresh or bump asset_version.
-console.log('[pos.js v482] customer bar: allowClear=false + templateSelection; whatnot: preventDefault + manual radio flip');
+console.log('[pos.js v483] customer bar: native-DOM templateSelection (no Sizzle loop); whatnot moved to waitForJq gate in pos_form.blade.php');
 $(document).ready(function() {
     customer_set = false;
     window.pos_submit_in_progress = false;
@@ -160,21 +160,26 @@ $(document).ready(function() {
 
             return  template;
         },
-        // Sarah 2026-04-22: "customer bar is confusing w the dropdown i want
-        // it to be a simple box u type into not a dropdown". When the
-        // walk-in customer is selected (the default for most sales), show
-        // placeholder-style greyed-out prompt text instead of "Walk-In
-        // Customer" — so the field reads as an empty search box cashiers
-        // can type into, not as a pre-filled select widget. For real
-        // customers, keep the selected name + phone so the snapshot above
-        // the receipt stays clear about who's being rung up.
+        // Sarah 2026-04-22 (take 3): Show "Type phone # or name…" placeholder
+        // style text when the walk-in customer is the selected value, so
+        // the closed field reads as an empty search box, not a pre-filled
+        // select. Take 2 used $(container).addClass(...) which — per
+        // Sarah's DevTools — was triggering a RangeError (Maximum call
+        // stack size exceeded) deep inside Sizzle, most likely because
+        // Select2 re-renders the selection whenever the container's class
+        // set changes and our addClass was feeding that loop. Switched to
+        // native DOM (container is a jQuery object in Select2 4.x, so we
+        // unwrap with [0]) and classList.* — no Sizzle, no loop.
         templateSelection: function (data, container) {
-            var defaultId = $('#default_customer_id').val();
-            if (data && data.id && defaultId && String(data.id) === String(defaultId)) {
-                $(container).addClass('is-walk-in-placeholder');
-                return 'Type phone # or name to find a customer…';
+            var defaultIdEl = document.getElementById('default_customer_id');
+            var defaultId = defaultIdEl ? defaultIdEl.value : '';
+            var node = (container && container.jquery) ? container[0] : container;
+            var isWalkIn = data && data.id != null && defaultId &&
+                String(data.id) === String(defaultId);
+            if (node && node.classList) {
+                node.classList.toggle('is-walk-in-placeholder', !!isWalkIn);
             }
-            $(container).removeClass('is-walk-in-placeholder');
+            if (isWalkIn) return 'Type phone # or name to find a customer…';
             return data.text || '';
         },
         minimumInputLength: 2,

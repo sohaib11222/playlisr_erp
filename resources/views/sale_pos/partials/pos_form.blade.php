@@ -329,41 +329,46 @@
 				.pos-channel-chip.is-active i { opacity: 1; }
 			</style>
 			<script>
-				(function () {
-					// Keep .is-active in sync with the checked radio + keep
-					// the hidden is_whatnot input in lockstep with channel
-					// so legacy reports stay accurate even before they're
-					// migrated off is_whatnot.
-					function syncChannelChips() {
-						var $checked = $('.pos-channel-picker input[name="channel"]:checked');
-						var val = $checked.val() || 'in_store';
-						$('.pos-channel-chip').each(function () {
-							$(this).toggleClass('is-active', $(this).data('channel') === val);
-						});
-						$('#is_whatnot').val(val === 'whatnot' ? 1 : 0);
+				// Sarah 2026-04-22 (take 3): Root cause of "whatnot button isnt
+				// working" — this script runs inside @section('content'), which
+				// is yielded by app.blade.php BEFORE layouts/partials/
+				// javascripts.blade.php loads jQuery. So `$` was undefined when
+				// the IIFE executed, the whole block threw "ReferenceError: $
+				// is not defined", and no click/change handlers ever got
+				// bound. (Visible in Sarah's DevTools: 4x `$ is not defined`
+				// at create:19xx + 32xx.) Poll for jQuery and run once it's
+				// there — below-the-fold scripts bind as soon as vendor.js
+				// finishes parsing.
+				(function waitForJq(attempts) {
+					if (typeof window.jQuery === 'undefined') {
+						if ((attempts || 0) > 300) return; // ~6s max
+						return setTimeout(function () { waitForJq((attempts || 0) + 1); }, 20);
 					}
-					$(document).on('change', '.pos-channel-picker input[name="channel"]', syncChannelChips);
+					(function ($) {
+						function syncChannelChips() {
+							var $checked = $('.pos-channel-picker input[name="channel"]:checked');
+							var val = $checked.val() || 'in_store';
+							$('.pos-channel-chip').each(function () {
+								$(this).toggleClass('is-active', $(this).data('channel') === val);
+							});
+							$('#is_whatnot').val(val === 'whatnot' ? 1 : 0);
+						}
+						$(document).on('change', '.pos-channel-picker input[name="channel"]', syncChannelChips);
 
-					// Sarah 2026-04-22 (take 2): "whatnot button isnt working" —
-					// still not turning yellow. Previous fix relied on the
-					// radio's `change` event firing via label→radio default
-					// activation, but with pointer-events:none on the radio
-					// some browsers (+ some Chrome extension combos) never
-					// dispatched change, so syncChannelChips() was not being
-					// called. Take the default behavior out of the loop:
-					// preventDefault on the click, explicitly set the radio
-					// states ourselves, then call syncChannelChips directly.
-					// No reliance on the DOM event dance.
-					$(document).on('click', '.pos-channel-chip', function (e) {
-						e.preventDefault();
-						var channel = $(this).data('channel');
-						if (!channel) return;
-						$('.pos-channel-picker input[type="radio"][name="channel"]').prop('checked', false);
-						$(this).find('input[type="radio"][name="channel"]').prop('checked', true);
-						syncChannelChips();
-					});
+						// preventDefault + manual radio flip — browser's
+						// label→radio default activation is unreliable when
+						// the radio has pointer-events:none.
+						$(document).on('click', '.pos-channel-chip', function (e) {
+							e.preventDefault();
+							var channel = $(this).data('channel');
+							if (!channel) return;
+							$('.pos-channel-picker input[type="radio"][name="channel"]').prop('checked', false);
+							$(this).find('input[type="radio"][name="channel"]').prop('checked', true);
+							syncChannelChips();
+						});
 
-					$(function () { syncChannelChips(); });
+						$(function () { syncChannelChips(); });
+					})(window.jQuery);
 				})();
 			</script>
 
