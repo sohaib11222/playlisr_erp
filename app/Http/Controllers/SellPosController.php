@@ -181,6 +181,7 @@ class SellPosController extends Controller
                 'sell_lines.variations.product_variation',
                 'contact',
                 'location',
+                'sales_person',
             ])
             ->orderByDesc('transaction_date')
             ->limit($limit)

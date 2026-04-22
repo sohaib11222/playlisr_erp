@@ -26,7 +26,8 @@
     .rf-invoice { font-weight: 700; font-size: 15px; letter-spacing: -.01em; }
     .rf-invoice a { color: #1F1B16; text-decoration: none; border-bottom: 1px dotted #BFB096; }
     .rf-invoice a:hover { color: #8B6A1A; border-bottom-color: #8B6A1A; }
-    .rf-time, .rf-store, .rf-customer { color: #5A5045; font-size: 13px; }
+    .rf-time, .rf-store, .rf-customer, .rf-cashier { color: #5A5045; font-size: 13px; }
+    .rf-cashier strong { color: #1F1B16; font-weight: 700; }
     .rf-store-badge { display: inline-block; padding: 1px 7px; border-radius: 999px;
         background: #F7F1E3; border: 1px solid #DFD2B3; color: #5A5045;
         font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
@@ -90,6 +91,8 @@
                 $when = $isToday ? $dt->format('g:i a') : $dt->format('M j · g:i a');
                 $customer = optional($sale->contact)->name ?: 'Walk-In Customer';
                 $store = optional($sale->location)->name ?: '—';
+                $cashier = optional($sale->sales_person)->user_full_name;
+                $cashier = $cashier ? trim($cashier) : null;
                 $total = (float) $sale->final_total;
                 $discount = (float) ($sale->discount_amount ?? 0);
             @endphp
@@ -102,6 +105,7 @@
                         <span class="rf-time">{{ $when }}</span>
                         <span class="rf-store-badge">{{ $store }}</span>
                         <span class="rf-customer">· {{ $customer }}</span>
+                        @if($cashier)<span class="rf-cashier">· by <strong>{{ $cashier }}</strong></span>@endif
                     </div>
                 </div>
 
