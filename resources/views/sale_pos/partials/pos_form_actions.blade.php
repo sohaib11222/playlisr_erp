@@ -4,15 +4,11 @@
 <div class="row">
 	<div class="pos-form-actions">
 		<div class="col-md-12">
-			{{-- Mark as Whatnot Transaction checkbox moved to pos_form_totals (above Bag Fee) per Sarah's request. --}}
-			@if($is_mobile)
-				<div class="col-md-12 text-right">
-					<b>@lang('sale.total_payable'):</b>
-					<input type="hidden" name="final_total" 
-												id="final_total_input" value=0>
-					<span id="total_payable" class="text-success lead text-bold text-right">0</span>
-				</div>
-			@endif
+			{{-- Mark as Whatnot Transaction checkbox moved to pos_form_totals (above Bag Fee) per Sarah's request.
+				 The old mobile-only "Total Payable:" block used to live here and duplicated the
+				 #total_payable + #final_total_input IDs that already render in pos_form_totals /
+				 the shim below — removed 2026-04-21 during POS audit cleanup. Desktop was unaffected;
+				 mobile was silently writing the same value to two spans. --}}
 			{{-- Draft / Quotation / Suspend buttons hidden per Sarah's request (2026-04-19).
 				Kept commented for easy restoration if ever needed.
 			<button type="button" class="@if($is_mobile) col-xs-6 @endif btn bg-info text-white btn-default btn-flat @if($pos_settings['disable_draft'] != 0) hide @endif" id="pos-draft"><i class="fas fa-edit"></i> @lang('sale.draft')</button>
