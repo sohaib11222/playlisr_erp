@@ -5861,7 +5861,10 @@ class ReportController extends Controller
             return response()->json(['success' => false, 'output' => 'Unauthorized.'], 403);
         }
 
-        $days = max(1, min(30, (int) $request->input('days', 2)));
+        // Upper bound at 90 days so a Backfill click can cover a quarter of
+        // history in one shot (enough to catch up a fresh install) without
+        // letting an accidental "all time" request hammer Clover's API.
+        $days = max(1, min(90, (int) $request->input('days', 2)));
 
         $buffer = new \Symfony\Component\Console\Output\BufferedOutput();
         try {

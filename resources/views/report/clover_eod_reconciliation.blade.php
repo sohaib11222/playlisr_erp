@@ -42,8 +42,14 @@
          API call / missing creds / zero-payment day are all visible
          instead of buried in a log file. Admin-only on the backend. --}}
     <div style="margin-bottom:12px; text-align:right;">
+        <select id="eod_sync_days" class="form-control" style="display:inline-block; width:auto; vertical-align:middle; margin-right:4px;">
+            <option value="2" selected>Last 2 days</option>
+            <option value="7">Last 7 days</option>
+            <option value="30">Last 30 days (backfill)</option>
+            <option value="90">Last 90 days (backfill)</option>
+        </select>
         <button type="button" class="btn btn-default" id="eod_sync_now_btn">
-            <i class="fa fa-sync"></i> Sync Clover now (last 2 days)
+            <i class="fa fa-sync"></i> Sync Clover now
         </button>
         <span id="eod_sync_status" style="margin-left:8px; font-size:12px; color:#6b7280;"></span>
     </div>
@@ -221,22 +227,27 @@ $(function () {
         var $status = $('#eod_sync_status');
         var $out = $('#eod_sync_output');
         var $pre = $('#eod_sync_output_pre');
+        var days = parseInt($('#eod_sync_days').val(), 10) || 2;
         var original = $btn.html();
         $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Syncing…');
-        $status.text('Reaching Clover API, this can take 20–60 seconds…').css('color', '#6b7280');
+        var reachMsg = days > 7
+            ? 'Backfilling ' + days + ' days, this can take 1–3 minutes…'
+            : 'Reaching Clover API, this can take 20–60 seconds…';
+        $status.text(reachMsg).css('color', '#6b7280');
         $out.hide();
 
         $.ajax({
             url: '/reports/clover-eod-reconciliation/sync-now',
             method: 'POST',
             dataType: 'json',
-            data: { _token: $('meta[name="csrf-token"]').attr('content'), days: 2 }
+            timeout: 240000,
+            data: { _token: $('meta[name="csrf-token"]').attr('content'), days: days }
         }).done(function (r) {
             $pre.text(r.output || '(no output)');
             $out.show();
             var msg = r.success
                 ? 'Done · ' + (r.rows_recently_written || 0) + ' rows written (this call) · '
-                    + (r.rows_in_window || 0) + ' rows now in the 2-day window. Reloading…'
+                    + (r.rows_in_window || 0) + ' rows now in the ' + days + '-day window. Reloading…'
                 : 'Sync exited with code ' + (r.exit_code || '?') + ' — see output below.';
             $status.text(msg).css('color', r.success ? '#166534' : '#b91c1c');
             if (r.success && (r.rows_recently_written || 0) > 0) {
