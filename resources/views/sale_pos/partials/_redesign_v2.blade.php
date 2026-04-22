@@ -123,6 +123,34 @@ body.pos-v2 section.content > form {
    column. Visual restyling below still applies; Bootstrap columns
    handle the two-up layout natively. Safer. */
 
+/* Sarah 2026-04-22 HOTFIX: Quick Add sidebar kept stacking below the
+   cart on /pos/create in some viewports (confuses cashier mid-sale).
+   Force the inner .row inside the POS form into a flex two-up layout
+   above the phone breakpoint, independent of Bootstrap's col-md/sm
+   stacking. Cart stays on the left (flex: 1), sidebar sits fixed-width
+   on the right (360px). Mobile still stacks via the @media guard. */
+@media (min-width: 768px) {
+	body.pos-v2 form#add_pos_sell_form > .row.mb-12 > .col-md-12 > .row {
+		display: flex !important;
+		flex-wrap: nowrap !important;
+		align-items: flex-start !important;
+	}
+	body.pos-v2 form#add_pos_sell_form > .row.mb-12 > .col-md-12 > .row > .col-sm-8,
+	body.pos-v2 form#add_pos_sell_form > .row.mb-12 > .col-md-12 > .row > .col-md-8 {
+		flex: 1 1 auto !important;
+		width: auto !important;
+		min-width: 0 !important;
+		float: none !important;
+	}
+	body.pos-v2 form#add_pos_sell_form > .row.mb-12 > .col-md-12 > .row > .col-sm-4,
+	body.pos-v2 form#add_pos_sell_form > .row.mb-12 > .col-md-12 > .row > .col-md-4 {
+		flex: 0 0 360px !important;
+		width: 360px !important;
+		max-width: 360px !important;
+		float: none !important;
+	}
+}
+
 /* ============ CARDS ============ */
 body.pos-v2 .box.box-solid,
 body.pos-v2 .pos_form_totals,
