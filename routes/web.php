@@ -578,10 +578,6 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // One-shot diagnostic: did the Nivessa Backend xlsx imports land on prod?
     // Hit /admin/nivessa-import-status in the browser to see row counts per table.
     Route::get('/admin/nivessa-import-status', function () {
-        if (!auth()->user()->can('superadmin') && auth()->user()->id !== 1) {
-            abort(403);
-        }
-
         $salesLike = 'nivessa_backend_sales_%';
 
         $txCount = \DB::table('transactions')
