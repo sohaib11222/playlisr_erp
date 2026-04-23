@@ -102,8 +102,8 @@
     <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Arizona" data-preset-price="2.00" data-preset-category="Snacks &amp; Drinks">
         <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🍹</span> Arizona <span class="pos-quick-price">$2.00</span>
     </button>
-    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Water" data-preset-price="1.50" data-preset-category="Snacks &amp; Drinks">
-        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">💧</span> Water <span class="pos-quick-price">$1.50</span>
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Water" data-preset-price="2.00" data-preset-category="Snacks &amp; Drinks">
+        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">💧</span> Water <span class="pos-quick-price">$2.00</span>
     </button>
     <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Chips" data-preset-price="1.50" data-preset-category="Snacks &amp; Drinks">
         <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🥔</span> Chips <span class="pos-quick-price">$1.50</span>
