@@ -661,7 +661,7 @@ class HomeController extends Controller
             ->whereBetween('t.transaction_date', [$today_start, $today_end])
             ->count();
 
-        // Team goal for my current location today (hardcoded $5,000 — could be configurable per location)
+        // Team goal for my current location today — average same-day-of-week revenue over the last 12 weeks
         $my_default_loc_id = \DB::table('business_locations')
             ->where('business_id', $business_id)
             ->orderBy('id')
@@ -675,7 +675,36 @@ class HomeController extends Controller
             ->where('location_id', $my_default_loc_id)
             ->whereBetween('transaction_date', [$today_start, $today_end])
             ->sum('final_total');
-        $team_goal = 5000;
+
+        // Same day of week (1=Sunday..7=Saturday in MySQL DAYOFWEEK) over the last 12 weeks,
+        // excluding today, to set a realistic per-store daily goal.
+        $dow_lookback_start = \Carbon::now()->subWeeks(12)->startOfDay()->toDateTimeString();
+        $dow_lookback_end   = \Carbon::now()->subDay()->endOfDay()->toDateTimeString();
+        $dow_today          = (int) \Carbon::now()->dayOfWeekIso; // 1=Mon..7=Sun
+        // Convert ISO (Mon=1..Sun=7) to MySQL DAYOFWEEK (Sun=1..Sat=7)
+        $dow_mysql = $dow_today === 7 ? 1 : $dow_today + 1;
+
+        $dow_daily_totals = \DB::table('transactions')
+            ->where('business_id', $business_id)
+            ->where('type', 'sell')
+            ->where('status', 'final')
+            ->where('location_id', $my_default_loc_id)
+            ->whereBetween('transaction_date', [$dow_lookback_start, $dow_lookback_end])
+            ->whereRaw('DAYOFWEEK(transaction_date) = ?', [$dow_mysql])
+            ->selectRaw('DATE(transaction_date) as d, SUM(final_total) as rev')
+            ->groupBy('d')
+            ->pluck('rev')
+            ->map(fn($v) => (float) $v)
+            ->filter(fn($v) => $v > 0) // ignore closed days
+            ->values();
+
+        if ($dow_daily_totals->count() > 0) {
+            $avg = $dow_daily_totals->avg();
+            // Round to nearest $100 for a clean display
+            $team_goal = max(100, (int) (round($avg / 100) * 100));
+        } else {
+            $team_goal = 5000; // fallback for stores with no history on this DOW
+        }
         $team_pct = $team_goal > 0 ? min(100, ($team_today_rev / $team_goal) * 100) : 0;
 
         $me_first_name = auth()->user()->first_name ?? 'there';
