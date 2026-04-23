@@ -596,7 +596,14 @@ class ImportNivessaHistoricalSales extends Command
         ]);
     }
 
-    /** Ensure the placeholder product has a default variation. */
+    /** Ensure the placeholder product has a default variation.
+     *
+     * UltimatePOS splits single-product inventory across two tables:
+     *   product_variations  (the variation "group" — is_dummy=1 for single-type products)
+     *   variations          (the actual variant, FK product_variation_id → product_variations.id)
+     * The variations FK is NOT NULL, so we must create the group row first.
+     * Pattern mirrors ProductUtil::createSingleProductVariation().
+     */
     private function ensurePlaceholderVariation($productId)
     {
         $existing = DB::table('variations')
@@ -605,13 +612,22 @@ class ImportNivessaHistoricalSales extends Command
             ->first();
         if ($existing) return $existing->id;
 
-        // Most ERPs require a variation_location_details row too, but sell_lines
-        // only need variation_id. Products with enable_stock=0 don't track VLDs.
+        $productVariationId = DB::table('product_variations')->insertGetId([
+            'product_id' => $productId,
+            'name' => 'DUMMY',
+            'is_dummy' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
         return DB::table('variations')->insertGetId([
             'product_id' => $productId,
-            'name' => 'Default',
+            'product_variation_id' => $productVariationId,
+            'name' => 'DUMMY',
             'sub_sku' => 'NIV-LEGACY-HIST-0',
             'default_purchase_price' => 0,
+            'dpp_inc_tax' => 0,
+            'profit_percent' => 0,
             'default_sell_price' => 0,
             'sell_price_inc_tax' => 0,
             'created_at' => now(),
