@@ -5659,10 +5659,12 @@ class ReportController extends Controller
         // can see at a glance which days are already signed off on.
         $reconciliations = $this->loadReconciliations($business_id, $start, $end);
 
-        // Daily xlsx-layout — mirrors Sarah's manual "clover vs erp" sheet:
-        // a cross-store employee summary at top, then per-store side-by-side
-        // Clover + ERP payment lists (not auto-paired; Fatteen eyeballs).
-        $xlsx_layout = $this->cloverEodXlsxLayout(
+        // Per-shift theft-prevention audit — the PRIMARY view Sarah wants
+        // for daily reconciliation. One card per cash_registers row, with
+        // SALES CHECK (Clover ↔ ERP during shift) and CASH CHECK (drawer
+        // math). Replaces the previous xlsx / match / shift-breakdown
+        // experiments which we were told made the page worse.
+        $shift_audit = $this->cloverEodShiftAudit(
             $business_id, $start, $end, $location_id, $card_methods, $used_all_methods
         );
 
@@ -5670,8 +5672,222 @@ class ReportController extends Controller
             'rows', 'grand', 'start', 'end', 'location_id', 'business_locations',
             'employee_breakdown_by_day', 'unknown_rows',
             'is_single_day', 'prev_day', 'next_day', 'today_str',
-            'reconciliations', 'xlsx_layout'
+            'reconciliations', 'shift_audit'
         ));
+    }
+
+    /**
+     * Per-shift theft-prevention audit — one card per cash_registers row
+     * in the window. Two plain-language checks on each card:
+     *
+     *   SALES CHECK  — did Clover and ERP agree on card sales during
+     *                   this cashier's shift? If not, there's a keying
+     *                   error at the terminal (or a skimmed sale).
+     *   CASH CHECK   — opening cash + cash sales − cash paid out
+     *                   should equal reported closing cash. If not,
+     *                   the drawer is short/over.
+     *
+     * Each card's drill-in carries the raw Clover + ERP payment lists
+     * constrained to the shift window so Fatteen can eyeball which
+     * specific sale carries a typo when the SALES CHECK fails.
+     *
+     * Returns an ordered array (most recent shift first), each element:
+     *   [
+     *     'register_id' => 123,
+     *     'user_name' => 'Zakary', 'user_first' => 'zak',
+     *     'location_id' => 2, 'location_name' => 'PICO',
+     *     'opened_at' => Carbon, 'closed_at' => ?Carbon, 'is_open' => bool,
+     *     'opening_cash' => 100.00, 'cash_sales' => 400.00,
+     *     'cash_buys' => 0.00, 'cash_refunds' => 0.00,
+     *     'expected_closing_cash' => 500.00, 'reported_closing_cash' => 500.00,
+     *     'cash_variance' => 0.00,
+     *     'clover_card_total' => 500.00, 'erp_card_total' => 500.00,
+     *     'sales_diff' => 0.00,                    // clover − erp
+     *     'clover_payments' => [...], 'erp_payments' => [...],  // within window
+     *   ]
+     */
+    private function cloverEodShiftAudit($business_id, $start, $end, $location_id, array $card_methods, $used_all_methods): array
+    {
+        $firstName = function ($full) {
+            $full = trim((string) $full);
+            if ($full === '') return '';
+            $parts = preg_split('/\s+/', $full);
+            return strtolower($parts[0] ?? '');
+        };
+
+        // All cash registers that overlapped this window — opened in-window
+        // OR opened earlier and still open (closed_at in-window or null).
+        $regQ = \DB::table('cash_registers as cr')
+            ->leftJoin('users as u', 'cr.user_id', '=', 'u.id')
+            ->leftJoin('business_locations as bl', 'cr.location_id', '=', 'bl.id')
+            ->where('cr.business_id', $business_id)
+            ->where(function ($q) use ($start, $end) {
+                $q->where(function ($q2) use ($start, $end) {
+                    $q2->whereDate('cr.created_at', '>=', $start)
+                       ->whereDate('cr.created_at', '<=', $end);
+                })->orWhere(function ($q2) use ($start, $end) {
+                    $q2->whereNotNull('cr.closed_at')
+                       ->whereDate('cr.closed_at', '>=', $start)
+                       ->whereDate('cr.closed_at', '<=', $end);
+                })->orWhere(function ($q2) use ($end) {
+                    $q2->whereNull('cr.closed_at')
+                       ->whereDate('cr.created_at', '<=', $end);
+                });
+            });
+        if (!empty($location_id)) {
+            $regQ->where('cr.location_id', $location_id);
+        }
+        $registers = $regQ->selectRaw("
+                cr.id as register_id,
+                cr.user_id,
+                cr.location_id,
+                bl.name as location_name,
+                cr.created_at as opened_at,
+                cr.closed_at,
+                cr.closing_amount as reported_closing_cash,
+                COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, 'Unknown') as user_name
+            ")
+            ->orderByDesc('cr.created_at')
+            ->get();
+
+        if ($registers->isEmpty()) {
+            return [];
+        }
+
+        // Per-register opening / cash-flow totals from cash_register_transactions.
+        $registerIds = $registers->pluck('register_id')->all();
+        $crt = \DB::table('cash_register_transactions')
+            ->selectRaw("
+                cash_register_id,
+                SUM(CASE WHEN pay_method='cash' AND transaction_type='initial' THEN amount ELSE 0 END) as opening_cash,
+                SUM(CASE WHEN pay_method='cash' AND transaction_type='sell' AND type='credit' THEN amount ELSE 0 END) as cash_sales,
+                SUM(CASE WHEN pay_method='cash' AND transaction_type='purchase' AND type='debit' THEN amount ELSE 0 END) as cash_buys,
+                SUM(CASE WHEN pay_method='cash' AND transaction_type='refund' AND type='debit' THEN amount ELSE 0 END) as cash_refunds,
+                SUM(CASE WHEN pay_method='cash' THEN CASE WHEN type='credit' THEN amount ELSE -amount END ELSE 0 END) as cash_net
+            ")
+            ->whereIn('cash_register_id', $registerIds)
+            ->groupBy('cash_register_id')
+            ->get()
+            ->keyBy('cash_register_id');
+
+        // For each register, compute the window + pull the ERP and Clover
+        // card sales that fall inside it.
+        $cards = [];
+        foreach ($registers as $reg) {
+            $openedAt = \Carbon::parse($reg->opened_at);
+            $closedAt = $reg->closed_at ? \Carbon::parse($reg->closed_at) : null;
+            $effectiveEnd = $closedAt ?: \Carbon::now();
+
+            // ERP card payments by this user at this location during the shift.
+            $erpQ = \DB::table('transaction_payments as tp')
+                ->join('transactions as t', 'tp.transaction_id', '=', 't.id')
+                ->where('t.business_id', $business_id)
+                ->where('t.type', 'sell')
+                ->where('t.status', 'final')
+                ->where('t.created_by', $reg->user_id)
+                ->whereBetween('t.transaction_date', [$openedAt, $effectiveEnd]);
+            if (!$used_all_methods) {
+                $erpQ->whereIn('tp.method', $card_methods);
+            }
+            if ($reg->location_id) {
+                $erpQ->where('t.location_id', $reg->location_id);
+            }
+            $erpRows = $erpQ->selectRaw("
+                    t.id as transaction_id, t.invoice_no,
+                    t.transaction_date as ts,
+                    tp.amount, tp.method
+                ")
+                ->orderBy('t.transaction_date')
+                ->get();
+
+            // Clover payments at this location during the shift. Attribution
+            // to THIS register uses (first-name match on Clover pin) OR
+            // (blank Clover pin AND no other register open at same location
+            // at the time — handled later).
+            $cpQ = \DB::table('clover_payments as cp')
+                ->where('cp.business_id', $business_id)
+                ->where(function ($q) {
+                    $q->whereNull('cp.result')->orWhere('cp.result', 'SUCCESS')->orWhere('cp.result', 'APPROVED');
+                })
+                ->whereBetween('cp.paid_at', [$openedAt, $effectiveEnd]);
+            if ($reg->location_id) {
+                $cpQ->where('cp.location_id', $reg->location_id);
+            }
+            $cpRows = $cpQ->selectRaw("
+                    cp.clover_payment_id,
+                    cp.paid_at as ts,
+                    cp.amount,
+                    COALESCE(NULLIF(TRIM(cp.employee_name), ''), '') as employee_name,
+                    cp.tender_type, cp.card_type, cp.card_last4
+                ")
+                ->orderBy('cp.paid_at')
+                ->get();
+
+            // Filter Clover rows down to this cashier: either pin matches
+            // first-name, or pin is blank AND this register is the only
+            // one open at its location during the payment's moment.
+            $userFirst = $firstName($reg->user_name);
+            $mineClover = [];
+            foreach ($cpRows as $cp) {
+                $pin = $firstName($cp->employee_name);
+                if ($pin !== '' && $pin === $userFirst) { $mineClover[] = $cp; continue; }
+                if ($pin === '') {
+                    // Lone-register attribution: if no OTHER register was
+                    // open at this location at this moment, the sale is
+                    // ours by default.
+                    $cpTs = strtotime((string) $cp->ts);
+                    $otherOpen = false;
+                    foreach ($registers as $other) {
+                        if ($other->register_id === $reg->register_id) continue;
+                        if ((int) $other->location_id !== (int) $reg->location_id) continue;
+                        $oOpen  = strtotime((string) $other->opened_at);
+                        $oClose = $other->closed_at ? strtotime((string) $other->closed_at) : PHP_INT_MAX;
+                        if ($cpTs >= $oOpen && $cpTs <= $oClose) { $otherOpen = true; break; }
+                    }
+                    if (!$otherOpen) $mineClover[] = $cp;
+                }
+            }
+
+            $cashRow = $crt->get($reg->register_id);
+            $openingCash = (float) ($cashRow->opening_cash ?? 0);
+            $cashSales   = (float) ($cashRow->cash_sales ?? 0);
+            $cashBuys    = (float) ($cashRow->cash_buys ?? 0);
+            $cashRefunds = (float) ($cashRow->cash_refunds ?? 0);
+            $cashNet     = (float) ($cashRow->cash_net ?? 0);
+            $expectedClosing = $openingCash + $cashNet;
+            $reportedClosing = $closedAt ? (float) ($reg->reported_closing_cash ?? 0) : null;
+            $cashVariance = ($closedAt && $reportedClosing !== null)
+                ? round($reportedClosing - $expectedClosing, 2)
+                : null;
+
+            $cloverTotal = array_sum(array_map(fn($r) => (float) $r->amount, $mineClover));
+            $erpTotal    = array_sum(array_map(fn($r) => (float) $r->amount, $erpRows->all()));
+
+            $cards[] = [
+                'register_id' => $reg->register_id,
+                'user_name' => $reg->user_name,
+                'user_first' => $userFirst,
+                'location_id' => $reg->location_id,
+                'location_name' => $reg->location_name ?: '(no location)',
+                'opened_at' => $openedAt,
+                'closed_at' => $closedAt,
+                'is_open' => $closedAt === null,
+                'opening_cash' => round($openingCash, 2),
+                'cash_sales' => round($cashSales, 2),
+                'cash_buys' => round($cashBuys, 2),
+                'cash_refunds' => round($cashRefunds, 2),
+                'expected_closing_cash' => round($expectedClosing, 2),
+                'reported_closing_cash' => $reportedClosing !== null ? round($reportedClosing, 2) : null,
+                'cash_variance' => $cashVariance,
+                'clover_card_total' => round($cloverTotal, 2),
+                'erp_card_total' => round($erpTotal, 2),
+                'sales_diff' => round($cloverTotal - $erpTotal, 2),
+                'clover_payments' => $mineClover,
+                'erp_payments' => $erpRows->all(),
+            ];
+        }
+
+        return $cards;
     }
 
     /**

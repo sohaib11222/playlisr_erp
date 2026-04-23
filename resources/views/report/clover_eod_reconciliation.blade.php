@@ -127,15 +127,209 @@
         </div>
     @endif
 
-    {{-- Daily reconciliation (xlsx layout) — mirrors Sarah's manual
-         "clover vs erp" spreadsheet exactly so Fatteen reads it the way
-         she's used to:
-           1. Top: cross-store employee summary (Clover / ERP / Diff)
-           2. Per day, per store block: two side-by-side lists (Clover
-              payments | ERP payments) with totals at the bottom of each
-              column. No auto-pairing; Fatteen eyeballs like she always
-              has. --}}
-    @if(!empty($xlsx_layout['employee_summary']) || !empty($xlsx_layout['by_day']))
+    {{-- Per-shift theft audit — the view Sarah actually wants. One card
+         per cashier shift, two plain-language checks:
+         SALES CHECK (Clover card ↔ ERP card during shift) catches keying
+         errors + skimmed sales. CASH CHECK (opening + cash sales − buys
+         = expected vs reported) catches drawer shortages.
+         Drill-in on the SALES CHECK shows the raw Clover + ERP payment
+         lists side-by-side, so Fatteen can find the specific sale with
+         a typo when the totals disagree. --}}
+    @if(!empty($shift_audit))
+        <style>
+            .sa-card { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:16px 18px; margin-bottom:14px; }
+            .sa-card.flag { border-color:#fecaca; background:#fef2f2; }
+            .sa-card.warn { border-color:#fde68a; background:#fffbeb; }
+            .sa-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid #e5e7eb; }
+            .sa-title { font-size:16px; font-weight:700; color:#111827; }
+            .sa-sub { font-size:12px; color:#6b7280; margin-top:2px; }
+            .sa-pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
+            .sa-pill.open { background:#fef3c7; color:#92400e; }
+            .sa-pill.closed { background:#e5e7eb; color:#374151; }
+            .sa-checks { display:grid; grid-template-columns: 1fr 1fr; gap:20px; }
+            @media (max-width: 720px) { .sa-checks { grid-template-columns: 1fr; } }
+            .sa-check h4 { margin:0 0 6px; font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#374151; }
+            .sa-line { display:flex; justify-content:space-between; font-size:14px; padding:3px 0; font-variant-numeric: tabular-nums; }
+            .sa-line.sum { border-top:1px solid #d1d5db; padding-top:6px; margin-top:4px; font-weight:700; }
+            .sa-line.warn { color:#b45309; }
+            .sa-line.bad  { color:#b91c1c; }
+            .sa-line.ok   { color:#166534; }
+            .sa-verdict { margin-top:6px; font-size:13px; font-weight:700; padding:6px 10px; border-radius:6px; }
+            .sa-verdict.ok   { background:#f0fdf4; color:#166534; }
+            .sa-verdict.warn { background:#fffbeb; color:#b45309; }
+            .sa-verdict.bad  { background:#fef2f2; color:#b91c1c; }
+            .sa-verdict.muted { background:#f9fafb; color:#6b7280; }
+            .sa-drill { margin-top:12px; }
+            .sa-drill summary { cursor:pointer; font-size:12px; color:#374151; padding:6px 0; font-weight:600; }
+            .sa-drill[open] summary { color:#111827; }
+            .sa-sbs { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:8px; }
+            @media (max-width: 720px) { .sa-sbs { grid-template-columns: 1fr; } }
+            .sa-list { width:100%; font-size:12px; border-collapse:collapse; font-variant-numeric: tabular-nums; }
+            .sa-list th { text-align:left; color:#6b7280; font-weight:600; font-size:10px; text-transform:uppercase; letter-spacing:.04em; border-bottom:1px solid #e5e7eb; padding:4px 6px; white-space:nowrap; }
+            .sa-list td { padding:4px 6px; border-bottom:1px solid #f3f4f6; white-space:nowrap; }
+            .sa-list td.num { text-align:right; }
+            .sa-list tr.totals td { border-top:2px solid #d1d5db; font-weight:700; background:#f9fafb; }
+            .sa-actions { margin-top:12px; padding-top:10px; border-top:1px solid #e5e7eb; display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+            .sa-actions label { font-size:13px; font-weight:600; cursor:pointer; }
+        </style>
+
+        <h4 style="margin: 10px 0 6px; font-size: 14px; color: #111827; font-weight: 700;">Cashier shift audit</h4>
+        <p class="help-block" style="margin-top:0; margin-bottom:14px;">
+            One card per cashier shift. <strong>Sales check</strong> compares Clover card sales to ERP card sales during the shift — a mismatch usually means a keying error at the Clover terminal.
+            <strong>Cash check</strong> reconciles the drawer: opening cash + cash sales − cash buys/refunds should equal what the cashier counted at close.
+        </p>
+
+        @foreach($shift_audit as $s)
+            @php
+                $salesDiffAbs = abs($s['sales_diff']);
+                $salesBad = $salesDiffAbs >= 10;
+                $salesWarn = !$salesBad && $salesDiffAbs >= 1;
+                $salesOk = $salesDiffAbs < 1;
+
+                $cashVar = $s['cash_variance'];
+                $cashBad = $cashVar !== null && abs($cashVar) >= 10;
+                $cashWarn = !$cashBad && $cashVar !== null && abs($cashVar) >= 1;
+                $cashOk = $cashVar !== null && abs($cashVar) < 1;
+                $cashPending = $cashVar === null;
+
+                $cardKind = ($salesBad || $cashBad) ? 'flag' : (($salesWarn || $cashWarn) ? 'warn' : '');
+                $rKey = $s['opened_at']->format('Y-m-d') . '|' . ($s['location_id'] ?: 0);
+                $rec = $reconciliations[$rKey] ?? null;
+                $isReconciled = (bool) optional($rec)->reconciled_at;
+                $recNotes = $rec ? (string) $rec->notes : '';
+                $recStampLabel = null;
+                if ($rec && $rec->reconciled_at) {
+                    $u = $rec->user;
+                    $who = $u ? (trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: $u->username) : null;
+                    $recStampLabel = 'Reconciled' . ($who ? ' by ' . $who : '') . ' · '
+                        . \Carbon\Carbon::parse($rec->reconciled_at)->format('M j, g:i a');
+                }
+
+                $openedTs = $s['opened_at']->copy()->setTimezone(config('app.timezone'));
+                $closedTs = $s['closed_at'] ? $s['closed_at']->copy()->setTimezone(config('app.timezone')) : null;
+                $shiftLabel = $openedTs->format('M j, g:i a') . ' → '
+                    . ($s['is_open']
+                        ? '<span class="sa-pill open">shift open</span>'
+                        : $closedTs->format('g:i a') . ' <span class="sa-pill closed">closed</span>');
+            @endphp
+            <div class="sa-card {{ $cardKind }}" data-day="{{ $s['opened_at']->format('Y-m-d') }}" data-location-id="{{ $s['location_id'] ?: 0 }}">
+                <div class="sa-head">
+                    <div>
+                        <div class="sa-title">{{ $s['user_name'] }} · {{ $s['location_name'] }}</div>
+                        <div class="sa-sub">{!! $shiftLabel !!}</div>
+                    </div>
+                    <div style="text-align:right; min-width:220px;">
+                        <label class="eod-recon-toggle" style="display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:600; cursor:pointer; color:{{ $isReconciled ? '#166534' : '#374151' }};">
+                            <input type="checkbox" class="eod-recon-checkbox" {{ $isReconciled ? 'checked' : '' }}>
+                            <span class="eod-recon-label">{{ $isReconciled ? '✓ Reconciled' : 'Mark reconciled' }}</span>
+                        </label>
+                        <div class="eod-recon-stamp" style="font-size:11px; color:#6b7280; margin-top:2px;">{{ $recStampLabel }}</div>
+                    </div>
+                </div>
+
+                <div class="sa-checks">
+                    {{-- SALES CHECK --}}
+                    <div class="sa-check">
+                        <h4>💳 Sales check · Clover ↔ ERP</h4>
+                        <div class="sa-line"><span>Clover card sales</span><span>${{ number_format($s['clover_card_total'], 2) }}</span></div>
+                        <div class="sa-line"><span>ERP card sales</span><span>${{ number_format($s['erp_card_total'], 2) }}</span></div>
+                        <div class="sa-line sum {{ $salesOk ? 'ok' : ($salesWarn ? 'warn' : 'bad') }}">
+                            <span>Difference (Clover − ERP)</span>
+                            <span>{{ $s['sales_diff'] >= 0 ? '+' : '' }}${{ number_format($s['sales_diff'], 2) }}</span>
+                        </div>
+                        @if($salesOk)
+                            <div class="sa-verdict ok">✓ Sales match</div>
+                        @elseif($salesWarn)
+                            <div class="sa-verdict warn">⚠ Minor difference — eyeball below</div>
+                        @else
+                            <div class="sa-verdict bad">🚨 ${{ number_format(abs($s['sales_diff']), 2) }} mismatch — likely a keying error at Clover</div>
+                        @endif
+                    </div>
+
+                    {{-- CASH CHECK --}}
+                    <div class="sa-check">
+                        <h4>💵 Cash check · drawer math</h4>
+                        <div class="sa-line"><span>Opening cash</span><span>${{ number_format($s['opening_cash'], 2) }}</span></div>
+                        <div class="sa-line"><span>+ Cash sales</span><span>${{ number_format($s['cash_sales'], 2) }}</span></div>
+                        <div class="sa-line"><span>− Cash buys / refunds</span><span>−${{ number_format($s['cash_buys'] + $s['cash_refunds'], 2) }}</span></div>
+                        <div class="sa-line sum"><span>= Expected closing</span><span>${{ number_format($s['expected_closing_cash'], 2) }}</span></div>
+                        <div class="sa-line"><span>Reported closing</span>
+                            <span>{{ $s['reported_closing_cash'] === null ? '— (shift open)' : '$' . number_format($s['reported_closing_cash'], 2) }}</span>
+                        </div>
+                        @if($cashPending)
+                            <div class="sa-verdict muted">Shift still open — variance will show at close</div>
+                        @elseif($cashOk)
+                            <div class="sa-verdict ok">✓ Drawer matches</div>
+                        @elseif($cashWarn)
+                            <div class="sa-verdict warn">⚠ Drawer {{ $cashVar >= 0 ? 'over' : 'short' }} ${{ number_format(abs($cashVar), 2) }}</div>
+                        @else
+                            <div class="sa-verdict bad">🚨 Drawer {{ $cashVar >= 0 ? 'over' : 'short' }} ${{ number_format(abs($cashVar), 2) }} — investigate</div>
+                        @endif
+                    </div>
+                </div>
+
+                @if(!$salesOk && (count($s['clover_payments']) > 0 || count($s['erp_payments']) > 0))
+                    <details class="sa-drill">
+                        <summary>▸ Show sales side-by-side to find the mismatch</summary>
+                        <div class="sa-sbs">
+                            <div>
+                                <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#374151; margin-bottom:4px;">Clover</div>
+                                <table class="sa-list">
+                                    <thead><tr><th>Time</th><th class="num">Amount</th><th>Card</th></tr></thead>
+                                    <tbody>
+                                        @foreach($s['clover_payments'] as $p)
+                                            <tr>
+                                                <td>{{ \Carbon\Carbon::parse($p->ts)->setTimezone(config('app.timezone'))->format('g:i a') }}</td>
+                                                <td class="num">${{ number_format((float) $p->amount, 2) }}</td>
+                                                <td>{{ trim(($p->card_type ?? '') . ($p->card_last4 ? ' ****' . $p->card_last4 : '')) ?: $p->tender_type }}</td>
+                                            </tr>
+                                        @endforeach
+                                        <tr class="totals"><td>Total</td><td class="num">${{ number_format($s['clover_card_total'], 2) }}</td><td></td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div>
+                                <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#374151; margin-bottom:4px;">ERP</div>
+                                <table class="sa-list">
+                                    <thead><tr><th>Time</th><th class="num">Amount</th><th>Invoice</th></tr></thead>
+                                    <tbody>
+                                        @foreach($s['erp_payments'] as $p)
+                                            <tr>
+                                                <td>{{ \Carbon\Carbon::parse($p->ts)->setTimezone(config('app.timezone'))->format('g:i a') }}</td>
+                                                <td class="num">
+                                                    <a href="{{ route('sell.printInvoice', $p->transaction_id) }}" target="_blank">${{ number_format((float) $p->amount, 2) }}</a>
+                                                </td>
+                                                <td>{{ $p->invoice_no ?: ('#' . $p->transaction_id) }}</td>
+                                            </tr>
+                                        @endforeach
+                                        <tr class="totals"><td>Total</td><td class="num">${{ number_format($s['erp_card_total'], 2) }}</td><td></td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </details>
+                @endif
+
+                <div class="sa-actions">
+                    <div style="flex:1;">
+                        <label style="font-size:11px; color:#6b7280; font-weight:600; text-transform:uppercase; letter-spacing:.04em;">Reconciliation notes</label>
+                        <textarea class="eod-recon-notes form-control" rows="1"
+                            placeholder="Notes for this shift (auto-saves)"
+                            style="font-size:12px; resize:vertical;">{{ $recNotes }}</textarea>
+                        <div class="eod-recon-notes-status" style="font-size:11px; color:#9ca3af; margin-top:2px; min-height:14px;"></div>
+                    </div>
+                </div>
+            </div>
+        @endforeach
+    @elseif(empty($rows))
+        <div class="alert alert-info" style="margin-bottom:20px;">No shifts in this window. Pick a different day or open a register.</div>
+    @endif
+
+    {{-- Old panels (xlsx layout, old per-cashier breakdown) retired
+         2026-04-23 in favor of the cashier shift audit above. Gated
+         behind @if(false) so their referenced variables don't break
+         renders. --}}
+    @if(false && (!empty($xlsx_layout['employee_summary']) || !empty($xlsx_layout['by_day'])))
         <style>
             .rx-summary-wrap { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:12px 14px; margin-bottom:20px; }
             .rx-summary-wrap h4 { margin:0 0 8px; font-size:14px; color:#111827; font-weight:700; }
@@ -265,7 +459,7 @@
                         <div class="rx-sbs">
                             {{-- Clover side --}}
                             <div class="rx-col">
-                                <div class="rx-col-head">Clover <span class="src">· from /v3/merchants</span></div>
+                                <div class="rx-col-head">Clover</div>
                                 <table class="rx-list">
                                     <thead>
                                         <tr>
@@ -295,7 +489,7 @@
 
                             {{-- ERP side --}}
                             <div class="rx-col">
-                                <div class="rx-col-head">ERP <span class="src">· from transaction_payments</span></div>
+                                <div class="rx-col-head">ERP</div>
                                 <table class="rx-list">
                                     <thead>
                                         <tr>
@@ -497,6 +691,10 @@
         @endif
     @endif
 
+    {{-- Old per-cashier side-by-side breakdown — retired 2026-04-23 in
+         favor of the cashier shift audit at the top of the page. Gated
+         behind @if(false) so legacy data lookups don't run. --}}
+    @if(false)
     {{-- Per-cashier side-by-side breakdown — mirrors Sarah's daily xlsx
          (PICO on the left, HOLLYWOOD on the right, Employee / Clover / ERP /
          Diff per row). Rendered once per day across the selected range,
@@ -693,6 +891,7 @@
             hide variance until they're closed. Names match on first name.
         </p>
     @endif
+    @endif {{-- /@if(false) wrapper for the retired breakdown block --}}
 
     @component('components.widget', ['class' => 'box-primary', 'title' => 'Daily reconciliation'])
         <div class="table-responsive">
