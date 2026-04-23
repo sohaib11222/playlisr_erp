@@ -705,7 +705,42 @@ class HomeController extends Controller
         } else {
             $team_goal = 5000; // fallback for stores with no history on this DOW
         }
-        $team_pct = $team_goal > 0 ? min(100, ($team_today_rev / $team_goal) * 100) : 0;
+
+        // Pace: compare today's rev to where same-DOW history says we "should" be by now,
+        // so the progress bar isn't measured against a 10-hour goal with 5 hours left.
+        $hourly_rev = \DB::table('transactions')
+            ->where('business_id', $business_id)
+            ->where('type', 'sell')
+            ->where('status', 'final')
+            ->where('location_id', $my_default_loc_id)
+            ->whereBetween('transaction_date', [$dow_lookback_start, $dow_lookback_end])
+            ->whereRaw('DAYOFWEEK(transaction_date) = ?', [$dow_mysql])
+            ->selectRaw('HOUR(transaction_date) as h, SUM(final_total) as rev')
+            ->groupBy('h')
+            ->pluck('rev', 'h')
+            ->toArray();
+
+        $hourly_total = array_sum($hourly_rev);
+        $now = \Carbon::now();
+        if ($hourly_total > 0) {
+            $cum = 0.0;
+            for ($h = 0; $h < $now->hour; $h++) {
+                $cum += (float) ($hourly_rev[$h] ?? 0);
+            }
+            // Partial credit for the current hour based on minutes elapsed
+            $cum += (float) ($hourly_rev[$now->hour] ?? 0) * ($now->minute / 60.0);
+            $pace_fraction = min(1.0, $cum / $hourly_total);
+        } else {
+            // No hourly history → fall back to linear fraction of the day
+            $pace_fraction = ($now->hour + $now->minute / 60.0) / 24.0;
+        }
+
+        $team_goal_so_far = (int) round($team_goal * $pace_fraction);
+        // % against pace-so-far (uncapped so overachievement shows), with a separate capped bar width
+        $team_pct = $team_goal_so_far > 0
+            ? ($team_today_rev / $team_goal_so_far) * 100
+            : ($team_today_rev > 0 ? 100 : 0);
+        $team_bar_width = max(0, min(100, $team_pct));
 
         $me_first_name = auth()->user()->first_name ?? 'there';
 
@@ -823,6 +858,7 @@ class HomeController extends Controller
             'goal_priced_today', 'goal_rewards_today', 'rewards_me_today',
             'my_top_today', 'my_today_items_total',
             'team_location_name', 'team_today_rev', 'team_goal', 'team_pct',
+            'team_goal_so_far', 'team_bar_width',
             // Top sellers by store module
             'ts_stores', 'ts_data', 'ts_insight'
         ));

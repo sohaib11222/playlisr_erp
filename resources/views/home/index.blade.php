@@ -211,17 +211,24 @@
         <div class="pp-muted" style="margin-bottom:14px;">Everyone's in on this one</div>
         <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px;">
             <span style="font-size:13px;">${{ number_format($team_today_rev, 0) }} / ${{ number_format($team_goal, 0) }} daily goal</span>
-            <span style="font-size:13px; font-weight:600; color:#534ab7;">{{ number_format($team_pct, 0) }}%</span>
+            <span style="font-size:13px; font-weight:600; color:{{ $team_pct >= 100 ? '#16a34a' : '#534ab7' }};">
+                {{ number_format($team_pct, 0) }}% of pace
+            </span>
         </div>
         <div class="pp-progress" style="height:12px; border-radius:6px;">
-            <div style="width:{{ $team_pct }}%; background:#534ab7;"></div>
+            <div style="width:{{ $team_bar_width }}%; background:{{ $team_pct >= 100 ? '#16a34a' : '#534ab7' }};"></div>
         </div>
         <div class="pp-micro" style="margin-top:10px;">
-            @php $rem = max(0, $team_goal - $team_today_rev); @endphp
-            @if($rem > 0)
-                ${{ number_format($rem, 0) }} to go · {{ \Carbon\Carbon::now()->diffForHumans(\Carbon\Carbon::now()->endOfDay(), ['parts' => 2, 'short' => true, 'syntax' => \Carbon\CarbonInterface::DIFF_ABSOLUTE]) }} left in the day
+            @php
+                $rem_pace = max(0, $team_goal_so_far - $team_today_rev);
+                $rem_day  = max(0, $team_goal - $team_today_rev);
+            @endphp
+            @if($team_today_rev >= $team_goal)
+                🎉 Daily goal smashed — nice work
+            @elseif($rem_pace > 0)
+                ${{ number_format($rem_pace, 0) }} behind pace · pace target by now ${{ number_format($team_goal_so_far, 0) }} · ${{ number_format($rem_day, 0) }} to full goal
             @else
-                🎉 Goal smashed — nice work
+                Ahead of pace · ${{ number_format($rem_day, 0) }} to full daily goal
             @endif
         </div>
     </div>
