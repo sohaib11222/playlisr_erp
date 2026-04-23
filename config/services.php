@@ -44,4 +44,13 @@ return [
         'enabled' => env('OPENPHONE_ENABLED', true),
     ],
 
+    // Nivessa website (jonhedvat/server) → ERP bridge.
+    // The website API calls ERP endpoints under /api/v1/nivessa-web/* with
+    // `Authorization: Bearer <token>`. business_id scopes all lookups/issues
+    // so one ERP can serve multiple shops safely.
+    'nivessa_web' => [
+        'api_token'   => env('NIVESSA_WEB_API_TOKEN'),
+        'business_id' => env('NIVESSA_WEB_BUSINESS_ID'),
+    ],
+
 ];
