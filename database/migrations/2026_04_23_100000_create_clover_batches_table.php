@@ -8,6 +8,10 @@ class CreateCloverBatchesTable extends Migration
 {
     public function up()
     {
+        if (Schema::hasTable('clover_batches')) {
+            return;
+        }
+
         Schema::create('clover_batches', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->unsignedInteger('business_id');
