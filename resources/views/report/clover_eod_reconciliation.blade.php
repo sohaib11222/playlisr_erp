@@ -561,10 +561,11 @@ $(function () {
         });
     });
 
-    // Sync-everything handler — fires the umbrella clover:sync command
-    // (items + orders + customers pull + ERP→Clover push). Reuses the
-    // same output block as the payments sync above. Does not auto-reload
-    // since this report is scoped to payments; user reloads if they want.
+    // Sync-everything handler — kicks off the umbrella clover:sync
+    // command as a background process (nginx times out at 60s, and full
+    // syncs can run minutes) and then polls /sync-status to pipe the log
+    // tail into the same console block. Defaults to --days=30 so the
+    // reconciliation report lights up for the last month of history.
     $('#eod_sync_all_btn').on('click', function () {
         var $btn = $(this);
         var $status = $('#eod_sync_status');
@@ -572,30 +573,134 @@ $(function () {
         var $pre = $('#eod_sync_output_pre');
         var original = $btn.html();
         $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Syncing everything…');
-        $status.text('Pulling items/orders/customers + pushing dirty rows — 1–3 minutes…').css('color', '#6b7280');
+        $status.text('Starting background sync (last 30 days)…').css('color', '#6b7280');
         $out.hide();
 
         $.ajax({
             url: '/business/clover/sync-now',
             method: 'POST',
             dataType: 'json',
-            timeout: 600000,
-            data: { _token: $('meta[name="csrf-token"]').attr('content') }
+            timeout: 20000,
+            data: { _token: $('meta[name="csrf-token"]').attr('content'), days: 30 }
         }).done(function (r) {
-            $pre.text(r.output || '(no output)');
+            if (!r.success || !r.run_id) {
+                $status.text('Could not start sync: ' + (r.msg || 'unknown')).css('color', '#b91c1c');
+                $btn.prop('disabled', false).html(original);
+                return;
+            }
+            $status.text('Sync running in background — tailing log…').css('color', '#6b7280');
             $out.show();
-            $status.text(r.success ? 'Full sync complete.' : 'Full sync exited with errors — see output.')
-                   .css('color', r.success ? '#166534' : '#b91c1c');
+            $pre.text('(starting…)');
+
+            var runId = r.run_id;
+            var elapsed = 0;
+            var interval = setInterval(function () {
+                elapsed += 3;
+                $.ajax({
+                    url: '/business/clover/sync-status',
+                    method: 'GET',
+                    dataType: 'json',
+                    data: { run_id: runId }
+                }).done(function (s) {
+                    if (s.output) $pre.text(s.output);
+                    if (s.finished) {
+                        clearInterval(interval);
+                        $status.text('Sync complete (' + elapsed + 's) — refresh to see updated numbers.').css('color', '#166534');
+                        $btn.prop('disabled', false).html(original);
+                    } else {
+                        $status.text('Sync running… ' + elapsed + 's').css('color', '#6b7280');
+                    }
+                });
+                // Give up polling after 10 min; the sync may still be
+                // running server-side but we stop spamming the status
+                // endpoint.
+                if (elapsed > 600) {
+                    clearInterval(interval);
+                    $status.text('Still running after 10 min — check logs on server.').css('color', '#b45309');
+                    $btn.prop('disabled', false).html(original);
+                }
+            }, 3000);
         }).fail(function (xhr) {
-            var out = '';
-            try { out = (xhr.responseJSON && xhr.responseJSON.output) || xhr.responseText; } catch (e) {}
-            $pre.text(out || ('HTTP ' + xhr.status + ' — ' + xhr.statusText));
-            $out.show();
-            $status.text('Full sync failed — see output below.').css('color', '#b91c1c');
-        }).always(function () {
+            $status.text('Failed to start sync — ' + xhr.status).css('color', '#b91c1c');
             $btn.prop('disabled', false).html(original);
         });
     });
+
+    // Per-store "Mark reconciled" checkbox — toggles the audit stamp on
+    // the clover_reconciliations row for (day, location_id).
+    $('.eod-loc-card').on('change', '.eod-recon-checkbox', function () {
+        var $card = $(this).closest('.eod-loc-card');
+        var $lbl = $card.find('.eod-recon-label');
+        var $stamp = $card.find('.eod-recon-stamp');
+        var $toggle = $card.find('.eod-recon-toggle');
+        $lbl.text('Saving…');
+        $.ajax({
+            url: '/reports/clover-eod/mark-reconciled',
+            method: 'POST',
+            dataType: 'json',
+            data: {
+                _token: $('meta[name="csrf-token"]').attr('content'),
+                day: $card.data('day'),
+                location_id: $card.data('location-id')
+            }
+        }).done(function (r) {
+            if (!r.success) {
+                $lbl.text('Mark reconciled');
+                alert(r.msg || 'Could not save.');
+                return;
+            }
+            if (r.reconciled) {
+                $lbl.text('✓ Reconciled');
+                $toggle.css('color', '#166534');
+                $stamp.text('Reconciled' + (r.reconciled_by ? ' by ' + r.reconciled_by : '') + ' · ' + (r.reconciled_at || ''));
+            } else {
+                $lbl.text('Mark reconciled');
+                $toggle.css('color', '#374151');
+                $stamp.text('');
+            }
+        }).fail(function () {
+            $lbl.text('Mark reconciled');
+            alert('Network error — try again.');
+        });
+    });
+
+    // Per-store notes — debounced autosave on input + immediate save on blur.
+    (function () {
+        var timers = new WeakMap();
+        $('.eod-loc-card').on('input', '.eod-recon-notes', function () {
+            var el = this;
+            var $status = $(el).siblings('.eod-recon-notes-status');
+            $status.text('Typing…').css('color', '#9ca3af');
+            if (timers.get(el)) clearTimeout(timers.get(el));
+            timers.set(el, setTimeout(function () { saveNotes(el); }, 900));
+        });
+        $('.eod-loc-card').on('blur', '.eod-recon-notes', function () {
+            if (timers.get(this)) clearTimeout(timers.get(this));
+            saveNotes(this);
+        });
+
+        function saveNotes(el) {
+            var $el = $(el);
+            var $card = $el.closest('.eod-loc-card');
+            var $status = $el.siblings('.eod-recon-notes-status');
+            $status.text('Saving…').css('color', '#9ca3af');
+            $.ajax({
+                url: '/reports/clover-eod/save-notes',
+                method: 'POST',
+                dataType: 'json',
+                data: {
+                    _token: $('meta[name="csrf-token"]').attr('content'),
+                    day: $card.data('day'),
+                    location_id: $card.data('location-id'),
+                    notes: $el.val()
+                }
+            }).done(function (r) {
+                $status.text(r.success ? ('Saved ' + (r.saved_at || '')) : 'Save failed').css('color', r.success ? '#166534' : '#b91c1c');
+            }).fail(function () {
+                $status.text('Save failed — will retry on blur').css('color', '#b91c1c');
+            });
+        }
+    })();
 });
 </script>
 @endsection
