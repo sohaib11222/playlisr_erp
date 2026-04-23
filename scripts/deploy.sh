@@ -87,12 +87,17 @@ upsert_env() {
     echo "deploy: .env not writable, skipping env upsert for $key"
     return 0
   fi
+  # Laravel's dotenv parser rejects unquoted values that contain whitespace
+  # (Gmail app passwords are displayed as 4-char groups separated by spaces,
+  # so this bites the first time you set INVENTORY_CHECK_IMAP_PASSWORD).
+  # Always wrap in double quotes and escape any embedded double quote.
+  local quoted_val="\"${val//\"/\\\"}\""
   if grep -q "^${key}=" "$DEPLOY_DIR/.env"; then
     # Use a pipe delimiter in sed so passwords containing / don't break the regex
-    sed -i.bak "s|^${key}=.*|${key}=${val}|" "$DEPLOY_DIR/.env" && rm -f "$DEPLOY_DIR/.env.bak"
+    sed -i.bak "s|^${key}=.*|${key}=${quoted_val}|" "$DEPLOY_DIR/.env" && rm -f "$DEPLOY_DIR/.env.bak"
     echo "deploy: updated ${key} in .env"
   else
-    echo "${key}=${val}" >> "$DEPLOY_DIR/.env"
+    echo "${key}=${quoted_val}" >> "$DEPLOY_DIR/.env"
     echo "deploy: added ${key} to .env"
   fi
 }
