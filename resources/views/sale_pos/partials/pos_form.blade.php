@@ -263,7 +263,6 @@
 				 also derives is_whatnot from channel server-side). --}}
 			<div class="pos-sale-flag-row">
 				<div class="pos-channel-picker" role="radiogroup" aria-label="Sales channel">
-					<span class="pos-channel-label">Channel:</span>
 					@php
 						$pos_channels = [
 							'in_store' => ['label' => 'In Store', 'icon' => 'fa-store'],

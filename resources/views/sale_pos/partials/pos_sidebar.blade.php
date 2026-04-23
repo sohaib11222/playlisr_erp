@@ -81,32 +81,35 @@
 </style>
 <div class="pos-quick-grid-title">Quick Add — Snacks & Drinks</div>
 <div class="pos-quick-grid">
-    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Soda (can)" data-preset-price="2.00" data-preset-category="Snacks & Drinks">
-        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🥤</span> Soda <span class="pos-quick-price">$2.00</span>
-    </button>
-    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Ginger Beer" data-preset-price="3.00" data-preset-category="Snacks &amp; Drinks">
-        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🍺</span> Ginger Beer <span class="pos-quick-price">$3.00</span>
-    </button>
     <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Energy Drink" data-preset-price="4.50" data-preset-category="Snacks &amp; Drinks">
         <i class="fa fa-bolt"></i> Energy Drink <span class="pos-quick-price">$4.50</span>
-    </button>
-    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Gatorade" data-preset-price="3.00" data-preset-category="Snacks &amp; Drinks">
-        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🏃</span> Gatorade <span class="pos-quick-price">$3.00</span>
-    </button>
-    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Arizona" data-preset-price="2.00" data-preset-category="Snacks &amp; Drinks">
-        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🍹</span> Arizona <span class="pos-quick-price">$2.00</span>
     </button>
     <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Iced Coffee" data-preset-price="4.00" data-preset-category="Snacks &amp; Drinks">
         <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">☕</span> Iced Coffee <span class="pos-quick-price">$4.00</span>
     </button>
-    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Airheads" data-preset-price="0.50" data-preset-category="Snacks &amp; Drinks">
-        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🍭</span> Airheads <span class="pos-quick-price">$0.50</span>
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Ginger Beer" data-preset-price="3.00" data-preset-category="Snacks &amp; Drinks">
+        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🍺</span> Ginger Beer <span class="pos-quick-price">$3.00</span>
+    </button>
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Gatorade" data-preset-price="3.00" data-preset-category="Snacks &amp; Drinks">
+        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🏃</span> Gatorade <span class="pos-quick-price">$3.00</span>
     </button>
     <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Candy" data-preset-price="3.00" data-preset-category="Snacks &amp; Drinks">
         <i class="fa fa-candy-cane"></i> Candy <span class="pos-quick-price">$3.00</span>
     </button>
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Soda (can)" data-preset-price="2.00" data-preset-category="Snacks & Drinks">
+        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🥤</span> Soda <span class="pos-quick-price">$2.00</span>
+    </button>
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Arizona" data-preset-price="2.00" data-preset-category="Snacks &amp; Drinks">
+        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🍹</span> Arizona <span class="pos-quick-price">$2.00</span>
+    </button>
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Water" data-preset-price="1.50" data-preset-category="Snacks &amp; Drinks">
+        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">💧</span> Water <span class="pos-quick-price">$1.50</span>
+    </button>
     <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Chips" data-preset-price="1.50" data-preset-category="Snacks &amp; Drinks">
         <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🥔</span> Chips <span class="pos-quick-price">$1.50</span>
+    </button>
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Airheads" data-preset-price="0.50" data-preset-category="Snacks &amp; Drinks">
+        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🍭</span> Airheads <span class="pos-quick-price">$0.50</span>
     </button>
 </div>
 

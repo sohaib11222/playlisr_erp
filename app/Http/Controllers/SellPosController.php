@@ -3467,24 +3467,16 @@ class SellPosController extends Controller
             $gift_cards = collect([]);
         }
 
-        // Get all purchase history (no limit - show all purchases)
+        // Get all purchase history. withCount avoids N+1 on sell_lines; the UI
+        // only shows item_count and never the per-line data, so skip loading lines.
         $all_purchases = Transaction::where('business_id', $business_id)
             ->where('contact_id', $contact_id)
             ->where('type', 'sell')
             ->where('status', 'final')
+            ->withCount('sell_lines')
             ->orderBy('transaction_date', 'desc')
-            ->get()
+            ->get(['id', 'invoice_no', 'transaction_date', 'final_total', 'payment_status'])
             ->map(function($transaction) {
-                // Get transaction items
-                $items = $transaction->sell_lines->map(function($line) {
-                    return [
-                        'product_name' => $line->product_name ?? ($line->product->name ?? 'N/A'),
-                        'quantity' => $line->quantity,
-                        'unit_price' => $line->unit_price,
-                        'line_total' => $line->quantity * $line->unit_price,
-                    ];
-                });
-                
                 return [
                     'id' => $transaction->id,
                     'invoice_no' => $transaction->invoice_no,
@@ -3492,41 +3484,36 @@ class SellPosController extends Controller
                     'date_raw' => $transaction->transaction_date,
                     'total' => $transaction->final_total,
                     'payment_status' => $transaction->payment_status,
-                    'items' => $items,
-                    'item_count' => $items->count(),
+                    'items' => [],
+                    'item_count' => $transaction->sell_lines_count,
                 ];
             });
-        
+
         // Get recent purchases (last 10) for summary
         $recent_purchases = $all_purchases->take(10);
 
-        // Calculate lifetime purchases
-        $lifetime_purchases = Transaction::where('business_id', $business_id)
+        // Single query for lifetime total + last purchase date (was two full scans).
+        $summary = Transaction::where('business_id', $business_id)
             ->where('contact_id', $contact_id)
             ->where('type', 'sell')
             ->where('status', 'final')
-            ->sum('final_total');
+            ->selectRaw('COALESCE(SUM(final_total), 0) as lifetime_total, MAX(transaction_date) as last_date')
+            ->first();
 
-        // Update contact lifetime purchases if different (only if column exists)
+        $lifetime_purchases = $summary->lifetime_total ?? 0;
+        $last_purchase_date = $summary->last_date ?? null;
+
         if (Schema::hasColumn('contacts', 'lifetime_purchases')) {
-        if ($contact->lifetime_purchases != $lifetime_purchases) {
-            $contact->lifetime_purchases = $lifetime_purchases;
-            $contact->save();
+            if ($contact->lifetime_purchases != $lifetime_purchases) {
+                $contact->lifetime_purchases = $lifetime_purchases;
+                $contact->save();
             }
         }
 
-        // Get last purchase date
-        $last_purchase = Transaction::where('business_id', $business_id)
-            ->where('contact_id', $contact_id)
-            ->where('type', 'sell')
-            ->where('status', 'final')
-            ->orderBy('transaction_date', 'desc')
-            ->first();
-
-        if ($last_purchase && Schema::hasColumn('contacts', 'last_purchase_date')) {
-            if (!$contact->last_purchase_date || $contact->last_purchase_date != $last_purchase->transaction_date) {
-            $contact->last_purchase_date = $last_purchase->transaction_date;
-            $contact->save();
+        if ($last_purchase_date && Schema::hasColumn('contacts', 'last_purchase_date')) {
+            if (!$contact->last_purchase_date || $contact->last_purchase_date != $last_purchase_date) {
+                $contact->last_purchase_date = $last_purchase_date;
+                $contact->save();
             }
         }
 

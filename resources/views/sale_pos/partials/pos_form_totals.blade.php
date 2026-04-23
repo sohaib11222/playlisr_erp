@@ -199,8 +199,11 @@
         font-weight: 700; color: #1F1B16; font-size: 14px;
         display: flex; flex-direction: column; gap: 1px; align-items: flex-start;
     }
+    /* Match the pre-tax hero amount (24px / 800 / tabular-nums) so the two
+       bold figures line up visually. */
     .pos-receipt .r-row.grand .amt {
-        font-size: 22px; font-weight: 800; letter-spacing: -.01em;
+        font-size: 24px; font-weight: 800; letter-spacing: -.02em;
+        font-variant-numeric: tabular-nums;
     }
 
     /* Payment buttons — Cash / Card / More, grid row flush against the grand
@@ -318,23 +321,6 @@
             </div>
         </div>
 
-        {{-- Bag-fee visible toggle with stepper (per mockup). Linked to
-             #add_plastic_bag above via JS — when this is checked, the
-             hidden checkbox is checked too, and the bag-fee row in the
-             cart table picks up the quantity. --}}
-        @if(!empty($pos_settings['enable_plastic_bag_charge']))
-        <label class="bag-toggle" id="bag-toggle-visible">
-            <input type="checkbox" id="bag-toggle-checkbox" checked>
-            <span>Bag Fee</span>
-            <div class="bag-stepper" onclick="event.preventDefault();">
-                <button type="button" id="bag-step-minus" aria-label="Remove a bag">−</button>
-                <span class="bag-count" id="bag-count">1</span>
-                <button type="button" id="bag-step-plus" aria-label="Add a bag">+</button>
-            </div>
-            <span>· $<span id="bag-total-visible">{{ number_format($pos_settings['plastic_bag_price'] ?? 0.10, 2) }}</span></span>
-        </label>
-        @endif
-
         <div class="pos-receipt">
             {{-- Discount row — hidden unless a discount is applied.
                  When zero, the '+ Add discount' chip below takes its place. --}}
@@ -378,6 +364,21 @@
                 <button type="button" class="r-adjust-chip" id="pos-add-shipping" data-toggle="modal" data-target="#posShippingModal" aria-label="Add shipping to this sale">
                     <i class="fa fa-plus"></i> Add shipping
                 </button>
+                @if(!empty($pos_settings['enable_plastic_bag_charge']))
+                {{-- Bag-fee visible toggle with stepper. Sits next to the
+                     Add-discount / Add-shipping chips per Sarah 2026-04-22.
+                     Still linked to hidden #add_plastic_bag via pos.js. --}}
+                <label class="bag-toggle" id="bag-toggle-visible">
+                    <input type="checkbox" id="bag-toggle-checkbox" checked>
+                    <span>Bag Fee</span>
+                    <div class="bag-stepper" onclick="event.preventDefault();">
+                        <button type="button" id="bag-step-minus" aria-label="Remove a bag">−</button>
+                        <span class="bag-count" id="bag-count">1</span>
+                        <button type="button" id="bag-step-plus" aria-label="Add a bag">+</button>
+                    </div>
+                    <span>· $<span id="bag-total-visible">{{ number_format($pos_settings['plastic_bag_price'] ?? 0.10, 2) }}</span></span>
+                </label>
+                @endif
             </div>
 
             {{-- Packing (only when types_of_service module is enabled) --}}
@@ -391,11 +392,15 @@
             </div>
             @endif
 
-            {{-- Bag Fee row (shown in receipt when enabled) --}}
+            {{-- Bag-fee receipt row removed per Sarah 2026-04-22 — the chip
+                 in the adjustments row already shows count + amount, so the
+                 duplicate line under Subtotal was redundant. #bag-fee-amount
+                 and #pos-bag-fee-row kept as a hidden placeholder because
+                 pos.js still writes the computed value into them. --}}
             @if(!empty($pos_settings['enable_plastic_bag_charge']))
-            <div class="r-row" id="pos-bag-fee-row">
-                <span class="label">Bag Fee <span class="muted" id="bag-fee-muted-label">(1 bag)</span></span>
-                <span class="amt">+ $<span id="bag-fee-amount">{{ number_format($pos_settings['plastic_bag_price'] ?? 0.10, 2) }}</span></span>
+            <div id="pos-bag-fee-row" style="display:none;">
+                <span id="bag-fee-muted-label"></span>
+                <span id="bag-fee-amount">{{ number_format($pos_settings['plastic_bag_price'] ?? 0.10, 2) }}</span>
             </div>
             @endif
 
@@ -444,10 +449,7 @@
 
             {{-- Grand total --}}
             <div class="r-row grand">
-                <span class="label">
-                    Total w/ Tax
-                    <span class="muted" style="font-weight:400;">Subtotal + Tax</span>
-                </span>
+                <span class="label">Total + Tax</span>
                 <span class="amt">$<span id="total_payable">0</span></span>
             </div>
         </div>
@@ -577,7 +579,8 @@
                 }
                 function refreshBagRow() {
                     var on = $bagToggle.is(':checked');
-                    $('#pos-bag-fee-row').toggle(on);
+                    // #pos-bag-fee-row is a hidden placeholder now (receipt
+                    // row was removed); pos.js still reads #bag-fee-amount.
                     $addBag.prop('checked', on).trigger('change');
                     if (on) setBagQty(getBagQty());
                 }
