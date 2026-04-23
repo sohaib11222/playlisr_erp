@@ -3,16 +3,15 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\File;
 use Symfony\Component\Process\PhpExecutableFinder;
 use Symfony\Component\Process\Process;
 
 class NivessaBackendImportController extends Controller
 {
     const COMMANDS = [
-        'sales' => 'nivessa:import-historical-sales',
-        'store_credit' => 'nivessa:import-store-credit',
-        'customer_asks' => 'nivessa:import-customer-asks',
+        'Store Credit' => 'nivessa:import-store-credit',
+        'Customer Asks' => 'nivessa:import-customer-asks',
+        'Historical Sales' => 'nivessa:import-historical-sales',
     ];
 
     public function index()
@@ -24,7 +23,6 @@ class NivessaBackendImportController extends Controller
     {
         $sessionId = $this->safeSession($request->input('session_id'));
         $index = (int) $request->input('index', 0);
-        $final = filter_var($request->input('final'), FILTER_VALIDATE_BOOLEAN);
 
         $dir = $this->chunkDir();
         if (!is_dir($dir)) {
@@ -32,12 +30,10 @@ class NivessaBackendImportController extends Controller
         }
         $target = $dir . '/' . $sessionId . '.xlsx';
 
-        // First chunk (index=0): truncate any stale file so re-uploads don't append.
         if ($index === 0) {
             @unlink($target);
         }
 
-        // Raw request body is the bytes for this chunk.
         $raw = $request->getContent();
         if ($raw === '' || $raw === false) {
             return response()->json(['ok' => false, 'error' => 'empty chunk'], 400);
@@ -51,7 +47,6 @@ class NivessaBackendImportController extends Controller
             'ok' => true,
             'session_id' => $sessionId,
             'index' => $index,
-            'final' => $final,
             'size' => @filesize($target) ?: 0,
         ]);
     }
@@ -62,16 +57,10 @@ class NivessaBackendImportController extends Controller
         @ini_set('memory_limit', '1024M');
         @ignore_user_abort(true);
 
-        $request->validate([
-            'session_id' => 'required|string',
-            'import_type' => 'required|in:sales,store_credit,customer_asks',
-        ]);
+        $request->validate(['session_id' => 'required|string']);
 
         $sessionId = $this->safeSession($request->input('session_id'));
-        $type = $request->input('import_type');
         $commit = filter_var($request->input('commit'), FILTER_VALIDATE_BOOLEAN);
-        $onlySheet = trim((string) $request->input('only_sheet', ''));
-        $taxRate = trim((string) $request->input('tax_rate', ''));
 
         $filePath = $this->chunkDir() . '/' . $sessionId . '.xlsx';
         if (!is_file($filePath)) {
@@ -80,44 +69,44 @@ class NivessaBackendImportController extends Controller
         }
 
         $phpPath = (new PhpExecutableFinder())->find(false) ?: 'php';
-        $args = [$phpPath, base_path('artisan'), self::COMMANDS[$type], $filePath];
-        if ($commit) {
-            $args[] = '--commit';
-        }
-        if ($type === 'sales' && $onlySheet !== '') {
-            $args[] = '--only-sheet=' . $onlySheet;
-        }
-        if ($type === 'sales' && $taxRate !== '') {
-            $args[] = '--tax-rate=' . $taxRate;
-        }
 
-        $process = new Process($args, base_path());
-        $process->setTimeout(null);
-        $process->setIdleTimeout(null);
-
-        return response()->stream(function () use ($process, $args, $filePath) {
-            echo '$ ' . implode(' ', array_map(function ($a) {
-                return strpos($a, ' ') !== false ? '"' . $a . '"' : $a;
-            }, $args)) . "\n";
-            echo '[xlsx: ' . $filePath . ' · ' . number_format(filesize($filePath)) . " bytes]\n\n";
-            @ob_flush();
-            @flush();
+        return response()->stream(function () use ($phpPath, $filePath, $commit) {
+            echo '[xlsx: ' . $filePath . ' · ' . number_format(filesize($filePath)) . " bytes]\n";
+            echo ($commit ? '[MODE: --commit — writing to DB]' : '[MODE: dry-run — no writes]') . "\n\n";
+            @ob_flush(); @flush();
 
             try {
-                $process->start();
-                foreach ($process as $_ => $data) {
-                    echo $data;
-                    @ob_flush();
-                    @flush();
+                foreach (self::COMMANDS as $label => $cmd) {
+                    echo "════════════════════════════════════════════════════════════\n";
+                    echo " " . $label . " (" . $cmd . ")\n";
+                    echo "════════════════════════════════════════════════════════════\n";
+                    @ob_flush(); @flush();
+
+                    $args = [$phpPath, base_path('artisan'), $cmd, $filePath];
+                    if ($commit) {
+                        $args[] = '--commit';
+                    }
+
+                    $process = new Process($args, base_path());
+                    $process->setTimeout(null);
+                    $process->setIdleTimeout(null);
+                    $process->start();
+                    foreach ($process as $_ => $data) {
+                        echo $data;
+                        @ob_flush(); @flush();
+                    }
+                    echo "\n[" . $label . " exit code: " . $process->getExitCode() . "]\n\n";
+                    @ob_flush(); @flush();
                 }
-                echo "\n[exit code: " . $process->getExitCode() . "]\n";
+                echo "════════════════════════════════════════════════════════════\n";
+                echo " all done\n";
+                echo "════════════════════════════════════════════════════════════\n";
             } catch (\Throwable $e) {
                 echo "\n[error: " . $e->getMessage() . "]\n";
             } finally {
                 @unlink($filePath);
             }
-            @ob_flush();
-            @flush();
+            @ob_flush(); @flush();
         }, 200, [
             'Content-Type' => 'text/plain; charset=utf-8',
             'Cache-Control' => 'no-cache, no-store, must-revalidate',
