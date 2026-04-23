@@ -52,10 +52,13 @@ return [
         // 🎸 Hot used, currently out — watch-list, not reorderable
         // Used items come from customer trade-ins / Discogs, not AMS —
         // so this bucket is advisory: "when a copy walks in, prioritize".
+        // Aggregates sales by product (title), not variation — used
+        // inventory is usually one variation per physical copy, so
+        // variation-level counts almost never hit the threshold.
         'hot_used_oos' => [
             'category_patterns' => ['Used Vinyl', 'Used CD'],
             'sale_days' => 90,
-            'min_sold' => 3,
+            'min_sold' => 2,
             'max_stock' => 0,
         ],
         // Top artists — lookback for "popular in our store"
@@ -139,7 +142,7 @@ return [
     | https://api.nivessa.com/api/v1/events/allEvents). If unset, the
     | "Upcoming events" bucket is skipped silently.
     */
-    'events_api_url' => env('NIVESSA_EVENTS_API_URL', ''),
+    'events_api_url' => env('NIVESSA_EVENTS_API_URL', 'https://server.nivessa.com/api/v1/events/allEvents'),
     'events_lookahead_days' => (int) env('NIVESSA_EVENTS_LOOKAHEAD_DAYS', 30),
 
     /*

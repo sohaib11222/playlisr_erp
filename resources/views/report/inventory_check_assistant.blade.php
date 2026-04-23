@@ -81,6 +81,9 @@
             <button type="button" class="btn btn-success btn-sm" id="ica_run_import_real" data-dry-run="0">
                 <i class="fa fa-download"></i> Run for real
             </button>
+            <button type="button" class="btn btn-info btn-sm" id="ica_run_apple" style="margin-left:12px;">
+                🍎 Run Apple Music pull now
+            </button>
             <pre id="ica_run_import_output" style="display:none; margin-top:12px; max-height:300px; overflow:auto; font-size:11px; background:#f9f9f9; padding:8px;"></pre>
             @endcomponent
         </div>
@@ -276,6 +279,7 @@
     window.ICA_CHART_LATEST_URL = "{{ url('reports/inventory-check-assistant/chart-latest') }}";
     window.ICA_CUSTOMER_WANT_FULFILL_URL = "{{ url('reports/inventory-check-assistant/customer-want') }}";
     window.ICA_RUN_EMAIL_IMPORT_URL = "{{ url('reports/inventory-check-assistant/run-email-import') }}";
+    window.ICA_RUN_APPLE_URL = "{{ url('reports/inventory-check-assistant/run-apple-music') }}";
     window.ICA_SESSIONS_URL = "{{ action('InventoryCheckController@listSessions') }}";
     window.ICA_SESSIONS_STORE = "{{ action('InventoryCheckController@storeSession') }}";
     window.ICA_CSRF = "{{ csrf_token() }}";

@@ -315,6 +315,38 @@ class InventoryCheckController extends Controller
         ]);
     }
 
+    public function runAppleMusicImport(Request $request)
+    {
+        if (!auth()->user()->can('stock_report.view')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $dryRun = $request->boolean('dry_run');
+        $businessId = (int) $request->session()->get('user.business_id');
+
+        $args = ['--business-id' => $businessId];
+        if ($dryRun) {
+            $args['--dry-run'] = true;
+        }
+
+        try {
+            $exit = Artisan::call('charts:import-apple-music', $args);
+            $output = Artisan::output();
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+
+        return response()->json([
+            'success' => $exit === 0,
+            'exit_code' => $exit,
+            'dry_run' => $dryRun,
+            'output' => $output,
+        ]);
+    }
+
     // ── Customer Wants fulfillment from the ICA view ──────────────────
 
     public function fulfillCustomerWant(Request $request, $id)

@@ -728,13 +728,18 @@ class InventoryCheckService
         }
 
         $saleDays = (int) ($cfg['sale_days'] ?? 90);
-        $minSold = (float) ($cfg['min_sold'] ?? 3);
+        $minSold = (float) ($cfg['min_sold'] ?? 2);
         $maxStock = (float) ($cfg['max_stock'] ?? 0);
         $saleStart = Carbon::now()->subDays($saleDays)->format('Y-m-d');
         $saleEnd = Carbon::now()->format('Y-m-d');
 
-        $sold = $this->getSoldQtyByVariation($business_id, $locationId, $saleStart, $saleEnd, $permittedLocations);
-        if (empty($sold)) {
+        // Aggregate sold qty by PRODUCT (title), not variation. Used
+        // items are typically one variation per physical copy, so a
+        // single title sells across many variations (different grades,
+        // copies, etc). Summing at the product level is the right
+        // semantic for "did we move 2+ copies of this album used?".
+        $soldByProduct = $this->getSoldQtyByProduct($business_id, $locationId, $catIds, $saleStart, $saleEnd, $permittedLocations);
+        if (empty($soldByProduct)) {
             return [
                 'label' => '🎸 Hot used, currently out',
                 'why' => 'No used sales in the last ' . $saleDays . ' days at this location.',
@@ -743,24 +748,41 @@ class InventoryCheckService
             ];
         }
 
-        $rows = $this->queryPscRows($business_id, $locationId, $catIds, $permittedLocations);
+        // Pull current stock aggregated by product for the same categories
+        $stockByProduct = $this->getCurrentStockByProduct($business_id, $locationId, $catIds, $permittedLocations);
+        $productMeta = $this->getProductMeta($business_id, array_keys($soldByProduct));
+
         $items = [];
-        foreach ($rows as $row) {
-            $vid = (int) $row->variation_id;
-            $stock = (float) ($row->stock ?? 0);
-            if ($stock > $maxStock) {
-                continue;
-            }
-            $soldWindow = $sold[$vid] ?? 0.0;
+        foreach ($soldByProduct as $productId => $soldWindow) {
             if ($soldWindow < $minSold) {
                 continue;
             }
-
-            $items[] = $this->rowToCandidate($row, $stock, $soldWindow, 0, [
+            $stock = (float) ($stockByProduct[$productId] ?? 0);
+            if ($stock > $maxStock) {
+                continue;
+            }
+            $meta = $productMeta[$productId] ?? null;
+            if (!$meta) {
+                continue;
+            }
+            $items[] = [
                 'bucket' => 'hot_used_oos',
+                'variation_id' => null,
+                'product_id' => (int) $productId,
+                'location_id' => $locationId,
+                'sku' => $meta->sku ?? null,
+                'product' => $meta->name ?? '—',
+                'artist' => $meta->product_custom_field1 ?? '',
+                'format' => $meta->format ?? null,
+                'category_name' => $meta->category_name ?? null,
+                'category_id' => $meta->category_id ?? null,
+                'location_name' => null,
+                'stock' => $stock,
+                'sold_qty_window' => round($soldWindow, 2),
+                'suggested_qty' => 0,
                 'reason' => 'sold ' . (int) $soldWindow . ' used in last ' . $saleDays . 'd; none in stock',
                 'tags' => ['used', 'watchlist'],
-            ]);
+            ];
         }
 
         usort($items, fn ($a, $b) => $b['sold_qty_window'] <=> $a['sold_qty_window']);
@@ -877,6 +899,103 @@ class InventoryCheckService
         }
 
         return $map;
+    }
+
+    /**
+     * Aggregate sold qty by product (across all variations) for a
+     * specific set of categories at a location/window. Used by the
+     * "Hot used OOS" bucket where each physical copy is its own
+     * variation but we care about title-level movement.
+     *
+     * @return array<int,float> product_id => qty sold in window
+     */
+    public function getSoldQtyByProduct(int $business_id, int $locationId, array $categoryIds, string $saleStart, string $saleEnd, $permittedLocations): array
+    {
+        if (empty($categoryIds)) {
+            return [];
+        }
+        $q = DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+            ->join('variations as v', 'v.id', '=', 'tsl.variation_id')
+            ->join('products as p', 'p.id', '=', 'v.product_id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->where('t.location_id', $locationId)
+            ->whereIn('p.category_id', $categoryIds)
+            ->whereBetween(DB::raw('DATE(t.transaction_date)'), [$saleStart, $saleEnd])
+            ->groupBy('p.id')
+            ->select('p.id as product_id', DB::raw('SUM(tsl.quantity - tsl.quantity_returned) as sold_qty'));
+
+        if ($permittedLocations !== 'all') {
+            $q->whereIn('t.location_id', $permittedLocations);
+        }
+
+        $out = [];
+        foreach ($q->get() as $row) {
+            $out[(int) $row->product_id] = (float) $row->sold_qty;
+        }
+        return $out;
+    }
+
+    /**
+     * Current on-hand stock aggregated by product (across variations)
+     * at a single location for a set of categories.
+     *
+     * @return array<int,float> product_id => current stock
+     */
+    public function getCurrentStockByProduct(int $business_id, int $locationId, array $categoryIds, $permittedLocations): array
+    {
+        if (empty($categoryIds)) {
+            return [];
+        }
+        $q = DB::table('product_stock_cache as psc')
+            ->where('psc.business_id', $business_id)
+            ->where('psc.location_id', $locationId)
+            ->whereIn('psc.category_id', $categoryIds)
+            ->groupBy('psc.product_id')
+            ->select('psc.product_id', DB::raw('SUM(psc.stock) as stock'));
+
+        if ($permittedLocations !== 'all') {
+            $q->whereIn('psc.location_id', $permittedLocations);
+        }
+
+        $out = [];
+        foreach ($q->get() as $row) {
+            $out[(int) $row->product_id] = (float) $row->stock;
+        }
+        return $out;
+    }
+
+    /**
+     * Fetch display metadata (name, sku, artist, format, category) for
+     * a list of product IDs. Used to dress up Hot Used rows for the UI.
+     */
+    public function getProductMeta(int $business_id, array $productIds): array
+    {
+        if (empty($productIds)) {
+            return [];
+        }
+        $rows = DB::table('products as p')
+            ->leftJoin('variations as v', function ($j) {
+                $j->on('v.product_id', '=', 'p.id')->where('v.deleted_at', null);
+            })
+            ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+            ->where('p.business_id', $business_id)
+            ->whereIn('p.id', $productIds)
+            ->groupBy('p.id')
+            ->select([
+                'p.id', 'p.name', 'p.format', 'p.product_custom_field1',
+                'p.category_id', 'c.name as category_name',
+                DB::raw('MIN(v.sub_sku) as sku'),
+            ])
+            ->get();
+
+        $out = [];
+        foreach ($rows as $r) {
+            $out[(int) $r->id] = $r;
+        }
+        return $out;
     }
 
     public function getAvgSellDaysByVariation(

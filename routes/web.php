@@ -341,6 +341,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/inventory-check-assistant/chart-latest/{source}', 'InventoryCheckController@latestChart');
     Route::post('/reports/inventory-check-assistant/customer-want/{id}/fulfill', 'InventoryCheckController@fulfillCustomerWant');
     Route::post('/reports/inventory-check-assistant/run-email-import', 'InventoryCheckController@runEmailImport');
+    Route::post('/reports/inventory-check-assistant/run-apple-music', 'InventoryCheckController@runAppleMusicImport');
     Route::get('/reports/inventory-check-assistant/notes', 'InventoryCheckController@listNotes');
     Route::post('/reports/inventory-check-assistant/notes', 'InventoryCheckController@storeNote');
     Route::delete('/reports/inventory-check-assistant/notes/{id}', 'InventoryCheckController@destroyNote');

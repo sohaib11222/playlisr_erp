@@ -305,6 +305,42 @@
         runEmailImport($runReal, false);
     });
 
+    function runApplePull(btn) {
+        const outputEl = document.getElementById('ica_run_import_output');
+        const origHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Running…';
+        if (outputEl) { outputEl.style.display = 'block'; outputEl.textContent = 'Fetching Apple Music top 100…'; }
+
+        fetch(window.ICA_RUN_APPLE_URL, {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': window.ICA_CSRF,
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({ dry_run: 0 }),
+        })
+            .then((r) => r.json())
+            .then((resp) => {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+                if (outputEl) {
+                    const header = resp.success ? `✅ Exit ${resp.exit_code}` : `❌ Failed (${resp.error || 'exit ' + resp.exit_code})`;
+                    outputEl.textContent = header + '\n\n' + (resp.output || '(no output)');
+                }
+                if (resp.success && lastResult) buildList();
+            })
+            .catch((err) => {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+                if (outputEl) outputEl.textContent = 'Request failed: ' + (err && err.message ? err.message : 'unknown');
+            });
+    }
+    const $runApple = document.getElementById('ica_run_apple');
+    if ($runApple) $runApple.addEventListener('click', () => runApplePull($runApple));
+
     // ── Export / copy / print ───────────────────────────────────────
     if ($exportCsv) {
         $exportCsv.addEventListener('click', function () {
