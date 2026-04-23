@@ -86,6 +86,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/business/import-clover-customers', 'CloverController@importCustomers');
     Route::post('/business/sync-clover-rewards', 'CloverController@syncRewards')->name('clover.sync-rewards');
     Route::post('/business/clover/sync-now', 'CloverController@syncNow')->name('clover.sync-now');
+    Route::get('/business/clover/sync-status', 'CloverController@syncStatus')->name('clover.sync-status');
+    Route::post('/reports/clover-eod/mark-reconciled', 'ReportController@cloverEodMarkReconciled')->name('reports.clover-eod.reconciled');
+    Route::post('/reports/clover-eod/save-notes', 'ReportController@cloverEodSaveNotes')->name('reports.clover-eod.notes');
     Route::get('/clover/shift-summary', 'CloverController@shiftSummary')->name('clover.shift-summary');
     
     Route::get('/business/settings', 'BusinessController@getBusinessSettings')->name('business.getBusinessSettings');

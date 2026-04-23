@@ -5401,9 +5401,18 @@ class ReportController extends Controller
         $business_id = $request->session()->get('user.business_id');
         $business_locations = BusinessLocation::forDropdown($business_id);
 
-        $start = $request->input('start_date') ?: \Carbon::today()->copy()->subDays(6)->format('Y-m-d');
+        // Default the view to today (single-day mode) — Fatteen's daily
+        // reconciliation flow wants one day at a time, with a prev/next
+        // nav. A historical range is still available via the date-range
+        // picker; when start != end we fall back to the multi-day render.
+        $start = $request->input('start_date') ?: \Carbon::today()->format('Y-m-d');
         $end   = $request->input('end_date')   ?: \Carbon::today()->format('Y-m-d');
         $location_id = $request->input('location_id');
+
+        $is_single_day = ($start === $end);
+        $prev_day = \Carbon::parse($start)->subDay()->format('Y-m-d');
+        $next_day = \Carbon::parse($start)->addDay()->format('Y-m-d');
+        $today_str = \Carbon::today()->format('Y-m-d');
 
         $card_methods = [
             'clover', 'card', 'credit_card', 'credit_sale',
@@ -5644,10 +5653,101 @@ class ReportController extends Controller
             $business_id, $start, $end, $location_id, $card_methods, $used_all_methods
         );
 
+        // Load per-location reconciliation state (✓ + notes + audit stamp)
+        // for every (day, location) on screen, keyed so the blade can look
+        // each cell up in O(1). Multi-day ranges still get this so Sarah
+        // can see at a glance which days are already signed off on.
+        $reconciliations = $this->loadReconciliations($business_id, $start, $end);
+
         return view('report.clover_eod_reconciliation')->with(compact(
             'rows', 'grand', 'start', 'end', 'location_id', 'business_locations',
-            'employee_breakdown_by_day', 'unknown_rows'
+            'employee_breakdown_by_day', 'unknown_rows',
+            'is_single_day', 'prev_day', 'next_day', 'today_str',
+            'reconciliations'
         ));
+    }
+
+    /**
+     * Keyed map of CloverReconciliation rows for (day, location) pairs
+     * inside the window. Key = "YYYY-MM-DD|locId" with locId=0 used for
+     * the null/no-location bucket — matches the cloverEodEmployeeBreakdown
+     * bucket key shape so the blade can look up by $day . '|' . $locKey.
+     */
+    private function loadReconciliations($business_id, $start, $end): array
+    {
+        $rows = \App\CloverReconciliation::where('business_id', $business_id)
+            ->whereBetween('day', [$start, $end])
+            ->with('user:id,first_name,last_name,username')
+            ->get();
+        $out = [];
+        foreach ($rows as $r) {
+            $loc = $r->location_id === null ? 0 : (int) $r->location_id;
+            $key = $r->day->format('Y-m-d') . '|' . $loc;
+            $out[$key] = $r;
+        }
+        return $out;
+    }
+
+    /**
+     * Toggle the ✓ reconciled status for one (location, day). First click
+     * stamps reconciled_by + reconciled_at; re-click clears them (undo).
+     * Notes are preserved across the toggle.
+     *
+     * Route: POST /reports/clover-eod/mark-reconciled
+     */
+    public function cloverEodMarkReconciled(Request $request)
+    {
+        if (!$this->businessUtil->is_admin(auth()->user()) && !auth()->user()->can('purchase_n_sell_report.view')) {
+            return response()->json(['success' => false, 'msg' => 'Unauthorized.'], 403);
+        }
+        $business_id = (int) $request->session()->get('user.business_id');
+        $day = $request->input('day');
+        $locationId = $request->input('location_id'); // may be '' / '0' for no-location bucket
+        if (!$day) return response()->json(['success' => false, 'msg' => 'day required'], 422);
+
+        $row = \App\CloverReconciliation::findOrCreateFor($business_id, $locationId, $day);
+        if ($row->reconciled_at) {
+            $row->reconciled_by_user_id = null;
+            $row->reconciled_at = null;
+        } else {
+            $row->reconciled_by_user_id = optional(auth()->user())->id;
+            $row->reconciled_at = now();
+        }
+        $row->save();
+        $row->load('user:id,first_name,last_name,username');
+
+        return response()->json([
+            'success' => true,
+            'reconciled' => (bool) $row->reconciled_at,
+            'reconciled_at' => $row->reconciled_at ? $row->reconciled_at->format('M j, g:i a') : null,
+            'reconciled_by' => $row->user
+                ? trim(($row->user->first_name ?? '') . ' ' . ($row->user->last_name ?? '')) ?: $row->user->username
+                : null,
+        ]);
+    }
+
+    /**
+     * Save the notes textarea for one (location, day). Called on blur /
+     * debounced input from the blade.
+     *
+     * Route: POST /reports/clover-eod/save-notes
+     */
+    public function cloverEodSaveNotes(Request $request)
+    {
+        if (!$this->businessUtil->is_admin(auth()->user()) && !auth()->user()->can('purchase_n_sell_report.view')) {
+            return response()->json(['success' => false, 'msg' => 'Unauthorized.'], 403);
+        }
+        $business_id = (int) $request->session()->get('user.business_id');
+        $day = $request->input('day');
+        $locationId = $request->input('location_id');
+        $notes = (string) $request->input('notes', '');
+        if (!$day) return response()->json(['success' => false, 'msg' => 'day required'], 422);
+
+        $row = \App\CloverReconciliation::findOrCreateFor($business_id, $locationId, $day);
+        $row->notes = $notes !== '' ? $notes : null;
+        $row->save();
+
+        return response()->json(['success' => true, 'saved_at' => now()->format('g:i:s a')]);
     }
 
     /**

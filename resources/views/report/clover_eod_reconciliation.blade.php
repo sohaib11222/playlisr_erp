@@ -96,6 +96,37 @@
         @endif
     </div>
 
+    {{-- Daily-nav bar — shown in single-day mode so Fatteen can step
+         through days one at a time without re-opening the date picker.
+         The range picker above still works if she wants to audit history. --}}
+    @if($is_single_day)
+        @php
+            $todayDate = \Carbon\Carbon::parse($today_str);
+            $viewDate = \Carbon\Carbon::parse($start);
+            $dayLabel = $viewDate->isToday() ? 'Today'
+                : ($viewDate->isYesterday() ? 'Yesterday'
+                : $viewDate->format('l, F j'));
+            $qs = function($day) use ($location_id) {
+                $p = ['start_date' => $day, 'end_date' => $day];
+                if (!empty($location_id)) $p['location_id'] = $location_id;
+                return '?' . http_build_query($p);
+            };
+        @endphp
+        <div style="display:flex; align-items:center; gap:10px; margin:0 0 14px;">
+            <a href="{{ $qs($prev_day) }}" class="btn btn-default">&lsaquo; Prev day</a>
+            <div style="flex:1; text-align:center; font-size:18px; font-weight:700; color:#111827;">
+                {{ $dayLabel }}
+                <div style="font-size:12px; color:#6b7280; font-weight:500;">{{ $viewDate->format('Y-m-d') }}</div>
+            </div>
+            @if($start < $today_str)
+                <a href="{{ $qs($next_day) }}" class="btn btn-default">Next day &rsaquo;</a>
+            @else
+                <a href="{{ $qs($today_str) }}" class="btn btn-default disabled" style="pointer-events:none; opacity:.45;">Next day &rsaquo;</a>
+            @endif
+            <a href="{{ $qs($today_str) }}" class="btn btn-primary" @if($viewDate->isToday()) style="opacity:.55;" @endif>Today</a>
+        </div>
+    @endif
+
     {{-- Per-cashier side-by-side breakdown — mirrors Sarah's daily xlsx
          (PICO on the left, HOLLYWOOD on the right, Employee / Clover / ERP /
          Diff per row). Rendered once per day across the selected range,
@@ -130,9 +161,67 @@
                         @php
                             $ldiff = $loc['totals']['difference'];
                             $lcls  = abs($ldiff) < 1 ? 'eod-diff-ok' : (abs($ldiff) < 10 ? 'eod-diff-warn' : 'eod-diff-bad');
+
+                            // Relabel the confusing names Fatteen asked about.
+                            // (no location) usually = test register opened
+                            // without picking a store; warn so she knows it
+                            // isn't a bug on her side.
+                            $locNameRaw = $loc['location_name'];
+                            $isNoLoc = (strtolower($locNameRaw) === '(no location)' || stripos($locNameRaw, 'no location') !== false);
+                            $locNameDisplay = $isNoLoc
+                                ? '⚠ No location set — test data or setup issue'
+                                : $locNameRaw;
+
+                            // Reconciliation lookup. Key = "day|locId" with
+                            // locId=0 for the no-location bucket. Matches
+                            // what loadReconciliations() in the controller
+                            // returns, so each card can show its own ✓/notes.
+                            $rKey = $dayBlock['day'] . '|' . ($loc['location_id'] ?: 0);
+                            $rec = $reconciliations[$rKey] ?? null;
+                            $isReconciled = (bool) optional($rec)->reconciled_at;
+                            $recNotes = $rec ? (string) $rec->notes : '';
+                            $recStampLabel = null;
+                            if ($rec && $rec->reconciled_at) {
+                                $u = $rec->user;
+                                $who = $u
+                                    ? (trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: $u->username)
+                                    : null;
+                                $recStampLabel = 'Reconciled' . ($who ? ' by ' . $who : '') . ' · '
+                                    . \Carbon\Carbon::parse($rec->reconciled_at)->format('M j, g:i a');
+                            }
+
+                            // Glance summary — the big "is this OK?" line at
+                            // the top of each card so Fatteen doesn't have to
+                            // read the table to know.
+                            $cloverTot = $loc['totals']['clover_total'];
+                            $erpTot    = $loc['totals']['erp_total'];
+                            $diffAbs   = abs($ldiff);
+                            $glance = $diffAbs < 1
+                                ? ['🟢', 'Match', '#166534']
+                                : ($diffAbs < 10 ? ['🟡', 'Minor variance', '#b45309'] : ['🔴', 'Variance to review', '#b91c1c']);
                         @endphp
-                        <div class="eod-loc-card">
-                            <h3>{{ $loc['location_name'] }}</h3>
+                        <div class="eod-loc-card" data-day="{{ $dayBlock['day'] }}" data-location-id="{{ $loc['location_id'] ?: 0 }}">
+                            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:10px;">
+                                <div style="flex:1; min-width:0;">
+                                    <h3 style="margin-bottom:4px;">{{ $locNameDisplay }}</h3>
+                                    <div style="font-size:13px; color:{{ $glance[2] }}; font-weight:600;">
+                                        {{ $glance[0] }} {{ $glance[1] }}
+                                        &nbsp;·&nbsp;
+                                        Clover ${{ number_format($cloverTot, 2) }}
+                                        &nbsp;vs&nbsp;
+                                        ERP ${{ number_format($erpTot, 2) }}
+                                        &nbsp;·&nbsp;
+                                        diff <span class="{{ $lcls }}">{{ $ldiff >= 0 ? '+' : '' }}${{ number_format($ldiff, 2) }}</span>
+                                    </div>
+                                </div>
+                                <div style="text-align:right; min-width:220px;">
+                                    <label class="eod-recon-toggle" style="display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:600; cursor:pointer; color:{{ $isReconciled ? '#166534' : '#374151' }};">
+                                        <input type="checkbox" class="eod-recon-checkbox" {{ $isReconciled ? 'checked' : '' }}>
+                                        <span class="eod-recon-label">{{ $isReconciled ? '✓ Reconciled' : 'Mark reconciled' }}</span>
+                                    </label>
+                                    <div class="eod-recon-stamp" style="font-size:11px; color:#6b7280; margin-top:2px;">{{ $recStampLabel }}</div>
+                                </div>
+                            </div>
                             <table>
                                 <thead>
                                     <tr>
@@ -166,8 +255,15 @@
                                                     : $fmt($e['shift_end']))
                                                 : '—';
                                         @endphp
-                                        <tr>
-                                            <td>{{ $e['display_name'] }}</td>
+                                        @php
+                                            // Relabel "Unknown" so Fatteen knows what to do when she sees it.
+                                            $isUnknown = strcasecmp($e['display_name'], 'Unknown') === 0;
+                                            $displayName = $isUnknown
+                                                ? '⚠ No pin — ask cashier'
+                                                : $e['display_name'];
+                                        @endphp
+                                        <tr @if($isUnknown) title="Clover didn't receive a cashier pin for these sales — usually online/self-checkout, or someone forgot to pin in." style="background:#fffbeb;" @endif>
+                                            <td>{{ $displayName }}</td>
                                             <td class="{{ empty($e['shift_start']) ? 'muted' : '' }}">{!! $shiftDisplay !!}</td>
                                             <td class="num sep {{ is_null($e['opening_cash']) ? 'muted' : '' }}">{{ is_null($e['opening_cash']) ? '—' : '$' . number_format($e['opening_cash'], 2) }}</td>
                                             <td class="num {{ !$e['has_shift'] ? 'muted' : '' }}">{{ !$e['has_shift'] ? '—' : '$' . number_format($e['cash_sales'], 2) }}</td>
@@ -197,6 +293,18 @@
                                     </tr>
                                 </tbody>
                             </table>
+
+                            {{-- Reconciliation notes — Fatteen leaves context
+                                 for tomorrow's review ("drawer jammed at 3pm",
+                                 "variance = Clyde's split on #12345", etc.).
+                                 Saves on blur + debounced input. --}}
+                            <div style="margin-top:10px;">
+                                <label style="font-size:11px; color:#6b7280; font-weight:600; text-transform:uppercase; letter-spacing:.04em;">Reconciliation notes</label>
+                                <textarea class="eod-recon-notes form-control" rows="2"
+                                    placeholder="Notes for this store & day (auto-saves)"
+                                    style="font-size:12px; resize:vertical;">{{ $recNotes }}</textarea>
+                                <div class="eod-recon-notes-status" style="font-size:11px; color:#9ca3af; margin-top:2px; min-height:14px;"></div>
+                            </div>
                         </div>
                     @endforeach
                 </div>

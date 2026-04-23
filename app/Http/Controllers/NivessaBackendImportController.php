@@ -82,7 +82,8 @@ class NivessaBackendImportController extends Controller
                     echo "════════════════════════════════════════════════════════════\n";
                     @ob_flush(); @flush();
 
-                    $args = [$phpPath, base_path('artisan'), $cmd, $filePath];
+                    // -d memory_limit=2048M: PhpSpreadsheet on a 23MB xlsx can need 1-2GB
+                    $args = [$phpPath, '-d', 'memory_limit=2048M', base_path('artisan'), $cmd, $filePath];
                     if ($commit) {
                         $args[] = '--commit';
                     }
@@ -91,9 +92,25 @@ class NivessaBackendImportController extends Controller
                     $process->setTimeout(null);
                     $process->setIdleTimeout(null);
                     $process->start();
-                    foreach ($process as $_ => $data) {
-                        echo $data;
+
+                    // Poll with heartbeats so nginx (default 60s proxy_read_timeout) doesn't
+                    // kill the stream while PhpSpreadsheet is silently parsing the xlsx.
+                    $lastHeartbeat = time();
+                    while ($process->isRunning()) {
+                        $chunk = $process->getIncrementalOutput() . $process->getIncrementalErrorOutput();
+                        if ($chunk !== '') {
+                            echo $chunk;
+                            $lastHeartbeat = time();
+                        } elseif (time() - $lastHeartbeat >= 20) {
+                            echo '.';
+                            $lastHeartbeat = time();
+                        }
                         @ob_flush(); @flush();
+                        usleep(500000);
+                    }
+                    $tail = $process->getIncrementalOutput() . $process->getIncrementalErrorOutput();
+                    if ($tail !== '') {
+                        echo $tail;
                     }
                     echo "\n[" . $label . " exit code: " . $process->getExitCode() . "]\n\n";
                     @ob_flush(); @flush();

@@ -423,37 +423,96 @@ class CloverController extends Controller
     }
 
     /**
-     * Manual "Sync Everything Now" — runs the full bidirectional sync
-     * synchronously and returns the Artisan buffered output, same shape as
-     * cloverEodSyncNow. Used by the button on the integrations settings page.
+     * Manual "Sync Everything Now" — kicks off the full bidirectional
+     * sync as a background process and returns immediately.
+     *
+     * Why background: the first full sync walks every Clover item, every
+     * customer, and every modified order across the window. On a real
+     * inventory that takes minutes of cURL round-trips, and nginx gives
+     * up at 60s with a 504. Running inline meant the button always
+     * "failed" from the user's POV even though the PHP process behind
+     * it was happily still running to completion.
+     *
+     * Runs via shell_exec with & + disown so the caller isn't blocked,
+     * logs to storage/logs/clover-sync-*.log so the next page-load can
+     * show the tail. Status is advertised via a cache flag the JS polls.
      *
      * Route: POST /business/clover/sync-now
      */
     public function syncNow(Request $request)
     {
-        $only = trim((string) $request->input('only', ''));   // items|orders|customers|push|''
+        $only = trim((string) $request->input('only', ''));
         $days = $request->input('days');
+        $businessId = (int) request()->session()->get('user.business_id');
 
-        $args = ['--business' => request()->session()->get('user.business_id')];
-        if ($only !== '')                     $args['--only'] = $only;
-        if ($days !== null && $days !== '')   $args['--days'] = (int) $days;
+        $argParts = ['--business=' . $businessId];
+        if ($only !== '')                   $argParts[] = '--only=' . escapeshellarg($only);
+        if ($days !== null && $days !== '') $argParts[] = '--days=' . (int) $days;
 
-        $buffer = new \Symfony\Component\Console\Output\BufferedOutput();
-        try {
-            $exit = \Illuminate\Support\Facades\Artisan::call('clover:sync', $args, $buffer);
-            return response()->json([
-                'success'   => $exit === 0,
-                'exit_code' => $exit,
-                'output'    => $buffer->fetch() ?: '(no output)',
-            ]);
-        } catch (\Throwable $e) {
-            Log::error('Clover syncNow error: ' . $e->getMessage());
-            return response()->json([
-                'success'   => false,
-                'exit_code' => 1,
-                'output'    => 'Sync threw: ' . $e->getMessage() . "\n\n" . $buffer->fetch(),
-            ], 500);
+        // Tag the run so the UI can poll for its specific completion flag.
+        $runId = date('Ymd_His') . '_' . bin2hex(random_bytes(3));
+        $logPath = storage_path('logs/clover-sync-' . $runId . '.log');
+        $flagKey = 'clover.sync.run.' . $runId;
+        \Illuminate\Support\Facades\Cache::put($flagKey, 'running', now()->addMinutes(30));
+
+        $php = PHP_BINARY ?: 'php';
+        $artisan = base_path('artisan');
+        $cmd = sprintf(
+            '%s %s clover:sync %s >> %s 2>&1; %s %s cache:put %s done --expire=1800',
+            escapeshellcmd($php),
+            escapeshellarg($artisan),
+            implode(' ', $argParts),
+            escapeshellarg($logPath),
+            escapeshellcmd($php),
+            escapeshellarg($artisan),
+            escapeshellarg($flagKey)
+        );
+
+        // Full shell form: launch in background, fully detach so PHP-FPM
+        // can return before artisan finishes.
+        @shell_exec('nohup bash -c ' . escapeshellarg($cmd) . ' > /dev/null 2>&1 & disown');
+
+        return response()->json([
+            'success' => true,
+            'run_id'  => $runId,
+            'flag_key' => $flagKey,
+            'log_path' => $logPath,
+            'msg' => 'Sync started in background. The reconciliation numbers will update over the next 1–3 minutes as items/orders/customers pull in. Refresh this page to see the latest.',
+        ]);
+    }
+
+    /**
+     * Poll endpoint for the Sync Everything button — tells the JS whether
+     * the backgrounded run has finished + tails the log so the user can
+     * see what it did without SSHing in.
+     *
+     * Route: GET /business/clover/sync-status?run_id=XYZ
+     */
+    public function syncStatus(Request $request)
+    {
+        $runId = preg_replace('/[^A-Za-z0-9_]/', '', (string) $request->input('run_id', ''));
+        if ($runId === '') {
+            return response()->json(['success' => false, 'msg' => 'run_id required'], 422);
         }
+        $flagKey = 'clover.sync.run.' . $runId;
+        $logPath = storage_path('logs/clover-sync-' . $runId . '.log');
+
+        $state = \Illuminate\Support\Facades\Cache::get($flagKey, 'unknown');
+        $tail = '';
+        if (is_file($logPath)) {
+            // Tail last ~200 lines so the UI doesn't need to render MBs.
+            $lines = @file($logPath, FILE_IGNORE_NEW_LINES);
+            if (is_array($lines)) {
+                $tail = implode("\n", array_slice($lines, -200));
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'state' => $state,      // 'running' | 'done' | 'unknown' (expired/missing)
+            'finished' => $state === 'done',
+            'output' => $tail ?: '(no output yet — sync still starting up)',
+        ]);
     }
 
     /**
