@@ -26,25 +26,40 @@
 	</div>
 </div>
 <script>
-(function () {
-	// Sync the left-column #customer_account_info content into the sidebar panel.
-	var $src = $('#customer_account_info');
-	var $dst = $('#sidebar_customer_panel');
-	if (!$src.length || !$dst.length) return;
-	function sync() {
-		var visible = $src.is(':visible');
-		$dst.toggle(visible);
-		if (!visible) return;
-		$dst.find('.v-customer-name').text($('#customer_account_name').text().trim());
-		$dst.find('.v-balance').text($('#customer_account_balance').text().trim());
-		$dst.find('.v-gift').text($('#customer_gift_card_balance').text().trim());
-		$dst.find('.v-lifetime').text($('#customer_lifetime_purchases').text().trim());
-		$dst.find('.v-points').text($('#customer_loyalty_points').text().trim());
+(function runWhenReady(attempts) {
+	// Same rule as channel chips / quick-add: this partial sits in @yield('content')
+	// before layouts/partials/javascripts.blade.php loads jQuery — bare $ throws
+	// ReferenceError and breaks follow-up behaviour on the POS screen.
+	if (typeof jQuery === 'undefined') {
+		if ((attempts || 0) > 300) return;
+		return setTimeout(function () { runWhenReady((attempts || 0) + 1); }, 20);
 	}
-	$(function () { sync(); });
-	if (typeof MutationObserver !== 'undefined') {
-		new MutationObserver(sync).observe($src[0], { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
-	}
+	jQuery(function ($) {
+		var $src = $('#customer_account_info');
+		var $dst = $('#sidebar_customer_panel');
+		if (!$src.length || !$dst.length) return;
+
+		var rafId = null;
+		function sync() {
+			if (rafId !== null) return;
+			rafId = window.requestAnimationFrame(function () {
+				rafId = null;
+				var visible = $src.is(':visible');
+				$dst.toggle(visible);
+				if (!visible) return;
+				$dst.find('.v-customer-name').text($('#customer_account_name').text().trim());
+				$dst.find('.v-balance').text($('#customer_account_balance').text().trim());
+				$dst.find('.v-gift').text($('#customer_gift_card_balance').text().trim());
+				$dst.find('.v-lifetime').text($('#customer_lifetime_purchases').text().trim());
+				$dst.find('.v-points').text($('#customer_loyalty_points').text().trim());
+			});
+		}
+
+		sync();
+		if (typeof MutationObserver !== 'undefined' && $src[0]) {
+			new MutationObserver(sync).observe($src[0], { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+		}
+	});
 })();
 </script>
 
@@ -135,8 +150,11 @@
      so an inline IIFE that calls $(...) throws "$ is not defined" and silently
      detaches every handler below. Poll-wait-for-jQuery wrapper fixes it. --}}
 <script>
-(function runWhenReady() {
-    if (typeof jQuery === 'undefined') { setTimeout(runWhenReady, 50); return; }
+(function runWhenReady(attempts) {
+    if (typeof jQuery === 'undefined') {
+        if ((attempts || 0) > 300) return;
+        return setTimeout(function () { runWhenReady((attempts || 0) + 1); }, 50);
+    }
     jQuery(function ($) {
     $(document).on('click', '.pos-quick-preset', function () {
         var $btn = $(this);
@@ -189,19 +207,25 @@
     });
 
     // Whenever rows change, keep the bag-fee row at the bottom so manually-added
-    // products always sit above it.
+    // products always sit above it. Coalesce with rAF and skip no-op appends
+    // so we never spin on duplicate MutationObserver callbacks.
     var tbody = document.querySelector('#pos_table tbody');
     if (tbody) {
+        var reorderRaf = null;
         var reorder = function () {
-            var $bag = $(tbody).find('tr[data-plastic-bag="true"]').first();
-            if ($bag.length && $bag.next().length) {
+            if (reorderRaf !== null) return;
+            reorderRaf = window.requestAnimationFrame(function () {
+                reorderRaf = null;
+                var $bag = $(tbody).find('tr[data-plastic-bag="true"]').first();
+                if (!$bag.length) return;
+                if ($bag.is(':last-child')) return;
                 $(tbody).append($bag);
-            }
+            });
         };
         new MutationObserver(reorder).observe(tbody, { childList: true });
     }
     });
-})();
+})(0);
 </script>
 
 {{-- The admin "featured products" grid + category/brand filters used to live
@@ -212,6 +236,10 @@
 <input type="hidden" id="product_brand" value="">
 <input type="hidden" id="is_enabled_stock" value="">
 <input type="hidden" id="suggestion_page" value="1">
-<div id="featured_products_box" style="display:none;"></div>
-<div id="product_list_body" style="display:none;"></div>
+{{-- Stubs only: the visible product grid was removed from this column. Tell
+     pos.js not to hit get-product-suggestion / featured-products on every
+     load — that was doing a heavy server round-trip + DOM append into a
+     display:none container and made POS feel stuck. --}}
+<div id="featured_products_box" style="display:none;" data-skip-pos-suggestions="1"></div>
+<div id="product_list_body" style="display:none;" data-skip-pos-suggestions="1"></div>
 <div id="suggestion_page_loader" style="display:none;"></div>

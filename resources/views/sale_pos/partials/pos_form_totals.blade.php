@@ -516,8 +516,11 @@
         <script>
         /* Discount dropdown + tax-rate display + bag stepper — runs inline
            but waits for jQuery since jQuery loads at the bottom of the layout. */
-        (function runWhenReady() {
-            if (typeof jQuery === 'undefined') { setTimeout(runWhenReady, 50); return; }
+        (function runWhenReady(attempts) {
+            if (typeof jQuery === 'undefined') {
+                if ((attempts || 0) > 300) return;
+                return setTimeout(function () { runWhenReady((attempts || 0) + 1); }, 50);
+            }
             jQuery(function ($) {
                 // Discount dropdown (Manual / Preset)
                 $(document).on('click', '#adj-discount-toggle', function (e) {
@@ -578,7 +581,16 @@
                     $bagFeeAmount.text(total);
                     $bagFeeMutedLabel.text('(' + n + ' bag' + (n === 1 ? '' : 's') + ')');
                     var $qty = $('#pos_table tbody tr[data-plastic-bag="true"] input.input_quantity');
-                    if ($qty.length) $qty.val(n).trigger('change').trigger('input');
+                    // Must not .trigger('change'/'input') when the value is unchanged:
+                    // a delegated handler below calls setBagQty on that same input's
+                    // change/input — re-triggering synchronously freezes the tab.
+                    if ($qty.length) {
+                        var cur = parseInt(String($qty.val()).replace(/[^\d\-]/g, ''), 10);
+                        if (isNaN(cur)) cur = 0;
+                        if (cur !== n) {
+                            $qty.val(n).trigger('change').trigger('input');
+                        }
+                    }
                 }
                 function refreshBagRow() {
                     var on = $bagToggle.is(':checked');
@@ -671,7 +683,7 @@
                     pingDing
                 );
             });
-        })();
+        })(0);
         </script>
     </div>
 </div>

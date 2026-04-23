@@ -19,9 +19,15 @@
      The rest of the palette is lifted from nivessa_pos_redesign.html.
      ============================================================ --}}
 
+{{-- Load Inter Tight without blocking first paint. A synchronous Google Fonts
+     <link> can leave /pos/create feeling "frozen" for a long time on localhost
+     or tight networks when fonts.googleapis.com is slow or blocked. --}}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&display=swap" media="print" onload="this.media='all'">
+<noscript>
+	<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&display=swap">
+</noscript>
 
 <style>
 /* ============ SCOPED TOKENS ============ */

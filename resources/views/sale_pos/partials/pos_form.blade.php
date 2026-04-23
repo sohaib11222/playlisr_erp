@@ -373,28 +373,9 @@
 				})();
 			</script>
 
-			{{-- Quick-add preset tiles now live at the top of the product grid sidebar
-				 (see sale_pos/partials/pos_sidebar.blade.php). Wiring script below still
-				 applies — it listens on .pos-quick-preset anywhere in the page. --}}
-
-			{{-- Wire up the quick-add tiles to open the existing Add Manual Item modal with name + price pre-filled. --}}
-			<script>
-			(function () {
-				$(document).on('click', '.pos-quick-preset', function () {
-					var name = $(this).data('preset-name');
-					var price = $(this).data('preset-price');
-					// Trigger the existing Add Manual Item flow first so the modal is built.
-					$('.pos_add_manual_product').trigger('click');
-					// Then fill the first row once the modal is shown.
-					$('#add_manual_product_modal').one('shown.bs.modal', function () {
-						var $row = $('#manual_products_container .manual_product_row').first();
-						if ($row.length === 0) return;
-						$row.find('input[name*="[name]"]').val(name).trigger('change').trigger('blur');
-						$row.find('input[name*="[price]"]').val(price).trigger('input').trigger('change');
-					});
-				});
-			})();
-			</script>
+			{{-- Quick-add preset tiles: handlers live in pos_sidebar.blade.php behind
+			     a wait-for-jQuery guard. Do not duplicate $(document).on(...) here —
+			     this section runs before vendor.js and throws "$ is not defined". --}}
 		</div>
 	</div>
 </div>

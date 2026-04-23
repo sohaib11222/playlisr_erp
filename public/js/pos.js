@@ -2055,11 +2055,11 @@ $(document).ready(function() {
     $('select#product_category, select#product_brand, select#select_location_id').on('change', function(e) {
         $('input#suggestion_page').val(1);
         var location_id = $('input#location_id').val();
-        if (location_id != '' || location_id != undefined) {
+        if (location_id !== '' && location_id != null && location_id !== undefined) {
             get_product_suggestion_list(
                 $('select#product_category').val(),
                 $('select#product_brand').val(),
-                $('input#location_id').val(),
+                location_id,
                 null
             );
         }
@@ -2743,6 +2743,10 @@ function set_payment_type_dropdown() {
 
 function get_featured_products() {
     var location_id = $('#location_id').val();
+    var $fb = $('#featured_products_box');
+    if (location_id && $fb.length > 0 && $fb.attr('data-skip-pos-suggestions') === '1') {
+        return;
+    }
     if (location_id && $('#featured_products_box').length > 0) {
         $.ajax({
             method: 'GET',
@@ -2756,6 +2760,10 @@ function get_featured_products() {
                     $('#feature_product_div').addClass('hide');
                     $('#featured_products_box').html('');
                 }
+            },
+            error: function() {
+                $('#feature_product_div').addClass('hide');
+                $('#featured_products_box').html('');
             },
         });
     } else {
@@ -2816,6 +2824,11 @@ function get_product_suggestion_list(category_id, brand_id, location_id, url = n
         return false;
     }
 
+    var $plb = $('div#product_list_body').first();
+    if ($plb.attr('data-skip-pos-suggestions') === '1') {
+        return false;
+    }
+
     if (url == null) {
         url = '/sells/pos/get-product-suggestion';
     }
@@ -2843,6 +2856,12 @@ function get_product_suggestion_list(category_id, brand_id, location_id, url = n
         success: function(result) {
             $('div#product_list_body').append(result);
             $('#suggestion_page_loader').fadeOut(700);
+        },
+        error: function() {
+            $('#suggestion_page_loader').fadeOut(200);
+            if (typeof toastr !== 'undefined') {
+                toastr.error('Quick-add product list failed to load — check connection and refresh.');
+            }
         },
     });
 }
