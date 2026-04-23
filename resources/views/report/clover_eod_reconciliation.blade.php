@@ -279,7 +279,7 @@
                                             <tr>
                                                 <td>{{ \Carbon\Carbon::parse($p->ts)->setTimezone(config('app.timezone'))->format('g:i:s a') }}</td>
                                                 <td class="num">${{ number_format($p->amount, 2) }}</td>
-                                                <td @if($p->employee === 'Online') class="muted" @endif>{{ $p->employee }}</td>
+                                                <td @if($p->employee === '(unattributed)') class="muted" @endif>{{ $p->employee }}</td>
                                             </tr>
                                         @empty
                                             <tr><td colspan="3" class="muted" style="text-align:center;">No Clover payments.</td></tr>

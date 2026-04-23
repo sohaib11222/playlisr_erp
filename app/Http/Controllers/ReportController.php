@@ -5767,11 +5767,59 @@ class ReportController extends Controller
             ->orderBy('cp.paid_at')
             ->get();
 
+        // ---- Shift-based attribution for pinless Clover payments ----
+        // Sarah 2026-04-23: "there is no online shop — if zak is in 12 4 all
+        // transactions at that time are zak." So when Clover didn't capture
+        // the employee pin, attribute the sale to whichever cashier's
+        // register was open at (paid_at, location_id). We only override
+        // when Clover's own employee_name is blank — if Clover already told
+        // us who rang it, we trust that.
+        $registerQ = \DB::table('cash_registers as cr')
+            ->leftJoin('users as u', 'cr.user_id', '=', 'u.id')
+            ->where('cr.business_id', $business_id)
+            ->whereDate('cr.created_at', '>=', \Carbon::parse($start)->subDay())
+            ->whereDate('cr.created_at', '<=', \Carbon::parse($end)->addDay());
+        if (!empty($location_id)) {
+            $registerQ->where('cr.location_id', $location_id);
+        }
+        $registers = $registerQ->selectRaw("
+                cr.location_id,
+                cr.created_at as opened_at,
+                cr.closed_at,
+                COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, '') as user_name
+            ")
+            ->orderBy('cr.created_at')
+            ->get();
+
+        foreach ($cpRows as $r) {
+            if (trim((string) $r->employee_name) !== '') continue;
+            $cpTs = strtotime((string) $r->ts);
+            $match = null;
+            foreach ($registers as $reg) {
+                if ((int) ($reg->location_id ?? 0) !== (int) ($r->location_id ?? 0)) continue;
+                $open = strtotime((string) $reg->opened_at);
+                $close = $reg->closed_at ? strtotime((string) $reg->closed_at) : PHP_INT_MAX;
+                if ($cpTs >= $open && $cpTs <= $close) {
+                    $match = $reg;
+                    break;
+                }
+            }
+            if ($match && $match->user_name !== '') {
+                $r->employee_name = $match->user_name;
+            }
+        }
+
         // ---- Build employee summary (aggregated across stores) ----
         $summary = [];
         foreach ($cpRows as $r) {
-            $k = $firstName($r->employee_name) ?: 'online';
-            $summary[$k] = $summary[$k] ?? ['name' => $k === 'online' ? 'Online / automated' : ucfirst($k), 'clover' => 0.0, 'erp' => 0.0];
+            // Fall back to 'unattributed' only if shift attribution also
+            // couldn't find a cashier for this timestamp+location. In a
+            // normal day this bucket stays empty.
+            $k = $firstName($r->employee_name) ?: 'unattributed';
+            $summary[$k] = $summary[$k] ?? [
+                'name' => $k === 'unattributed' ? 'Unattributed (no shift open)' : ucfirst($k),
+                'clover' => 0.0, 'erp' => 0.0,
+            ];
             $summary[$k]['clover'] += (float) $r->amount;
         }
         foreach ($erpRows as $r) {
@@ -5813,10 +5861,12 @@ class ReportController extends Controller
             $by_day[$day][$loc]['clover_payments'][] = (object) [
                 'ts' => $r->ts,
                 'amount' => round((float) $r->amount, 2),
-                // Empty employee on a Clover payment = Online / Card-on-file
-                // / self-checkout. Labeling it "(no pin)" made it look like a
-                // staff mistake — relabel to match Nivessa's actual setup.
-                'employee' => $r->employee_name ?: 'Online',
+                // Clover's own employee_name wins when present; otherwise
+                // the shift-attribution loop above has filled it in with
+                // whoever's register was open at (ts, location). If both
+                // fail → '(unattributed)' meaning the sale happened
+                // outside any open shift window.
+                'employee' => $r->employee_name ?: '(unattributed)',
                 'clover_payment_id' => $r->clover_payment_id,
             ];
             $by_day[$day][$loc]['clover_total']
