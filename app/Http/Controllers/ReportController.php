@@ -5659,12 +5659,253 @@ class ReportController extends Controller
         // can see at a glance which days are already signed off on.
         $reconciliations = $this->loadReconciliations($business_id, $start, $end);
 
+        // Transaction-level match (Clover ↔ ERP pair-up grouped by cashier)
+        // — the primary "how are we reconciling" view Sarah asked for:
+        // each cashier's matched / Clover-only / ERP-only buckets + an
+        // Online / automated bucket for pinless Clover rows.
+        $txn_match = $this->cloverEodTransactionMatch(
+            $business_id, $start, $end, $location_id, $card_methods, $used_all_methods
+        );
+
         return view('report.clover_eod_reconciliation')->with(compact(
             'rows', 'grand', 'start', 'end', 'location_id', 'business_locations',
             'employee_breakdown_by_day', 'unknown_rows',
             'is_single_day', 'prev_day', 'next_day', 'today_str',
-            'reconciliations'
+            'reconciliations', 'txn_match'
         ));
+    }
+
+    /**
+     * Transaction-level match — pair each Clover payment to its ERP
+     * counterpart by (first_name of cashier, amount, within ±60s). Then
+     * group everything per cashier so Fatteen can see, per person:
+     *
+     *   ✓ Matched    — Clover swipe lines up with an ERP sale record
+     *   ❌ Clover-only — card ran on Clover, no ERP record
+     *   ❌ ERP-only    — ERP booked a card payment, no Clover settlement
+     *
+     * Unmatched Clover payments with no cashier attached (online / self-
+     * checkout / card-on-file) are bucketed separately under a synthetic
+     * "Online / automated" cashier so the per-cashier cards stay clean.
+     *
+     * Returns:
+     *   [
+     *     'by_cashier' => [
+     *        'zak' => [
+     *           'display_name' => 'Zak',
+     *           'matched' => [...rows...],
+     *           'clover_only' => [...rows...],
+     *           'erp_only' => [...rows...],
+     *           'location_id' => int|null,
+     *           'location_name' => string,
+     *           'totals' => ['matched' => $sum, 'clover_only' => $sum, 'erp_only' => $sum],
+     *        ], ...
+     *     ],
+     *     'online' => ['clover_only' => [...], 'total' => $sum],
+     *     'totals' => ['matched' => ..., 'clover_only' => ..., 'erp_only' => ..., 'online' => ...],
+     *   ]
+     */
+    private function cloverEodTransactionMatch($business_id, $start, $end, $location_id, array $card_methods, $used_all_methods): array
+    {
+        $firstName = function ($full) {
+            $full = trim((string) $full);
+            if ($full === '') return '';
+            $parts = preg_split('/\s+/', $full);
+            return strtolower($parts[0] ?? '');
+        };
+
+        // ---- Load ERP card payments (one row per transaction_payment) ----
+        $erpQ = \DB::table('transaction_payments as tp')
+            ->join('transactions as t', 'tp.transaction_id', '=', 't.id')
+            ->leftJoin('business_locations as bl', 't.location_id', '=', 'bl.id')
+            ->leftJoin('users as u', 't.created_by', '=', 'u.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereDate('t.transaction_date', '>=', $start)
+            ->whereDate('t.transaction_date', '<=', $end);
+        if (!$used_all_methods) {
+            $erpQ->whereIn('tp.method', $card_methods);
+        }
+        if (!empty($location_id)) {
+            $erpQ->where('t.location_id', $location_id);
+        }
+        $erpRows = $erpQ->selectRaw("
+                tp.id as payment_id,
+                t.id as transaction_id,
+                t.invoice_no,
+                t.transaction_date as ts,
+                tp.amount,
+                tp.method,
+                t.location_id,
+                bl.name as location_name,
+                COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, '') as employee_name
+            ")
+            ->orderBy('t.transaction_date')
+            ->get();
+
+        // ---- Load Clover payments ----
+        $cpQ = \DB::table('clover_payments as cp')
+            ->leftJoin('business_locations as bl', 'cp.location_id', '=', 'bl.id')
+            ->where('cp.business_id', $business_id)
+            ->where(function ($q) {
+                $q->whereNull('cp.result')->orWhere('cp.result', 'SUCCESS')->orWhere('cp.result', 'APPROVED');
+            })
+            ->whereDate('cp.paid_on', '>=', $start)
+            ->whereDate('cp.paid_on', '<=', $end);
+        if (!empty($location_id)) {
+            $cpQ->where('cp.location_id', $location_id);
+        }
+        $cpRows = $cpQ->selectRaw("
+                cp.id as row_id,
+                cp.clover_payment_id,
+                cp.clover_order_id,
+                cp.paid_at as ts,
+                cp.amount,
+                cp.tender_type,
+                cp.card_type,
+                cp.card_last4,
+                cp.location_id,
+                bl.name as location_name,
+                cp.employee_name
+            ")
+            ->orderBy('cp.paid_at')
+            ->get();
+
+        // ---- Greedy 1-to-1 match: for each Clover payment, find the
+        // ----  nearest-time ERP payment with same first-name + same amount
+        // ----  within ±60s that isn't already claimed.
+        $claimedErp = [];
+        $matched = [];
+        $cloverOnly = [];
+
+        foreach ($cpRows as $cp) {
+            $cpName = $firstName($cp->employee_name);
+            $cpAmt = round((float) $cp->amount, 2);
+            $cpTs  = strtotime((string) $cp->ts);
+
+            $bestIdx = null;
+            $bestDelta = PHP_INT_MAX;
+            foreach ($erpRows as $i => $er) {
+                if (isset($claimedErp[$i])) continue;
+                if (round((float) $er->amount, 2) !== $cpAmt) continue;
+                if ($cpName !== '' && $firstName($er->employee_name) !== $cpName) continue;
+                $delta = abs(strtotime((string) $er->ts) - $cpTs);
+                if ($delta > 60) continue;
+                if ($delta < $bestDelta) {
+                    $bestDelta = $delta;
+                    $bestIdx = $i;
+                }
+            }
+
+            if ($bestIdx !== null) {
+                $claimedErp[$bestIdx] = true;
+                $matched[] = (object) [
+                    'ts' => $cp->ts,
+                    'amount' => $cpAmt,
+                    'cashier' => $cpName ?: $firstName($erpRows[$bestIdx]->employee_name),
+                    'location_id' => $cp->location_id ?: $erpRows[$bestIdx]->location_id,
+                    'location_name' => $cp->location_name ?: $erpRows[$bestIdx]->location_name,
+                    'clover_payment_id' => $cp->clover_payment_id,
+                    'erp_invoice_no' => $erpRows[$bestIdx]->invoice_no,
+                    'erp_transaction_id' => $erpRows[$bestIdx]->transaction_id,
+                    'delta_sec' => $bestDelta,
+                ];
+            } else {
+                $cloverOnly[] = (object) [
+                    'ts' => $cp->ts,
+                    'amount' => $cpAmt,
+                    'cashier' => $cpName,
+                    'location_id' => $cp->location_id,
+                    'location_name' => $cp->location_name,
+                    'clover_payment_id' => $cp->clover_payment_id,
+                    'tender_type' => $cp->tender_type,
+                    'card' => trim(($cp->card_type ?? '') . ($cp->card_last4 ? ' ****' . $cp->card_last4 : '')),
+                ];
+            }
+        }
+
+        $erpOnly = [];
+        foreach ($erpRows as $i => $er) {
+            if (isset($claimedErp[$i])) continue;
+            $erpOnly[] = (object) [
+                'ts' => $er->ts,
+                'amount' => round((float) $er->amount, 2),
+                'cashier' => $firstName($er->employee_name),
+                'location_id' => $er->location_id,
+                'location_name' => $er->location_name ?: '(no location)',
+                'erp_invoice_no' => $er->invoice_no,
+                'erp_transaction_id' => $er->transaction_id,
+                'method' => $er->method,
+            ];
+        }
+
+        // ---- Group into per-cashier buckets + "Online / automated" bucket for
+        // ----  pinless Clover rows.
+        $byCashier = [];
+        $ensure = function (&$byCashier, $key, $displayName, $locationId, $locationName) {
+            if (!isset($byCashier[$key])) {
+                $byCashier[$key] = [
+                    'display_name' => $displayName,
+                    'matched' => [], 'clover_only' => [], 'erp_only' => [],
+                    'location_id' => $locationId,
+                    'location_name' => $locationName ?: '(no location)',
+                    'totals' => ['matched' => 0.0, 'clover_only' => 0.0, 'erp_only' => 0.0],
+                ];
+            }
+        };
+
+        foreach ($matched as $m) {
+            $key = ($m->location_id ?: 0) . '|' . ($m->cashier ?: 'unknown');
+            $ensure($byCashier, $key, ucfirst($m->cashier ?: 'Unknown'), $m->location_id, $m->location_name);
+            $byCashier[$key]['matched'][] = $m;
+            $byCashier[$key]['totals']['matched'] += $m->amount;
+        }
+
+        $online = ['clover_only' => [], 'total' => 0.0];
+        foreach ($cloverOnly as $c) {
+            if ($c->cashier === '') {
+                $online['clover_only'][] = $c;
+                $online['total'] += $c->amount;
+                continue;
+            }
+            $key = ($c->location_id ?: 0) . '|' . $c->cashier;
+            $ensure($byCashier, $key, ucfirst($c->cashier), $c->location_id, $c->location_name);
+            $byCashier[$key]['clover_only'][] = $c;
+            $byCashier[$key]['totals']['clover_only'] += $c->amount;
+        }
+        foreach ($erpOnly as $e) {
+            $key = ($e->location_id ?: 0) . '|' . ($e->cashier ?: 'unknown');
+            $ensure($byCashier, $key, ucfirst($e->cashier ?: 'Unknown'), $e->location_id, $e->location_name);
+            $byCashier[$key]['erp_only'][] = $e;
+            $byCashier[$key]['totals']['erp_only'] += $e->amount;
+        }
+
+        // Sort cashiers by location, then by name, stable.
+        uasort($byCashier, function ($a, $b) {
+            return strcmp($a['location_name'], $b['location_name'])
+                ?: strcmp($a['display_name'], $b['display_name']);
+        });
+
+        $totals = [
+            'matched'     => array_sum(array_column(array_values($byCashier), 'totals.matched')) ?: 0.0,
+            'clover_only' => array_sum(array_map(fn($c) => $c['totals']['clover_only'], $byCashier)),
+            'erp_only'    => array_sum(array_map(fn($c) => $c['totals']['erp_only'], $byCashier)),
+            'online'      => $online['total'],
+            'matched_count' => array_sum(array_map(fn($c) => count($c['matched']), $byCashier)),
+            'clover_only_count' => array_sum(array_map(fn($c) => count($c['clover_only']), $byCashier))
+                                + count($online['clover_only']),
+            'erp_only_count' => array_sum(array_map(fn($c) => count($c['erp_only']), $byCashier)),
+        ];
+        // Recompute matched total since the array_column trick above
+        // doesn't traverse dot paths.
+        $totals['matched'] = array_sum(array_map(fn($c) => $c['totals']['matched'], $byCashier));
+
+        return [
+            'by_cashier' => $byCashier,
+            'online' => $online,
+            'totals' => $totals,
+        ];
     }
 
     /**

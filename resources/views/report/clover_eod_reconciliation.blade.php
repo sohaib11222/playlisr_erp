@@ -127,6 +127,170 @@
         </div>
     @endif
 
+    {{-- Transaction-level match — the "just based on time" reconciliation
+         Sarah asked for. For each cashier: ✓ matched sales (Clover + ERP
+         paired within ±60s on amount + first name), ❌ Clover-only, ❌
+         ERP-only. Pinless Clover rows (online / automated) roll up into
+         a separate bucket at the bottom so they stop polluting staff
+         cards.
+
+         Rendered as the PRIMARY daily view. The existing per-cashier
+         shift/cash audit still appears below for anyone who needs the
+         detail. --}}
+    @if(!empty($txn_match) && (!empty($txn_match['by_cashier']) || !empty($txn_match['online']['clover_only'])))
+        <style>
+            .tmx-panel { margin-bottom: 22px; }
+            .tmx-summary { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+            .tmx-chip { background:#fff; border:1px solid #e5e7eb; border-radius:999px; padding:6px 12px; font-size:12px; font-weight:600; color:#111827; }
+            .tmx-chip b { margin-left:6px; }
+            .tmx-chip.ok { border-color:#bbf7d0; color:#166534; background:#f0fdf4; }
+            .tmx-chip.warn { border-color:#fde68a; color:#b45309; background:#fffbeb; }
+            .tmx-chip.bad  { border-color:#fecaca; color:#b91c1c; background:#fef2f2; }
+            .tmx-chip.muted { color:#6b7280; }
+            .tmx-cashier-card { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:12px 14px; margin-bottom:12px; }
+            .tmx-cashier-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:8px; }
+            .tmx-cashier-name { font-size:15px; font-weight:700; color:#111827; }
+            .tmx-cashier-loc { font-size:11px; color:#6b7280; text-transform:uppercase; letter-spacing:.04em; }
+            .tmx-cashier-totals { font-size:12px; color:#374151; font-variant-numeric: tabular-nums; }
+            .tmx-row-table { width:100%; font-size:12px; border-collapse:collapse; font-variant-numeric: tabular-nums; }
+            .tmx-row-table th { text-align:left; color:#6b7280; font-weight:600; font-size:10px; text-transform:uppercase; letter-spacing:.04em; border-bottom:1px solid #e5e7eb; padding:4px 6px; }
+            .tmx-row-table td { padding:5px 6px; border-bottom:1px solid #f3f4f6; }
+            .tmx-row-table td.num { text-align:right; }
+            .tmx-row-table tr.ok   td { background:#f0fdf4; }
+            .tmx-row-table tr.warn td { background:#fffbeb; }
+            .tmx-row-table tr.bad  td { background:#fef2f2; }
+            .tmx-bucket-head { font-size:11px; font-weight:700; color:#374151; text-transform:uppercase; letter-spacing:.04em; margin:10px 0 4px; }
+            details.tmx-details summary { cursor:pointer; font-size:11px; color:#6b7280; padding:4px 0; }
+            details.tmx-details[open] summary { color:#111827; }
+        </style>
+        <h4 style="margin: 10px 0 6px; font-size: 14px; color: #111827; font-weight: 700;">
+            Transaction match · by cashier
+        </h4>
+        <div class="tmx-summary">
+            <span class="tmx-chip ok">✓ Matched<b>{{ $txn_match['totals']['matched_count'] }}</b> <span class="tmx-chip muted" style="padding:0 0 0 6px; border:none; background:transparent; font-size:11px;">${{ number_format($txn_match['totals']['matched'], 2) }}</span></span>
+            @if($txn_match['totals']['clover_only_count'] > 0)
+                <span class="tmx-chip bad">❌ Clover only<b>{{ $txn_match['totals']['clover_only_count'] }}</b> <span class="tmx-chip muted" style="padding:0 0 0 6px; border:none; background:transparent; font-size:11px;">${{ number_format($txn_match['totals']['clover_only'] + $txn_match['totals']['online'], 2) }}</span></span>
+            @endif
+            @if($txn_match['totals']['erp_only_count'] > 0)
+                <span class="tmx-chip bad">❌ ERP only<b>{{ $txn_match['totals']['erp_only_count'] }}</b> <span class="tmx-chip muted" style="padding:0 0 0 6px; border:none; background:transparent; font-size:11px;">${{ number_format($txn_match['totals']['erp_only'], 2) }}</span></span>
+            @endif
+        </div>
+
+        @foreach($txn_match['by_cashier'] as $key => $c)
+            @php
+                $mCount = count($c['matched']);
+                $coCount = count($c['clover_only']);
+                $eoCount = count($c['erp_only']);
+                $allMatched = $coCount === 0 && $eoCount === 0 && $mCount > 0;
+            @endphp
+            <div class="tmx-cashier-card">
+                <div class="tmx-cashier-head">
+                    <div>
+                        <div class="tmx-cashier-name">{{ $c['display_name'] }} @if($allMatched)<span style="color:#166534; font-weight:600;"> · ✓ all match</span>@endif</div>
+                        <div class="tmx-cashier-loc">{{ $c['location_name'] }}</div>
+                    </div>
+                    <div class="tmx-cashier-totals">
+                        ✓ <strong>{{ $mCount }}</strong> · ${{ number_format($c['totals']['matched'], 2) }}
+                        @if($coCount > 0)
+                            &nbsp;·&nbsp; <span style="color:#b91c1c;">Clover-only <strong>{{ $coCount }}</strong> · ${{ number_format($c['totals']['clover_only'], 2) }}</span>
+                        @endif
+                        @if($eoCount > 0)
+                            &nbsp;·&nbsp; <span style="color:#b91c1c;">ERP-only <strong>{{ $eoCount }}</strong> · ${{ number_format($c['totals']['erp_only'], 2) }}</span>
+                        @endif
+                    </div>
+                </div>
+
+                @if($coCount > 0)
+                    <div class="tmx-bucket-head" style="color:#b91c1c;">❌ Clover-only (card ran, no ERP sale recorded)</div>
+                    <table class="tmx-row-table">
+                        <thead><tr><th>Time</th><th class="num">Amount</th><th>Clover payment</th><th>Card</th></tr></thead>
+                        <tbody>
+                            @foreach($c['clover_only'] as $r)
+                                <tr class="bad">
+                                    <td>{{ \Carbon\Carbon::parse($r->ts)->format('g:i:s a') }}</td>
+                                    <td class="num">${{ number_format($r->amount, 2) }}</td>
+                                    <td><code style="font-size:11px;">{{ $r->clover_payment_id }}</code></td>
+                                    <td>{{ $r->card ?: $r->tender_type }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                @endif
+
+                @if($eoCount > 0)
+                    <div class="tmx-bucket-head" style="color:#b91c1c;">❌ ERP-only (sale booked, no Clover settlement)</div>
+                    <table class="tmx-row-table">
+                        <thead><tr><th>Time</th><th class="num">Amount</th><th>Invoice</th><th>Method</th></tr></thead>
+                        <tbody>
+                            @foreach($c['erp_only'] as $r)
+                                <tr class="bad">
+                                    <td>{{ \Carbon\Carbon::parse($r->ts)->format('g:i:s a') }}</td>
+                                    <td class="num">${{ number_format($r->amount, 2) }}</td>
+                                    <td>
+                                        <a href="{{ route('sell.printInvoice', $r->erp_transaction_id) }}" target="_blank">{{ $r->erp_invoice_no ?: ('#' . $r->erp_transaction_id) }}</a>
+                                    </td>
+                                    <td>{{ strtoupper($r->method ?? '') }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                @endif
+
+                @if($mCount > 0)
+                    <details class="tmx-details">
+                        <summary>Show {{ $mCount }} matched transaction(s)</summary>
+                        <table class="tmx-row-table">
+                            <thead><tr><th>Time</th><th class="num">Amount</th><th>Invoice</th><th>Clover payment</th><th class="num">Δ sec</th></tr></thead>
+                            <tbody>
+                                @foreach($c['matched'] as $r)
+                                    <tr class="ok">
+                                        <td>{{ \Carbon\Carbon::parse($r->ts)->format('g:i:s a') }}</td>
+                                        <td class="num">${{ number_format($r->amount, 2) }}</td>
+                                        <td>
+                                            <a href="{{ route('sell.printInvoice', $r->erp_transaction_id) }}" target="_blank">{{ $r->erp_invoice_no ?: ('#' . $r->erp_transaction_id) }}</a>
+                                        </td>
+                                        <td><code style="font-size:11px;">{{ $r->clover_payment_id }}</code></td>
+                                        <td class="num">{{ $r->delta_sec }}</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </details>
+                @endif
+            </div>
+        @endforeach
+
+        @if(!empty($txn_match['online']['clover_only']))
+            <div class="tmx-cashier-card" style="border-color:#c7d2fe; background:#eef2ff;">
+                <div class="tmx-cashier-head">
+                    <div>
+                        <div class="tmx-cashier-name">🌐 Online / automated</div>
+                        <div class="tmx-cashier-loc">Clover sales with no cashier pin — website checkout, card-on-file, etc.</div>
+                    </div>
+                    <div class="tmx-cashier-totals">
+                        <strong>{{ count($txn_match['online']['clover_only']) }}</strong> · ${{ number_format($txn_match['online']['total'], 2) }}
+                    </div>
+                </div>
+                <details class="tmx-details">
+                    <summary>Show {{ count($txn_match['online']['clover_only']) }} online / automated payment(s)</summary>
+                    <table class="tmx-row-table">
+                        <thead><tr><th>Time</th><th class="num">Amount</th><th>Clover payment</th><th>Card</th></tr></thead>
+                        <tbody>
+                            @foreach($txn_match['online']['clover_only'] as $r)
+                                <tr>
+                                    <td>{{ \Carbon\Carbon::parse($r->ts)->format('g:i:s a') }}</td>
+                                    <td class="num">${{ number_format($r->amount, 2) }}</td>
+                                    <td><code style="font-size:11px;">{{ $r->clover_payment_id }}</code></td>
+                                    <td>{{ $r->card ?: $r->tender_type }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </details>
+            </div>
+        @endif
+    @endif
+
     {{-- Per-cashier side-by-side breakdown — mirrors Sarah's daily xlsx
          (PICO on the left, HOLLYWOOD on the right, Employee / Clover / ERP /
          Diff per row). Rendered once per day across the selected range,
