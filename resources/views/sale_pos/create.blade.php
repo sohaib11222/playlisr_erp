@@ -302,7 +302,10 @@
 			text-transform: uppercase;
 			letter-spacing: 0.4px;
 		}
-		section.content .pos_form_totals #pre_tax_amount,
+		/* #pre_tax_amount was dragged down to 14px here by the legacy totals
+		   design; now that it lives inside the Pre-Tax → Clover hero bar, it
+		   should inherit the 24px/800 from .pretax-amt. Only constrain
+		   #order_tax_display (still a compact receipt row). */
 		section.content .pos_form_totals #order_tax_display {
 			font-weight: 600 !important;
 			font-size: 14px !important;
