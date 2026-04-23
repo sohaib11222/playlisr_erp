@@ -1,0 +1,61 @@
+# One-click `php artisan migrate --force` on production — no deploy, no
+# restarts, no optional flags. Exists because the migrate-on-deploy
+# checkbox has been flaky, and "a new table doesn't exist" is the kind
+# of incident that needs a single, obvious, always-works button instead
+# of a multi-step diagnosis. Prints full migrate output so a failure
+# (e.g. foreign key not found) shows up clearly in the run log.
+#
+# Uses the same secrets as Deploy production:
+#   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, (optional DEPLOY_PORT)
+
+name: Run migrations
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  # Share the deploy group so this can't race a Deploy production run
+  # that's mid-git-pull — we'd migrate against inconsistent code.
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Run php artisan migrate --force
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: true
+          script: |
+            set -e
+            DEPLOY_DIR="/www/playlist.nivessa.com/app"
+            cd "$DEPLOY_DIR"
+            echo "=== pending migrations ==="
+            php artisan migrate:status 2>&1 | tail -30
+            echo
+            echo "=== running migrate ==="
+            php artisan migrate --force --no-interaction
+            echo
+            echo "=== post-migrate status (last 10) ==="
+            php artisan migrate:status 2>&1 | tail -10
+            echo
+            echo "=== done ==="
