@@ -277,9 +277,9 @@
                                     <tbody>
                                         @forelse($loc['clover_payments'] as $p)
                                             <tr>
-                                                <td>{{ \Carbon\Carbon::parse($p->ts)->format('g:i:s a') }}</td>
+                                                <td>{{ \Carbon\Carbon::parse($p->ts)->setTimezone(config('app.timezone'))->format('g:i:s a') }}</td>
                                                 <td class="num">${{ number_format($p->amount, 2) }}</td>
-                                                <td @if($p->employee === '(no pin)') class="muted" @endif>{{ $p->employee }}</td>
+                                                <td @if($p->employee === 'Online') class="muted" @endif>{{ $p->employee }}</td>
                                             </tr>
                                         @empty
                                             <tr><td colspan="3" class="muted" style="text-align:center;">No Clover payments.</td></tr>
@@ -307,7 +307,7 @@
                                     <tbody>
                                         @forelse($loc['erp_payments'] as $p)
                                             <tr>
-                                                <td>{{ \Carbon\Carbon::parse($p->ts)->format('g:i:s a') }}</td>
+                                                <td>{{ \Carbon\Carbon::parse($p->ts)->setTimezone(config('app.timezone'))->format('g:i:s a') }}</td>
                                                 <td class="num">
                                                     <a href="{{ route('sell.printInvoice', $p->transaction_id) }}" target="_blank" title="{{ $p->invoice_no ?: ('#' . $p->transaction_id) }}">${{ number_format($p->amount, 2) }}</a>
                                                 </td>

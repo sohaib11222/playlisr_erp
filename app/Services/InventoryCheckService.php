@@ -104,9 +104,11 @@ class InventoryCheckService
             'fast_oos' => $this->bucketFastOos($business_id, $locationId, $permittedLocations),
             'street_pulse' => $this->bucketChartPicks($business_id, $locationId, 'street_pulse', $topArtists, $permittedLocations),
             'universal_top' => $this->bucketChartPicks($business_id, $locationId, 'universal_top', $topArtists, $permittedLocations),
+            'apple_music_top' => $this->bucketChartPicks($business_id, $locationId, 'apple_music_top', $topArtists, $permittedLocations),
             'top_artist_new_releases' => $this->bucketTopArtistNewReleases($business_id, $locationId, $topArtists, $permittedLocations),
             'events_upcoming' => $this->bucketEventsUpcoming($business_id, $locationId, $permittedLocations),
             'long_oos_essentials' => $this->bucketLongOosEssentials($business_id, $locationId, $permittedLocations),
+            'hot_used_oos' => $this->bucketHotUsedOos($business_id, $locationId, $permittedLocations),
             'customer_wants' => $this->bucketCustomerWants($business_id, $locationId),
         ];
 
@@ -230,9 +232,10 @@ class InventoryCheckService
 
     protected function bucketChartPicks(int $business_id, int $locationId, string $source, array $topArtists, $permittedLocations): array
     {
+        $label = $this->chartSourceLabel($source);
         if (!Schema::hasTable('chart_picks')) {
             return [
-                'label' => $source === 'street_pulse' ? '📬 Street Pulse picks' : '🌍 Universal top',
+                'label' => $label,
                 'why' => 'chart_picks table not yet migrated — run php artisan migrate.',
                 'items' => [],
                 'count' => 0,
@@ -245,9 +248,12 @@ class InventoryCheckService
             ->max('week_of');
 
         if (!$week) {
+            $emptyMsg = $source === 'apple_music_top'
+                ? 'Daily cron populates this at 09:00 PST. Or click "Run Apple Music pull" above.'
+                : 'Paste this week\'s email to populate.';
             return [
-                'label' => $source === 'street_pulse' ? '📬 Street Pulse picks' : '🌍 Universal top',
-                'why' => 'Paste this week\'s email to populate.',
+                'label' => $label,
+                'why' => $emptyMsg,
                 'items' => [],
                 'count' => 0,
                 'empty_reason' => 'not_imported',
@@ -307,12 +313,32 @@ class InventoryCheckService
         });
 
         return [
-            'label' => $source === 'street_pulse' ? '📬 Street Pulse picks' : '🌍 Universal top',
-            'why' => 'From this week\'s ' . ($source === 'street_pulse' ? 'Street Pulse' : 'Universal top') . ' chart (imported ' . $week . '). Rows tagged "top_artist" are artists already popular in-store.',
+            'label' => $label,
+            'why' => 'From the most recent ' . $this->chartSourceFriendlyName($source) . ' chart (imported ' . $week . '). Rows tagged "top_artist" are artists already popular in-store.',
             'items' => $items,
             'count' => count($items),
             'week_of' => (string) $week,
         ];
+    }
+
+    protected function chartSourceLabel(string $source): string
+    {
+        switch ($source) {
+            case 'street_pulse': return '📬 Street Pulse picks';
+            case 'universal_top': return '🌍 Universal top';
+            case 'apple_music_top': return '🍎 Apple Music top 100';
+            default: return ucwords(str_replace('_', ' ', $source));
+        }
+    }
+
+    protected function chartSourceFriendlyName(string $source): string
+    {
+        switch ($source) {
+            case 'street_pulse': return 'Street Pulse';
+            case 'universal_top': return 'Universal top';
+            case 'apple_music_top': return 'Apple Music top 100';
+            default: return str_replace('_', ' ', $source);
+        }
     }
 
     protected function isTopArtistMatch(string $artistLower, array $topArtistsLower): bool
@@ -663,6 +689,88 @@ class InventoryCheckService
             'why' => 'Core titles: sold ' . $cfg['min_lifetime_sold'] . '+ in the last ' . $cfg['lookback_days'] . 'd, currently OOS for ' . $cfg['min_oos_days'] . '+ days.',
             'items' => $items,
             'count' => count($items),
+        ];
+    }
+
+    // ── 🎸 Hot used, currently out (watchlist, not reorderable) ──────
+
+    /**
+     * Used titles that have sold N+ copies in the last 90 days but we
+     * have 0 on hand. Unlike sealed, you can't order a used copy from
+     * AMS — these come from customer trade-ins / Discogs. The bucket
+     * is advisory: "when a copy walks in, prioritize it".
+     */
+    protected function bucketHotUsedOos(int $business_id, int $locationId, $permittedLocations): array
+    {
+        $cfg = config('inventory_check.buckets.hot_used_oos', [
+            'category_patterns' => ['Used Vinyl', 'Used CD'],
+            'sale_days' => 90,
+            'min_sold' => 3,
+            'max_stock' => 0,
+        ]);
+
+        $catIds = [];
+        foreach ((array) ($cfg['category_patterns'] ?? []) as $pattern) {
+            foreach ($this->categoryIdsMatching($business_id, $pattern) as $id) {
+                $catIds[] = $id;
+            }
+        }
+        $catIds = array_values(array_unique($catIds));
+
+        if (empty($catIds)) {
+            return [
+                'label' => '🎸 Hot used, currently out',
+                'why' => 'No categories matched "Used Vinyl" or "Used CD" — check your ERP category names in config/inventory_check.php.',
+                'items' => [],
+                'count' => 0,
+                'empty_reason' => 'no_used_categories',
+            ];
+        }
+
+        $saleDays = (int) ($cfg['sale_days'] ?? 90);
+        $minSold = (float) ($cfg['min_sold'] ?? 3);
+        $maxStock = (float) ($cfg['max_stock'] ?? 0);
+        $saleStart = Carbon::now()->subDays($saleDays)->format('Y-m-d');
+        $saleEnd = Carbon::now()->format('Y-m-d');
+
+        $sold = $this->getSoldQtyByVariation($business_id, $locationId, $saleStart, $saleEnd, $permittedLocations);
+        if (empty($sold)) {
+            return [
+                'label' => '🎸 Hot used, currently out',
+                'why' => 'No used sales in the last ' . $saleDays . ' days at this location.',
+                'items' => [],
+                'count' => 0,
+            ];
+        }
+
+        $rows = $this->queryPscRows($business_id, $locationId, $catIds, $permittedLocations);
+        $items = [];
+        foreach ($rows as $row) {
+            $vid = (int) $row->variation_id;
+            $stock = (float) ($row->stock ?? 0);
+            if ($stock > $maxStock) {
+                continue;
+            }
+            $soldWindow = $sold[$vid] ?? 0.0;
+            if ($soldWindow < $minSold) {
+                continue;
+            }
+
+            $items[] = $this->rowToCandidate($row, $stock, $soldWindow, 0, [
+                'bucket' => 'hot_used_oos',
+                'reason' => 'sold ' . (int) $soldWindow . ' used in last ' . $saleDays . 'd; none in stock',
+                'tags' => ['used', 'watchlist'],
+            ]);
+        }
+
+        usort($items, fn ($a, $b) => $b['sold_qty_window'] <=> $a['sold_qty_window']);
+
+        return [
+            'label' => '🎸 Hot used, currently out',
+            'why' => 'Used titles that sold ' . (int) $minSold . '+ copies in the last ' . $saleDays . 'd but are now gone. Watch for these on customer trade-ins and Discogs — no AMS order needed.',
+            'items' => $items,
+            'count' => count($items),
+            'advisory_only' => true,
         ];
     }
 

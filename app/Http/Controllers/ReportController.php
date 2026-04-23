@@ -5770,8 +5770,8 @@ class ReportController extends Controller
         // ---- Build employee summary (aggregated across stores) ----
         $summary = [];
         foreach ($cpRows as $r) {
-            $k = $firstName($r->employee_name) ?: '(no pin)';
-            $summary[$k] = $summary[$k] ?? ['name' => ucfirst($k), 'clover' => 0.0, 'erp' => 0.0];
+            $k = $firstName($r->employee_name) ?: 'online';
+            $summary[$k] = $summary[$k] ?? ['name' => $k === 'online' ? 'Online / automated' : ucfirst($k), 'clover' => 0.0, 'erp' => 0.0];
             $summary[$k]['clover'] += (float) $r->amount;
         }
         foreach ($erpRows as $r) {
@@ -5813,7 +5813,10 @@ class ReportController extends Controller
             $by_day[$day][$loc]['clover_payments'][] = (object) [
                 'ts' => $r->ts,
                 'amount' => round((float) $r->amount, 2),
-                'employee' => $r->employee_name ?: '(no pin)',
+                // Empty employee on a Clover payment = Online / Card-on-file
+                // / self-checkout. Labeling it "(no pin)" made it look like a
+                // staff mistake — relabel to match Nivessa's actual setup.
+                'employee' => $r->employee_name ?: 'Online',
                 'clover_payment_id' => $r->clover_payment_id,
             ];
             $by_day[$day][$loc]['clover_total']

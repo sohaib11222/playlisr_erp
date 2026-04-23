@@ -75,7 +75,7 @@
             return;
         }
 
-        const order = ['fast_oos', 'street_pulse', 'universal_top', 'top_artist_new_releases', 'events_upcoming', 'long_oos_essentials', 'customer_wants'];
+        const order = ['fast_oos', 'street_pulse', 'universal_top', 'apple_music_top', 'top_artist_new_releases', 'events_upcoming', 'long_oos_essentials', 'hot_used_oos', 'customer_wants'];
         const buckets = payload.buckets || {};
 
         let html = '';

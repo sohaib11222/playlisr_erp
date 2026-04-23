@@ -64,6 +64,14 @@ class Kernel extends ConsoleKernel
             ->timezone('America/Los_Angeles')
             ->withoutOverlapping(30);
 
+        // Apple Music Top 100 refresh — daily at 09:00 PST. Public RSS
+        // feed, no credentials, always safe to run. Feeds the same
+        // chart_picks table with source=apple_music_top.
+        $schedule->command('charts:import-apple-music')
+            ->dailyAt('09:00')
+            ->timezone('America/Los_Angeles')
+            ->withoutOverlapping(15);
+
         // Clover → ERP payment sync. Runs every 30 min during business hours
         // to keep the Clover-vs-ERP reconciliation report near-live, then once
         // more overnight at 02:30 PST to pick up any late-night stragglers.

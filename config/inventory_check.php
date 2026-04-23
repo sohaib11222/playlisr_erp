@@ -49,6 +49,15 @@ return [
             'min_oos_days' => 14,
             'target_stock' => 2,
         ],
+        // 🎸 Hot used, currently out — watch-list, not reorderable
+        // Used items come from customer trade-ins / Discogs, not AMS —
+        // so this bucket is advisory: "when a copy walks in, prioritize".
+        'hot_used_oos' => [
+            'category_patterns' => ['Used Vinyl', 'Used CD'],
+            'sale_days' => 90,
+            'min_sold' => 3,
+            'max_stock' => 0,
+        ],
         // Top artists — lookback for "popular in our store"
         'top_artists' => [
             'lookback_days' => 90,
