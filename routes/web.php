@@ -574,6 +574,60 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::put('update-sales-orders/{id}/status', 'SalesOrderController@postEditSalesOrderStatus');
     Route::get('reports/activity-log', 'ReportController@activityLog');
     Route::get('user-location/{latlng}', 'HomeController@getUserLocation');
+
+    // One-shot diagnostic: did the Nivessa Backend xlsx imports land on prod?
+    // Hit /admin/nivessa-import-status in the browser to see row counts per table.
+    Route::get('/admin/nivessa-import-status', function () {
+        if (!auth()->user()->can('superadmin') && auth()->user()->id !== 1) {
+            abort(403);
+        }
+
+        $salesLike = 'nivessa_backend_sales_%';
+
+        $txCount = \DB::table('transactions')
+            ->where('import_source', 'like', $salesLike)
+            ->count();
+        $txMin = \DB::table('transactions')
+            ->where('import_source', 'like', $salesLike)
+            ->min('transaction_date');
+        $txMax = \DB::table('transactions')
+            ->where('import_source', 'like', $salesLike)
+            ->max('transaction_date');
+        $txBySheet = \DB::table('transactions')
+            ->where('import_source', 'like', $salesLike)
+            ->selectRaw('import_source, COUNT(*) as rows')
+            ->groupBy('import_source')
+            ->orderByDesc('rows')
+            ->get();
+
+        $sellLineCount = \DB::table('transaction_sell_lines')
+            ->where('import_source', 'like', $salesLike)
+            ->count();
+
+        $storeCreditContacts = \DB::table('contacts')
+            ->where('import_source', 'nivessa_backend_store_credit')
+            ->count();
+
+        $customerWants = \DB::table('customer_wants')
+            ->where('import_source', 'nivessa_backend_customer_asks')
+            ->count();
+
+        return response()->json([
+            'historical_sales' => [
+                'transactions' => $txCount,
+                'sell_lines' => $sellLineCount,
+                'date_range' => [$txMin, $txMax],
+                'sheets_imported' => $txBySheet->count(),
+                'by_sheet' => $txBySheet,
+            ],
+            'store_credit' => [
+                'contacts_tagged' => $storeCreditContacts,
+            ],
+            'customer_asks' => [
+                'customer_wants' => $customerWants,
+            ],
+        ], 200, [], JSON_PRETTY_PRINT);
+    });
 });
 
 
