@@ -99,6 +99,23 @@ return [
             'category_name_pattern' => 'Sealed CD',
             'sale_days' => 90,
         ],
+        'pico_all' => [
+            'label' => 'Pico — all sections',
+            'location_name_pattern' => 'Pico',
+            'sale_days' => 90,
+        ],
+        'pico_sealed_vinyl' => [
+            'label' => 'Pico · Sealed Vinyl',
+            'location_name_pattern' => 'Pico',
+            'category_name_pattern' => 'Sealed Vinyl',
+            'sale_days' => 90,
+        ],
+        'pico_sealed_cd' => [
+            'label' => 'Pico · Sealed CD',
+            'location_name_pattern' => 'Pico',
+            'category_name_pattern' => 'Sealed CD',
+            'sale_days' => 90,
+        ],
     ],
 
     'default_supplier_name_pattern' => env('INVENTORY_CHECK_SUPPLIER_PATTERN', 'AMS'),
