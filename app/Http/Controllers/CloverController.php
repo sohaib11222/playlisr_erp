@@ -457,15 +457,32 @@ class CloverController extends Controller
 
         $php = PHP_BINARY ?: 'php';
         $artisan = base_path('artisan');
+
+        // Payments sync is a separate Artisan command — the card sales
+        // feeding the reconciliation report live in clover_payments and
+        // only `clover:sync-payments` populates them. Without this the
+        // Sync Everything button leaves the Clover column at $0. Run
+        // payments FIRST (cheapest, most important for reporting), then
+        // the bidirectional items/orders/customers sync. `|| true` keeps
+        // the chain moving even if one leg hiccups.
+        //
+        // Completion is signalled by appending ---SYNC_DONE--- to the
+        // log file (no fake `cache:put` command needed). The status
+        // endpoint greps the log tail for that sentinel.
+        $paymentsArgs = ['--business=' . $businessId];
+        if ($days !== null && $days !== '') $paymentsArgs[] = '--days=' . (int) $days;
+
         $cmd = sprintf(
-            '%s %s clover:sync %s >> %s 2>&1; %s %s cache:put %s done --expire=1800',
+            '%s %s clover:sync-payments %s >> %s 2>&1 || true; %s %s clover:sync %s >> %s 2>&1 || true; echo "---SYNC_DONE---" >> %s',
+            escapeshellcmd($php),
+            escapeshellarg($artisan),
+            implode(' ', $paymentsArgs),
+            escapeshellarg($logPath),
             escapeshellcmd($php),
             escapeshellarg($artisan),
             implode(' ', $argParts),
             escapeshellarg($logPath),
-            escapeshellcmd($php),
-            escapeshellarg($artisan),
-            escapeshellarg($flagKey)
+            escapeshellarg($logPath)
         );
 
         // Full shell form: launch in background, fully detach so PHP-FPM
@@ -497,21 +514,28 @@ class CloverController extends Controller
         $flagKey = 'clover.sync.run.' . $runId;
         $logPath = storage_path('logs/clover-sync-' . $runId . '.log');
 
-        $state = \Illuminate\Support\Facades\Cache::get($flagKey, 'unknown');
+        // Completion = sentinel "---SYNC_DONE---" appears in the log
+        // (written by the background shell chain after both legs finish).
+        // No more fake `artisan cache:put` command.
         $tail = '';
+        $finished = false;
         if (is_file($logPath)) {
-            // Tail last ~200 lines so the UI doesn't need to render MBs.
             $lines = @file($logPath, FILE_IGNORE_NEW_LINES);
             if (is_array($lines)) {
                 $tail = implode("\n", array_slice($lines, -200));
+                foreach (array_reverse(array_slice($lines, -10)) as $ln) {
+                    if (trim($ln) === '---SYNC_DONE---') { $finished = true; break; }
+                }
             }
         }
+        // Strip the sentinel from what we show the user.
+        $tailDisplay = trim(preg_replace('/^---SYNC_DONE---\s*$/m', '', $tail));
 
         return response()->json([
             'success' => true,
-            'state' => $state,      // 'running' | 'done' | 'unknown' (expired/missing)
-            'finished' => $state === 'done',
-            'output' => $tail ?: '(no output yet — sync still starting up)',
+            'state' => $finished ? 'done' : 'running',
+            'finished' => $finished,
+            'output' => $tailDisplay ?: '(no output yet — sync still starting up)',
         ]);
     }
 
