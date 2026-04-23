@@ -44,6 +44,7 @@ GIT_REMOTE="$(resolve_git_remote)"
 echo "deploy: $(date -u) — dir=$DEPLOY_DIR branch=$DEPLOY_BRANCH remote=$GIT_REMOTE sync=$DEPLOY_SYNC_MODE"
 
 # Laravel writes bootstrap/cache/*.php (e.g. package:discover). If those paths
+#
 # are tracked in git but the server still has older *untracked* copies, git
 # merge aborts with: "untracked working tree files would be overwritten by merge".
 # Remove only *untracked* files under bootstrap/cache/ — tracked files are kept.
