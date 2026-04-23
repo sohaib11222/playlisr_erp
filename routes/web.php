@@ -575,6 +575,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('reports/activity-log', 'ReportController@activityLog');
     Route::get('user-location/{latlng}', 'HomeController@getUserLocation');
 
+    // Browser-based runner for the Nivessa Backend xlsx imports.
+    // Sarah has no SSH; this page uploads the xlsx and streams artisan output back.
+    Route::get('/admin/nivessa-backend-import', 'NivessaBackendImportController@index');
+    Route::post('/admin/nivessa-backend-import/run', 'NivessaBackendImportController@run');
+
     // One-shot diagnostic: did the Nivessa Backend xlsx imports land on prod?
     // Hit /admin/nivessa-import-status in the browser to see row counts per table.
     Route::get('/admin/nivessa-import-status', function () {
