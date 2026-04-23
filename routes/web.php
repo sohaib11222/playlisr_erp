@@ -578,6 +578,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // Browser-based runner for the Nivessa Backend xlsx imports.
     // Sarah has no SSH; this page uploads the xlsx and streams artisan output back.
     Route::get('/admin/nivessa-backend-import', 'NivessaBackendImportController@index');
+    Route::post('/admin/nivessa-backend-import/chunk', 'NivessaBackendImportController@chunk');
     Route::post('/admin/nivessa-backend-import/run', 'NivessaBackendImportController@run');
 
     // One-shot diagnostic: did the Nivessa Backend xlsx imports land on prod?

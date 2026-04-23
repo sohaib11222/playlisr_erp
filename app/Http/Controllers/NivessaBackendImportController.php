@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\File;
 use Symfony\Component\Process\PhpExecutableFinder;
 use Symfony\Component\Process\Process;
 
@@ -19,6 +20,42 @@ class NivessaBackendImportController extends Controller
         return view('admin.nivessa_backend_import');
     }
 
+    public function chunk(Request $request)
+    {
+        $sessionId = $this->safeSession($request->input('session_id'));
+        $index = (int) $request->input('index', 0);
+        $final = $request->boolean('final');
+
+        $dir = $this->chunkDir();
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+        $target = $dir . '/' . $sessionId . '.xlsx';
+
+        // First chunk (index=0): truncate any stale file so re-uploads don't append.
+        if ($index === 0) {
+            @unlink($target);
+        }
+
+        // Raw request body is the bytes for this chunk.
+        $raw = $request->getContent();
+        if ($raw === '' || $raw === false) {
+            return response()->json(['ok' => false, 'error' => 'empty chunk'], 400);
+        }
+        $bytes = file_put_contents($target, $raw, FILE_APPEND | LOCK_EX);
+        if ($bytes === false) {
+            return response()->json(['ok' => false, 'error' => 'write failed'], 500);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'session_id' => $sessionId,
+            'index' => $index,
+            'final' => $final,
+            'size' => @filesize($target) ?: 0,
+        ]);
+    }
+
     public function run(Request $request)
     {
         @set_time_limit(0);
@@ -26,22 +63,21 @@ class NivessaBackendImportController extends Controller
         @ignore_user_abort(true);
 
         $request->validate([
-            'xlsx' => 'required|file|mimes:xlsx,xls|max:102400',
+            'session_id' => 'required|string',
             'import_type' => 'required|in:sales,store_credit,customer_asks',
         ]);
 
+        $sessionId = $this->safeSession($request->input('session_id'));
         $type = $request->input('import_type');
         $commit = $request->boolean('commit');
         $onlySheet = trim((string) $request->input('only_sheet', ''));
         $taxRate = trim((string) $request->input('tax_rate', ''));
 
-        $dir = storage_path('app/nivessa_backend');
-        if (!is_dir($dir)) {
-            @mkdir($dir, 0775, true);
+        $filePath = $this->chunkDir() . '/' . $sessionId . '.xlsx';
+        if (!is_file($filePath)) {
+            return response('No uploaded file found for session ' . $sessionId . ". Upload the xlsx first.\n", 400)
+                ->header('Content-Type', 'text/plain');
         }
-        $filename = 'upload_' . time() . '_' . bin2hex(random_bytes(4)) . '.xlsx';
-        $filePath = $dir . '/' . $filename;
-        $request->file('xlsx')->move($dir, $filename);
 
         $phpPath = (new PhpExecutableFinder())->find(false) ?: 'php';
         $args = [$phpPath, base_path('artisan'), self::COMMANDS[$type], $filePath];
@@ -59,22 +95,17 @@ class NivessaBackendImportController extends Controller
         $process->setTimeout(null);
         $process->setIdleTimeout(null);
 
-        $cleanup = function () use ($filePath) {
-            if (file_exists($filePath)) {
-                @unlink($filePath);
-            }
-        };
-
-        return response()->stream(function () use ($process, $args, $cleanup) {
+        return response()->stream(function () use ($process, $args, $filePath) {
             echo '$ ' . implode(' ', array_map(function ($a) {
                 return strpos($a, ' ') !== false ? '"' . $a . '"' : $a;
-            }, $args)) . "\n\n";
+            }, $args)) . "\n";
+            echo '[xlsx: ' . $filePath . ' · ' . number_format(filesize($filePath)) . " bytes]\n\n";
             @ob_flush();
             @flush();
 
             try {
                 $process->start();
-                foreach ($process as $type => $data) {
+                foreach ($process as $_ => $data) {
                     echo $data;
                     @ob_flush();
                     @flush();
@@ -83,7 +114,7 @@ class NivessaBackendImportController extends Controller
             } catch (\Throwable $e) {
                 echo "\n[error: " . $e->getMessage() . "]\n";
             } finally {
-                $cleanup();
+                @unlink($filePath);
             }
             @ob_flush();
             @flush();
@@ -92,5 +123,19 @@ class NivessaBackendImportController extends Controller
             'Cache-Control' => 'no-cache, no-store, must-revalidate',
             'X-Accel-Buffering' => 'no',
         ]);
+    }
+
+    private function chunkDir(): string
+    {
+        return storage_path('app/nivessa_backend');
+    }
+
+    private function safeSession($id): string
+    {
+        $id = (string) $id;
+        if (!preg_match('/^[a-zA-Z0-9_-]{8,64}$/', $id)) {
+            abort(400, 'invalid session_id');
+        }
+        return $id;
     }
 }
