@@ -73,36 +73,13 @@ if [ "$DEPLOY_MIGRATE" = "1" ]; then
   php artisan migrate --force --no-interaction
 fi
 
-# Upsert IMAP credentials into .env when passed through from GitHub Secrets.
-# This exists so non-SSH operators can rotate the chart-email password by
-# editing the GitHub Secret alone — no server shell needed. Values stay
-# in .env (never committed to git) and are consumed by config/inventory_check.php.
-upsert_env() {
-  local key="$1"
-  local val="$2"
-  if [ -z "${val:-}" ]; then
-    return 0
-  fi
-  if [ ! -w "$DEPLOY_DIR/.env" ]; then
-    echo "deploy: .env not writable, skipping env upsert for $key"
-    return 0
-  fi
-  # Laravel's dotenv parser rejects unquoted values that contain whitespace
-  # (Gmail app passwords are displayed as 4-char groups separated by spaces,
-  # so this bites the first time you set INVENTORY_CHECK_IMAP_PASSWORD).
-  # Always wrap in double quotes and escape any embedded double quote.
-  local quoted_val="\"${val//\"/\\\"}\""
-  if grep -q "^${key}=" "$DEPLOY_DIR/.env"; then
-    # Use a pipe delimiter in sed so passwords containing / don't break the regex
-    sed -i.bak "s|^${key}=.*|${key}=${quoted_val}|" "$DEPLOY_DIR/.env" && rm -f "$DEPLOY_DIR/.env.bak"
-    echo "deploy: updated ${key} in .env"
-  else
-    echo "${key}=${quoted_val}" >> "$DEPLOY_DIR/.env"
-    echo "deploy: added ${key} to .env"
-  fi
-}
-upsert_env INVENTORY_CHECK_IMAP_USERNAME "${INVENTORY_CHECK_IMAP_USERNAME:-}"
-upsert_env INVENTORY_CHECK_IMAP_PASSWORD "${INVENTORY_CHECK_IMAP_PASSWORD:-}"
+# NOTE: do NOT write to .env from this script. The server's .env is
+# manually managed by the sysadmin; the app's real secrets (including
+# INVENTORY_CHECK_IMAP_*) are set directly on the server, not synced
+# from GitHub. A previous revision attempted an upsert here and broke
+# the deploy pipeline twice (BLOG_API_KEY and later IMAP_PASSWORD).
+# If you need a new env var on the server, ask the sysadmin to add it
+# to /www/playlist.nivessa.com/app/.env manually.
 
 # Do not use config:cache or route:cache here — Closure routes break route:cache.
 echo "deploy: post-git maintenance v2 — ONLY optimize:clear (no config:cache / route:cache)"

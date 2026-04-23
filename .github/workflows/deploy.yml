@@ -54,16 +54,12 @@ jobs:
 
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.0
-        env:
-          INVENTORY_CHECK_IMAP_USERNAME: ${{ secrets.INVENTORY_CHECK_IMAP_USERNAME }}
-          INVENTORY_CHECK_IMAP_PASSWORD: ${{ secrets.INVENTORY_CHECK_IMAP_PASSWORD }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ steps.flags.outputs.ssh_port }}
           script_stop: true
-          envs: INVENTORY_CHECK_IMAP_USERNAME,INVENTORY_CHECK_IMAP_PASSWORD
           script: |
             set -e
             DEPLOY_PATH=/www/playlist.nivessa.com/app
@@ -71,8 +67,6 @@ jobs:
             export DEPLOY_BRANCH=main
             export DEPLOY_MIGRATE='${{ steps.flags.outputs.run_migrate }}'
             export DEPLOY_GIT_REMOTE='${{ vars.DEPLOY_GIT_REMOTE }}'
-            export INVENTORY_CHECK_IMAP_USERNAME="${INVENTORY_CHECK_IMAP_USERNAME:-}"
-            export INVENTORY_CHECK_IMAP_PASSWORD="${INVENTORY_CHECK_IMAP_PASSWORD:-}"
             mkdir -p "$HOME/.ssh"
             chmod 700 "$HOME/.ssh"
             ssh-keyscan -t rsa,ecdsa,ed25519 github.com >> "$HOME/.ssh/known_hosts" 2>/dev/null || true
