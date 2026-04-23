@@ -9,13 +9,14 @@
 #   DEPLOY_PORT       — SSH port (omit for 22)
 # Optional repository variables (Settings → Variables → Actions):
 #   DEPLOY_GIT_REMOTE — git remote name if not "origin" (e.g. erp). If unset, server uses origin, then erp.
-#   DEPLOY_SYNC_MODE  — ff-only (default) or reset. Bootstrap (no scripts/deploy.sh yet) always uses reset --hard.
+#   DEPLOY_SYNC_MODE  — optional repo variable: unset = reset (match GitHub). Set to ff-only for strict fast-forward only.
 
 name: Deploy production
 
 on:
   push:
-    branches: [main]
+    # Deploy only from these branches (GitHub default branch might be main or master).
+    branches: [main, master]
   workflow_dispatch:
     inputs:
       run_migrate:
@@ -70,7 +71,6 @@ jobs:
             export DEPLOY_BRANCH=main
             export DEPLOY_MIGRATE='${{ steps.flags.outputs.run_migrate }}'
             export DEPLOY_GIT_REMOTE='${{ vars.DEPLOY_GIT_REMOTE }}'
-            export DEPLOY_SYNC_MODE='${{ vars.DEPLOY_SYNC_MODE }}'
             export INVENTORY_CHECK_IMAP_USERNAME="${INVENTORY_CHECK_IMAP_USERNAME:-}"
             export INVENTORY_CHECK_IMAP_PASSWORD="${INVENTORY_CHECK_IMAP_PASSWORD:-}"
             mkdir -p "$HOME/.ssh"
@@ -90,6 +90,15 @@ jobs:
             fi
             export DEPLOY_GIT_REMOTE="$R"
             echo "Using git remote: $R"
+            # Server often has untracked bootstrap/cache/*.php; git refuses merge/reset until they are gone.
+            # Run this *before* deploy.sh so even an older deploy.sh on the server can pull once.
+            mkdir -p "$DEPLOY_PATH/bootstrap/cache"
+            rm -f "$DEPLOY_PATH/bootstrap/cache/packages.php" "$DEPLOY_PATH/bootstrap/cache/services.php" \
+              "$DEPLOY_PATH/bootstrap/cache/events.php" "$DEPLOY_PATH/bootstrap/cache/connector_module.php"
+            git -C "$DEPLOY_PATH" clean -fdq -- bootstrap/cache/ 2>/dev/null || true
+            # Default to reset (match GitHub); set repo variable DEPLOY_SYNC_MODE=ff-only to opt out.
+            SYNC_MODE='${{ vars.DEPLOY_SYNC_MODE }}'
+            export DEPLOY_SYNC_MODE="${SYNC_MODE:-reset}"
             if [ ! -f "$DEPLOY_PATH/scripts/deploy.sh" ]; then
               echo "Bootstrap: scripts/deploy.sh missing — aligning server to $R/main (git reset --hard) so deploy scripts exist."
               echo "Tracked files match GitHub; gitignored files (e.g. .env) are not removed."

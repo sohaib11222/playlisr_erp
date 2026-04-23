@@ -7,17 +7,18 @@
 #   DEPLOY_BRANCH       — branch (default main)
 #   DEPLOY_MIGRATE      — 1 to run migrations
 #   DEPLOY_GIT_REMOTE   — remote name (default: origin if present, else erp, else fail)
-#   DEPLOY_SYNC_MODE    — ff-only (default) | reset
-#                         ff-only: git merge --ff-only — does NOT overwrite uncommitted server
-#                                 changes; deploy fails if merge cannot fast-forward.
-#                         reset:   git reset --hard — working tree matches GitHub (tracked
-#                                 files only; .env and gitignored paths are untouched).
+#   DEPLOY_SYNC_MODE    — reset (default) | ff-only
+#                         reset:   git reset --hard after fetch — server tracked files match
+#                                 GitHub exactly (best for CI deploys). .env stays; run
+#                                 `php artisan optimize:clear` after (this script does).
+#                         ff-only: git merge --ff-only — fails if server diverged or merge
+#                                 cannot fast-forward (stricter ops).
 set -euo pipefail
 
 DEPLOY_DIR="${DEPLOY_DIR:-/www/playlist.nivessa.com/app}"
 DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
 DEPLOY_MIGRATE="${DEPLOY_MIGRATE:-0}"
-DEPLOY_SYNC_MODE="${DEPLOY_SYNC_MODE:-ff-only}"
+DEPLOY_SYNC_MODE="${DEPLOY_SYNC_MODE:-reset}"
 
 cd "$DEPLOY_DIR"
 
@@ -43,15 +44,14 @@ resolve_git_remote() {
 GIT_REMOTE="$(resolve_git_remote)"
 echo "deploy: $(date -u) — dir=$DEPLOY_DIR branch=$DEPLOY_BRANCH remote=$GIT_REMOTE sync=$DEPLOY_SYNC_MODE"
 
-# Laravel writes bootstrap/cache/*.php (e.g. package:discover). If those paths
-#
-# are tracked in git but the server still has older *untracked* copies, git
-# merge aborts with: "untracked working tree files would be overwritten by merge".
-# Remove only *untracked* files under bootstrap/cache/ — tracked files are kept.
-if [ -d bootstrap/cache ]; then
-  echo "deploy: git clean untracked under bootstrap/cache (avoids merge vs untracked cache files)"
-  git clean -fdq -- bootstrap/cache/ 2>/dev/null || true
-fi
+# Laravel bootstrap/cache/*.php is often present as *untracked* on the server
+# (artisan wrote it before those paths were tracked, or a partial clone). Both
+# `git merge` and `git reset --hard` can refuse to touch those paths. `rm -f`
+# always clears them; the next git step restores tracked copies from GitHub.
+mkdir -p bootstrap/cache
+echo "deploy: remove bootstrap cache manifests that may block git (untracked or stale)"
+rm -f bootstrap/cache/packages.php bootstrap/cache/services.php bootstrap/cache/events.php bootstrap/cache/connector_module.php
+git clean -fdq -- bootstrap/cache/ 2>/dev/null || true
 
 # Trust github.com for git-over-SSH (first fetch on a new server fails without this).
 mkdir -p "$HOME/.ssh"
@@ -60,12 +60,12 @@ ssh-keyscan -t rsa,ecdsa,ed25519 github.com >> "$HOME/.ssh/known_hosts" 2>/dev/n
 
 git fetch "$GIT_REMOTE" "$DEPLOY_BRANCH"
 
-if [ "$DEPLOY_SYNC_MODE" = "reset" ]; then
-  echo "deploy: DEPLOY_SYNC_MODE=reset — matching GitHub exactly (tracked files only)"
-  git reset --hard "${GIT_REMOTE}/${DEPLOY_BRANCH}"
-else
-  echo "deploy: DEPLOY_SYNC_MODE=ff-only — safe update (fails if server has diverged or dirty tree)"
+if [ "$DEPLOY_SYNC_MODE" = "ff-only" ]; then
+  echo "deploy: DEPLOY_SYNC_MODE=ff-only — safe update (fails if server has diverged or non-FF)"
   git merge --ff-only "${GIT_REMOTE}/${DEPLOY_BRANCH}"
+else
+  echo "deploy: DEPLOY_SYNC_MODE=reset — working tree = ${GIT_REMOTE}/${DEPLOY_BRANCH} (tracked files)"
+  git reset --hard "${GIT_REMOTE}/${DEPLOY_BRANCH}"
 fi
 
 if [ "$DEPLOY_MIGRATE" = "1" ]; then
