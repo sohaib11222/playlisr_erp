@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Business;
+use App\CloverBatch;
 use App\CloverPayment;
 use App\Services\CloverService;
 use Carbon\Carbon;
@@ -44,6 +45,7 @@ class SyncCloverPayments extends Command
 
         $total = 0;
         $upsertedTotal = 0;
+        $batchUpsertedTotal = 0;
 
         foreach ($businessIds as $businessId) {
             $this->line("\n— business_id={$businessId}");
@@ -87,10 +89,15 @@ class SyncCloverPayments extends Command
                 $upserted = $this->upsertPayments($businessId, $payments, $scopeLocId);
                 $upsertedTotal += $upserted;
                 $this->line("    upserted {$upserted} rows");
+
+                $batchRows = $scoped->summarizeBatchesFromPayments($payments);
+                $batchUpserted = $this->upsertBatches($businessId, $batchRows, $scopeLocId);
+                $batchUpsertedTotal += $batchUpserted;
+                $this->line("    upserted {$batchUpserted} batch/deposit rows");
             }
         }
 
-        $this->info("\nDone. Fetched {$total} · upserted {$upsertedTotal}.");
+        $this->info("\nDone. Fetched {$total} · upserted {$upsertedTotal} payments · upserted {$batchUpsertedTotal} batches.");
         return 0;
     }
 
@@ -188,6 +195,41 @@ class SyncCloverPayments extends Command
             );
             $count++;
         }
+        return $count;
+    }
+
+    /**
+     * Upsert normalized Clover batch/deposit rows (derived from payment payloads).
+     */
+    private function upsertBatches(int $businessId, array $batchRows, ?int $locationId = null): int
+    {
+        $count = 0;
+        foreach ($batchRows as $b) {
+            if (empty($b['clover_batch_id']) || empty($b['batch_on'])) {
+                continue;
+            }
+
+            CloverBatch::updateOrCreate(
+                [
+                    'business_id' => $businessId,
+                    'location_id' => $locationId,
+                    'clover_batch_id' => $b['clover_batch_id'],
+                    'batch_on' => $b['batch_on'],
+                ],
+                [
+                    'batch_at' => $b['batch_at'] ?? null,
+                    'payment_count' => (int) ($b['payment_count'] ?? 0),
+                    'amount_cents' => (int) ($b['amount_cents'] ?? 0),
+                    'amount' => (float) ($b['amount'] ?? 0),
+                    'deposit_cents' => is_null($b['deposit_cents']) ? null : (int) $b['deposit_cents'],
+                    'deposit_total' => is_null($b['deposit_total']) ? null : (float) $b['deposit_total'],
+                    'status' => $b['status'] ?? null,
+                    'raw_payload' => isset($b['raw_payload']) ? json_encode($b['raw_payload']) : null,
+                ]
+            );
+            $count++;
+        }
+
         return $count;
     }
 }

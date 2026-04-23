@@ -464,6 +464,76 @@ class CloverService
     }
 
     /**
+     * Derive Clover batch/deposit rollups from a synced payment set.
+     *
+     * Clover payload shape differs by merchant setup. We normalize the common
+     * variants where batch metadata appears as:
+     *   - payment.batch.id / payment.batch.closeTime / payment.batch.state
+     *   - payment.batchId / payment.batchName
+     * and aggregate by (batch_id, day). Amounts are dollars in the returned
+     * rows so callers can persist directly alongside amount_cents.
+     *
+     * @param array $payments raw Clover payment elements
+     * @return array list of normalized batch rows
+     */
+    public function summarizeBatchesFromPayments(array $payments): array
+    {
+        $batches = [];
+
+        foreach ($payments as $p) {
+            $batchObj = $p['batch'] ?? [];
+            $batchId = (string) (
+                $batchObj['id'] ??
+                $p['batchId'] ??
+                $p['batch_id'] ??
+                ''
+            );
+            if ($batchId === '') {
+                continue;
+            }
+
+            $batchAtMs = $batchObj['closeTime'] ?? $batchObj['closedTime'] ?? $batchObj['createdTime'] ?? null;
+            if (!$batchAtMs) {
+                $batchAtMs = $p['createdTime'] ?? null;
+            }
+            $batchAt = $batchAtMs ? \Carbon\Carbon::createFromTimestampMs((int) $batchAtMs) : null;
+            $batchOn = $batchAt
+                ? $batchAt->copy()->setTimezone(config('app.timezone'))->toDateString()
+                : \Carbon\Carbon::today()->toDateString();
+
+            $key = $batchId . '|' . $batchOn;
+            if (!isset($batches[$key])) {
+                $batches[$key] = [
+                    'clover_batch_id' => $batchId,
+                    'batch_at' => $batchAt,
+                    'batch_on' => $batchOn,
+                    'payment_count' => 0,
+                    'amount_cents' => 0,
+                    'amount' => 0.0,
+                    'deposit_cents' => null,
+                    'deposit_total' => null,
+                    'status' => $batchObj['state'] ?? $batchObj['status'] ?? null,
+                    'raw_payload' => $batchObj ?: null,
+                ];
+            }
+
+            $amountCents = (int) ($p['amount'] ?? 0);
+            $batches[$key]['payment_count'] += 1;
+            $batches[$key]['amount_cents'] += $amountCents;
+            $batches[$key]['amount'] = $batches[$key]['amount_cents'] / 100;
+
+            // Use explicit settlement/deposit fields if Clover includes them.
+            $depositCents = $batchObj['depositAmount'] ?? $batchObj['netAmount'] ?? null;
+            if (is_numeric($depositCents)) {
+                $batches[$key]['deposit_cents'] = (int) $depositCents;
+                $batches[$key]['deposit_total'] = ((int) $depositCents) / 100;
+            }
+        }
+
+        return array_values($batches);
+    }
+
+    /**
      * Get customers from Clover
      *
      * @param int $limit Limit number of customers to fetch

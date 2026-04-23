@@ -5458,7 +5458,7 @@ class ReportController extends Controller
             ->groupBy(DB::raw('DATE(t.transaction_date)'), 't.location_id', 'bl.name')
             ->get();
 
-        // Clover-side per (date, location) rollup. Rows pulled via per-location
+        // Clover payment-side per (date, location) rollup. Rows pulled via per-location
         // Clover creds get their ERP location_id stamped at sync time, so we
         // can match Hollywood-Clover ↔ Hollywood-ERP on the same day. Legacy
         // rows synced before that (and any rows from a top-level single-
@@ -5484,10 +5484,32 @@ class ReportController extends Controller
             ->groupBy(DB::raw('DATE(paid_on)'), DB::raw('COALESCE(location_id, 0)'))
             ->get();
 
+        // Clover batch/deposit side per (date, location) rollup.
+        $batchQuery = \DB::table('clover_batches')
+            ->where('business_id', $business_id)
+            ->whereDate('batch_on', '>=', $start)
+            ->whereDate('batch_on', '<=', $end);
+        if (!empty($location_id)) {
+            $batchQuery->where(function ($q) use ($location_id) {
+                $q->where('location_id', $location_id)->orWhereNull('location_id');
+            });
+        }
+        $batch_rows_raw = $batchQuery
+            ->selectRaw("DATE(batch_on) as day, COALESCE(location_id, 0) as loc_key,
+                COUNT(*) as batch_count,
+                COALESCE(SUM(amount), 0) as batch_total,
+                COALESCE(SUM(COALESCE(deposit_total, amount)), 0) as deposit_total")
+            ->groupBy(DB::raw('DATE(batch_on)'), DB::raw('COALESCE(location_id, 0)'))
+            ->get();
+
         // Index by [day][loc_key]. loc_key = 0 is the NULL-location bucket.
         $clover_by_day_loc = [];
         foreach ($clover_rows_raw as $cr) {
             $clover_by_day_loc[$cr->day][(int) $cr->loc_key] = $cr;
+        }
+        $batch_by_day_loc = [];
+        foreach ($batch_rows_raw as $br) {
+            $batch_by_day_loc[$br->day][(int) $br->loc_key] = $br;
         }
 
         // Merge: one row per (day, location) with ERP data + the matching
@@ -5496,7 +5518,16 @@ class ReportController extends Controller
         // bucket is claimed at most once per day so we don't double-count
         // when ERP has multiple locations.
         $rows = [];
-        $grand = ['erp' => 0.0, 'clover' => 0.0, 'variance' => 0.0, 'flagged_days' => 0];
+        $grand = [
+            'erp' => 0.0,
+            'clover' => 0.0,
+            'batch' => 0.0,
+            'deposit' => 0.0,
+            'variance' => 0.0,
+            'deposit_variance' => 0.0,
+            'flagged_days' => 0,
+            'deposit_flagged_days' => 0,
+        ];
         $claimed = []; // [day => [loc_key => true]]
         foreach ($erp_rows as $r) {
             $day = $r->day;
@@ -5511,9 +5542,22 @@ class ReportController extends Controller
             }
             $cloverTotal = (float) ($clover->clover_total ?? 0);
             $cloverCount = (int) ($clover->clover_count ?? 0);
+            $batch = null;
+            if (isset($batch_by_day_loc[$day][$locId]) && empty($claimed[$day]['b' . $locId])) {
+                $batch = $batch_by_day_loc[$day][$locId];
+                $claimed[$day]['b' . $locId] = true;
+            } elseif (isset($batch_by_day_loc[$day][0]) && empty($claimed[$day]['b0'])) {
+                $batch = $batch_by_day_loc[$day][0];
+                $claimed[$day]['b0'] = true;
+            }
+            $batchTotal = (float) ($batch->batch_total ?? 0);
+            $depositTotal = (float) ($batch->deposit_total ?? 0);
+            $batchCount = (int) ($batch->batch_count ?? 0);
             $erpTotal = (float) $r->erp_total;
             $variance = round($erpTotal - $cloverTotal, 2);
+            $depositVariance = round($erpTotal - $depositTotal, 2);
             $status = $this->reconciliationStatus($variance);
+            $depositStatus = $this->reconciliationStatus($depositVariance);
             $rows[] = (object) [
                 'day' => $day,
                 'location_name' => $r->location_name ?: '(no location)',
@@ -5521,13 +5565,22 @@ class ReportController extends Controller
                 'erp_total' => $erpTotal,
                 'clover_count' => $cloverCount,
                 'clover_total' => $cloverTotal,
+                'batch_count' => $batchCount,
+                'batch_total' => $batchTotal,
+                'deposit_total' => $depositTotal,
                 'variance' => $variance,
+                'deposit_variance' => $depositVariance,
                 'status' => $status,
+                'deposit_status' => $depositStatus,
             ];
             $grand['erp'] += $erpTotal;
             $grand['clover'] += $cloverTotal;
+            $grand['batch'] += $batchTotal;
+            $grand['deposit'] += $depositTotal;
             $grand['variance'] += $variance;
+            $grand['deposit_variance'] += $depositVariance;
             if ($status !== 'reconciled') $grand['flagged_days']++;
+            if ($depositStatus !== 'reconciled') $grand['deposit_flagged_days']++;
         }
         // Unclaimed Clover buckets — Clover recorded sales but no ERP card
         // sales matched. Surface these so discrepancies aren't swallowed.
@@ -5541,6 +5594,11 @@ class ReportController extends Controller
                     : (optional(BusinessLocation::find($locKey))->name
                         ? optional(BusinessLocation::find($locKey))->name . ' (Clover only)'
                         : '(Clover only — no ERP card sales)');
+                $batch = $batch_by_day_loc[$day][$locKey] ?? ($batch_by_day_loc[$day][0] ?? null);
+                $batchTotal = (float) ($batch->batch_total ?? 0);
+                $depositTotal = (float) ($batch->deposit_total ?? 0);
+                $batchCount = (int) ($batch->batch_count ?? 0);
+                $depositVariance = round(0 - $depositTotal, 2);
                 $rows[] = (object) [
                     'day' => $day,
                     'location_name' => $locLabel,
@@ -5548,12 +5606,21 @@ class ReportController extends Controller
                     'erp_total' => 0,
                     'clover_count' => (int) $c->clover_count,
                     'clover_total' => $cloverTotal,
+                    'batch_count' => $batchCount,
+                    'batch_total' => $batchTotal,
+                    'deposit_total' => $depositTotal,
                     'variance' => $variance,
+                    'deposit_variance' => $depositVariance,
                     'status' => $this->reconciliationStatus($variance),
+                    'deposit_status' => $this->reconciliationStatus($depositVariance),
                 ];
                 $grand['clover'] += $cloverTotal;
+                $grand['batch'] += $batchTotal;
+                $grand['deposit'] += $depositTotal;
                 $grand['variance'] += $variance;
+                $grand['deposit_variance'] += $depositVariance;
                 $grand['flagged_days']++;
+                if ($this->reconciliationStatus($depositVariance) !== 'reconciled') $grand['deposit_flagged_days']++;
             }
         }
 
@@ -5666,9 +5733,54 @@ class ReportController extends Controller
                 return $r;
             });
 
+        // Clover field-quality diagnostics — rows where key metadata that
+        // ops relies on is blank/manual/unknown, even when employee name exists.
+        $fieldQ = \DB::table('clover_payments as cp')
+            ->leftJoin('business_locations as bl', 'cp.location_id', '=', 'bl.id')
+            ->where('cp.business_id', $business_id)
+            ->whereDate('cp.paid_on', '>=', $start)
+            ->whereDate('cp.paid_on', '<=', $end)
+            ->where(function ($q) {
+                $q->whereNull('cp.result')->orWhere('cp.result', 'SUCCESS')->orWhere('cp.result', 'APPROVED');
+            })
+            ->where(function ($q) {
+                $q->whereNull('cp.tender_type')->orWhereRaw("TRIM(cp.tender_type) = ''")
+                  ->orWhereNull('cp.card_type')->orWhereRaw("TRIM(cp.card_type) = ''")
+                  ->orWhereNull('cp.card_last4')->orWhereRaw("TRIM(cp.card_last4) = ''")
+                  ->orWhereNull('cp.clover_order_id')->orWhereRaw("TRIM(cp.clover_order_id) = ''");
+            });
+        if (!empty($location_id)) {
+            $fieldQ->where('cp.location_id', $location_id);
+        }
+        $fieldRows = $fieldQ
+            ->selectRaw("
+                cp.paid_on as day,
+                cp.clover_payment_id,
+                cp.clover_order_id,
+                cp.employee_name,
+                cp.tender_type,
+                cp.card_type,
+                cp.card_last4,
+                cp.amount,
+                cp.location_id,
+                bl.name as location_name")
+            ->orderByDesc('cp.paid_at')
+            ->limit(500)
+            ->get()
+            ->map(function ($r) {
+                $missing = [];
+                if (empty(trim((string) $r->clover_order_id))) $missing[] = 'missing order id';
+                if (empty(trim((string) $r->tender_type))) $missing[] = 'missing tender type';
+                if (empty(trim((string) $r->card_type))) $missing[] = 'missing card type';
+                if (empty(trim((string) $r->card_last4))) $missing[] = 'missing card last4';
+                $r->cause = implode(', ', $missing);
+                return $r;
+            });
+
         return [
             'erp' => $erpRows,
             'clover' => $cloverRows,
+            'clover_fields' => $fieldRows,
         ];
     }
 

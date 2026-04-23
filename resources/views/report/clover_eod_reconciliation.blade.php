@@ -69,6 +69,7 @@
     {{-- Grand totals banner --}}
     @php
         $variance = round($grand['erp'] - $grand['clover'], 2);
+        $deposit_variance = round($grand['erp'] - $grand['deposit'], 2);
         $variance_abs = abs($variance);
         $banner_class = $variance_abs < 1.00 ? 'success' : ($variance_abs < 10.00 ? 'warning' : 'danger');
         $banner_msg = $variance_abs < 1.00
@@ -83,8 +84,15 @@
         Clover settlements: <strong>${{ number_format($grand['clover'], 2) }}</strong>
         &nbsp;·&nbsp;
         Variance: <strong>${{ number_format($variance, 2) }}</strong>
+        &nbsp;·&nbsp;
+        Clover batch deposits: <strong>${{ number_format($grand['deposit'], 2) }}</strong>
+        &nbsp;·&nbsp;
+        Deposit variance: <strong>${{ number_format($deposit_variance, 2) }}</strong>
         @if($grand['flagged_days'] > 0)
             &nbsp;·&nbsp; <span>{{ $grand['flagged_days'] }} day(s) flagged</span>
+        @endif
+        @if(($grand['deposit_flagged_days'] ?? 0) > 0)
+            &nbsp;·&nbsp; <span>{{ $grand['deposit_flagged_days'] }} day(s) deposit-flagged</span>
         @endif
     </div>
 
@@ -219,7 +227,10 @@
                         <th class="text-right">ERP txns</th>
                         <th class="text-right">Clover $</th>
                         <th class="text-right">Clover txns</th>
+                        <th class="text-right">Batch deposits $</th>
+                        <th class="text-right">Batch count</th>
                         <th class="text-right">Variance</th>
+                        <th class="text-right">Deposit variance</th>
                         <th>Status</th>
                     </tr>
                 </thead>
@@ -237,18 +248,26 @@
                             <td class="text-right">{{ $r->erp_count }}</td>
                             <td class="text-right">${{ number_format($r->clover_total, 2) }}</td>
                             <td class="text-right">{{ $r->clover_count }}</td>
+                            <td class="text-right">${{ number_format($r->deposit_total ?? 0, 2) }}</td>
+                            <td class="text-right">{{ $r->batch_count ?? 0 }}</td>
                             <td class="text-right"><strong>${{ number_format($r->variance, 2) }}</strong></td>
-                            <td>{{ $status_label }}</td>
+                            <td class="text-right"><strong>${{ number_format($r->deposit_variance ?? 0, 2) }}</strong></td>
+                            <td>
+                                {{ $status_label }}
+                                @if(($r->deposit_status ?? 'reconciled') !== 'reconciled')
+                                    <br><small>⚠ Deposit {{ ucfirst($r->deposit_status) }}</small>
+                                @endif
+                            </td>
                         </tr>
                     @empty
-                        <tr><td colspan="8" class="text-center text-muted">No matching sales in this range.</td></tr>
+                        <tr><td colspan="10" class="text-center text-muted">No matching sales in this range.</td></tr>
                     @endforelse
                 </tbody>
             </table>
         </div>
         <p class="help-block" style="margin-top:10px;">
-            <strong>How to read this:</strong> each row pairs one day's ERP card-method payments with the Clover settlements logged for that day.
-            Variance = ERP − Clover. Rows &lt; $1 off are green, &lt; $10 off yellow, otherwise flagged red.
+            <strong>How to read this:</strong> each row pairs one day's ERP card-method payments with Clover payment totals and Clover batch/deposit totals.
+            Variance = ERP − Clover payments. Deposit variance = ERP − Clover batch deposits. Rows &lt; $1 off are green, &lt; $10 off yellow, otherwise flagged red.
             Clover data comes from the <code>clover_payments</code> table populated by the scheduled <code>clover:sync-payments</code> command —
             if it hasn't run recently the Clover column will lag behind.
         </p>
@@ -260,8 +279,8 @@
          walk-in / online-checkout from actual data problems (deleted
          users, broken imports). Collapsed by default so the panel stays
          small unless she cares. --}}
-    @if(!empty($unknown_rows) && (count($unknown_rows['erp'] ?? []) > 0 || count($unknown_rows['clover'] ?? []) > 0))
-        @component('components.widget', ['class' => 'box-warning', 'title' => 'Why Unknown? &mdash; ' . (count($unknown_rows['erp']) + count($unknown_rows['clover'])) . ' row(s)'])
+    @if(!empty($unknown_rows) && (count($unknown_rows['erp'] ?? []) > 0 || count($unknown_rows['clover'] ?? []) > 0 || count($unknown_rows['clover_fields'] ?? []) > 0))
+        @component('components.widget', ['class' => 'box-warning', 'title' => 'Why Unknown / Manual Clover Fields? &mdash; ' . (count($unknown_rows['erp']) + count($unknown_rows['clover']) + count($unknown_rows['clover_fields'] ?? [])) . ' row(s)'])
             <p class="help-block" style="margin-top:-6px;">
                 Each row below is a payment that bucketed as <em>Unknown</em> in the per-cashier breakdown.
                 <strong>ERP side</strong> means <code>transactions.created_by</code> is null or the user row is gone — commonly walk-in flows or automated imports.
@@ -323,6 +342,42 @@
                                     <td>{{ $r->location_name ?: '(no location)' }}</td>
                                     <td>{{ $r->tender_type }}</td>
                                     <td>{{ $r->card_type }}{{ $r->card_last4 ? ' ****' . $r->card_last4 : '' }}</td>
+                                    <td class="text-right">${{ number_format((float) $r->amount, 2) }}</td>
+                                    <td>{{ $r->cause }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            @endif
+
+            @if(count($unknown_rows['clover_fields'] ?? []) > 0)
+                <h5 style="margin-top:12px;">Clover field-quality issues ({{ count($unknown_rows['clover_fields']) }})</h5>
+                <div class="table-responsive">
+                    <table class="table table-condensed table-striped">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Clover payment</th>
+                                <th>Location</th>
+                                <th>Employee</th>
+                                <th>Tender</th>
+                                <th>Card</th>
+                                <th>Order ID</th>
+                                <th class="text-right">Amount</th>
+                                <th>Issue</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($unknown_rows['clover_fields'] as $r)
+                                <tr>
+                                    <td>{{ $r->day }}</td>
+                                    <td><code style="font-size:11px;">{{ $r->clover_payment_id }}</code></td>
+                                    <td>{{ $r->location_name ?: '(no location)' }}</td>
+                                    <td>{{ $r->employee_name ?: 'Unknown' }}</td>
+                                    <td>{{ $r->tender_type ?: '—' }}</td>
+                                    <td>{{ $r->card_type ?: '—' }}{{ $r->card_last4 ? ' ****' . $r->card_last4 : '' }}</td>
+                                    <td>{{ $r->clover_order_id ?: '—' }}</td>
                                     <td class="text-right">${{ number_format((float) $r->amount, 2) }}</td>
                                     <td>{{ $r->cause }}</td>
                                 </tr>
