@@ -381,14 +381,38 @@ class ImportNivessaHistoricalSales extends Command
      * Header + column parsing
      * ========================================================================= */
 
+    // Legacy monthly sheets use inconsistent column names:
+    //   PRICE, AMOUNT, Sales Price   → price
+    //   ARTIST, ARTIST/THEME, ARIST  → artist (last one is a typo in 2024 Pico sheets)
+    //   TITLE, TITLE/PRODUCT, Album  → title
+    //   Media, Album/Format          → format
+    private const HEADER_ALIASES = [
+        'price'     => ['price', 'amount', 'sales price', 'sale price', 'selling price'],
+        'artist'    => ['artist', 'artist/theme', 'artist / theme', 'arist', 'arist/theme'],
+        'title'     => ['title', 'title/product', 'title / product', 'title/album', 'album', 'album/format'],
+        'format'    => ['format', 'media type', 'media', 'type'],
+        'genre'     => ['genre'],
+        'condition' => ['condition', 'condtion', 'new/used'],
+        'notes'     => ['notes', 'notes/misc.', 'notes / misc.', 'notes/misc'],
+        'time'      => ['time', 'day/date', 'day / date', 'date'],
+    ];
+
+    private function normalizeHeaderCell($cell): string
+    {
+        $h = strtolower(trim((string) $cell));
+        $h = rtrim($h, ':');
+        $h = preg_replace('/\s+/', ' ', $h);
+        return $h ?? '';
+    }
+
     private function findHeaderRow(array $rows)
     {
         foreach ($rows as $i => $row) {
-            if ($i > 20) break;  // header should be near the top
-            $lowered = array_map(fn($c) => strtolower(trim((string) $c)), $row);
-            $hasPrice = in_array('price', $lowered, true);
-            $hasArtist = in_array('artist', $lowered, true) || in_array('artist ', $lowered, true);
-            $hasTitle = in_array('title', $lowered, true) || in_array('title ', $lowered, true);
+            if ($i > 30) break;
+            $normalized = array_map([$this, 'normalizeHeaderCell'], $row);
+            $hasPrice  = (bool) array_intersect($normalized, self::HEADER_ALIASES['price']);
+            $hasArtist = (bool) array_intersect($normalized, self::HEADER_ALIASES['artist']);
+            $hasTitle  = (bool) array_intersect($normalized, self::HEADER_ALIASES['title']);
             if ($hasPrice && $hasArtist && $hasTitle) {
                 return $i;
             }
@@ -400,16 +424,14 @@ class ImportNivessaHistoricalSales extends Command
     {
         $map = [];
         foreach ($header as $idx => $cell) {
-            $h = strtolower(trim((string) $cell));
+            $h = $this->normalizeHeaderCell($cell);
             if ($h === '') continue;
-            if ($h === 'price') $map['price'] = $idx;
-            elseif ($h === 'artist') $map['artist'] = $idx;
-            elseif ($h === 'title') $map['title'] = $idx;
-            elseif (in_array($h, ['format', 'media type'], true)) $map['format'] = $idx;
-            elseif ($h === 'genre' && !isset($map['genre'])) $map['genre'] = $idx;
-            elseif (in_array($h, ['condition', 'condtion'], true)) $map['condition'] = $idx;  // sheet has a typo
-            elseif ($h === 'notes') $map['notes'] = $idx;
-            elseif ($h === 'time') $map['time'] = $idx;
+            foreach (self::HEADER_ALIASES as $canon => $aliases) {
+                if (in_array($h, $aliases, true) && !isset($map[$canon])) {
+                    $map[$canon] = $idx;
+                    break;
+                }
+            }
         }
         return $map;
     }
