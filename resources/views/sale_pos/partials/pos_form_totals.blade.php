@@ -50,13 +50,16 @@
     #bag_chip { display: none; }  /* replaced by .bag-toggle below */
     #pos_store_credit_row.pos-tot-chip { background: #dcfce7; border-color: #22c55e; color: #14532d; font-weight: 600; border-style: solid; }
 
-    /* Bag Fee toggle + stepper (per mockup — mustard chip w/ inline +/−). */
+    /* Bag Fee toggle + stepper (per mockup — mustard chip w/ inline +/−).
+       Sarah 2026-04-22: sits inside the Add-discount / Add-shipping row now;
+       margin-left:auto pushes it to the right edge so it lines up with the
+       receipt amount column instead of floating next to the CTA chips. */
     .bag-toggle {
         display: inline-flex; align-items: center; gap: 8px;
         padding: 5px 12px; background: #FFF9DB;
         border: 1px solid #E8CF68; border-radius: 999px;
         font-size: 12px; color: #5A4410; font-weight: 600;
-        margin-bottom: 10px;
+        margin-left: auto;
     }
     .bag-toggle input[type="checkbox"] { accent-color: #E8CF68; margin: 0; }
     .bag-stepper {
