@@ -591,9 +591,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
             ->max('transaction_date');
         $txBySheet = \DB::table('transactions')
             ->where('import_source', 'like', $salesLike)
-            ->selectRaw('import_source, COUNT(*) as rows')
+            ->selectRaw('import_source, COUNT(*) as row_count')
             ->groupBy('import_source')
-            ->orderByDesc('rows')
+            ->orderByDesc('row_count')
             ->get();
 
         $sellLineCount = \DB::table('transaction_sell_lines')
