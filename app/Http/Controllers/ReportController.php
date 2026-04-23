@@ -5659,11 +5659,10 @@ class ReportController extends Controller
         // can see at a glance which days are already signed off on.
         $reconciliations = $this->loadReconciliations($business_id, $start, $end);
 
-        // Transaction-level match (Clover ↔ ERP pair-up grouped by cashier)
-        // — the primary "how are we reconciling" view Sarah asked for:
-        // each cashier's matched / Clover-only / ERP-only buckets + an
-        // Online / automated bucket for pinless Clover rows.
-        $txn_match = $this->cloverEodTransactionMatch(
+        // Daily xlsx-layout — mirrors Sarah's manual "clover vs erp" sheet:
+        // a cross-store employee summary at top, then per-store side-by-side
+        // Clover + ERP payment lists (not auto-paired; Fatteen eyeballs).
+        $xlsx_layout = $this->cloverEodXlsxLayout(
             $business_id, $start, $end, $location_id, $card_methods, $used_all_methods
         );
 
@@ -5671,8 +5670,179 @@ class ReportController extends Controller
             'rows', 'grand', 'start', 'end', 'location_id', 'business_locations',
             'employee_breakdown_by_day', 'unknown_rows',
             'is_single_day', 'prev_day', 'next_day', 'today_str',
-            'reconciliations', 'txn_match'
+            'reconciliations', 'xlsx_layout'
         ));
+    }
+
+    /**
+     * Returns the shape Sarah's daily "clover vs erp" xlsx uses — the
+     * layout Fatteen already knows how to read:
+     *
+     *   [
+     *     'employee_summary' => [
+     *        ['name' => 'Nick', 'clover' => 39.51, 'erp' => 0, 'diff' => 39.51],
+     *        ...   // one row per first-name, aggregated across both stores,
+     *              //   sorted by |diff| desc so biggest mismatches float up.
+     *     ],
+     *     'by_day' => [
+     *        [
+     *          'day' => '2026-04-22',
+     *          'locations' => [
+     *            [
+     *              'location_id' => 2, 'location_name' => 'PICO',
+     *              'clover_payments' => [ (obj) ts, amount, employee_first, ... ],
+     *              'erp_payments'    => [ (obj) ts, amount, added_by_full, invoice_no, ... ],
+     *              'clover_total' => 363.67, 'erp_total' => 201.60,
+     *            ],
+     *            { ...HOLLYWOOD... },
+     *          ],
+     *        ], ... (most recent day first)
+     *     ],
+     *   ]
+     *
+     * Fatteen scans top summary for "anyone looking off?" and then
+     * eyeball-matches the two side-by-side lists for that employee. No
+     * auto-pairing — we just present the raw data in the same format the
+     * xlsx uses.
+     */
+    private function cloverEodXlsxLayout($business_id, $start, $end, $location_id, array $card_methods, $used_all_methods): array
+    {
+        $firstName = function ($full) {
+            $full = trim((string) $full);
+            if ($full === '') return '';
+            $parts = preg_split('/\s+/', $full);
+            return strtolower($parts[0] ?? '');
+        };
+
+        // Raw ERP card payments — one row per transaction_payment.
+        $erpQ = \DB::table('transaction_payments as tp')
+            ->join('transactions as t', 'tp.transaction_id', '=', 't.id')
+            ->leftJoin('business_locations as bl', 't.location_id', '=', 'bl.id')
+            ->leftJoin('users as u', 't.created_by', '=', 'u.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereDate('t.transaction_date', '>=', $start)
+            ->whereDate('t.transaction_date', '<=', $end);
+        if (!$used_all_methods) {
+            $erpQ->whereIn('tp.method', $card_methods);
+        }
+        if (!empty($location_id)) {
+            $erpQ->where('t.location_id', $location_id);
+        }
+        $erpRows = $erpQ->selectRaw("
+                DATE(t.transaction_date) as day,
+                t.id as transaction_id,
+                t.invoice_no,
+                t.transaction_date as ts,
+                tp.amount,
+                t.location_id,
+                bl.name as location_name,
+                COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, 'Unknown') as added_by
+            ")
+            ->orderBy('t.transaction_date')
+            ->get();
+
+        // Raw Clover payments.
+        $cpQ = \DB::table('clover_payments as cp')
+            ->leftJoin('business_locations as bl', 'cp.location_id', '=', 'bl.id')
+            ->where('cp.business_id', $business_id)
+            ->where(function ($q) {
+                $q->whereNull('cp.result')->orWhere('cp.result', 'SUCCESS')->orWhere('cp.result', 'APPROVED');
+            })
+            ->whereDate('cp.paid_on', '>=', $start)
+            ->whereDate('cp.paid_on', '<=', $end);
+        if (!empty($location_id)) {
+            $cpQ->where('cp.location_id', $location_id);
+        }
+        $cpRows = $cpQ->selectRaw("
+                cp.paid_on as day,
+                cp.clover_payment_id,
+                cp.paid_at as ts,
+                cp.amount,
+                cp.location_id,
+                bl.name as location_name,
+                COALESCE(NULLIF(TRIM(cp.employee_name), ''), '') as employee_name
+            ")
+            ->orderBy('cp.paid_at')
+            ->get();
+
+        // ---- Build employee summary (aggregated across stores) ----
+        $summary = [];
+        foreach ($cpRows as $r) {
+            $k = $firstName($r->employee_name) ?: '(no pin)';
+            $summary[$k] = $summary[$k] ?? ['name' => ucfirst($k), 'clover' => 0.0, 'erp' => 0.0];
+            $summary[$k]['clover'] += (float) $r->amount;
+        }
+        foreach ($erpRows as $r) {
+            $k = $firstName($r->added_by) ?: 'unknown';
+            $summary[$k] = $summary[$k] ?? ['name' => ucfirst($k), 'clover' => 0.0, 'erp' => 0.0];
+            $summary[$k]['erp'] += (float) $r->amount;
+        }
+        foreach ($summary as &$row) {
+            $row['clover'] = round($row['clover'], 2);
+            $row['erp']    = round($row['erp'], 2);
+            $row['diff']   = round($row['clover'] - $row['erp'], 2);
+        }
+        unset($row);
+        uasort($summary, fn($a, $b) => abs($b['diff']) <=> abs($a['diff']));
+        $employee_summary = array_values($summary);
+
+        // ---- Group raw lists by day, then by location ----
+        $by_day = [];
+        foreach ($erpRows as $r) {
+            $day = $r->day instanceof \DateTimeInterface ? $r->day->format('Y-m-d') : (string) $r->day;
+            $loc = $r->location_id ?: 0;
+            $by_day[$day][$loc]['location_id'] = $loc ?: null;
+            $by_day[$day][$loc]['location_name'] = $r->location_name ?: '(no location)';
+            $by_day[$day][$loc]['erp_payments'][] = (object) [
+                'ts' => $r->ts,
+                'amount' => round((float) $r->amount, 2),
+                'added_by' => $r->added_by,
+                'invoice_no' => $r->invoice_no,
+                'transaction_id' => $r->transaction_id,
+            ];
+            $by_day[$day][$loc]['erp_total']
+                = ($by_day[$day][$loc]['erp_total'] ?? 0) + (float) $r->amount;
+        }
+        foreach ($cpRows as $r) {
+            $day = $r->day instanceof \DateTimeInterface ? $r->day->format('Y-m-d') : (string) $r->day;
+            $loc = $r->location_id ?: 0;
+            $by_day[$day][$loc]['location_id'] = $loc ?: null;
+            $by_day[$day][$loc]['location_name'] = $by_day[$day][$loc]['location_name'] ?? ($r->location_name ?: '(no location)');
+            $by_day[$day][$loc]['clover_payments'][] = (object) [
+                'ts' => $r->ts,
+                'amount' => round((float) $r->amount, 2),
+                'employee' => $r->employee_name ?: '(no pin)',
+                'clover_payment_id' => $r->clover_payment_id,
+            ];
+            $by_day[$day][$loc]['clover_total']
+                = ($by_day[$day][$loc]['clover_total'] ?? 0) + (float) $r->amount;
+        }
+
+        // Normalize → ordered array, most recent day first, locations alpha.
+        $by_day_list = [];
+        krsort($by_day);
+        foreach ($by_day as $day => $locs) {
+            $block = ['day' => $day, 'locations' => []];
+            foreach ($locs as $loc) {
+                $block['locations'][] = [
+                    'location_id'     => $loc['location_id'] ?? null,
+                    'location_name'   => $loc['location_name'] ?? '(no location)',
+                    'clover_payments' => $loc['clover_payments'] ?? [],
+                    'erp_payments'    => $loc['erp_payments'] ?? [],
+                    'clover_total'    => round($loc['clover_total'] ?? 0, 2),
+                    'erp_total'       => round($loc['erp_total'] ?? 0, 2),
+                ];
+            }
+            usort($block['locations'], fn($a, $b) => strcmp($a['location_name'], $b['location_name']));
+            $by_day_list[] = $block;
+        }
+
+        return [
+            'employee_summary' => $employee_summary,
+            'by_day' => $by_day_list,
+        ];
     }
 
     /**

@@ -127,17 +127,223 @@
         </div>
     @endif
 
-    {{-- Transaction-level match — the "just based on time" reconciliation
-         Sarah asked for. For each cashier: ✓ matched sales (Clover + ERP
-         paired within ±60s on amount + first name), ❌ Clover-only, ❌
-         ERP-only. Pinless Clover rows (online / automated) roll up into
-         a separate bucket at the bottom so they stop polluting staff
-         cards.
+    {{-- Daily reconciliation (xlsx layout) — mirrors Sarah's manual
+         "clover vs erp" spreadsheet exactly so Fatteen reads it the way
+         she's used to:
+           1. Top: cross-store employee summary (Clover / ERP / Diff)
+           2. Per day, per store block: two side-by-side lists (Clover
+              payments | ERP payments) with totals at the bottom of each
+              column. No auto-pairing; Fatteen eyeballs like she always
+              has. --}}
+    @if(!empty($xlsx_layout['employee_summary']) || !empty($xlsx_layout['by_day']))
+        <style>
+            .rx-summary-wrap { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:12px 14px; margin-bottom:20px; }
+            .rx-summary-wrap h4 { margin:0 0 8px; font-size:14px; color:#111827; font-weight:700; }
+            .rx-summary-table { width:100%; font-size:13px; border-collapse:collapse; font-variant-numeric: tabular-nums; }
+            .rx-summary-table th { text-align:left; color:#6b7280; font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.04em; border-bottom:1px solid #e5e7eb; padding:6px 8px; }
+            .rx-summary-table td { padding:6px 8px; border-bottom:1px solid #f3f4f6; }
+            .rx-summary-table td.num { text-align:right; }
+            .rx-summary-table tr.totals td { border-top:2px solid #d1d5db; border-bottom:none; font-weight:700; background:#f9fafb; }
+            .rx-diff-ok   { color:#166534; }
+            .rx-diff-warn { color:#b45309; }
+            .rx-diff-bad  { color:#b91c1c; }
 
-         Rendered as the PRIMARY daily view. The existing per-cashier
-         shift/cash audit still appears below for anyone who needs the
-         detail. --}}
-    @if(!empty($txn_match) && (!empty($txn_match['by_cashier']) || !empty($txn_match['online']['clover_only'])))
+            .rx-day-block { margin-bottom:22px; }
+            .rx-day-head { font-size:13px; color:#6b7280; font-weight:700; letter-spacing:.04em; text-transform:uppercase; margin:4px 0 10px; }
+            .rx-store-card { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:12px 14px; margin-bottom:12px; }
+            .rx-store-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:10px; }
+            .rx-store-head h3 { margin:0 0 2px; font-size:16px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; color:#111827; }
+            .rx-sbs { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+            @media (max-width: 820px) { .rx-sbs { grid-template-columns: 1fr; } }
+            .rx-col { min-width:0; overflow-x:auto; }
+            .rx-col-head { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#374151; margin-bottom:4px; }
+            .rx-col-head .src { color:#6b7280; font-weight:600; font-size:10px; margin-left:4px; }
+            .rx-list { width:100%; font-size:12px; border-collapse:collapse; font-variant-numeric: tabular-nums; }
+            .rx-list th { text-align:left; color:#6b7280; font-weight:600; font-size:10px; text-transform:uppercase; letter-spacing:.04em; border-bottom:1px solid #e5e7eb; padding:4px 6px; white-space:nowrap; }
+            .rx-list td { padding:4px 6px; border-bottom:1px solid #f3f4f6; white-space:nowrap; }
+            .rx-list td.num { text-align:right; }
+            .rx-list tr.totals td { border-top:2px solid #d1d5db; border-bottom:none; font-weight:700; background:#f9fafb; }
+            .rx-list .muted { color:#9ca3af; }
+        </style>
+
+        {{-- Employee summary (top of Sarah's xlsx) — one row per first
+             name, aggregated across both stores. Sorted by |diff| desc so
+             biggest mismatches float to the top. --}}
+        @if(!empty($xlsx_layout['employee_summary']))
+            @php
+                $sumClover = array_sum(array_column($xlsx_layout['employee_summary'], 'clover'));
+                $sumErp    = array_sum(array_column($xlsx_layout['employee_summary'], 'erp'));
+                $sumDiff   = round($sumClover - $sumErp, 2);
+            @endphp
+            <div class="rx-summary-wrap">
+                <h4>Employee summary · Clover vs ERP</h4>
+                <table class="rx-summary-table">
+                    <thead>
+                        <tr>
+                            <th>Employee</th>
+                            <th class="num">Clover</th>
+                            <th class="num">ERP</th>
+                            <th class="num">Difference</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($xlsx_layout['employee_summary'] as $r)
+                            @php
+                                $d = $r['diff'];
+                                $cls = abs($d) < 1 ? 'rx-diff-ok' : (abs($d) < 10 ? 'rx-diff-warn' : 'rx-diff-bad');
+                            @endphp
+                            <tr>
+                                <td>{{ $r['name'] }}</td>
+                                <td class="num">{{ $r['clover'] > 0 ? '$' . number_format($r['clover'], 2) : '—' }}</td>
+                                <td class="num">{{ $r['erp'] > 0 ? '$' . number_format($r['erp'], 2) : '—' }}</td>
+                                <td class="num {{ $cls }}">{{ $d >= 0 ? '+' : '' }}${{ number_format($d, 2) }}</td>
+                            </tr>
+                        @endforeach
+                        <tr class="totals">
+                            <td>Total</td>
+                            <td class="num">${{ number_format($sumClover, 2) }}</td>
+                            <td class="num">${{ number_format($sumErp, 2) }}</td>
+                            @php $cls = abs($sumDiff) < 1 ? 'rx-diff-ok' : (abs($sumDiff) < 10 ? 'rx-diff-warn' : 'rx-diff-bad'); @endphp
+                            <td class="num {{ $cls }}">{{ $sumDiff >= 0 ? '+' : '' }}${{ number_format($sumDiff, 2) }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        @endif
+
+        {{-- Per-day, per-store side-by-side Clover + ERP lists. Each
+             store card keeps the ✓ Reconciled + notes controls already
+             wired up for Fatteen. --}}
+        @foreach($xlsx_layout['by_day'] as $dayBlock)
+            <div class="rx-day-block">
+                <div class="rx-day-head">{{ \Carbon\Carbon::parse($dayBlock['day'])->format('D, M j, Y') }}</div>
+
+                @foreach($dayBlock['locations'] as $loc)
+                    @php
+                        $locNameRaw = $loc['location_name'];
+                        $isNoLoc = (strtolower($locNameRaw) === '(no location)' || stripos($locNameRaw, 'no location') !== false);
+                        $locNameDisplay = $isNoLoc
+                            ? '⚠ No location set — test data or setup issue'
+                            : $locNameRaw;
+
+                        $ldiff = round($loc['clover_total'] - $loc['erp_total'], 2);
+                        $lcls  = abs($ldiff) < 1 ? 'rx-diff-ok' : (abs($ldiff) < 10 ? 'rx-diff-warn' : 'rx-diff-bad');
+
+                        $rKey = $dayBlock['day'] . '|' . ($loc['location_id'] ?: 0);
+                        $rec = $reconciliations[$rKey] ?? null;
+                        $isReconciled = (bool) optional($rec)->reconciled_at;
+                        $recNotes = $rec ? (string) $rec->notes : '';
+                        $recStampLabel = null;
+                        if ($rec && $rec->reconciled_at) {
+                            $u = $rec->user;
+                            $who = $u ? (trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: $u->username) : null;
+                            $recStampLabel = 'Reconciled' . ($who ? ' by ' . $who : '') . ' · '
+                                . \Carbon\Carbon::parse($rec->reconciled_at)->format('M j, g:i a');
+                        }
+                    @endphp
+                    <div class="rx-store-card eod-loc-card" data-day="{{ $dayBlock['day'] }}" data-location-id="{{ $loc['location_id'] ?: 0 }}">
+                        <div class="rx-store-head">
+                            <div style="flex:1; min-width:0;">
+                                <h3>{{ $locNameDisplay }}</h3>
+                                <div style="font-size:13px; color:#374151;">
+                                    Clover <strong>${{ number_format($loc['clover_total'], 2) }}</strong>
+                                    &nbsp;vs&nbsp;
+                                    ERP <strong>${{ number_format($loc['erp_total'], 2) }}</strong>
+                                    &nbsp;·&nbsp;
+                                    diff <span class="{{ $lcls }}">{{ $ldiff >= 0 ? '+' : '' }}${{ number_format($ldiff, 2) }}</span>
+                                </div>
+                            </div>
+                            <div style="text-align:right; min-width:220px;">
+                                <label class="eod-recon-toggle" style="display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:600; cursor:pointer; color:{{ $isReconciled ? '#166534' : '#374151' }};">
+                                    <input type="checkbox" class="eod-recon-checkbox" {{ $isReconciled ? 'checked' : '' }}>
+                                    <span class="eod-recon-label">{{ $isReconciled ? '✓ Reconciled' : 'Mark reconciled' }}</span>
+                                </label>
+                                <div class="eod-recon-stamp" style="font-size:11px; color:#6b7280; margin-top:2px;">{{ $recStampLabel }}</div>
+                            </div>
+                        </div>
+
+                        <div class="rx-sbs">
+                            {{-- Clover side --}}
+                            <div class="rx-col">
+                                <div class="rx-col-head">Clover <span class="src">· from /v3/merchants</span></div>
+                                <table class="rx-list">
+                                    <thead>
+                                        <tr>
+                                            <th>Time</th>
+                                            <th class="num">Amount</th>
+                                            <th>Employee</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @forelse($loc['clover_payments'] as $p)
+                                            <tr>
+                                                <td>{{ \Carbon\Carbon::parse($p->ts)->format('g:i:s a') }}</td>
+                                                <td class="num">${{ number_format($p->amount, 2) }}</td>
+                                                <td @if($p->employee === '(no pin)') class="muted" @endif>{{ $p->employee }}</td>
+                                            </tr>
+                                        @empty
+                                            <tr><td colspan="3" class="muted" style="text-align:center;">No Clover payments.</td></tr>
+                                        @endforelse
+                                        <tr class="totals">
+                                            <td>Total</td>
+                                            <td class="num">${{ number_format($loc['clover_total'], 2) }}</td>
+                                            <td></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            {{-- ERP side --}}
+                            <div class="rx-col">
+                                <div class="rx-col-head">ERP <span class="src">· from transaction_payments</span></div>
+                                <table class="rx-list">
+                                    <thead>
+                                        <tr>
+                                            <th>Time</th>
+                                            <th class="num">Total paid</th>
+                                            <th>Added by</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @forelse($loc['erp_payments'] as $p)
+                                            <tr>
+                                                <td>{{ \Carbon\Carbon::parse($p->ts)->format('g:i:s a') }}</td>
+                                                <td class="num">
+                                                    <a href="{{ route('sell.printInvoice', $p->transaction_id) }}" target="_blank" title="{{ $p->invoice_no ?: ('#' . $p->transaction_id) }}">${{ number_format($p->amount, 2) }}</a>
+                                                </td>
+                                                <td>{{ $p->added_by }}</td>
+                                            </tr>
+                                        @empty
+                                            <tr><td colspan="3" class="muted" style="text-align:center;">No ERP payments.</td></tr>
+                                        @endforelse
+                                        <tr class="totals">
+                                            <td>Total</td>
+                                            <td class="num">${{ number_format($loc['erp_total'], 2) }}</td>
+                                            <td></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div style="margin-top:10px;">
+                            <label style="font-size:11px; color:#6b7280; font-weight:600; text-transform:uppercase; letter-spacing:.04em;">Reconciliation notes</label>
+                            <textarea class="eod-recon-notes form-control" rows="2"
+                                placeholder="Notes for this store & day (auto-saves)"
+                                style="font-size:12px; resize:vertical;">{{ $recNotes }}</textarea>
+                            <div class="eod-recon-notes-status" style="font-size:11px; color:#9ca3af; margin-top:2px; min-height:14px;"></div>
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+        @endforeach
+    @endif
+
+    {{-- OLD transaction-match panel retired on 2026-04-23 — Sarah asked
+         for the xlsx layout above instead. Keeping this guard so existing
+         callers that still reference $txn_match don't crash; the new view
+         above handles all of Fatteen's daily reconciliation needs. --}}
+    @if(false && !empty($txn_match) && (!empty($txn_match['by_cashier']) || !empty($txn_match['online']['clover_only'])))
         <style>
             .tmx-panel { margin-bottom: 22px; }
             .tmx-summary { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
