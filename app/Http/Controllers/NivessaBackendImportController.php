@@ -24,7 +24,7 @@ class NivessaBackendImportController extends Controller
     {
         $sessionId = $this->safeSession($request->input('session_id'));
         $index = (int) $request->input('index', 0);
-        $final = $request->boolean('final');
+        $final = filter_var($request->input('final'), FILTER_VALIDATE_BOOLEAN);
 
         $dir = $this->chunkDir();
         if (!is_dir($dir)) {
@@ -69,7 +69,7 @@ class NivessaBackendImportController extends Controller
 
         $sessionId = $this->safeSession($request->input('session_id'));
         $type = $request->input('import_type');
-        $commit = $request->boolean('commit');
+        $commit = filter_var($request->input('commit'), FILTER_VALIDATE_BOOLEAN);
         $onlySheet = trim((string) $request->input('only_sheet', ''));
         $taxRate = trim((string) $request->input('tax_rate', ''));
 
