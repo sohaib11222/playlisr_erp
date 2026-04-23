@@ -197,7 +197,7 @@ class ImportNivessaHistoricalSales extends Command
             }
         }
 
-        $this->newLine();
+        $this->line('');
         $this->info($commit ? '✅ Import complete.' : '🧪 DRY RUN — no rows written. Re-run with --commit.');
         foreach ($totals as $k => $v) {
             if ($k === 'revenue_cents') {

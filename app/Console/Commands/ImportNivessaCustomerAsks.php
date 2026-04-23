@@ -182,7 +182,7 @@ class ImportNivessaCustomerAsks extends Command
             return 1;
         }
 
-        $this->newLine();
+        $this->line('');
         $this->info($commit ? '✅ Import complete.' : '🧪 DRY RUN — no rows written. Re-run with --commit to import.');
         $this->line(sprintf(
             "Read: %d · Would insert: %d · Dup-skip: %d · Empty-skip: %d",
@@ -190,7 +190,7 @@ class ImportNivessaCustomerAsks extends Command
         ));
         $this->line("Status breakdown: " . json_encode($summary['by_status']));
         if (!empty($sampleInserts)) {
-            $this->newLine();
+            $this->line('');
             $this->info('Sample of ' . count($sampleInserts) . ' rows:');
             foreach ($sampleInserts as $r) {
                 $this->line(sprintf(

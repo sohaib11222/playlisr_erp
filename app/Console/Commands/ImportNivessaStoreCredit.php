@@ -213,7 +213,7 @@ class ImportNivessaStoreCredit extends Command
         }
         fclose($fp);
 
-        $this->newLine();
+        $this->line('');
         $this->info($commit ? '✅ Contacts written.' : '🧪 DRY RUN — no rows written. Re-run with --commit.');
         $this->line(sprintf(
             "Read: %d · Matched existing: %d · Created new: %d · Dup-skip: %d · No-amount-skip: %d · Non-positive-skip: %d · Empty: %d",
