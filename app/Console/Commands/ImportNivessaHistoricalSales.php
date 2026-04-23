@@ -221,12 +221,24 @@ class ImportNivessaHistoricalSales extends Command
                   'rows_skipped_empty' => 0, 'rows_skipped_no_price' => 0,
                   'revenue_cents' => 0];
 
-        $rows = $sheet->toArray(null, true, false, false);
+        // $calculateFormulas = false — older sheets have broken cell formulas
+        // (e.g. "In Store Sales April 2024!B2156 -> Unexpected ')' "), which
+        // explode PhpSpreadsheet. The cached last-evaluated value is fine for us.
+        $rows = $sheet->toArray(null, false, false, false);
         if (empty($rows)) return $stats;
 
         // Locate the header row (first row containing PRICE + ARTIST + TITLE).
         $headerIdx = $this->findHeaderRow($rows);
         if ($headerIdx === null) {
+            $firstNonEmpty = null;
+            foreach ($rows as $r) {
+                $vals = array_values(array_filter($r, fn($c) => trim((string) $c) !== ''));
+                if (count($vals) >= 2) { $firstNonEmpty = $vals; break; }
+            }
+            if ($firstNonEmpty !== null) {
+                $preview = array_slice($firstNonEmpty, 0, 8);
+                $this->line("      columns seen: " . json_encode($preview));
+            }
             $this->line("  · '{$sheetName}': no header row (PRICE+ARTIST+TITLE) — skipped");
             return $stats;
         }
