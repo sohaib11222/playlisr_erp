@@ -311,12 +311,6 @@
 			font-size: 14px !important;
 			color: #1f2937 !important;
 		}
-		section.content .pos_form_totals #total_with_tax {
-			font-weight: 800 !important;
-			font-size: 26px !important;
-			color: #065f46 !important;
-		}
-
 		/* Make the "create account/rewards" CTA impossible to miss — we want cashiers
 		   to enroll walk-ins into Nivessa Bucks every chance they get. */
 		.pos-customer-block .add_new_customer {

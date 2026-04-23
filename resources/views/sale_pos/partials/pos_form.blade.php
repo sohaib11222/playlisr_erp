@@ -295,10 +295,6 @@
 					display: inline-flex; align-items: center; gap: 6px;
 					flex-wrap: wrap;
 				}
-				.pos-channel-label {
-					font-size: 12px; font-weight: 600; color: #374151;
-					margin-right: 4px;
-				}
 				.pos-channel-chip {
 					display: inline-flex; align-items: center; gap: 6px;
 					padding: 5px 12px;
