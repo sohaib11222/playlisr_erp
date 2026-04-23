@@ -36,16 +36,23 @@ class CloverReconciliation extends Model
      */
     public static function findOrCreateFor(int $businessId, $locationId, string $day)
     {
+        // Normalize location_id: HTTP sends strings, so '0' / '' / null all
+        // mean "(no location)" bucket. Without this, the strict === checks
+        // let string '0' fall through and INSERT with location_id=0, which
+        // violates the FK to business_locations(id) and 500s the request.
+        $hasLocation = !($locationId === null || $locationId === '' || (int) $locationId === 0);
+        $normalizedLocationId = $hasLocation ? (int) $locationId : null;
+
         $q = static::where('business_id', $businessId)->where('day', $day);
-        $q = $locationId === null || $locationId === 0
-            ? $q->whereNull('location_id')
-            : $q->where('location_id', (int) $locationId);
+        $q = $hasLocation
+            ? $q->where('location_id', $normalizedLocationId)
+            : $q->whereNull('location_id');
         $row = $q->first();
         if ($row) return $row;
 
         return static::create([
             'business_id' => $businessId,
-            'location_id' => ($locationId === 0 || $locationId === null) ? null : (int) $locationId,
+            'location_id' => $normalizedLocationId,
             'day' => $day,
         ]);
     }
