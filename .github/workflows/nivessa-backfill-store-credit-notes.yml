@@ -1,0 +1,116 @@
+# One-click backfill of contacts.balance_notes for every customer imported
+# from the Nivessa Backend "Store Credit" sheet.
+#
+# The backfill command (app/Console/Commands/BackfillNivessaStoreCreditNotes.php)
+# needs the xlsx on the server. The original ImportNivessaStoreCredit run
+# dropped it at a well-known path under storage/app/imports/ — this workflow
+# auto-discovers it, or you can pass an override path below.
+#
+# Defaults to dry-run. Flip the mode to "commit" only after the dry-run
+# output looks right.
+#
+# Reuses the same SSH secrets as Deploy production:
+#   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, (optional DEPLOY_PORT)
+
+name: Nivessa · backfill store-credit notes
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Dry-run (no writes) or commit (writes balance_notes)
+        required: true
+        default: dry_run
+        type: choice
+        options:
+          - dry_run
+          - commit
+      xlsx_path:
+        description: |
+          Override server path to the Nivessa Backend xlsx. Leave blank to
+          auto-discover under /www/playlist.nivessa.com/app/storage/app/imports/
+          (picks the most recently modified "Nivessa Backend*.xlsx").
+        required: false
+        default: ''
+      limit:
+        description: Cap rows processed (0 = all). Useful for a smoke test.
+        required: false
+        default: '0'
+
+concurrency:
+  group: nivessa-backfill-store-credit-notes
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Run backfill over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: true
+          script: |
+            set -e
+            APP=/www/playlist.nivessa.com/app
+            MODE='${{ github.event.inputs.mode }}'
+            OVERRIDE='${{ github.event.inputs.xlsx_path }}'
+            LIMIT='${{ github.event.inputs.limit }}'
+
+            cd "$APP"
+
+            if [ -n "$OVERRIDE" ]; then
+              XLSX="$OVERRIDE"
+            else
+              # Pick the most recently modified "Nivessa Backend*.xlsx" under
+              # storage/app/imports/ — that's where the original import run
+              # parked it. `find -printf` keeps the newest regardless of ties.
+              SEARCH_DIR="$APP/storage/app/imports"
+              if [ ! -d "$SEARCH_DIR" ]; then
+                echo "Expected directory $SEARCH_DIR not found. Pass xlsx_path explicitly."
+                exit 1
+              fi
+              XLSX=$(find "$SEARCH_DIR" -maxdepth 2 -type f -iname 'Nivessa Backend*.xlsx' -printf '%T@ %p\n' 2>/dev/null \
+                     | sort -nr | head -1 | cut -d' ' -f2-)
+              if [ -z "$XLSX" ]; then
+                echo "No 'Nivessa Backend*.xlsx' found under $SEARCH_DIR."
+                echo "Upload the file there (scp to $SEARCH_DIR/) or pass xlsx_path."
+                ls -la "$SEARCH_DIR" 2>/dev/null | tail -20
+                exit 1
+              fi
+            fi
+
+            if [ ! -f "$XLSX" ]; then
+              echo "File not found at: $XLSX"
+              exit 1
+            fi
+
+            echo "=== xlsx: $XLSX ==="
+            ls -lh "$XLSX"
+            echo
+            echo "=== mode: $MODE · limit: $LIMIT ==="
+            echo
+
+            ARGS=("$XLSX" "--limit=$LIMIT")
+            if [ "$MODE" = "commit" ]; then
+              ARGS+=("--commit")
+            fi
+
+            php artisan nivessa:backfill-store-credit-notes "${ARGS[@]}"
