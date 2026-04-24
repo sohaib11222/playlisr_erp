@@ -5210,6 +5210,11 @@ class ReportController extends Controller
         // how the customer actually paid (workflow convention). So we don't
         // filter by payment method here — every finalized sell for the day
         // is a line Sarah needs to reconcile against Clover.
+        //
+        // Only active cashiers. Terminated/inactive user accounts stay in
+        // the DB for historical joins, but Sarah shouldn't see them on
+        // today's shift reconciliation — she'll mark them inactive once
+        // and they drop off here automatically.
         $base = DB::table('transaction_payments as tp')
             ->join('transactions as t', 'tp.transaction_id', '=', 't.id')
             ->leftJoin('users as u', 't.created_by', '=', 'u.id')
@@ -5217,11 +5222,24 @@ class ReportController extends Controller
             ->where('t.business_id', $business_id)
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
+            ->where('u.status', 'active')
             ->whereDate('t.transaction_date', $date);
 
         if (!empty($location_id)) {
             $base->where('t.location_id', $location_id);
         }
+
+        // Name keys (first & last, lowercased) of active users — used to
+        // drop ex-employees out of the "Clover only" unmatched list too.
+        $active_name_keys = \DB::table('users')
+            ->where('business_id', $business_id)
+            ->where('status', 'active')
+            ->selectRaw("LOWER(TRIM(first_name)) as first, LOWER(TRIM(last_name)) as last")
+            ->get()
+            ->flatMap(fn($u) => array_filter([$u->first, $u->last]))
+            ->unique()
+            ->values()
+            ->all();
 
         // Per-employee rollup — ERP side (transaction_payments)
         $employee_rows = (clone $base)
@@ -5288,11 +5306,22 @@ class ReportController extends Controller
             return $row;
         });
 
-        // Unclaimed Clover employees — these are names in Clover that didn't
-        // match any ERP employee. Surface them as extra rows so nothing hides.
+        // Unclaimed Clover employees — names in Clover that didn't match any
+        // active ERP employee. Only surface if the Clover name looks like it
+        // belongs to a current active cashier (substring match against any
+        // active first/last name); otherwise it's an ex-employee's historic
+        // Clover record and we hide it.
         $unmatched_clover = [];
         foreach ($clover_rollup as $key => $cp) {
             if (isset($claimed_clover_keys[$key])) continue;
+            $belongs_to_active = false;
+            foreach ($active_name_keys as $name) {
+                if ($name !== '' && (strpos($key, $name) !== false || strpos($name, $key) !== false)) {
+                    $belongs_to_active = true;
+                    break;
+                }
+            }
+            if (!$belongs_to_active) continue;
             $unmatched_clover[] = (object) [
                 'created_by' => null,
                 'employee' => '(Clover only) ' . ($cp->clover_employee ?: $key),
