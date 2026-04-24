@@ -302,10 +302,13 @@ class HomeController extends Controller
         // schema change to track which store a customer was created at.
         $today_start = \Carbon::today()->toDateTimeString();
         $today_end = \Carbon::today()->endOfDay()->toDateTimeString();
+        // Exclude contacts created by imports (store-credit xlsx, etc.) — they
+        // shouldn't count toward today's in-store rewards-signup goal.
         $rewards_today = \DB::table('contacts as c')
             ->leftJoin('users as u', 'c.created_by', '=', 'u.id')
             ->where('c.business_id', $business_id)
             ->whereIn('c.type', ['customer', 'both'])
+            ->whereNull('c.import_source')
             ->whereBetween('c.created_at', [$today_start, $today_end])
             ->selectRaw("c.created_by,
                 CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as employee,
@@ -644,6 +647,7 @@ class HomeController extends Controller
         $rewards_me_today = (int) \DB::table('contacts')
             ->where('business_id', $business_id)
             ->whereIn('type', ['customer', 'both'])
+            ->whereNull('import_source')
             ->where('created_by', $me_id)
             ->whereBetween('created_at', [$today_start, $today_end])
             ->count();
