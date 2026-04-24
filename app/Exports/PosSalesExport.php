@@ -32,6 +32,8 @@ class PosSalesExport implements FromArray
                 'Quantity',
                 'Unit Price',
                 'Line Total',
+                'Cost',
+                'Margin',
                 'Tax',
                 'Discount',
                 'Payment Method',
@@ -145,7 +147,7 @@ class PosSalesExport implements FromArray
                         $q->select('id', 'name', 'sku', 'artist');
                     },
                     'variations' => function($q) {
-                        $q->select('id', 'sub_sku');
+                        $q->select('id', 'sub_sku', 'default_purchase_price');
                     }
                 ])
                 ->get();
@@ -201,7 +203,20 @@ class PosSalesExport implements FromArray
                     $artist = $line->product_artist ?? '';
                 }
                 
-                $line_total = ($line->unit_price ?? 0) * ($line->quantity ?? 0);
+                $qty = (float) ($line->quantity ?? 0);
+                $unit_price = (float) ($line->unit_price ?? 0);
+                $line_total = $unit_price * $qty;
+
+                // Cost uses purchase_price captured on the sell line at time of
+                // sale if present; otherwise the variation's current cost price
+                // (accurate post-backfill). Total cost = cost * qty. Margin =
+                // line_total - total_cost.
+                $unit_cost = (float) ($line->purchase_price ?? 0);
+                if ($unit_cost <= 0 && $variation && isset($variation->default_purchase_price)) {
+                    $unit_cost = (float) $variation->default_purchase_price;
+                }
+                $total_cost = $unit_cost * $qty;
+                $margin = $line_total - $total_cost;
 
                 $sales_array[] = [
                     $transaction->transaction_date ? date('Y-m-d', strtotime($transaction->transaction_date)) : '',
@@ -211,9 +226,11 @@ class PosSalesExport implements FromArray
                     $product_name,
                     $sku,
                     $artist,
-                    $line->quantity ?? 0,
-                    $line->unit_price ?? 0,
+                    $qty,
+                    $unit_price,
                     $line_total,
+                    round($unit_cost, 2),
+                    round($margin, 2),
                     $line->item_tax ?? 0,
                     $line->line_discount_amount ?? 0,
                     $payment_methods,
