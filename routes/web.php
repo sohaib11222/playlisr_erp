@@ -590,6 +590,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/cost-price-rules', 'CostPriceRulesController@index');
     Route::post('/admin/cost-price-rules/run', 'CostPriceRulesController@run');
 
+    // One-shot cleanup: historical xlsx import wrote some transactions with
+    // future dates (typos / no-year rows defaulting to 2026). Rewrites them
+    // to the 1st of the month encoded in the import source slug.
+    Route::get('/admin/fix-imported-dates', 'FixImportedDatesController@index');
+    Route::post('/admin/fix-imported-dates/run', 'FixImportedDatesController@run');
+
     // One-shot diagnostic: did the Nivessa Backend xlsx imports land on prod?
     // Hit /admin/nivessa-import-status in the browser to see row counts per table.
     Route::get('/admin/nivessa-import-status', function () {
