@@ -393,6 +393,14 @@ class SellController extends Controller
                 $sells->addSelect('transactions.is_recurring', 'transactions.recur_parent_id');
             }
             $sales_order_statuses = Transaction::sales_order_statuses();
+
+            // Default order: newest transaction date first, with transaction ID
+            // as tiebreaker. The big historical xlsx import gave ~71,910 rows
+            // the same created_at so ID-only sort surfaced October imports at
+            // the top; this pins display to the actual sale date.
+            $sells->orderBy('transactions.transaction_date', 'desc')
+                  ->orderBy('transactions.id', 'desc');
+
             $datatable = Datatables::of($sells)
                 ->addColumn(
                     'action',
@@ -533,7 +541,13 @@ class SellController extends Controller
                         return '<span class="total-discount" data-orig-value="' . $discount . '">' . $this->transactionUtil->num_f($discount, true) . '</span>';
                     }
                 )
-                ->editColumn('transaction_date', '{{@format_datetime($transaction_date)}}')
+                ->editColumn('transaction_date', function ($row) {
+                    // Sarah 2026-04-24: 12h mm/dd/yy, overrides the business's
+                    // default datetime format on this list only.
+                    return $row->transaction_date
+                        ? \Carbon\Carbon::parse($row->transaction_date)->format('m/d/y g:i A')
+                        : '';
+                })
                 ->editColumn(
                     'payment_status',
                     function ($row) {
@@ -668,7 +682,7 @@ class SellController extends Controller
 
         $business_locations = BusinessLocation::forDropdown($business_id, false);
         $customers = Contact::customersDropdown($business_id, false);
-        $sales_representative = User::forDropdown($business_id, false, false, true);
+        $sales_representative = User::forDropdown($business_id, false, false, true, false, true);
         
         //Commission agent filter
         $is_cmsn_agent_enabled = request()->session()->get('business.sales_cmsn_agnt');
@@ -1269,7 +1283,7 @@ class SellController extends Controller
         $business_locations = BusinessLocation::forDropdown($business_id, false);
         $customers = Contact::customersDropdown($business_id, false);
       
-        $sales_representative = User::forDropdown($business_id, false, false, true);
+        $sales_representative = User::forDropdown($business_id, false, false, true, false, true);
     
 
         return view('sale_pos.draft')
@@ -1292,7 +1306,7 @@ class SellController extends Controller
         $business_locations = BusinessLocation::forDropdown($business_id, false);
         $customers = Contact::customersDropdown($business_id, false);
       
-        $sales_representative = User::forDropdown($business_id, false, false, true);
+        $sales_representative = User::forDropdown($business_id, false, false, true, false, true);
 
         return view('sale_pos.quotations')
                 ->with(compact('business_locations', 'customers', 'sales_representative'));
@@ -1691,7 +1705,7 @@ class SellController extends Controller
         $business_locations = BusinessLocation::forDropdown($business_id, false);
         $customers = Contact::customersDropdown($business_id, false);
       
-        $sales_representative = User::forDropdown($business_id, false, false, true);
+        $sales_representative = User::forDropdown($business_id, false, false, true, false, true);
 
         $is_service_staff_enabled = $this->transactionUtil->isModuleEnabled('service_staff');
 

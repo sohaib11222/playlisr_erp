@@ -5040,7 +5040,11 @@ class TransactionUtil extends Util
                     'transactions.custom_field_3',
                     'transactions.custom_field_4',
                     DB::raw('DATE_FORMAT(transactions.transaction_date, "%Y/%m/%d") as sale_date'),
-                    DB::raw("CONCAT(COALESCE(u.surname, ''),' ',COALESCE(u.first_name, ''),' ',COALESCE(u.last_name,'')) as added_by"),
+                    DB::raw(
+                        \Schema::hasColumn('transactions', 'import_source')
+                            ? "CASE WHEN COALESCE(transactions.import_source, '') != '' THEN 'Historical Import' ELSE CONCAT(COALESCE(u.surname, ''),' ',COALESCE(u.first_name, ''),' ',COALESCE(u.last_name,'')) END as added_by"
+                            : "CONCAT(COALESCE(u.surname, ''),' ',COALESCE(u.first_name, ''),' ',COALESCE(u.last_name,'')) as added_by"
+                    ),
                     DB::raw('(SELECT SUM(IF(TP.is_return = 1,-1*TP.amount,TP.amount)) FROM transaction_payments AS TP WHERE
                         TP.transaction_id=transactions.id) as total_paid'),
                     'bl.name as business_location',
