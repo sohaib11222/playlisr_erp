@@ -31,8 +31,7 @@
                 <form method="POST" action="{{ url('/admin/cost-price-rules/run') }}" style="margin-top:16px;">
                     @csrf
                     <button type="submit" name="commit" value="0" class="btn btn-default btn-lg">Preview</button>
-                    <button type="submit" name="commit" value="1" class="btn btn-primary btn-lg"
-                            onclick="return confirm('Apply these cost prices to all missing variations? This writes to the DB.');">
+                    <button type="submit" name="commit" value="1" class="btn btn-primary btn-lg">
                         Apply
                     </button>
                     <span class="help-block" style="display:inline-block;margin-left:12px;vertical-align:middle;">
