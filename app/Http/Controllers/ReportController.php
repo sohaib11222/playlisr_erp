@@ -5346,6 +5346,79 @@ class ReportController extends Controller
             ->orderByDesc('t.transaction_date')
             ->get();
 
+        // Clover transactions for this day — raw pull from clover_payments,
+        // formatted to mirror what Sarah sees in the Clover dashboard so she
+        // can eyeball each line against the ERP detail above. Restricted to
+        // active staff using the same allow_login rule as the top rollup —
+        // ex-employees' historic Clover records don't show here either.
+        $clover_detail_rows = \DB::table('clover_payments')
+            ->where('business_id', $business_id)
+            ->whereDate('paid_on', $date)
+            ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id))
+            ->orderByDesc('paid_at')
+            ->get()
+            ->filter(function ($row) use ($active_name_keys) {
+                $name = strtolower(trim((string) ($row->employee_name ?? '')));
+                if ($name === '') return false;
+                foreach ($active_name_keys as $active) {
+                    if ($active !== '' && (strpos($name, $active) !== false || strpos($active, $name) !== false)) {
+                        return true;
+                    }
+                }
+                return false;
+            })
+            ->values()
+            ->map(function ($row) {
+                // Clover tender_type looks like "com.clover.tender.credit_card".
+                // Turn that + card_type into something readable.
+                $tender = strtolower((string) ($row->tender_type ?? ''));
+                if (str_contains($tender, 'cash')) {
+                    $row->display_tender = 'Cash';
+                } elseif ($row->card_type) {
+                    // "VISA" / "MC" — good enough, but if it's a debit the
+                    // tender string says so.
+                    $row->display_tender = str_contains($tender, 'debit')
+                        ? 'Debit · ' . strtoupper($row->card_type)
+                        : 'Card · ' . strtoupper($row->card_type);
+                } elseif (str_contains($tender, 'credit')) {
+                    $row->display_tender = 'Credit Card';
+                } elseif (str_contains($tender, 'debit')) {
+                    $row->display_tender = 'Debit Card';
+                } else {
+                    $row->display_tender = $row->tender_type ?: '(unknown)';
+                }
+                return $row;
+            });
+
+        // Cash paid OUT of the till — i.e. when a cashier buys a collection
+        // from a customer and pays in cash. These reduce the cash drawer and
+        // need to be surfaced per cashier so Clyde's "ERP sales $500 = Clover
+        // $500" reconciliation also accounts for "but I paid $20 cash for a
+        // record buy." Pulled from transaction_payments where the parent
+        // transaction is a purchase (type='purchase') paid in cash.
+        $buy_cash_rows = \DB::table('transaction_payments as tp')
+            ->join('transactions as t', 'tp.transaction_id', '=', 't.id')
+            ->leftJoin('users as u', 't.created_by', '=', 'u.id')
+            ->leftJoin('business_locations as bl', 't.location_id', '=', 'bl.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'purchase')
+            ->where('u.status', 'active')
+            ->where('u.allow_login', 1)
+            ->where('tp.method', 'cash')
+            ->whereDate('t.transaction_date', $date)
+            ->when(!empty($location_id), fn($q) => $q->where('t.location_id', $location_id))
+            ->selectRaw("tp.paid_on, t.transaction_date, tp.amount, t.invoice_no,
+                t.ref_no, bl.name as location_name,
+                CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as employee,
+                t.created_by")
+            ->orderByDesc('t.transaction_date')
+            ->get();
+
+        // Group Clover detail + cash buy-outs per employee for the per-cashier
+        // card layout in the blade.
+        $clover_by_employee = $clover_detail_rows->groupBy(fn($r) => trim((string) ($r->employee_name ?? '(unknown)')));
+        $buy_cash_by_employee = $buy_cash_rows->groupBy(fn($r) => trim((string) ($r->employee ?? '(unknown)')));
+
         $grand_total = (float) $employee_rows->sum('erp_total');
         $clover_grand_total = (float) (
             $employee_rows->sum('clover_total') + collect($unmatched_clover)->sum('clover_total')
@@ -5354,7 +5427,8 @@ class ReportController extends Controller
         return view('report.clover_vs_erp_report')->with(compact(
             'employee_rows', 'detail_rows', 'date', 'location_id',
             'business_locations', 'grand_total', 'clover_grand_total',
-            'unmatched_clover'
+            'unmatched_clover', 'clover_detail_rows',
+            'clover_by_employee', 'buy_cash_rows', 'buy_cash_by_employee'
         ));
     }
 

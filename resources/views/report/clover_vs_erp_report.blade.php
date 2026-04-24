@@ -153,38 +153,155 @@
         </div>
     </div>
 
-    <div class="box box-solid">
-        <div class="box-header with-border">
-            <h3 class="box-title">ERP payment detail ({{ $detail_rows->count() }} payments)</h3>
+    {{-- Per-cashier breakdown: every active employee with activity today gets
+         a card showing (a) ERP sales lines, (b) Clover txns, (c) cash paid
+         out on collection buys. Lets Sarah reconcile one person at a time. --}}
+    @php
+        // Bucket ERP sale lines per employee too
+        $detail_by_employee = $detail_rows->groupBy(fn($d) => trim((string) $d->employee) ?: '(unknown)');
+
+        // Union of all employees that had any activity on this date
+        $all_employees = collect()
+            ->merge($detail_by_employee->keys())
+            ->merge($clover_by_employee->keys())
+            ->merge($buy_cash_by_employee->keys())
+            ->unique()
+            ->filter()
+            ->sort()
+            ->values();
+    @endphp
+
+    @foreach($all_employees as $emp_name)
+        @php
+            $emp_sales   = $detail_by_employee[$emp_name] ?? collect();
+            $emp_clover  = collect();
+            // Match this ERP employee against Clover employee keys (same
+            // substring heuristic as the top rollup). Multiple Clover keys
+            // might point at the same person (e.g. "Clyde B" + "Clyde").
+            $emp_parts = array_filter(explode(' ', strtolower($emp_name)));
+            foreach ($clover_by_employee as $cname => $crows) {
+                $ckey = strtolower(trim($cname));
+                foreach ($emp_parts as $p) {
+                    if ($p !== '' && (strpos($ckey, $p) !== false || strpos($p, $ckey) !== false)) {
+                        $emp_clover = $emp_clover->merge($crows);
+                        break;
+                    }
+                }
+            }
+            $emp_buys = $buy_cash_by_employee[$emp_name] ?? collect();
+
+            $erp_sum    = $emp_sales->sum('amount');
+            $clover_sum = $emp_clover->sum('amount');
+            $buy_sum    = $emp_buys->sum('amount');
+            $diff       = $erp_sum - $clover_sum;
+            $diffAbs    = abs($diff);
+            $isMatch    = $diffAbs < 1;
+        @endphp
+        <div class="box {{ $isMatch ? 'box-success' : 'box-warning' }}" style="border-top-width:3px;">
+            <div class="box-header with-border">
+                <h3 class="box-title">
+                    <i class="fa fa-user"></i>
+                    <strong>{{ $emp_name }}</strong>
+                    <small style="margin-left:8px;">
+                        ERP ${{ number_format($erp_sum, 2) }}
+                        &nbsp;vs&nbsp;
+                        Clover ${{ number_format($clover_sum, 2) }}
+                        &nbsp;→&nbsp;
+                        @if($isMatch)
+                            <span class="label label-success">✓ Match</span>
+                        @else
+                            <span class="label {{ $diffAbs < 50 ? 'label-warning' : 'label-danger' }}">
+                                Off by ${{ number_format($diffAbs, 2) }}
+                            </span>
+                        @endif
+                        @if($buy_sum > 0)
+                            &nbsp;<span class="label label-primary" title="Cash paid out on collection buys">− ${{ number_format($buy_sum, 2) }} cash buys</span>
+                        @endif
+                    </small>
+                </h3>
+            </div>
+            <div class="box-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h4 style="margin-top:0;">ERP sales <small>({{ $emp_sales->count() }})</small></h4>
+                        <table class="table table-condensed table-striped">
+                            <thead>
+                                <tr><th>Time</th><th>Invoice</th><th>Method</th><th class="text-right">Amount</th></tr>
+                            </thead>
+                            <tbody>
+                                @forelse($emp_sales as $d)
+                                    <tr>
+                                        <td>{{ $d->paid_on ? \Carbon\Carbon::parse($d->paid_on)->format('h:i A') : '' }}</td>
+                                        <td>{{ $d->invoice_no }}</td>
+                                        <td><small>{{ strtoupper($d->method) }}{{ $d->card_type ? ' / ' . strtoupper($d->card_type) : '' }}</small></td>
+                                        <td class="text-right">${{ number_format($d->amount, 2) }}</td>
+                                    </tr>
+                                @empty
+                                    <tr><td colspan="4" class="text-muted text-center">No ERP sales recorded.</td></tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h4 style="margin-top:0;">Clover transactions <small>({{ $emp_clover->count() }})</small></h4>
+                        <table class="table table-condensed table-striped">
+                            <thead>
+                                <tr><th>Time</th><th>Clover ID</th><th>Tender</th><th class="text-right">Amount</th></tr>
+                            </thead>
+                            <tbody>
+                                @forelse($emp_clover->sortByDesc('paid_at') as $c)
+                                    @php $isVoid = in_array(strtoupper((string) $c->result), ['VOIDED', 'FAILED', 'REFUNDED']); @endphp
+                                    <tr @if($isVoid) style="background:#fff0f0; color:#c0392b; text-decoration:line-through;" @endif>
+                                        <td>{{ $c->paid_at ? \Carbon\Carbon::parse($c->paid_at)->setTimezone(config('app.timezone'))->format('h:i A') : '' }}</td>
+                                        <td><code style="font-size:11px;">{{ substr($c->clover_payment_id, 0, 8) }}…</code></td>
+                                        <td><small>{{ $c->display_tender }}</small></td>
+                                        <td class="text-right">${{ number_format((float) $c->amount, 2) }}</td>
+                                    </tr>
+                                @empty
+                                    <tr><td colspan="4" class="text-muted text-center">No Clover transactions found for this cashier.</td></tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                @if($emp_buys->count() > 0)
+                <div class="row">
+                    <div class="col-md-12">
+                        <h4>Cash paid out on collection buys <small>({{ $emp_buys->count() }}) — reduces this cashier's drawer</small></h4>
+                        <table class="table table-condensed">
+                            <thead>
+                                <tr><th>Ref #</th><th>Location</th><th class="text-right">Cash out</th></tr>
+                            </thead>
+                            <tbody>
+                                @foreach($emp_buys as $b)
+                                    <tr>
+                                        <td>{{ $b->ref_no ?: $b->invoice_no }}</td>
+                                        <td>{{ $b->location_name }}</td>
+                                        <td class="text-right text-danger"><strong>− ${{ number_format($b->amount, 2) }}</strong></td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                            <tfoot>
+                                <tr style="font-weight:bold; background:#fafafa;">
+                                    <td colspan="2">Total cash out</td>
+                                    <td class="text-right text-danger">− ${{ number_format($buy_sum, 2) }}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+                @endif
+            </div>
         </div>
-        <div class="box-body table-responsive">
-            <table class="table table-bordered table-striped">
-                <thead>
-                    <tr>
-                        <th>Time</th>
-                        <th>Location</th>
-                        <th>Employee</th>
-                        <th>Invoice #</th>
-                        <th>Method</th>
-                        <th class="text-right">Amount</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @forelse($detail_rows as $d)
-                        <tr>
-                            <td>{{ $d->paid_on ? \Carbon\Carbon::parse($d->paid_on)->format('h:i A') : '' }}</td>
-                            <td>{{ $d->location_name }}</td>
-                            <td>{{ trim($d->employee) ?: '(unknown)' }}</td>
-                            <td>{{ $d->invoice_no }}</td>
-                            <td><span class="label label-default">{{ strtoupper($d->method) }}{{ $d->card_type ? ' / ' . strtoupper($d->card_type) : '' }}</span></td>
-                            <td class="text-right">${{ number_format($d->amount, 2) }}</td>
-                        </tr>
-                    @empty
-                        <tr><td colspan="6" class="text-center text-muted">No payments found.</td></tr>
-                    @endforelse
-                </tbody>
-            </table>
-        </div>
+    @endforeach
+
+    @if($all_employees->isEmpty())
+        <div class="alert alert-info">No active-cashier activity recorded for {{ \Carbon\Carbon::parse($date)->format('M j, Y') }}.</div>
+    @endif
+
+    <div class="alert alert-warning" style="border-left: 4px solid #f0ad4e;">
+        <strong>Safe drops aren't tracked yet.</strong> There's no way in the ERP right now to record "Clyde dropped $200 in the safe at 2pm." If you want this reflected per cashier, I can add a <em>Cash drop</em> button to the POS + a <code>cash_drops</code> table, and surface drops here next to the cash-out on buys. Say the word.
     </div>
 
 </section>
