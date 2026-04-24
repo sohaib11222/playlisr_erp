@@ -596,6 +596,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/fix-imported-dates', 'FixImportedDatesController@index');
     Route::post('/admin/fix-imported-dates/run', 'FixImportedDatesController@run');
 
+    // Read-only audit: per-day overlap between ERP-native and xlsx-imported
+    // sells. Flags Sep 2025+ overlaps as likely duplicates (ERP was live).
+    Route::get('/admin/import-duplicate-check', 'ImportDuplicateCheckController@index');
+
     // One-shot diagnostic: did the Nivessa Backend xlsx imports land on prod?
     // Hit /admin/nivessa-import-status in the browser to see row counts per table.
     Route::get('/admin/nivessa-import-status', function () {
