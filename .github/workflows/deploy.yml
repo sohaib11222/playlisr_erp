@@ -50,6 +50,16 @@ jobs:
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
+          echo "::group::Diagnostics"
+          echo "Runner public IP: $(curl -s --max-time 5 https://api.ipify.org || echo unknown)"
+          echo "DEPLOY_HOST resolves to: $(getent hosts "$DEPLOY_HOST" || echo UNRESOLVED)"
+          echo "TCP probe to port ${{ steps.flags.outputs.ssh_port }}:"
+          timeout 5 bash -c "</dev/tcp/$DEPLOY_HOST/${{ steps.flags.outputs.ssh_port }}" \
+            && echo "  TCP OK" \
+            || echo "  TCP FAILED (firewall or server down)"
+          echo "ssh-keyscan verbose:"
+          ssh-keyscan -v -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" 2>&1 | head -30 || true
+          echo "::endgroup::"
           ssh-keyscan -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
 
       - name: Deploy over SSH
