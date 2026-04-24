@@ -218,6 +218,7 @@ class HomeController extends Controller
             ->where('t.business_id', $business_id)
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
+            ->whereNull('t.import_source')
             ->where('t.transaction_date', '>=', $since_30)
             ->selectRaw("t.location_id, bl.name as location_name,
                 COALESCE(c.name, '(uncategorized)') as category,
@@ -248,6 +249,7 @@ class HomeController extends Controller
             ->where('t.business_id', $business_id)
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
+            ->whereNull('t.import_source')
             ->where('t.transaction_date', '>=', $since_30)
             ->whereNotNull('p.format')
             ->where('p.format', '!=', '')
@@ -284,6 +286,7 @@ class HomeController extends Controller
             ->where('t.business_id', $business_id)
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
+            ->whereNull('t.import_source')
             ->selectRaw("t.transaction_date, t.invoice_no,
                 p.name, p.artist, p.format,
                 tsl.quantity, tsl.unit_price_inc_tax,
@@ -324,6 +327,7 @@ class HomeController extends Controller
             ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
             ->where('t.business_id', $business_id)
             ->where('t.type', 'sell')
+            ->whereNull('t.import_source')
             ->where('t.created_by', $me_id)
             ->whereBetween('t.transaction_date', [$today_start, $today_end])
             ->count();
@@ -332,6 +336,7 @@ class HomeController extends Controller
             ->where('business_id', $business_id)
             ->where('type', 'sell')
             ->where('status', 'final')
+            ->whereNull('import_source')
             ->where('created_by', $me_id)
             ->whereBetween('transaction_date', [$today_start, $today_end])
             ->count();
@@ -365,6 +370,7 @@ class HomeController extends Controller
                 ->where('business_id', $business_id)
                 ->where('type', 'sell')
                 ->where('status', 'final')
+                ->whereNull('import_source')
                 ->whereDate('transaction_date', '>=', $start)
                 ->whereDate('transaction_date', '<=', $end);
             if (!is_null($location_id)) {
@@ -407,6 +413,7 @@ class HomeController extends Controller
                 ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
                 ->where('t.business_id', $business_id)
                 ->where('t.type', 'sell')
+                ->whereNull('t.import_source')
                 ->where('t.created_by', $me_id)
                 ->whereDate('t.transaction_date', '>=', $start)
                 ->whereDate('t.transaction_date', '<=', $end)
@@ -464,6 +471,7 @@ class HomeController extends Controller
                 ->where('t.business_id', $business_id)
                 ->where('t.type', 'sell')
                 ->where('t.status', 'final')
+                ->whereNull('t.import_source')
                 ->whereBetween('t.transaction_date', [$start, $end]);
             if ($location_filter === 'online') {
                 $q->where('t.is_whatnot', 1);
@@ -576,6 +584,7 @@ class HomeController extends Controller
                 ->where('business_id', $business_id)
                 ->where('type', 'sell')
                 ->where('status', 'final')
+                ->whereNull('import_source')
                 ->where('created_by', $me_id)
                 ->whereBetween('transaction_date', [$start, $end])
                 ->sum('final_total');
@@ -646,6 +655,7 @@ class HomeController extends Controller
             ->where('t.business_id', $business_id)
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
+            ->whereNull('t.import_source')
             ->where('t.created_by', $me_id)
             ->whereBetween('t.transaction_date', [$today_start, $today_end])
             ->selectRaw("p.artist, p.name, p.format, tsl.unit_price_inc_tax as price")
@@ -657,6 +667,7 @@ class HomeController extends Controller
             ->where('t.business_id', $business_id)
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
+            ->whereNull('t.import_source')
             ->where('t.created_by', $me_id)
             ->whereBetween('t.transaction_date', [$today_start, $today_end])
             ->count();
@@ -672,6 +683,7 @@ class HomeController extends Controller
             ->where('business_id', $business_id)
             ->where('type', 'sell')
             ->where('status', 'final')
+            ->whereNull('import_source')
             ->where('location_id', $my_default_loc_id)
             ->whereBetween('transaction_date', [$today_start, $today_end])
             ->sum('final_total');
@@ -688,6 +700,7 @@ class HomeController extends Controller
             ->where('business_id', $business_id)
             ->where('type', 'sell')
             ->where('status', 'final')
+            ->whereNull('import_source')
             ->where('location_id', $my_default_loc_id)
             ->whereBetween('transaction_date', [$dow_lookback_start, $dow_lookback_end])
             ->whereRaw('DAYOFWEEK(transaction_date) = ?', [$dow_mysql])

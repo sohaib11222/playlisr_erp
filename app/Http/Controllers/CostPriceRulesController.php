@@ -11,13 +11,13 @@ class CostPriceRulesController extends Controller
     // Applied only to variations whose default_purchase_price is NULL or 0
     // (never overwrites an existing cost).
     const RULES = [
-        ['label' => 'New Vinyl',             'match' => ['new vinyl'],             'cost' => 17.00],
-        ['label' => 'Used Vinyl',            'match' => ['used vinyl'],            'cost' => 0.10],
-        ['label' => 'CDs (used)',            'match' => ['used cds', 'cds (used)', 'used cd'], 'cost' => 0.10],
-        ['label' => 'New CDs',               'match' => ['new cds', 'new cd'],     'cost' => 6.00],
-        ['label' => 'Cassettes (used)',      'match' => ['used cassettes', 'cassettes (used)', 'used cassette'], 'cost' => 0.30],
-        ['label' => 'New Cassettes',         'match' => ['new cassettes', 'new cassette'], 'cost' => 6.00],
-        ['label' => 'VHS',                   'match' => ['vhs'],                   'cost' => 0.10],
+        ['label' => 'New Vinyl',             'match' => ['new vinyl', 'sealed vinyl'],             'cost' => 17.00],
+        ['label' => 'Used Vinyl',            'match' => ['used vinyl'],                            'cost' => 0.10],
+        ['label' => 'CDs (used)',            'match' => ['used cds', 'cds (used)', 'used cd'],     'cost' => 0.10],
+        ['label' => 'New CDs',               'match' => ['new cds', 'new cd', 'sealed cd', 'cd (sealed)'], 'cost' => 6.00],
+        ['label' => 'Cassettes (used)',      'match' => ['used cassettes', 'cassettes (used)', 'used cassette', 'cassettes'], 'cost' => 0.30],
+        ['label' => 'New Cassettes',         'match' => ['new cassettes', 'new cassette', 'cassettes - sealed', 'sealed cassettes'], 'cost' => 6.00],
+        ['label' => 'VHS',                   'match' => ['vhs'],                                   'cost' => 0.10],
         ['label' => 'Damaged Vinyl & CDs',   'match' => ['damaged', 'damaged vinyl', 'damaged cds', 'damaged vinyl & cds'], 'cost' => 0.00],
     ];
 
