@@ -170,9 +170,12 @@ class SellPosController extends Controller
 
         $business_locations = BusinessLocation::forDropdown($business_id, false);
 
+        // Exclude historical xlsx imports — they're backfilled "Legacy Historical Item"
+        // rows with old transaction_dates that were drowning out actual recent POS sales.
         $sales = Transaction::where('transactions.business_id', $business_id)
             ->where('transactions.type', 'sell')
             ->where('transactions.status', 'final')
+            ->whereNull('transactions.import_source')
             ->when($location_id, fn($q) => $q->where('transactions.location_id', $location_id))
             ->with([
                 'sell_lines' => fn($q) => $q->whereNull('parent_sell_line_id'),
