@@ -5180,257 +5180,6 @@ class ReportController extends Controller
         ));
     }
 
-    /**
-     * Clover vs ERP Reconciliation Report (ERP side).
-     *
-     * Replaces the manual ERP-side extraction step in Sarah's daily recon.
-     * Given a date + optional location, pulls every ERP transaction that
-     * received a card / Clover payment and groups by the employee who
-     * created the transaction. Shows per-employee totals + individual
-     * payment detail.
-     *
-     * NOTE: The Clover side of the reconciliation (pulling every payment
-     * from Clover's API to diff against the ERP totals below) requires
-     * backend integration work from Sohaib (Clover Orders/Payments API
-     * pull + local cache). Until that's in place, this page gives the
-     * ERP side cleanly so the daily manual process is half-automated.
-     */
-    public function cloverVsErpReport(Request $request)
-    {
-        if (!$this->businessUtil->is_admin(auth()->user()) && !auth()->user()->can('purchase_n_sell_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
-
-        $business_id = $request->session()->get('user.business_id');
-        $date = $request->input('date') ?: \Carbon::today()->format('Y-m-d');
-        $location_id = $request->input('location_id');
-        $business_locations = BusinessLocation::forDropdown($business_id);
-
-        // Cashiers always ring up sales as "cash" in the ERP regardless of
-        // how the customer actually paid (workflow convention). So we don't
-        // filter by payment method here — every finalized sell for the day
-        // is a line Sarah needs to reconcile against Clover.
-        //
-        // Only active cashiers. Terminated/inactive user accounts stay in
-        // the DB for historical joins, but Sarah shouldn't see them on
-        // today's shift reconciliation — she'll mark them inactive once
-        // and they drop off here automatically.
-        $base = DB::table('transaction_payments as tp')
-            ->join('transactions as t', 'tp.transaction_id', '=', 't.id')
-            ->leftJoin('users as u', 't.created_by', '=', 'u.id')
-            ->leftJoin('business_locations as bl', 't.location_id', '=', 'bl.id')
-            ->where('t.business_id', $business_id)
-            ->where('t.type', 'sell')
-            ->where('t.status', 'final')
-            ->where('u.status', 'active')
-            ->where('u.allow_login', 1)
-            ->whereDate('t.transaction_date', $date);
-
-        if (!empty($location_id)) {
-            $base->where('t.location_id', $location_id);
-        }
-
-        // Name keys (first & last, lowercased) of staff who can log in —
-        // used to drop ex-employees out of the "Clover only" unmatched list
-        // too. Same rule the ERP uses everywhere else for "current staff":
-        // status=active AND allow_login=1.
-        $active_name_keys = \DB::table('users')
-            ->where('business_id', $business_id)
-            ->where('status', 'active')
-            ->where('allow_login', 1)
-            ->selectRaw("LOWER(TRIM(first_name)) as first, LOWER(TRIM(last_name)) as last")
-            ->get()
-            ->flatMap(fn($u) => array_filter([$u->first, $u->last]))
-            ->unique()
-            ->values()
-            ->all();
-
-        // Per-employee rollup — ERP side (transaction_payments)
-        $employee_rows = (clone $base)
-            ->selectRaw("t.created_by,
-                CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as employee,
-                COUNT(tp.id) as cnt,
-                COALESCE(SUM(tp.amount), 0) as erp_total")
-            ->groupBy('t.created_by', 'u.first_name', 'u.last_name')
-            ->orderByDesc('erp_total')
-            ->get();
-
-        // Per-employee rollup — Clover side. Pulled from clover_payments
-        // (populated by the scheduled `clover:sync-payments` command). We
-        // group by normalized employee_name because Clover uses free-text
-        // names (e.g. "Henry", "Davis", "Luis") that don't match ERP's
-        // first_name + last_name structure. Reconciliation downstream joins
-        // on a case-insensitive prefix — good enough for a store with <20
-        // employees where first names don't collide.
-        $clover_rollup = \DB::table('clover_payments')
-            ->where('business_id', $business_id)
-            ->whereDate('paid_on', $date)
-            ->where(function ($q) {
-                $q->whereNull('result')->orWhere('result', 'SUCCESS')->orWhere('result', 'APPROVED');
-            })
-            ->selectRaw("LOWER(TRIM(COALESCE(employee_name, ''))) as emp_key,
-                COALESCE(MAX(employee_name), '(unknown)') as clover_employee,
-                COUNT(*) as clover_cnt,
-                COALESCE(SUM(amount), 0) as clover_total")
-            ->groupBy('emp_key')
-            ->get()
-            ->keyBy('emp_key');
-
-        // Fold Clover totals into the employee rollup. Match heuristic:
-        //   - Try ERP first_name lowercased == Clover emp_key
-        //   - Then ERP last_name lowercased == Clover emp_key
-        //   - Then substring match (Clover "Davis Bryant" finds "davis")
-        $claimed_clover_keys = [];
-        $employee_rows = $employee_rows->map(function ($row) use ($clover_rollup, &$claimed_clover_keys) {
-            $parts = preg_split('/\s+/', strtolower(trim($row->employee)));
-            $match = null;
-            foreach ($parts as $part) {
-                if ($part !== '' && isset($clover_rollup[$part]) && !isset($claimed_clover_keys[$part])) {
-                    $match = $clover_rollup[$part];
-                    $claimed_clover_keys[$part] = true;
-                    break;
-                }
-            }
-            if (!$match) {
-                // Loose substring match as last resort
-                foreach ($clover_rollup as $key => $cp) {
-                    if (isset($claimed_clover_keys[$key])) continue;
-                    foreach ($parts as $part) {
-                        if ($part !== '' && (strpos($key, $part) !== false || strpos($part, $key) !== false)) {
-                            $match = $cp;
-                            $claimed_clover_keys[$key] = true;
-                            break 2;
-                        }
-                    }
-                }
-            }
-            $row->clover_cnt = (int) ($match->clover_cnt ?? 0);
-            $row->clover_total = (float) ($match->clover_total ?? 0);
-            $row->diff = round(((float) $row->erp_total) - (float) $row->clover_total, 2);
-            return $row;
-        });
-
-        // Unclaimed Clover employees — names in Clover that didn't match any
-        // active ERP employee. Only surface if the Clover name looks like it
-        // belongs to a current active cashier (substring match against any
-        // active first/last name); otherwise it's an ex-employee's historic
-        // Clover record and we hide it.
-        $unmatched_clover = [];
-        foreach ($clover_rollup as $key => $cp) {
-            if (isset($claimed_clover_keys[$key])) continue;
-            $belongs_to_active = false;
-            foreach ($active_name_keys as $name) {
-                if ($name !== '' && (strpos($key, $name) !== false || strpos($name, $key) !== false)) {
-                    $belongs_to_active = true;
-                    break;
-                }
-            }
-            if (!$belongs_to_active) continue;
-            $unmatched_clover[] = (object) [
-                'created_by' => null,
-                'employee' => '(Clover only) ' . ($cp->clover_employee ?: $key),
-                'cnt' => 0,
-                'erp_total' => 0,
-                'clover_cnt' => (int) $cp->clover_cnt,
-                'clover_total' => (float) $cp->clover_total,
-                'diff' => round(0 - (float) $cp->clover_total, 2),
-            ];
-        }
-
-        // Per-location detail rows (like the bottom section of Sarah's spreadsheet)
-        $detail_rows = (clone $base)
-            ->selectRaw("tp.paid_on, t.transaction_date, tp.amount, tp.method, tp.card_type,
-                t.invoice_no, t.location_id, bl.name as location_name,
-                CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as employee")
-            ->orderByDesc('tp.paid_on')
-            ->orderByDesc('t.transaction_date')
-            ->get();
-
-        // Clover transactions for this day — raw pull from clover_payments,
-        // formatted to mirror what Sarah sees in the Clover dashboard so she
-        // can eyeball each line against the ERP detail above. Restricted to
-        // active staff using the same allow_login rule as the top rollup —
-        // ex-employees' historic Clover records don't show here either.
-        $clover_detail_rows = \DB::table('clover_payments')
-            ->where('business_id', $business_id)
-            ->whereDate('paid_on', $date)
-            ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id))
-            ->orderByDesc('paid_at')
-            ->get()
-            ->filter(function ($row) use ($active_name_keys) {
-                $name = strtolower(trim((string) ($row->employee_name ?? '')));
-                if ($name === '') return false;
-                foreach ($active_name_keys as $active) {
-                    if ($active !== '' && (strpos($name, $active) !== false || strpos($active, $name) !== false)) {
-                        return true;
-                    }
-                }
-                return false;
-            })
-            ->values()
-            ->map(function ($row) {
-                // Clover tender_type looks like "com.clover.tender.credit_card".
-                // Turn that + card_type into something readable.
-                $tender = strtolower((string) ($row->tender_type ?? ''));
-                if (str_contains($tender, 'cash')) {
-                    $row->display_tender = 'Cash';
-                } elseif ($row->card_type) {
-                    // "VISA" / "MC" — good enough, but if it's a debit the
-                    // tender string says so.
-                    $row->display_tender = str_contains($tender, 'debit')
-                        ? 'Debit · ' . strtoupper($row->card_type)
-                        : 'Card · ' . strtoupper($row->card_type);
-                } elseif (str_contains($tender, 'credit')) {
-                    $row->display_tender = 'Credit Card';
-                } elseif (str_contains($tender, 'debit')) {
-                    $row->display_tender = 'Debit Card';
-                } else {
-                    $row->display_tender = $row->tender_type ?: '(unknown)';
-                }
-                return $row;
-            });
-
-        // Cash paid OUT of the till — i.e. when a cashier buys a collection
-        // from a customer and pays in cash. These reduce the cash drawer and
-        // need to be surfaced per cashier so Clyde's "ERP sales $500 = Clover
-        // $500" reconciliation also accounts for "but I paid $20 cash for a
-        // record buy." Pulled from transaction_payments where the parent
-        // transaction is a purchase (type='purchase') paid in cash.
-        $buy_cash_rows = \DB::table('transaction_payments as tp')
-            ->join('transactions as t', 'tp.transaction_id', '=', 't.id')
-            ->leftJoin('users as u', 't.created_by', '=', 'u.id')
-            ->leftJoin('business_locations as bl', 't.location_id', '=', 'bl.id')
-            ->where('t.business_id', $business_id)
-            ->where('t.type', 'purchase')
-            ->where('u.status', 'active')
-            ->where('u.allow_login', 1)
-            ->where('tp.method', 'cash')
-            ->whereDate('t.transaction_date', $date)
-            ->when(!empty($location_id), fn($q) => $q->where('t.location_id', $location_id))
-            ->selectRaw("tp.paid_on, t.transaction_date, tp.amount, t.invoice_no,
-                t.ref_no, bl.name as location_name,
-                CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as employee,
-                t.created_by")
-            ->orderByDesc('t.transaction_date')
-            ->get();
-
-        // Group Clover detail + cash buy-outs per employee for the per-cashier
-        // card layout in the blade.
-        $clover_by_employee = $clover_detail_rows->groupBy(fn($r) => trim((string) ($r->employee_name ?? '(unknown)')));
-        $buy_cash_by_employee = $buy_cash_rows->groupBy(fn($r) => trim((string) ($r->employee ?? '(unknown)')));
-
-        $grand_total = (float) $employee_rows->sum('erp_total');
-        $clover_grand_total = (float) (
-            $employee_rows->sum('clover_total') + collect($unmatched_clover)->sum('clover_total')
-        );
-
-        return view('report.clover_vs_erp_report')->with(compact(
-            'employee_rows', 'detail_rows', 'date', 'location_id',
-            'business_locations', 'grand_total', 'clover_grand_total',
-            'unmatched_clover', 'clover_detail_rows',
-            'clover_by_employee', 'buy_cash_rows', 'buy_cash_by_employee'
-        ));
-    }
 
     /**
      * End-of-Day Clover Reconciliation — date-range view that compares ERP
@@ -5778,10 +5527,16 @@ class ReportController extends Controller
 
         // All cash registers that overlapped this window — opened in-window
         // OR opened earlier and still open (closed_at in-window or null).
+        //
+        // Scope to active cashiers only (status=active AND allow_login=1).
+        // Sarah's offboarding signal is flipping allow_login=0 → their old
+        // cash-register rows shouldn't clutter today's shift view.
         $regQ = \DB::table('cash_registers as cr')
-            ->leftJoin('users as u', 'cr.user_id', '=', 'u.id')
+            ->join('users as u', 'cr.user_id', '=', 'u.id')
             ->leftJoin('business_locations as bl', 'cr.location_id', '=', 'bl.id')
             ->where('cr.business_id', $business_id)
+            ->where('u.status', 'active')
+            ->where('u.allow_login', 1)
             ->where(function ($q) use ($start, $end) {
                 $q->where(function ($q2) use ($start, $end) {
                     $q2->whereDate('cr.created_at', '>=', $start)
@@ -5923,6 +5678,20 @@ class ReportController extends Controller
 
             $cloverTotal = array_sum(array_map(fn($r) => (float) $r->amount, $mineClover));
             $erpTotal    = array_sum(array_map(fn($r) => (float) $r->amount, $erpRows->all()));
+
+            // Skip shifts with zero sales activity on every channel — these
+            // are usually admin/test registers (cashier opened a drawer but
+            // never rang anything). They add noise without helping reconcile.
+            // A real shift will have at least one of: cash sale, cash buy,
+            // Clover card sale, or ERP card sale.
+            $hasActivity = $cashSales > 0.01
+                || $cashBuys > 0.01
+                || $cashRefunds > 0.01
+                || $cloverTotal > 0.01
+                || $erpTotal > 0.01;
+            if (!$hasActivity) {
+                continue;
+            }
 
             $cards[] = [
                 'register_id' => $reg->register_id,

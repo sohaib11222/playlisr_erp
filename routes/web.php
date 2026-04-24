@@ -362,7 +362,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/product-entry-productivity', 'ReportController@productEntryProductivity');
     Route::get('/reports/dead-stock', 'ReportController@deadStockReport');
     Route::get('/reports/whatnot', 'ReportController@whatnotReport');
-    Route::get('/reports/clover-vs-erp', 'ReportController@cloverVsErpReport');
+    // The old "Clover vs ERP" rollup is superseded by the EOD reconciliation
+    // page — same data, better structure (shift cards with drawer math).
+    // Redirect preserves any bookmarks pointing at the old URL.
+    Route::redirect('/reports/clover-vs-erp', '/reports/clover-eod-reconciliation');
     Route::get('/reports/clover-eod-reconciliation', 'ReportController@cloverEodReconciliation')->name('reports.clover-eod');
     Route::redirect('/reports/clover-reconciliation', '/reports/clover-eod-reconciliation');
     Route::post('/reports/clover-eod-reconciliation/sync-now', 'ReportController@cloverEodSyncNow')->name('reports.clover-eod.sync');

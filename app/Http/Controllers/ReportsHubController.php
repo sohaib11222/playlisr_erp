@@ -74,7 +74,7 @@ class ReportsHubController extends Controller
                 'title' => 'Reconciliation & Channels',
                 'icon'  => 'fa-balance-scale',
                 'reports' => [
-                    ['key' => 'clover-vs-erp',         'name' => 'Clover vs ERP Recon',   'icon' => 'fa-balance-scale',      'action' => 'ReportController@cloverVsErpReport',          'desc' => 'Daily card/Clover recon.'],
+                    ['key' => 'clover-eod',            'name' => 'Clover EOD Reconciliation', 'icon' => 'fa-balance-scale',  'action' => 'ReportController@cloverEodReconciliation',    'desc' => 'Per-shift audit — ERP vs Clover + drawer math.'],
                     ['key' => 'whatnot-sales',         'name' => 'Whatnot Sales',         'icon' => 'fa-tv',                 'action' => 'ReportController@whatnotReport',              'desc' => 'Live-auction vs in-store/online.'],
                     ['key' => 'register-report',       'name' => 'Register Report',       'icon' => 'fa-cash-register',      'action' => 'ReportController@getRegisterReport',          'desc' => 'Register activity + close-outs.'],
                     ['key' => 'tax-report',            'name' => 'Tax Report',            'icon' => 'fa-percent',            'action' => 'ReportController@getTaxReport',               'desc' => 'Tax collected summary.'],
