@@ -20,26 +20,53 @@
         @endif
     </div>
 
+    @php
+        $prev_day = \Carbon\Carbon::parse($date)->subDay()->format('Y-m-d');
+        $next_day = \Carbon\Carbon::parse($date)->addDay()->format('Y-m-d');
+        $today_str = \Carbon::today()->format('Y-m-d');
+        $is_today = $date === $today_str;
+        $is_future = $date > $today_str;
+        $nav_base = action('ReportController@cloverVsErpReport');
+        $loc_qs = !empty($location_id) ? '&location_id=' . urlencode($location_id) : '';
+    @endphp
+
     <div class="box box-primary">
-        <div class="box-header with-border"><h3 class="box-title">Filters</h3></div>
+        <div class="box-header with-border"><h3 class="box-title">Reconcile a day</h3></div>
         <div class="box-body">
-            <form method="GET" action="{{ action('ReportController@cloverVsErpReport') }}" class="row">
-                <div class="col-md-4">
+            <form method="GET" action="{{ $nav_base }}" class="row" id="reconcile-filter-form">
+                <div class="col-md-5">
                     <label>Date</label>
-                    <input type="date" class="form-control" name="date" value="{{ $date }}">
+                    <div class="input-group">
+                        <a href="{{ $nav_base }}?date={{ $prev_day }}{{ $loc_qs }}" class="btn btn-default" title="Previous day">
+                            <i class="fa fa-chevron-left"></i>
+                        </a>
+                        <input type="date" class="form-control" name="date" value="{{ $date }}" max="{{ $today_str }}" style="text-align:center;" onchange="this.form.submit()">
+                        <a href="{{ $nav_base }}?date={{ $next_day }}{{ $loc_qs }}" class="btn btn-default {{ $is_today || $is_future ? 'disabled' : '' }}" title="Next day">
+                            <i class="fa fa-chevron-right"></i>
+                        </a>
+                        <span class="input-group-btn">
+                            <a href="{{ $nav_base }}?date={{ $today_str }}{{ $loc_qs }}" class="btn {{ $is_today ? 'btn-default disabled' : 'btn-primary' }}">Today</a>
+                        </span>
+                    </div>
+                    <small class="text-muted">
+                        {{ \Carbon\Carbon::parse($date)->format('l, M j, Y') }}
+                        @if($is_today) <strong>(today)</strong>
+                        @elseif(\Carbon\Carbon::parse($date)->isYesterday()) <strong>(yesterday)</strong>
+                        @endif
+                    </small>
                 </div>
                 <div class="col-md-5">
                     <label>Location</label>
-                    <select name="location_id" class="form-control">
+                    <select name="location_id" class="form-control" onchange="this.form.submit()">
                         <option value="">All locations</option>
                         @foreach($business_locations as $id => $name)
                             <option value="{{ $id }}" @if((string)$location_id === (string)$id) selected @endif>{{ $name }}</option>
                         @endforeach
                     </select>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <label style="display:block;">&nbsp;</label>
-                    <button type="submit" class="btn btn-primary"><i class="fa fa-filter"></i> Apply</button>
+                    <button type="submit" class="btn btn-default btn-block"><i class="fa fa-refresh"></i> Reload</button>
                 </div>
             </form>
         </div>
@@ -47,7 +74,7 @@
 
     <div class="box box-solid">
         <div class="box-header with-border">
-            <h3 class="box-title">Daily reconciliation — {{ \Carbon\Carbon::parse($date)->format('M j, Y') }}</h3>
+            <h3 class="box-title">Daily reconciliation — {{ \Carbon\Carbon::parse($date)->format('l, M j, Y') }}</h3>
         </div>
         <div class="box-body table-responsive">
             <table class="table table-bordered table-striped">
