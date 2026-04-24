@@ -5,7 +5,15 @@
 
 <!-- Content Header (Page header) -->
 <section class="content-header no-print">
-    <h1>Sales Transaction Detail Report</h1>
+    <h1>
+        Sales Transaction Detail Report
+        <a href="{{ url('/sales-itemized') }}" class="btn btn-sm btn-default" style="margin-left:12px;font-size:13px;">
+            <i class="fa fa-list-ul"></i> Switch to itemized view
+        </a>
+    </h1>
+    <p class="text-muted" style="margin-top:6px;">
+        One row per transaction. For one row per product sold (with cost + margin per line), use the itemized view.
+    </p>
 </section>
 
 <!-- Main content -->

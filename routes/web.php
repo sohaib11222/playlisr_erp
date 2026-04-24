@@ -233,6 +233,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/sells/draft-dt', 'SellController@getDraftDatables');
     Route::resource('sells', 'SellController')->except(['show']);
 
+    // Itemized sales report (Sabina/accountant view) — one row per product
+    // sold, with cost + margin per line. Same filters as /sells.
+    Route::get('/sales-itemized', 'SellController@itemized')->name('sales.itemized');
+
     Route::get('/import-sales', 'ImportSalesController@index');
     Route::post('/import-sales/preview', 'ImportSalesController@preview');
     Route::post('/import-sales', 'ImportSalesController@import');

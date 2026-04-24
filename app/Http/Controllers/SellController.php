@@ -709,6 +709,125 @@ class SellController extends Controller
     }
 
     /**
+     * Itemized sales report — one row per product sold (sell line) instead of
+     * one row per transaction. Sabina's accountant view: shows cost + margin
+     * per line so margin reconciliation matches the XLSX export.
+     *
+     * Same filters as the transaction view (date, location, customer,
+     * payment status, user, whatnot). Read-only.
+     */
+    public function itemized(Request $request)
+    {
+        if (!auth()->user()->can('direct_sell.view') && !auth()->user()->can('view_own_sell_only') && !auth()->user()->can('sell.view')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = $request->session()->get('user.business_id');
+
+        if ($request->ajax()) {
+            $lines = DB::table('transaction_sell_lines as tsl')
+                ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+                ->leftJoin('contacts', 't.contact_id', '=', 'contacts.id')
+                ->leftJoin('products as p', 'tsl.product_id', '=', 'p.id')
+                ->leftJoin('variations as v', 'tsl.variation_id', '=', 'v.id')
+                ->leftJoin('business_locations as bl', 't.location_id', '=', 'bl.id')
+                ->leftJoin('users as u', 't.created_by', '=', 'u.id')
+                ->where('t.business_id', $business_id)
+                ->where('t.type', 'sell')
+                ->where('t.status', 'final')
+                ->whereNull('tsl.parent_sell_line_id')
+                ->select(
+                    'tsl.id as line_id',
+                    't.id as transaction_id',
+                    't.transaction_date',
+                    't.invoice_no',
+                    't.payment_status',
+                    't.is_whatnot',
+                    'contacts.name as customer',
+                    'bl.name as location',
+                    DB::raw("COALESCE(NULLIF(p.name, ''), NULLIF(tsl.product_name, ''), '') as product_name"),
+                    DB::raw("COALESCE(NULLIF(v.sub_sku, ''), NULLIF(p.sku, ''), NULLIF(tsl.sub_sku, ''), '') as sku"),
+                    DB::raw("COALESCE(NULLIF(p.artist, ''), NULLIF(tsl.product_artist, ''), '') as artist"),
+                    'tsl.quantity',
+                    'tsl.unit_price',
+                    DB::raw('(tsl.unit_price * tsl.quantity) as line_total'),
+                    DB::raw('COALESCE(tsl.purchase_price, v.default_purchase_price, 0) as cost'),
+                    DB::raw('((tsl.unit_price - COALESCE(tsl.purchase_price, v.default_purchase_price, 0)) * tsl.quantity) as margin'),
+                    DB::raw(
+                        \Schema::hasColumn('transactions', 'import_source')
+                            ? "CASE WHEN COALESCE(t.import_source, '') != '' THEN 'Historical Import' ELSE CONCAT(COALESCE(u.surname, ''),' ',COALESCE(u.first_name, ''),' ',COALESCE(u.last_name,'')) END as added_by"
+                            : "CONCAT(COALESCE(u.surname, ''),' ',COALESCE(u.first_name, ''),' ',COALESCE(u.last_name,'')) as added_by"
+                    ),
+                    DB::raw('(SELECT GROUP_CONCAT(DISTINCT method SEPARATOR ", ") FROM transaction_payments WHERE transaction_id = t.id) as payment_methods')
+                );
+
+            // Filters — same shape as index()
+            if ($request->filled('start_date') && $request->filled('end_date')) {
+                $lines->whereDate('t.transaction_date', '>=', $request->input('start_date'))
+                      ->whereDate('t.transaction_date', '<=', $request->input('end_date'));
+            }
+            if ($request->filled('location_id')) {
+                $lines->where('t.location_id', $request->input('location_id'));
+            }
+            if ($request->filled('customer_id')) {
+                $lines->where('contacts.id', $request->input('customer_id'));
+            }
+            if ($request->filled('payment_status')) {
+                $lines->where('t.payment_status', $request->input('payment_status'));
+            }
+            if ($request->filled('created_by')) {
+                $lines->where('t.created_by', $request->input('created_by'));
+            }
+            if ($request->input('is_whatnot') == '1') {
+                $lines->where('t.is_whatnot', 1);
+            }
+
+            $lines->orderBy('t.transaction_date', 'desc')->orderBy('tsl.id', 'desc');
+
+            return Datatables::of($lines)
+                ->editColumn('transaction_date', function ($row) {
+                    return $row->transaction_date
+                        ? \Carbon\Carbon::parse($row->transaction_date)->format('m/d/y g:i A')
+                        : '';
+                })
+                ->editColumn('quantity', function ($row) {
+                    return rtrim(rtrim(number_format((float) $row->quantity, 2, '.', ''), '0'), '.');
+                })
+                ->editColumn('unit_price', function ($row) {
+                    return '$' . number_format((float) $row->unit_price, 2);
+                })
+                ->editColumn('line_total', function ($row) {
+                    return '$' . number_format((float) $row->line_total, 2);
+                })
+                ->editColumn('cost', function ($row) {
+                    return '$' . number_format((float) $row->cost, 2);
+                })
+                ->editColumn('margin', function ($row) {
+                    $color = $row->margin >= 0 ? '' : 'color:#c00;';
+                    return '<span style="' . $color . '">$' . number_format((float) $row->margin, 2) . '</span>';
+                })
+                ->editColumn('payment_status', function ($row) {
+                    return ucfirst($row->payment_status ?? '');
+                })
+                ->editColumn('is_whatnot', function ($row) {
+                    return $row->is_whatnot ? '<span class="label label-warning">Whatnot</span>' : '';
+                })
+                ->addColumn('action', function ($row) {
+                    return '<a href="' . action('SellController@show', [$row->transaction_id]) . '" class="btn btn-xs btn-info" title="View transaction"><i class="fa fa-eye"></i></a>';
+                })
+                ->rawColumns(['action', 'is_whatnot', 'margin'])
+                ->make(true);
+        }
+
+        $business_locations = BusinessLocation::forDropdown($business_id, false);
+        $customers = Contact::customersDropdown($business_id, false);
+        $sales_representative = User::forDropdown($business_id, false, false, true, false, true);
+
+        return view('sell.itemized')
+            ->with(compact('business_locations', 'customers', 'sales_representative'));
+    }
+
+    /**
      * Show the form for creating a new resource.
      *
      * @return \Illuminate\Http\Response
