@@ -585,6 +585,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/admin/nivessa-backend-import/chunk', 'NivessaBackendImportController@chunk');
     Route::post('/admin/nivessa-backend-import/run', 'NivessaBackendImportController@run');
 
+    // Flat-rate cost price rules (accountant punch list). Backfills missing
+    // default_purchase_price on variations by category. Preview then Apply.
+    Route::get('/admin/cost-price-rules', 'CostPriceRulesController@index');
+    Route::post('/admin/cost-price-rules/run', 'CostPriceRulesController@run');
+
     // One-shot diagnostic: did the Nivessa Backend xlsx imports land on prod?
     // Hit /admin/nivessa-import-status in the browser to see row counts per table.
     Route::get('/admin/nivessa-import-status', function () {
