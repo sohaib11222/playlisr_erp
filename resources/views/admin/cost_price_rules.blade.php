@@ -44,6 +44,35 @@
     </div>
 </div>
 
+<div class="row">
+    <div class="col-md-12">
+        <div class="box box-default">
+            <div class="box-header with-border">
+                <h3 class="box-title">All ERP categories ({{ count($categories) }})</h3>
+                <span class="help-block" style="display:inline-block;margin-left:12px;">
+                    Copy the exact name of a category and tell me which rule it should match.
+                </span>
+            </div>
+            <div class="box-body" style="padding:0;">
+                <table class="table table-condensed table-striped" style="margin:0;">
+                    <thead>
+                        <tr><th style="width:80px;">ID</th><th>Name</th><th style="width:120px;">Parent ID</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($categories as $c)
+                            <tr>
+                                <td>{{ $c->id }}</td>
+                                <td>{{ $c->name }}</td>
+                                <td>{{ $c->parent_id ?: '-' }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
 @if ($results !== null)
 <div class="row">
     <div class="col-md-12">

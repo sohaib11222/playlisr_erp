@@ -27,7 +27,19 @@ class CostPriceRulesController extends Controller
             'rules' => self::RULES,
             'results' => null,
             'mode' => null,
+            'categories' => $this->allCategories(),
         ]);
+    }
+
+    private function allCategories()
+    {
+        $businessId = request()->session()->get('user.business_id');
+        return DB::table('categories')
+            ->where('business_id', $businessId)
+            ->whereNull('deleted_at')
+            ->orderBy('parent_id')
+            ->orderBy('name')
+            ->get(['id', 'name', 'parent_id']);
     }
 
     public function run(Request $request)
@@ -111,6 +123,7 @@ class CostPriceRulesController extends Controller
             'mode' => $commit ? 'commit' : 'preview',
             'grand_matched' => $grandMatchedCategory,
             'grand_updated' => $grandUpdated,
+            'categories' => $this->allCategories(),
         ]);
     }
 }
