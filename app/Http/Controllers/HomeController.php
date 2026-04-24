@@ -725,6 +725,7 @@ class HomeController extends Controller
             ->where('business_id', $business_id)
             ->where('type', 'sell')
             ->where('status', 'final')
+            ->whereNull('import_source')
             ->where('location_id', $my_default_loc_id)
             ->whereBetween('transaction_date', [$dow_lookback_start, $dow_lookback_end])
             ->whereRaw('DAYOFWEEK(transaction_date) = ?', [$dow_mysql])
@@ -793,6 +794,7 @@ class HomeController extends Controller
             ->where('t.business_id', $business_id)
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
+            ->whereNull('t.import_source')
             ->where('p.created_by', $me_id);
 
         $my_priced_rev_mtd = (float) (clone $my_priced_revenue_q)
@@ -819,6 +821,7 @@ class HomeController extends Controller
             ->where('t.business_id', $business_id)
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
+            ->whereNull('t.import_source')
             ->whereDate('t.transaction_date', '>=', $mtd_start)
             ->whereDate('t.transaction_date', '<=', $mtd_end)
             ->selectRaw("t.created_by,
@@ -840,6 +843,7 @@ class HomeController extends Controller
             ->where('t.business_id', $business_id)
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
+            ->whereNull('t.import_source')
             ->where('t.transaction_date', '>=', $since_7)
             ->selectRaw("t.transaction_date,
                 p.name, p.artist, p.format,

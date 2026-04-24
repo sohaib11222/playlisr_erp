@@ -7312,6 +7312,7 @@ class ReportController extends Controller
             ->where('t.business_id', $business_id)
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
+            ->whereNull('t.import_source')
             ->whereBetween('t.transaction_date', [$start, $end])
             ->selectRaw("t.created_by,
                 CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as employee,
@@ -7321,6 +7322,7 @@ class ReportController extends Controller
                 COALESCE((SELECT SUM(t2.final_total) FROM transactions t2
                     WHERE t2.business_id = t.business_id
                       AND t2.type = 'sell' AND t2.status = 'final'
+                      AND t2.import_source IS NULL
                       AND t2.created_by = t.created_by
                       AND t2.transaction_date BETWEEN ? AND ?), 0) as revenue")
             ->addBinding($start, 'select')
@@ -7345,6 +7347,7 @@ class ReportController extends Controller
             ->where('t.business_id', $business_id)
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
+            ->whereNull('t.import_source')
             ->whereBetween('t.transaction_date', [$start, $end])
             ->selectRaw('p.created_by, COALESCE(SUM(tsl.quantity * tsl.unit_price_inc_tax), 0) as priced_revenue')
             ->groupBy('p.created_by')

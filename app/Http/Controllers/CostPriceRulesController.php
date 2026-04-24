@@ -58,6 +58,7 @@ class CostPriceRulesController extends Controller
             $categoryIds = DB::table('categories')
                 ->where('business_id', $businessId)
                 ->where('parent_id', 0)
+                ->whereNull('deleted_at')
                 ->whereIn(DB::raw('LOWER(TRIM(name))'), $rule['match'])
                 ->pluck('id')
                 ->all();
@@ -83,7 +84,8 @@ class CostPriceRulesController extends Controller
                     $q->whereNull('variations.default_purchase_price')
                       ->orWhere('variations.default_purchase_price', 0);
                 })
-                ->whereNull('variations.deleted_at');
+                ->whereNull('variations.deleted_at')
+                ->whereNull('products.deleted_at');
 
             $eligible = (clone $eligibleQuery)->count('variations.id');
             $grandMatchedCategory += $eligible;
