@@ -5538,17 +5538,22 @@ class ReportController extends Controller
             ->where('u.status', 'active')
             ->where('u.allow_login', 1)
             ->where(function ($q) use ($start, $end) {
+                // Shift opened in window
                 $q->where(function ($q2) use ($start, $end) {
                     $q2->whereDate('cr.created_at', '>=', $start)
                        ->whereDate('cr.created_at', '<=', $end);
                 })->orWhere(function ($q2) use ($start, $end) {
+                    // Shift closed in window (covers shifts that opened
+                    // before the window but ended inside it)
                     $q2->whereNotNull('cr.closed_at')
                        ->whereDate('cr.closed_at', '>=', $start)
                        ->whereDate('cr.closed_at', '<=', $end);
-                })->orWhere(function ($q2) use ($end) {
-                    $q2->whereNull('cr.closed_at')
-                       ->whereDate('cr.created_at', '<=', $end);
                 });
+                // Note: we deliberately do NOT include stale open shifts
+                // from prior days. If a register was opened 3 days ago and
+                // never closed, it's a forgotten drawer — it clutters today's
+                // reconciliation. Sarah wants open shifts to only surface
+                // when they were opened in the current window.
             });
         if (!empty($location_id)) {
             $regQ->where('cr.location_id', $location_id);
