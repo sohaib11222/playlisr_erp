@@ -5206,24 +5206,11 @@ class ReportController extends Controller
         $location_id = $request->input('location_id');
         $business_locations = BusinessLocation::forDropdown($business_id);
 
-        // Which payment method(s) to count as "card/Clover" for this report.
-        // Widened 2026-04-20 after Sarah saw the report come up empty — on
-        // her install, Clover payments land under names like "credit_sale",
-        // "stripe", "cheque" (custom-configured) and other custom_pay_* slots.
-        // Start forgiving; if nothing matches, auto-fallback to ALL methods
-        // below so the report is never blank when there ARE sales that day.
-        $default_card_methods = [
-            'clover', 'card', 'credit_card', 'credit_sale',
-            'custom_pay_1', 'custom_pay_2', 'custom_pay_3', 'custom_pay_4',
-            'custom_pay_5', 'custom_pay_6', 'custom_pay_7',
-        ];
-        $selected_method = $request->input('method', 'auto');
-
-        // Base query for the selected date.
-        // IMPORTANT: filter on t.business_id (always populated) rather than
-        // tp.business_id (can be NULL on older rows). Also use transaction_date
-        // rather than paid_on — paid_on is sometimes NULL even on finalized sells.
-        $baseAll = DB::table('transaction_payments as tp')
+        // Cashiers always ring up sales as "cash" in the ERP regardless of
+        // how the customer actually paid (workflow convention). So we don't
+        // filter by payment method here — every finalized sell for the day
+        // is a line Sarah needs to reconcile against Clover.
+        $base = DB::table('transaction_payments as tp')
             ->join('transactions as t', 'tp.transaction_id', '=', 't.id')
             ->leftJoin('users as u', 't.created_by', '=', 'u.id')
             ->leftJoin('business_locations as bl', 't.location_id', '=', 'bl.id')
@@ -5233,40 +5220,8 @@ class ReportController extends Controller
             ->whereDate('t.transaction_date', $date);
 
         if (!empty($location_id)) {
-            $baseAll->where('t.location_id', $location_id);
+            $base->where('t.location_id', $location_id);
         }
-
-        // Diagnostic: show what methods actually exist for this date — helps
-        // pinpoint what Clover payments are stored as on this install.
-        $methods_breakdown = (clone $baseAll)
-            ->selectRaw("COALESCE(tp.method, '(null)') as method, COUNT(*) as cnt, COALESCE(SUM(tp.amount), 0) as total")
-            ->groupBy('tp.method')
-            ->orderByDesc('total')
-            ->get();
-
-        // Apply the method filter for the employee / detail rollups.
-        //
-        // Auto-fallback: if the user is on 'auto' and none of the day's
-        // payment methods intersect with our known card-like list, swap to
-        // 'all' so they see something instead of an empty report. Sarah was
-        // hitting this daily — Clover payments on her install are stored
-        // under method names that didn't match the old defaults.
-        $effective_method = $selected_method;
-        if ($selected_method === 'auto') {
-            $day_methods = $methods_breakdown->pluck('method')->map(fn($m) => (string) $m)->all();
-            $has_overlap = !empty(array_intersect($day_methods, $default_card_methods));
-            if (!$has_overlap && !empty($day_methods)) {
-                $effective_method = 'all';
-            }
-        }
-
-        $base = (clone $baseAll);
-        if ($effective_method === 'auto') {
-            $base->whereIn('tp.method', $default_card_methods);
-        } elseif ($effective_method !== 'all') {
-            $base->where('tp.method', $effective_method);
-        }
-        // (when $effective_method === 'all', no method filter is applied)
 
         // Per-employee rollup — ERP side (transaction_payments)
         $employee_rows = (clone $base)
@@ -5366,8 +5321,7 @@ class ReportController extends Controller
         return view('report.clover_vs_erp_report')->with(compact(
             'employee_rows', 'detail_rows', 'date', 'location_id',
             'business_locations', 'grand_total', 'clover_grand_total',
-            'unmatched_clover', 'methods_breakdown',
-            'selected_method', 'effective_method', 'default_card_methods'
+            'unmatched_clover'
         ));
     }
 
