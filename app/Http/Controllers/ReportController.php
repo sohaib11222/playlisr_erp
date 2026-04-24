@@ -5223,17 +5223,21 @@ class ReportController extends Controller
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
             ->where('u.status', 'active')
+            ->where('u.allow_login', 1)
             ->whereDate('t.transaction_date', $date);
 
         if (!empty($location_id)) {
             $base->where('t.location_id', $location_id);
         }
 
-        // Name keys (first & last, lowercased) of active users — used to
-        // drop ex-employees out of the "Clover only" unmatched list too.
+        // Name keys (first & last, lowercased) of staff who can log in —
+        // used to drop ex-employees out of the "Clover only" unmatched list
+        // too. Same rule the ERP uses everywhere else for "current staff":
+        // status=active AND allow_login=1.
         $active_name_keys = \DB::table('users')
             ->where('business_id', $business_id)
             ->where('status', 'active')
+            ->where('allow_login', 1)
             ->selectRaw("LOWER(TRIM(first_name)) as first, LOWER(TRIM(last_name)) as last")
             ->get()
             ->flatMap(fn($u) => array_filter([$u->first, $u->last]))
