@@ -30,24 +30,22 @@
 
                 <form method="POST" action="{{ url('/admin/cost-price-rules/run') }}" style="margin-top:16px;" id="cpr-form">
                     @csrf
-                    <button type="submit" name="commit" value="0" class="btn btn-default btn-lg">Preview</button>
-                    <button type="submit" name="commit" value="1" class="btn btn-primary btn-lg">
-                        Apply
-                    </button>
+                    <input type="hidden" name="commit" id="cpr-commit" value="0">
+                    <button type="button" class="btn btn-default btn-lg" onclick="cprSubmit(0)">Preview</button>
+                    <button type="button" class="btn btn-primary btn-lg" onclick="cprSubmit(1)">Apply</button>
                     <span id="cpr-status" class="help-block" style="display:inline-block;margin-left:12px;vertical-align:middle;">
                         Preview first to confirm category matches. Apply writes values.
                     </span>
                 </form>
                 <script>
-                    document.getElementById('cpr-form').addEventListener('submit', function (e) {
-                        const btn = e.submitter;
-                        const isApply = btn && btn.value === '1';
+                    function cprSubmit(commit) {
+                        document.getElementById('cpr-commit').value = commit;
                         document.getElementById('cpr-status').innerHTML =
                             '<span style="color:#c00;font-weight:bold;">' +
-                            (isApply ? 'Applying — writing to DB, do not close this tab…' : 'Running preview…') +
+                            (commit ? 'Applying — writing to DB, do not close this tab…' : 'Running preview…') +
                             '</span>';
-                        Array.from(e.target.querySelectorAll('button')).forEach(b => b.disabled = true);
-                    });
+                        document.getElementById('cpr-form').submit();
+                    }
                 </script>
             </div>
         </div>
