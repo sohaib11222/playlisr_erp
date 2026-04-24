@@ -84,8 +84,7 @@ class CostPriceRulesController extends Controller
                     $q->whereNull('variations.default_purchase_price')
                       ->orWhere('variations.default_purchase_price', 0);
                 })
-                ->whereNull('variations.deleted_at')
-                ->whereNull('products.deleted_at');
+                ->whereNull('variations.deleted_at');
 
             $eligible = (clone $eligibleQuery)->count('variations.id');
             $grandMatchedCategory += $eligible;
