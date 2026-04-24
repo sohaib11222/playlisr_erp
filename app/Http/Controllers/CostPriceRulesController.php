@@ -36,8 +36,8 @@ class CostPriceRulesController extends Controller
         $businessId = request()->session()->get('user.business_id');
         return DB::table('categories')
             ->where('business_id', $businessId)
+            ->where('parent_id', 0)
             ->whereNull('deleted_at')
-            ->orderBy('parent_id')
             ->orderBy('name')
             ->get(['id', 'name', 'parent_id']);
     }
@@ -57,6 +57,7 @@ class CostPriceRulesController extends Controller
         foreach (self::RULES as $rule) {
             $categoryIds = DB::table('categories')
                 ->where('business_id', $businessId)
+                ->where('parent_id', 0)
                 ->whereIn(DB::raw('LOWER(TRIM(name))'), $rule['match'])
                 ->pluck('id')
                 ->all();
@@ -73,16 +74,11 @@ class CostPriceRulesController extends Controller
                 continue;
             }
 
-            // Variations that are in a matched category AND have missing cost.
-            // Check both products.category_id and products.sub_category_id —
-            // Nivessa's catalog uses sub-categories for some of these (e.g.
-            // "New Vinyl" may live as a sub of "Vinyl").
+            // Variations whose product is in a matched top-level category AND
+            // have missing cost. Rules map to parent categories only.
             $eligibleQuery = DB::table('variations')
                 ->join('products', 'products.id', '=', 'variations.product_id')
-                ->where(function ($q) use ($categoryIds) {
-                    $q->whereIn('products.category_id', $categoryIds)
-                      ->orWhereIn('products.sub_category_id', $categoryIds);
-                })
+                ->whereIn('products.category_id', $categoryIds)
                 ->where(function ($q) {
                     $q->whereNull('variations.default_purchase_price')
                       ->orWhere('variations.default_purchase_price', 0);

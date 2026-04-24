@@ -32,9 +32,9 @@ class ReportsHubController extends Controller
                 'reports' => [
                     ['key' => 'profit-loss',           'name' => 'Profit / Loss Report',  'icon' => 'fa-balance-scale',      'action' => 'ReportController@getProfitLoss',              'desc' => 'Full P&L by date range.'],
                     ['key' => 'sale-report',           'name' => 'Product Sell Report',   'icon' => 'fa-receipt',            'action' => 'ReportController@saleReport',                 'desc' => 'Revenue by product.'],
-                    ['key' => 'sales-by-item',         'name' => 'Sales by Item (Cost & Margin)', 'icon' => 'fa-tags',       'action' => 'ReportController@getSellReportByItem',        'desc' => 'Sell report with cost + margin.'],
+                    ['key' => 'sales-by-item',         'name' => 'Sales by Item (Cost & Margin)', 'icon' => 'fa-tags',       'action' => 'ReportController@salesByItemCostMargin',      'desc' => 'Sell report with cost + margin.'],
                     ['key' => 'sales-rep',             'name' => 'Sales Representative Report', 'icon' => 'fa-user-tie',     'action' => 'ReportController@getSalesRepresentativeReport','desc' => 'Sales by sales rep.'],
-                    ['key' => 'sell-payment',          'name' => 'Sell Payment Report',   'icon' => 'fa-money-check',        'action' => 'ReportController@getSellPaymentReport',       'desc' => 'Payments against sells.'],
+                    ['key' => 'sell-payment',          'name' => 'Sell Payment Report',   'icon' => 'fa-money-check',        'action' => 'ReportController@sellPaymentReport',          'desc' => 'Payments against sells.'],
                     ['key' => 'purchase-sell',         'name' => 'Purchase & Sale',       'icon' => 'fa-exchange-alt',       'action' => 'ReportController@getPurchaseSell',            'desc' => 'Purchase vs sell summary.'],
                 ],
             ],
