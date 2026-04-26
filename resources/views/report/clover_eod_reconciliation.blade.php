@@ -179,7 +179,33 @@
             <strong>Cash check</strong> reconciles the drawer: opening cash + cash sales − cash buys/refunds should equal what the cashier counted at close.
         </p>
 
-        @foreach($shift_audit as $s)
+        @php
+            // Group shift cards by the day they opened, most-recent day first.
+            // Sarah was getting confused by Apr-23 and Apr-24 cards stacked
+            // with no visual separation; a clear "Today" / "Yesterday" header
+            // above each group makes it obvious which shift belongs to which
+            // day before she even reads the times on the card.
+            $shiftsByDay = collect($shift_audit)
+                ->groupBy(fn($s) => $s['opened_at']->copy()->setTimezone(config('app.timezone'))->format('Y-m-d'))
+                ->sortKeysDesc();
+            $tzToday = \Carbon\Carbon::today(config('app.timezone'))->format('Y-m-d');
+            $tzYesterday = \Carbon\Carbon::yesterday(config('app.timezone'))->format('Y-m-d');
+        @endphp
+
+        @foreach($shiftsByDay as $dayKey => $dayShifts)
+            @php
+                $dayHeader = $dayKey === $tzToday ? 'Today'
+                    : ($dayKey === $tzYesterday ? 'Yesterday'
+                    : \Carbon\Carbon::parse($dayKey)->format('l'));
+                $dayDate = \Carbon\Carbon::parse($dayKey)->format('M j, Y');
+            @endphp
+            <div style="margin: 18px 0 8px; padding: 6px 10px; background: #f3f4f6; border-left: 4px solid #6366f1; border-radius: 4px;">
+                <span style="font-size: 13px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: #1f2937;">{{ $dayHeader }}</span>
+                <span style="font-size: 12px; color: #6b7280; margin-left: 8px;">{{ $dayDate }}</span>
+                <span style="font-size: 11px; color: #9ca3af; margin-left: 8px;">· {{ count($dayShifts) }} shift{{ count($dayShifts) === 1 ? '' : 's' }}</span>
+            </div>
+
+        @foreach($dayShifts as $s)
             @php
                 $salesDiffAbs = abs($s['sales_diff']);
                 $salesBad = $salesDiffAbs >= 10;
@@ -320,7 +346,8 @@
                     </div>
                 </div>
             </div>
-        @endforeach
+        @endforeach {{-- end inner per-shift cards loop --}}
+        @endforeach {{-- end outer per-day grouping loop --}}
     @elseif(empty($rows))
         <div class="alert alert-info" style="margin-bottom:20px;">No shifts in this window. Pick a different day or open a register.</div>
     @endif
