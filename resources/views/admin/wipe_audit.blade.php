@@ -32,6 +32,12 @@
             @if ($count)
             <div class="box-body">
                 <p>
+                    <a href="{{ url('/admin/wipe-audit/csv') }}" class="btn btn-primary">
+                        <i class="fa fa-download"></i> Download all {{ number_format($count) }} affected SKUs as CSV
+                    </a>
+                </p>
+
+                <p style="margin-top:16px;">
                     For Sohaib's surgical restore — the precise SQL is:
                 </p>
                 <pre style="background:#f5f5f5;padding:12px;border-radius:6px;">
