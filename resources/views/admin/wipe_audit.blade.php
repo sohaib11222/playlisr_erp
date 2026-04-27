@@ -52,8 +52,9 @@ WHERE v.id IN (
                                 <th>Product</th>
                                 <th>Created by</th>
                                 <th>Updated at (server)</th>
+                                <th style="text-align:right; background:#f2dede;">Purchase Price NOW (wiped)</th>
                                 <th style="text-align:right;">Selling (ex)</th>
-                                <th style="text-align:right;">Selling (inc)</th>
+                                <th style="text-align:right;">Selling (inc / sticker)</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -64,12 +65,22 @@ WHERE v.id IN (
                                     <td>{{ $r->name }}</td>
                                     <td>{{ trim($r->created_by) ?: '—' }}</td>
                                     <td>{{ $r->updated_at }}</td>
+                                    <td style="text-align:right; color:#a94442;">
+                                        <strong>${{ number_format((float) $r->default_purchase_price, 2) }}</strong>
+                                        / ${{ number_format((float) $r->dpp_inc_tax, 2) }}
+                                    </td>
                                     <td style="text-align:right;">${{ number_format((float) $r->default_sell_price, 2) }}</td>
                                     <td style="text-align:right;">${{ number_format((float) $r->sell_price_inc_tax, 2) }}</td>
                                 </tr>
                             @endforeach
                         </tbody>
                     </table>
+                    <p class="text-muted" style="margin-top:8px;">
+                        The "Purchase Price NOW" column shows the current (wiped) values
+                        — both ex-tax and inc-tax columns are $0 on every row, that's the
+                        signature of the wipe. Original values existed pre-11:30 AM but
+                        aren't stored anywhere I can read; they only live in the 04-24 backup.
+                    </p>
                 </div>
             </div>
             @endif

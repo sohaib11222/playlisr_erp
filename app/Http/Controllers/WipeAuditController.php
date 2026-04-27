@@ -50,6 +50,8 @@ class WipeAuditController extends Controller
                 'v.updated_at',
                 'p.name',
                 'p.sku',
+                'v.default_purchase_price',
+                'v.dpp_inc_tax',
                 'v.default_sell_price',
                 'v.sell_price_inc_tax',
                 DB::raw("CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,'')) as created_by")
