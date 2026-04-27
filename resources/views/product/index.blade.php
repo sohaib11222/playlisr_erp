@@ -38,7 +38,8 @@
         border-bottom: 1px solid #eee;
         margin-bottom: 10px;
     }
-    #product_filters_bar .product-search-input {
+    /* products-v2 overrides this — see public/css/products-list-layout.css */
+    body:not(.products-v2) #product_filters_bar .product-search-input {
         max-width: 520px;
         width: 100%;
     }
@@ -46,15 +47,15 @@
 
 <div id="product_filters_bar">
     <div class="row" style="margin-bottom: 5px;">
-        <div class="col-md-7 col-sm-12">
+        <div class="col-md-8 col-sm-12">
             <div class="form-group">
                 <input type="text"
                        id="product_search_main"
                        class="form-control product-search-input"
-                       placeholder="Search products (artist / title / SKU / barcode)">
+                       placeholder="Search products by artist, title, SKU, or barcode…">
             </div>
         </div>
-        <div class="col-md-5 col-sm-12 text-right">
+        <div class="col-md-4 col-sm-12 text-right">
             <div class="btn-toolbar" style="justify-content: flex-end; display: flex; gap: 5px;">
                 @if($is_admin)
                     <a class="btn btn-default" href="{{action('ProductController@downloadExcel')}}">
