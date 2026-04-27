@@ -41,6 +41,9 @@ $(document).ready(function() {
 
     //Start For product type single
 
+    // Nivessa has a resale certificate — purchase prices have no sales tax,
+    // so dpp_inc_tax always mirrors default_purchase_price (no tax math).
+
     //If purchase price exc tax is changed
     $(document).on('change', 'input#single_dpp', function(e) {
         var purchase_exc_tax = __read_number($('input#single_dpp'));
@@ -51,8 +54,7 @@ $(document).ready(function() {
             .data('rate');
         tax_rate = tax_rate == undefined ? 0 : tax_rate;
 
-        var purchase_inc_tax = __add_percent(purchase_exc_tax, tax_rate);
-        __write_number($('input#single_dpp_inc_tax'), purchase_inc_tax);
+        __write_number($('input#single_dpp_inc_tax'), purchase_exc_tax);
 
         // On edit page: do not overwrite selling price when user blurs purchase price (avoids accidental overwrite)
         if (!is_product_edit()) {
@@ -76,8 +78,7 @@ $(document).ready(function() {
                 .data('rate');
             tax_rate = tax_rate == undefined ? 0 : tax_rate;
 
-            var purchase_inc_tax = __add_percent(purchase_exc_tax, tax_rate);
-            __write_number($('input#single_dpp_inc_tax'), purchase_inc_tax);
+            __write_number($('input#single_dpp_inc_tax'), purchase_exc_tax);
 
             var selling_price = __read_number($('input#single_dsp'));
             var selling_price_inc_tax = __add_percent(selling_price, tax_rate);
@@ -95,9 +96,8 @@ $(document).ready(function() {
             .data('rate');
         tax_rate = tax_rate == undefined ? 0 : tax_rate;
 
-        var purchase_exc_tax = __get_principle(purchase_inc_tax, tax_rate);
+        var purchase_exc_tax = purchase_inc_tax;
         __write_number($('input#single_dpp'), purchase_exc_tax);
-        $('input#single_dpp').change();
 
         // On edit page: do not overwrite selling price when user blurs purchase price
         if (!is_product_edit()) {

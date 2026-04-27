@@ -25,16 +25,17 @@
                     <td>
                         <input type="hidden" name="single_variation_id" value="{{$variation->id}}">
 
-                        <div class="col-sm-6">
-                          {!! Form::label('single_dpp', trans('product.exc_of_tax') . ':*') !!}
+                        {{-- Nivessa has a resale certificate — purchase prices have no sales tax,
+                             so the ex-tax field is kept hidden and mirrored to inc-tax on save. --}}
+                        {!! Form::text('single_dpp', @num_format($variation->default_purchase_price), [
+                            'class' => 'form-control input-sm dpp input_number',
+                            'required' => true,
+                            'style' => 'display:none;',
+                        ]) !!}
 
-                          {!! Form::text('single_dpp', @num_format($variation->default_purchase_price), ['class' => 'form-control input-sm dpp input_number', 'placeholder' => __('product.exc_of_tax'), 'required']); !!}
-                        </div>
-
-                        <div class="col-sm-6">
-                          {!! Form::label('single_dpp_inc_tax', trans('product.inc_of_tax') . ':*') !!}
-                        
-                          {!! Form::text('single_dpp_inc_tax', @num_format($variation->dpp_inc_tax), ['class' => 'form-control input-sm dpp_inc_tax input_number', 'placeholder' => __('product.inc_of_tax'), 'required']); !!}
+                        <div class="col-sm-12">
+                          {!! Form::label('single_dpp_inc_tax', __('product.default_purchase_price') . ':*') !!}
+                          {!! Form::text('single_dpp_inc_tax', @num_format($variation->dpp_inc_tax), ['class' => 'form-control input-sm dpp_inc_tax input_number', 'placeholder' => __('product.default_purchase_price'), 'required']); !!}
                         </div>
                     </td>
 

@@ -607,6 +607,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // sells. Flags Sep 2025+ overlaps as likely duplicates (ERP was live).
     Route::get('/admin/import-duplicate-check', 'ImportDuplicateCheckController@index');
 
+    // Lists products where exc-tax / inc-tax purchase prices disagree (legacy
+    // tax-math artifact — Nivessa has resale cert so they should always match).
+    // One-click aligns both columns to a chosen value.
+    Route::get('/admin/purchase-price-mismatch', 'PurchasePriceMismatchController@index');
+    Route::post('/admin/purchase-price-mismatch/run', 'PurchasePriceMismatchController@run');
+
     // One-shot diagnostic: did the Nivessa Backend xlsx imports land on prod?
     // Hit /admin/nivessa-import-status in the browser to see row counts per table.
     Route::get('/admin/nivessa-import-status', function () {
