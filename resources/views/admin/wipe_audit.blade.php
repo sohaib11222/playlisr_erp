@@ -18,41 +18,83 @@
 
 <div class="row">
     <div class="col-md-12">
-        <div class="box box-solid" style="border:3px solid {{ $count ? '#dd4b39' : '#00a65a' }};">
-            <div class="box-header" style="background:{{ $count ? '#f2dede' : '#dff0d8' }};">
-                <h3 class="box-title" style="font-size:22px;">
-                    @if ($count)
-                        Exact wipe count: <strong>{{ number_format($count) }}</strong> variation(s)
-                    @else
-                        ✅ No rows match the wipe signature.
-                    @endif
-                </h3>
+        <div class="row">
+            <div class="col-md-6">
+                <div class="box box-solid" style="border:3px solid #dd4b39;">
+                    <div class="box-header" style="background:#f2dede;">
+                        <h3 class="box-title" style="font-size:18px;">
+                            Wiped TODAY by my backfill: <strong>{{ number_format($wipedTodayCount) }}</strong>
+                        </h3>
+                        <p style="margin:6px 0 0;font-size:12px;">
+                            Rows with both purchase columns at $0 AND <code>updated_at</code> today
+                            ({{ $todayWindow[0] }} – {{ $todayWindow[1] }}). These had real values
+                            before today and need recovery.
+                        </p>
+                    </div>
+                    <div class="box-body">
+                        @if (!empty($byCreatorToday) && count($byCreatorToday) > 0)
+                            <table class="table table-condensed">
+                                <thead><tr><th>Created by</th><th style="text-align:right;">Count</th></tr></thead>
+                                <tbody>
+                                    @foreach ($byCreatorToday as $c)
+                                        <tr>
+                                            <td>{{ trim($c->created_by) ?: '—' }}</td>
+                                            <td style="text-align:right;"><strong>{{ number_format($c->cnt) }}</strong></td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        @else
+                            <p class="text-muted">None.</p>
+                        @endif
+                    </div>
+                </div>
             </div>
 
+            <div class="col-md-6">
+                <div class="box box-solid" style="border:3px solid #999;">
+                    <div class="box-header" style="background:#f4f4f4;">
+                        <h3 class="box-title" style="font-size:18px;">
+                            Long-standing $0 (NOT from my backfill): <strong>{{ number_format($longStandingCount) }}</strong>
+                        </h3>
+                        <p style="margin:6px 0 0;font-size:12px;">
+                            Rows with both columns at $0 but <code>updated_at</code> is NOT today —
+                            these were already $0 before today's incident. Created by people who skipped
+                            cost when adding products (e.g. Rob Glaser, who left a year ago).
+                        </p>
+                    </div>
+                    <div class="box-body">
+                        @if (!empty($byCreatorOld) && count($byCreatorOld) > 0)
+                            <table class="table table-condensed">
+                                <thead><tr><th>Created by</th><th style="text-align:right;">Count</th></tr></thead>
+                                <tbody>
+                                    @foreach ($byCreatorOld as $c)
+                                        <tr>
+                                            <td>{{ trim($c->created_by) ?: '—' }}</td>
+                                            <td style="text-align:right;">{{ number_format($c->cnt) }}</td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        @else
+                            <p class="text-muted">None.</p>
+                        @endif
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="box box-solid">
             @if ($count)
             <div class="box-body">
                 <p>
                     <a href="{{ url('/admin/wipe-audit/csv') }}" class="btn btn-primary">
-                        <i class="fa fa-download"></i> Download all {{ number_format($count) }} affected SKUs as CSV
+                        <i class="fa fa-download"></i> Download all {{ number_format($count) }} $0-cost SKUs as CSV
                     </a>
+                    <span class="text-muted" style="margin-left:8px;">
+                        (CSV has a <code>wiped_today</code> column — sort/filter by that to focus on the {{ number_format($wipedTodayCount) }} actual wipe victims.)
+                    </span>
                 </p>
-
-                @if (!empty($byCreator) && count($byCreator) > 0)
-                    <h4 style="margin-top:24px;">Breakdown by who created the product</h4>
-                    <table class="table table-condensed" style="max-width:480px;">
-                        <thead>
-                            <tr><th>Created by</th><th style="text-align:right;">Count at $0</th></tr>
-                        </thead>
-                        <tbody>
-                            @foreach ($byCreator as $c)
-                                <tr>
-                                    <td>{{ trim($c->created_by) ?: '—' }}</td>
-                                    <td style="text-align:right;"><strong>{{ number_format($c->cnt) }}</strong></td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                @endif
 
                 <p style="margin-top:16px;">
                     For Sohaib's surgical restore — the precise SQL is:
