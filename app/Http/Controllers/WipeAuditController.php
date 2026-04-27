@@ -16,12 +16,12 @@ class WipeAuditController extends Controller
     {
         $businessId = request()->session()->get('user.business_id');
 
-        // Window covers 2026-04-27 11:00–12:00 PT (server in Phoenix, UTC-7).
-        // We probe both local and UTC interpretations so we don't miss rows
-        // depending on how MySQL stores updated_at on this server.
+        // Cover the ENTIRE day 2026-04-27 in any reasonable timezone — and
+        // also a 24-hour bracket on either side, since MySQL might store in
+        // UTC or in server-local Phoenix time. Anything updated today with
+        // both purchase columns at 0 is a victim of the backfill.
         $windows = [
-            ['2026-04-27 11:00:00', '2026-04-27 12:00:00'],   // local Phoenix
-            ['2026-04-27 18:00:00', '2026-04-27 19:00:00'],   // UTC
+            ['2026-04-26 12:00:00', '2026-04-28 12:00:00'],
         ];
 
         $wipeQuery = DB::table('variations as v')
