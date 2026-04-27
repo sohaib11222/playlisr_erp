@@ -17,7 +17,6 @@
           <th>Cost (what you paid)</th>
           <th>@lang('product.profit_percent') @show_tooltip(__('tooltip.profit_percent'))</th>
           <th>@lang('product.default_selling_price')</th>
-          <th>@lang('lang_v1.product_image')</th>
         </tr>
         @foreach($product_deatails->variations as $variation )
             @if($loop->first)
@@ -52,25 +51,6 @@
                     </td>
 
 
-                    <td>
-                        @php 
-                            $action = !empty($action) ? $action : '';
-                        @endphp
-                        @if($action !== 'duplicate')
-                            @foreach($variation->media as $media)
-                                <div class="img-thumbnail">
-                                    <span class="badge bg-red delete-media" data-href="{{ action('ProductController@deleteMedia', ['media_id' => $media->id])}}"><i class="fas fa-times"></i></span>
-                                    {!! $media->thumbnail() !!}
-                                </div>
-                            @endforeach
-                        @endif
-                        <div class="form-group">
-                            {!! Form::label('variation_images', __('lang_v1.product_image') . ':') !!}
-                            {!! Form::file('variation_images[]', ['class' => 'variation_images', 'accept' => 'image/*', 'multiple']); !!}
-                            <small><p class="help-block">@lang('purchase.max_file_size', ['size' => (config('constants.document_size_limit') / 1000000)]) <br> @lang('lang_v1.aspect_ratio_should_be_1_1')</p></small>
-                        </div>
-
-                    </td>
                 </tr>
             @endif
         @endforeach

@@ -30,9 +30,11 @@
     color: var(--pe-ink);
     -webkit-font-smoothing: antialiased;
     margin: -15px;
-    padding: 20px 24px 40px;
+    padding: 10px 14px 32px;
     min-height: calc(100vh - 50px);
 }
+.product-edit-v2 .row { margin-left: -6px; margin-right: -6px; }
+.product-edit-v2 [class*="col-"] { padding-left: 6px; padding-right: 6px; }
 .product-edit-v2 .pe-header {
     display: flex; align-items: center; justify-content: space-between;
     margin: 0 0 20px;
@@ -50,27 +52,28 @@
     border: 1px solid var(--pe-line);
     border-radius: var(--pe-radius);
     box-shadow: var(--pe-shadow-sm);
-    padding: 20px 22px;
-    margin-bottom: 16px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
 }
 .product-edit-v2 .pe-card-title {
-    font-size: 11px;
+    font-size: 10px;
     text-transform: uppercase;
     letter-spacing: .08em;
     font-weight: 700;
     color: var(--pe-ink-3);
-    margin: 0 0 14px;
-    padding-bottom: 10px;
+    margin: 0 0 8px;
+    padding-bottom: 6px;
     border-bottom: 1px solid var(--pe-line);
 }
+.product-edit-v2 .form-group { margin-bottom: 8px; }
 .product-edit-v2 label,
 .product-edit-v2 .form-group label {
-    font-size: 11px;
+    font-size: 10px;
     text-transform: uppercase;
     letter-spacing: .04em;
     font-weight: 700;
     color: var(--pe-ink-3);
-    margin-bottom: 4px;
+    margin-bottom: 2px;
 }
 .product-edit-v2 .form-control,
 .product-edit-v2 .select2-selection--single,
@@ -79,11 +82,18 @@
     border-radius: var(--pe-radius-sm) !important;
     background: var(--pe-surface) !important;
     color: var(--pe-ink) !important;
-    min-height: 38px !important;
+    min-height: 30px !important;
+    height: 30px !important;
+    padding: 4px 9px !important;
     font-family: inherit !important;
-    font-size: 14px !important;
+    font-size: 13px !important;
     box-shadow: none !important;
 }
+.product-edit-v2 textarea.form-control { height: auto !important; min-height: 60px !important; }
+.product-edit-v2 .select2-selection--single .select2-selection__rendered { line-height: 22px !important; padding: 0 !important; }
+.product-edit-v2 .select2-selection--single .select2-selection__arrow { height: 28px !important; }
+.product-edit-v2 .help-block { font-size: 11px !important; margin-top: 2px !important; }
+.product-edit-v2 .pe-card-title { margin-bottom: 6px; padding-bottom: 5px; }
 .product-edit-v2 .form-control:focus,
 .product-edit-v2 .select2-selection--single:focus,
 .product-edit-v2 .select2-container--focus .select2-selection {
