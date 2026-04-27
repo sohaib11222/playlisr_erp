@@ -53,28 +53,32 @@ body.products-v2 #product_filters_bar {
 	background: var(--pl-bg) !important;
 	border-bottom: 1px solid var(--pl-line);
 }
-body.products-v2 .product-search-input {
-	height: 64px;
+/* Higher-specificity selectors so the later .form-control rule (32px) doesn't
+   override these. input.product-search-input + #product_filters_bar both win. */
+body.products-v2 input.product-search-input,
+body.products-v2 #product_filters_bar input.product-search-input {
+	height: 64px !important;
 	max-width: none;
 	width: 100%;
 	border: 1.5px solid var(--pl-line-2);
 	border-radius: 14px;
 	background: var(--pl-surface);
-	padding: 0 22px 0 60px;
+	padding: 0 22px 0 60px !important;
 	font-family: inherit;
-	font-size: 19px;
+	font-size: 19px !important;
 	font-weight: 500;
 	letter-spacing: -.005em;
 	box-shadow: var(--pl-shadow-md);
 	background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='26' height='26' viewBox='0 0 24 24' fill='none' stroke='%235A5045' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='7'/><path d='m20 20-3.5-3.5'/></svg>");
 	background-repeat: no-repeat;
 	background-position: 18px center;
+	background-size: 26px 26px;
 }
-body.products-v2 .product-search-input::placeholder {
+body.products-v2 input.product-search-input::placeholder {
 	color: var(--pl-ink-3);
 	font-weight: 500;
 }
-body.products-v2 .product-search-input:focus {
+body.products-v2 input.product-search-input:focus {
 	border-color: var(--pl-accent-deep);
 	box-shadow: 0 0 0 4px var(--pl-accent-soft), var(--pl-shadow-md);
 	outline: none;
