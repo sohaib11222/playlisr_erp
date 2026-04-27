@@ -3,6 +3,17 @@
 
 @section('content')
 
+{{-- /products redesign v2 (2026-04-27): scoped styles + body.products-v2
+     hook so this only applies on the products list. POS is untouched. --}}
+<link rel="stylesheet" href="{{ asset('css/products-list-layout.css?v=' . $asset_v) }}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&display=swap" media="print" onload="this.media='all'">
+<noscript>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&display=swap">
+</noscript>
+<script>document.body.classList.add('products-v2');</script>
+
 <!-- Content Header (Page header) -->
 <section class="content-header">
     <h1>@lang('sale.products')
@@ -109,11 +120,26 @@
                     {!! Form::label('created_date_range', __('lang_v1.created_date_range') . ':') !!}
                     <div class="input-group">
                         {!! Form::text('created_date_range', null, ['class' => 'form-control', 'id' => 'product_list_filter_created_date_range', 'placeholder' => __('lang_v1.select_a_date_range'), 'readonly']) !!}
-                        <span class="input-group-addon">
+                        {{-- Legacy "All" checkbox kept in DOM (hidden via products-v2 CSS)
+                             so existing change handlers still fire. The new preset
+                             buttons below toggle this checkbox programmatically. --}}
+                        <span class="input-group-addon" id="product_list_filter_all_time_wrap">
                             <label style="margin:0; font-weight:400;">
                                 <input type="checkbox" id="product_list_filter_all_time"> @lang('lang_v1.all')
                             </label>
                         </span>
+                    </div>
+                    <div class="date-presets" id="product_list_date_presets" role="group" aria-label="Date range presets">
+                        <button type="button" class="date-preset-btn" data-preset="today">Today</button>
+                        <button type="button" class="date-preset-btn" data-preset="7">7 days</button>
+                        <button type="button" class="date-preset-btn" data-preset="30">30 days</button>
+                        <button type="button" class="date-preset-btn is-active" data-preset="ytd">This Year</button>
+                        <button type="button" class="date-preset-btn" data-preset="all" title="Slow on large catalogs — searches the entire database">
+                            <i class="fa fa-globe" aria-hidden="true"></i> All Time
+                        </button>
+                    </div>
+                    <div class="date-preset-hint">
+                        Tip: click <strong>All Time</strong> to search the full catalog (slower).
                     </div>
                 </div>
             </div>
@@ -512,6 +538,46 @@
             $('#product_list_filter_created_date_range').on('change', function() {
                 if ($(this).val()) {
                     $('#product_list_filter_all_time').prop('checked', false);
+                    $('#product_list_date_presets .date-preset-btn').removeClass('is-active');
+                }
+            });
+
+            // Date range preset buttons — drive the existing daterangepicker / All-time
+            // checkbox so the AJAX payload (start_date/end_date) doesn't change shape.
+            $(document).on('click', '#product_list_date_presets .date-preset-btn', function() {
+                var $btn = $(this);
+                var preset = $btn.data('preset');
+                var $input = $('#product_list_filter_created_date_range');
+                var $allChk = $('#product_list_filter_all_time');
+                var fmt = (typeof moment_date_format !== 'undefined') ? moment_date_format : 'MM/DD/YYYY';
+
+                $('#product_list_date_presets .date-preset-btn').removeClass('is-active');
+                $btn.addClass('is-active');
+
+                if (preset === 'all') {
+                    // All Time: clear range, check the legacy box, fire its change handler
+                    $input.val('');
+                    var drp = $input.data('daterangepicker');
+                    if (drp) { drp.setStartDate(moment()); drp.setEndDate(moment()); }
+                    $allChk.prop('checked', true).trigger('change');
+                    return;
+                }
+
+                var start, end = moment();
+                if (preset === 'today')      { start = moment(); }
+                else if (preset === '7')     { start = moment().subtract(6, 'days'); }
+                else if (preset === '30')    { start = moment().subtract(29, 'days'); }
+                else /* ytd */               { start = moment().startOf('year'); end = moment().endOf('year'); }
+
+                $allChk.prop('checked', false);
+                var drp2 = $input.data('daterangepicker');
+                if (drp2) { drp2.setStartDate(start); drp2.setEndDate(end); }
+                $input.val(start.format(fmt) + ' ~ ' + end.format(fmt));
+                if (typeof product_table !== 'undefined' && $('#product_list_tab').hasClass('active')) {
+                    product_table.ajax.reload();
+                }
+                if (typeof stock_report_table !== 'undefined' && $('#product_stock_report').hasClass('active')) {
+                    stock_report_table.ajax.reload();
                 }
             });
 

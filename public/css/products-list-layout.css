@@ -1,0 +1,278 @@
+/* ===========================================================
+   /products list — Redesign v2 (matches POS create v2 tokens)
+   2026-04-27 · Sarah
+
+   Scoped under body.products-v2 so styles only apply on /products
+   and never bleed into /pos/create or anywhere else. Existing IDs
+   and DataTables hooks are untouched.
+   =========================================================== */
+
+body.products-v2 {
+	--pl-bg:           #FAF6EE;
+	--pl-surface:      #FFFFFF;
+	--pl-surface-2:    #F7F1E3;
+	--pl-ink:          #1F1B16;
+	--pl-ink-2:        #5A5045;
+	--pl-ink-3:        #8E8273;
+	--pl-line:         #ECE3CF;
+	--pl-line-2:       #DFD2B3;
+
+	--pl-accent:       #FFF2B3;
+	--pl-accent-deep:  #E8CF68;
+	--pl-accent-soft:  #FFF9DB;
+	--pl-accent-text:  #5A4410;
+
+	--pl-warn:         #B8631C;
+	--pl-warn-soft:    #FFF1DC;
+
+	--pl-radius:       10px;
+	--pl-radius-sm:    8px;
+	--pl-shadow-sm:    0 1px 2px rgba(31,27,22,.06);
+	--pl-shadow-md:    0 4px 14px rgba(31,27,22,.08);
+
+	background: var(--pl-bg);
+	font-family: "Inter Tight", system-ui, sans-serif;
+	color: var(--pl-ink);
+	-webkit-font-smoothing: antialiased;
+}
+
+/* Page header */
+body.products-v2 .content-header > h1 {
+	font-family: "Inter Tight", system-ui, sans-serif;
+	font-weight: 700;
+	color: var(--pl-ink);
+	letter-spacing: -.01em;
+}
+body.products-v2 .content-header > h1 small {
+	color: var(--pl-ink-3);
+	font-weight: 500;
+}
+
+/* Sticky filter bar (search + bulk + add) */
+body.products-v2 #product_filters_bar {
+	background: var(--pl-bg) !important;
+	border-bottom: 1px solid var(--pl-line);
+}
+body.products-v2 .product-search-input {
+	height: 40px;
+	border: 1px solid var(--pl-line);
+	border-radius: var(--pl-radius);
+	background: var(--pl-surface);
+	padding: 0 14px;
+	font-family: inherit;
+	box-shadow: var(--pl-shadow-sm);
+}
+body.products-v2 .product-search-input:focus {
+	border-color: var(--pl-accent-deep);
+	box-shadow: 0 0 0 3px var(--pl-accent-soft);
+	outline: none;
+}
+
+/* Top action buttons */
+body.products-v2 #product_filters_bar .btn {
+	height: 40px;
+	border-radius: var(--pl-radius);
+	font-weight: 600;
+	border: 1px solid var(--pl-line);
+	background: var(--pl-surface);
+	color: var(--pl-ink);
+	padding: 0 16px;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	box-shadow: var(--pl-shadow-sm);
+}
+body.products-v2 #product_filters_bar .btn:hover {
+	background: var(--pl-surface-2);
+	border-color: var(--pl-line-2);
+}
+body.products-v2 #product_filters_bar .btn-primary {
+	background: var(--pl-ink);
+	color: var(--pl-bg);
+	border-color: var(--pl-ink);
+}
+body.products-v2 #product_filters_bar .btn-primary:hover {
+	background: #2c2620;
+	border-color: #2c2620;
+	color: var(--pl-bg);
+}
+
+/* Filters card */
+body.products-v2 .filters-section,
+body.products-v2 .box.box-solid {
+	background: var(--pl-surface) !important;
+	border: 1px solid var(--pl-line) !important;
+	border-radius: var(--pl-radius) !important;
+	box-shadow: var(--pl-shadow-sm) !important;
+}
+body.products-v2 .filters-section .box-header,
+body.products-v2 .box.box-solid > .box-header {
+	background: transparent !important;
+	border-bottom: 1px solid var(--pl-line) !important;
+	color: var(--pl-ink) !important;
+	padding: 12px 18px !important;
+}
+body.products-v2 .filters-section .box-title,
+body.products-v2 .box.box-solid > .box-header .box-title {
+	font-weight: 700 !important;
+	color: var(--pl-ink) !important;
+}
+body.products-v2 .filters-section .box-body,
+body.products-v2 .box.box-solid > .box-body {
+	padding: 16px 18px !important;
+	background: var(--pl-surface) !important;
+}
+
+/* Filter labels & form controls */
+body.products-v2 .filters-section label,
+body.products-v2 .form-group > label {
+	color: var(--pl-ink-2);
+	font-weight: 600;
+	font-size: 13px;
+	margin-bottom: 6px;
+}
+body.products-v2 .form-control {
+	border: 1px solid var(--pl-line);
+	border-radius: var(--pl-radius-sm);
+	height: 38px;
+	background: var(--pl-surface);
+	font-family: inherit;
+	color: var(--pl-ink);
+}
+body.products-v2 .form-control:focus {
+	border-color: var(--pl-accent-deep);
+	box-shadow: 0 0 0 3px var(--pl-accent-soft);
+	outline: none;
+}
+body.products-v2 .select2-container--default .select2-selection--single {
+	height: 38px !important;
+	border: 1px solid var(--pl-line) !important;
+	border-radius: var(--pl-radius-sm) !important;
+	background: var(--pl-surface) !important;
+}
+body.products-v2 .select2-container--default .select2-selection--single .select2-selection__rendered {
+	line-height: 36px !important;
+	padding-left: 12px !important;
+	color: var(--pl-ink) !important;
+	font-family: inherit;
+}
+body.products-v2 .select2-container--default .select2-selection--single .select2-selection__arrow {
+	height: 36px !important;
+}
+body.products-v2 .input-group-addon {
+	background: var(--pl-surface-2);
+	border: 1px solid var(--pl-line);
+	color: var(--pl-ink-2);
+}
+
+/* ============ DATE RANGE PRESETS — the headline change ============ */
+body.products-v2 .date-presets {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: 6px;
+}
+body.products-v2 .date-preset-btn {
+	background: var(--pl-surface);
+	border: 1px solid var(--pl-line);
+	border-radius: 999px;
+	padding: 6px 14px;
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--pl-ink-2);
+	cursor: pointer;
+	transition: all .12s ease;
+	font-family: inherit;
+	line-height: 1;
+	box-shadow: var(--pl-shadow-sm);
+}
+body.products-v2 .date-preset-btn:hover {
+	background: var(--pl-surface-2);
+	border-color: var(--pl-line-2);
+	color: var(--pl-ink);
+}
+body.products-v2 .date-preset-btn.is-active {
+	background: var(--pl-accent);
+	border-color: var(--pl-accent-deep);
+	color: var(--pl-accent-text);
+}
+body.products-v2 .date-preset-btn[data-preset="all"] {
+	background: var(--pl-warn-soft);
+	border-color: var(--pl-warn);
+	color: var(--pl-warn);
+	font-weight: 700;
+}
+body.products-v2 .date-preset-btn[data-preset="all"]:hover {
+	background: #FFE3BA;
+}
+body.products-v2 .date-preset-btn[data-preset="all"].is-active {
+	background: var(--pl-warn);
+	border-color: var(--pl-warn);
+	color: #fff;
+}
+body.products-v2 .date-preset-hint {
+	font-size: 11px;
+	color: var(--pl-ink-3);
+	margin-top: 6px;
+	font-style: italic;
+}
+
+/* Hide the legacy "All" checkbox — replaced by the preset buttons.
+   The element stays in the DOM so existing JS handlers still work. */
+body.products-v2 #product_list_filter_all_time_wrap {
+	display: none !important;
+}
+
+/* Tabs */
+body.products-v2 .nav-tabs-custom {
+	background: var(--pl-surface);
+	border: 1px solid var(--pl-line);
+	border-radius: var(--pl-radius);
+	box-shadow: var(--pl-shadow-sm);
+}
+body.products-v2 .nav-tabs-custom > .nav-tabs {
+	border-bottom: 1px solid var(--pl-line);
+	background: transparent;
+}
+body.products-v2 .nav-tabs-custom > .nav-tabs > li > a {
+	color: var(--pl-ink-2);
+	font-weight: 600;
+	border-radius: var(--pl-radius-sm) var(--pl-radius-sm) 0 0;
+}
+body.products-v2 .nav-tabs-custom > .nav-tabs > li.active > a,
+body.products-v2 .nav-tabs-custom > .nav-tabs > li.active > a:hover,
+body.products-v2 .nav-tabs-custom > .nav-tabs > li.active > a:focus {
+	color: var(--pl-ink);
+	border-top: 3px solid var(--pl-accent-deep) !important;
+	border-left: 1px solid var(--pl-line);
+	border-right: 1px solid var(--pl-line);
+	background: var(--pl-surface);
+}
+
+/* DataTable container */
+body.products-v2 .dataTables_wrapper {
+	font-family: inherit;
+}
+body.products-v2 .dataTables_filter input,
+body.products-v2 .dataTables_length select {
+	border: 1px solid var(--pl-line);
+	border-radius: var(--pl-radius-sm);
+	height: 34px;
+	padding: 0 10px;
+	background: var(--pl-surface);
+}
+body.products-v2 table.dataTable thead th {
+	background: var(--pl-surface-2);
+	color: var(--pl-ink);
+	font-weight: 700;
+	border-bottom: 1px solid var(--pl-line) !important;
+}
+body.products-v2 table.dataTable tbody tr:hover {
+	background: var(--pl-accent-soft);
+}
+
+/* Tab action buttons */
+body.products-v2 .tab-pane .btn {
+	border-radius: var(--pl-radius-sm);
+	font-weight: 600;
+}
