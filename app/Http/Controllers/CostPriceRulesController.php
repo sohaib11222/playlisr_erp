@@ -11,17 +11,19 @@ class CostPriceRulesController extends Controller
     // Sarah's category → cost rules. Category names match on lower(trim(name)).
     // Applied only to variations whose default_purchase_price is NULL or 0
     // (never overwrites an existing cost).
+    // Labels match Nivessa's actual ERP category names (visible at the bottom
+    // of the cost-price-rules page). 'match' values are lowercase aliases that
+    // the matcher accepts — kept liberal so renames upstream don't break us.
     const RULES = [
-        ['label' => 'New Vinyl',             'match' => ['new vinyl', 'sealed vinyl'],             'cost' => 17.00],
+        ['label' => 'Sealed Vinyl',          'match' => ['sealed vinyl', 'new vinyl'],             'cost' => 17.00],
         ['label' => 'Used Vinyl',            'match' => ['used vinyl'],                            'cost' => 0.40],
-        ['label' => 'CDs (used)',            'match' => ['used cds', 'cds (used)', 'used cd'],     'cost' => 0.10],
-        ['label' => 'New CDs',               'match' => ['new cds', 'new cd', 'sealed cd', 'cd (sealed)'], 'cost' => 6.00],
-        ['label' => 'Cassettes (used)',      'match' => ['used cassettes', 'cassettes (used)', 'used cassette', 'cassettes'], 'cost' => 0.30],
-        ['label' => 'New Cassettes',         'match' => ['new cassettes', 'new cassette', 'cassettes - sealed', 'sealed cassettes'], 'cost' => 6.00],
+        ['label' => 'Used CD',               'match' => ['used cd', 'used cds', 'cds (used)'],     'cost' => 0.10],
+        ['label' => 'Sealed CD / CD (Sealed)', 'match' => ['sealed cd', 'cd (sealed)', 'new cds', 'new cd'], 'cost' => 6.00],
+        ['label' => 'Cassettes',             'match' => ['cassettes', 'used cassettes', 'cassettes (used)', 'used cassette'], 'cost' => 0.30],
+        ['label' => 'Cassettes - Sealed',    'match' => ['cassettes - sealed', 'sealed cassettes', 'new cassettes', 'new cassette'], 'cost' => 6.00],
         ['label' => 'VHS',                   'match' => ['vhs'],                                   'cost' => 0.10],
-        ['label' => '7" / 45 RPM',           'match' => ['7"', '7", 45 rpm', '45 rpm', '7 inch'],  'cost' => 0.15],
+        ['label' => '7", 45 RPM',            'match' => ['7", 45 rpm', '7"', '45 rpm', '7 inch'],  'cost' => 0.15],
         ['label' => '8 track',               'match' => ['8 track', '8-track', 'eight track'],     'cost' => 0.25],
-        ['label' => 'Damaged Vinyl & CDs',   'match' => ['damaged', 'damaged vinyl', 'damaged cds', 'damaged vinyl & cds'], 'cost' => 0.00],
     ];
 
     public function index()

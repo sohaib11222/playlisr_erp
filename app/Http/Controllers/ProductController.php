@@ -598,11 +598,15 @@ class ProductController extends Controller
         $request->validate([
             'category_id' => 'required|integer|exists:categories,id',
             'sub_category_id' => 'required|integer|exists:categories,id',
+            'single_dpp_inc_tax' => 'required|numeric|min:0.01',
         ], [
             'category_id.required' => __('product.category') . ' is required',
             'category_id.exists' => __('product.category') . ' is invalid',
             'sub_category_id.required' => __('product.sub_category') . ' is required',
             'sub_category_id.exists' => __('product.sub_category') . ' is invalid',
+            'single_dpp_inc_tax.required' => 'Cost (what you paid) is required — type the amount you paid the supplier',
+            'single_dpp_inc_tax.numeric' => 'Cost (what you paid) must be a number',
+            'single_dpp_inc_tax.min' => 'Cost (what you paid) must be greater than $0',
         ]);
 
         try {
@@ -1030,11 +1034,15 @@ class ProductController extends Controller
         $request->validate([
             'category_id' => 'required|integer|exists:categories,id',
             'sub_category_id' => 'required|integer|exists:categories,id',
+            'single_dpp_inc_tax' => 'required|numeric|min:0.01',
         ], [
             'category_id.required' => __('product.category') . ' is required',
             'category_id.exists' => __('product.category') . ' is invalid',
             'sub_category_id.required' => __('product.sub_category') . ' is required',
             'sub_category_id.exists' => __('product.sub_category') . ' is invalid',
+            'single_dpp_inc_tax.required' => 'Cost (what you paid) is required — type the amount you paid the supplier',
+            'single_dpp_inc_tax.numeric' => 'Cost (what you paid) must be a number',
+            'single_dpp_inc_tax.min' => 'Cost (what you paid) must be greater than $0',
         ]);
 
         try {
