@@ -628,6 +628,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/wipe-audit', 'WipeAuditController@index');
     Route::get('/admin/wipe-audit/csv', 'WipeAuditController@csv');
 
+    // Companion to /admin/cost-price-rules: lists every category that still
+    // has $0-cost products, lets Sarah enter a cost per category inline,
+    // applies the lot in one go with snapshot-for-undo.
+    Route::get('/admin/remainder-costs', 'RemainderCostsController@index');
+    Route::post('/admin/remainder-costs/run', 'RemainderCostsController@run');
+
     // One-shot diagnostic: did the Nivessa Backend xlsx imports land on prod?
     // Hit /admin/nivessa-import-status in the browser to see row counts per table.
     Route::get('/admin/nivessa-import-status', function () {
