@@ -613,6 +613,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/purchase-price-mismatch', 'PurchasePriceMismatchController@index');
     Route::post('/admin/purchase-price-mismatch/run', 'PurchasePriceMismatchController@run');
 
+    // Recovery for variations whose cost was zeroed by the 2026-04-27 backfill.
+    // Pulls the most recent purchase_lines entry per variation and copies it back.
+    Route::get('/admin/recover-zeroed-costs', 'RecoverZeroedCostsController@index');
+    Route::post('/admin/recover-zeroed-costs/run', 'RecoverZeroedCostsController@run');
+
     // One-shot diagnostic: did the Nivessa Backend xlsx imports land on prod?
     // Hit /admin/nivessa-import-status in the browser to see row counts per table.
     Route::get('/admin/nivessa-import-status', function () {
