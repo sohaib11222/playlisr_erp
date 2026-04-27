@@ -30,18 +30,22 @@ class WipeAuditController extends Controller
                 $q->whereNull('v.dpp_inc_tax')->orWhere('v.dpp_inc_tax', 0);
             });
 
-        // Split: rows updated TODAY = likely wiped by my backfill,
-        //        rows updated long ago = pre-existing missing data.
+        // True wipe victims = existed BEFORE today AND were updated today.
+        // Products CREATED today with no cost (e.g. Manolo's 12:54 PM batch)
+        // weren't wiped — they just never had a cost entered. Same for older
+        // products with old updated_at: long-standing missing data.
         $wipedTodayCount = (clone $wipeQuery)
             ->whereBetween('v.updated_at', $todayWindow)
+            ->where('p.created_at', '<', $todayWindow[0])
             ->count();
 
         $count = (clone $wipeQuery)->count();
         $longStandingCount = $count - $wipedTodayCount;
 
-        // Per-creator summary, split into wiped-today vs always-zero.
+        // Per-creator: wiped-today (existed before, updated today) only.
         $byCreatorToday = (clone $wipeQuery)
             ->whereBetween('v.updated_at', $todayWindow)
+            ->where('p.created_at', '<', $todayWindow[0])
             ->select(
                 DB::raw("CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,'')) as created_by"),
                 DB::raw("COUNT(*) as cnt")
@@ -50,8 +54,13 @@ class WipeAuditController extends Controller
             ->orderBy('cnt', 'desc')
             ->get();
 
+        // Per-creator: everything that wasn't wiped today = pre-existing $0
+        // (created today with no cost, OR old product that never had cost).
         $byCreatorOld = (clone $wipeQuery)
-            ->whereNotBetween('v.updated_at', $todayWindow)
+            ->where(function ($q) use ($todayWindow) {
+                $q->whereNotBetween('v.updated_at', $todayWindow)
+                  ->orWhere('p.created_at', '>=', $todayWindow[0]);
+            })
             ->select(
                 DB::raw("CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,'')) as created_by"),
                 DB::raw("COUNT(*) as cnt")
