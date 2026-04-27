@@ -13,6 +13,22 @@ class Product extends Model
      */
     protected $guarded = ['id'];
 
+    // Belt-and-suspenders: any save that would push created_at/updated_at into
+    // the future (server clock drift, sync job in a wrong TZ, manual SQL via
+    // the model) gets clamped to now(). The /products list sorts on these.
+    protected static function booted()
+    {
+        static::saving(function ($product) {
+            $now = now();
+            if ($product->updated_at && $product->updated_at->gt($now)) {
+                $product->updated_at = $now;
+            }
+            if ($product->created_at && $product->created_at->gt($now)) {
+                $product->created_at = $now;
+            }
+        });
+    }
+
     protected $appends = ['image_url'];
 
     /**

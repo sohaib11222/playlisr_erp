@@ -394,10 +394,14 @@ class ProductController extends Controller
                     '<div style="white-space: nowrap;">@format_currency($min_price) @if($max_price != $min_price && $type == "variable") -  @format_currency($max_price)@endif </div>'
                 )
                 ->editColumn('updated_at', function($row) {
-                    return date('m/d/Y h:i A', strtotime($row->updated_at));
+                    // Clamp future timestamps to now — bad rows from a TZ-drifted
+                    // sync shouldn't render as 2030 etc.
+                    $ts = min(strtotime($row->updated_at), time());
+                    return date('m/d/Y h:i A', $ts);
                 })
                 ->addColumn('created_at', function ($row) {
-                    return date('m/d/Y h:i A', strtotime($row->created_at));
+                    $ts = min(strtotime($row->created_at), time());
+                    return date('m/d/Y h:i A', $ts);
                 })
                 ->addColumn('created_by_name', function ($row) {
                     return $row->created_by_name ?? '';
