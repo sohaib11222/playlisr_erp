@@ -618,6 +618,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/recover-zeroed-costs', 'RecoverZeroedCostsController@index');
     Route::post('/admin/recover-zeroed-costs/run', 'RecoverZeroedCostsController@run');
 
+    // History of destructive admin backfills with one-click Undo. Every /admin/*
+    // /run endpoint that mutates rows in bulk should write a snapshot here first.
+    Route::get('/admin/admin-action-history', 'AdminActionHistoryController@index');
+    Route::post('/admin/admin-action-history/undo', 'AdminActionHistoryController@undo');
+
     // One-shot diagnostic: did the Nivessa Backend xlsx imports land on prod?
     // Hit /admin/nivessa-import-status in the browser to see row counts per table.
     Route::get('/admin/nivessa-import-status', function () {

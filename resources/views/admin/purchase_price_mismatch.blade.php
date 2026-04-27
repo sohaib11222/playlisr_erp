@@ -24,12 +24,18 @@
             <div class="box-header" style="background: {{ $totalMismatched ? '#f2dede' : '#dff0d8' }};">
                 <h3 class="box-title" style="font-size:22px;">
                     @if ($totalMismatched)
-                        {{ number_format($totalMismatched) }} variation(s) mismatched
+                        {{ number_format($totalMismatched) }} variation(s) safe to align
                         <small style="color:#666;">out of {{ number_format($totalProducts) }} products</small>
                     @else
-                        ✅ All purchase prices are aligned — nothing to fix
+                        ✅ All purchase prices are aligned — nothing safe to fix
                     @endif
                 </h3>
+                @if (!empty($skippedZeros))
+                    <p style="margin:8px 0 0;color:#8a6d3b;">
+                        <strong>{{ number_format($skippedZeros) }}</strong> additional rows had a $0 on one side and were <strong>SKIPPED</strong>
+                        to protect real cost values. Those need manual review on a per-product basis.
+                    </p>
+                @endif
             </div>
 
             @if ($totalMismatched)
