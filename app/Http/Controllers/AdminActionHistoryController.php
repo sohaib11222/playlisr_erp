@@ -18,7 +18,8 @@ class AdminActionHistoryController extends Controller
     {
         $files = collect(Storage::disk('local')->files('admin-snapshots'))
             ->filter(function ($f) { return str_ends_with($f, '.json'); })
-            ->sortDesc()
+            ->sort()
+            ->reverse()
             ->take(200)
             ->values();
 
