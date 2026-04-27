@@ -19,6 +19,8 @@ class CostPriceRulesController extends Controller
         ['label' => 'Cassettes (used)',      'match' => ['used cassettes', 'cassettes (used)', 'used cassette', 'cassettes'], 'cost' => 0.30],
         ['label' => 'New Cassettes',         'match' => ['new cassettes', 'new cassette', 'cassettes - sealed', 'sealed cassettes'], 'cost' => 6.00],
         ['label' => 'VHS',                   'match' => ['vhs'],                                   'cost' => 0.10],
+        ['label' => '7" / 45 RPM',           'match' => ['7"', '7", 45 rpm', '45 rpm', '7 inch'],  'cost' => 0.15],
+        ['label' => '8 track',               'match' => ['8 track', '8-track', 'eight track'],     'cost' => 0.25],
         ['label' => 'Damaged Vinyl & CDs',   'match' => ['damaged', 'damaged vinyl', 'damaged cds', 'damaged vinyl & cds'], 'cost' => 0.00],
     ];
 
