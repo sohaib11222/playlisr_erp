@@ -16,14 +16,11 @@ class WipeAuditController extends Controller
     {
         $businessId = request()->session()->get('user.business_id');
 
-        // Cover the ENTIRE day 2026-04-27 in any reasonable timezone — and
-        // also a 24-hour bracket on either side, since MySQL might store in
-        // UTC or in server-local Phoenix time. Anything updated today with
-        // both purchase columns at 0 is a victim of the backfill.
-        $windows = [
-            ['2026-04-26 12:00:00', '2026-04-28 12:00:00'],
-        ];
-
+        // Just find ALL variations with both purchase columns at 0, grouped
+        // by creator — the timestamp filter was missing rows because the ERP
+        // displays updated_at with weird AM/PM quirks. The actual signature
+        // is "both columns are 0" — that's what we need to fix regardless of
+        // when it happened or whether it was today's backfill.
         $wipeQuery = DB::table('variations as v')
             ->join('products as p', 'p.id', '=', 'v.product_id')
             ->leftJoin('users as u', 'u.id', '=', 'p.created_by')
@@ -34,14 +31,19 @@ class WipeAuditController extends Controller
             })
             ->where(function ($q) {
                 $q->whereNull('v.dpp_inc_tax')->orWhere('v.dpp_inc_tax', 0);
-            })
-            ->where(function ($q) use ($windows) {
-                foreach ($windows as $w) {
-                    $q->orWhereBetween('v.updated_at', $w);
-                }
             });
 
         $count = (clone $wipeQuery)->count();
+
+        // Per-creator summary so Sarah can see who has the most affected.
+        $byCreator = (clone $wipeQuery)
+            ->select(
+                DB::raw("CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,'')) as created_by"),
+                DB::raw("COUNT(*) as cnt")
+            )
+            ->groupBy('created_by')
+            ->orderBy('cnt', 'desc')
+            ->get();
 
         $rows = $wipeQuery
             ->select(
@@ -63,17 +65,13 @@ class WipeAuditController extends Controller
         return view('admin.wipe_audit', [
             'rows' => $rows,
             'count' => $count,
+            'byCreator' => $byCreator,
         ]);
     }
 
     public function csv()
     {
         $businessId = request()->session()->get('user.business_id');
-
-        $windows = [
-            ['2026-04-27 11:00:00', '2026-04-27 12:00:00'],
-            ['2026-04-27 18:00:00', '2026-04-27 19:00:00'],
-        ];
 
         $rows = DB::table('variations as v')
             ->join('products as p', 'p.id', '=', 'v.product_id')
@@ -86,11 +84,6 @@ class WipeAuditController extends Controller
             })
             ->where(function ($q) {
                 $q->whereNull('v.dpp_inc_tax')->orWhere('v.dpp_inc_tax', 0);
-            })
-            ->where(function ($q) use ($windows) {
-                foreach ($windows as $w) {
-                    $q->orWhereBetween('v.updated_at', $w);
-                }
             })
             ->select(
                 'v.id as variation_id',

@@ -37,6 +37,23 @@
                     </a>
                 </p>
 
+                @if (!empty($byCreator) && count($byCreator) > 0)
+                    <h4 style="margin-top:24px;">Breakdown by who created the product</h4>
+                    <table class="table table-condensed" style="max-width:480px;">
+                        <thead>
+                            <tr><th>Created by</th><th style="text-align:right;">Count at $0</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach ($byCreator as $c)
+                                <tr>
+                                    <td>{{ trim($c->created_by) ?: '—' }}</td>
+                                    <td style="text-align:right;"><strong>{{ number_format($c->cnt) }}</strong></td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                @endif
+
                 <p style="margin-top:16px;">
                     For Sohaib's surgical restore — the precise SQL is:
                 </p>
