@@ -20,7 +20,6 @@ class PurchasePriceMismatchController extends Controller
             ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
             ->where('p.business_id', $businessId)
             ->whereNull('v.deleted_at')
-            ->whereNull('p.deleted_at')
             ->whereRaw('ROUND(v.default_purchase_price, 2) <> ROUND(v.dpp_inc_tax, 2)')
             ->select(
                 'v.id as variation_id',
@@ -39,13 +38,11 @@ class PurchasePriceMismatchController extends Controller
             ->join('products as p', 'p.id', '=', 'v.product_id')
             ->where('p.business_id', $businessId)
             ->whereNull('v.deleted_at')
-            ->whereNull('p.deleted_at')
             ->whereRaw('ROUND(v.default_purchase_price, 2) <> ROUND(v.dpp_inc_tax, 2)')
             ->count();
 
         $totalProducts = DB::table('products')
             ->where('business_id', $businessId)
-            ->whereNull('deleted_at')
             ->count();
 
         return view('admin.purchase_price_mismatch', [
@@ -70,7 +67,6 @@ class PurchasePriceMismatchController extends Controller
             ->join('products as p', 'p.id', '=', 'v.product_id')
             ->where('p.business_id', $businessId)
             ->whereNull('v.deleted_at')
-            ->whereNull('p.deleted_at')
             ->whereRaw('ROUND(v.default_purchase_price, 2) <> ROUND(v.dpp_inc_tax, 2)')
             ->pluck('v.id')
             ->all();
