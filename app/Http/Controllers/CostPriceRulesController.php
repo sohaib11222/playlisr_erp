@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class CostPriceRulesController extends Controller
 {
@@ -12,7 +13,7 @@ class CostPriceRulesController extends Controller
     // (never overwrites an existing cost).
     const RULES = [
         ['label' => 'New Vinyl',             'match' => ['new vinyl', 'sealed vinyl'],             'cost' => 17.00],
-        ['label' => 'Used Vinyl',            'match' => ['used vinyl'],                            'cost' => 0.10],
+        ['label' => 'Used Vinyl',            'match' => ['used vinyl'],                            'cost' => 0.40],
         ['label' => 'CDs (used)',            'match' => ['used cds', 'cds (used)', 'used cd'],     'cost' => 0.10],
         ['label' => 'New CDs',               'match' => ['new cds', 'new cd', 'sealed cd', 'cd (sealed)'], 'cost' => 6.00],
         ['label' => 'Cassettes (used)',      'match' => ['used cassettes', 'cassettes (used)', 'used cassette', 'cassettes'], 'cost' => 0.30],
@@ -53,6 +54,7 @@ class CostPriceRulesController extends Controller
         $results = [];
         $grandUpdated = 0;
         $grandMatchedCategory = 0;
+        $snapshotRows = []; // BEFORE state for undo, only collected when committing.
 
         foreach (self::RULES as $rule) {
             $categoryIds = DB::table('categories')
@@ -92,6 +94,22 @@ class CostPriceRulesController extends Controller
             $updated = 0;
             if ($commit && $eligible > 0) {
                 $ids = (clone $eligibleQuery)->pluck('variations.id')->all();
+
+                // Snapshot BEFORE state of every row we touch — required by
+                // /admin/admin-action-history undo, per post-incident rules.
+                $beforeForChunk = DB::table('variations')
+                    ->whereIn('id', $ids)
+                    ->select('id', 'default_purchase_price', 'dpp_inc_tax', 'updated_at')
+                    ->get();
+                foreach ($beforeForChunk as $r) {
+                    $snapshotRows[] = [
+                        'id' => $r->id,
+                        'default_purchase_price' => $r->default_purchase_price,
+                        'dpp_inc_tax' => $r->dpp_inc_tax,
+                        'updated_at' => (string) $r->updated_at,
+                    ];
+                }
+
                 foreach (array_chunk($ids, 500) as $chunk) {
                     $updated += DB::table('variations')
                         ->whereIn('id', $chunk)
@@ -112,6 +130,21 @@ class CostPriceRulesController extends Controller
                 'updated' => $updated,
                 'note' => null,
             ];
+        }
+
+        // Persist the snapshot file AFTER all rules ran, when committing.
+        if ($commit && !empty($snapshotRows)) {
+            $timestamp = now()->format('Y-m-d_His');
+            $snapshotKey = "cost-price-rules-{$timestamp}";
+            Storage::disk('local')->put(
+                "admin-snapshots/{$snapshotKey}.json",
+                json_encode([
+                    'timestamp' => now()->toDateTimeString(),
+                    'action' => 'cost-price-rules',
+                    'business_id' => $businessId,
+                    'rows' => $snapshotRows,
+                ], JSON_PRETTY_PRINT)
+            );
         }
 
         return view('admin.cost_price_rules', [

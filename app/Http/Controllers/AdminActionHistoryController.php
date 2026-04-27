@@ -64,9 +64,11 @@ class AdminActionHistoryController extends Controller
                 ->with('status', ['success' => 0, 'msg' => 'Snapshot empty / unreadable.']);
         }
 
-        // Only purchase-price-mismatch snapshots are supported here for now.
-        // Every snapshot row holds variation id + the two cost columns to restore.
-        if (($data['action'] ?? '') !== 'purchase-price-mismatch') {
+        // Variation-cost actions: snapshot rows hold variation id + the two
+        // cost columns to restore. Both purchase-price-mismatch and
+        // cost-price-rules use the same row schema.
+        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules'];
+        if (!in_array($data['action'] ?? '', $supportedActions, true)) {
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 0, 'msg' => "Don't know how to undo action: " . $data['action']]);
         }
