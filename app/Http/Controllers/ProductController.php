@@ -394,13 +394,20 @@ class ProductController extends Controller
                     '<div style="white-space: nowrap;">@format_currency($min_price) @if($max_price != $min_price && $type == "variable") -  @format_currency($max_price)@endif </div>'
                 )
                 ->editColumn('updated_at', function($row) {
-                    // Clamp future timestamps to now — bad rows from a TZ-drifted
-                    // sync shouldn't render as 2030 etc.
-                    $ts = min(strtotime($row->updated_at), time());
+                    // Future timestamp = bad data (TZ-drifted sync, manual SQL).
+                    // Show "—" rather than rendering 2030 or pretending it's now;
+                    // the latter quietly turns garbage into "freshly updated".
+                    $ts = strtotime($row->updated_at);
+                    if (!$ts || $ts > time()) {
+                        return '—';
+                    }
                     return date('m/d/Y h:i A', $ts);
                 })
                 ->addColumn('created_at', function ($row) {
-                    $ts = min(strtotime($row->created_at), time());
+                    $ts = strtotime($row->created_at);
+                    if (!$ts || $ts > time()) {
+                        return '—';
+                    }
                     return date('m/d/Y h:i A', $ts);
                 })
                 ->addColumn('created_by_name', function ($row) {
