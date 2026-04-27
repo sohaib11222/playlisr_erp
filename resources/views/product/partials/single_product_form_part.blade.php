@@ -13,7 +13,7 @@
 <div class="table-responsive">
     <table class="table table-bordered add-product-price-table table-condensed {{$class}}">
         <tr>
-          <th>@lang('product.default_purchase_price')</th>
+          <th>Cost (what you paid)</th>
           <th>@lang('product.profit_percent') @show_tooltip(__('tooltip.profit_percent'))</th>
           <th>@lang('product.default_selling_price')</th>
           @if(empty($quick_add))
@@ -36,9 +36,9 @@
             <!--</div>-->
 
             <div class="col-sm-12">
-              {!! Form::label('single_dpp_inc_tax', trans('product.inc_of_tax') . ':*') !!}
-            
-              {!! Form::text('single_dpp_inc_tax', $default, ['class' => 'form-control input-sm dpp_inc_tax input_number', 'placeholder' => __('product.inc_of_tax'), 'required']); !!}
+              {!! Form::label('single_dpp_inc_tax', 'Cost (what you paid):*') !!}
+
+              {!! Form::text('single_dpp_inc_tax', $default, ['class' => 'form-control input-sm dpp_inc_tax input_number', 'placeholder' => 'What you paid', 'required']); !!}
             </div>
           </td>
 
