@@ -514,11 +514,47 @@
                 }
             });
 
-            // Hook up main search bar to DataTables
+            // Hook up main search bar to DataTables — debounced + min-length
+            // so each keystroke doesn't fire its own server-side query (the old
+            // behavior made the bar feel sluggish on large catalogs because
+            // requests piled up faster than they could complete).
             if ($('#product_search_main').length) {
-                $('#product_search_main').on('keyup change', function() {
-                    if (typeof product_table !== 'undefined') {
-                        product_table.search($(this).val()).draw();
+                var __search_timer = null;
+                var __search_xhr   = null;
+                var __search_last  = '';
+                var runProductSearch = function(term) {
+                    if (typeof product_table === 'undefined') { return; }
+                    if (term === __search_last) { return; }
+                    __search_last = term;
+                    // Cancel any in-flight AJAX so old responses don't overwrite new ones
+                    if (__search_xhr && __search_xhr.readyState !== 4) {
+                        try { __search_xhr.abort(); } catch (e) {}
+                    }
+                    var settings = product_table.settings()[0];
+                    if (settings && settings.jqXHR) {
+                        try { settings.jqXHR.abort(); } catch (e) {}
+                    }
+                    __search_xhr = product_table.search(term).draw();
+                };
+                $('#product_search_main').on('input', function() {
+                    var term = $(this).val();
+                    clearTimeout(__search_timer);
+                    // Empty -> reset immediately. 1 char -> wait (too broad). 2+ -> 350ms debounce.
+                    if (term.length === 0) {
+                        runProductSearch('');
+                    } else if (term.length === 1) {
+                        // Skip — single-character search rarely useful and is the worst case
+                        return;
+                    } else {
+                        __search_timer = setTimeout(function() { runProductSearch(term); }, 350);
+                    }
+                });
+                // Enter forces the search immediately (skips debounce)
+                $('#product_search_main').on('keydown', function(e) {
+                    if (e.which === 13) {
+                        e.preventDefault();
+                        clearTimeout(__search_timer);
+                        runProductSearch($(this).val());
                     }
                 });
             }
