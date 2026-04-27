@@ -368,14 +368,14 @@
                 return;
             }
             
-            var updatedAtColIndex = $('#product_table thead th').filter(function() {
-                return $(this).text().trim() === 'Last updated at';
+            var createdAtColIndex = $('#product_table thead th').filter(function() {
+                return $(this).text().trim() === 'Created at';
             }).index();
 
             product_table = $('#product_table').DataTable({
                 processing: true,
                 serverSide: true,
-                aaSorting: [[updatedAtColIndex >= 0 ? updatedAtColIndex : 11, 'desc']],
+                aaSorting: [[createdAtColIndex >= 0 ? createdAtColIndex : 12, 'desc']],
                 scrollY:        "75vh",
                 scrollX:        true,
                 scrollCollapse: true,
