@@ -623,6 +623,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/admin-action-history', 'AdminActionHistoryController@index');
     Route::post('/admin/admin-action-history/undo', 'AdminActionHistoryController@undo');
 
+    // Pinpoint the actual rows wiped by the 2026-04-27 backfill so Sohaib's
+    // surgical restore from the 04-24 backup hits only the victims.
+    Route::get('/admin/wipe-audit', 'WipeAuditController@index');
+
     // One-shot diagnostic: did the Nivessa Backend xlsx imports land on prod?
     // Hit /admin/nivessa-import-status in the browser to see row counts per table.
     Route::get('/admin/nivessa-import-status', function () {

@@ -1,0 +1,66 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Support\Facades\DB;
+
+// Pinpoints exactly which variation rows were zeroed by the 2026-04-27
+// purchase-price-mismatch backfill: rows whose default_purchase_price AND
+// dpp_inc_tax are both 0 NOW *and* whose updated_at falls in the backfill
+// window. This is the precise restore target — narrows Sohaib's surgical
+// recovery from "1,892 products with \$0 cost" down to just the actual
+// victims of the bug.
+class WipeAuditController extends Controller
+{
+    public function index()
+    {
+        $businessId = request()->session()->get('user.business_id');
+
+        // Window covers 2026-04-27 11:00–12:00 PT (server in Phoenix, UTC-7).
+        // We probe both local and UTC interpretations so we don't miss rows
+        // depending on how MySQL stores updated_at on this server.
+        $windows = [
+            ['2026-04-27 11:00:00', '2026-04-27 12:00:00'],   // local Phoenix
+            ['2026-04-27 18:00:00', '2026-04-27 19:00:00'],   // UTC
+        ];
+
+        $wipeQuery = DB::table('variations as v')
+            ->join('products as p', 'p.id', '=', 'v.product_id')
+            ->leftJoin('users as u', 'u.id', '=', 'p.created_by')
+            ->where('p.business_id', $businessId)
+            ->whereNull('v.deleted_at')
+            ->where(function ($q) {
+                $q->whereNull('v.default_purchase_price')->orWhere('v.default_purchase_price', 0);
+            })
+            ->where(function ($q) {
+                $q->whereNull('v.dpp_inc_tax')->orWhere('v.dpp_inc_tax', 0);
+            })
+            ->where(function ($q) use ($windows) {
+                foreach ($windows as $w) {
+                    $q->orWhereBetween('v.updated_at', $w);
+                }
+            });
+
+        $count = (clone $wipeQuery)->count();
+
+        $rows = $wipeQuery
+            ->select(
+                'v.id as variation_id',
+                'p.id as product_id',
+                'v.updated_at',
+                'p.name',
+                'p.sku',
+                'v.default_sell_price',
+                'v.sell_price_inc_tax',
+                DB::raw("CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,'')) as created_by")
+            )
+            ->orderBy('v.updated_at', 'desc')
+            ->limit(5000)
+            ->get();
+
+        return view('admin.wipe_audit', [
+            'rows' => $rows,
+            'count' => $count,
+        ]);
+    }
+}
