@@ -58,6 +58,18 @@
                     </div>
                 </div>
             </div>
+            <div class="col-md-3">
+                <div class="form-group">
+                    {!! Form::label('ir_category_id', __('category.category') . ':') !!}
+                    {!! Form::select('ir_category_id', $categories, null, ['class' => 'form-control select2', 'placeholder' => __('lang_v1.all'), 'id' => 'ir_category_id', 'style' => 'width:100%']); !!}
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="form-group">
+                    {!! Form::label('ir_sub_category_id', __('product.sub_category') . ':') !!}
+                    {!! Form::select('ir_sub_category_id', [], null, ['class' => 'form-control select2', 'placeholder' => __('lang_v1.all'), 'id' => 'ir_sub_category_id', 'style' => 'width:100%']); !!}
+                </div>
+            </div>
             @if(Module::has('Manufacturing'))
                 <div class="col-md-3">
                     <div class="form-group">
@@ -83,6 +95,13 @@
                 </div>
             </div>
             @endcomponent
+
+            <div style="margin-bottom:10px; text-align:right;">
+                <button type="button" class="btn btn-success" id="ir-export-all-btn">
+                    <i class="fa fa-file-excel"></i> Export filtered (CSV)
+                </button>
+                <span id="ir-export-hint" style="margin-left:8px; font-size:12px; color:#6b7280;"></span>
+            </div>
         </div>
     </div>
     <div class="row">

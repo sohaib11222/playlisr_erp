@@ -339,6 +339,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/adjust-product-stock', 'ReportController@adjustProductStock');
     Route::get('/reports/get-profit/{by?}', 'ReportController@getProfit');
     Route::get('/reports/items-report', 'ReportController@itemsReport');
+    Route::get('/reports/items-report/export', 'ReportController@itemsReportExport')->name('reports.items-report.export');
     Route::get('/reports/inventory-check-assistant', 'InventoryCheckController@index');
     Route::get('/reports/inventory-check-assistant/data', 'InventoryCheckController@data');
     Route::get('/reports/inventory-check-assistant/buckets', 'InventoryCheckController@buckets');

@@ -1413,6 +1413,8 @@ $(document).ready(function() {
                 d.supplier_id = $('select#ir_supplier_id').val();
                 d.customer_id = $('select#ir_customer_id').val();
                 d.location_id = $('select#ir_location_id').val();
+                d.category_id = $('select#ir_category_id').val();
+                d.sub_category_id = $('select#ir_sub_category_id').val();
                 d.only_mfg_products = $('#only_mfg_products').length && $('#only_mfg_products').is(':checked') ? 1 : 0;
                 d.only_manual_items = $('#only_manual_items').length && $('#only_manual_items').is(':checked') ? 1 : 0;
             },
@@ -1450,8 +1452,70 @@ $(document).ready(function() {
             __currency_convert_recursively($('#items_report_table'));
         },
     });
-    $(document).on('change', '#ir_supplier_id, #ir_customer_id, #ir_location_id', function(){
+    $(document).on('change', '#ir_supplier_id, #ir_customer_id, #ir_location_id, #ir_category_id, #ir_sub_category_id', function(){
         items_report_table.ajax.reload();
+    });
+
+    // Cascade sub-category when category changes (mirrors get_sub_categories()
+    // in app.js but targets the items-report-specific selects).
+    $(document).on('change', '#ir_category_id', function() {
+        var cat = $(this).val();
+        var $sub = $('#ir_sub_category_id');
+        if (!cat) {
+            $sub.html('<option value="">' + (LANG && LANG.all ? LANG.all : 'All') + '</option>').change();
+            return;
+        }
+        $.ajax({
+            method: 'POST',
+            url: '/products/get_sub_categories',
+            dataType: 'html',
+            data: { cat_id: cat },
+            success: function(result) {
+                if (result) {
+                    $sub.html(result).change();
+                }
+            },
+        });
+    });
+
+    // Export filtered rows (full set, not just current DataTables page).
+    $(document).on('click', '#ir-export-all-btn', function() {
+        var $btn = $(this);
+        var $hint = $('#ir-export-hint');
+        var original = $btn.html();
+        $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Preparing CSV…');
+        $hint.text('Large date ranges can take a minute.');
+
+        var purchase_start = '';
+        var purchase_end = '';
+        if ($('#ir_purchase_date_filter').val()) {
+            purchase_start = $('input#ir_purchase_date_filter').data('daterangepicker').startDate.format('YYYY-MM-DD');
+            purchase_end = $('input#ir_purchase_date_filter').data('daterangepicker').endDate.format('YYYY-MM-DD');
+        }
+        var sale_start = '';
+        var sale_end = '';
+        if ($('#ir_sale_date_filter').val()) {
+            sale_start = $('input#ir_sale_date_filter').data('daterangepicker').startDate.format('YYYY-MM-DD');
+            sale_end = $('input#ir_sale_date_filter').data('daterangepicker').endDate.format('YYYY-MM-DD');
+        }
+        var qs = $.param({
+            purchase_start: purchase_start,
+            purchase_end: purchase_end,
+            sale_start: sale_start,
+            sale_end: sale_end,
+            supplier_id: $('select#ir_supplier_id').val() || '',
+            customer_id: $('select#ir_customer_id').val() || '',
+            location_id: $('select#ir_location_id').val() || '',
+            category_id: $('select#ir_category_id').val() || '',
+            sub_category_id: $('select#ir_sub_category_id').val() || '',
+            only_mfg_products: $('#only_mfg_products').length && $('#only_mfg_products').is(':checked') ? 1 : 0,
+            only_manual_items: $('#only_manual_items').length && $('#only_manual_items').is(':checked') ? 1 : 0,
+        });
+        window.location.href = '/reports/items-report/export?' + qs;
+        setTimeout(function() {
+            $btn.prop('disabled', false).html(original);
+            $hint.text('');
+        }, 4000);
     });
     
     // Handle iCheck checkboxes (only_manual_items and only_mfg_products)

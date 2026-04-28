@@ -3301,6 +3301,18 @@ class ReportController extends Controller
                 // Manual items don't have purchase types, so skip this filter
             }
 
+            $category_id = request()->get('category_id', null);
+            if (!empty($category_id)) {
+                $purchased_items_query->where('p.category_id', $category_id);
+                $manual_items_query->where('transaction_sell_lines.category_id', $category_id);
+            }
+
+            $sub_category_id = request()->get('sub_category_id', null);
+            if (!empty($sub_category_id)) {
+                $purchased_items_query->where('p.sub_category_id', $sub_category_id);
+                $manual_items_query->where('transaction_sell_lines.sub_category_id', $sub_category_id);
+            }
+
             $only_manual_items = request()->get('only_manual_items', 0);
             
             // Union the queries or use only manual items query
@@ -3444,7 +3456,232 @@ class ReportController extends Controller
         $suppliers = Contact::suppliersDropdown($business_id, false);
         $customers = Contact::customersDropdown($business_id, false);
         $business_locations = BusinessLocation::forDropdown($business_id);
-        return view('report.items_report')->with(compact('suppliers', 'customers', 'business_locations'));
+        $categories = Category::forDropdown($business_id, 'product');
+        return view('report.items_report')->with(compact('suppliers', 'customers', 'business_locations', 'categories'));
+    }
+
+    /**
+     * Full CSV export of the Items Report — bypasses DataTables pagination
+     * so Sarah gets every matching row, not just the current page. Mirrors
+     * the filter logic from itemsReport() (purchased + manual items, dates,
+     * supplier, customer, location, category, sub-category).
+     */
+    public function itemsReportExport()
+    {
+        $business_id = request()->session()->get('user.business_id');
+
+        $purchased_items_query = TransactionSellLinesPurchaseLines::join('purchase_lines as PL', 'PL.id', '=', 'transaction_sell_lines_purchase_lines.purchase_line_id')
+            ->join('transactions as purchase', 'PL.transaction_id', '=', 'purchase.id')
+            ->leftJoin('transaction_sell_lines as SL', 'SL.id', '=', 'transaction_sell_lines_purchase_lines.sell_line_id')
+            ->leftJoin('stock_adjustment_lines as SAL', 'SAL.id', '=', 'transaction_sell_lines_purchase_lines.stock_adjustment_line_id')
+            ->leftJoin('transactions as sale', 'SL.transaction_id', '=', 'sale.id')
+            ->leftJoin('transactions as stock_adjustment', 'SAL.transaction_id', '=', 'stock_adjustment.id')
+            ->join('business_locations as bl', 'purchase.location_id', '=', 'bl.id')
+            ->join('variations as v', 'PL.variation_id', '=', 'v.id')
+            ->join('product_variations as pv', 'v.product_variation_id', '=', 'pv.id')
+            ->join('products as p', 'PL.product_id', '=', 'p.id')
+            ->join('units as u', 'p.unit_id', '=', 'u.id')
+            ->leftJoin('categories as cat', 'p.category_id', '=', 'cat.id')
+            ->leftJoin('categories as sub_cat', 'p.sub_category_id', '=', 'sub_cat.id')
+            ->leftJoin('contacts as suppliers', 'purchase.contact_id', '=', 'suppliers.id')
+            ->leftJoin('contacts as customers', 'sale.contact_id', '=', 'customers.id')
+            ->where('purchase.business_id', $business_id)
+            ->select(
+                'v.sub_sku as sku',
+                'p.type as product_type',
+                'p.name as product_name',
+                'p.format as format',
+                'v.name as variation_name',
+                'pv.name as product_variation',
+                'u.short_name as unit',
+                'cat.name as category',
+                'sub_cat.name as sub_category',
+                'purchase.transaction_date as purchase_date',
+                'purchase.ref_no as purchase_ref_no',
+                'purchase.type as purchase_type',
+                'suppliers.name as supplier',
+                'suppliers.supplier_business_name',
+                'PL.purchase_price_inc_tax as purchase_price',
+                'sale.transaction_date as sell_date',
+                'stock_adjustment.transaction_date as stock_adjustment_date',
+                'sale.invoice_no as sale_invoice_no',
+                'stock_adjustment.ref_no as stock_adjustment_ref_no',
+                'customers.name as customer',
+                'customers.supplier_business_name as customer_business_name',
+                'transaction_sell_lines_purchase_lines.quantity as quantity',
+                'SL.unit_price_inc_tax as selling_price',
+                'SAL.unit_price as stock_adjustment_price',
+                'transaction_sell_lines_purchase_lines.sell_line_id',
+                'bl.name as location',
+                'SL.sell_line_note',
+                'PL.lot_number'
+            );
+
+        $manual_items_query = TransactionSellLine::join('transactions as sale', 'transaction_sell_lines.transaction_id', '=', 'sale.id')
+            ->join('business_locations as bl', 'sale.location_id', '=', 'bl.id')
+            ->leftJoin('categories as cat', 'transaction_sell_lines.category_id', '=', 'cat.id')
+            ->leftJoin('categories as sub_cat', 'transaction_sell_lines.sub_category_id', '=', 'sub_cat.id')
+            ->leftJoin('contacts as customers', 'sale.contact_id', '=', 'customers.id')
+            ->where('sale.business_id', $business_id)
+            ->where('sale.type', 'sell')
+            ->where('sale.status', 'final')
+            ->where(function ($q) {
+                $q->whereNull('transaction_sell_lines.product_id')
+                    ->orWhere('transaction_sell_lines.product_id', 0);
+            })
+            ->whereNotNull('transaction_sell_lines.product_name')
+            ->select(
+                DB::raw('NULL as sku'),
+                DB::raw("'single' as product_type"),
+                'transaction_sell_lines.product_name as product_name',
+                DB::raw('NULL as format'),
+                DB::raw('NULL as variation_name'),
+                DB::raw('NULL as product_variation'),
+                DB::raw("'pcs' as unit"),
+                'cat.name as category',
+                'sub_cat.name as sub_category',
+                DB::raw('NULL as purchase_date'),
+                DB::raw("'Manual Item' as purchase_ref_no"),
+                DB::raw("'manual' as purchase_type"),
+                DB::raw('NULL as supplier'),
+                DB::raw('NULL as supplier_business_name'),
+                DB::raw('0 as purchase_price'),
+                'sale.transaction_date as sell_date',
+                DB::raw('NULL as stock_adjustment_date'),
+                'sale.invoice_no as sale_invoice_no',
+                DB::raw('NULL as stock_adjustment_ref_no'),
+                'customers.name as customer',
+                'customers.supplier_business_name as customer_business_name',
+                'transaction_sell_lines.quantity as quantity',
+                'transaction_sell_lines.unit_price_inc_tax as selling_price',
+                DB::raw('NULL as stock_adjustment_price'),
+                'transaction_sell_lines.id as sell_line_id',
+                'bl.name as location',
+                'transaction_sell_lines.sell_line_note',
+                DB::raw('NULL as lot_number')
+            );
+
+        $permitted_locations = auth()->user()->permitted_locations();
+        if ($permitted_locations != 'all') {
+            $purchased_items_query->whereIn('purchase.location_id', $permitted_locations);
+            $manual_items_query->whereIn('sale.location_id', $permitted_locations);
+        }
+
+        if (!empty(request()->purchase_start) && !empty(request()->purchase_end)) {
+            $start = request()->purchase_start;
+            $end = request()->purchase_end;
+            $purchased_items_query->whereBetween(DB::raw('DATE(purchase.transaction_date)'), [$start, $end]);
+        }
+
+        if (!empty(request()->sale_start) && !empty(request()->sale_end)) {
+            $start = request()->sale_start;
+            $end = request()->sale_end;
+            $purchased_items_query->where(function ($q) use ($start, $end) {
+                $q->where(function ($qr) use ($start, $end) {
+                    $qr->whereNotNull('sale.transaction_date')
+                        ->whereBetween(DB::raw('DATE(sale.transaction_date)'), [$start, $end]);
+                })->orWhere(function ($qr) use ($start, $end) {
+                    $qr->whereNotNull('stock_adjustment.transaction_date')
+                        ->whereBetween(DB::raw('DATE(stock_adjustment.transaction_date)'), [$start, $end]);
+                });
+            });
+            $manual_items_query->whereBetween(DB::raw('DATE(sale.transaction_date)'), [$start, $end]);
+        }
+
+        if (!empty(request()->supplier_id)) {
+            $purchased_items_query->where('suppliers.id', request()->supplier_id);
+        }
+        if (!empty(request()->customer_id)) {
+            $purchased_items_query->where('customers.id', request()->customer_id);
+            $manual_items_query->where('customers.id', request()->customer_id);
+        }
+        if (!empty(request()->location_id)) {
+            $purchased_items_query->where('purchase.location_id', request()->location_id);
+            $manual_items_query->where('sale.location_id', request()->location_id);
+        }
+        if (!empty(request()->only_mfg_products)) {
+            $purchased_items_query->where('purchase.type', 'production_purchase');
+        }
+        if (!empty(request()->category_id)) {
+            $purchased_items_query->where('p.category_id', request()->category_id);
+            $manual_items_query->where('transaction_sell_lines.category_id', request()->category_id);
+        }
+        if (!empty(request()->sub_category_id)) {
+            $purchased_items_query->where('p.sub_category_id', request()->sub_category_id);
+            $manual_items_query->where('transaction_sell_lines.sub_category_id', request()->sub_category_id);
+        }
+
+        $only_manual_items = request()->get('only_manual_items', 0);
+        if (!empty($only_manual_items) && ($only_manual_items == 1 || $only_manual_items == '1')) {
+            $rows = $manual_items_query->orderByDesc('sale.transaction_date')->get();
+        } else {
+            // Run each query and merge — UNION + Eloquent ordering doesn't play
+            // nicely across heterogeneous selects, and the export is one-shot
+            // so we don't need DB-level pagination.
+            $purchased = $purchased_items_query->get();
+            $manual = $manual_items_query->get();
+            $rows = $purchased->concat($manual)->sortByDesc(function ($r) {
+                return $r->sell_date ?: ($r->stock_adjustment_date ?: $r->purchase_date);
+            })->values();
+        }
+
+        $filename = 'items-report-' . now()->format('Y-m-d-Hi') . '.csv';
+
+        return response()->streamDownload(function () use ($rows) {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, [
+                'Product', 'Format', 'SKU', 'Category', 'Sub-category', 'Description',
+                'Purchase Date', 'Purchase Ref', 'Lot Number', 'Supplier', 'Purchase Price',
+                'Sell Date', 'Sale Invoice', 'Customer', 'Location',
+                'Quantity', 'Unit', 'Selling Price', 'Subtotal',
+            ]);
+            foreach ($rows as $r) {
+                $product_name = $r->product_name;
+                if ($r->product_type == 'variable' && !empty($r->product_variation)) {
+                    $product_name .= ' - ' . $r->product_variation . ' - ' . $r->variation_name;
+                }
+                if ($r->purchase_type == 'manual') {
+                    $product_name .= ' (Manual)';
+                }
+
+                $supplier = trim(($r->supplier_business_name ? $r->supplier_business_name . ', ' : '') . ($r->supplier ?? ''), ', ');
+                $customer = trim(($r->customer_business_name ? $r->customer_business_name . ', ' : '') . ($r->customer ?? ''), ', ');
+
+                $sell_date = $r->sell_date ?: $r->stock_adjustment_date;
+                $sale_invoice = !empty($r->sell_line_id) ? $r->sale_invoice_no : (($r->stock_adjustment_ref_no ?? '') . ' (stock adjustment)');
+
+                $selling_price = ($r->purchase_type == 'manual')
+                    ? $r->selling_price
+                    : (!empty($r->sell_line_id) ? $r->selling_price : $r->stock_adjustment_price);
+                $subtotal = (float) $selling_price * (float) $r->quantity;
+
+                fputcsv($out, [
+                    $product_name,
+                    $r->format,
+                    $r->sku,
+                    $r->category,
+                    $r->sub_category,
+                    $r->sell_line_note,
+                    $r->purchase_type == 'manual' ? '' : $r->purchase_date,
+                    $r->purchase_ref_no,
+                    $r->lot_number,
+                    $supplier,
+                    $r->purchase_type == 'manual' ? '' : $r->purchase_price,
+                    $sell_date,
+                    $sale_invoice,
+                    $customer,
+                    $r->location,
+                    (float) $r->quantity,
+                    $r->unit ?? 'pcs',
+                    $selling_price,
+                    $subtotal,
+                ]);
+            }
+            fclose($out);
+        }, $filename, [
+            'Content-Type' => 'text/csv',
+            'Cache-Control' => 'no-store',
+        ]);
     }
 
     /**
