@@ -52,20 +52,16 @@
     .rf-total .lbl { color: #5A5045; font-weight: 600; font-size: 12px;
         text-transform: uppercase; letter-spacing: .06em; margin-right: 6px; }
 
-    /* Reconcile block: ERP total vs Clover charged, tax broken out. */
-    .rf-recon { font-variant-numeric: tabular-nums; font-size: 13px; min-width: 200px; }
-    .rf-recon-row { display: flex; justify-content: space-between; gap: 16px;
-        padding: 1px 0; }
-    .rf-recon-row .lbl { color: #5A5045; font-weight: 600; font-size: 11px;
-        text-transform: uppercase; letter-spacing: .06em; }
-    .rf-recon-row .val { color: #1F1B16; font-weight: 600; }
-    .rf-recon-row.is-erp .val { font-size: 16px; font-weight: 700; }
-    .rf-recon-row.is-clover .val { font-size: 14px; }
-    .rf-recon-row.is-tax .lbl, .rf-recon-row.is-tax .val,
-    .rf-recon-row.is-tip .lbl, .rf-recon-row.is-tip .val { color: #8A7C6A; font-size: 12px; }
-    .rf-recon.is-mismatch .rf-recon-row.is-clover .val { color: #B0451A; }
-    .rf-recon-cards { color: #8A7C6A; font-size: 11px; text-align: right;
-        margin-top: 2px; letter-spacing: .02em; }
+    /* Reconcile block: ERP column vs Clover column, side by side. */
+    .rf-recon { display: flex; gap: 24px; font-variant-numeric: tabular-nums; }
+    .rf-recon-col { min-width: 90px; text-align: right; }
+    .rf-recon-col .lbl { color: #5A5045; font-weight: 600; font-size: 11px;
+        text-transform: uppercase; letter-spacing: .06em; margin-bottom: 2px; }
+    .rf-recon-col .amt { color: #1F1B16; font-weight: 700; font-size: 16px;
+        line-height: 1.2; }
+    .rf-recon-col .sub { color: #8A7C6A; font-size: 11px; margin-top: 2px;
+        line-height: 1.4; }
+    .rf-recon.is-mismatch .rf-recon-clover .amt { color: #B0451A; }
     .rf-recon-mismatch-tag { display: inline-block; margin-left: 6px; padding: 1px 6px;
         border-radius: 4px; background: #FBE0D2; color: #B0451A;
         font-size: 10px; font-weight: 700; text-transform: uppercase;
@@ -106,6 +102,25 @@
             </div>
             <div class="rf-count">{{ $sales->count() }} sale{{ $sales->count() === 1 ? '' : 's' }}</div>
         </form>
+
+        @if(!empty($clover_debug))
+            <div style="background:#FFF8E1;border:1px solid #E6D58A;border-radius:8px;padding:12px 14px;margin-bottom:14px;font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#5A5045;line-height:1.5;">
+                <div style="font-weight:700;font-size:12px;color:#1F1B16;margin-bottom:6px;">Clover match diagnostics</div>
+                <div>ERP card payments loaded: <strong>{{ $clover_debug['erp_payment_count'] }}</strong> · Clover payments in window: <strong>{{ $clover_debug['clover_payment_count'] }}</strong> · Matched: <strong>{{ $clover_debug['matched_tx_count'] }}</strong> · ±window: {{ $clover_debug['window_seconds'] }}s</div>
+                @if(!empty($clover_debug['unmatched_clover']))
+                    <div style="margin-top:8px;font-weight:700;color:#1F1B16;">Unmatched Clover payments (first 15):</div>
+                    @foreach($clover_debug['unmatched_clover'] as $u)
+                        <div>• ${{ number_format($u['amount'], 2) }} · {{ $u['paid_at'] }} · {{ $u['employee'] ?: '(no name)' }} · {{ $u['card'] }}</div>
+                    @endforeach
+                @endif
+                @if(!empty($clover_debug['unmatched_erp']))
+                    <div style="margin-top:8px;font-weight:700;color:#1F1B16;">Unclaimed ERP card payments (first 15):</div>
+                    @foreach($clover_debug['unmatched_erp'] as $u)
+                        <div>• ${{ number_format($u['amount'], 2) }} · {{ $u['ts'] }} · tx#{{ $u['tx_id'] }} · {{ $u['cashier'] ?: '(no name)' }}</div>
+                    @endforeach
+                @endif
+            </div>
+        @endif
 
         @forelse($sales as $sale)
             @php
@@ -190,32 +205,22 @@
                     </div>
                     @if($cloverInfo)
                         <div class="rf-recon {{ $cloverMismatch ? 'is-mismatch' : '' }}">
-                            <div class="rf-recon-row is-erp">
-                                <span class="lbl">ERP</span>
-                                <span class="val">${{ number_format($total, 2) }}</span>
+                            <div class="rf-recon-col rf-recon-erp">
+                                <div class="lbl">ERP</div>
+                                <div class="amt">${{ number_format($total, 2) }}</div>
                             </div>
-                            <div class="rf-recon-row is-clover">
-                                <span class="lbl">Clover</span>
-                                <span class="val">
-                                    ${{ number_format($cloverInfo['amount_cents'] / 100, 2) }}
+                            <div class="rf-recon-col rf-recon-clover">
+                                <div class="lbl">
+                                    Clover
                                     @if($cloverMismatch)<span class="rf-recon-mismatch-tag" title="Clover charged ≠ ERP total">mismatch</span>@endif
-                                </span>
+                                </div>
+                                <div class="amt">${{ number_format($cloverInfo['amount_cents'] / 100, 2) }}</div>
+                                <div class="sub">
+                                    @if($cloverInfo['tax_cents'] > 0)Tax ${{ number_format($cloverInfo['tax_cents'] / 100, 2) }}@endif
+                                    @if($cloverInfo['tip_cents'] > 0) · Tip ${{ number_format($cloverInfo['tip_cents'] / 100, 2) }}@endif
+                                    @if(!empty($cloverInfo['cards']))<div>{{ implode(' · ', $cloverInfo['cards']) }}</div>@endif
+                                </div>
                             </div>
-                            @if($cloverInfo['tax_cents'] > 0)
-                                <div class="rf-recon-row is-tax">
-                                    <span class="lbl">Tax</span>
-                                    <span class="val">${{ number_format($cloverInfo['tax_cents'] / 100, 2) }}</span>
-                                </div>
-                            @endif
-                            @if($cloverInfo['tip_cents'] > 0)
-                                <div class="rf-recon-row is-tip">
-                                    <span class="lbl">Tip</span>
-                                    <span class="val">${{ number_format($cloverInfo['tip_cents'] / 100, 2) }}</span>
-                                </div>
-                            @endif
-                            @if(!empty($cloverInfo['cards']))
-                                <div class="rf-recon-cards">{{ implode(' · ', $cloverInfo['cards']) }}</div>
-                            @endif
                         </div>
                     @else
                         <div class="rf-total"><span class="lbl">Total</span>${{ number_format($total, 2) }}</div>

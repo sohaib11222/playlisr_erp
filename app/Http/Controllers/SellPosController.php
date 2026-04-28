@@ -242,10 +242,21 @@ class SellPosController extends Controller
 
             // Greedy 1-to-1 match: each Clover payment claims the closest-time
             // unclaimed ERP payment with same amount + same cashier first name
-            // within ±60s. Mirrors the recon report's matching exactly.
+            // within ±5 minutes. The recon report uses ±60s, but the recent
+            // feed isn't volume-pressured — a wider window catches more pairs
+            // when there's clock drift between Clover terminals and the ERP.
+            //
+            // Two-pass: pass 1 requires matching cashier first name (high
+            // confidence). Pass 2 falls back to amount+time only — useful
+            // when Clover's logged-in employee differs from the ERP user
+            // (a common Nivessa case where one cashier is logged into both
+            // systems but with different names).
+            $TIME_WINDOW_SEC = 300;
             $claimed = [];
             $matchedCpByTx = []; // transaction_id => array of matched CloverPayment rows
-            foreach ($cpRows as $cp) {
+            $unmatchedCp = [];
+
+            $tryMatch = function ($cp, $requireName) use (&$claimed, $erpRows, $firstName, $TIME_WINDOW_SEC) {
                 $cpName = $firstName($cp->employee_name);
                 $cpAmt  = round((float) $cp->amount, 2);
                 $cpTs   = strtotime((string) $cp->paid_at);
@@ -255,20 +266,36 @@ class SellPosController extends Controller
                 foreach ($erpRows as $key => $er) {
                     if (isset($claimed[$key])) continue;
                     if (round((float) $er->amount, 2) !== $cpAmt) continue;
-                    $erName = $firstName($er->employee_name);
-                    if ($cpName !== '' && $erName !== '' && $erName !== $cpName) continue;
+                    if ($requireName) {
+                        $erName = $firstName($er->employee_name);
+                        if ($cpName !== '' && $erName !== '' && $erName !== $cpName) continue;
+                    }
                     $delta = abs(strtotime((string) $er->ts) - $cpTs);
-                    if ($delta > 60) continue;
+                    if ($delta > $TIME_WINDOW_SEC) continue;
                     if ($delta < $bestDelta) {
                         $bestDelta = $delta;
                         $bestKey = $key;
                     }
                 }
+                return $bestKey;
+            };
 
+            // Pass 1: with cashier-name constraint.
+            foreach ($cpRows as $cp) {
+                $bestKey = $tryMatch($cp, true);
                 if ($bestKey !== null) {
                     $claimed[$bestKey] = true;
-                    $txId = $erpRows[$bestKey]->transaction_id;
-                    $matchedCpByTx[$txId][] = $cp;
+                    $matchedCpByTx[$erpRows[$bestKey]->transaction_id][] = $cp;
+                } else {
+                    $unmatchedCp[] = $cp;
+                }
+            }
+            // Pass 2: amount + time only (no name) for whatever's left.
+            foreach ($unmatchedCp as $cp) {
+                $bestKey = $tryMatch($cp, false);
+                if ($bestKey !== null) {
+                    $claimed[$bestKey] = true;
+                    $matchedCpByTx[$erpRows[$bestKey]->transaction_id][] = $cp;
                 }
             }
 
@@ -298,7 +325,40 @@ class SellPosController extends Controller
             }
         }
 
-        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'limit', 'location_id', 'clover_by_transaction'));
+        // Debug mode — surface match-quality diagnostics inline so we can
+        // see why Clover data isn't appearing without needing DB access.
+        // Triggered with ?debug_clover=1.
+        $clover_debug = null;
+        if ($request->get('debug_clover') && isset($erpRows, $cpRows) && $erpRows->isNotEmpty()) {
+            $unclaimedErp = [];
+            foreach ($erpRows as $key => $er) {
+                if (!isset($claimed[$key])) {
+                    $unclaimedErp[] = [
+                        'tx_id' => $er->transaction_id,
+                        'amount' => round((float) $er->amount, 2),
+                        'ts' => (string) $er->ts,
+                        'cashier' => $er->employee_name,
+                    ];
+                }
+            }
+            $clover_debug = [
+                'erp_payment_count' => $erpRows->count(),
+                'clover_payment_count' => $cpRows->count(),
+                'matched_tx_count' => count($matchedCpByTx),
+                'unmatched_clover' => $cpRows->reject(fn($cp) =>
+                    collect($matchedCpByTx)->flatten(1)->contains(fn($m) => $m->id === $cp->id)
+                )->take(15)->map(fn($cp) => [
+                    'amount' => (float) $cp->amount,
+                    'paid_at' => (string) $cp->paid_at,
+                    'employee' => $cp->employee_name,
+                    'card' => trim(($cp->card_type ?? '') . ' ' . ($cp->card_last4 ? '••' . $cp->card_last4 : '')),
+                ])->values()->all(),
+                'unmatched_erp' => array_slice($unclaimedErp, 0, 15),
+                'window_seconds' => $TIME_WINDOW_SEC,
+            ];
+        }
+
+        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'limit', 'location_id', 'clover_by_transaction', 'clover_debug'));
     }
 
     /**
