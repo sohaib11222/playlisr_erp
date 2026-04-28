@@ -173,8 +173,7 @@
                 @endif
 
                 @php
-                    $cloverOrderId = $sale->clover_order_id ?? null;
-                    $cloverInfo = $cloverOrderId ? ($clover_by_order[$cloverOrderId] ?? null) : null;
+                    $cloverInfo = $clover_by_transaction[$sale->id] ?? null;
                     // Mismatch = ERP total ≠ Clover gross (amount, which already
                     // includes tax). Tip is separate so it doesn't count as a
                     // mismatch. Tolerance: 1 cent for floating-point safety.

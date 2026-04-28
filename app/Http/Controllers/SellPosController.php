@@ -190,45 +190,115 @@ class SellPosController extends Controller
             ->limit($limit)
             ->get();
 
-        // Pull Clover-side charge totals for any of these sales that were paid
-        // through Clover (transactions.clover_order_id links to clover_payments).
-        // A single Clover order can have multiple payments (split tender), so we
-        // sum amount_cents + tip_cents per order. Result = 'SUCCESS' filters out
-        // failed auths; voided/refunded edge cases are rare on the recent feed
-        // and live in raw_payload — we'll iterate on those if they cause noise.
-        $clover_order_ids = $sales->pluck('clover_order_id')->filter()->unique()->values();
-        $clover_by_order = [];
-        if ($clover_order_ids->isNotEmpty()) {
-            $clover_by_order = \App\CloverPayment::where('business_id', $business_id)
-                ->whereIn('clover_order_id', $clover_order_ids)
+        // Pull Clover-side charge totals for these sales by matching ERP card
+        // payments to Clover payments using the same heuristic as the EOD
+        // reconciliation report (ReportController::cloverEodTransactionMatch):
+        // same amount, same cashier first name, paid within ±60 seconds.
+        //
+        // We can't rely on transactions.clover_order_id — that column exists
+        // but is only populated by an explicit "refresh" path in SyncClover
+        // (which expects an existing link), so in practice it's null on every
+        // live sale. The fuzzy match is what the recon report uses and it's
+        // proven accurate enough for cashier-level reconciliation.
+        $clover_by_transaction = [];
+        if ($sales->isNotEmpty()) {
+            $firstName = function ($full) {
+                $full = trim((string) $full);
+                if ($full === '') return '';
+                $parts = preg_split('/\s+/', $full);
+                return strtolower($parts[0] ?? '');
+            };
+
+            $sale_ids = $sales->pluck('id')->all();
+
+            // ERP card payments for these transactions, with the cashier's
+            // name (created_by → users) so we can match Clover's employee_name.
+            // We don't filter by method here — Clover-tendered sales can land
+            // on different ERP methods depending on how the cashier rang them.
+            // Filtering happens implicitly via the amount+name+time match.
+            $erpRows = \DB::table('transaction_payments as tp')
+                ->join('transactions as t', 'tp.transaction_id', '=', 't.id')
+                ->leftJoin('users as u', 't.created_by', '=', 'u.id')
+                ->whereIn('tp.transaction_id', $sale_ids)
+                ->selectRaw("
+                    tp.id as payment_id,
+                    tp.transaction_id,
+                    tp.amount,
+                    t.transaction_date as ts,
+                    COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, '') as employee_name
+                ")
+                ->get();
+
+            // Clover payments in the rough time window of the visible sales
+            // (±1 day buffer for safety against timezone/clock skew).
+            $minDate = $sales->min('transaction_date');
+            $maxDate = $sales->max('transaction_date');
+            $cpRows = \App\CloverPayment::where('business_id', $business_id)
                 ->where('result', 'SUCCESS')
-                ->get()
-                ->groupBy('clover_order_id')
-                ->map(function ($payments) {
-                    // In Clover's API: payment.amount is the gross charged
-                    // (includes tax); taxAmount is the tax portion of that
-                    // amount; tipAmount is separate. So the customer's card
-                    // was actually hit for amount + tip.
-                    $amount = (int) $payments->sum('amount_cents');
-                    $tip    = (int) $payments->sum('tip_cents');
-                    $tax    = (int) $payments->sum('tax_cents');
-                    $cards = $payments->map(function ($p) {
-                        $brand = $p->card_type ? strtoupper($p->card_type) : '';
-                        $last4 = $p->card_last4 ? '••' . $p->card_last4 : '';
-                        return trim($brand . ' ' . $last4);
-                    })->filter()->unique()->values()->all();
-                    return [
-                        'amount_cents' => $amount,         // gross (incl. tax)
-                        'tip_cents'    => $tip,
-                        'tax_cents'    => $tax,
-                        'total_cents'  => $amount + $tip,  // what hit the card
-                        'cards'        => $cards,
-                    ];
-                })
-                ->all();
+                ->where('paid_at', '>=', \Carbon\Carbon::parse($minDate)->subDay())
+                ->where('paid_at', '<=', \Carbon\Carbon::parse($maxDate)->addDay())
+                ->orderBy('paid_at')
+                ->get();
+
+            // Greedy 1-to-1 match: each Clover payment claims the closest-time
+            // unclaimed ERP payment with same amount + same cashier first name
+            // within ±60s. Mirrors the recon report's matching exactly.
+            $claimed = [];
+            $matchedCpByTx = []; // transaction_id => array of matched CloverPayment rows
+            foreach ($cpRows as $cp) {
+                $cpName = $firstName($cp->employee_name);
+                $cpAmt  = round((float) $cp->amount, 2);
+                $cpTs   = strtotime((string) $cp->paid_at);
+
+                $bestKey = null;
+                $bestDelta = PHP_INT_MAX;
+                foreach ($erpRows as $key => $er) {
+                    if (isset($claimed[$key])) continue;
+                    if (round((float) $er->amount, 2) !== $cpAmt) continue;
+                    $erName = $firstName($er->employee_name);
+                    if ($cpName !== '' && $erName !== '' && $erName !== $cpName) continue;
+                    $delta = abs(strtotime((string) $er->ts) - $cpTs);
+                    if ($delta > 60) continue;
+                    if ($delta < $bestDelta) {
+                        $bestDelta = $delta;
+                        $bestKey = $key;
+                    }
+                }
+
+                if ($bestKey !== null) {
+                    $claimed[$bestKey] = true;
+                    $txId = $erpRows[$bestKey]->transaction_id;
+                    $matchedCpByTx[$txId][] = $cp;
+                }
+            }
+
+            // Aggregate matched Clover payments per transaction. A single ERP
+            // sale can have multiple matched payments via split tender.
+            // Clover API: payment.amount is gross (includes tax); taxAmount
+            // is the tax portion of amount; tipAmount is separate. So the
+            // card was actually hit for amount + tip.
+            foreach ($matchedCpByTx as $txId => $payments) {
+                $payments = collect($payments);
+                $amount = (int) $payments->sum('amount_cents');
+                $tip    = (int) $payments->sum('tip_cents');
+                $tax    = (int) $payments->sum('tax_cents');
+                $cards = $payments->map(function ($p) {
+                    $brand = $p->card_type ? strtoupper($p->card_type) : '';
+                    $last4 = $p->card_last4 ? '••' . $p->card_last4 : '';
+                    return trim($brand . ' ' . $last4);
+                })->filter()->unique()->values()->all();
+
+                $clover_by_transaction[$txId] = [
+                    'amount_cents' => $amount,         // gross (incl. tax)
+                    'tip_cents'    => $tip,
+                    'tax_cents'    => $tax,
+                    'total_cents'  => $amount + $tip,  // what hit the card
+                    'cards'        => $cards,
+                ];
+            }
         }
 
-        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'limit', 'location_id', 'clover_by_order'));
+        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'limit', 'location_id', 'clover_by_transaction'));
     }
 
     /**
