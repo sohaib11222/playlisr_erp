@@ -118,11 +118,24 @@
                 <div style="font-weight:700;font-size:12px;color:#1F1B16;margin-bottom:6px;">Clover match diagnostics</div>
                 <div>ERP card payments: <strong>{{ $clover_debug['erp_payment_count'] }}</strong> · Clover payments in window: <strong>{{ $clover_debug['clover_payment_count'] }}</strong> · Matched: <strong>{{ $clover_debug['matched_tx_count'] }}</strong> · ±window: {{ $clover_debug['window_seconds'] }}s</div>
                 <div>Clover data spans: <strong>{{ $clover_debug['clover_window_min'] }}</strong> → <strong>{{ $clover_debug['clover_window_max'] }}</strong></div>
+                @if(!empty($clover_debug['tender_breakdown']))
+                    <div style="margin-top:6px;">
+                        Tender on these {{ $sales->count() }} sales:
+                        @foreach($clover_debug['tender_breakdown'] as $t)
+                            <span style="display:inline-block;margin-right:10px;">
+                                <strong>{{ $t['method'] }}</strong>: {{ $t['count'] }}× · ${{ number_format($t['total'], 2) }}
+                            </span>
+                        @endforeach
+                        @if($clover_debug['used_all_methods'])
+                            <span style="color:#B0451A;">(no recognised card method — using all methods)</span>
+                        @endif
+                    </div>
+                @endif
                 @if(!empty($clover_debug['unclaimed_erp']))
                     <div style="margin-top:10px;font-weight:700;color:#1F1B16;">Unmatched ERP card payments (newest first), with the 3 closest Clover payments:</div>
                     @foreach($clover_debug['unclaimed_erp'] as $u)
                         <div style="margin-top:6px;padding-left:4px;border-left:2px solid #E6D58A;">
-                            <div><strong>ERP</strong> ${{ number_format($u['amount'], 2) }} · {{ $u['ts'] }} · tx#{{ $u['tx_id'] }} · {{ $u['cashier'] ?: '(no name)' }}</div>
+                            <div><strong>ERP</strong> ${{ number_format($u['amount'], 2) }} · {{ $u['ts'] }} · tx#{{ $u['tx_id'] }} · {{ $u['cashier'] ?: '(no name)' }} · <em>{{ $u['method'] ?: '(no method)' }}</em></div>
                             @if(empty($u['closest_clover']))
                                 <div style="color:#B0451A;">→ no Clover payments at all in window</div>
                             @else

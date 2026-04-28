@@ -211,19 +211,43 @@ class SellPosController extends Controller
 
             $sale_ids = $sales->pluck('id')->all();
 
-            // ERP card payments for these transactions, with the cashier's
-            // name (created_by → users) so we can match Clover's employee_name.
-            // We don't filter by method here — Clover-tendered sales can land
-            // on different ERP methods depending on how the cashier rang them.
-            // Filtering happens implicitly via the amount+name+time match.
-            $erpRows = \DB::table('transaction_payments as tp')
+            // ERP card payments for these transactions. We filter to card-ish
+            // methods (mirrors ReportController::cloverEodReconciliation) so
+            // cash/store-credit rows don't pollute the match — those will
+            // never have a Clover counterpart and showing them as "unmatched"
+            // is just noise.
+            $card_methods = [
+                'clover', 'card', 'credit_card', 'credit_sale',
+                'custom_pay_1', 'custom_pay_2', 'custom_pay_3', 'custom_pay_4',
+                'custom_pay_5', 'custom_pay_6', 'custom_pay_7',
+            ];
+
+            // Method-name fallback (mirrors recon report): if NONE of the
+            // visible sales' payment methods overlap with our card_methods
+            // list, this install might store Clover payments under some
+            // other name. In that case fall back to all methods so we
+            // don't silently produce zero matches.
+            $tender_breakdown = \DB::table('transaction_payments')
+                ->whereIn('transaction_id', $sale_ids)
+                ->selectRaw('method, COUNT(*) as n, SUM(amount) as total')
+                ->groupBy('method')
+                ->get();
+            $present_methods = $tender_breakdown->pluck('method')->all();
+            $used_all_methods = empty(array_intersect($present_methods, $card_methods))
+                && !empty($present_methods);
+
+            $erpQ = \DB::table('transaction_payments as tp')
                 ->join('transactions as t', 'tp.transaction_id', '=', 't.id')
                 ->leftJoin('users as u', 't.created_by', '=', 'u.id')
-                ->whereIn('tp.transaction_id', $sale_ids)
-                ->selectRaw("
+                ->whereIn('tp.transaction_id', $sale_ids);
+            if (!$used_all_methods) {
+                $erpQ->whereIn('tp.method', $card_methods);
+            }
+            $erpRows = $erpQ->selectRaw("
                     tp.id as payment_id,
                     tp.transaction_id,
                     tp.amount,
+                    tp.method,
                     t.transaction_date as ts,
                     COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, '') as employee_name
                 ")
@@ -370,6 +394,7 @@ class SellPosController extends Controller
                     'amount' => $erAmt,
                     'ts' => (string) $er->ts,
                     'cashier' => $er->employee_name,
+                    'method' => $er->method ?? '',
                     'closest_clover' => array_slice($candidates, 0, 3),
                 ];
             }
@@ -383,6 +408,12 @@ class SellPosController extends Controller
                 'window_seconds'       => $TIME_WINDOW_SEC,
                 'clover_window_min'    => (string) $cpRows->min('paid_at'),
                 'clover_window_max'    => (string) $cpRows->max('paid_at'),
+                'used_all_methods'     => $used_all_methods,
+                'tender_breakdown'     => $tender_breakdown->map(fn($r) => [
+                    'method' => $r->method ?: '(blank)',
+                    'count' => (int) $r->n,
+                    'total' => (float) $r->total,
+                ])->all(),
                 'unclaimed_erp'        => array_slice($unclaimedErp, 0, 10),
             ];
         }
