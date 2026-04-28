@@ -479,6 +479,12 @@ class AdminSidebarMenu
                     __('report.reports'),
                     ['icon' => 'fa fas fa-chart-bar', 'id' => 'tour_step8', 'active' => request()->segment(1) == 'reports']
                 )->order(55);
+
+                $menu->url(
+                    action('InventoryCheckController@index'),
+                    'Inventory Check Assistant',
+                    ['icon' => 'fa fas fa-magic', 'active' => request()->segment(1) == 'reports' && request()->segment(2) == 'inventory-check-assistant']
+                )->order(56);
             }
 
 
