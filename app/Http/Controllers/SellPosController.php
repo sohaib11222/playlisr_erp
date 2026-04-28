@@ -328,33 +328,62 @@ class SellPosController extends Controller
         // Debug mode — surface match-quality diagnostics inline so we can
         // see why Clover data isn't appearing without needing DB access.
         // Triggered with ?debug_clover=1.
+        //
+        // For each unmatched ERP card payment we list the THREE closest-by-
+        // time Clover payments, annotated with the reason each didn't match
+        // (wrong amount, time delta past the ±5-min window). Makes near-
+        // misses obvious without manually cross-referencing timestamps.
         $clover_debug = null;
         if ($request->get('debug_clover') && isset($erpRows, $cpRows) && $erpRows->isNotEmpty()) {
+            $matchedCpIds = [];
+            foreach ($matchedCpByTx as $payments) {
+                foreach ($payments as $p) { $matchedCpIds[$p->id] = true; }
+            }
+
             $unclaimedErp = [];
             foreach ($erpRows as $key => $er) {
-                if (!isset($claimed[$key])) {
-                    $unclaimedErp[] = [
-                        'tx_id' => $er->transaction_id,
-                        'amount' => round((float) $er->amount, 2),
-                        'ts' => (string) $er->ts,
-                        'cashier' => $er->employee_name,
+                if (isset($claimed[$key])) continue;
+                $erTs  = strtotime((string) $er->ts);
+                $erAmt = round((float) $er->amount, 2);
+
+                $candidates = [];
+                foreach ($cpRows as $cp) {
+                    if (isset($matchedCpIds[$cp->id])) continue;
+                    $delta = abs(strtotime((string) $cp->paid_at) - $erTs);
+                    $cpAmt = round((float) $cp->amount, 2);
+                    $why = [];
+                    if ($cpAmt !== $erAmt) $why[] = 'amount Δ$' . number_format(abs($cpAmt - $erAmt), 2);
+                    if ($delta > $TIME_WINDOW_SEC) $why[] = 'time Δ' . round($delta / 60) . 'min';
+                    $candidates[] = [
+                        'delta' => $delta,
+                        'amount' => $cpAmt,
+                        'paid_at' => (string) $cp->paid_at,
+                        'employee' => $cp->employee_name,
+                        'card' => trim(($cp->card_type ?? '') . ' ' . ($cp->card_last4 ? '••' . $cp->card_last4 : '')),
+                        'why' => $why ? implode(', ', $why) : 'WOULD MATCH',
                     ];
                 }
+                usort($candidates, fn($a, $b) => $a['delta'] <=> $b['delta']);
+
+                $unclaimedErp[] = [
+                    'tx_id' => $er->transaction_id,
+                    'amount' => $erAmt,
+                    'ts' => (string) $er->ts,
+                    'cashier' => $er->employee_name,
+                    'closest_clover' => array_slice($candidates, 0, 3),
+                ];
             }
+            // Newest ERP first — today's data shows up first.
+            usort($unclaimedErp, fn($a, $b) => strcmp($b['ts'], $a['ts']));
+
             $clover_debug = [
-                'erp_payment_count' => $erpRows->count(),
+                'erp_payment_count'    => $erpRows->count(),
                 'clover_payment_count' => $cpRows->count(),
-                'matched_tx_count' => count($matchedCpByTx),
-                'unmatched_clover' => $cpRows->reject(fn($cp) =>
-                    collect($matchedCpByTx)->flatten(1)->contains(fn($m) => $m->id === $cp->id)
-                )->take(15)->map(fn($cp) => [
-                    'amount' => (float) $cp->amount,
-                    'paid_at' => (string) $cp->paid_at,
-                    'employee' => $cp->employee_name,
-                    'card' => trim(($cp->card_type ?? '') . ' ' . ($cp->card_last4 ? '••' . $cp->card_last4 : '')),
-                ])->values()->all(),
-                'unmatched_erp' => array_slice($unclaimedErp, 0, 15),
-                'window_seconds' => $TIME_WINDOW_SEC,
+                'matched_tx_count'     => count($matchedCpByTx),
+                'window_seconds'       => $TIME_WINDOW_SEC,
+                'clover_window_min'    => (string) $cpRows->min('paid_at'),
+                'clover_window_max'    => (string) $cpRows->max('paid_at'),
+                'unclaimed_erp'        => array_slice($unclaimedErp, 0, 10),
             ];
         }
 

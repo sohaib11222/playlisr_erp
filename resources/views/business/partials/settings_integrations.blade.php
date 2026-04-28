@@ -840,8 +840,14 @@
 
         // Sync Everything — full bidirectional Clover ↔ ERP sync (items,
         // orders, customers + ERP-side push of dirty products/contacts).
-        // Inline so the Artisan output lands in the status pane; the cron
-        // still keeps things fresh every 15 min.
+        //
+        // The /sync-now endpoint runs the actual Artisan commands in a
+        // detached background process and returns a run_id immediately —
+        // it does NOT wait for the sync to finish. We have to poll
+        // /sync-status?run_id=… until the log file contains the
+        // ---SYNC_DONE--- sentinel before claiming success, otherwise we
+        // mislead the user into thinking a still-running (or silently
+        // failed) sync has completed.
         $('#clover_sync_all_btn').on('click', function() {
             var btn = $(this);
             btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Syncing...');
@@ -849,24 +855,74 @@
                 '<div class="alert alert-info"><i class="fa fa-spinner fa-spin"></i> Pulling items, orders, customers + pushing any ERP changes — this can take a minute or two...</div>'
             );
 
+            var pollStartedAt = Date.now();
+            var POLL_TIMEOUT_MS = 5 * 60 * 1000; // 5 min cap on the poll loop
+            var POLL_INTERVAL_MS = 3000;
+
+            var renderResult = function(state, output) {
+                var isDone = state === 'done';
+                var cssClass = isDone ? 'alert-success' : (state === 'timeout' ? 'alert-warning' : 'alert-info');
+                var icon = isDone ? 'fa-check' : (state === 'timeout' ? 'fa-clock-o' : 'fa-spinner fa-spin');
+                var heading = isDone
+                    ? 'Sync complete.'
+                    : (state === 'timeout' ? 'Sync still running after 5 min — check storage/logs/clover-sync-*.log on the server.' : 'Sync running…');
+                var safeOutput = (output || '').replace(/[<>&]/g, function(c) {
+                    return { '<':'&lt;', '>':'&gt;', '&':'&amp;' }[c];
+                });
+                $('#clover_sync_all_status').html(
+                    '<div class="alert ' + cssClass + '"><i class="fa ' + icon + '"></i> ' + heading +
+                    '<pre style="margin-top:8px; max-height:320px; overflow:auto; font-size:12px;">' + safeOutput + '</pre></div>'
+                );
+            };
+
+            var poll = function(runId) {
+                $.ajax({
+                    url: '/business/clover/sync-status',
+                    method: 'GET',
+                    data: { run_id: runId },
+                    dataType: 'json',
+                    success: function(s) {
+                        if (s && s.finished) {
+                            btn.prop('disabled', false).html('<i class="fa fa-exchange"></i> Sync Everything Now');
+                            renderResult('done', s.output);
+                            return;
+                        }
+                        if (Date.now() - pollStartedAt > POLL_TIMEOUT_MS) {
+                            btn.prop('disabled', false).html('<i class="fa fa-exchange"></i> Sync Everything Now');
+                            renderResult('timeout', s && s.output);
+                            return;
+                        }
+                        renderResult('running', s && s.output);
+                        setTimeout(function() { poll(runId); }, POLL_INTERVAL_MS);
+                    },
+                    error: function() {
+                        // Transient poll error — keep trying until timeout.
+                        if (Date.now() - pollStartedAt > POLL_TIMEOUT_MS) {
+                            btn.prop('disabled', false).html('<i class="fa fa-exchange"></i> Sync Everything Now');
+                            renderResult('timeout', '(poll request failed)');
+                            return;
+                        }
+                        setTimeout(function() { poll(runId); }, POLL_INTERVAL_MS);
+                    }
+                });
+            };
+
             $.ajax({
                 url: '/business/clover/sync-now',
                 method: 'POST',
                 data: { _token: '{{ csrf_token() }}' },
                 dataType: 'json',
-                timeout: 600000,
+                timeout: 30000,
                 success: function(response) {
-                    btn.prop('disabled', false).html('<i class="fa fa-exchange"></i> Sync Everything Now');
-                    var cssClass = response.success ? 'alert-success' : 'alert-danger';
-                    var icon = response.success ? 'fa-check' : 'fa-times';
-                    var output = (response.output || '').replace(/[<>&]/g, function(c) {
-                        return { '<':'&lt;', '>':'&gt;', '&':'&amp;' }[c];
-                    });
-                    $('#clover_sync_all_status').html(
-                        '<div class="alert ' + cssClass + '"><i class="fa ' + icon + '"></i> ' +
-                        (response.success ? 'Sync complete.' : 'Sync finished with errors.') +
-                        '<pre style="margin-top:8px; max-height:240px; overflow:auto; font-size:12px;">' + output + '</pre></div>'
-                    );
+                    if (!response || !response.success || !response.run_id) {
+                        btn.prop('disabled', false).html('<i class="fa fa-exchange"></i> Sync Everything Now');
+                        $('#clover_sync_all_status').html(
+                            '<div class="alert alert-danger"><i class="fa fa-times"></i> Could not start sync: ' +
+                            ((response && response.msg) || 'unknown error') + '</div>'
+                        );
+                        return;
+                    }
+                    poll(response.run_id);
                 },
                 error: function(xhr, textStatus) {
                     btn.prop('disabled', false).html('<i class="fa fa-exchange"></i> Sync Everything Now');
