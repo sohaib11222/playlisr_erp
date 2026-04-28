@@ -482,7 +482,7 @@ class AdminSidebarMenu
 
                 $menu->url(
                     action('InventoryCheckController@index'),
-                    'Inventory Check Assistant',
+                    'Inventory Check',
                     ['icon' => 'fa fas fa-magic', 'active' => request()->segment(1) == 'reports' && request()->segment(2) == 'inventory-check-assistant']
                 )->order(56);
             }
