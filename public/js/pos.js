@@ -4991,17 +4991,13 @@ function validateManualProductForm() {
             }
 
             if (!categoryId || String(categoryId).trim() === '') {
-                toastr.error('Category is required for all products');
+                toastr.error('Pick a category (Vinyl, CD, Cassette, etc.) for every manual item');
                 isValid = false;
                 return false;
             }
-            
-            if (subCategoryId === undefined || subCategoryId === null || String(subCategoryId).trim() === '') {
-                toastr.error('Sub Category is required for all products');
-                isValid = false;
-                return false;
-            }
-            
+            // Sub-category intentionally optional — flat top-level categories
+            // (e.g. Cassette with no children) must still be selectable.
+
             if (!price || price.trim() === '' || parseFloat(price) <= 0) {
                 toastr.error('Valid price is required for all products');
                 isValid = false;

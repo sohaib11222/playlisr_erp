@@ -2150,16 +2150,10 @@ class SellPosController extends Controller
                     $categoryId = $byName->id;
                 }
 
-                // Fall back to the business's first category when the caller
-                // didn't pass one AND no named category resolved. Sub-category
-                // stays null if the parent has no children — the manual_product_row
-                // view already handles null sub-category with @if(!empty(...)).
-                if (empty($categoryId) && $defaultCategoryId) {
-                    $categoryId = $defaultCategoryId;
-                    if (empty($subCategoryId)) {
-                        $subCategoryId = $defaultSubCategoryId;
-                    }
-                }
+                // No silent fallback — if neither a category_id nor a resolvable
+                // category_name was provided, the row gets rejected below so the
+                // cashier picks one (Vinyl / CD / Cassette / etc.) instead of
+                // having items dumped into whichever category sorts first.
 
                 // Validate required fields
                 $productName = trim((string) $productName);
