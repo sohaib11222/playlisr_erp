@@ -603,6 +603,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/fix-imported-dates', 'FixImportedDatesController@index');
     Route::post('/admin/fix-imported-dates/run', 'FixImportedDatesController@run');
 
+    // One-shot cleanup: clears future created_at / updated_at on products
+    // (sync TZ drift wrote them). Snapshots the BEFORE state so it can be
+    // undone via /admin/admin-action-history.
+    Route::get('/admin/fix-future-product-dates', 'FixFutureProductDatesController@index');
+    Route::post('/admin/fix-future-product-dates/run', 'FixFutureProductDatesController@run');
+
     // Read-only audit: per-day overlap between ERP-native and xlsx-imported
     // sells. Flags Sep 2025+ overlaps as likely duplicates (ERP was live).
     Route::get('/admin/import-duplicate-check', 'ImportDuplicateCheckController@index');

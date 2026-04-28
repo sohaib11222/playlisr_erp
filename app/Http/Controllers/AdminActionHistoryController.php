@@ -65,25 +65,37 @@ class AdminActionHistoryController extends Controller
                 ->with('status', ['success' => 0, 'msg' => 'Snapshot empty / unreadable.']);
         }
 
+        $action = $data['action'] ?? '';
+
         // Variation-cost actions: snapshot rows hold variation id + the two
         // cost columns to restore. Both purchase-price-mismatch and
         // cost-price-rules use the same row schema.
-        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules'];
-        if (!in_array($data['action'] ?? '', $supportedActions, true)) {
+        // future-product-dates: products id + the two timestamp columns.
+        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates'];
+        if (!in_array($action, $supportedActions, true)) {
             return redirect('/admin/admin-action-history')
-                ->with('status', ['success' => 0, 'msg' => "Don't know how to undo action: " . $data['action']]);
+                ->with('status', ['success' => 0, 'msg' => "Don't know how to undo action: " . $action]);
         }
 
         $restored = 0;
         foreach (array_chunk($data['rows'], 500) as $chunk) {
             foreach ($chunk as $row) {
-                DB::table('variations')
-                    ->where('id', $row['id'])
-                    ->update([
-                        'default_purchase_price' => $row['default_purchase_price'],
-                        'dpp_inc_tax'            => $row['dpp_inc_tax'],
-                        'updated_at'             => now(),
-                    ]);
+                if ($action === 'future-product-dates') {
+                    DB::table('products')
+                        ->where('id', $row['id'])
+                        ->update([
+                            'created_at' => $row['created_at'] ?: null,
+                            'updated_at' => $row['updated_at'] ?: null,
+                        ]);
+                } else {
+                    DB::table('variations')
+                        ->where('id', $row['id'])
+                        ->update([
+                            'default_purchase_price' => $row['default_purchase_price'],
+                            'dpp_inc_tax'            => $row['dpp_inc_tax'],
+                            'updated_at'             => now(),
+                        ]);
+                }
                 $restored++;
             }
         }
