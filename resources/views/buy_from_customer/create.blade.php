@@ -118,6 +118,9 @@
                 <div class="box-body">
                     <form id="buy_offer_form" method="POST" action="{{ route('buy-from-customer.calculate') }}">
                         @csrf
+                        {{-- offer_id is set after the first auto-saved Calculate so subsequent
+                             Calculates UPDATE that draft instead of creating a new BFC each click. --}}
+                        <input type="hidden" name="offer_id" id="bfc_offer_id" value="{{ $saved_offer_id ?? session('saved_offer_id') ?? '' }}">
                     <div class="row">
                         <div class="col-md-3">
                             <div class="form-group">
@@ -422,6 +425,13 @@
 
         $(document).on('click', '#add_line_btn', function () {
             var $tbody = $('#offer_lines_table tbody');
+            var $lastRow = $tbody.find('tr').last();
+            // Inherit type / grade / standard multiplier from the row above so
+            // a fresh row doesn't snap to whichever option is first in the
+            // dropdown (which is alphabetical "Fair" — almost never right).
+            var prevType = $lastRow.find('select[name$="[item_type]"]').val() || 'individual_vinyl';
+            var prevGrade = $lastRow.find('select[name$="[condition_grade]"]').val() || 'VG+';
+            var prevStdMult = $lastRow.find('input[name$="[standard_multiplier]"]').val() || '0.10';
             var idx = $tbody.find('tr').length;
             var row = '<tr>'
                 + '<td><select name="lines[' + idx + '][item_type]" class="form-control">@foreach($itemTypes as $k => $label)<option value="{{$k}}">{{ $label }}</option>@endforeach</select></td>'
@@ -430,10 +440,13 @@
                 + '<td><select name="lines[' + idx + '][condition_grade]" class="form-control">@foreach($grades as $g)<option value="{{$g}}">{{ $g }}</option>@endforeach</select></td>'
                 + '<td><input type="number" step="0.01" min="0.01" name="lines[' + idx + '][quantity]" value="1" class="form-control"></td>'
                 + '<td><input type="number" step="0.01" min="0" name="lines[' + idx + '][discogs_median_price]" class="form-control"></td>'
-                + '<td><input type="number" step="0.01" min="0" name="lines[' + idx + '][standard_multiplier]" value="0.10" class="form-control"></td>'
+                + '<td><input type="number" step="0.01" min="0" name="lines[' + idx + '][standard_multiplier]" value="' + prevStdMult + '" class="form-control"></td>'
                 + '<td><button type="button" class="btn btn-danger btn-xs remove-line"><i class="fa fa-times"></i></button></td>'
                 + '</tr>';
-            $tbody.append(row);
+            var $newRow = $($.parseHTML(row));
+            $newRow.find('select[name$="[item_type]"]').val(prevType);
+            $newRow.find('select[name$="[condition_grade]"]').val(prevGrade);
+            $tbody.append($newRow);
         });
 
         $(document).on('click', '.remove-line', function () {

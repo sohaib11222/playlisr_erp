@@ -50,10 +50,19 @@ class BuyFromCustomerController extends Controller
 
         // Auto-save a draft on every Calculate so history captures the
         // negotiation even if the cashier doesn't explicitly hit Save Draft.
-        // Drafts can be deleted from the history page if not needed.
-        $saved = DB::transaction(function () use ($request) {
-            return $this->saveOffer($request, 'draft');
+        // If the form already carries an offer_id (a draft from a previous
+        // Calculate on the SAME quote), update that draft in place instead
+        // of spawning a duplicate. Sarah explicitly asked for this — one
+        // BFC per quote, not one per click.
+        $offerId = $request->input('offer_id') ?: null;
+        $saved = DB::transaction(function () use ($request, $offerId) {
+            return $this->saveOffer($request, 'draft', $offerId);
         });
+
+        // Inject the saved id back into the request so the Save Draft / Accept /
+        // Reject hidden-input forms below also carry it — otherwise clicking
+        // Save Draft after auto-save would spawn a second BFC record.
+        $request->merge(['offer_id' => $saved->id]);
 
         $business_id = request()->session()->get('user.business_id');
         $locations = BusinessLocation::forDropdown($business_id, false, true);
@@ -73,8 +82,9 @@ class BuyFromCustomerController extends Controller
         }
 
         $this->validateRequest($request, false);
-        $saved = DB::transaction(function () use ($request) {
-            return $this->saveOffer($request, 'draft');
+        $offerId = $request->input('offer_id') ?: null;
+        $saved = DB::transaction(function () use ($request, $offerId) {
+            return $this->saveOffer($request, 'draft', $offerId);
         });
 
         return redirect()->route('buy-from-customer.create')
@@ -91,8 +101,9 @@ class BuyFromCustomerController extends Controller
         $this->validateRequest($request, true);
         $this->validateAcceptCompliance($request);
 
-        DB::transaction(function () use ($request, $id) {
-            $offer = $this->saveOffer($request, 'accepted', $id);
+        $offerId = $id ?? ($request->input('offer_id') ?: null);
+        DB::transaction(function () use ($request, $offerId) {
+            $offer = $this->saveOffer($request, 'accepted', $offerId);
             $purchase = $this->createPurchaseFromOffer($offer, $offer->payout_type);
             $offer->accepted_purchase_id = $purchase->id;
             $offer->save();
@@ -113,8 +124,9 @@ class BuyFromCustomerController extends Controller
             'rejection_reason' => 'required|string|max:1000',
         ]);
 
-        DB::transaction(function () use ($request, $id) {
-            $this->saveOffer($request, 'rejected', $id);
+        $offerId = $id ?? ($request->input('offer_id') ?: null);
+        DB::transaction(function () use ($request, $offerId) {
+            $this->saveOffer($request, 'rejected', $offerId);
         });
 
         return redirect()->route('buy-from-customer.history')
@@ -261,7 +273,21 @@ class BuyFromCustomerController extends Controller
         $contact = $this->resolveSellerContact($request, $business_id, $user_id);
         $calculation = $this->calculator->calculate($request->input('lines', []), $request->all());
 
-        $offer = !empty($offerId) ? BuyCustomerOffer::where('business_id', $business_id)->findOrFail($offerId) : new BuyCustomerOffer();
+        // If we were handed an existing offer id, reuse it — UNLESS that offer
+        // is already finalized (accepted/rejected). Finalized offers are
+        // immutable; a Calculate that comes in after acceptance must spawn a
+        // fresh BFC rather than rewrite the closed record.
+        $offer = null;
+        if (!empty($offerId)) {
+            $existing = BuyCustomerOffer::where('business_id', $business_id)->find($offerId);
+            if ($existing && in_array($existing->status, ['accepted', 'rejected'], true)) {
+                $offer = new BuyCustomerOffer();
+            } else {
+                $offer = $existing ?: new BuyCustomerOffer();
+            }
+        } else {
+            $offer = new BuyCustomerOffer();
+        }
         $payment = $this->resolvePaymentFields($request);
 
         $first = trim((string) $request->input('seller_first_name', ''));
