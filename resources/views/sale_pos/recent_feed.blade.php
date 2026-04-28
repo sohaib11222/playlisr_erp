@@ -15,6 +15,11 @@
         text-transform: uppercase; letter-spacing: .06em; display: block; margin-bottom: 4px; }
     .rf-filters .form-control { border: 1px solid #DFD2B3; border-radius: 7px; color: #1F1B16; }
     .rf-count { color: #5A5045; font-size: 13px; margin-left: auto; }
+    .rf-export { display: inline-flex; align-items: center; gap: 6px;
+        background: #1F1B16; color: #FAF6EE !important; border: 1px solid #1F1B16;
+        border-radius: 7px; padding: 8px 14px; font-size: 13px; font-weight: 600;
+        text-decoration: none !important; transition: background .15s, border-color .15s; }
+    .rf-export:hover { background: #3A3128; border-color: #3A3128; }
 
     .rf-card { background: #FFFFFF; border: 1px solid #ECE3CF; border-radius: 10px;
         padding: 14px 16px; margin-bottom: 12px; box-shadow: 0 1px 2px rgba(31,27,22,.06);
@@ -101,6 +106,11 @@
                 </select>
             </div>
             <div class="rf-count">{{ $sales->count() }} sale{{ $sales->count() === 1 ? '' : 's' }}</div>
+            <button type="submit" class="rf-export"
+                    formaction="{{ action('SellPosController@recentSalesFeedExport') }}"
+                    title="Download these sales as CSV (one row per item)">
+                Export CSV
+            </button>
         </form>
 
         @if(!empty($clover_debug))

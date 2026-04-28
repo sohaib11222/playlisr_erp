@@ -362,6 +362,207 @@ class SellPosController extends Controller
     }
 
     /**
+     * Export the same data shown on /pos/recent-feed as a CSV — one row per
+     * sold line item, with sale-level and Clover reconciliation columns
+     * repeated so each row is self-contained for sorting/filtering in Excel.
+     *
+     * Self-contained query (does not share helper with recentSalesFeed) so
+     * any future change to the page's matching logic can't break POS.
+     */
+    public function recentSalesFeedExport(Request $request)
+    {
+        if (!auth()->user()->can('sell.view') && !auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = $request->session()->get('user.business_id');
+        // Allow a higher cap for exports than the page's 100-row dropdown.
+        $limit = min((int) $request->get('limit', 30), 1000);
+        $location_id = $request->get('location_id');
+
+        $sales = Transaction::where('transactions.business_id', $business_id)
+            ->where('transactions.type', 'sell')
+            ->where('transactions.status', 'final')
+            ->whereNull('transactions.import_source')
+            ->when($location_id, fn($q) => $q->where('transactions.location_id', $location_id))
+            ->with([
+                'sell_lines' => fn($q) => $q->whereNull('parent_sell_line_id'),
+                'sell_lines.product',
+                'contact',
+                'location',
+                'sales_person',
+            ])
+            ->orderByDesc('transaction_date')
+            ->limit($limit)
+            ->get();
+
+        // Match Clover charges using the same heuristic as the EOD recon
+        // report (amount + cashier first name + ±60s).
+        $clover_by_transaction = [];
+        if ($sales->isNotEmpty()) {
+            $firstName = function ($full) {
+                $full = trim((string) $full);
+                if ($full === '') return '';
+                $parts = preg_split('/\s+/', $full);
+                return strtolower($parts[0] ?? '');
+            };
+
+            $sale_ids = $sales->pluck('id')->all();
+            $erpRows = \DB::table('transaction_payments as tp')
+                ->join('transactions as t', 'tp.transaction_id', '=', 't.id')
+                ->leftJoin('users as u', 't.created_by', '=', 'u.id')
+                ->whereIn('tp.transaction_id', $sale_ids)
+                ->selectRaw("
+                    tp.id as payment_id,
+                    tp.transaction_id,
+                    tp.amount,
+                    t.transaction_date as ts,
+                    COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, '') as employee_name
+                ")
+                ->get();
+
+            $minDate = $sales->min('transaction_date');
+            $maxDate = $sales->max('transaction_date');
+            $cpRows = \App\CloverPayment::where('business_id', $business_id)
+                ->where('result', 'SUCCESS')
+                ->where('paid_at', '>=', \Carbon\Carbon::parse($minDate)->subDay())
+                ->where('paid_at', '<=', \Carbon\Carbon::parse($maxDate)->addDay())
+                ->orderBy('paid_at')
+                ->get();
+
+            $claimed = [];
+            $matchedCpByTx = [];
+            foreach ($cpRows as $cp) {
+                $cpName = $firstName($cp->employee_name);
+                $cpAmt  = round((float) $cp->amount, 2);
+                $cpTs   = strtotime((string) $cp->paid_at);
+
+                $bestKey = null;
+                $bestDelta = PHP_INT_MAX;
+                foreach ($erpRows as $key => $er) {
+                    if (isset($claimed[$key])) continue;
+                    if (round((float) $er->amount, 2) !== $cpAmt) continue;
+                    $erName = $firstName($er->employee_name);
+                    if ($cpName !== '' && $erName !== '' && $erName !== $cpName) continue;
+                    $delta = abs(strtotime((string) $er->ts) - $cpTs);
+                    if ($delta > 60) continue;
+                    if ($delta < $bestDelta) {
+                        $bestDelta = $delta;
+                        $bestKey = $key;
+                    }
+                }
+                if ($bestKey !== null) {
+                    $claimed[$bestKey] = true;
+                    $matchedCpByTx[$erpRows[$bestKey]->transaction_id][] = $cp;
+                }
+            }
+
+            foreach ($matchedCpByTx as $txId => $payments) {
+                $payments = collect($payments);
+                $clover_by_transaction[$txId] = [
+                    'amount_cents' => (int) $payments->sum('amount_cents'),
+                    'tip_cents'    => (int) $payments->sum('tip_cents'),
+                    'tax_cents'    => (int) $payments->sum('tax_cents'),
+                    'cards'        => $payments->map(function ($p) {
+                        $brand = $p->card_type ? strtoupper($p->card_type) : '';
+                        $last4 = $p->card_last4 ? '****' . $p->card_last4 : '';
+                        return trim($brand . ' ' . $last4);
+                    })->filter()->unique()->values()->all(),
+                ];
+            }
+        }
+
+        $filename = 'recent-sales-feed-' . date('Y-m-d_His') . '.csv';
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
+        ];
+
+        return response()->stream(function () use ($sales, $clover_by_transaction) {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, [
+                'date', 'time', 'invoice_no', 'store', 'customer', 'cashier',
+                'item', 'artist', 'product_name', 'is_manual',
+                'qty', 'unit_price', 'line_discount', 'line_total',
+                'sale_total_erp', 'sale_discount', 'payment_status',
+                'clover_charged', 'clover_tax', 'clover_tip', 'clover_cards', 'clover_mismatch',
+            ]);
+
+            foreach ($sales as $sale) {
+                $dt = \Carbon\Carbon::parse($sale->transaction_date);
+                $customer = optional($sale->contact)->name ?: 'Walk-In Customer';
+                $store = optional($sale->location)->name ?: '';
+                $cashier = optional($sale->sales_person)->user_full_name;
+                $cashier = $cashier ? trim($cashier) : '';
+                $saleTotal = (float) $sale->final_total;
+                $saleDiscount = (float) ($sale->discount_amount ?? 0);
+
+                $cloverInfo = $clover_by_transaction[$sale->id] ?? null;
+                $cloverCharged = $cloverInfo ? number_format($cloverInfo['amount_cents'] / 100, 2, '.', '') : '';
+                $cloverTax = $cloverInfo && $cloverInfo['tax_cents'] > 0 ? number_format($cloverInfo['tax_cents'] / 100, 2, '.', '') : '';
+                $cloverTip = $cloverInfo && $cloverInfo['tip_cents'] > 0 ? number_format($cloverInfo['tip_cents'] / 100, 2, '.', '') : '';
+                $cloverCards = $cloverInfo ? implode(' / ', $cloverInfo['cards']) : '';
+                $cloverMismatch = '';
+                if ($cloverInfo) {
+                    $cloverMismatch = abs(($cloverInfo['amount_cents'] / 100) - $saleTotal) > 0.01 ? 'yes' : 'no';
+                }
+
+                $lines = $sale->sell_lines;
+                if ($lines->isEmpty()) {
+                    fputcsv($out, [
+                        $dt->format('Y-m-d'), $dt->format('H:i:s'), $sale->invoice_no,
+                        $store, $customer, $cashier,
+                        '(no items)', '', '', '',
+                        '', '', '', '',
+                        number_format($saleTotal, 2, '.', ''),
+                        number_format($saleDiscount, 2, '.', ''),
+                        ucfirst(str_replace('_', ' ', $sale->payment_status ?? '')),
+                        $cloverCharged, $cloverTax, $cloverTip, $cloverCards, $cloverMismatch,
+                    ]);
+                    continue;
+                }
+
+                foreach ($lines as $line) {
+                    $product = $line->product;
+                    $baseName = $product->name ?? ($line->product_name ?? 'Manual item');
+                    $artist = null;
+                    if ($product && !empty($product->artist) && is_string($product->artist)) {
+                        $artist = $product->artist;
+                    } elseif (!empty($line->product_artist)) {
+                        $artist = $line->product_artist;
+                    }
+                    $item = $artist ? ($artist . ' - ' . $baseName) : $baseName;
+                    $isManual = empty($product);
+                    $qty = (float) $line->quantity;
+                    $unit = (float) ($line->unit_price_inc_tax ?: $line->unit_price);
+                    $lineDisc = 0;
+                    if (!empty($line->line_discount_amount)) {
+                        $lineDisc = $line->line_discount_type === 'percentage'
+                            ? ($unit * $line->line_discount_amount / 100)
+                            : (float) $line->line_discount_amount;
+                    }
+                    $lineTotal = ($unit - $lineDisc) * $qty;
+
+                    fputcsv($out, [
+                        $dt->format('Y-m-d'), $dt->format('H:i:s'), $sale->invoice_no,
+                        $store, $customer, $cashier,
+                        $item, $artist ?: '', $baseName, $isManual ? 'yes' : 'no',
+                        rtrim(rtrim(number_format($qty, 4, '.', ''), '0'), '.'),
+                        number_format($unit, 2, '.', ''),
+                        number_format($lineDisc, 2, '.', ''),
+                        number_format($lineTotal, 2, '.', ''),
+                        number_format($saleTotal, 2, '.', ''),
+                        number_format($saleDiscount, 2, '.', ''),
+                        ucfirst(str_replace('_', ' ', $sale->payment_status ?? '')),
+                        $cloverCharged, $cloverTax, $cloverTip, $cloverCards, $cloverMismatch,
+                    ]);
+                }
+            }
+            fclose($out);
+        }, 200, $headers);
+    }
+
+    /**
      * Show the form for creating a new resource.
      *
      * @return \Illuminate\Http\Response

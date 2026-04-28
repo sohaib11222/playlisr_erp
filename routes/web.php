@@ -273,6 +273,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/pos/export-manual-products', 'SellPosController@exportManualProducts')->name('pos.exportManualProducts');
 
     Route::get('/pos/recent-feed', 'SellPosController@recentSalesFeed')->name('pos.recentFeed');
+    Route::get('/pos/recent-feed/export', 'SellPosController@recentSalesFeedExport')->name('pos.recentFeedExport');
 
     Route::resource('pos', 'SellPosController');
 
