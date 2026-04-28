@@ -678,7 +678,24 @@ $(document).ready(function() {
                 formatTag = item.category_name.trim();
             }
             if (formatTag !== '') {
-                displayName += ' [' + formatTag + ']';
+                // Color-code the tag by format family so cashiers can scan rows fast.
+                // Styles live in pos_form.blade.php (.pos-format-tag.*).
+                var t = formatTag.toLowerCase();
+                var kind = 'other';
+                if (t.indexOf('cassette') !== -1 || t.indexOf('tape') !== -1) {
+                    kind = 'cassette';
+                } else if (t.indexOf('cd') !== -1) {
+                    kind = 'cd';
+                } else if (t.indexOf('vinyl') !== -1 || t.indexOf(' lp') !== -1 || t === 'lp' ||
+                           t.indexOf('45 rpm') !== -1 || t.indexOf('7"') !== -1 || t.indexOf('7 inch') !== -1) {
+                    kind = 'vinyl';
+                } else if (t.indexOf('8 track') !== -1 || t.indexOf('8-track') !== -1 || t.indexOf('eight track') !== -1) {
+                    kind = 'eighttrack';
+                } else if (t.indexOf('vhs') !== -1 || t.indexOf('dvd') !== -1 || t.indexOf('blu') !== -1 || t.indexOf('laser') !== -1) {
+                    kind = 'video';
+                }
+                var safeTag = $('<div>').text(formatTag).html();
+                displayName += ' <span class="pos-format-tag pos-format-' + kind + '">' + safeTag + '</span>';
             }
 
             if (item.enable_stock == 1 && item.qty_available <= 0 && !is_overselling_allowed && !for_so) {

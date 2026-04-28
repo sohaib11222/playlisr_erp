@@ -224,6 +224,26 @@
 				}
 				.pos-product-search-wrap #search_product::placeholder { color: #8a9ba8; font-weight: 500; }
 
+				/* Format pill in the Ring Up dropdown — bold, color-coded by media type
+				   (vinyl / CD / cassette / 8-track / video / other) so cashiers can scan
+				   the list at a glance. Classes are applied in pos.js renderItem. */
+				.pos-format-tag {
+					display: inline-block;
+					font-weight: 700;
+					font-size: 12px;
+					letter-spacing: 0.3px;
+					padding: 1px 7px;
+					margin-left: 6px;
+					border-radius: 4px;
+					vertical-align: 1px;
+				}
+				.pos-format-tag.pos-format-vinyl       { color: #6b21a8; background: #f3e8ff; border: 1px solid #d8b4fe; }
+				.pos-format-tag.pos-format-cd          { color: #1e40af; background: #dbeafe; border: 1px solid #93c5fd; }
+				.pos-format-tag.pos-format-cassette    { color: #92400e; background: #fef3c7; border: 1px solid #fcd34d; }
+				.pos-format-tag.pos-format-eighttrack  { color: #7c2d12; background: #ffedd5; border: 1px solid #fdba74; }
+				.pos-format-tag.pos-format-video       { color: #991b1b; background: #fee2e2; border: 1px solid #fca5a5; }
+				.pos-format-tag.pos-format-other       { color: #374151; background: #e5e7eb; border: 1px solid #cbd5e1; }
+
 				/* Secondary action row — sits below search, not inside it */
 				.pos-action-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 				.pos-action-row .btn { height: 40px; padding: 0 16px; font-weight: 600; font-size: 13px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; }
