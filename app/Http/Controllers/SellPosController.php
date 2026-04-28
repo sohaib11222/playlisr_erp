@@ -210,7 +210,6 @@ class SellPosController extends Controller
         // valuable until the upstream sync lands — it surfaces which "cash"
         // sales actually ran a card.
         $clover_by_transaction = [];
-        $TIME_WINDOW_SEC = 300;
         $cpRows = collect();
 
         if ($sales->isNotEmpty()) {
@@ -223,25 +222,46 @@ class SellPosController extends Controller
                 ->orderBy('paid_at')
                 ->get();
 
-            // Greedy 1-to-1: for each visible sale, claim the closest-time
-            // unclaimed Clover payment with the same dollar amount within
-            // the ±5-min window. We iterate sales (not Clover payments)
-            // because that's the order the user reads the page in — the
-            // top-of-feed sales get first dibs on ambiguous matches, which
-            // is the right precedence for "what did the customer just pay?".
+            // Match: same store + same calendar day + same dollar amount.
+            //
+            // The original ±5-min window was too tight for Nivessa's setup —
+            // Clover often stores a settlement/batch timestamp that drifts
+            // hours from the actual swipe, so amounts that obviously belong
+            // together never lined up. Day-bucket matching is the right
+            // granularity for end-of-shift reconciliation.
+            //
+            // We also restrict to the same ERP location_id (clover_payments
+            // is tagged per location during sync) so a Hollywood sale can't
+            // accidentally pair to a Pico Clover charge with the same total.
+            //
+            // Within same-day + same-amount + same-location, we still prefer
+            // the closest-time Clover payment as the most likely real match.
+            // Greedy 1-to-1: top-of-feed sales claim first.
+            $appTz = config('app.timezone') ?: 'America/Los_Angeles';
+            $localDate = function ($ts) use ($appTz) {
+                return \Carbon\Carbon::parse($ts)->setTimezone($appTz)->toDateString();
+            };
+
             $claimedCpKeys = [];
             $matchedCpByTx = [];
             foreach ($sales as $sale) {
-                $erTs  = strtotime((string) $sale->transaction_date);
-                $erAmt = round((float) $sale->final_total, 2);
+                $erTs   = strtotime((string) $sale->transaction_date);
+                $erAmt  = round((float) $sale->final_total, 2);
+                $erDay  = $localDate($sale->transaction_date);
+                $erLoc  = $sale->location_id;
 
                 $bestKey = null;
                 $bestDelta = PHP_INT_MAX;
                 foreach ($cpRows as $key => $cp) {
                     if (isset($claimedCpKeys[$key])) continue;
                     if (round((float) $cp->amount, 2) !== $erAmt) continue;
+                    if ($localDate($cp->paid_at) !== $erDay) continue;
+                    // Only require same location when the Clover row HAS one.
+                    // The sync stamps location_id when pulling per-merchant;
+                    // top-level merchant pulls leave it null. Don't filter
+                    // those out — they'd otherwise be unreachable.
+                    if ($cp->location_id !== null && (int) $cp->location_id !== (int) $erLoc) continue;
                     $delta = abs(strtotime((string) $cp->paid_at) - $erTs);
-                    if ($delta > $TIME_WINDOW_SEC) continue;
                     if ($delta < $bestDelta) {
                         $bestDelta = $delta;
                         $bestKey = $key;
@@ -278,55 +298,86 @@ class SellPosController extends Controller
             }
         }
 
-        // Debug mode: ?debug_clover=1 — for each unmatched ERP transaction
-        // show the 3 Clover payments closest in time and amount, annotated
-        // with why each one didn't match. Useful when investigating the
-        // odd "this sale should have run on Clover but doesn't show up" case.
+        // Debug mode: ?debug_clover=1 — show why unmatched ERP sales didn't
+        // pair, AND list the unclaimed Clover payments (the other half of
+        // the reconciliation gap). Most useful for spot-checking whether
+        // a "no Clover" sale was actually cash or a sync miss.
         $clover_debug = null;
         if ($request->get('debug_clover') && $sales->isNotEmpty()) {
             $matchedTxIds = array_keys($clover_by_transaction);
+            $matchedCpIds = [];
+            foreach ($matchedCpByTx as $payments) {
+                foreach ($payments as $p) { $matchedCpIds[$p->id] = true; }
+            }
+
             $unclaimedSales = [];
             foreach ($sales as $sale) {
                 if (in_array($sale->id, $matchedTxIds)) continue;
-                $erTs  = strtotime((string) $sale->transaction_date);
                 $erAmt = round((float) $sale->final_total, 2);
+                $erDay = $localDate($sale->transaction_date);
+                $erLoc = $sale->location_id;
 
+                // Find Clover payments on the same day, prefer ones with
+                // matching amount or location to surface near-misses.
                 $candidates = [];
                 foreach ($cpRows as $cp) {
-                    $delta = abs(strtotime((string) $cp->paid_at) - $erTs);
+                    if ($localDate($cp->paid_at) !== $erDay) continue;
                     $cpAmt = round((float) $cp->amount, 2);
                     $why = [];
                     if ($cpAmt !== $erAmt) $why[] = 'amount Δ$' . number_format(abs($cpAmt - $erAmt), 2);
-                    if ($delta > $TIME_WINDOW_SEC) $why[] = 'time Δ' . round($delta / 60) . 'min';
+                    if ($cp->location_id !== null && (int) $cp->location_id !== (int) $erLoc) {
+                        $why[] = 'wrong store (loc ' . $cp->location_id . ')';
+                    }
+                    if (isset($matchedCpIds[$cp->id])) $why[] = 'already claimed';
                     $candidates[] = [
-                        'delta' => $delta,
                         'amount' => $cpAmt,
                         'paid_at' => (string) $cp->paid_at,
-                        'employee' => $cp->employee_name,
                         'card' => trim(($cp->card_type ?? '') . ' ' . ($cp->card_last4 ? '••' . $cp->card_last4 : '')),
+                        'loc_id' => $cp->location_id,
                         'why' => $why ? implode(', ', $why) : 'WOULD MATCH',
+                        'amount_match' => $cpAmt === $erAmt ? 1 : 0,
                     ];
                 }
-                // Closest in time, but only show ones that aren't wildly off.
-                usort($candidates, fn($a, $b) => $a['delta'] <=> $b['delta']);
+                // Surface amount-matches first, then closest amounts.
+                usort($candidates, function ($a, $b) use ($erAmt) {
+                    if ($b['amount_match'] !== $a['amount_match']) return $b['amount_match'] - $a['amount_match'];
+                    return abs($a['amount'] - $erAmt) <=> abs($b['amount'] - $erAmt);
+                });
 
                 $unclaimedSales[] = [
                     'tx_id' => $sale->id,
                     'invoice_no' => $sale->invoice_no,
                     'amount' => $erAmt,
                     'ts' => (string) $sale->transaction_date,
+                    'loc_id' => $erLoc,
                     'closest_clover' => array_slice($candidates, 0, 3),
                 ];
             }
+
+            // Show the unclaimed Clover payments — these are charges that
+            // happened on Clover but don't pair to any visible ERP sale.
+            // Useful for spotting "Clover charged but no ERP sale exists".
+            $unclaimedCloverList = [];
+            foreach ($cpRows as $cp) {
+                if (isset($matchedCpIds[$cp->id])) continue;
+                $unclaimedCloverList[] = [
+                    'amount' => round((float) $cp->amount, 2),
+                    'paid_at' => (string) $cp->paid_at,
+                    'loc_id' => $cp->location_id,
+                    'card' => trim(($cp->card_type ?? '') . ' ' . ($cp->card_last4 ? '••' . $cp->card_last4 : '')),
+                ];
+            }
+            // Newest-first so today's data shows up first.
+            usort($unclaimedCloverList, fn($a, $b) => strcmp($b['paid_at'], $a['paid_at']));
 
             $clover_debug = [
                 'sale_count'           => $sales->count(),
                 'clover_payment_count' => $cpRows->count(),
                 'matched_tx_count'     => count($clover_by_transaction),
-                'window_seconds'       => $TIME_WINDOW_SEC,
                 'clover_window_min'    => (string) $cpRows->min('paid_at'),
                 'clover_window_max'    => (string) $cpRows->max('paid_at'),
                 'unclaimed_sales'      => array_slice($unclaimedSales, 0, 10),
+                'unclaimed_clover'     => array_slice($unclaimedCloverList, 0, 20),
             ];
         }
 

@@ -116,24 +116,30 @@
         @if(!empty($clover_debug))
             <div style="background:#FFF8E1;border:1px solid #E6D58A;border-radius:8px;padding:12px 14px;margin-bottom:14px;font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#5A5045;line-height:1.5;">
                 <div style="font-weight:700;font-size:12px;color:#1F1B16;margin-bottom:6px;">Clover match diagnostics</div>
-                <div>Visible sales: <strong>{{ $clover_debug['sale_count'] }}</strong> · Clover payments in window: <strong>{{ $clover_debug['clover_payment_count'] }}</strong> · Matched: <strong>{{ $clover_debug['matched_tx_count'] }}</strong> · ±window: {{ $clover_debug['window_seconds'] }}s</div>
+                <div>Visible sales: <strong>{{ $clover_debug['sale_count'] }}</strong> · Clover payments in window: <strong>{{ $clover_debug['clover_payment_count'] }}</strong> · Matched: <strong>{{ $clover_debug['matched_tx_count'] }}</strong></div>
                 <div>Clover data spans: <strong>{{ $clover_debug['clover_window_min'] }}</strong> → <strong>{{ $clover_debug['clover_window_max'] }}</strong></div>
-                <div style="margin-top:4px;color:#8A7C6A;">Note: matching is now amount+time, ignoring ERP tender method (since cashiers ring everything as "cash" until the ERP→Clover sync ships).</div>
+                <div style="margin-top:4px;color:#8A7C6A;">Match rule: same store + same calendar day + same dollar amount. Cashier tender is ignored.</div>
                 @if(!empty($clover_debug['unclaimed_sales']))
-                    <div style="margin-top:10px;font-weight:700;color:#1F1B16;">Unmatched sales (newest first), with the 3 closest Clover payments by time:</div>
+                    <div style="margin-top:10px;font-weight:700;color:#1F1B16;">Unmatched sales (newest first), 3 closest Clover candidates from the same day:</div>
                     @foreach($clover_debug['unclaimed_sales'] as $u)
                         <div style="margin-top:6px;padding-left:4px;border-left:2px solid #E6D58A;">
-                            <div><strong>ERP</strong> ${{ number_format($u['amount'], 2) }} · {{ $u['ts'] }} · #{{ $u['invoice_no'] }}</div>
+                            <div><strong>ERP</strong> ${{ number_format($u['amount'], 2) }} · {{ $u['ts'] }} · #{{ $u['invoice_no'] }} · loc {{ $u['loc_id'] }}</div>
                             @if(empty($u['closest_clover']))
-                                <div style="color:#B0451A;">→ no Clover payments at all in window (probably real cash)</div>
+                                <div style="color:#B0451A;">→ no Clover payments at all on the same day (probably real cash)</div>
                             @else
                                 @foreach($u['closest_clover'] as $c)
                                     <div style="padding-left:14px;color:{{ $c['why'] === 'WOULD MATCH' ? '#1F8B3F' : '#8A7C6A' }};">
-                                        → ${{ number_format($c['amount'], 2) }} · {{ $c['paid_at'] }} · {{ $c['card'] ?: '(no card)' }} · <em>{{ $c['why'] }}</em>
+                                        → ${{ number_format($c['amount'], 2) }} · {{ $c['paid_at'] }} · loc {{ $c['loc_id'] ?? '(none)' }} · {{ $c['card'] ?: '(no card)' }} · <em>{{ $c['why'] }}</em>
                                     </div>
                                 @endforeach
                             @endif
                         </div>
+                    @endforeach
+                @endif
+                @if(!empty($clover_debug['unclaimed_clover']))
+                    <div style="margin-top:10px;font-weight:700;color:#1F1B16;">Unclaimed Clover payments (charges with no matching ERP sale, newest first, top 20):</div>
+                    @foreach($clover_debug['unclaimed_clover'] as $c)
+                        <div style="padding-left:4px;">• ${{ number_format($c['amount'], 2) }} · {{ $c['paid_at'] }} · loc {{ $c['loc_id'] ?? '(none)' }} · {{ $c['card'] ?: '(no card)' }}</div>
                     @endforeach
                 @endif
             </div>
