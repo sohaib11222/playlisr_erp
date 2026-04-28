@@ -180,6 +180,8 @@ class SellPosController extends Controller
             ->with([
                 'sell_lines' => fn($q) => $q->whereNull('parent_sell_line_id'),
                 'sell_lines.product',
+                'sell_lines.product.category',
+                'sell_lines.product.sub_category',
                 'sell_lines.variations',
                 'sell_lines.variations.product_variation',
                 'contact',
@@ -402,6 +404,8 @@ class SellPosController extends Controller
             ->with([
                 'sell_lines' => fn($q) => $q->whereNull('parent_sell_line_id'),
                 'sell_lines.product',
+                'sell_lines.product.category',
+                'sell_lines.product.sub_category',
                 'contact',
                 'location',
                 'sales_person',
@@ -475,7 +479,7 @@ class SellPosController extends Controller
             $out = fopen('php://output', 'w');
             fputcsv($out, [
                 'date', 'time', 'invoice_no', 'store', 'customer', 'cashier',
-                'item', 'artist', 'product_name', 'is_manual',
+                'item', 'artist', 'product_name', 'category', 'sub_category', 'is_manual',
                 'qty', 'unit_price', 'line_discount', 'line_total',
                 'sale_total_erp', 'sale_discount', 'payment_status',
                 'clover_charged', 'clover_tax', 'clover_tip', 'clover_cards', 'clover_mismatch',
@@ -505,7 +509,7 @@ class SellPosController extends Controller
                     fputcsv($out, [
                         $dt->format('Y-m-d'), $dt->format('H:i:s'), $sale->invoice_no,
                         $store, $customer, $cashier,
-                        '(no items)', '', '', '',
+                        '(no items)', '', '', '', '', '',
                         '', '', '', '',
                         number_format($saleTotal, 2, '.', ''),
                         number_format($saleDiscount, 2, '.', ''),
@@ -526,6 +530,8 @@ class SellPosController extends Controller
                     }
                     $item = $artist ? ($artist . ' - ' . $baseName) : $baseName;
                     $isManual = empty($product);
+                    $catName = optional($product)->category->name ?? '';
+                    $subCatName = optional($product)->sub_category->name ?? '';
                     $qty = (float) $line->quantity;
                     $unit = (float) ($line->unit_price_inc_tax ?: $line->unit_price);
                     $lineDisc = 0;
@@ -539,7 +545,7 @@ class SellPosController extends Controller
                     fputcsv($out, [
                         $dt->format('Y-m-d'), $dt->format('H:i:s'), $sale->invoice_no,
                         $store, $customer, $cashier,
-                        $item, $artist ?: '', $baseName, $isManual ? 'yes' : 'no',
+                        $item, $artist ?: '', $baseName, $catName, $subCatName, $isManual ? 'yes' : 'no',
                         rtrim(rtrim(number_format($qty, 4, '.', ''), '0'), '.'),
                         number_format($unit, 2, '.', ''),
                         number_format($lineDisc, 2, '.', ''),

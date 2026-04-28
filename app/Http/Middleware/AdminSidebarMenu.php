@@ -292,13 +292,16 @@ class AdminSidebarMenu
                                         __('sale.list_pos'),
                                         ['icon' => 'fa fas fa-list', 'active' => request()->segment(1) == 'pos' && request()->segment(2) == null]
                                     );
-
-                                    $sub->url(
-                                        action('SellPosController@recentSalesFeed'),
-                                        'Recent Sales Feed',
-                                        ['icon' => 'fa fas fa-stream', 'active' => request()->segment(1) == 'pos' && request()->segment(2) == 'recent-feed']
-                                    );
                                 }
+
+                                // Recent Sales Feed is open to anyone with sell.create — Sarah
+                                // wants every cashier to see what others have rung up, not
+                                // just users with full sell.view.
+                                $sub->url(
+                                    action('SellPosController@recentSalesFeed'),
+                                    'Recent Sales Feed',
+                                    ['icon' => 'fa fas fa-stream', 'active' => request()->segment(1) == 'pos' && request()->segment(2) == 'recent-feed']
+                                );
 
                                 $sub->url(
                                     action('SellPosController@create'),

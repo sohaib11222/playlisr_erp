@@ -48,6 +48,11 @@
         border-radius: 4px; background: #F7E8C2; color: #8B6A1A;
         font-size: 10px; font-weight: 700; text-transform: uppercase;
         letter-spacing: .06em; vertical-align: middle; }
+    .rf-line-cat { display: block; margin-top: 1px; color: #8A7C6A;
+        font-size: 11px; font-weight: 600; text-transform: uppercase;
+        letter-spacing: .06em; }
+    .rf-line-cat .sub { color: #BFB096; font-weight: 500; text-transform: none;
+        letter-spacing: 0; margin-left: 4px; }
 
     .rf-foot { display: flex; justify-content: space-between; align-items: flex-start;
         gap: 10px; flex-wrap: wrap; padding-top: 10px; margin-top: 8px;
@@ -188,6 +193,8 @@
                             }
                             $name = $baseArtist ? ($baseArtist . ' — ' . $baseName) : $baseName;
                             $isManual = empty($product);
+                            $catName = optional($product)->category->name ?? null;
+                            $subCatName = optional($product)->sub_category->name ?? null;
                             $qty = (float) $line->quantity;
                             $unit = (float) ($line->unit_price_inc_tax ?: $line->unit_price);
                             $lineDisc = 0;
@@ -203,6 +210,9 @@
                                 @if($qty > 1)<span class="qty">{{ rtrim(rtrim(number_format($qty, 2, '.', ''), '0'), '.') }}×</span>@endif
                                 {{ $name }}
                                 @if($isManual)<span class="rf-manual-tag" title="Manual item (not from inventory)">manual</span>@endif
+                                @if($catName)
+                                    <span class="rf-line-cat">{{ $catName }}@if($subCatName)<span class="sub">› {{ $subCatName }}</span>@endif</span>
+                                @endif
                             </span>
                             <span class="rf-line-price">${{ number_format($lineTotal, 2) }}</span>
                         </li>
