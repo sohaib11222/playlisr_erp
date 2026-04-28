@@ -333,6 +333,76 @@
 
     {!! Form::open(['url' => action('ProductController@massStore'), 'method' => 'post', 'id' => 'mass_create_form', 'enctype' => 'multipart/form-data' ]) !!}
 
+    <!-- Default Cost Prices reference (collapsed by default) -->
+    <div class="box box-info collapsed-box" style="margin-bottom: 20px;">
+        <div class="box-header with-border" style="cursor: pointer;" data-widget="collapse">
+            <h3 class="box-title">
+                <i class="fa fa-tags"></i> Default Cost Prices by Category
+            </h3>
+            <div class="box-tools pull-right">
+                <button type="button" class="btn btn-sm btn-info" data-widget="collapse">
+                    <i class="fa fa-plus"></i> Show Pricing Rules
+                </button>
+            </div>
+        </div>
+        <div class="box-body" style="display: none;">
+            <div class="alert alert-info" style="margin-bottom: 10px;">
+                If you leave the purchase price blank (or set it to 0), the
+                <a href="{{ url('admin/cost-price-rules') }}" target="_blank">cost-price-rules tool</a>
+                can later fill it with the category default below. Existing non-zero costs are never overwritten.
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    <table class="table table-condensed table-bordered">
+                        <thead>
+                            <tr><th>Category</th><th class="text-right">Default cost</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Sealed Vinyl</td><td class="text-right">$17.00</td></tr>
+                            <tr><td>Used Vinyl</td><td class="text-right">$0.35</td></tr>
+                            <tr><td>Sealed CD / CD (Sealed)</td><td class="text-right">$6.00</td></tr>
+                            <tr><td>Used CD</td><td class="text-right">$0.10</td></tr>
+                            <tr><td>Cassettes &mdash; Sealed</td><td class="text-right">$6.00</td></tr>
+                            <tr><td>Cassettes (used)</td><td class="text-right">$0.30</td></tr>
+                            <tr><td>VHS</td><td class="text-right">$0.10</td></tr>
+                            <tr><td>7", 45 RPM</td><td class="text-right">$0.15</td></tr>
+                            <tr><td>8 track</td><td class="text-right">$0.25</td></tr>
+                            <tr><td>DVD/Blu Ray</td><td class="text-right">$0.25</td></tr>
+                            <tr><td>Movies</td><td class="text-right">$0.25</td></tr>
+                            <tr><td>Laser Disc</td><td class="text-right">$0.20</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="col-md-6">
+                    <table class="table table-condensed table-bordered">
+                        <thead>
+                            <tr><th>Category</th><th class="text-right">Default cost</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Books &amp; Magazines</td><td class="text-right">$0.40</td></tr>
+                            <tr><td>Magazines</td><td class="text-right">$1.50</td></tr>
+                            <tr><td>Trading Cards</td><td class="text-right">$6.00</td></tr>
+                            <tr><td>Apparel</td><td class="text-right">$3.00</td></tr>
+                            <tr><td>Clothing</td><td class="text-right">$3.00</td></tr>
+                            <tr><td>Video Games</td><td class="text-right">$1.25</td></tr>
+                            <tr><td>Record Players</td><td class="text-right">$35.00</td></tr>
+                            <tr><td>Audio Gear</td><td class="text-right">$20.00</td></tr>
+                            <tr><td>Gift Items</td><td class="text-right">$4.00</td></tr>
+                            <tr><td>Toys</td><td class="text-right">$3.00</td></tr>
+                            <tr><td>Accessories &amp; Novelties</td><td class="text-right">$2.00</td></tr>
+                            <tr><td>Pictures &amp; Posters</td><td class="text-right">$5.00</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <small class="text-muted">
+                <i class="fa fa-info-circle"></i>
+                Rules are applied only to variations whose default purchase price is NULL or 0. Manage them at
+                <a href="{{ url('admin/cost-price-rules') }}" target="_blank">/admin/cost-price-rules</a>.
+            </small>
+        </div>
+    </div>
+
     <!-- Bulk Text Entry Section (collapsed by default) -->
     <div class="box box-primary collapsed-box" style="margin-bottom: 20px;">
         <div class="box-header with-border" style="cursor: pointer;" data-widget="collapse">
