@@ -242,18 +242,26 @@ class SellPosController extends Controller
             // Hollywood sales from cross-pairing to Pico totals.
             //
             // Greedy 1-to-1, sales newest-first.
+            //
+            // Always compare money in integer cents — PHP float math turns
+            // (2.20 - 2.19) into 0.010000000000000231, which fails a naive
+            // `> 0.01` tolerance check and silently kills tax-rounding pairs
+            // (#17667 was the smoking gun: $2.19 ERP / $2.20 Clover, exact
+            // 1¢ delta, but the float comparator rejected it).
+            $toCents = function ($x) { return (int) round(((float) $x) * 100); };
+
             $claimedCpKeys = [];
             $matchedCpByTx = [];
             foreach ($sales as $sale) {
-                $erTs   = strtotime((string) $sale->transaction_date);
-                $erAmt  = round((float) $sale->final_total, 2);
-                $erLoc  = $sale->location_id;
+                $erTs    = strtotime((string) $sale->transaction_date);
+                $erCents = $toCents($sale->final_total);
+                $erLoc   = $sale->location_id;
 
                 $bestKey = null;
                 $bestDelta = PHP_INT_MAX;
                 foreach ($cpRows as $key => $cp) {
                     if (isset($claimedCpKeys[$key])) continue;
-                    if (abs((float) $cp->amount - $erAmt) > 0.01) continue;
+                    if (abs($toCents($cp->amount) - $erCents) > 1) continue;
                     if ($cp->location_id !== null && (int) $cp->location_id !== (int) $erLoc) continue;
                     $delta = abs(strtotime((string) $cp->paid_at) - $erTs);
                     if ($delta < $bestDelta) {
@@ -308,17 +316,20 @@ class SellPosController extends Controller
             foreach ($sales as $sale) {
                 if (in_array($sale->id, $matchedTxIds)) continue;
                 $erAmt = round((float) $sale->final_total, 2);
+                $erCents = $toCents($sale->final_total);
                 $erLoc = $sale->location_id;
 
                 // Show same-amount-or-close candidates from the entire
                 // window (no date filter), annotated with reasons they
-                // didn't match.
+                // didn't match. Cent-based comparison so we agree with
+                // the matcher exactly — no float-precision drift.
                 $candidates = [];
                 foreach ($cpRows as $cp) {
+                    $cpCents = $toCents($cp->amount);
                     $cpAmt = round((float) $cp->amount, 2);
-                    $amountMatch = abs($cpAmt - $erAmt) <= 0.01;
+                    $amountMatch = abs($cpCents - $erCents) <= 1;
                     $why = [];
-                    if (!$amountMatch) $why[] = 'amount Δ$' . number_format(abs($cpAmt - $erAmt), 2);
+                    if (!$amountMatch) $why[] = 'amount Δ$' . number_format(abs($cpCents - $erCents) / 100, 2);
                     if ($cp->location_id !== null && (int) $cp->location_id !== (int) $erLoc) {
                         $why[] = 'wrong store (loc ' . $cp->location_id . ')';
                     }
@@ -330,11 +341,12 @@ class SellPosController extends Controller
                         'loc_id' => $cp->location_id,
                         'why' => $why ? implode(', ', $why) : 'WOULD MATCH',
                         'amount_match' => $amountMatch ? 1 : 0,
+                        '_cents' => $cpCents,
                     ];
                 }
-                usort($candidates, function ($a, $b) use ($erAmt) {
+                usort($candidates, function ($a, $b) use ($erCents) {
                     if ($b['amount_match'] !== $a['amount_match']) return $b['amount_match'] - $a['amount_match'];
-                    return abs($a['amount'] - $erAmt) <=> abs($b['amount'] - $erAmt);
+                    return abs($a['_cents'] - $erCents) <=> abs($b['_cents'] - $erCents);
                 });
 
                 $unclaimedSales[] = [
@@ -429,18 +441,22 @@ class SellPosController extends Controller
                 ->orderBy('paid_at')
                 ->get();
 
+            // Integer-cent comparison — matches the page render exactly.
+            // Float math drops 1¢-rounding pairs (e.g. $2.19 ↔ $2.20).
+            $toCents = function ($x) { return (int) round(((float) $x) * 100); };
+
             $claimedCpKeys = [];
             $matchedCpByTx = [];
             foreach ($sales as $sale) {
-                $erTs  = strtotime((string) $sale->transaction_date);
-                $erAmt = round((float) $sale->final_total, 2);
-                $erLoc = $sale->location_id;
+                $erTs    = strtotime((string) $sale->transaction_date);
+                $erCents = $toCents($sale->final_total);
+                $erLoc   = $sale->location_id;
 
                 $bestKey = null;
                 $bestDelta = PHP_INT_MAX;
                 foreach ($cpRows as $key => $cp) {
                     if (isset($claimedCpKeys[$key])) continue;
-                    if (abs((float) $cp->amount - $erAmt) > 0.01) continue;
+                    if (abs($toCents($cp->amount) - $erCents) > 1) continue;
                     if ($cp->location_id !== null && (int) $cp->location_id !== (int) $erLoc) continue;
                     $delta = abs(strtotime((string) $cp->paid_at) - $erTs);
                     if ($delta < $bestDelta) {
@@ -501,7 +517,9 @@ class SellPosController extends Controller
                 $cloverCards = $cloverInfo ? implode(' / ', $cloverInfo['cards']) : '';
                 $cloverMismatch = '';
                 if ($cloverInfo) {
-                    $cloverMismatch = abs(($cloverInfo['amount_cents'] / 100) - $saleTotal) > 0.01 ? 'yes' : 'no';
+                    // Integer-cent comparison — same tolerance as the matcher.
+                    $saleCents = (int) round($saleTotal * 100);
+                    $cloverMismatch = abs($cloverInfo['amount_cents'] - $saleCents) > 1 ? 'yes' : 'no';
                 }
 
                 $lines = $sale->sell_lines;
