@@ -20,6 +20,7 @@ npm-debug.log
 /public/css/*
 !/public/css/pos-create-layout.css
 !/public/css/products-list-layout.css
+!/public/css/items-report-layout.css
 /public/fonts/
 /public/images/
 /public/modules/

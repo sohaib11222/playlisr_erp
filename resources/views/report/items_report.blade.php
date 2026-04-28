@@ -3,9 +3,19 @@
 
 @section('content')
 
+{{-- Items Report — POS-create-style reskin (2026-04-28). Inter Tight font
+     loaded non-blocking, scoped CSS in items-report-layout.css, body hook
+     class = items-report-v2. Functionality untouched. --}}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&display=swap" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&display=swap"></noscript>
+<link rel="stylesheet" href="{{ asset('css/items-report-layout.css?v=' . $asset_v) }}">
+<script>document.body.classList.add('items-report-v2');</script>
+
 <!-- Content Header (Page header) -->
 <section class="content-header">
-    <h1>{{ __('lang_v1.items_report')}}</h1>
+    <h1>{{ __('lang_v1.items_report')}} <small>Items sold + manual line items, with full filter export.</small></h1>
 </section>
 
 <!-- Main content -->
@@ -96,11 +106,11 @@
             </div>
             @endcomponent
 
-            <div style="margin-bottom:10px; text-align:right;">
-                <button type="button" class="btn btn-success" id="ir-export-all-btn">
+            <div style="margin: 0 0 14px; display: flex; justify-content: flex-end; align-items: center; gap: 10px;">
+                <span id="ir-export-hint" style="font-size:12px;"></span>
+                <button type="button" class="btn" id="ir-export-all-btn">
                     <i class="fa fa-file-excel"></i> Export filtered (CSV)
                 </button>
-                <span id="ir-export-hint" style="margin-left:8px; font-size:12px; color:#6b7280;"></span>
             </div>
         </div>
     </div>

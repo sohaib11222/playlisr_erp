@@ -1,0 +1,268 @@
+/* Items Report — POS-create-style reskin (2026-04-28, Sarah)
+   Cream background, Inter Tight, white card shells with rounded corners,
+   uppercase eyebrow labels, accent-yellow export button. Functionality
+   untouched — pure CSS scoped under body.items-report-v2 so it can't bleed
+   to other pages. Mirrors the token system from sale_pos/_redesign_v2. */
+
+body.items-report-v2 {
+    --pos-bg:           #FAF6EE;
+    --pos-surface:      #FFFFFF;
+    --pos-surface-2:    #F7F1E3;
+    --pos-ink:          #1F1B16;
+    --pos-ink-2:        #5A5045;
+    --pos-ink-3:        #8E8273;
+    --pos-line:         #ECE3CF;
+    --pos-line-2:       #DFD2B3;
+
+    --pos-accent:       #FFF2B3;
+    --pos-accent-deep:  #E8CF68;
+    --pos-accent-text:  #5A4410;
+
+    --pos-radius:       10px;
+    --pos-radius-sm:    8px;
+    --pos-shadow-sm:    0 1px 2px rgba(31, 27, 22, .06);
+    --pos-shadow-md:    0 4px 14px rgba(31, 27, 22, .08);
+
+    background: var(--pos-bg);
+    font-family: "Inter Tight", system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--pos-ink);
+    -webkit-font-smoothing: antialiased;
+}
+
+body.items-report-v2 .content-wrapper,
+body.items-report-v2 section.content {
+    background: var(--pos-bg) !important;
+    font-family: inherit;
+}
+
+body.items-report-v2 .content,
+body.items-report-v2 .box,
+body.items-report-v2 .form-control,
+body.items-report-v2 .btn,
+body.items-report-v2 input,
+body.items-report-v2 select,
+body.items-report-v2 textarea,
+body.items-report-v2 button,
+body.items-report-v2 .select2-container,
+body.items-report-v2 .select2-selection {
+    font-family: inherit;
+}
+
+/* ============ HEADER ============ */
+body.items-report-v2 .content-header {
+    padding: 22px 25px 6px;
+}
+body.items-report-v2 .content-header > h1 {
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: -.01em;
+    margin: 0;
+    color: var(--pos-ink);
+}
+body.items-report-v2 .content-header > h1 small {
+    color: var(--pos-ink-3);
+    font-weight: 500;
+}
+
+body.items-report-v2 section.content {
+    padding: 8px 20px 20px !important;
+}
+
+/* ============ CARDS (filters + table widget) ============ */
+body.items-report-v2 .box,
+body.items-report-v2 .box.box-solid,
+body.items-report-v2 .box.box-primary {
+    background: var(--pos-surface) !important;
+    border: 1px solid var(--pos-line) !important;
+    border-top: 1px solid var(--pos-line) !important;
+    border-radius: var(--pos-radius) !important;
+    box-shadow: var(--pos-shadow-sm) !important;
+    margin-bottom: 16px;
+}
+body.items-report-v2 .box-header,
+body.items-report-v2 .box-header.with-border {
+    background: transparent !important;
+    border-bottom: 1px solid var(--pos-line) !important;
+    padding: 12px 18px !important;
+}
+body.items-report-v2 .box-title {
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    letter-spacing: .14em !important;
+    text-transform: uppercase !important;
+    color: var(--pos-ink-3) !important;
+    margin: 0 !important;
+}
+body.items-report-v2 .box-title a,
+body.items-report-v2 .box-title a:hover,
+body.items-report-v2 .box-title a:focus {
+    color: var(--pos-ink-3) !important;
+    text-decoration: none !important;
+}
+body.items-report-v2 .box-body {
+    padding: 18px 20px !important;
+}
+
+/* ============ FORM CONTROLS ============ */
+body.items-report-v2 .form-group label,
+body.items-report-v2 .form-group .control-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--pos-ink-3);
+    margin-bottom: 6px;
+}
+body.items-report-v2 .form-control {
+    border: 1px solid var(--pos-line-2) !important;
+    border-radius: var(--pos-radius-sm) !important;
+    height: 40px;
+    background: #fff;
+    color: var(--pos-ink);
+    box-shadow: none !important;
+    transition: border-color .15s, box-shadow .15s;
+}
+body.items-report-v2 .form-control:focus {
+    border-color: var(--pos-accent-deep) !important;
+    box-shadow: 0 0 0 3px rgba(232, 207, 104, .25) !important;
+}
+body.items-report-v2 .input-group-addon {
+    background: var(--pos-surface) !important;
+    border: 1px solid var(--pos-line-2) !important;
+    border-right: none !important;
+    color: var(--pos-ink-3) !important;
+    border-radius: var(--pos-radius-sm) 0 0 var(--pos-radius-sm) !important;
+}
+body.items-report-v2 .input-group .form-control {
+    border-top-left-radius: 0 !important;
+    border-bottom-left-radius: 0 !important;
+}
+
+/* select2 single-select styling to match */
+body.items-report-v2 .select2-container--default .select2-selection--single {
+    border: 1px solid var(--pos-line-2) !important;
+    border-radius: var(--pos-radius-sm) !important;
+    height: 40px;
+    background: #fff;
+}
+body.items-report-v2 .select2-container--default .select2-selection--single .select2-selection__rendered {
+    line-height: 38px;
+    color: var(--pos-ink);
+    padding-left: 12px;
+}
+body.items-report-v2 .select2-container--default .select2-selection--single .select2-selection__arrow {
+    height: 38px;
+}
+body.items-report-v2 .input-group .select2-container--default .select2-selection--single {
+    border-top-left-radius: 0 !important;
+    border-bottom-left-radius: 0 !important;
+}
+
+body.items-report-v2 .checkbox label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--pos-ink-2);
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+/* ============ EXPORT BUTTON — POS yellow accent ============ */
+body.items-report-v2 #ir-export-all-btn {
+    background: var(--pos-accent) !important;
+    color: var(--pos-accent-text) !important;
+    border: 1px solid var(--pos-accent-deep) !important;
+    border-radius: var(--pos-radius) !important;
+    font-weight: 800 !important;
+    letter-spacing: .04em !important;
+    text-transform: uppercase !important;
+    font-size: 13px !important;
+    padding: 9px 18px !important;
+    box-shadow: var(--pos-shadow-sm) !important;
+    transition: transform .1s ease, box-shadow .15s, background .15s;
+}
+body.items-report-v2 #ir-export-all-btn:hover:not(:disabled) {
+    background: var(--pos-accent-deep) !important;
+    color: var(--pos-ink) !important;
+    transform: translateY(-1px);
+    box-shadow: var(--pos-shadow-md) !important;
+}
+body.items-report-v2 #ir-export-all-btn:disabled {
+    opacity: .65;
+    cursor: progress;
+}
+body.items-report-v2 #ir-export-hint {
+    color: var(--pos-ink-3) !important;
+    font-style: italic;
+}
+
+/* Defensive: if the global DataTables Buttons row ever renders, hide it
+   (the JS-level buttons:[] override should already prevent this). */
+body.items-report-v2 #items_report_table_wrapper .dt-buttons {
+    display: none !important;
+}
+
+/* ============ TABLE ============ */
+body.items-report-v2 #items_report_table {
+    background: var(--pos-surface) !important;
+    border: none !important;
+}
+body.items-report-v2 #items_report_table thead th {
+    background: var(--pos-surface) !important;
+    color: var(--pos-ink-3) !important;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    border-top: none !important;
+    border-bottom: 2px solid var(--pos-line) !important;
+    padding: 12px 10px;
+    white-space: nowrap;
+}
+body.items-report-v2 #items_report_table tbody td {
+    border-top: 1px solid var(--pos-line) !important;
+    color: var(--pos-ink);
+    padding: 10px;
+    vertical-align: middle;
+}
+body.items-report-v2 #items_report_table tbody tr:hover td {
+    background: var(--pos-surface-2) !important;
+}
+body.items-report-v2 #items_report_table.table-striped > tbody > tr:nth-of-type(odd) {
+    background-color: rgba(247, 241, 227, .35);
+}
+body.items-report-v2 #items_report_table tfoot td.bg-gray,
+body.items-report-v2 #items_report_table tfoot tr {
+    background: var(--pos-surface-2) !important;
+    color: var(--pos-ink) !important;
+    font-weight: 700;
+}
+body.items-report-v2 .label-info {
+    background: var(--pos-accent) !important;
+    color: var(--pos-accent-text) !important;
+    font-weight: 700;
+}
+
+/* DataTables length / search / pagination polish */
+body.items-report-v2 .dataTables_length,
+body.items-report-v2 .dataTables_filter,
+body.items-report-v2 .dataTables_info,
+body.items-report-v2 .dataTables_paginate {
+    color: var(--pos-ink-2) !important;
+    font-size: 13px;
+}
+body.items-report-v2 .dataTables_filter input.form-control,
+body.items-report-v2 .dataTables_length select.form-control {
+    height: 36px;
+}
+body.items-report-v2 .pagination > li > a,
+body.items-report-v2 .pagination > li > span {
+    color: var(--pos-ink-2) !important;
+    border: 1px solid var(--pos-line) !important;
+    background: var(--pos-surface) !important;
+}
+body.items-report-v2 .pagination > .active > a,
+body.items-report-v2 .pagination > .active > span {
+    background: var(--pos-ink) !important;
+    border-color: var(--pos-ink) !important;
+    color: #fff !important;
+}
