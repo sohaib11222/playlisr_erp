@@ -49,10 +49,31 @@
         font-size: 10px; font-weight: 700; text-transform: uppercase;
         letter-spacing: .06em; vertical-align: middle; }
     .rf-line-cat { display: block; margin-top: 1px; color: #8A7C6A;
-        font-size: 11px; font-weight: 600; text-transform: uppercase;
+        font-size: 11px; font-weight: 800; text-transform: uppercase;
         letter-spacing: .06em; }
-    .rf-line-cat .sub { color: #BFB096; font-weight: 500; text-transform: none;
+    .rf-line-cat .sub { color: #BFB096; font-weight: 600; text-transform: none;
         letter-spacing: 0; margin-left: 4px; }
+    /* Per-format colors. Sealed variants get a brighter shade than used. */
+    .rf-line-cat.cat-vinyl-used     { color: #1F1B16; }
+    .rf-line-cat.cat-vinyl-sealed   { color: #6B3F12; }
+    .rf-line-cat.cat-cd-used        { color: #4A6FA5; }
+    .rf-line-cat.cat-cd-sealed      { color: #1E5BAE; }
+    .rf-line-cat.cat-cassette-used  { color: #C8602B; }
+    .rf-line-cat.cat-cassette-sealed{ color: #E8742B; }
+    .rf-line-cat.cat-7inch          { color: #7B3FA0; }
+    .rf-line-cat.cat-8track         { color: #1A7A7A; }
+    .rf-line-cat.cat-vhs            { color: #B23A3A; }
+    .rf-line-cat.cat-dvd            { color: #A23A8C; }
+    .rf-line-cat.cat-laserdisc      { color: #1A8A9A; }
+    .rf-line-cat.cat-movies         { color: #8B2C2C; }
+    .rf-line-cat.cat-books          { color: #2E6F40; }
+    .rf-line-cat.cat-trading        { color: #A88B0F; }
+    .rf-line-cat.cat-apparel        { color: #3A4A8A; }
+    .rf-line-cat.cat-vgame          { color: #1F8B3F; }
+    .rf-line-cat.cat-gear           { color: #4A4A4A; }
+    .rf-line-cat.cat-gift           { color: #C8478A; }
+    .rf-line-cat.cat-poster         { color: #B07A1A; }
+    .rf-line-cat.cat-accessory      { color: #8B6A1A; }
 
     .rf-foot { display: flex; justify-content: space-between; align-items: flex-start;
         gap: 10px; flex-wrap: wrap; padding-top: 10px; margin-top: 8px;
@@ -85,6 +106,39 @@
         .rf-line { font-size: 13px; }
     }
 </style>
+
+@php
+    // Map a Nivessa category name to a CSS class for color-coding the
+    // per-line category tag. Substring match (case-insensitive) so DB
+    // names like "Used Vinyl", "CDs (Used)", "7\", 45 RPM" all hit the
+    // right bucket. Order matters — check sealed variants first because
+    // "sealed cd" also contains "cd".
+    $rfCatClass = function ($name) {
+        $n = strtolower(trim((string) $name));
+        if ($n === '') return '';
+        if (str_contains($n, 'sealed vinyl') || str_contains($n, 'new vinyl')) return 'cat-vinyl-sealed';
+        if (str_contains($n, 'vinyl'))                                          return 'cat-vinyl-used';
+        if (str_contains($n, '7"') || str_contains($n, '45 rpm') || str_contains($n, '7 inch')) return 'cat-7inch';
+        if (str_contains($n, '8 track') || str_contains($n, '8-track') || str_contains($n, 'eight track')) return 'cat-8track';
+        if (str_contains($n, 'sealed cd') || str_contains($n, 'cd (sealed)') || str_contains($n, 'new cd')) return 'cat-cd-sealed';
+        if (str_contains($n, 'cd'))                                             return 'cat-cd-used';
+        if (str_contains($n, 'sealed cassette') || str_contains($n, 'cassettes - sealed') || str_contains($n, 'new cassette')) return 'cat-cassette-sealed';
+        if (str_contains($n, 'cassette'))                                       return 'cat-cassette-used';
+        if (str_contains($n, 'vhs'))                                            return 'cat-vhs';
+        if (str_contains($n, 'laser'))                                          return 'cat-laserdisc';
+        if (str_contains($n, 'dvd') || str_contains($n, 'blu'))                 return 'cat-dvd';
+        if (str_contains($n, 'movie'))                                          return 'cat-movies';
+        if (str_contains($n, 'book') || str_contains($n, 'magazine'))           return 'cat-books';
+        if (str_contains($n, 'trading'))                                        return 'cat-trading';
+        if (str_contains($n, 'apparel') || str_contains($n, 'clothing'))        return 'cat-apparel';
+        if (str_contains($n, 'video game'))                                     return 'cat-vgame';
+        if (str_contains($n, 'record player') || str_contains($n, 'audio gear'))return 'cat-gear';
+        if (str_contains($n, 'gift') || str_contains($n, 'toy'))                return 'cat-gift';
+        if (str_contains($n, 'poster') || str_contains($n, 'picture'))          return 'cat-poster';
+        if (str_contains($n, 'accessor') || str_contains($n, 'novelt'))         return 'cat-accessory';
+        return '';
+    };
+@endphp
 
 <section class="content-header">
     <h1>Recent Sales Feed <small>— items sold, expanded inline</small></h1>
@@ -211,7 +265,7 @@
                                 {{ $name }}
                                 @if($isManual)<span class="rf-manual-tag" title="Manual item (not from inventory)">manual</span>@endif
                                 @if($catName)
-                                    <span class="rf-line-cat">{{ $catName }}@if($subCatName)<span class="sub">› {{ $subCatName }}</span>@endif</span>
+                                    <span class="rf-line-cat {{ $rfCatClass($catName) }}">{{ $catName }}@if($subCatName)<span class="sub">› {{ $subCatName }}</span>@endif</span>
                                 @endif
                             </span>
                             <span class="rf-line-price">${{ number_format($lineTotal, 2) }}</span>
@@ -222,13 +276,15 @@
 
                 @php
                     $cloverInfo = $clover_by_transaction[$sale->id] ?? null;
-                    // Mismatch = ERP total ≠ Clover gross (amount, which already
-                    // includes tax). Tip is separate so it doesn't count as a
-                    // mismatch. Tolerance: 1 cent for floating-point safety.
+                    // Mismatch = ERP total ≠ Clover gross (amount, which
+                    // already includes tax). Tip is separate so it doesn't
+                    // count as a mismatch. Compare in integer cents — float
+                    // diff of $X.20 - $X.19 is 0.0100000000231, not 0.01,
+                    // and the naive `> 0.01` test would lose 1¢ rounding.
                     $cloverMismatch = false;
                     if ($cloverInfo) {
-                        $cloverGross = $cloverInfo['amount_cents'] / 100;
-                        $cloverMismatch = abs($cloverGross - $total) > 0.01;
+                        $saleCents = (int) round($total * 100);
+                        $cloverMismatch = abs($cloverInfo['amount_cents'] - $saleCents) > 1;
                     }
                 @endphp
                 <div class="rf-foot">
