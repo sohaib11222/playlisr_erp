@@ -41,11 +41,12 @@ class ImportAppleMusicChart extends Command
 
         $rows = $fetcher->fetchTop100();
         if (empty($rows)) {
-            $this->warn('Apple Music feed returned 0 rows (network issue or feed format change?).');
-            return 0;
+            $err = $fetcher->lastError ?: 'unknown';
+            $this->error('Apple Music feed returned 0 rows: ' . $err);
+            return 1;
         }
 
-        $this->info('Fetched ' . count($rows) . ' Apple Music top-100 entries');
+        $this->info('Fetched ' . count($rows) . ' Apple Music top-100 entries from ' . ($fetcher->lastEndpoint ?: '?'));
 
         if ($dryRun) {
             $this->line('(dry-run) top 5:');

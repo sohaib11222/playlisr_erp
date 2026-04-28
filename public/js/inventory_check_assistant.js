@@ -37,6 +37,20 @@
     }
     if ($preset) $preset.addEventListener('change', applyPresetMeta);
 
+    // The page renders with a default preset already selected
+    // (e.g. hollywood_all). Apply its meta on first load and auto-build,
+    // so Clyde lands on a populated list instead of a "pick a location"
+    // error after clicking. Skips auto-build if no default preset is set.
+    if ($preset && $preset.value) {
+        applyPresetMeta();
+        // Defer slightly so the select2/jQuery cascade settles before fetch.
+        setTimeout(function () {
+            if ($location && $location.value) {
+                buildList();
+            }
+        }, 50);
+    }
+
     // ── Build order list (main action) ────────────────────────────────
     if ($applyBtn) {
         $applyBtn.addEventListener('click', function () {
@@ -212,48 +226,63 @@
     }
     renderFreshness();
 
-    // ── Chart paste imports ──────────────────────────────────────────
+    // ── Chart imports (file upload + paste) ──────────────────────────
     function importChart(source) {
         const isSp = source === 'street_pulse';
         const bodyEl = document.getElementById(isSp ? 'ica_sp_body' : 'ica_ut_body');
         const weekEl = document.getElementById(isSp ? 'ica_sp_week' : 'ica_ut_week');
+        const fileEl = document.getElementById(isSp ? 'ica_sp_file' : 'ica_ut_file');
         const btn = document.getElementById(isSp ? 'ica_sp_import' : 'ica_ut_import');
-        const body = bodyEl.value.trim();
+        const body = (bodyEl && bodyEl.value || '').trim();
         const week = weekEl.value;
-        if (!body) { alert('Paste the chart body first.'); return; }
+        const file = fileEl && fileEl.files && fileEl.files[0] ? fileEl.files[0] : null;
+
+        if (!file && !body) {
+            alert('Pick a chart file or paste the chart body.');
+            return;
+        }
 
         btn.disabled = true;
         btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Importing…';
+
+        // Use FormData so the file rides along; same endpoint accepts either.
+        const fd = new FormData();
+        fd.append('source', source);
+        fd.append('week_of', week);
+        if (body) fd.append('body', body);
+        if (file) fd.append('chart_file', file);
 
         fetch(window.ICA_CHART_IMPORT_URL, {
             method: 'POST',
             headers: {
                 'Accept': 'application/json',
-                'Content-Type': 'application/json',
                 'X-CSRF-TOKEN': window.ICA_CSRF,
             },
             credentials: 'same-origin',
-            body: JSON.stringify({ source: source, week_of: week, body: body }),
+            body: fd,
         })
-            .then((r) => r.json())
-            .then((resp) => {
+            .then((r) => r.json().then((j) => ({ status: r.status, json: j })))
+            .then(({ status, json: resp }) => {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fa fa-upload"></i> Import';
                 if (resp && resp.success) {
                     alert('Imported ' + resp.parsed_rows + ' rows for week of ' + resp.week_of + '.');
                     if (window.jQuery) jQuery('#' + (isSp ? 'ica_sp_modal' : 'ica_ut_modal')).modal('hide');
+                    if (fileEl) fileEl.value = '';
+                    if (bodyEl) bodyEl.value = '';
                     window.ICA_CHART_FRESHNESS = window.ICA_CHART_FRESHNESS || {};
                     window.ICA_CHART_FRESHNESS[source] = { week_of: resp.week_of, imported_at: new Date().toISOString() };
                     renderFreshness();
                     if (lastResult) buildList();
                 } else {
-                    alert('Import failed. Check the body and try again.');
+                    const msg = resp && resp.message ? resp.message : ('Import failed (HTTP ' + status + ').');
+                    alert(msg);
                 }
             })
-            .catch(() => {
+            .catch((err) => {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fa fa-upload"></i> Import';
-                alert('Import failed.');
+                alert('Import failed: ' + (err && err.message ? err.message : 'unknown error'));
             });
     }
     const $spImport = document.getElementById('ica_sp_import');

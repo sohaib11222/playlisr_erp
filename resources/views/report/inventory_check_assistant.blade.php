@@ -151,25 +151,30 @@
     </div>
 </section>
 
-{{-- ── Street Pulse paste modal ──────────────────────────────────── --}}
+{{-- ── Street Pulse import modal (file or paste) ─────────────────── --}}
 <div class="modal fade" id="ica_sp_modal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
                 <button type="button" class="close" data-dismiss="modal">&times;</button>
-                <h4 class="modal-title">Paste Street Pulse chart</h4>
+                <h4 class="modal-title">Import Street Pulse / Luminate chart</h4>
             </div>
             <div class="modal-body">
-                <p class="text-muted small">Forward the weekly email, open it, copy the chart body, paste below. Supports huge lists. Re-pasting replaces that week's entries.</p>
+                <p class="text-muted small">Upload the weekly chart file (.xlsx or .csv from Luminate) <strong>or</strong> paste the rows below. Re-importing replaces that week's entries.</p>
                 <div class="form-group">
                     <label>Week of</label>
                     <input type="date" class="form-control" id="ica_sp_week" value="{{ \Carbon\Carbon::now()->format('Y-m-d') }}">
                 </div>
                 <div class="form-group">
-                    <label>Chart body</label>
-                    <textarea class="form-control" id="ica_sp_body" rows="14" placeholder="1. Artist — Title — Format&#10;2. Artist — Title — Format&#10;…"></textarea>
+                    <label>Chart file <small class="text-muted">(.xlsx, .csv, .tsv — preferred)</small></label>
+                    <input type="file" class="form-control" id="ica_sp_file" accept=".xlsx,.xls,.csv,.tsv,.txt">
+                    <p class="help-block small">Headers we recognize: <code>Artist</code> (or <code>ARTIST NAME</code>) + <code>Title</code> (or <code>Album</code>). Rank/Format/Release Date used if present.</p>
                 </div>
-                <p class="text-muted small">New releases: mark a line with <code>*NEW*</code>, <code>(NEW)</code>, or <code>★</code>.</p>
+                <div class="form-group">
+                    <label>…or paste chart body</label>
+                    <textarea class="form-control" id="ica_sp_body" rows="10" placeholder="1. Artist — Title — Format&#10;2. Artist — Title — Format&#10;…"></textarea>
+                </div>
+                <p class="text-muted small">New releases: mark with <code>*NEW*</code>, <code>(NEW)</code>, or <code>★</code>; for files we auto-flag if release date is within 60 days.</p>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
@@ -181,23 +186,27 @@
     </div>
 </div>
 
-{{-- ── Universal Top paste modal ────────────────────────────────── --}}
+{{-- ── Universal Top import modal (file or paste) ────────────────── --}}
 <div class="modal fade" id="ica_ut_modal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
                 <button type="button" class="close" data-dismiss="modal">&times;</button>
-                <h4 class="modal-title">Paste Universal Top chart</h4>
+                <h4 class="modal-title">Import UMe / Universal chart</h4>
             </div>
             <div class="modal-body">
-                <p class="text-muted small">Weekly Universal Music email to sarah@nivessa.com — paste the chart body here.</p>
+                <p class="text-muted small">Drop the weekly UMe xlsx attachment ("UMe Back-in-Stock + Active LPs and CDs"). The Top 200 + this-week deliveries tabs are pulled automatically. Paste fallback below.</p>
                 <div class="form-group">
                     <label>Week of</label>
                     <input type="date" class="form-control" id="ica_ut_week" value="{{ \Carbon\Carbon::now()->format('Y-m-d') }}">
                 </div>
                 <div class="form-group">
-                    <label>Chart body</label>
-                    <textarea class="form-control" id="ica_ut_body" rows="14"></textarea>
+                    <label>UMe xlsx <small class="text-muted">(preferred)</small></label>
+                    <input type="file" class="form-control" id="ica_ut_file" accept=".xlsx,.xls,.csv,.tsv,.txt">
+                </div>
+                <div class="form-group">
+                    <label>…or paste chart body</label>
+                    <textarea class="form-control" id="ica_ut_body" rows="10"></textarea>
                 </div>
             </div>
             <div class="modal-footer">

@@ -193,11 +193,23 @@ class InventoryCheckController extends Controller
         // Open to all authenticated staff — inventory check assistant is
         // operational reorder data, not aggregated sales (Sarah 2026-04-28).
 
+        // Accept EITHER a pasted body OR an uploaded chart file (xlsx, csv, tsv).
+        // Sarah's actual sources don't fit a single textarea: Universal sends
+        // an xlsx attachment; Luminate / Street Pulse exports as a tabular
+        // chart. Validate one-or-the-other; downstream picks the parser.
         $request->validate([
             'source' => 'required|in:street_pulse,universal_top',
-            'body' => 'required|string|max:500000',
+            'body' => 'nullable|string|max:500000',
             'week_of' => 'nullable|date',
+            'chart_file' => 'nullable|file|max:20480|mimes:xlsx,xls,csv,tsv,txt',
         ]);
+        if (!$request->filled('body') && !$request->hasFile('chart_file')) {
+            return response()->json([
+                'success' => false,
+                'error' => 'no_input',
+                'message' => 'Paste the chart body or upload an .xlsx / .csv file.',
+            ], 422);
+        }
 
         if (!Schema::hasTable('chart_pick_imports') || !Schema::hasTable('chart_picks')) {
             return response()->json([
@@ -210,21 +222,65 @@ class InventoryCheckController extends Controller
         $business_id = (int) $request->session()->get('user.business_id');
         $source = $request->input('source');
         $weekOf = $request->input('week_of') ?: Carbon::now()->format('Y-m-d');
-        $body = $request->input('body');
+        $body = (string) $request->input('body', '');
 
-        $rows = $this->chartPickParser->parse($body, $source);
+        $rows = [];
+        $rawForAudit = $body;
+        $diagnostic = ['mode' => null, 'filename' => null];
 
-        return DB::transaction(function () use ($business_id, $source, $weekOf, $body, $rows) {
+        if ($request->hasFile('chart_file')) {
+            $file = $request->file('chart_file');
+            $filename = $file->getClientOriginalName();
+            $diagnostic['mode'] = 'file';
+            $diagnostic['filename'] = $filename;
+            $rawForAudit = '[file: ' . $filename . ']';
+
+            $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+
+            // Universal-Top xlsx has a known multi-sheet layout (Top 200 +
+            // deliveries) that the dedicated UMe parser handles best.
+            if ($source === 'universal_top' && in_array($ext, ['xlsx', 'xls'], true)) {
+                $rows = $this->parseUniversalXlsx($file->getRealPath());
+            } else {
+                $rows = app(TabularChartParser::class)->parseFile($file->getRealPath(), $filename);
+            }
+        } else {
+            $diagnostic['mode'] = 'paste';
+            $rows = $this->chartPickParser->parse($body, $source);
+            // Some pasted bodies are tab-separated tables (Luminate copy-paste).
+            // If the line parser found nothing, retry through the tabular
+            // parser using the body as a CSV/TSV blob.
+            if (empty($rows)) {
+                $tmp = tempnam(sys_get_temp_dir(), 'chartpaste');
+                file_put_contents($tmp, $body);
+                try {
+                    $rows = app(TabularChartParser::class)->parseCsv($tmp);
+                } finally {
+                    @unlink($tmp);
+                }
+            }
+        }
+
+        if (empty($rows)) {
+            return response()->json([
+                'success' => false,
+                'error' => 'no_rows_parsed',
+                'message' => 'Could not find Artist + Title columns in the input. For xlsx/csv files make sure they have headers like "Artist" and "Title" (or "ARTIST NAME" / "Title"). For paste, format each line as "Artist — Title — Format".',
+                'diagnostic' => $diagnostic,
+            ], 422);
+        }
+
+        return DB::transaction(function () use ($business_id, $source, $weekOf, $rawForAudit, $rows, $diagnostic) {
             $import = ChartPickImport::create([
                 'business_id' => $business_id,
                 'source' => $source,
                 'week_of' => $weekOf,
                 'imported_by' => auth()->id(),
                 'row_count' => count($rows),
-                'raw_body' => mb_substr($body, 0, 65535),
+                'raw_body' => mb_substr($rawForAudit, 0, 65535),
             ]);
 
-            // Replace any existing picks for this source+week (idempotent re-paste)
+            // Replace any existing picks for this source+week (idempotent re-paste / re-upload)
             ChartPick::where('business_id', $business_id)
                 ->where('source', $source)
                 ->whereDate('week_of', $weekOf)
@@ -236,11 +292,11 @@ class InventoryCheckController extends Controller
                     'business_id' => $business_id,
                     'source' => $source,
                     'week_of' => $weekOf,
-                    'chart_rank' => $row['rank'],
-                    'artist' => $row['artist'],
-                    'title' => $row['title'],
-                    'format' => $row['format'],
-                    'is_new_release' => $row['is_new_release'],
+                    'chart_rank' => $row['rank'] ?? null,
+                    'artist' => $row['artist'] ?? null,
+                    'title' => $row['title'] ?? null,
+                    'format' => $row['format'] ?? null,
+                    'is_new_release' => !empty($row['is_new_release']),
                 ]);
             }
 
@@ -250,8 +306,33 @@ class InventoryCheckController extends Controller
                 'week_of' => $weekOf,
                 'parsed_rows' => count($rows),
                 'import_id' => $import->id,
+                'diagnostic' => $diagnostic,
             ]);
         });
+    }
+
+    /**
+     * UMe Universal xlsx → flat row list. Pulls Top 200 (vinyl + CD) and
+     * this-week deliveries; deliveries get is_new_release=true.
+     */
+    protected function parseUniversalXlsx(string $path): array
+    {
+        $parser = app(UniversalChartParser::class);
+        $parsed = $parser->parse($path);
+        $rows = [];
+        foreach ($parsed['top_200_vinyl'] as $r) {
+            $rows[] = array_merge($r, ['is_new_release' => false]);
+        }
+        foreach ($parsed['top_200_cd'] as $r) {
+            $rows[] = array_merge($r, ['is_new_release' => false]);
+        }
+        foreach ($parsed['deliveries_vinyl'] as $r) {
+            $rows[] = array_merge($r, ['is_new_release' => true]);
+        }
+        foreach ($parsed['deliveries_cd'] as $r) {
+            $rows[] = array_merge($r, ['is_new_release' => true]);
+        }
+        return $rows;
     }
 
     public function latestChart(Request $request, string $source)
@@ -281,7 +362,10 @@ class InventoryCheckController extends Controller
         // Open to all authenticated staff — inventory check assistant is
         // operational reorder data, not aggregated sales (Sarah 2026-04-28).
 
-        $dryRun = $request->boolean('dry_run');
+        // Request::boolean() doesn't exist on this Laravel version — use
+        // filter_var. Without this fix, the button silently 500s (this is
+        // why "the apple report wont fetch" looked broken).
+        $dryRun = filter_var($request->input('dry_run'), FILTER_VALIDATE_BOOLEAN);
         $since = max(1, (int) $request->input('since', 7));
         $businessId = (int) $request->session()->get('user.business_id');
 
@@ -316,7 +400,7 @@ class InventoryCheckController extends Controller
         // Open to all authenticated staff — inventory check assistant is
         // operational reorder data, not aggregated sales (Sarah 2026-04-28).
 
-        $dryRun = $request->boolean('dry_run');
+        $dryRun = filter_var($request->input('dry_run'), FILTER_VALIDATE_BOOLEAN);
         $businessId = (int) $request->session()->get('user.business_id');
 
         $args = ['--business-id' => $businessId];
