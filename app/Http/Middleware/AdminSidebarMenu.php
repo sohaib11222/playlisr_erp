@@ -470,22 +470,23 @@ class AdminSidebarMenu
             //Reports — single link to the hub (/reports). The hub lists every
             //report grouped by section with per-user favorites, replacing the
             //old dropdown whose header wasn't clickable.
-            if ($is_admin || auth()->user()->can('purchase_n_sell_report.view') || auth()->user()->can('contacts_report.view')
-                || auth()->user()->can('stock_report.view') || auth()->user()->can('tax_report.view')
-                || auth()->user()->can('trending_product_report.view') || auth()->user()->can('sales_representative.view') || auth()->user()->can('register_report.view')
-                || auth()->user()->can('expense_report.view')) {
-                $menu->url(
-                    action('ReportsHubController@index'),
-                    __('report.reports'),
-                    ['icon' => 'fa fas fa-chart-bar', 'id' => 'tour_step8', 'active' => request()->segment(1) == 'reports']
-                )->order(55);
+            //
+            //Visible to every authenticated staff member. The hub itself
+            //hides admin-only entries (Profit/Loss, Tax, Sales Rep, etc.)
+            //via the `admin_only` flag on the catalog — see ReportsHubController.
+            //Sarah 2026-04-28: "everyone needs access to all reports EXCEPT
+            //for aggregated sales that is admin only."
+            $menu->url(
+                action('ReportsHubController@index'),
+                __('report.reports'),
+                ['icon' => 'fa fas fa-chart-bar', 'id' => 'tour_step8', 'active' => request()->segment(1) == 'reports']
+            )->order(55);
 
-                $menu->url(
-                    action('InventoryCheckController@index'),
-                    'Inventory Check',
-                    ['icon' => 'fa fas fa-magic', 'active' => request()->segment(1) == 'reports' && request()->segment(2) == 'inventory-check-assistant']
-                )->order(56);
-            }
+            $menu->url(
+                action('InventoryCheckController@index'),
+                'Inventory Check',
+                ['icon' => 'fa fas fa-magic', 'active' => request()->segment(1) == 'reports' && request()->segment(2) == 'inventory-check-assistant']
+            )->order(56);
 
 
             //Backup menu

@@ -88,9 +88,8 @@ class ReportController extends Controller
      */
     public function getProfitLoss(Request $request)
     {
-        if (!auth()->user()->can('profit_loss_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
+        // Aggregated revenue report — admin-only (Sarah 2026-04-28).
+        $this->ensureAdminOnlyReportAccess();
 
         $business_id = $request->session()->get('user.business_id');
 
@@ -118,9 +117,8 @@ class ReportController extends Controller
      */
     public function getPurchaseSell(Request $request)
     {
-        if (!auth()->user()->can('purchase_n_sell_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
+        // Aggregated revenue report — admin-only (Sarah 2026-04-28).
+        $this->ensureAdminOnlyReportAccess();
 
         $business_id = $request->session()->get('user.business_id');
 
@@ -181,10 +179,8 @@ class ReportController extends Controller
      */
     public function getCustomerSuppliers(Request $request)
     {
-        if (!auth()->user()->can('contacts_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
-
+        // Open to all staff — supplier/customer rollup, no aggregated sales
+        // figures (Sarah 2026-04-28).
         $business_id = $request->session()->get('user.business_id');
 
         //Return the details in ajax call
@@ -347,10 +343,8 @@ class ReportController extends Controller
      */
     public function getStockReport(Request $request)
     {
-        if (!auth()->user()->can('stock_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
-
+        // Open to all staff — inventory data, not aggregated sales
+        // (Sarah 2026-04-28).
         $business_id = $request->session()->get('user.business_id');
 
         $selling_price_groups = SellingPriceGroup::where('business_id', $business_id)
@@ -589,9 +583,8 @@ class ReportController extends Controller
      */
     public function getTaxDetails(Request $request)
     {
-        if (!auth()->user()->can('tax_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
+        // Tax detail reveals total revenue — admin-only (Sarah 2026-04-28).
+        $this->ensureAdminOnlyReportAccess();
 
         if ($request->ajax()) {
 
@@ -791,9 +784,8 @@ class ReportController extends Controller
      */
     public function getTaxReport(Request $request)
     {
-        if (!auth()->user()->can('tax_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
+        // Tax summary reveals total revenue — admin-only (Sarah 2026-04-28).
+        $this->ensureAdminOnlyReportAccess();
 
         $business_id = $request->session()->get('user.business_id');
 
@@ -845,10 +837,8 @@ class ReportController extends Controller
      */
     public function getTrendingProducts(Request $request)
     {
-        if (!auth()->user()->can('trending_product_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
-        
+        // Open to all staff — what's moving helps the floor reorder
+        // (Sarah 2026-04-28).
         $business_id = $request->session()->get('user.business_id');
 
         $filters = request()->only(['category', 'sub_category', 'brand', 'unit', 'limit', 'location_id', 'product_type']);
@@ -895,10 +885,8 @@ class ReportController extends Controller
      */
     public function getExpenseReport(Request $request)
     {
-        if (!auth()->user()->can('expense_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
-
+        // Open to all staff — expense tracking, not aggregated sales
+        // (Sarah 2026-04-28).
         $business_id = $request->session()->get('user.business_id');
         $filters = $request->only(['category', 'location_id']);
 
@@ -943,10 +931,8 @@ class ReportController extends Controller
      */
     public function getStockAdjustmentReport(Request $request)
     {
-        if (!auth()->user()->can('stock_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
-
+        // Open to all staff — stock adjustment audit trail
+        // (Sarah 2026-04-28).
         $business_id = $request->session()->get('user.business_id');
 
         //Return the details in ajax call
@@ -991,9 +977,8 @@ class ReportController extends Controller
      */
     public function getRegisterReport(Request $request)
     {
-        if (!auth()->user()->can('register_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
+        // Register close-outs show shift totals — admin-only (Sarah 2026-04-28).
+        $this->ensureAdminOnlyReportAccess();
         $business_id = $request->session()->get('user.business_id');
 
         //Return the details in ajax call
@@ -1167,9 +1152,8 @@ class ReportController extends Controller
      */
     public function getSalesRepresentativeReport(Request $request)
     {
-        if (!auth()->user()->can('sales_representative.view')) {
-            abort(403, 'Unauthorized action.');
-        }
+        // Sales by rep is an aggregated revenue report — admin-only (Sarah 2026-04-28).
+        $this->ensureAdminOnlyReportAccess();
 
         $business_id = $request->session()->get('user.business_id');
 
@@ -1313,10 +1297,8 @@ class ReportController extends Controller
      */
     public function getStockExpiryReport(Request $request)
     {
-        if (!auth()->user()->can('stock_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
-
+        // Open to all staff — expiry tracking is operational
+        // (Sarah 2026-04-28).
         $business_id = $request->session()->get('user.business_id');
         
         //TODO:: Need to display reference number and edit expiry date button
@@ -1599,9 +1581,9 @@ class ReportController extends Controller
      */
     public function getCustomerGroup(Request $request)
     {
-        if (!auth()->user()->can('contacts_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
+        // Sales-by-customer-group is an aggregated revenue report — admin-only
+        // (Sarah 2026-04-28).
+        $this->ensureAdminOnlyReportAccess();
 
         $business_id = $request->session()->get('user.business_id');
 
@@ -1658,10 +1640,8 @@ class ReportController extends Controller
      */
     public function getproductPurchaseReport(Request $request)
     {
-        if (!auth()->user()->can('purchase_n_sell_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
-
+        // Open to all staff — purchase history per product
+        // (Sarah 2026-04-28).
         $business_id = $request->session()->get('user.business_id');
         if ($request->ajax()) {
             $variation_id = $request->get('variation_id', null);
@@ -2227,10 +2207,8 @@ class ReportController extends Controller
      */
     public function purchasePaymentReport(Request $request)
     {
-        if (!auth()->user()->can('purchase_n_sell_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
-
+        // Open to all staff — payments to suppliers, not aggregated sales
+        // (Sarah 2026-04-28).
         $business_id = $request->session()->get('user.business_id');
         if ($request->ajax()) {
             $supplier_id = $request->get('supplier_id', null);
@@ -2347,9 +2325,8 @@ class ReportController extends Controller
      */
     public function sellPaymentReport(Request $request)
     {
-        if (!auth()->user()->can('purchase_n_sell_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
+        // Sell-payment totals reveal revenue — admin-only (Sarah 2026-04-28).
+        $this->ensureAdminOnlyReportAccess();
 
         $business_id = $request->session()->get('user.business_id');
 
@@ -3136,6 +3113,30 @@ class ReportController extends Controller
     }
 
     /**
+     * Category-name → default cost lookup, sourced from CostPriceRulesController::RULES.
+     * Used by the items report so manual items (and purchased items with no cost
+     * recorded) show a sensible fallback price instead of N/A / 0. Match is case-
+     * and whitespace-insensitive against every alias in the rule.
+     */
+    private static function categoryDefaultCost($categoryName)
+    {
+        static $map = null;
+        if ($map === null) {
+            $map = [];
+            foreach (\App\Http\Controllers\CostPriceRulesController::RULES as $rule) {
+                foreach ($rule['match'] as $alias) {
+                    $map[$alias] = (float) $rule['cost'];
+                }
+            }
+        }
+        if (empty($categoryName)) {
+            return null;
+        }
+        $key = strtolower(trim($categoryName));
+        return $map[$key] ?? null;
+    }
+
+    /**
      * Shows items report from sell purchase mapping table
      *
      * @return \Illuminate\Http\Response
@@ -3389,10 +3390,23 @@ class ReportController extends Controller
                     return $html;
                 })
                 ->editColumn('purchase_price', function ($row) {
-                    if ($row->purchase_type == 'manual') {
+                    $price = (float) $row->purchase_price;
+                    $is_default = false;
+                    if ($price <= 0) {
+                        $default = self::categoryDefaultCost($row->category);
+                        if ($default !== null) {
+                            $price = $default;
+                            $is_default = true;
+                        }
+                    }
+                    if ($price <= 0 && $row->purchase_type == 'manual') {
                         return '<span class="text-muted">N/A</span>';
                     }
-                    return '<span class="display_currency purchase_price" data-currency_symbol=true data-orig-value="' . $row->purchase_price . '">' . $row->purchase_price . '</span>';
+                    $html = '<span class="display_currency purchase_price" data-currency_symbol=true data-orig-value="' . $price . '">' . $price . '</span>';
+                    if ($is_default) {
+                        $html .= ' <small class="text-muted" title="Category default cost (no purchase price recorded)">(default)</small>';
+                    }
+                    return $html;
                 })
                 ->editColumn('sell_date', function ($row) {
                     $time_format = session('business.time_format') == 24 ? 'H:i' : 'h:i A';
@@ -3655,6 +3669,17 @@ class ReportController extends Controller
                     : (!empty($r->sell_line_id) ? $r->selling_price : $r->stock_adjustment_price);
                 $subtotal = (float) $selling_price * (float) $r->quantity;
 
+                $purchase_price_out = (float) $r->purchase_price;
+                if ($purchase_price_out <= 0) {
+                    $default = self::categoryDefaultCost($r->category);
+                    if ($default !== null) {
+                        $purchase_price_out = $default;
+                    }
+                }
+                $purchase_price_csv = $purchase_price_out > 0
+                    ? $purchase_price_out
+                    : ($r->purchase_type == 'manual' ? '' : $r->purchase_price);
+
                 fputcsv($out, [
                     $product_name,
                     $r->format,
@@ -3666,7 +3691,7 @@ class ReportController extends Controller
                     $r->purchase_ref_no,
                     $r->lot_number,
                     $supplier,
-                    $r->purchase_type == 'manual' ? '' : $r->purchase_price,
+                    $purchase_price_csv,
                     $sell_date,
                     $sale_invoice,
                     $customer,
@@ -4145,7 +4170,11 @@ class ReportController extends Controller
      */
     public function saleReport()
     {
-        if ((!auth()->user()->can('sell.view') && !auth()->user()->can('sell.create') && !auth()->user()->can('direct_sell.access') && !auth()->user()->can('view_own_sell_only')) ||empty(config('constants.show_report_607'))) {
+        // Product Sell Report aggregates revenue by product — admin-only
+        // (Sarah 2026-04-28). Note: this is the report-page entry, not the
+        // sell-listing screens used by cashiers.
+        $this->ensureAdminOnlyReportAccess();
+        if (empty(config('constants.show_report_607'))) {
             abort(403, 'Unauthorized action.');
         }
 
@@ -4326,9 +4355,9 @@ class ReportController extends Controller
     }
     
     public function categorySalesReport(Request $request){
-        if(!auth()->user()->can('access_category_sales_report')){
-            abort(403);
-        }
+        // Sales-by-category is an aggregated revenue report — admin-only
+        // (Sarah 2026-04-28).
+        $this->ensureAdminOnlyReportAccess();
 
         
         if($request->ajax()){
@@ -4570,7 +4599,8 @@ class ReportController extends Controller
      */
     public function inventoryValuationSummary(Request $request)
     {
-        $this->ensureAccountantReportAdminAccess();
+        // Open to all staff — inventory valuation is operational, not
+        // aggregated sales (Sarah 2026-04-28).
         $business_id = $request->session()->get('user.business_id');
 
         if ($request->ajax()) {
@@ -4623,7 +4653,8 @@ class ReportController extends Controller
      */
     public function inventoryValuationDetail(Request $request)
     {
-        $this->ensureAccountantReportAdminAccess();
+        // Open to all staff — inventory line-level valuation is operational
+        // (Sarah 2026-04-28).
         $business_id = $request->session()->get('user.business_id');
 
         if ($request->ajax()) {
@@ -4745,7 +4776,7 @@ class ReportController extends Controller
      */
     public function purchasesByItemVendor(Request $request)
     {
-        $this->ensureAccountantReportAdminAccess();
+        // Open to all staff — vendor purchase history (Sarah 2026-04-28).
         $business_id = $request->session()->get('user.business_id');
 
         if ($request->ajax()) {
@@ -4796,7 +4827,7 @@ class ReportController extends Controller
      */
     public function abcInventoryClassification(Request $request)
     {
-        $this->ensureAccountantReportAdminAccess();
+        // Open to all staff — inventory classification (Sarah 2026-04-28).
         $business_id = $request->session()->get('user.business_id');
 
         if ($request->ajax()) {
@@ -4877,7 +4908,8 @@ class ReportController extends Controller
      */
     public function inventoryAgingSummary(Request $request)
     {
-        $this->ensureAccountantReportAdminAccess();
+        // Open to all staff — inventory aging is operational
+        // (Sarah 2026-04-28).
         $business_id = $request->session()->get('user.business_id');
 
         if ($request->ajax()) {
@@ -4917,7 +4949,8 @@ class ReportController extends Controller
      */
     public function landedCostSummary(Request $request)
     {
-        $this->ensureAccountantReportAdminAccess();
+        // Open to all staff — landed cost rollup, no aggregated sales
+        // (Sarah 2026-04-28).
         $business_id = $request->session()->get('user.business_id');
 
         if ($request->ajax()) {
@@ -4984,7 +5017,7 @@ class ReportController extends Controller
      */
     public function purchaseOrderVsReceived(Request $request)
     {
-        $this->ensureAccountantReportAdminAccess();
+        // Open to all staff — PO tracking (Sarah 2026-04-28).
         $business_id = $request->session()->get('user.business_id');
 
         if ($request->ajax()) {
@@ -5036,7 +5069,7 @@ class ReportController extends Controller
      */
     public function itemTransactionHistory(Request $request)
     {
-        $this->ensureAccountantReportAdminAccess();
+        // Open to all staff — single-item movement audit (Sarah 2026-04-28).
         $business_id = $request->session()->get('user.business_id');
 
         if ($request->ajax()) {
@@ -5113,10 +5146,8 @@ class ReportController extends Controller
      */
     public function productEntryProductivity(Request $request)
     {
-        if (!$this->businessUtil->is_admin(auth()->user()) && !auth()->user()->can('purchase_n_sell_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
-
+        // Open to all staff — counts of products priced + purchases entered,
+        // no $ figures (Sarah 2026-04-28).
         $business_id = $request->session()->get('user.business_id');
         $start_date = $request->input('start_date');
         $end_date = $request->input('end_date');
@@ -5208,10 +5239,8 @@ class ReportController extends Controller
      */
     public function deadStockReport(Request $request)
     {
-        if (!$this->businessUtil->is_admin(auth()->user()) && !auth()->user()->can('purchase_n_sell_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
-
+        // Open to all staff — flagging dead inventory is operational
+        // (Sarah 2026-04-28).
         $business_id = $request->session()->get('user.business_id');
 
         // User-selectable: 90, 180, 365 days (default 180)
@@ -5332,9 +5361,8 @@ class ReportController extends Controller
      */
     public function whatnotReport(Request $request)
     {
-        if (!$this->businessUtil->is_admin(auth()->user()) && !auth()->user()->can('purchase_n_sell_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
+        // Channel-level sales rollup — admin-only (Sarah 2026-04-28).
+        $this->ensureAdminOnlyReportAccess();
 
         $business_id = $request->session()->get('user.business_id');
         $start_date = $request->input('start_date');
@@ -5441,9 +5469,9 @@ class ReportController extends Controller
      */
     public function cloverEodReconciliation(Request $request)
     {
-        if (!$this->businessUtil->is_admin(auth()->user()) && !auth()->user()->can('purchase_n_sell_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
+        // Per-shift drawer totals + ERP-vs-Clover audit — admin-only
+        // (Sarah 2026-04-28).
+        $this->ensureAdminOnlyReportAccess();
 
         $business_id = $request->session()->get('user.business_id');
         $business_locations = BusinessLocation::forDropdown($business_id);
@@ -7279,9 +7307,8 @@ class ReportController extends Controller
      */
     public function employeeLeaderboard(Request $request)
     {
-        if (!$this->businessUtil->is_admin(auth()->user()) && !auth()->user()->can('purchase_n_sell_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
+        // $/hour comparison across staff — admin-only (Sarah 2026-04-28).
+        $this->ensureAdminOnlyReportAccess();
         $business_id = $request->session()->get('user.business_id');
         $period = $request->input('period', 'this_month');
 
@@ -7491,8 +7518,22 @@ class ReportController extends Controller
      */
     protected function ensureAccountantReportAdminAccess()
     {
+        $this->ensureAdminOnlyReportAccess();
+    }
+
+    /**
+     * Restrict any report that surfaces aggregated sales / revenue totals to
+     * admins only. Sarah 2026-04-28: "everyone needs access to all reports
+     * EXCEPT for aggregated sales that is admin only." Used by Profit/Loss,
+     * Tax Report/Details, Sales Rep, Sell Payment, Purchase & Sale, Category
+     * Sales, Customer Groups, Whatnot, Clover EOD, Register, Employee
+     * Leaderboard, Product Sell, Sales-by-Item, and the accountant-only
+     * cost/margin reports.
+     */
+    protected function ensureAdminOnlyReportAccess()
+    {
         if (!$this->businessUtil->is_admin(auth()->user())) {
-            abort(403, 'Unauthorized action.');
+            abort(403, 'This report is admin-only.');
         }
     }
 }

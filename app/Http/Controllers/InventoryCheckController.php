@@ -12,6 +12,8 @@ use App\InventoryCheckNote;
 use App\InventoryCheckSession;
 use App\Services\ChartPickParser;
 use App\Services\InventoryCheckService;
+use App\Services\TabularChartParser;
+use App\Services\UniversalChartParser;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
@@ -35,9 +37,8 @@ class InventoryCheckController extends Controller
 
     public function index()
     {
-        if (!auth()->user()->can('stock_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
+        // Open to all authenticated staff — inventory check assistant is
+        // operational reorder data, not aggregated sales (Sarah 2026-04-28).
 
         $business_id = request()->session()->get('user.business_id');
         $business_locations = BusinessLocation::forDropdown($business_id, true);
@@ -91,9 +92,8 @@ class InventoryCheckController extends Controller
      */
     public function buckets(Request $request)
     {
-        if (!auth()->user()->can('stock_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
+        // Open to all authenticated staff — inventory check assistant is
+        // operational reorder data, not aggregated sales (Sarah 2026-04-28).
 
         $business_id = (int) $request->session()->get('user.business_id');
         $input = $request->only([
@@ -117,9 +117,8 @@ class InventoryCheckController extends Controller
 
     public function export(Request $request)
     {
-        if (!auth()->user()->can('stock_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
+        // Open to all authenticated staff — inventory check assistant is
+        // operational reorder data, not aggregated sales (Sarah 2026-04-28).
 
         $business_id = (int) $request->session()->get('user.business_id');
         $input = $request->only([
@@ -191,9 +190,8 @@ class InventoryCheckController extends Controller
 
     public function importChart(Request $request)
     {
-        if (!auth()->user()->can('stock_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
+        // Open to all authenticated staff — inventory check assistant is
+        // operational reorder data, not aggregated sales (Sarah 2026-04-28).
 
         $request->validate([
             'source' => 'required|in:street_pulse,universal_top',
@@ -258,9 +256,8 @@ class InventoryCheckController extends Controller
 
     public function latestChart(Request $request, string $source)
     {
-        if (!auth()->user()->can('stock_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
+        // Open to all authenticated staff — inventory check assistant is
+        // operational reorder data, not aggregated sales (Sarah 2026-04-28).
         if (!in_array($source, ['street_pulse', 'universal_top'], true)) {
             abort(404);
         }
@@ -281,9 +278,8 @@ class InventoryCheckController extends Controller
 
     public function runEmailImport(Request $request)
     {
-        if (!auth()->user()->can('stock_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
+        // Open to all authenticated staff — inventory check assistant is
+        // operational reorder data, not aggregated sales (Sarah 2026-04-28).
 
         $dryRun = $request->boolean('dry_run');
         $since = max(1, (int) $request->input('since', 7));
@@ -317,9 +313,8 @@ class InventoryCheckController extends Controller
 
     public function runAppleMusicImport(Request $request)
     {
-        if (!auth()->user()->can('stock_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
+        // Open to all authenticated staff — inventory check assistant is
+        // operational reorder data, not aggregated sales (Sarah 2026-04-28).
 
         $dryRun = $request->boolean('dry_run');
         $businessId = (int) $request->session()->get('user.business_id');
@@ -351,9 +346,8 @@ class InventoryCheckController extends Controller
 
     public function fulfillCustomerWant(Request $request, $id)
     {
-        if (!auth()->user()->can('stock_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
+        // Open to all authenticated staff — inventory check assistant is
+        // operational reorder data, not aggregated sales (Sarah 2026-04-28).
 
         $business_id = (int) $request->session()->get('user.business_id');
         $want = CustomerWant::where('business_id', $business_id)
@@ -373,9 +367,8 @@ class InventoryCheckController extends Controller
 
     public function listNotes(Request $request)
     {
-        if (!auth()->user()->can('stock_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
+        // Open to all authenticated staff — inventory check assistant is
+        // operational reorder data, not aggregated sales (Sarah 2026-04-28).
 
         $business_id = (int) $request->session()->get('user.business_id');
         $q = InventoryCheckNote::where('business_id', $business_id)
@@ -394,9 +387,8 @@ class InventoryCheckController extends Controller
 
     public function storeNote(Request $request)
     {
-        if (!auth()->user()->can('stock_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
+        // Open to all authenticated staff — inventory check assistant is
+        // operational reorder data, not aggregated sales (Sarah 2026-04-28).
 
         $request->validate([
             'note_type' => 'required|in:street_pulse,customer_request',
@@ -424,9 +416,8 @@ class InventoryCheckController extends Controller
 
     public function destroyNote($id)
     {
-        if (!auth()->user()->can('stock_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
+        // Open to all authenticated staff — inventory check assistant is
+        // operational reorder data, not aggregated sales (Sarah 2026-04-28).
 
         $business_id = (int) request()->session()->get('user.business_id');
         $note = InventoryCheckNote::where('business_id', $business_id)->where('id', (int) $id)->firstOrFail();
@@ -439,9 +430,8 @@ class InventoryCheckController extends Controller
 
     public function listSessions(Request $request)
     {
-        if (!auth()->user()->can('stock_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
+        // Open to all authenticated staff — inventory check assistant is
+        // operational reorder data, not aggregated sales (Sarah 2026-04-28).
 
         $business_id = (int) $request->session()->get('user.business_id');
         $sessions = InventoryCheckSession::where('business_id', $business_id)
@@ -455,9 +445,8 @@ class InventoryCheckController extends Controller
 
     public function storeSession(Request $request)
     {
-        if (!auth()->user()->can('stock_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
+        // Open to all authenticated staff — inventory check assistant is
+        // operational reorder data, not aggregated sales (Sarah 2026-04-28).
 
         $request->validate([
             'name' => 'required|string|max:191',
@@ -490,9 +479,8 @@ class InventoryCheckController extends Controller
 
     public function updateSession(Request $request, $id)
     {
-        if (!auth()->user()->can('stock_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
+        // Open to all authenticated staff — inventory check assistant is
+        // operational reorder data, not aggregated sales (Sarah 2026-04-28).
 
         $business_id = (int) $request->session()->get('user.business_id');
         $session = InventoryCheckSession::where('business_id', $business_id)
@@ -522,9 +510,8 @@ class InventoryCheckController extends Controller
 
     public function destroySession($id)
     {
-        if (!auth()->user()->can('stock_report.view')) {
-            abort(403, 'Unauthorized action.');
-        }
+        // Open to all authenticated staff — inventory check assistant is
+        // operational reorder data, not aggregated sales (Sarah 2026-04-28).
 
         $business_id = (int) request()->session()->get('user.business_id');
         $session = InventoryCheckSession::where('business_id', $business_id)

@@ -30,12 +30,12 @@ class ReportsHubController extends Controller
                 'title' => 'Sales & Revenue',
                 'icon'  => 'fa-chart-line',
                 'reports' => [
-                    ['key' => 'profit-loss',           'name' => 'Profit / Loss Report',  'icon' => 'fa-balance-scale',      'action' => 'ReportController@getProfitLoss',              'desc' => 'Full P&L by date range.'],
-                    ['key' => 'sale-report',           'name' => 'Product Sell Report',   'icon' => 'fa-receipt',            'action' => 'ReportController@saleReport',                 'desc' => 'Revenue by product.'],
-                    ['key' => 'sales-by-item',         'name' => 'Sales by Item (Cost & Margin)', 'icon' => 'fa-tags',       'action' => 'ReportController@salesByItemCostMargin',      'desc' => 'Sell report with cost + margin.'],
-                    ['key' => 'sales-rep',             'name' => 'Sales Representative Report', 'icon' => 'fa-user-tie',     'action' => 'ReportController@getSalesRepresentativeReport','desc' => 'Sales by sales rep.'],
-                    ['key' => 'sell-payment',          'name' => 'Sell Payment Report',   'icon' => 'fa-money-check',        'action' => 'ReportController@sellPaymentReport',          'desc' => 'Payments against sells.'],
-                    ['key' => 'purchase-sell',         'name' => 'Purchase & Sale',       'icon' => 'fa-exchange-alt',       'action' => 'ReportController@getPurchaseSell',            'desc' => 'Purchase vs sell summary.'],
+                    ['key' => 'profit-loss',           'name' => 'Profit / Loss Report',  'icon' => 'fa-balance-scale',      'action' => 'ReportController@getProfitLoss',              'desc' => 'Full P&L by date range.', 'admin_only' => true],
+                    ['key' => 'sale-report',           'name' => 'Product Sell Report',   'icon' => 'fa-receipt',            'action' => 'ReportController@saleReport',                 'desc' => 'Revenue by product.', 'admin_only' => true],
+                    ['key' => 'sales-by-item',         'name' => 'Sales by Item (Cost & Margin)', 'icon' => 'fa-tags',       'action' => 'ReportController@salesByItemCostMargin',      'desc' => 'Sell report with cost + margin.', 'admin_only' => true],
+                    ['key' => 'sales-rep',             'name' => 'Sales Representative Report', 'icon' => 'fa-user-tie',     'action' => 'ReportController@getSalesRepresentativeReport','desc' => 'Sales by sales rep.', 'admin_only' => true],
+                    ['key' => 'sell-payment',          'name' => 'Sell Payment Report',   'icon' => 'fa-money-check',        'action' => 'ReportController@sellPaymentReport',          'desc' => 'Payments against sells.', 'admin_only' => true],
+                    ['key' => 'purchase-sell',         'name' => 'Purchase & Sale',       'icon' => 'fa-exchange-alt',       'action' => 'ReportController@getPurchaseSell',            'desc' => 'Purchase vs sell summary.', 'admin_only' => true],
                 ],
             ],
             'inventory' => [
@@ -67,28 +67,28 @@ class ReportsHubController extends Controller
                     ['key' => 'product-purchase',      'name' => 'Product Purchase Report','icon' => 'fa-shopping-cart',     'action' => 'ReportController@getproductPurchaseReport',   'desc' => 'Purchase by product.'],
                     ['key' => 'purchases-by-item-vendor', 'name' => 'Purchases by Item/Vendor', 'icon' => 'fa-truck-loading',  'action' => 'ReportController@purchasesByItemVendor',      'desc' => 'Purchases grouped by vendor.'],
                     ['key' => 'po-vs-received',        'name' => 'PO vs Received',        'icon' => 'fa-check-double',       'action' => 'ReportController@purchaseOrderVsReceived',    'desc' => 'POs against received quantities.'],
-                    ['key' => 'category-report',       'name' => 'Category Sales Report', 'icon' => 'fa-tags',               'action' => 'ReportController@categorySalesReport',        'desc' => 'Sales by category.'],
+                    ['key' => 'category-report',       'name' => 'Category Sales Report', 'icon' => 'fa-tags',               'action' => 'ReportController@categorySalesReport',        'desc' => 'Sales by category.', 'admin_only' => true],
                 ],
             ],
             'reconciliation' => [
                 'title' => 'Reconciliation & Channels',
                 'icon'  => 'fa-balance-scale',
                 'reports' => [
-                    ['key' => 'clover-eod',            'name' => 'Clover EOD Reconciliation', 'icon' => 'fa-balance-scale',  'action' => 'ReportController@cloverEodReconciliation',    'desc' => 'Per-shift audit — ERP vs Clover + drawer math.'],
-                    ['key' => 'whatnot-sales',         'name' => 'Whatnot Sales',         'icon' => 'fa-tv',                 'action' => 'ReportController@whatnotReport',              'desc' => 'Live-auction vs in-store/online.'],
-                    ['key' => 'register-report',       'name' => 'Register Report',       'icon' => 'fa-cash-register',      'action' => 'ReportController@getRegisterReport',          'desc' => 'Register activity + close-outs.'],
-                    ['key' => 'tax-report',            'name' => 'Tax Report',            'icon' => 'fa-percent',            'action' => 'ReportController@getTaxReport',               'desc' => 'Tax collected summary.'],
-                    ['key' => 'tax-details',           'name' => 'Tax Details',           'icon' => 'fa-file-invoice',       'action' => 'ReportController@getTaxDetails',              'desc' => 'Tax line-level detail.'],
+                    ['key' => 'clover-eod',            'name' => 'Clover EOD Reconciliation', 'icon' => 'fa-balance-scale',  'action' => 'ReportController@cloverEodReconciliation',    'desc' => 'Per-shift audit — ERP vs Clover + drawer math.', 'admin_only' => true],
+                    ['key' => 'whatnot-sales',         'name' => 'Whatnot Sales',         'icon' => 'fa-tv',                 'action' => 'ReportController@whatnotReport',              'desc' => 'Live-auction vs in-store/online.', 'admin_only' => true],
+                    ['key' => 'register-report',       'name' => 'Register Report',       'icon' => 'fa-cash-register',      'action' => 'ReportController@getRegisterReport',          'desc' => 'Register activity + close-outs.', 'admin_only' => true],
+                    ['key' => 'tax-report',            'name' => 'Tax Report',            'icon' => 'fa-percent',            'action' => 'ReportController@getTaxReport',               'desc' => 'Tax collected summary.', 'admin_only' => true],
+                    ['key' => 'tax-details',           'name' => 'Tax Details',           'icon' => 'fa-file-invoice',       'action' => 'ReportController@getTaxDetails',              'desc' => 'Tax line-level detail.', 'admin_only' => true],
                 ],
             ],
             'people' => [
                 'title' => 'People',
                 'icon'  => 'fa-users',
                 'reports' => [
-                    ['key' => 'employee-leaderboard',  'name' => 'Employee Leaderboard',  'icon' => 'fa-trophy',             'action' => 'ReportController@employeeLeaderboard',        'desc' => 'Ranked by $ / hour.'],
+                    ['key' => 'employee-leaderboard',  'name' => 'Employee Leaderboard',  'icon' => 'fa-trophy',             'action' => 'ReportController@employeeLeaderboard',        'desc' => 'Ranked by $ / hour.', 'admin_only' => true],
                     ['key' => 'employee-productivity', 'name' => 'Employee Productivity', 'icon' => 'fa-user-clock',         'action' => 'ReportController@productEntryProductivity',   'desc' => 'Products priced + purchases entered.'],
                     ['key' => 'customer-wants',        'name' => 'Customer Wants',        'icon' => 'fa-heart',              'action' => 'CustomerWantController@index',                'desc' => 'Call-me-when-it-comes-in list.'],
-                    ['key' => 'customer-groups',       'name' => 'Customer Groups Report','icon' => 'fa-users-cog',          'action' => 'ReportController@getCustomerGroupsReport',    'desc' => 'Sales by customer group.'],
+                    ['key' => 'customer-groups',       'name' => 'Customer Groups Report','icon' => 'fa-users-cog',          'action' => 'ReportController@getCustomerGroupsReport',    'desc' => 'Sales by customer group.', 'admin_only' => true],
                     ['key' => 'supplier-customer',     'name' => 'Supplier & Customer Report', 'icon' => 'fa-handshake',     'action' => 'ReportController@getCustomerSuppliers',       'desc' => 'Supplier + customer rollup.'],
                 ],
             ],
@@ -134,15 +134,34 @@ class ReportsHubController extends Controller
                 ->toArray();
         }
 
+        // Filter out admin_only entries for non-admins. Aggregated-sales /
+        // revenue-rollup reports (Profit/Loss, Tax Report, Sales Rep, Whatnot,
+        // Clover EOD, etc.) carry the flag — staff get every other report.
+        // Sarah 2026-04-28: "everyone needs access to all reports EXCEPT for
+        // aggregated sales that is admin only."
+        $is_admin = $this->businessUtil->is_admin(auth()->user());
         $catalog = self::catalog();
+        if (!$is_admin) {
+            foreach ($catalog as $section_key => &$section) {
+                $section['reports'] = array_values(array_filter(
+                    $section['reports'],
+                    function ($r) { return empty($r['admin_only']); }
+                ));
+            }
+            unset($section);
+            // Drop empty sections so we don't render empty headers.
+            $catalog = array_filter($catalog, function ($s) { return !empty($s['reports']); });
+        }
         $flat = self::catalogFlat();
 
-        // Build favorites list (preserving user's order), filter out unknown keys
+        // Build favorites list (preserving user's order); skip unknown OR
+        // admin_only keys for non-admins so a previously-pinned admin report
+        // doesn't render an unauthorized card.
         $favorites = [];
         foreach ($favorite_keys as $k) {
-            if (isset($flat[$k])) {
-                $favorites[] = $flat[$k];
-            }
+            if (!isset($flat[$k])) continue;
+            if (!$is_admin && !empty($flat[$k]['admin_only'])) continue;
+            $favorites[] = $flat[$k];
         }
 
         return view('report.reports_hub')->with(compact('catalog', 'favorites', 'favorite_keys'));
