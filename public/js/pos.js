@@ -668,12 +668,12 @@ $(document).ready(function() {
                 displayName = item.artist + ' - ' + item.name;
             }
             // Append format (LP, CD, Cassette, etc.) if present;
-            // fall back to sub_category, then category so the row always shows what it is.
+            // fall back to top-level category (Sealed Vinyl / Used CD / Cassettes / etc.)
+            // so the row always shows what kind of item it is. Sub-category is the
+            // genre (Hip-Hop, Rock) so we deliberately don't use it here.
             var formatTag = '';
             if (item.format && item.format.trim() !== '') {
                 formatTag = item.format.trim();
-            } else if (item.sub_category_name && item.sub_category_name.trim() !== '') {
-                formatTag = item.sub_category_name.trim();
             } else if (item.category_name && item.category_name.trim() !== '') {
                 formatTag = item.category_name.trim();
             }
