@@ -667,9 +667,18 @@ $(document).ready(function() {
             if (item.artist && item.artist.trim() !== '') {
                 displayName = item.artist + ' - ' + item.name;
             }
-            // Append format (LP, CD, Cassette, etc.) if present
+            // Append format (LP, CD, Cassette, etc.) if present;
+            // fall back to sub_category, then category so the row always shows what it is.
+            var formatTag = '';
             if (item.format && item.format.trim() !== '') {
-                displayName += ' [' + item.format + ']';
+                formatTag = item.format.trim();
+            } else if (item.sub_category_name && item.sub_category_name.trim() !== '') {
+                formatTag = item.sub_category_name.trim();
+            } else if (item.category_name && item.category_name.trim() !== '') {
+                formatTag = item.category_name.trim();
+            }
+            if (formatTag !== '') {
+                displayName += ' [' + formatTag + ']';
             }
 
             if (item.enable_stock == 1 && item.qty_available <= 0 && !is_overselling_allowed && !for_so) {
