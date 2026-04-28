@@ -16,7 +16,7 @@ class CostPriceRulesController extends Controller
     // the matcher accepts — kept liberal so renames upstream don't break us.
     const RULES = [
         ['label' => 'Sealed Vinyl',          'match' => ['sealed vinyl', 'new vinyl'],             'cost' => 17.00],
-        ['label' => 'Used Vinyl',            'match' => ['used vinyl'],                            'cost' => 0.40],
+        ['label' => 'Used Vinyl',            'match' => ['used vinyl'],                            'cost' => 0.35],
         ['label' => 'Used CD',               'match' => ['used cd', 'used cds', 'cds (used)'],     'cost' => 0.10],
         ['label' => 'Sealed CD / CD (Sealed)', 'match' => ['sealed cd', 'cd (sealed)', 'new cds', 'new cd'], 'cost' => 6.00],
         ['label' => 'Cassettes',             'match' => ['cassettes', 'used cassettes', 'cassettes (used)', 'used cassette'], 'cost' => 0.30],
@@ -98,6 +98,8 @@ class CostPriceRulesController extends Controller
 
             // Variations whose product is in a matched top-level category AND
             // have missing cost. Rules map to parent categories only.
+            // NEVER overwrites existing non-zero costs — those are real values
+            // someone entered, leave them alone.
             $eligibleQuery = DB::table('variations')
                 ->join('products', 'products.id', '=', 'variations.product_id')
                 ->whereIn('products.category_id', $categoryIds)
