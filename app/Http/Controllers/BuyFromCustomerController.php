@@ -120,7 +120,7 @@ class BuyFromCustomerController extends Controller
         }
 
         $business_id = request()->session()->get('user.business_id');
-        $showAll = request()->boolean('show_all');
+        $showAll = filter_var(request()->input('show_all'), FILTER_VALIDATE_BOOLEAN);
 
         // Diagnostic counts so Sarah can tell at a glance whether records exist
         // and which business_id they were saved under. If the totals disagree
