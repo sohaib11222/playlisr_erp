@@ -1378,11 +1378,15 @@ $(document).ready(function() {
     items_report_table = $('#items_report_table').DataTable({
         processing: true,
         serverSide: true,
-        // Suppress the global Copy/CSV/Excel/PDF/Print buttons — they only
-        // export the current 100-row page, which is misleading. Use the
-        // green "Export filtered (CSV)" button above the table instead.
-        buttons: [],
-        dom: '<"row margin-bottom-20 text-center"<"col-sm-2"l><"col-sm-7"><"col-sm-3"f> r>tip',
+        // Drop the global Copy/CSV/Excel/PDF/Print buttons — they only
+        // export the current 100-row page, which is misleading next to
+        // server-side pagination. Use the green "Export filtered (CSV)"
+        // button above the table for full exports. Keep just colvis since
+        // it actually works on a paginated table.
+        buttons: [
+            { extend: 'colvis', text: '<i class="fa fa-eye"></i> Show/hide columns', className: 'btn-colvis' }
+        ],
+        dom: '<"row margin-bottom-20 text-center"<"col-sm-2"l><"col-sm-7"B><"col-sm-3"f> r>tip',
         ajax: {
             url: '/reports/items-report',
             data: function(d) {

@@ -195,10 +195,47 @@ body.items-report-v2 #ir-export-hint {
     font-style: italic;
 }
 
-/* Defensive: if the global DataTables Buttons row ever renders, hide it
-   (the JS-level buttons:[] override should already prevent this). */
+/* Style the kept DataTables button (just colvis — see report.js comment
+   for why Excel/PDF/Print were dropped). Make it look like a quiet
+   ghost-pill so it doesn't compete with the yellow Export button above. */
 body.items-report-v2 #items_report_table_wrapper .dt-buttons {
-    display: none !important;
+    margin: 0 0 6px;
+}
+body.items-report-v2 #items_report_table_wrapper .dt-buttons .btn,
+body.items-report-v2 #items_report_table_wrapper .dt-buttons .dt-button {
+    background: var(--pos-surface) !important;
+    color: var(--pos-ink-2) !important;
+    border: 1px solid var(--pos-line-2) !important;
+    border-radius: var(--pos-radius-sm) !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    letter-spacing: .04em !important;
+    padding: 6px 12px !important;
+    box-shadow: none !important;
+    text-transform: none !important;
+}
+body.items-report-v2 #items_report_table_wrapper .dt-buttons .btn:hover,
+body.items-report-v2 #items_report_table_wrapper .dt-buttons .dt-button:hover {
+    background: var(--pos-surface-2) !important;
+    border-color: var(--pos-accent-deep) !important;
+    color: var(--pos-ink) !important;
+}
+/* Column-visibility dropdown (the popover that shows toggle checkboxes). */
+body.items-report-v2 .dt-button-collection {
+    background: var(--pos-surface) !important;
+    border: 1px solid var(--pos-line) !important;
+    border-radius: var(--pos-radius) !important;
+    box-shadow: var(--pos-shadow-md) !important;
+    padding: 6px !important;
+}
+body.items-report-v2 .dt-button-collection .dt-button {
+    color: var(--pos-ink) !important;
+    border-radius: var(--pos-radius-sm) !important;
+}
+body.items-report-v2 .dt-button-collection .dt-button.active {
+    background: var(--pos-accent) !important;
+    color: var(--pos-accent-text) !important;
+    box-shadow: none !important;
 }
 
 /* ============ TABLE ============ */
