@@ -1,4 +1,4 @@
-@if(!session('business.enable_price_tax')) 
+@if(!session('business.enable_price_tax'))
   @php
     $default = 0;
     $class = 'hide';
@@ -9,6 +9,30 @@
     $class = '';
   @endphp
 @endif
+
+@php
+    // Build a category_id => typical cost map from the cost-price-rules.
+    // Used to render a "Typical: $X" hint that updates when category changes.
+    $costRules = \App\Http\Controllers\CostPriceRulesController::RULES;
+    $businessId = session('user.business_id');
+    $categoryCostMap = [];
+    if ($businessId) {
+        $cats = \DB::table('categories')
+            ->where('business_id', $businessId)
+            ->where('parent_id', 0)
+            ->whereNull('deleted_at')
+            ->get(['id', 'name']);
+        foreach ($cats as $cat) {
+            $needle = strtolower(trim($cat->name));
+            foreach ($costRules as $rule) {
+                if (in_array($needle, $rule['match'])) {
+                    $categoryCostMap[$cat->id] = ['cost' => $rule['cost'], 'label' => $rule['label']];
+                    break;
+                }
+            }
+        }
+    }
+@endphp
 
 <div class="table-responsive">
     <table class="table table-bordered add-product-price-table table-condensed {{$class}}">
@@ -39,6 +63,9 @@
               {!! Form::label('single_dpp_inc_tax', 'Cost (what you paid):*') !!}
 
               {!! Form::text('single_dpp_inc_tax', $default, ['class' => 'form-control input-sm dpp_inc_tax input_number', 'placeholder' => 'What you paid', 'required']); !!}
+              <small class="help-block" id="cost_typical_hint" style="margin-top:4px; font-size:12px; color:#8E8273;">
+                  Pick a category to see its typical cost.
+              </small>
             </div>
           </td>
 
@@ -65,3 +92,34 @@
         </tr>
     </table>
 </div>
+
+<script>
+(function () {
+    var costMap = {!! json_encode($categoryCostMap, JSON_NUMERIC_CHECK) !!};
+
+    function updateCostHint() {
+        var $hint = $('#cost_typical_hint');
+        if (!$hint.length) return;
+
+        var catId = $('input#category_id').val() || $('select#category_id').val();
+        if (!catId) {
+            $hint.text('Pick a category to see its typical cost.').css('color', '#8E8273');
+            return;
+        }
+        var entry = costMap[catId];
+        if (!entry) {
+            $hint.html('No typical cost on file for this category — enter the actual amount you paid.').css('color', '#8E8273');
+            return;
+        }
+        var cost = parseFloat(entry.cost).toFixed(2);
+        $hint.html('Typical cost for <strong>' + entry.label + '</strong>: <strong>$' + cost + '</strong>. Use this if you don\'t remember the exact amount.').css('color', '#5A4410');
+    }
+
+    $(document).ready(function () {
+        updateCostHint();
+        $(document).on('change', '#category_combo, #category_id, #sub_category_id', function () {
+            setTimeout(updateCostHint, 50);
+        });
+    });
+})();
+</script>
