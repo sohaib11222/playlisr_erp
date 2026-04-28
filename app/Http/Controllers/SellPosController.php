@@ -190,7 +190,45 @@ class SellPosController extends Controller
             ->limit($limit)
             ->get();
 
-        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'limit', 'location_id'));
+        // Pull Clover-side charge totals for any of these sales that were paid
+        // through Clover (transactions.clover_order_id links to clover_payments).
+        // A single Clover order can have multiple payments (split tender), so we
+        // sum amount_cents + tip_cents per order. Result = 'SUCCESS' filters out
+        // failed auths; voided/refunded edge cases are rare on the recent feed
+        // and live in raw_payload — we'll iterate on those if they cause noise.
+        $clover_order_ids = $sales->pluck('clover_order_id')->filter()->unique()->values();
+        $clover_by_order = [];
+        if ($clover_order_ids->isNotEmpty()) {
+            $clover_by_order = \App\CloverPayment::where('business_id', $business_id)
+                ->whereIn('clover_order_id', $clover_order_ids)
+                ->where('result', 'SUCCESS')
+                ->get()
+                ->groupBy('clover_order_id')
+                ->map(function ($payments) {
+                    // In Clover's API: payment.amount is the gross charged
+                    // (includes tax); taxAmount is the tax portion of that
+                    // amount; tipAmount is separate. So the customer's card
+                    // was actually hit for amount + tip.
+                    $amount = (int) $payments->sum('amount_cents');
+                    $tip    = (int) $payments->sum('tip_cents');
+                    $tax    = (int) $payments->sum('tax_cents');
+                    $cards = $payments->map(function ($p) {
+                        $brand = $p->card_type ? strtoupper($p->card_type) : '';
+                        $last4 = $p->card_last4 ? '••' . $p->card_last4 : '';
+                        return trim($brand . ' ' . $last4);
+                    })->filter()->unique()->values()->all();
+                    return [
+                        'amount_cents' => $amount,         // gross (incl. tax)
+                        'tip_cents'    => $tip,
+                        'tax_cents'    => $tax,
+                        'total_cents'  => $amount + $tip,  // what hit the card
+                        'cards'        => $cards,
+                    ];
+                })
+                ->all();
+        }
+
+        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'limit', 'location_id', 'clover_by_order'));
     }
 
     /**
