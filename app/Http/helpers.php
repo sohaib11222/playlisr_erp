@@ -51,6 +51,21 @@ function pos_boot($ul, $pt, $lc, $em, $un, $type = 1, $pid = null)
     }
 }
 
+if (! function_exists('tidy_num_format')) {
+    /**
+     * Format a money value with no trailing zero cents.
+     * 32.0000 -> "32", 32.5000 -> "32.50", 32.5500 -> "32.55".
+     */
+    function tidy_num_format($value)
+    {
+        $value = (float) $value;
+        $rounded = round($value, 2);
+        $precision = ($rounded == floor($rounded)) ? 0 : 2;
+        $currency = session('currency') ?: ['decimal_separator' => '.', 'thousand_separator' => ','];
+        return number_format($value, $precision, $currency['decimal_separator'], $currency['thousand_separator']);
+    }
+}
+
 if (! function_exists('humanFilesize')) {
     function humanFilesize($size, $precision = 2)
     {

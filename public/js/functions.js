@@ -97,6 +97,15 @@ function __currency_trans_from_en(
 
     if (is_quantity) {
         precision = __quantity_precision;
+    } else {
+        // Trim trailing zero cents: 32.0000 -> "32", 32.5000 -> "32.50".
+        var rawNum = (typeof input === 'string')
+            ? accounting.unformat(input, decimal)
+            : parseFloat(input);
+        if (!isNaN(rawNum)) {
+            var rounded = Math.round(rawNum * 100) / 100;
+            precision = (rounded % 1 === 0) ? 0 : 2;
+        }
     }
 
     return accounting.formatMoney(input, symbol, precision, thousand, decimal, format);

@@ -113,8 +113,9 @@ class AppServiceProvider extends ServiceProvider
         Schema::defaultStringLength(191);
         
         //Blade directive to format number into required format.
+        //Trims trailing zero cents: 32.0000 -> "32", 32.5000 -> "32.50".
         Blade::directive('num_format', function ($expression) {
-            return "number_format($expression, session('business.currency_precision', 2), session('currency')['decimal_separator'], session('currency')['thousand_separator'])";
+            return "tidy_num_format($expression)";
         });
 
         //Blade directive to format quantity values into required format (whole numbers only).
@@ -195,13 +196,14 @@ class AppServiceProvider extends ServiceProvider
         });
 
         //Blade directive to format currency.
+        //Trims trailing zero cents: $32.0000 -> "$32", $32.5000 -> "$32.50".
         Blade::directive('format_currency', function ($number) {
-            return '<?php 
+            return '<?php
             $formated_number = "";
             if (session("business.currency_symbol_placement") == "before") {
                 $formated_number .= session("currency")["symbol"] . " ";
-            } 
-            $formated_number .= number_format((float) ' . $number . ', session("business.currency_precision", 2) , session("currency")["decimal_separator"], session("currency")["thousand_separator"]);
+            }
+            $formated_number .= tidy_num_format(' . $number . ');
 
             if (session("business.currency_symbol_placement") == "after") {
                 $formated_number .= " " . session("currency")["symbol"];
