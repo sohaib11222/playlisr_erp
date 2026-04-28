@@ -24,6 +24,21 @@ class CostPriceRulesController extends Controller
         ['label' => 'VHS',                   'match' => ['vhs'],                                   'cost' => 0.10],
         ['label' => '7", 45 RPM',            'match' => ['7", 45 rpm', '7"', '45 rpm', '7 inch'],  'cost' => 0.15],
         ['label' => '8 track',               'match' => ['8 track', '8-track', 'eight track'],     'cost' => 0.25],
+        ['label' => 'DVD/Blu Ray',           'match' => ['dvd/blu ray', 'dvd', 'blu ray', 'dvd / blu ray', 'dvd-blu ray'], 'cost' => 0.25],
+        ['label' => 'Books & Magazines',     'match' => ['books & magazines', 'books and magazines', 'books'], 'cost' => 0.40],
+        ['label' => 'Movies',                'match' => ['movies'],                                'cost' => 0.25],
+        ['label' => 'Trading Cards',         'match' => ['trading cards'],                         'cost' => 6.00],
+        ['label' => 'Apparel',               'match' => ['apparel'],                               'cost' => 3.00],
+        ['label' => 'Video Games',           'match' => ['video games'],                           'cost' => 1.25],
+        ['label' => 'Laser Disc',            'match' => ['laser disc', 'laserdisc'],               'cost' => 0.20],
+        ['label' => 'Record Players',        'match' => ['record players', 'record player'],       'cost' => 35.00],
+        ['label' => 'Magazines',             'match' => ['magazines'],                             'cost' => 1.50],
+        ['label' => 'Audio Gear',            'match' => ['audio gear'],                            'cost' => 20.00],
+        ['label' => 'Gift Items',            'match' => ['gift items'],                            'cost' => 4.00],
+        ['label' => 'Toys',                  'match' => ['toys'],                                  'cost' => 3.00],
+        ['label' => 'Accessories & Novelties', 'match' => ['accessories & novelties', 'acessories & novelties', 'accessories and novelties'], 'cost' => 2.00],
+        ['label' => 'Pictures & Posters',    'match' => ['pictures & posters', 'pictures and posters'], 'cost' => 5.00],
+        ['label' => 'Clothing',              'match' => ['clothing'],                              'cost' => 3.00],
     ];
 
     public function index()
