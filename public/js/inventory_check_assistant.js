@@ -119,12 +119,18 @@
     function renderBucketSection(key, b) {
         const countClass = (b.count || 0) === 0 ? 'zero' : '';
         const rows = (b.items || []).map((it) => renderRow(key, it)).join('');
+        // Sell Speed column shown on fast_oos so Clyde sees the same number
+        // his old ChatGPT step produced. Other buckets keep the wider Reason
+        // column (no sell-speed concept).
+        const showSellSpeed = key === 'fast_oos';
+        const headRow = showSellSpeed
+            ? `<th><input type="checkbox" class="ica-select-all" data-bucket="${escapeHtml(key)}"></th>
+               <th>Product</th><th>Artist</th><th>Format</th><th>Stock</th><th>Sold (window)</th><th>Sell Speed</th><th>Reason</th><th>Tags</th><th>Qty</th><th></th>`
+            : `<th><input type="checkbox" class="ica-select-all" data-bucket="${escapeHtml(key)}"></th>
+               <th>Product</th><th>Artist</th><th>Format</th><th>Stock</th><th>Sold (window)</th><th>Reason</th><th>Tags</th><th>Qty</th><th></th>`;
         const body = (b.count || 0) === 0
             ? `<div class="ica-bucket-empty">No items in this bucket${b.empty_reason ? ' (' + b.empty_reason.replace(/_/g, ' ') + ')' : ''}.</div>`
-            : `<table class="table table-condensed table-striped ica-row-table"><thead><tr>
-                <th><input type="checkbox" class="ica-select-all" data-bucket="${escapeHtml(key)}"></th>
-                <th>Product</th><th>Artist</th><th>Format</th><th>Stock</th><th>Sold (window)</th><th>Reason</th><th>Tags</th><th>Qty</th><th></th>
-              </tr></thead><tbody>${rows}</tbody></table>`;
+            : `<table class="table table-condensed table-striped ica-row-table"><thead><tr>${headRow}</tr></thead><tbody>${rows}</tbody></table>`;
 
         return `
             <div class="ica-bucket box box-default" data-bucket="${escapeHtml(key)}">
@@ -159,6 +165,11 @@
             ? `<button type="button" class="btn btn-xs btn-success ica-fulfill-want" data-want-id="${it.customer_want_id}"><i class="fa fa-check"></i> Fulfilled</button>`
             : (bucket === 'events_upcoming' && it.event_name ? `<small class="text-muted">${escapeHtml(it.event_name)} — ${escapeHtml(it.event_date)}</small>` : '');
 
+        const showSellSpeed = bucket === 'fast_oos';
+        const sellSpeedCell = showSellSpeed
+            ? `<td>${(it.avg_sell_days !== null && it.avg_sell_days !== undefined) ? escapeHtml(it.avg_sell_days + 'd') : '—'}</td>`
+            : '';
+
         return `<tr data-row-key="${escapeHtml(rowKey)}">
             <td><input type="checkbox" class="ica-row-check" checked></td>
             <td>${product}</td>
@@ -166,6 +177,7 @@
             <td>${format}</td>
             <td>${stock}</td>
             <td>${sold}</td>
+            ${sellSpeedCell}
             <td><small>${reason}</small></td>
             <td>${tags}</td>
             <td><input type="number" class="form-control input-sm ica-qty-input" value="${qty}" min="0" max="99"></td>

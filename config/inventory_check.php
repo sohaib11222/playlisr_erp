@@ -81,6 +81,8 @@ return [
         'format',
         'location',
         'current_stock',
+        'sold_qty_window',
+        'avg_sell_days',
         'suggested_qty',
         'source_tags',
         'reason',
@@ -131,6 +133,90 @@ return [
     ],
 
     'default_supplier_name_pattern' => env('INVENTORY_CHECK_SUPPLIER_PATTERN', 'AMS'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Must-have artists per location (Sarah's display lists, Feb 2026)
+    |--------------------------------------------------------------------------
+    | These artists are always treated as "popular in-store" for the
+    | matching location, even if they haven't sold in the recent window.
+    | Used by InventoryCheckService::getTopArtists to overlay the data-
+    | driven top sellers — so a Radiohead chart pick at Pico still tags
+    | as top_artist even during a slow Radiohead month.
+    |
+    | Keys are case-insensitive substrings matched against the location
+    | name. Update the lists here when Sarah swaps the displayed wall.
+    */
+    'must_have_artists_by_location' => [
+        'pico' => [
+            'Radiohead', 'The Beatles', 'Kendrick Lamar', 'David Bowie',
+            'Stevie Wonder', 'Bob Dylan', 'Kanye West', 'Daft Punk', 'Sade',
+            'Miles Davis', 'Fleetwood Mac', 'Mac Miller', 'Lana Del Rey',
+            'Taylor Swift', 'Laufey', 'Queen', 'Alice In Chains',
+            'Michael Jackson', 'Talking Heads', 'Tame Impala', 'Deftones',
+            'SZA', 'Grateful Dead', 'Pink Floyd', 'John Coltrane',
+            'Tyler The Creator', 'Tyler, The Creator', 'Elton John',
+            'Beyonce', 'The Doors', 'Marvin Gaye', 'Steely Dan', 'Oasis',
+            'Green Day', 'Aretha Franklin', 'Post Malone', 'Nirvana', 'Tool',
+            'TV Girl', 'The Smiths', 'The Rolling Stones',
+            'Sly And The Family Stone', 'The Marias', 'War', 'Gene Harris',
+            'Nine Inch Nails', 'The Beach Boys', 'Dua Lipa', 'Arctic Monkeys',
+            'Beloyd', 'Blink 182', 'Al Green', 'Big Thief', 'Donna Summer',
+            'Doechii', 'Mariah Carey', 'The Police', 'Supertramp',
+            'Led Zeppelin', 'Black Sabbath', "D'Angelo", 'Gorillaz',
+            'Jimi Hendrix', 'George Harrison', 'MF Doom', 'James Brown',
+            'The Cure', 'Fred Again', 'Lady Gaga', 'Playboi Carti',
+            'Jeff Buckley', 'Billy Joel', 'Mac Demarco', 'Chalino Sanchez',
+            'The Weeknd', 'Frank Sinatra', 'The Strokes', 'Cocteau Twins',
+            'Lauryn Hill', 'Sublime', 'Willie Nelson', 'New Order',
+            'Roberta Flack', 'Whitney Houston', 'Joni Mitchell', 'Charli XCX',
+            'Bob Marley', 'Scarface', 'The Offs', 'Cat Stevens',
+            'Depeche Mode', 'Sabrina Carpenter', 'Chappell Roan', 'Drake',
+            'Sampha', 'Secret Life Of Us', 'Jerry Garcia', 'Lil Wayne',
+            'Duke Pearson', 'ABBA', 'Suicidal Tendencies', 'Eminem',
+            'No Doubt', 'Smino', 'Amy Winehouse', 'Childish Gambino',
+            'Jungle', '436', 'Bon Iver', 'Nina Simone', 'Duran Duran',
+            'Genesis', 'Beastie Boys', 'Glass Animals', 'Santana',
+            'My Bloody Valentine', 'Elvis Costello', 'System Of A Down',
+            'Back To The Future', 'Def Leppard', 'Joy Division',
+            'Bruce Springsteen', 'Mary J Blige', 'Rage Against The Machine',
+            'Snoop Dogg', 'George Benson', 'Travis Scott', 'The Clash',
+            'Jay Z', 'Jay-Z',
+        ],
+        'hollywood' => [
+            'Kendrick Lamar', 'Kanye West', 'Taylor Swift', 'Mac Miller',
+            'Lana Del Rey', 'Michael Jackson', 'The Beatles', 'Deftones',
+            'Nirvana', 'The Weeknd', 'Radiohead', 'Tyler The Creator',
+            'Tyler, The Creator', 'Fleetwood Mac', 'Drake', 'Billie Eilish',
+            'Playboi Carti', 'Daft Punk', 'Sabrina Carpenter', 'SZA',
+            'Travis Scott', 'Beyonce', 'Sade', 'Pink Floyd', 'Metallica',
+            'Led Zeppelin', 'Eminem', 'Lady Gaga', 'The 1975', 'Ariana Grande',
+            'Queen', 'The Smiths', 'Miles Davis', 'Bob Dylan', 'Tame Impala',
+            "Guns N' Roses", 'Guns N Roses', '2Pac', 'One Direction',
+            'Kali Uchis', 'System Of A Down', 'The Rolling Stones',
+            'Marvin Gaye', 'Frank Sinatra', 'Prince', 'Black Sabbath',
+            'Green Day', 'Laufey', 'The Doors', 'Amy Winehouse',
+            'Arctic Monkeys', 'Chappell Roan', 'Misfits', 'Charli XCX',
+            'Outkast', 'Depeche Mode', 'Sublime', 'Coldplay', 'Mac Demarco',
+            'Grateful Dead', 'MF Doom', 'Iron Maiden', 'Nine Inch Nails',
+            'Adele', 'Korn', 'Post Malone', 'Oasis', 'Kiss', 'The Cure',
+            'Harry Styles', 'Stevie Wonder', 'Lauryn Hill', 'Gorillaz',
+            'Alice In Chains', 'Bob Marley', 'The Strokes', 'David Bowie',
+            'Tool', 'The Marias', 'Lil Uzi Vert', 'Elton John',
+            'Twenty One Pilots', 'Slayer', 'A$AP Rocky', 'ASAP Rocky',
+            '50 Cent', 'Weezer', 'Elvis Presley', 'U2', 'Suicidal Tendencies',
+            'Aphex Twin', 'Gracie Abrams', 'Red Hot Chili Peppers',
+            '$uicideboy$', 'Suicideboys', 'Aretha Franklin', 'Lil Peep',
+            'Clairo', 'Olivia Rodrigo', 'Dr Dre', 'Dr. Dre', 'Miley Cyrus',
+            'Al Green', 'Jimi Hendrix', 'Nas', 'AC/DC', 'ACDC', 'Snoop Dogg',
+            'John Coltrane', 'Britney Spears', 'Madonna', 'Linkin Park',
+            'Karol G', 'Blink 182', 'No Doubt', 'A Tribe Called Quest',
+            'Joy Division', 'Danzig', 'Lil Wayne', 'George Harrison',
+            'Jay Z', 'Jay-Z', 'Ice Cube', 'ABBA', 'Slipknot', 'Tracy Chapman',
+            'The Police', 'Janet Jackson', 'Kid Cudi', 'Air', 'Elliot Smith',
+            'Elliott Smith', 'Santana', 'Chet Baker', 'Fred Again',
+        ],
+    ],
 
     'max_candidate_rows' => (int) env('INVENTORY_CHECK_MAX_ROWS', 2000),
 

@@ -166,6 +166,9 @@ class InventoryCheckService
             $saleStart = Carbon::now()->subDays((int) ($rules['sale_days'] ?? 60))->format('Y-m-d');
             $saleEnd = Carbon::now()->format('Y-m-d');
             $sold = $this->getSoldQtyByVariation($business_id, $locationId, $saleStart, $saleEnd, $permittedLocations);
+            // Precompute avg sell-days for this window once; lookup is O(1).
+            // Keeps Clyde's "Sell Speed" column populated without N+1 queries.
+            $avgDaysMap = $this->getAvgSellDaysByVariation($business_id, $locationId, $saleStart, $saleEnd, null, true, $permittedLocations);
 
             $rows = $this->queryPscRows($business_id, $locationId, $catIds, $permittedLocations);
             foreach ($rows as $row) {
@@ -180,9 +183,13 @@ class InventoryCheckService
                     continue;
                 }
 
+                $avgDays = isset($avgDaysMap[$vid]['avg_days']) ? round($avgDaysMap[$vid]['avg_days'], 1) : null;
                 $items[] = $this->rowToCandidate($row, $stock, $sold_in_window, $rules['target_stock'] ?? 3, [
                     'bucket' => 'fast_oos',
                     'reason' => 'sold ' . (int) $sold_in_window . ' in last ' . ($rules['sale_days'] ?? 60) . 'd, stock ' . (int) $stock,
+                    // Backfill avg sell speed too so Clyde sees the same
+                    // number the old ChatGPT detour produced.
+                    'avg_sell_days' => $avgDays,
                 ]);
             }
         }
@@ -212,13 +219,30 @@ class InventoryCheckService
                     $items[] = $this->rowToCandidate($row, $stock, 0, $rules['target_stock'] ?? 3, [
                         'bucket' => 'fast_oos',
                         'reason' => 'avg sell speed ' . round($fast[$vid]['avg_days'], 1) . 'd',
+                        'avg_sell_days' => round($fast[$vid]['avg_days'], 1),
                     ]);
                 }
             }
         }
 
         $items = $this->dedupeByVariation($items);
-        usort($items, fn ($a, $b) => $b['sold_qty_window'] <=> $a['sold_qty_window']);
+        // Sort fastest-moving first by avg sell-days, then by recent sold qty.
+        // Matches Clyde's mental model: lowest sell-speed = "Sell Speed" col
+        // ascending, which is exactly what the old ChatGPT step produced.
+        usort($items, function ($a, $b) {
+            $aDays = $a['avg_sell_days'] ?? null;
+            $bDays = $b['avg_sell_days'] ?? null;
+            if ($aDays !== null && $bDays !== null && $aDays !== $bDays) {
+                return $aDays <=> $bDays;
+            }
+            if ($aDays !== null && $bDays === null) {
+                return -1;
+            }
+            if ($aDays === null && $bDays !== null) {
+                return 1;
+            }
+            return $b['sold_qty_window'] <=> $a['sold_qty_window'];
+        });
 
         return [
             'label' => '🔥 Fast-moving, out of stock',
@@ -868,7 +892,44 @@ class InventoryCheckService
             $q->whereIn('t.location_id', $permittedLocations);
         }
 
-        return $q->pluck('artist')->filter()->map(fn ($a) => trim($a))->unique()->values()->all();
+        $dataDriven = $q->pluck('artist')->filter()->map(fn ($a) => trim($a))->all();
+
+        // Overlay Sarah's must-have display lists for the matching location.
+        // These guarantee chart picks for store-wall artists tag as
+        // "popular in-store" even during a slow month.
+        $mustHave = $this->getMustHaveArtistsForLocation($locationId);
+
+        $merged = array_merge($dataDriven, $mustHave);
+        return collect($merged)
+            ->filter()
+            ->map(fn ($a) => trim($a))
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<int,string>
+     */
+    protected function getMustHaveArtistsForLocation(int $locationId): array
+    {
+        $byLocation = config('inventory_check.must_have_artists_by_location', []);
+        if (empty($byLocation)) {
+            return [];
+        }
+
+        $loc = BusinessLocation::find($locationId);
+        if (!$loc) {
+            return [];
+        }
+        $name = mb_strtolower((string) $loc->name);
+
+        foreach ($byLocation as $pattern => $artists) {
+            if ($pattern !== '' && str_contains($name, mb_strtolower($pattern))) {
+                return is_array($artists) ? $artists : [];
+            }
+        }
+        return [];
     }
 
     // ── Shared helpers (sold qty, sell speed, category lookup, row mapper) ───
