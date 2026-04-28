@@ -118,7 +118,7 @@
                 <div style="font-weight:700;font-size:12px;color:#1F1B16;margin-bottom:6px;">Clover match diagnostics</div>
                 <div>Visible sales: <strong>{{ $clover_debug['sale_count'] }}</strong> · Clover payments in window: <strong>{{ $clover_debug['clover_payment_count'] }}</strong> · Matched: <strong>{{ $clover_debug['matched_tx_count'] }}</strong></div>
                 <div>Clover data spans: <strong>{{ $clover_debug['clover_window_min'] }}</strong> → <strong>{{ $clover_debug['clover_window_max'] }}</strong></div>
-                <div style="margin-top:4px;color:#8A7C6A;">Match rule: same store + same calendar day + same dollar amount. Cashier tender is ignored.</div>
+                <div style="margin-top:4px;color:#8A7C6A;">Match rule: same store + same dollar amount (±$0.01 tolerance for tax rounding). Closest-time-to-the-ERP-sale is the tiebreaker. Cashier tender is ignored.</div>
                 @if(!empty($clover_debug['unclaimed_sales']))
                     <div style="margin-top:10px;font-weight:700;color:#1F1B16;">Unmatched sales (newest first), 3 closest Clover candidates from the same day:</div>
                     @foreach($clover_debug['unclaimed_sales'] as $u)

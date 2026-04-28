@@ -222,44 +222,36 @@ class SellPosController extends Controller
                 ->orderBy('paid_at')
                 ->get();
 
-            // Match: same store + same calendar day + same dollar amount.
+            // Match: same store + same dollar amount (±$0.01 tolerance).
             //
-            // The original ±5-min window was too tight for Nivessa's setup —
-            // Clover often stores a settlement/batch timestamp that drifts
-            // hours from the actual swipe, so amounts that obviously belong
-            // together never lined up. Day-bucket matching is the right
-            // granularity for end-of-shift reconciliation.
+            // No date/time filter on candidacy — Clover often stamps swipes
+            // with the next morning's batch-settlement time (last night's
+            // 10pm sale becomes a 04-28 10:00am paid_at), so any time-bucket
+            // rule misses the bulk of pairs. We rely on the cpRows query
+            // window (sales window ±1 day) to bound things instead, and use
+            // closest-time-to-the-ERP-sale as a tiebreaker among multiple
+            // same-amount candidates.
             //
-            // We also restrict to the same ERP location_id (clover_payments
-            // is tagged per location during sync) so a Hollywood sale can't
-            // accidentally pair to a Pico Clover charge with the same total.
+            // The ±$0.01 amount tolerance covers tax-rounding cases where
+            // ERP final_total = $32.92 but the cashier typed $32.93 into
+            // Clover — a real, repeated pattern in the data we're seeing.
             //
-            // Within same-day + same-amount + same-location, we still prefer
-            // the closest-time Clover payment as the most likely real match.
-            // Greedy 1-to-1: top-of-feed sales claim first.
-            $appTz = config('app.timezone') ?: 'America/Los_Angeles';
-            $localDate = function ($ts) use ($appTz) {
-                return \Carbon\Carbon::parse($ts)->setTimezone($appTz)->toDateString();
-            };
-
+            // location_id scoping (only when the Clover row has one) keeps
+            // Hollywood sales from cross-pairing to Pico totals.
+            //
+            // Greedy 1-to-1, sales newest-first.
             $claimedCpKeys = [];
             $matchedCpByTx = [];
             foreach ($sales as $sale) {
                 $erTs   = strtotime((string) $sale->transaction_date);
                 $erAmt  = round((float) $sale->final_total, 2);
-                $erDay  = $localDate($sale->transaction_date);
                 $erLoc  = $sale->location_id;
 
                 $bestKey = null;
                 $bestDelta = PHP_INT_MAX;
                 foreach ($cpRows as $key => $cp) {
                     if (isset($claimedCpKeys[$key])) continue;
-                    if (round((float) $cp->amount, 2) !== $erAmt) continue;
-                    if ($localDate($cp->paid_at) !== $erDay) continue;
-                    // Only require same location when the Clover row HAS one.
-                    // The sync stamps location_id when pulling per-merchant;
-                    // top-level merchant pulls leave it null. Don't filter
-                    // those out — they'd otherwise be unreachable.
+                    if (abs((float) $cp->amount - $erAmt) > 0.01) continue;
                     if ($cp->location_id !== null && (int) $cp->location_id !== (int) $erLoc) continue;
                     $delta = abs(strtotime((string) $cp->paid_at) - $erTs);
                     if ($delta < $bestDelta) {
@@ -314,17 +306,17 @@ class SellPosController extends Controller
             foreach ($sales as $sale) {
                 if (in_array($sale->id, $matchedTxIds)) continue;
                 $erAmt = round((float) $sale->final_total, 2);
-                $erDay = $localDate($sale->transaction_date);
                 $erLoc = $sale->location_id;
 
-                // Find Clover payments on the same day, prefer ones with
-                // matching amount or location to surface near-misses.
+                // Show same-amount-or-close candidates from the entire
+                // window (no date filter), annotated with reasons they
+                // didn't match.
                 $candidates = [];
                 foreach ($cpRows as $cp) {
-                    if ($localDate($cp->paid_at) !== $erDay) continue;
                     $cpAmt = round((float) $cp->amount, 2);
+                    $amountMatch = abs($cpAmt - $erAmt) <= 0.01;
                     $why = [];
-                    if ($cpAmt !== $erAmt) $why[] = 'amount Δ$' . number_format(abs($cpAmt - $erAmt), 2);
+                    if (!$amountMatch) $why[] = 'amount Δ$' . number_format(abs($cpAmt - $erAmt), 2);
                     if ($cp->location_id !== null && (int) $cp->location_id !== (int) $erLoc) {
                         $why[] = 'wrong store (loc ' . $cp->location_id . ')';
                     }
@@ -335,10 +327,9 @@ class SellPosController extends Controller
                         'card' => trim(($cp->card_type ?? '') . ' ' . ($cp->card_last4 ? '••' . $cp->card_last4 : '')),
                         'loc_id' => $cp->location_id,
                         'why' => $why ? implode(', ', $why) : 'WOULD MATCH',
-                        'amount_match' => $cpAmt === $erAmt ? 1 : 0,
+                        'amount_match' => $amountMatch ? 1 : 0,
                     ];
                 }
-                // Surface amount-matches first, then closest amounts.
                 usort($candidates, function ($a, $b) use ($erAmt) {
                     if ($b['amount_match'] !== $a['amount_match']) return $b['amount_match'] - $a['amount_match'];
                     return abs($a['amount'] - $erAmt) <=> abs($b['amount'] - $erAmt);
@@ -419,31 +410,12 @@ class SellPosController extends Controller
             ->limit($limit)
             ->get();
 
-        // Match Clover charges using the same heuristic as the EOD recon
-        // report (amount + cashier first name + ±60s).
+        // Match Clover charges using the same heuristic as the page render:
+        // same store + same amount (±$0.01) + closest-time tiebreaker, no
+        // tender-method or cashier-name filter. Kept inline rather than
+        // shared so a future change to the page's matching can't risk POS.
         $clover_by_transaction = [];
         if ($sales->isNotEmpty()) {
-            $firstName = function ($full) {
-                $full = trim((string) $full);
-                if ($full === '') return '';
-                $parts = preg_split('/\s+/', $full);
-                return strtolower($parts[0] ?? '');
-            };
-
-            $sale_ids = $sales->pluck('id')->all();
-            $erpRows = \DB::table('transaction_payments as tp')
-                ->join('transactions as t', 'tp.transaction_id', '=', 't.id')
-                ->leftJoin('users as u', 't.created_by', '=', 'u.id')
-                ->whereIn('tp.transaction_id', $sale_ids)
-                ->selectRaw("
-                    tp.id as payment_id,
-                    tp.transaction_id,
-                    tp.amount,
-                    t.transaction_date as ts,
-                    COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, '') as employee_name
-                ")
-                ->get();
-
             $minDate = $sales->min('transaction_date');
             $maxDate = $sales->max('transaction_date');
             $cpRows = \App\CloverPayment::where('business_id', $business_id)
@@ -453,30 +425,28 @@ class SellPosController extends Controller
                 ->orderBy('paid_at')
                 ->get();
 
-            $claimed = [];
+            $claimedCpKeys = [];
             $matchedCpByTx = [];
-            foreach ($cpRows as $cp) {
-                $cpName = $firstName($cp->employee_name);
-                $cpAmt  = round((float) $cp->amount, 2);
-                $cpTs   = strtotime((string) $cp->paid_at);
+            foreach ($sales as $sale) {
+                $erTs  = strtotime((string) $sale->transaction_date);
+                $erAmt = round((float) $sale->final_total, 2);
+                $erLoc = $sale->location_id;
 
                 $bestKey = null;
                 $bestDelta = PHP_INT_MAX;
-                foreach ($erpRows as $key => $er) {
-                    if (isset($claimed[$key])) continue;
-                    if (round((float) $er->amount, 2) !== $cpAmt) continue;
-                    $erName = $firstName($er->employee_name);
-                    if ($cpName !== '' && $erName !== '' && $erName !== $cpName) continue;
-                    $delta = abs(strtotime((string) $er->ts) - $cpTs);
-                    if ($delta > 60) continue;
+                foreach ($cpRows as $key => $cp) {
+                    if (isset($claimedCpKeys[$key])) continue;
+                    if (abs((float) $cp->amount - $erAmt) > 0.01) continue;
+                    if ($cp->location_id !== null && (int) $cp->location_id !== (int) $erLoc) continue;
+                    $delta = abs(strtotime((string) $cp->paid_at) - $erTs);
                     if ($delta < $bestDelta) {
                         $bestDelta = $delta;
                         $bestKey = $key;
                     }
                 }
                 if ($bestKey !== null) {
-                    $claimed[$bestKey] = true;
-                    $matchedCpByTx[$erpRows[$bestKey]->transaction_id][] = $cp;
+                    $claimedCpKeys[$bestKey] = true;
+                    $matchedCpByTx[$sale->id][] = $cpRows[$bestKey];
                 }
             }
 
