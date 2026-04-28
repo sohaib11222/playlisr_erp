@@ -56,6 +56,7 @@
                         <th>Payment</th>
                         <th>Purchase Ref</th>
                         <th>Rejected Reason</th>
+                        <th></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -100,9 +101,19 @@
                                 @endif
                             </td>
                             <td>{{ $offer->rejection_reason ?: '-' }}</td>
+                            <td>
+                                @if($offer->status !== 'accepted')
+                                    <form method="POST" action="{{ route('buy-from-customer.destroy', $offer->id) }}" style="display:inline;" onsubmit="return confirm('Delete {{ $offer->buy_record_number }}? This cannot be undone.');">
+                                        @csrf
+                                        <button type="submit" class="btn btn-danger btn-xs"><i class="fa fa-trash"></i></button>
+                                    </form>
+                                @else
+                                    <span class="text-muted small" title="Accepted offers can't be deleted — void the linked purchase first">locked</span>
+                                @endif
+                            </td>
                         </tr>
                     @empty
-                        <tr><td colspan="{{ !empty($diagnostics['show_all']) ? 11 : 10 }}" class="text-center">No records yet.</td></tr>
+                        <tr><td colspan="{{ !empty($diagnostics['show_all']) ? 12 : 11 }}" class="text-center">No records yet.</td></tr>
                     @endforelse
                 </tbody>
             </table>

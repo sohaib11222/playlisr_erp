@@ -220,6 +220,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/buy-from-customer/accept', 'BuyFromCustomerController@accept')->name('buy-from-customer.accept');
     Route::post('/buy-from-customer/reject', 'BuyFromCustomerController@reject')->name('buy-from-customer.reject');
     Route::get('/buy-from-customer/history', 'BuyFromCustomerController@history')->name('buy-from-customer.history');
+    Route::post('/buy-from-customer/{id}/delete', 'BuyFromCustomerController@destroy')->name('buy-from-customer.destroy');
     Route::resource('purchases', 'PurchaseController')->except(['show']);
 
     Route::get('/toggle-subscription/{id}', 'SellPosController@toggleRecurringInvoices');

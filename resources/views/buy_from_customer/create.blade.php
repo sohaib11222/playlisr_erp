@@ -41,8 +41,8 @@
     @if(session('status'))
         <div class="alert alert-{{ session('status.success') ? 'success' : 'danger' }}">
             {{ session('status.msg') }}
-            @if(session('saved_offer_id'))
-                <br><strong>Buy record:</strong> BFC-{{ str_pad((string) session('saved_offer_id'), 6, '0', STR_PAD_LEFT) }}
+            @if(($saved_offer_id ?? session('saved_offer_id')))
+                <br><strong>Buy record:</strong> BFC-{{ str_pad((string) ($saved_offer_id ?? session('saved_offer_id')), 6, '0', STR_PAD_LEFT) }}
             @endif
         </div>
     @endif
@@ -64,7 +64,7 @@
                     <div class="row text-muted small">
                         <div class="col-sm-4"><strong>Server date &amp; time:</strong> {{ @format_datetime(\Carbon\Carbon::now()) }}</div>
                         <div class="col-sm-4"><strong>Employee:</strong> {{ auth()->user()->user_full_name ?? auth()->user()->username ?? '—' }}</div>
-                        <div class="col-sm-4"><strong>Buy record #:</strong> @if(session('saved_offer_id')) BFC-{{ str_pad((string) session('saved_offer_id'), 6, '0', STR_PAD_LEFT) }} @else Assigned when you save a draft or accept @endif</div>
+                        <div class="col-sm-4"><strong>Buy record #:</strong> @if(($saved_offer_id ?? session('saved_offer_id'))) BFC-{{ str_pad((string) ($saved_offer_id ?? session('saved_offer_id')), 6, '0', STR_PAD_LEFT) }} @else Assigned when you save a draft or accept @endif</div>
                     </div>
                 </div>
             </div>

@@ -48,6 +48,13 @@ class BuyFromCustomerController extends Controller
         $lines = $request->input('lines', []);
         $calculation = $this->calculator->calculate($lines, $request->all());
 
+        // Auto-save a draft on every Calculate so history captures the
+        // negotiation even if the cashier doesn't explicitly hit Save Draft.
+        // Drafts can be deleted from the history page if not needed.
+        $saved = DB::transaction(function () use ($request) {
+            return $this->saveOffer($request, 'draft');
+        });
+
         $business_id = request()->session()->get('user.business_id');
         $locations = BusinessLocation::forDropdown($business_id, false, true);
         $contacts = Contact::suppliersDropdown($business_id, true, true);
@@ -55,7 +62,8 @@ class BuyFromCustomerController extends Controller
         $grades = $this->calculator->getGradesForDropdown();
 
         return view('buy_from_customer.create', compact('locations', 'contacts', 'itemTypes', 'grades', 'calculation'))
-            ->with('input_data', $request->all());
+            ->with('input_data', $request->all())
+            ->with('saved_offer_id', $saved->id);
     }
 
     public function store(Request $request)
@@ -111,6 +119,30 @@ class BuyFromCustomerController extends Controller
 
         return redirect()->route('buy-from-customer.history')
             ->with('status', ['success' => 1, 'msg' => 'Offer marked as rejected.']);
+    }
+
+    public function destroy($id)
+    {
+        if (!auth()->user()->can('purchase.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = request()->session()->get('user.business_id');
+        $offer = BuyCustomerOffer::where('business_id', $business_id)->findOrFail($id);
+
+        // Accepted offers are tied to a real Purchase record (money paid out).
+        // Refuse to delete those from the UI — they have to be voided through
+        // the normal purchase flow first.
+        if ($offer->status === 'accepted') {
+            return redirect()->route('buy-from-customer.history')
+                ->with('status', ['success' => 0, 'msg' => 'Cannot delete an accepted offer — void the linked purchase first.']);
+        }
+
+        $offer->lines()->delete();
+        $offer->delete();
+
+        return redirect()->route('buy-from-customer.history')
+            ->with('status', ['success' => 1, 'msg' => 'Offer deleted.']);
     }
 
     public function history()
