@@ -18,26 +18,65 @@
     ];
 @endphp
 
-@if($is_embed)
 @section('css')
-    {{-- When opened inside the POS modal iframe, hide the admin chrome so only the calculator shows. --}}
     <style>
-        body, body.skin-blue, body.hold-transition { background: #fff !important; padding-top: 0 !important; }
-        .main-header, .main-sidebar, .main-footer, .content-header > h1 > small, .left-side { display: none !important; }
-        .content-wrapper { margin-left: 0 !important; min-height: auto !important; padding-top: 0 !important; }
-        .content-header { padding: 10px 15px 0 !important; }
-        section.content { padding: 10px 15px !important; }
-        .wrapper { min-height: auto !important; }
+        /* Buy-from-customer create — Sarah 2026-04-28: tighter, easier to read.
+           Scoped to .bfc-create so nothing else on the site is affected. */
+        .bfc-create { max-width: 1200px; margin: 0 auto; }
+        .bfc-create .box { border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+        .bfc-create .box-header { padding: 10px 14px; }
+        .bfc-create .box-header .box-title { font-size: 14px; font-weight: 700; letter-spacing: 0.2px; }
+        .bfc-create .box-body { padding: 14px; }
+        .bfc-create .form-group { margin-bottom: 10px; }
+        .bfc-create label { font-size: 12px; font-weight: 600; color: #555; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.3px; }
+        .bfc-create label .text-muted { text-transform: none; font-weight: 400; letter-spacing: 0; }
+        .bfc-create .form-control { height: 34px; padding: 6px 10px; font-size: 13px; border-radius: 6px; }
+        .bfc-create textarea.form-control { height: auto; min-height: 60px; }
+        .bfc-create .select2-container .select2-selection--single { height: 34px !important; }
+        .bfc-create .select2-container--default .select2-selection--single .select2-selection__rendered { line-height: 32px !important; font-size: 13px; }
+        .bfc-create .select2-container--default .select2-selection--single .select2-selection__arrow { height: 32px !important; }
+        .bfc-create hr { margin: 16px 0 12px; border-top-color: #eee; }
+        .bfc-create h4 { font-size: 13px; font-weight: 700; color: #333; text-transform: uppercase; letter-spacing: 0.4px; margin: 0 0 10px; }
+        .bfc-create h4 small { text-transform: none; letter-spacing: 0; font-weight: 400; }
+        .bfc-create #offer_lines_table { font-size: 13px; }
+        .bfc-create #offer_lines_table th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; color: #666; background: #f7f7f7; padding: 8px 10px; border-bottom: 1px solid #ddd; }
+        .bfc-create #offer_lines_table td { padding: 6px; vertical-align: middle; }
+        .bfc-create #offer_lines_table .form-control { height: 32px; font-size: 12px; padding: 4px 8px; }
+        .bfc-create #offer_lines_table td:first-child { width: 220px; }
+        .bfc-create #offer_lines_table td:nth-child(4) { width: 110px; }
+        .bfc-create #offer_lines_table td:nth-child(5),
+        .bfc-create #offer_lines_table td:nth-child(6),
+        .bfc-create #offer_lines_table td:nth-child(7) { width: 110px; }
+        .bfc-create #offer_lines_table td:last-child { width: 40px; text-align: center; }
+        .bfc-create .negotiation-row { display: grid; grid-template-columns: repeat(4, minmax(0, 180px)) 1fr; gap: 12px; align-items: end; }
+        .bfc-create .negotiation-row .form-control { max-width: 180px; }
+        .bfc-create .meta-row { background: #fafafa; border: 1px solid #eee; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; font-size: 12px; }
+        .bfc-create .meta-row strong { color: #333; }
+        .bfc-create details.bfc-advanced { margin: 8px 0 0; font-size: 12px; }
+        .bfc-create details.bfc-advanced summary { cursor: pointer; color: #888; padding: 4px 0; }
+        .bfc-create details.bfc-advanced[open] summary { color: #555; margin-bottom: 6px; }
+        .bfc-create .pos-action-row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+        .bfc-create .well { background: #fafafa; border: 1px solid #eee; border-radius: 8px; padding: 14px; }
     </style>
+    @if($is_embed)
+        {{-- When opened inside the POS modal iframe, hide the admin chrome so only the calculator shows. --}}
+        <style>
+            body, body.skin-blue, body.hold-transition { background: #fff !important; padding-top: 0 !important; }
+            .main-header, .main-sidebar, .main-footer, .content-header > h1 > small, .left-side { display: none !important; }
+            .content-wrapper { margin-left: 0 !important; min-height: auto !important; padding-top: 0 !important; }
+            .content-header { padding: 10px 15px 0 !important; }
+            section.content { padding: 10px 15px !important; }
+            .wrapper { min-height: auto !important; }
+        </style>
+    @endif
 @stop
-@endif
 
 @section('content')
 <section class="content-header">
     <h1>Buy from Customer <small>Offer calculator</small></h1>
 </section>
 
-<section class="content">
+<section class="content bfc-create">
     @if(session('status'))
         <div class="alert alert-{{ session('status.success') ? 'success' : 'danger' }}">
             {{ session('status.msg') }}
@@ -59,13 +98,11 @@
 
     <div class="row">
         <div class="col-md-12">
-            <div class="box box-default">
-                <div class="box-body">
-                    <div class="row text-muted small">
-                        <div class="col-sm-4"><strong>Server date &amp; time:</strong> {{ @format_datetime(\Carbon\Carbon::now()) }}</div>
-                        <div class="col-sm-4"><strong>Employee:</strong> {{ auth()->user()->user_full_name ?? auth()->user()->username ?? '—' }}</div>
-                        <div class="col-sm-4"><strong>Buy record #:</strong> @if(($saved_offer_id ?? session('saved_offer_id'))) BFC-{{ str_pad((string) ($saved_offer_id ?? session('saved_offer_id')), 6, '0', STR_PAD_LEFT) }} @else Assigned when you save a draft or accept @endif</div>
-                    </div>
+            <div class="meta-row">
+                <div class="row">
+                    <div class="col-sm-4"><strong>Date &amp; time:</strong> {{ @format_datetime(\Carbon\Carbon::now()) }}</div>
+                    <div class="col-sm-4"><strong>Employee:</strong> {{ auth()->user()->user_full_name ?? auth()->user()->username ?? '—' }}</div>
+                    <div class="col-sm-4"><strong>Buy record #:</strong> @if(($saved_offer_id ?? session('saved_offer_id'))) BFC-{{ str_pad((string) ($saved_offer_id ?? session('saved_offer_id')), 6, '0', STR_PAD_LEFT) }} @else <span class="text-muted">assigned on Calculate</span> @endif</div>
                 </div>
             </div>
 
@@ -134,13 +171,18 @@
                             </div>
                         </div>
                     </div>
-                    <div class="row seller-phone-block">
-                        <div class="col-md-6">
-                            <div class="form-group">
-                                <label>Legacy single name <span class="text-muted">(optional if first/last used)</span></label>
-                                {!! Form::text('seller_name', $input['seller_name'] ?? null, ['class' => 'form-control']) !!}
+                    <div class="seller-phone-block">
+                        <details class="bfc-advanced">
+                            <summary>+ legacy single-name field</summary>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label>Legacy single name <span class="text-muted">(only if you can't split into first / last)</span></label>
+                                        {!! Form::text('seller_name', $input['seller_name'] ?? null, ['class' => 'form-control']) !!}
+                                    </div>
+                                </div>
                             </div>
-                        </div>
+                        </details>
                     </div>
                     <div class="row">
                         <div class="col-md-3">
@@ -195,20 +237,20 @@
                     <button type="button" class="btn btn-default btn-sm" id="add_line_btn"><i class="fa fa-plus"></i> Add line</button>
 
                     <hr>
-                    <h4>Negotiation offers</h4>
-                    <div class="row">
-                        <div class="col-md-3"><label>Starting cash</label>{!! Form::number('starting_offer_cash', $input['starting_offer_cash'] ?? null, ['class' => 'form-control', 'step' => '0.01']) !!}</div>
-                        <div class="col-md-3"><label>Starting credit</label>{!! Form::number('starting_offer_credit', $input['starting_offer_credit'] ?? null, ['class' => 'form-control', 'step' => '0.01']) !!}</div>
-                        <div class="col-md-3"><label>2nd cash</label>{!! Form::number('second_offer_cash', $input['second_offer_cash'] ?? null, ['class' => 'form-control', 'step' => '0.01']) !!}</div>
-                        <div class="col-md-3"><label>2nd credit</label>{!! Form::number('second_offer_credit', $input['second_offer_credit'] ?? null, ['class' => 'form-control', 'step' => '0.01']) !!}</div>
+                    <h4>Negotiation offers <small class="text-muted">defaults: 50% / 75% / 95% of calculated total</small></h4>
+                    <div class="negotiation-row">
+                        <div class="form-group"><label>Starting cash</label>{!! Form::number('starting_offer_cash', $input['starting_offer_cash'] ?? null, ['class' => 'form-control', 'step' => '0.01']) !!}</div>
+                        <div class="form-group"><label>Starting credit</label>{!! Form::number('starting_offer_credit', $input['starting_offer_credit'] ?? null, ['class' => 'form-control', 'step' => '0.01']) !!}</div>
+                        <div class="form-group"><label>2nd cash</label>{!! Form::number('second_offer_cash', $input['second_offer_cash'] ?? null, ['class' => 'form-control', 'step' => '0.01']) !!}</div>
+                        <div class="form-group"><label>2nd credit</label>{!! Form::number('second_offer_credit', $input['second_offer_credit'] ?? null, ['class' => 'form-control', 'step' => '0.01']) !!}</div>
                     </div>
-                    <div class="row" style="margin-top:8px;">
-                        <div class="col-md-3"><label>Final cash</label>{!! Form::number('final_offer_cash', $input['final_offer_cash'] ?? null, ['class' => 'form-control', 'step' => '0.01']) !!}</div>
-                        <div class="col-md-3"><label>Final credit</label>{!! Form::number('final_offer_credit', $input['final_offer_credit'] ?? null, ['class' => 'form-control', 'step' => '0.01']) !!}</div>
-                        <div class="col-md-6"><label>Notes <span class="text-muted">(sealed items, rare finds, condition concerns)</span></label>{!! Form::textarea('notes', $input['notes'] ?? null, ['class' => 'form-control', 'rows' => 2]) !!}</div>
+                    <div class="negotiation-row">
+                        <div class="form-group"><label>Final cash</label>{!! Form::number('final_offer_cash', $input['final_offer_cash'] ?? null, ['class' => 'form-control', 'step' => '0.01']) !!}</div>
+                        <div class="form-group"><label>Final credit</label>{!! Form::number('final_offer_credit', $input['final_offer_credit'] ?? null, ['class' => 'form-control', 'step' => '0.01']) !!}</div>
+                        <div class="form-group" style="grid-column: 3 / span 3;"><label>Notes <span class="text-muted">(sealed items, rare finds, condition concerns)</span></label>{!! Form::textarea('notes', $input['notes'] ?? null, ['class' => 'form-control', 'rows' => 2]) !!}</div>
                     </div>
 
-                    <div class="text-right" style="margin-top:15px;">
+                    <div class="pos-action-row">
                         <button type="submit" class="btn btn-primary"><i class="fa fa-calculator"></i> Calculate</button>
                     </div>
                     </form>
