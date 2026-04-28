@@ -195,7 +195,14 @@ class ProductController extends Controller
                 DB::raw('MAX(v.sell_price_inc_tax) as max_price'),
                 DB::raw('MIN(v.sell_price_inc_tax) as min_price'),
                 DB::raw('MAX(v.dpp_inc_tax) as max_purchase_price'),
-                DB::raw('MIN(v.dpp_inc_tax) as min_purchase_price')
+                DB::raw('MIN(v.dpp_inc_tax) as min_purchase_price'),
+                // Real "last updated" — newest of products.updated_at and any
+                // variation update for this product, ignoring values in the
+                // future (corrupt rows from a sync with bad server time).
+                DB::raw('GREATEST(
+                    COALESCE(IF(products.updated_at > NOW(), NULL, products.updated_at), "1970-01-01"),
+                    COALESCE(MAX(IF(v.updated_at > NOW(), NULL, v.updated_at)), "1970-01-01")
+                ) as real_updated_at')
                 );
 
             //if woocomerce enabled add field to query
@@ -394,11 +401,15 @@ class ProductController extends Controller
                     '<div style="white-space: nowrap;">@format_currency($min_price) @if($max_price != $min_price && $type == "variable") -  @format_currency($max_price)@endif </div>'
                 )
                 ->editColumn('updated_at', function($row) {
-                    // Future timestamp = bad data (TZ-drifted sync, manual SQL).
-                    // Show "—" rather than rendering 2030 or pretending it's now;
-                    // the latter quietly turns garbage into "freshly updated".
-                    $ts = strtotime($row->updated_at);
-                    if (!$ts || $ts > time()) {
+                    // Use the derived real_updated_at (newest of products + any
+                    // variation update, future values discarded). Falls back to
+                    // products.updated_at if real_updated_at is empty/sentinel.
+                    $candidate = $row->real_updated_at ?? null;
+                    $ts = $candidate ? strtotime($candidate) : 0;
+                    if (!$ts || $ts <= strtotime('1971-01-01') || $ts > time()) {
+                        // Last resort: products.updated_at if it's not future
+                        $alt = strtotime($row->updated_at);
+                        if ($alt && $alt <= time()) return date('m/d/Y h:i A', $alt);
                         return '—';
                     }
                     return date('m/d/Y h:i A', $ts);

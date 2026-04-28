@@ -447,7 +447,7 @@
                         { data: 'total_sold', searchable: false},
                         { data: 'sku', name: 'products.sku'},
                         { data: 'created_at', name: 'products.created_at'},
-                        { data: 'updated_at', name: 'products.updated_at'},
+                        { data: 'updated_at', name: 'real_updated_at', orderable: true},
                         { data: 'created_by_name', name: 'u.first_name' }
                     ],
                     createdRow: function( row, data, dataIndex ) {
