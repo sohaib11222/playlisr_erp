@@ -120,12 +120,26 @@ class BuyFromCustomerController extends Controller
         }
 
         $business_id = request()->session()->get('user.business_id');
-        $offers = BuyCustomerOffer::with(['contact', 'createdBy', 'acceptedPurchase', 'location'])
-            ->where('business_id', $business_id)
-            ->latest()
-            ->paginate(30);
+        $showAll = request()->boolean('show_all');
 
-        return view('buy_from_customer.history', compact('offers'));
+        // Diagnostic counts so Sarah can tell at a glance whether records exist
+        // and which business_id they were saved under. If the totals disagree
+        // with what she expects, the ?show_all=1 toggle reveals every record.
+        $diagnostics = [
+            'business_id' => $business_id,
+            'total_in_db' => BuyCustomerOffer::count(),
+            'total_for_business' => BuyCustomerOffer::where('business_id', $business_id)->count(),
+            'distinct_business_ids' => BuyCustomerOffer::select('business_id')->distinct()->pluck('business_id')->all(),
+            'show_all' => $showAll,
+        ];
+
+        $query = BuyCustomerOffer::with(['contact', 'createdBy', 'acceptedPurchase', 'location']);
+        if (!$showAll) {
+            $query->where('business_id', $business_id);
+        }
+        $offers = $query->latest()->paginate(30)->appends(request()->only('show_all'));
+
+        return view('buy_from_customer.history', compact('offers', 'diagnostics'));
     }
 
     protected function validateRequest(Request $request, $requireFinal)

@@ -13,9 +13,28 @@
         </div>
     @endif
 
+    @if(!empty($diagnostics))
+        @php
+            $diagOk = $diagnostics['total_in_db'] === $diagnostics['total_for_business'];
+        @endphp
+        <div class="alert alert-{{ $diagOk ? 'info' : 'warning' }}" style="margin-bottom:10px;">
+            <strong>Records:</strong>
+            {{ $diagnostics['total_for_business'] }} for your business (id {{ $diagnostics['business_id'] }})
+            / {{ $diagnostics['total_in_db'] }} total in DB.
+            @if(!empty($diagnostics['distinct_business_ids']))
+                Business IDs in table: {{ implode(', ', $diagnostics['distinct_business_ids']) }}.
+            @endif
+            @if(!$diagnostics['show_all'])
+                <a href="{{ route('buy-from-customer.history', ['show_all' => 1]) }}" class="btn btn-default btn-xs" style="margin-left:8px;">Show all (no business filter)</a>
+            @else
+                <a href="{{ route('buy-from-customer.history') }}" class="btn btn-default btn-xs" style="margin-left:8px;">Hide other businesses</a>
+            @endif
+        </div>
+    @endif
+
     <div class="box box-solid">
         <div class="box-header with-border">
-            <h3 class="box-title">Offer Records</h3>
+            <h3 class="box-title">Offer Records @if(!empty($diagnostics['show_all'])) <small>(showing ALL business IDs)</small> @endif</h3>
             <div class="box-tools">
                 <a href="{{ route('buy-from-customer.create') }}" class="btn btn-primary btn-sm">
                     <i class="fa fa-plus"></i> New Offer
@@ -27,6 +46,7 @@
                 <thead>
                     <tr>
                         <th>Buy record</th>
+                        @if(!empty($diagnostics['show_all'])) <th>Biz</th> @endif
                         <th>Date</th>
                         <th>Store</th>
                         <th>Seller</th>
@@ -53,6 +73,7 @@
                         @endphp
                         <tr>
                             <td>{{ $offer->buy_record_number }}</td>
+                            @if(!empty($diagnostics['show_all'])) <td>{{ $offer->business_id }}</td> @endif
                             <td>{{ @format_datetime($offer->accepted_at ?? $offer->created_at) }}</td>
                             <td>{{ optional($offer->location)->name ?? '—' }}</td>
                             <td>
@@ -81,7 +102,7 @@
                             <td>{{ $offer->rejection_reason ?: '-' }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="10" class="text-center">No records yet.</td></tr>
+                        <tr><td colspan="{{ !empty($diagnostics['show_all']) ? 11 : 10 }}" class="text-center">No records yet.</td></tr>
                     @endforelse
                 </tbody>
             </table>
