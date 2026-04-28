@@ -190,71 +190,30 @@ class SellPosController extends Controller
             ->limit($limit)
             ->get();
 
-        // Pull Clover-side charge totals for these sales by matching ERP card
-        // payments to Clover payments using the same heuristic as the EOD
-        // reconciliation report (ReportController::cloverEodTransactionMatch):
-        // same amount, same cashier first name, paid within ±60 seconds.
+        // Pull Clover-side charge totals for these sales by matching each
+        // visible transaction directly to a Clover payment on amount + time.
         //
-        // We can't rely on transactions.clover_order_id — that column exists
-        // but is only populated by an explicit "refresh" path in SyncClover
-        // (which expects an existing link), so in practice it's null on every
-        // live sale. The fuzzy match is what the recon report uses and it's
-        // proven accurate enough for cashier-level reconciliation.
+        // IMPORTANT context (Sarah, 2026-04-28): the Nivessa POS workflow
+        // currently has cashiers ring up EVERY sale as 'cash' tender in the
+        // ERP — even when the customer pays with a card — because choosing
+        // 'card' triggers a credit-card form they don't want, and Clover
+        // doesn't auto-pull the amount from the ERP yet (Sohaib is building
+        // that sync separately). The cashier rings cash in the ERP, then
+        // manually types the same dollar amount into the Clover terminal.
+        //
+        // Consequence: filtering on tp.method excludes nearly every real
+        // card sale. So we DON'T filter by method — we just ask "is there
+        // a Clover payment with the same dollar amount within ±5 minutes
+        // of this ERP sale?". If yes, the customer paid with a card; show
+        // ERP / Clover columns. If no, it was probably actual cash; show
+        // only the ERP total. This is precisely what makes the feature
+        // valuable until the upstream sync lands — it surfaces which "cash"
+        // sales actually ran a card.
         $clover_by_transaction = [];
+        $TIME_WINDOW_SEC = 300;
+        $cpRows = collect();
+
         if ($sales->isNotEmpty()) {
-            $firstName = function ($full) {
-                $full = trim((string) $full);
-                if ($full === '') return '';
-                $parts = preg_split('/\s+/', $full);
-                return strtolower($parts[0] ?? '');
-            };
-
-            $sale_ids = $sales->pluck('id')->all();
-
-            // ERP card payments for these transactions. We filter to card-ish
-            // methods (mirrors ReportController::cloverEodReconciliation) so
-            // cash/store-credit rows don't pollute the match — those will
-            // never have a Clover counterpart and showing them as "unmatched"
-            // is just noise.
-            $card_methods = [
-                'clover', 'card', 'credit_card', 'credit_sale',
-                'custom_pay_1', 'custom_pay_2', 'custom_pay_3', 'custom_pay_4',
-                'custom_pay_5', 'custom_pay_6', 'custom_pay_7',
-            ];
-
-            // Method-name fallback (mirrors recon report): if NONE of the
-            // visible sales' payment methods overlap with our card_methods
-            // list, this install might store Clover payments under some
-            // other name. In that case fall back to all methods so we
-            // don't silently produce zero matches.
-            $tender_breakdown = \DB::table('transaction_payments')
-                ->whereIn('transaction_id', $sale_ids)
-                ->selectRaw('method, COUNT(*) as n, SUM(amount) as total')
-                ->groupBy('method')
-                ->get();
-            $present_methods = $tender_breakdown->pluck('method')->all();
-            $used_all_methods = empty(array_intersect($present_methods, $card_methods))
-                && !empty($present_methods);
-
-            $erpQ = \DB::table('transaction_payments as tp')
-                ->join('transactions as t', 'tp.transaction_id', '=', 't.id')
-                ->leftJoin('users as u', 't.created_by', '=', 'u.id')
-                ->whereIn('tp.transaction_id', $sale_ids);
-            if (!$used_all_methods) {
-                $erpQ->whereIn('tp.method', $card_methods);
-            }
-            $erpRows = $erpQ->selectRaw("
-                    tp.id as payment_id,
-                    tp.transaction_id,
-                    tp.amount,
-                    tp.method,
-                    t.transaction_date as ts,
-                    COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, '') as employee_name
-                ")
-                ->get();
-
-            // Clover payments in the rough time window of the visible sales
-            // (±1 day buffer for safety against timezone/clock skew).
             $minDate = $sales->min('transaction_date');
             $maxDate = $sales->max('transaction_date');
             $cpRows = \App\CloverPayment::where('business_id', $business_id)
@@ -264,70 +223,40 @@ class SellPosController extends Controller
                 ->orderBy('paid_at')
                 ->get();
 
-            // Greedy 1-to-1 match: each Clover payment claims the closest-time
-            // unclaimed ERP payment with same amount + same cashier first name
-            // within ±5 minutes. The recon report uses ±60s, but the recent
-            // feed isn't volume-pressured — a wider window catches more pairs
-            // when there's clock drift between Clover terminals and the ERP.
-            //
-            // Two-pass: pass 1 requires matching cashier first name (high
-            // confidence). Pass 2 falls back to amount+time only — useful
-            // when Clover's logged-in employee differs from the ERP user
-            // (a common Nivessa case where one cashier is logged into both
-            // systems but with different names).
-            $TIME_WINDOW_SEC = 300;
-            $claimed = [];
-            $matchedCpByTx = []; // transaction_id => array of matched CloverPayment rows
-            $unmatchedCp = [];
-
-            $tryMatch = function ($cp, $requireName) use (&$claimed, $erpRows, $firstName, $TIME_WINDOW_SEC) {
-                $cpName = $firstName($cp->employee_name);
-                $cpAmt  = round((float) $cp->amount, 2);
-                $cpTs   = strtotime((string) $cp->paid_at);
+            // Greedy 1-to-1: for each visible sale, claim the closest-time
+            // unclaimed Clover payment with the same dollar amount within
+            // the ±5-min window. We iterate sales (not Clover payments)
+            // because that's the order the user reads the page in — the
+            // top-of-feed sales get first dibs on ambiguous matches, which
+            // is the right precedence for "what did the customer just pay?".
+            $claimedCpKeys = [];
+            $matchedCpByTx = [];
+            foreach ($sales as $sale) {
+                $erTs  = strtotime((string) $sale->transaction_date);
+                $erAmt = round((float) $sale->final_total, 2);
 
                 $bestKey = null;
                 $bestDelta = PHP_INT_MAX;
-                foreach ($erpRows as $key => $er) {
-                    if (isset($claimed[$key])) continue;
-                    if (round((float) $er->amount, 2) !== $cpAmt) continue;
-                    if ($requireName) {
-                        $erName = $firstName($er->employee_name);
-                        if ($cpName !== '' && $erName !== '' && $erName !== $cpName) continue;
-                    }
-                    $delta = abs(strtotime((string) $er->ts) - $cpTs);
+                foreach ($cpRows as $key => $cp) {
+                    if (isset($claimedCpKeys[$key])) continue;
+                    if (round((float) $cp->amount, 2) !== $erAmt) continue;
+                    $delta = abs(strtotime((string) $cp->paid_at) - $erTs);
                     if ($delta > $TIME_WINDOW_SEC) continue;
                     if ($delta < $bestDelta) {
                         $bestDelta = $delta;
                         $bestKey = $key;
                     }
                 }
-                return $bestKey;
-            };
-
-            // Pass 1: with cashier-name constraint.
-            foreach ($cpRows as $cp) {
-                $bestKey = $tryMatch($cp, true);
                 if ($bestKey !== null) {
-                    $claimed[$bestKey] = true;
-                    $matchedCpByTx[$erpRows[$bestKey]->transaction_id][] = $cp;
-                } else {
-                    $unmatchedCp[] = $cp;
-                }
-            }
-            // Pass 2: amount + time only (no name) for whatever's left.
-            foreach ($unmatchedCp as $cp) {
-                $bestKey = $tryMatch($cp, false);
-                if ($bestKey !== null) {
-                    $claimed[$bestKey] = true;
-                    $matchedCpByTx[$erpRows[$bestKey]->transaction_id][] = $cp;
+                    $claimedCpKeys[$bestKey] = true;
+                    $matchedCpByTx[$sale->id][] = $cpRows[$bestKey];
                 }
             }
 
-            // Aggregate matched Clover payments per transaction. A single ERP
-            // sale can have multiple matched payments via split tender.
-            // Clover API: payment.amount is gross (includes tax); taxAmount
-            // is the tax portion of amount; tipAmount is separate. So the
-            // card was actually hit for amount + tip.
+            // Aggregate Clover data per matched transaction. Clover's
+            // payment.amount is what the cashier typed in (the charge);
+            // taxAmount is informational about that amount; tipAmount is
+            // separate (added on the terminal at signing).
             foreach ($matchedCpByTx as $txId => $payments) {
                 $payments = collect($payments);
                 $amount = (int) $payments->sum('amount_cents');
@@ -340,39 +269,30 @@ class SellPosController extends Controller
                 })->filter()->unique()->values()->all();
 
                 $clover_by_transaction[$txId] = [
-                    'amount_cents' => $amount,         // gross (incl. tax)
+                    'amount_cents' => $amount,
                     'tip_cents'    => $tip,
                     'tax_cents'    => $tax,
-                    'total_cents'  => $amount + $tip,  // what hit the card
+                    'total_cents'  => $amount + $tip,
                     'cards'        => $cards,
                 ];
             }
         }
 
-        // Debug mode — surface match-quality diagnostics inline so we can
-        // see why Clover data isn't appearing without needing DB access.
-        // Triggered with ?debug_clover=1.
-        //
-        // For each unmatched ERP card payment we list the THREE closest-by-
-        // time Clover payments, annotated with the reason each didn't match
-        // (wrong amount, time delta past the ±5-min window). Makes near-
-        // misses obvious without manually cross-referencing timestamps.
+        // Debug mode: ?debug_clover=1 — for each unmatched ERP transaction
+        // show the 3 Clover payments closest in time and amount, annotated
+        // with why each one didn't match. Useful when investigating the
+        // odd "this sale should have run on Clover but doesn't show up" case.
         $clover_debug = null;
-        if ($request->get('debug_clover') && isset($erpRows, $cpRows) && $erpRows->isNotEmpty()) {
-            $matchedCpIds = [];
-            foreach ($matchedCpByTx as $payments) {
-                foreach ($payments as $p) { $matchedCpIds[$p->id] = true; }
-            }
-
-            $unclaimedErp = [];
-            foreach ($erpRows as $key => $er) {
-                if (isset($claimed[$key])) continue;
-                $erTs  = strtotime((string) $er->ts);
-                $erAmt = round((float) $er->amount, 2);
+        if ($request->get('debug_clover') && $sales->isNotEmpty()) {
+            $matchedTxIds = array_keys($clover_by_transaction);
+            $unclaimedSales = [];
+            foreach ($sales as $sale) {
+                if (in_array($sale->id, $matchedTxIds)) continue;
+                $erTs  = strtotime((string) $sale->transaction_date);
+                $erAmt = round((float) $sale->final_total, 2);
 
                 $candidates = [];
                 foreach ($cpRows as $cp) {
-                    if (isset($matchedCpIds[$cp->id])) continue;
                     $delta = abs(strtotime((string) $cp->paid_at) - $erTs);
                     $cpAmt = round((float) $cp->amount, 2);
                     $why = [];
@@ -387,34 +307,26 @@ class SellPosController extends Controller
                         'why' => $why ? implode(', ', $why) : 'WOULD MATCH',
                     ];
                 }
+                // Closest in time, but only show ones that aren't wildly off.
                 usort($candidates, fn($a, $b) => $a['delta'] <=> $b['delta']);
 
-                $unclaimedErp[] = [
-                    'tx_id' => $er->transaction_id,
+                $unclaimedSales[] = [
+                    'tx_id' => $sale->id,
+                    'invoice_no' => $sale->invoice_no,
                     'amount' => $erAmt,
-                    'ts' => (string) $er->ts,
-                    'cashier' => $er->employee_name,
-                    'method' => $er->method ?? '',
+                    'ts' => (string) $sale->transaction_date,
                     'closest_clover' => array_slice($candidates, 0, 3),
                 ];
             }
-            // Newest ERP first — today's data shows up first.
-            usort($unclaimedErp, fn($a, $b) => strcmp($b['ts'], $a['ts']));
 
             $clover_debug = [
-                'erp_payment_count'    => $erpRows->count(),
+                'sale_count'           => $sales->count(),
                 'clover_payment_count' => $cpRows->count(),
-                'matched_tx_count'     => count($matchedCpByTx),
+                'matched_tx_count'     => count($clover_by_transaction),
                 'window_seconds'       => $TIME_WINDOW_SEC,
                 'clover_window_min'    => (string) $cpRows->min('paid_at'),
                 'clover_window_max'    => (string) $cpRows->max('paid_at'),
-                'used_all_methods'     => $used_all_methods,
-                'tender_breakdown'     => $tender_breakdown->map(fn($r) => [
-                    'method' => $r->method ?: '(blank)',
-                    'count' => (int) $r->n,
-                    'total' => (float) $r->total,
-                ])->all(),
-                'unclaimed_erp'        => array_slice($unclaimedErp, 0, 10),
+                'unclaimed_sales'      => array_slice($unclaimedSales, 0, 10),
             ];
         }
 
