@@ -90,6 +90,14 @@
         // Surface what we sent so debugging "No candidates" is one F12 away.
         console.log('[ICA] build request', { location_id: $location && $location.value, preset: $preset && $preset.value, category_id: $category && $category.value });
 
+        // Visible warning if location is empty — most common cause of empty
+        // result. The server falls back to preset, but if that doesn't
+        // resolve a location either, every bucket comes back 0 items.
+        if (!$location || !$location.value) {
+            $root.innerHTML = '<div class="alert alert-warning"><strong>No location set.</strong> The store button picked a preset but the linked location couldn\'t be found in the database. Open <em>Advanced filters</em> below the store buttons and pick a location manually, then click Build.</div>';
+            return;
+        }
+
         fetch(window.ICA_BUCKETS_URL + '?' + params.toString(), {
             headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
             credentials: 'same-origin',
@@ -138,7 +146,11 @@
         });
 
         if (html === '') {
-            html = '<div class="alert alert-info">No candidates — try a different preset or paste this week\'s charts.</div>';
+            // payload.buckets came back as an empty object — that means the
+            // server returned a structurally valid response but with NO
+            // bucket keys. Surface the meta so we can see why.
+            const metaJson = payload.meta ? JSON.stringify(payload.meta, null, 2) : '(no meta)';
+            html = '<div class="alert alert-warning"><strong>Server returned no buckets.</strong> Usually means the location preset didn\'t resolve. Server meta:<pre style="margin-top:8px; font-size:11px;">' + escapeHtml(metaJson) + '</pre></div>';
         }
 
         $root.innerHTML = html;
@@ -332,6 +344,120 @@
     const $utImport = document.getElementById('ica_ut_import');
     if ($spImport) $spImport.addEventListener('click', () => importChart('street_pulse'));
     if ($utImport) $utImport.addEventListener('click', () => importChart('universal_top'));
+
+    // ── Browser-side OCR for Luminate PNG/JPG screenshots ────────────
+    // The weekly Street Pulse / Luminate email arrives as image
+    // attachments (PNGs of the Top 200 chart). On image select, run
+    // Tesseract.js in the browser, then post-process the recognised text
+    // into a tab-separated CSV with Rank/Title/Artist columns and stuff
+    // it into the paste textarea. The user reviews + clicks Import; the
+    // server's TabularChartParser handles it from there.
+    function isImageFile(file) {
+        if (!file) return false;
+        if (file.type && file.type.indexOf('image/') === 0) return true;
+        return /\.(png|jpe?g|webp)$/i.test(file.name || '');
+    }
+
+    function ocrLuminateImage(fileInput, textarea, statusEl, fileEl) {
+        const file = fileInput.files && fileInput.files[0];
+        if (!file || !isImageFile(file)) return;
+        if (typeof Tesseract === 'undefined') {
+            alert('OCR library failed to load (network blocked?). Paste the rows manually for now.');
+            return;
+        }
+        statusEl.style.display = 'block';
+        statusEl.textContent = 'Reading image… 0%';
+
+        Tesseract.recognize(file, 'eng', {
+            logger: (m) => {
+                if (m && m.status) {
+                    const pct = m.progress ? Math.round(m.progress * 100) : 0;
+                    statusEl.textContent = m.status + '… ' + pct + '%';
+                }
+            },
+        })
+            .then(({ data }) => {
+                const text = (data && data.text) || '';
+                const tsv = luminateOcrToTsv(text);
+                if (!tsv) {
+                    statusEl.innerHTML = '<span class="text-danger">Could not find Title/Artist columns in the OCR output. Paste the rows manually below — one per line, "Artist — Title".</span>';
+                    return;
+                }
+                if (textarea) {
+                    textarea.value = tsv;
+                }
+                // Now that the textarea is populated, clear the file input
+                // so it doesn't also POST as chart_file (which would route
+                // through the xlsx parser and fail on a PNG).
+                if (fileEl) fileEl.value = '';
+                const rowCount = tsv.split('\n').length - 1; // minus header
+                statusEl.innerHTML = '<span class="text-success">✓ Extracted ' + rowCount + ' rows. Review the box below, fix any OCR mistakes, then click Import.</span>';
+            })
+            .catch((err) => {
+                console.error('[ICA] tesseract failed', err);
+                statusEl.innerHTML = '<span class="text-danger">OCR failed: ' + (err && err.message ? err.message : 'unknown') + '. Paste the rows manually.</span>';
+            });
+    }
+
+    /**
+     * Tesseract returns one line per visual row of the image. For Luminate's
+     * Top 200 layout the line looks like:
+     *   "1 MUTINY AFTER MIDNIGHT  JOHNNY BLUE SKIES & THE DARK ATLANTIC ..."
+     * We split on runs of 2+ spaces (Tesseract preserves multi-space gaps
+     * between columns) and take rank/title/artist as the first three cells.
+     * Output is a TSV header + one line per row that the server's
+     * TabularChartParser already understands.
+     */
+    function luminateOcrToTsv(rawText) {
+        const lines = rawText.split(/\r?\n/);
+        const out = [];
+        let sawHeader = false;
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].replace(/[—–]/g, '-').trim();
+            if (!line) continue;
+            // Skip the marketing/header rows
+            if (/luminate|copyright|confidential|week ending|top \d+|chart for/i.test(line)) {
+                continue;
+            }
+            if (/^rank\b/i.test(line) && /artist/i.test(line) && /title/i.test(line)) {
+                sawHeader = true;
+                continue;
+            }
+            // A row should start with a rank number
+            const m = line.match(/^(\d{1,3})\s+(.+)$/);
+            if (!m) continue;
+            const rank = m[1];
+            const rest = m[2];
+            // Split on 2+ spaces — Luminate exports use wide column gaps.
+            // Fall back to single-space split if the OCR collapsed gaps.
+            let parts = rest.split(/\s{2,}/).map((s) => s.trim()).filter(Boolean);
+            if (parts.length < 2) {
+                parts = rest.split(/\s+-\s+|\s+–\s+|\s+—\s+|\t/).map((s) => s.trim()).filter(Boolean);
+            }
+            if (parts.length < 2) continue;
+            const title = parts[0] || '';
+            const artist = parts[1] || '';
+            if (!title || !artist) continue;
+            out.push([rank, title, artist].join('\t'));
+        }
+        if (out.length === 0) return '';
+        // Prepend a header the TabularChartParser can match.
+        return ['Rank\tTitle\tArtist', ...out].join('\n');
+    }
+
+    const $spFile = document.getElementById('ica_sp_file');
+    const $spStatus = document.getElementById('ica_sp_ocr_status');
+    const $spBody = document.getElementById('ica_sp_body');
+    if ($spFile && $spStatus && $spBody) {
+        $spFile.addEventListener('change', function () {
+            const f = $spFile.files && $spFile.files[0];
+            if (f && isImageFile(f)) {
+                ocrLuminateImage($spFile, $spBody, $spStatus, $spFile);
+            } else {
+                $spStatus.style.display = 'none';
+            }
+        });
+    }
 
     // ── Run email import (auto-fetch trigger) ───────────────────────
     function runEmailImport(btn, dryRun) {

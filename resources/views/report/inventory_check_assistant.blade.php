@@ -196,9 +196,12 @@
                     <input type="date" class="form-control" id="ica_sp_week" value="{{ \Carbon\Carbon::now()->format('Y-m-d') }}">
                 </div>
                 <div class="form-group">
-                    <label>Chart file <small class="text-muted">(.xlsx, .csv, .tsv — preferred)</small></label>
-                    <input type="file" class="form-control" id="ica_sp_file" accept=".xlsx,.xls,.csv,.tsv,.txt">
-                    <p class="help-block small">Headers we recognize: <code>Artist</code> (or <code>ARTIST NAME</code>) + <code>Title</code> (or <code>Album</code>). Rank/Format/Release Date used if present.</p>
+                    <label>Chart file <small class="text-muted">(.xlsx / .csv / .png / .jpg)</small></label>
+                    <input type="file" class="form-control" id="ica_sp_file" accept=".xlsx,.xls,.csv,.tsv,.txt,.png,.jpg,.jpeg,.webp">
+                    <p class="help-block small">
+                        <strong>If you only have the email screenshot (Luminate PNG),</strong> drop it in here — we'll OCR it in your browser and fill the paste box below so you can double-check before importing. Takes 20-40s for a 200-row chart.
+                    </p>
+                    <div id="ica_sp_ocr_status" class="text-muted small" style="display:none; margin-top:6px;"></div>
                 </div>
                 <div class="form-group">
                     <label>…or paste chart body</label>
@@ -343,5 +346,9 @@
     window.ICA_SESSIONS_STORE = "{{ action('InventoryCheckController@storeSession') }}";
     window.ICA_CSRF = "{{ csrf_token() }}";
 </script>
+<!-- Tesseract.js for browser-side OCR of Luminate PNG screenshots. v5
+     loaded from jsDelivr (cached, ~1MB gzipped). Only kicks in when an
+     image file is selected on the StreetPulse modal. -->
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js"></script>
 <script src="{{ asset('js/inventory_check_assistant.js?v=' . $asset_v) }}"></script>
 @endsection
