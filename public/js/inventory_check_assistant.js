@@ -99,7 +99,7 @@
         }
 
         fetch(window.ICA_BUCKETS_URL + '?' + params.toString(), {
-            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': window.ICA_CSRF || '' },
             credentials: 'same-origin',
         })
             .then((r) => r.text().then((t) => ({ status: r.status, text: t })))
@@ -124,7 +124,17 @@
     // ── Rendering ────────────────────────────────────────────────────
     function renderBuckets(payload) {
         if (payload.meta && payload.meta.error === 'location_required') {
-            $root.innerHTML = '<div class="alert alert-warning"><strong>Pick a location first.</strong></div>';
+            $root.innerHTML = '<div class="alert alert-warning"><strong>Pick a location first.</strong> The store-button preset didn\'t resolve to a location_id. Open Advanced filters and pick one manually.</div>';
+            return;
+        }
+        if (payload.meta && payload.meta.error === 'build_failed') {
+            // Server caught an exception in buildBuckets — surface the
+            // actual message so we can fix the underlying issue instead
+            // of staring at "0 items".
+            $root.innerHTML = '<div class="alert alert-danger"><strong>Build failed on the server.</strong><br><br>'
+                + '<code>' + escapeHtml(payload.meta.message || 'unknown') + '</code><br><small>'
+                + escapeHtml(payload.meta.file || '') + '</small><br><br>'
+                + 'Send Sarah/Claude this message and the page will get fixed.</div>';
             return;
         }
 
@@ -297,6 +307,16 @@
             return;
         }
 
+        // Image files are never submitted to the server — they get OCR'd in
+        // the browser into the textarea first. If we see an image at Import
+        // time, the OCR hasn't finished yet (or the user changed their
+        // mind). Block the submit so the server never sees the .png and
+        // returns its 422 HTML page.
+        if (file && isImageFile(file) && !body) {
+            alert('OCR is still running on the image — wait for the green ✓ in the status line, then click Import again. (Or paste rows manually below.)');
+            return;
+        }
+
         btn.disabled = true;
         btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Importing…';
 
@@ -305,12 +325,16 @@
         fd.append('source', source);
         fd.append('week_of', week);
         if (body) fd.append('body', body);
-        if (file) fd.append('chart_file', file);
+        // Only forward the file if it's a tabular file the server can parse.
+        // Images were already converted into `body` by Tesseract, so don't
+        // double-submit.
+        if (file && !isImageFile(file)) fd.append('chart_file', file);
 
         fetch(window.ICA_CHART_IMPORT_URL, {
             method: 'POST',
             headers: {
                 'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
                 'X-CSRF-TOKEN': window.ICA_CSRF,
             },
             credentials: 'same-origin',
@@ -358,7 +382,7 @@
         return /\.(png|jpe?g|webp)$/i.test(file.name || '');
     }
 
-    function ocrLuminateImage(fileInput, textarea, statusEl, fileEl) {
+    function ocrLuminateImage(fileInput, textarea, statusEl, fileEl, importBtn) {
         const file = fileInput.files && fileInput.files[0];
         if (!file || !isImageFile(file)) return;
         if (typeof Tesseract === 'undefined') {
@@ -367,6 +391,14 @@
         }
         statusEl.style.display = 'block';
         statusEl.textContent = 'Reading image… 0%';
+        // Lock the Import button while OCR runs — clicking it before OCR
+        // finishes was making the form POST the .png as chart_file, which
+        // the server rejected with HTML and you saw "Unexpected token '<'".
+        if (importBtn) {
+            importBtn.disabled = true;
+            importBtn.dataset.origHtml = importBtn.dataset.origHtml || importBtn.innerHTML;
+            importBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> OCR running, please wait…';
+        }
 
         Tesseract.recognize(file, 'eng', {
             logger: (m) => {
@@ -396,6 +428,14 @@
             .catch((err) => {
                 console.error('[ICA] tesseract failed', err);
                 statusEl.innerHTML = '<span class="text-danger">OCR failed: ' + (err && err.message ? err.message : 'unknown') + '. Paste the rows manually.</span>';
+            })
+            .finally(() => {
+                if (importBtn) {
+                    importBtn.disabled = false;
+                    if (importBtn.dataset.origHtml) {
+                        importBtn.innerHTML = importBtn.dataset.origHtml;
+                    }
+                }
             });
     }
 
@@ -448,11 +488,12 @@
     const $spFile = document.getElementById('ica_sp_file');
     const $spStatus = document.getElementById('ica_sp_ocr_status');
     const $spBody = document.getElementById('ica_sp_body');
+    const $spImportBtn = document.getElementById('ica_sp_import');
     if ($spFile && $spStatus && $spBody) {
         $spFile.addEventListener('change', function () {
             const f = $spFile.files && $spFile.files[0];
             if (f && isImageFile(f)) {
-                ocrLuminateImage($spFile, $spBody, $spStatus, $spFile);
+                ocrLuminateImage($spFile, $spBody, $spStatus, $spFile, $spImportBtn);
             } else {
                 $spStatus.style.display = 'none';
             }
