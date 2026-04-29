@@ -20,53 +20,33 @@ class NivessaEventsFetcher
      */
     public function upcoming(int $lookaheadDays = 30): array
     {
-        $url = config('inventory_check.events_api_url');
-        if (empty($url)) {
+        $primaryUrl = config('inventory_check.events_api_url');
+        $tmUrl = config('inventory_check.events_ticketmaster_url');
+
+        $sources = array_values(array_filter([$primaryUrl, $tmUrl]));
+        if (empty($sources)) {
             return [];
         }
 
-        $cacheKey = 'nivessa_events_upcoming_' . md5($url) . '_' . $lookaheadDays;
+        $cacheKey = 'nivessa_events_upcoming_' . md5(implode('|', $sources)) . '_' . $lookaheadDays;
 
-        return Cache::remember($cacheKey, now()->addMinutes(15), function () use ($url, $lookaheadDays) {
-            // Use native cURL — this Laravel predates the Http facade. Same
-            // family of incompatibility as Request::boolean().
-            $payload = null;
-            try {
-                $ch = curl_init($url);
-                curl_setopt_array($ch, [
-                    CURLOPT_RETURNTRANSFER => true,
-                    CURLOPT_FOLLOWLOCATION => true,
-                    CURLOPT_TIMEOUT => 10,
-                    CURLOPT_CONNECTTIMEOUT => 5,
-                    CURLOPT_USERAGENT => 'NivessaERP/1.0 (+playlist.nivessa.com)',
-                    CURLOPT_HTTPHEADER => ['Accept: application/json'],
-                ]);
-                $body = curl_exec($ch);
-                $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                $err = curl_error($ch);
-                curl_close($ch);
-                if ($body === false || $status < 200 || $status >= 300) {
-                    Log::warning('NivessaEventsFetcher: non-200 from events API', [
-                        'status' => $status,
-                        'url' => $url,
-                        'curl_error' => $err,
-                    ]);
-                    return [];
+        return Cache::remember($cacheKey, now()->addMinutes(15), function () use ($sources, $lookaheadDays) {
+            // Pull every configured feed, merge results. Both endpoints
+            // return the same {data:[...]} envelope so we can use the
+            // same parser pass for each. Native cURL (Http facade is
+            // missing on this older Laravel).
+            $rows = [];
+            foreach ($sources as $url) {
+                $payload = $this->fetchJson($url);
+                if (!is_array($payload)) {
+                    continue;
                 }
-                $decoded = json_decode((string) $body, true);
-                if (!is_array($decoded)) {
-                    Log::warning('NivessaEventsFetcher: response not JSON', ['url' => $url]);
-                    return [];
+                $items = $payload['data'] ?? $payload['events'] ?? $payload ?? [];
+                if (is_array($items)) {
+                    foreach ($items as $it) {
+                        $rows[] = $it;
+                    }
                 }
-                $payload = $decoded;
-            } catch (\Throwable $e) {
-                Log::warning('NivessaEventsFetcher: fetch failed', ['error' => $e->getMessage()]);
-                return [];
-            }
-
-            $rows = $payload['data'] ?? $payload['events'] ?? $payload ?? [];
-            if (!is_array($rows)) {
-                return [];
             }
 
             $today = Carbon::today();
@@ -97,17 +77,33 @@ class NivessaEventsFetcher
                     $location = $location['name'] ?? null;
                 }
 
-                // Prefer structured artists if backend ever adds one; otherwise
-                // fall back to extracting artist names from the title.
+                // Pull artists from whichever of the structured fields the
+                // upstream uses:
+                //   - nivessa /events: `artists` (array of strings or objects)
+                //   - Ticketmaster feed: `attractions` (array of strings)
+                // Fall back to a heuristic extraction over the title/desc.
                 $artists = [];
+                $candidates = [];
                 if (!empty($e['artists']) && is_array($e['artists'])) {
-                    foreach ($e['artists'] as $a) {
-                        if (is_string($a)) {
-                            $artists[] = trim($a);
-                        } elseif (is_array($a) && !empty($a['name'])) {
-                            $artists[] = trim($a['name']);
-                        }
+                    $candidates = $e['artists'];
+                } elseif (!empty($e['attractions']) && is_array($e['attractions'])) {
+                    $candidates = $e['attractions'];
+                }
+                foreach ($candidates as $a) {
+                    if (is_string($a)) {
+                        $artists[] = trim($a);
+                    } elseif (is_array($a) && !empty($a['name'])) {
+                        $artists[] = trim($a['name']);
                     }
+                }
+                // For TM events the title is often just the artist name
+                // ("Carol Ades", "Radiohead") — if no structured artists
+                // came back AND the title looks short/single, treat the
+                // whole title as an artist guess. The product lookup is
+                // an artist name 'like' search so a wrong guess just
+                // returns nothing rather than wrong matches.
+                if (empty($artists) && $name !== '' && mb_strlen($name) < 60 && !preg_match('/listening|release|party/i', $name)) {
+                    $artists[] = $name;
                 }
                 if (empty($artists)) {
                     $artists = $this->extractArtistsFromText($name . ' ' . $description);
@@ -126,6 +122,48 @@ class NivessaEventsFetcher
 
             return $out;
         });
+    }
+
+    /**
+     * Fetch + JSON-decode one upstream feed. Returns null on any error.
+     * Native cURL because this Laravel predates the Http facade.
+     *
+     * @return array|null
+     */
+    protected function fetchJson(string $url)
+    {
+        try {
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_TIMEOUT => 10,
+                CURLOPT_CONNECTTIMEOUT => 5,
+                CURLOPT_USERAGENT => 'NivessaERP/1.0 (+playlist.nivessa.com)',
+                CURLOPT_HTTPHEADER => ['Accept: application/json'],
+            ]);
+            $body = curl_exec($ch);
+            $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $err = curl_error($ch);
+            curl_close($ch);
+            if ($body === false || $status < 200 || $status >= 300) {
+                Log::warning('NivessaEventsFetcher: non-200 from feed', [
+                    'status' => $status,
+                    'url' => $url,
+                    'curl_error' => $err,
+                ]);
+                return null;
+            }
+            $decoded = json_decode((string) $body, true);
+            if (!is_array($decoded)) {
+                Log::warning('NivessaEventsFetcher: response not JSON', ['url' => $url]);
+                return null;
+            }
+            return $decoded;
+        } catch (\Throwable $e) {
+            Log::warning('NivessaEventsFetcher: fetch failed', ['error' => $e->getMessage(), 'url' => $url]);
+            return null;
+        }
     }
 
     /**

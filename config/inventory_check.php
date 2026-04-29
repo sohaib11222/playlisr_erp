@@ -229,6 +229,10 @@ return [
     | "Upcoming events" bucket is skipped silently.
     */
     'events_api_url' => env('NIVESSA_EVENTS_API_URL', 'https://server.nivessa.com/api/v1/events/allEvents'),
+    // Public site's Ticketmaster LA feed (off-/api/ path because nginx
+    // hijacks /api/* on the website host). Returns the same shows that
+    // back the /events LA tab — what Sarah wants stocked for.
+    'events_ticketmaster_url' => env('NIVESSA_TM_FEED_URL', 'https://nivessa.com/ticketmaster-feed'),
     'events_lookahead_days' => (int) env('NIVESSA_EVENTS_LOOKAHEAD_DAYS', 30),
 
     /*
