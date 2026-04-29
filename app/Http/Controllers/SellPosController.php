@@ -167,8 +167,12 @@ class SellPosController extends Controller
         $business_id = $request->session()->get('user.business_id');
         $limit = (int) $request->get('limit', 30);
         $location_id = $request->get('location_id');
+        $created_by = $request->get('created_by');
 
         $business_locations = BusinessLocation::forDropdown($business_id, false);
+        // Employee picker: only currently-active staff with login allowed —
+        // ex-employees (allow_login=0) shouldn't clutter the cashier filter.
+        $employees = User::forDropdown($business_id, false, false, true, false, true);
 
         // Exclude historical xlsx imports — they're backfilled "Legacy Historical Item"
         // rows with old transaction_dates that were drowning out actual recent POS sales.
@@ -177,6 +181,7 @@ class SellPosController extends Controller
             ->where('transactions.status', 'final')
             ->whereNull('transactions.import_source')
             ->when($location_id, fn($q) => $q->where('transactions.location_id', $location_id))
+            ->when($created_by, fn($q) => $q->where('transactions.created_by', $created_by))
             ->with([
                 'sell_lines' => fn($q) => $q->whereNull('parent_sell_line_id'),
                 'sell_lines.product',
@@ -386,7 +391,7 @@ class SellPosController extends Controller
             ];
         }
 
-        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'limit', 'location_id', 'clover_by_transaction', 'clover_debug'));
+        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'clover_by_transaction', 'clover_debug'));
     }
 
     /**
@@ -407,12 +412,14 @@ class SellPosController extends Controller
         // Allow a higher cap for exports than the page's 100-row dropdown.
         $limit = min((int) $request->get('limit', 30), 1000);
         $location_id = $request->get('location_id');
+        $created_by = $request->get('created_by');
 
         $sales = Transaction::where('transactions.business_id', $business_id)
             ->where('transactions.type', 'sell')
             ->where('transactions.status', 'final')
             ->whereNull('transactions.import_source')
             ->when($location_id, fn($q) => $q->where('transactions.location_id', $location_id))
+            ->when($created_by, fn($q) => $q->where('transactions.created_by', $created_by))
             ->with([
                 'sell_lines' => fn($q) => $q->whereNull('parent_sell_line_id'),
                 'sell_lines.product',

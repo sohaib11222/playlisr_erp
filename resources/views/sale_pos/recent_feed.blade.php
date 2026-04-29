@@ -156,6 +156,15 @@
                     @endforeach
                 </select>
             </div>
+            <div style="min-width: 200px;">
+                <label for="rf-employee">Employee</label>
+                <select name="created_by" id="rf-employee" class="form-control" onchange="this.form.submit()">
+                    <option value="">All employees</option>
+                    @foreach($employees as $id => $name)
+                        <option value="{{ $id }}" {{ (string)$created_by === (string)$id ? 'selected' : '' }}>{{ trim($name) }}</option>
+                    @endforeach
+                </select>
+            </div>
             <div style="min-width: 120px;">
                 <label for="rf-limit">Show</label>
                 <select name="limit" id="rf-limit" class="form-control" onchange="this.form.submit()">
