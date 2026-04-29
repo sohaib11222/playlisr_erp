@@ -636,14 +636,15 @@ body.pos-v2 .pos-quick-grid-title {
 }
 body.pos-v2 .pos-quick-grid {
 	display: grid !important;
-	grid-template-columns: 1fr 1fr !important;
-	gap: 10px !important;
+	grid-template-columns: 1fr 1fr 1fr !important;
+	gap: 8px !important;
 }
 body.pos-v2 .pos-quick-tile {
 	background: var(--pos-surface) !important;
 	border: 1px solid var(--pos-line) !important;
 	border-radius: var(--pos-radius-sm) !important;
-	padding: 18px 10px !important;
+	padding: 12px 6px !important;
+	font-size: 12px !important;
 	display: flex !important; flex-direction: column !important;
 	align-items: center !important; justify-content: center !important;
 	gap: 4px !important;
@@ -663,16 +664,16 @@ body.pos-v2 .pos-quick-tile:active { transform: translateY(1px) !important; }
    Normalize both to 20px, ink color, muted weight so the grid feels even. */
 body.pos-v2 .pos-quick-tile i,
 body.pos-v2 .pos-quick-tile > span:first-child {
-	font-size: 20px !important;
+	font-size: 18px !important;
 	line-height: 1 !important;
-	margin-bottom: 4px !important;
+	margin-bottom: 3px !important;
 	display: block !important;
 	color: var(--pos-ink-2) !important;
 	font-weight: 400 !important;
 }
 body.pos-v2 .pos-quick-tile .pos-quick-price {
 	font-weight: 700 !important;
-	font-size: 15px !important;
+	font-size: 12px !important;
 	color: var(--pos-ink-2) !important;
 	margin-top: 2px !important;
 	letter-spacing: 0 !important;
