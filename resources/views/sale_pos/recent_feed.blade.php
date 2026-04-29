@@ -173,6 +173,15 @@
                     @endforeach
                 </select>
             </div>
+            <div style="min-width: 200px;">
+                <label for="rf-discrepancy">Clover sync</label>
+                <select name="discrepancy" id="rf-discrepancy" class="form-control" onchange="this.form.submit()">
+                    <option value=""           {{ $discrepancy === ''           ? 'selected' : '' }}>All sales</option>
+                    <option value="any"        {{ $discrepancy === 'any'        ? 'selected' : '' }}>Any discrepancy</option>
+                    <option value="mismatch"   {{ $discrepancy === 'mismatch'   ? 'selected' : '' }}>Mismatches only (ERP ≠ Clover)</option>
+                    <option value="no_clover"  {{ $discrepancy === 'no_clover'  ? 'selected' : '' }}>ERP only (no Clover match)</option>
+                </select>
+            </div>
             <div class="rf-count">{{ $sales->count() }} sale{{ $sales->count() === 1 ? '' : 's' }}</div>
             <button type="submit" class="rf-export"
                     formaction="{{ action('SellPosController@recentSalesFeedExport') }}"
@@ -180,6 +189,32 @@
                 Export CSV
             </button>
         </form>
+
+        {{-- Discrepancy summary across the scanned pool. Always shown so the user
+             knows whether it's worth flipping the filter on, and whether to widen
+             the date range / cashier filter. Reset link clears the filter. --}}
+        @if($scanned_count > 0)
+            @php
+                $matched_count = $scanned_count - $mismatch_count - $no_clover_count;
+                $isFiltered = $discrepancy !== '';
+            @endphp
+            <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;
+                        background:{{ $isFiltered ? '#FFF3E0' : '#F7F1E3' }};
+                        border:1px solid {{ $isFiltered ? '#E6B98A' : '#DFD2B3' }};
+                        border-radius:8px;padding:8px 14px;margin-bottom:14px;
+                        font-size:12px;color:#5A5045;">
+                <span>Scanned <strong>{{ number_format($scanned_count) }}</strong> recent sale{{ $scanned_count === 1 ? '' : 's' }}:</span>
+                <span><span style="color:#1F8B3F;font-weight:700;">{{ number_format($matched_count) }}</span> matched</span>
+                <span><span style="color:#B0451A;font-weight:700;">{{ number_format($mismatch_count) }}</span> mismatch{{ $mismatch_count === 1 ? '' : 'es' }}</span>
+                <span><span style="color:#8B6A1A;font-weight:700;">{{ number_format($no_clover_count) }}</span> ERP only (no Clover)</span>
+                @if($isFiltered)
+                    <a href="{{ action('SellPosController@recentSalesFeed', array_filter(['location_id' => $location_id, 'created_by' => $created_by, 'limit' => $limit])) }}"
+                       style="margin-left:auto;color:#8B6A1A;text-decoration:underline;font-weight:600;">
+                        Clear discrepancy filter
+                    </a>
+                @endif
+            </div>
+        @endif
 
         @if(!empty($clover_debug))
             <div style="background:#FFF8E1;border:1px solid #E6D58A;border-radius:8px;padding:12px 14px;margin-bottom:14px;font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#5A5045;line-height:1.5;">
@@ -326,7 +361,17 @@
                 </div>
             </div>
         @empty
-            <div class="rf-empty">No sales yet for this filter.</div>
+            <div class="rf-empty">
+                @if($discrepancy === 'mismatch')
+                    No mismatches in the scanned window — every paired ERP sale matches Clover within ±1¢.
+                @elseif($discrepancy === 'no_clover')
+                    Every recent ERP sale paired to a Clover charge — nothing unmatched.
+                @elseif($discrepancy === 'any')
+                    No discrepancies in the scanned window — ERP and Clover are fully reconciled.
+                @else
+                    No sales yet for this filter.
+                @endif
+            </div>
         @endforelse
     </div>
 </section>

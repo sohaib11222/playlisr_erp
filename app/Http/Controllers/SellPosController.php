@@ -539,6 +539,19 @@ class SellPosController extends Controller
             }
         }
 
+        if ($discrepancy !== '') {
+            $toCentsFilter = function ($x) { return (int) round(((float) $x) * 100); };
+            $sales = $sales->filter(function ($sale) use ($clover_by_transaction, $discrepancy, $toCentsFilter) {
+                $info = $clover_by_transaction[$sale->id] ?? null;
+                $isNoClover = $info === null;
+                $isMismatch = $info !== null && abs($info['amount_cents'] - $toCentsFilter($sale->final_total)) > 1;
+                if ($discrepancy === 'mismatch')   return $isMismatch;
+                if ($discrepancy === 'no_clover')  return $isNoClover;
+                if ($discrepancy === 'any')        return $isMismatch || $isNoClover;
+                return true;
+            })->take($limit)->values();
+        }
+
         $filename = 'recent-sales-feed-' . date('Y-m-d_His') . '.csv';
         $headers = [
             'Content-Type' => 'text/csv',
