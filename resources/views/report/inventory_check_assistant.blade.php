@@ -196,10 +196,10 @@
                     <input type="date" class="form-control" id="ica_sp_week" value="{{ \Carbon\Carbon::now()->format('Y-m-d') }}">
                 </div>
                 <div class="form-group">
-                    <label>Chart file <small class="text-muted">(.xlsx / .csv / .png / .jpg)</small></label>
-                    <input type="file" class="form-control" id="ica_sp_file" accept=".xlsx,.xls,.csv,.tsv,.txt,.png,.jpg,.jpeg,.webp">
+                    <label>Chart file <small class="text-muted">(.xlsx / .csv / .png / .jpg — pick multiple PNGs at once)</small></label>
+                    <input type="file" class="form-control" id="ica_sp_file" accept=".xlsx,.xls,.csv,.tsv,.txt,.png,.jpg,.jpeg,.webp" multiple>
                     <p class="help-block small">
-                        <strong>If you only have the email screenshot (Luminate PNG),</strong> drop it in here — we'll OCR it in your browser and fill the paste box below so you can double-check before importing. Takes 20-40s for a 200-row chart.
+                        <strong>If you only have email screenshots (Luminate PNG),</strong> select all of them at once (Cmd-click or Shift-click in the file picker) — we'll OCR each one in your browser and append the rows to the paste box. ~30s per image.
                     </p>
                     <div id="ica_sp_ocr_status" class="text-muted small" style="display:none; margin-top:6px;"></div>
                 </div>

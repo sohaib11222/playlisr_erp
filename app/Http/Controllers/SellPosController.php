@@ -168,11 +168,24 @@ class SellPosController extends Controller
         $limit = (int) $request->get('limit', 30);
         $location_id = $request->get('location_id');
         $created_by = $request->get('created_by');
+        // Discrepancy filter — '', 'mismatch', 'no_clover', 'any'. Applied
+        // *after* the Clover match runs (since both sides need to be paired
+        // before we can know which sales are discrepant), so when a filter
+        // is active we widen the DB pool and trim down post-match.
+        $discrepancy = $request->get('discrepancy', '');
+        $allowedDiscrepancies = ['', 'mismatch', 'no_clover', 'any'];
+        if (!in_array($discrepancy, $allowedDiscrepancies, true)) $discrepancy = '';
 
         $business_locations = BusinessLocation::forDropdown($business_id, false);
         // Employee picker: only currently-active staff with login allowed —
         // ex-employees (allow_login=0) shouldn't clutter the cashier filter.
         $employees = User::forDropdown($business_id, false, false, true, false, true);
+
+        // When filtering for discrepancies, scan a wider pool so the user
+        // actually sees `limit` results — mismatches are rare, so a vanilla
+        // `LIMIT 30` would usually return 0–2 rows. Capped at 500 to keep
+        // the eager-load + Clover match cheap.
+        $fetchLimit = $discrepancy ? min(max($limit, 30) * 20, 500) : $limit;
 
         // Exclude historical xlsx imports — they're backfilled "Legacy Historical Item"
         // rows with old transaction_dates that were drowning out actual recent POS sales.
@@ -194,7 +207,7 @@ class SellPosController extends Controller
                 'sales_person',
             ])
             ->orderByDesc('transaction_date')
-            ->limit($limit)
+            ->limit($fetchLimit)
             ->get();
 
         // Pull Clover-side charge totals for these sales by matching each
@@ -391,7 +404,35 @@ class SellPosController extends Controller
             ];
         }
 
-        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'clover_by_transaction', 'clover_debug'));
+        // Pre-filter discrepancy counts (across the wider pool we just scanned)
+        // so the UI can show a "5 mismatches · 12 ERP-only" summary regardless
+        // of which filter the user has on. Always computed in cents.
+        $toCentsSummary = function ($x) { return (int) round(((float) $x) * 100); };
+        $mismatch_count = 0;
+        $no_clover_count = 0;
+        foreach ($sales as $sale) {
+            $info = $clover_by_transaction[$sale->id] ?? null;
+            if ($info === null) {
+                $no_clover_count++;
+            } elseif (abs($info['amount_cents'] - $toCentsSummary($sale->final_total)) > 1) {
+                $mismatch_count++;
+            }
+        }
+        $scanned_count = $sales->count();
+
+        if ($discrepancy !== '') {
+            $sales = $sales->filter(function ($sale) use ($clover_by_transaction, $discrepancy, $toCentsSummary) {
+                $info = $clover_by_transaction[$sale->id] ?? null;
+                $isNoClover = $info === null;
+                $isMismatch = $info !== null && abs($info['amount_cents'] - $toCentsSummary($sale->final_total)) > 1;
+                if ($discrepancy === 'mismatch')   return $isMismatch;
+                if ($discrepancy === 'no_clover')  return $isNoClover;
+                if ($discrepancy === 'any')        return $isMismatch || $isNoClover;
+                return true;
+            })->take($limit)->values();
+        }
+
+        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'scanned_count', 'clover_by_transaction', 'clover_debug'));
     }
 
     /**
@@ -413,6 +454,12 @@ class SellPosController extends Controller
         $limit = min((int) $request->get('limit', 30), 1000);
         $location_id = $request->get('location_id');
         $created_by = $request->get('created_by');
+        $discrepancy = $request->get('discrepancy', '');
+        if (!in_array($discrepancy, ['', 'mismatch', 'no_clover', 'any'], true)) $discrepancy = '';
+        // Same widening trick the page uses: when filtering for rare
+        // discrepancies, scan a bigger pool then trim post-match. Capped
+        // higher than the page since exports often want the long tail.
+        $fetchLimit = $discrepancy ? min(max($limit, 50) * 20, 2000) : $limit;
 
         $sales = Transaction::where('transactions.business_id', $business_id)
             ->where('transactions.type', 'sell')
@@ -430,7 +477,7 @@ class SellPosController extends Controller
                 'sales_person',
             ])
             ->orderByDesc('transaction_date')
-            ->limit($limit)
+            ->limit($fetchLimit)
             ->get();
 
         // Match Clover charges using the same heuristic as the page render:

@@ -382,61 +382,82 @@
         return /\.(png|jpe?g|webp)$/i.test(file.name || '');
     }
 
-    function ocrLuminateImage(fileInput, textarea, statusEl, fileEl, importBtn) {
-        const file = fileInput.files && fileInput.files[0];
-        if (!file || !isImageFile(file)) return;
+    function ocrLuminateImages(fileInput, textarea, statusEl, fileEl, importBtn) {
+        const allFiles = fileInput.files ? Array.from(fileInput.files) : [];
+        const imageFiles = allFiles.filter(isImageFile);
+        if (imageFiles.length === 0) return;
         if (typeof Tesseract === 'undefined') {
             alert('OCR library failed to load (network blocked?). Paste the rows manually for now.');
             return;
         }
         statusEl.style.display = 'block';
-        statusEl.textContent = 'Reading image… 0%';
-        // Lock the Import button while OCR runs — clicking it before OCR
-        // finishes was making the form POST the .png as chart_file, which
-        // the server rejected with HTML and you saw "Unexpected token '<'".
+
         if (importBtn) {
             importBtn.disabled = true;
             importBtn.dataset.origHtml = importBtn.dataset.origHtml || importBtn.innerHTML;
             importBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> OCR running, please wait…';
         }
 
-        Tesseract.recognize(file, 'eng', {
-            logger: (m) => {
-                if (m && m.status) {
-                    const pct = m.progress ? Math.round(m.progress * 100) : 0;
-                    statusEl.textContent = m.status + '… ' + pct + '%';
+        // Process images sequentially — running 5 Tesseract workers in
+        // parallel would crush the user's laptop. Append rows to the
+        // textarea as we go so the user sees progress.
+        const allRows = [];
+        const total = imageFiles.length;
+
+        const processNext = (idx) => {
+            if (idx >= total) {
+                // Done with all images — write the consolidated TSV.
+                if (allRows.length === 0) {
+                    statusEl.innerHTML = '<span class="text-danger">No Title/Artist rows recognized in any of the ' + total + ' image' + (total > 1 ? 's' : '') + '. Try clearer screenshots, or paste rows manually.</span>';
+                } else {
+                    // Existing textarea content stays — append, don't overwrite.
+                    const existing = (textarea.value || '').trim();
+                    const header = 'Rank\tTitle\tArtist';
+                    const hasHeader = existing.indexOf(header) !== -1 || /^rank\b/i.test(existing.split('\n')[0] || '');
+                    let combined;
+                    if (existing) {
+                        combined = existing + '\n' + allRows.join('\n');
+                    } else {
+                        combined = header + '\n' + allRows.join('\n');
+                    }
+                    textarea.value = combined;
+                    statusEl.innerHTML = '<span class="text-success">✓ Extracted ' + allRows.length + ' rows from ' + total + ' image' + (total > 1 ? 's' : '') + '. Review the paste box below, fix any obvious OCR mistakes, then click Import.</span>';
                 }
-            },
-        })
-            .then(({ data }) => {
-                const text = (data && data.text) || '';
-                const tsv = luminateOcrToTsv(text);
-                if (!tsv) {
-                    statusEl.innerHTML = '<span class="text-danger">Could not find Title/Artist columns in the OCR output. Paste the rows manually below — one per line, "Artist — Title".</span>';
-                    return;
-                }
-                if (textarea) {
-                    textarea.value = tsv;
-                }
-                // Now that the textarea is populated, clear the file input
-                // so it doesn't also POST as chart_file (which would route
-                // through the xlsx parser and fail on a PNG).
                 if (fileEl) fileEl.value = '';
-                const rowCount = tsv.split('\n').length - 1; // minus header
-                statusEl.innerHTML = '<span class="text-success">✓ Extracted ' + rowCount + ' rows. Review the box below, fix any OCR mistakes, then click Import.</span>';
-            })
-            .catch((err) => {
-                console.error('[ICA] tesseract failed', err);
-                statusEl.innerHTML = '<span class="text-danger">OCR failed: ' + (err && err.message ? err.message : 'unknown') + '. Paste the rows manually.</span>';
-            })
-            .finally(() => {
                 if (importBtn) {
                     importBtn.disabled = false;
-                    if (importBtn.dataset.origHtml) {
-                        importBtn.innerHTML = importBtn.dataset.origHtml;
-                    }
+                    if (importBtn.dataset.origHtml) importBtn.innerHTML = importBtn.dataset.origHtml;
                 }
-            });
+                return;
+            }
+
+            const file = imageFiles[idx];
+            const fileLabel = (idx + 1) + '/' + total;
+            statusEl.textContent = 'Image ' + fileLabel + ': starting…';
+
+            Tesseract.recognize(file, 'eng', {
+                logger: (m) => {
+                    if (m && m.status) {
+                        const pct = m.progress ? Math.round(m.progress * 100) : 0;
+                        statusEl.textContent = 'Image ' + fileLabel + ': ' + m.status + '… ' + pct + '%';
+                    }
+                },
+            })
+                .then(({ data }) => {
+                    const text = (data && data.text) || '';
+                    const rows = luminateOcrToRows(text);
+                    rows.forEach((r) => allRows.push(r));
+                })
+                .catch((err) => {
+                    console.error('[ICA] tesseract failed on image ' + fileLabel, err);
+                    statusEl.innerHTML = '<span class="text-warning">⚠ OCR failed on image ' + fileLabel + ': ' + escapeHtml(err && err.message ? err.message : 'unknown') + '. Continuing with the rest…</span>';
+                })
+                .finally(() => {
+                    processNext(idx + 1);
+                });
+        };
+
+        processNext(0);
     }
 
     /**
@@ -445,13 +466,12 @@
      *   "1 MUTINY AFTER MIDNIGHT  JOHNNY BLUE SKIES & THE DARK ATLANTIC ..."
      * We split on runs of 2+ spaces (Tesseract preserves multi-space gaps
      * between columns) and take rank/title/artist as the first three cells.
-     * Output is a TSV header + one line per row that the server's
-     * TabularChartParser already understands.
+     * Returns an array of TSV-formatted strings (no header) so multiple
+     * images can be concatenated cleanly.
      */
-    function luminateOcrToTsv(rawText) {
+    function luminateOcrToRows(rawText) {
         const lines = rawText.split(/\r?\n/);
         const out = [];
-        let sawHeader = false;
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i].replace(/[—–]/g, '-').trim();
             if (!line) continue;
@@ -460,7 +480,6 @@
                 continue;
             }
             if (/^rank\b/i.test(line) && /artist/i.test(line) && /title/i.test(line)) {
-                sawHeader = true;
                 continue;
             }
             // A row should start with a rank number
@@ -480,9 +499,7 @@
             if (!title || !artist) continue;
             out.push([rank, title, artist].join('\t'));
         }
-        if (out.length === 0) return '';
-        // Prepend a header the TabularChartParser can match.
-        return ['Rank\tTitle\tArtist', ...out].join('\n');
+        return out;
     }
 
     const $spFile = document.getElementById('ica_sp_file');
@@ -491,9 +508,10 @@
     const $spImportBtn = document.getElementById('ica_sp_import');
     if ($spFile && $spStatus && $spBody) {
         $spFile.addEventListener('change', function () {
-            const f = $spFile.files && $spFile.files[0];
-            if (f && isImageFile(f)) {
-                ocrLuminateImage($spFile, $spBody, $spStatus, $spFile, $spImportBtn);
+            const files = $spFile.files ? Array.from($spFile.files) : [];
+            const anyImages = files.some(isImageFile);
+            if (anyImages) {
+                ocrLuminateImages($spFile, $spBody, $spStatus, $spFile, $spImportBtn);
             } else {
                 $spStatus.style.display = 'none';
             }
