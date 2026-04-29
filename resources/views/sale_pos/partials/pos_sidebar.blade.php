@@ -71,28 +71,29 @@
 {{-- Quick-add preset tiles for items always entered manually (drinks, candy, pins, stickers).
      Tapping a tile adds the preset straight to the cart — it DOES NOT open a modal. --}}
 <style>
-    .pos-quick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+    .pos-quick-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 14px; }
     .pos-quick-grid-title { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #6b7280; font-weight: 700; margin: 2px 0 8px 2px; }
     .pos-quick-tile {
         background: linear-gradient(135deg, #fef3c7, #fde68a);
         border: 2px solid #f59e0b;
         color: #78350f;
         border-radius: 12px;
-        padding: 18px 14px;
-        font-size: 17px;
+        padding: 12px 6px;
+        font-size: 13px;
         font-weight: 800;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        letter-spacing: 0.3px;
         cursor: pointer;
         text-align: center;
         transition: transform 0.08s ease, box-shadow 0.08s ease;
         box-shadow: 0 2px 4px rgba(245, 158, 11, 0.15);
+        line-height: 1.2;
     }
     .pos-quick-tile:hover { background: linear-gradient(135deg, #fde68a, #fcd34d); transform: translateY(-1px); box-shadow: 0 4px 8px rgba(245, 158, 11, 0.25); }
     .pos-quick-tile:active { transform: translateY(0); }
     .pos-quick-tile:disabled { opacity: 0.6; cursor: progress; }
-    .pos-quick-tile .pos-quick-price { display: block; font-size: 14px; opacity: 0.85; margin-top: 4px; }
-    .pos-quick-tile i { display: block; font-size: 22px; margin-bottom: 4px; }
+    .pos-quick-tile .pos-quick-price { display: block; font-size: 12px; opacity: 0.85; margin-top: 3px; }
+    .pos-quick-tile i { display: block; font-size: 18px; margin-bottom: 3px; }
 </style>
 <div class="pos-quick-grid-title">Quick Add — Snacks & Drinks</div>
 <div class="pos-quick-grid">
