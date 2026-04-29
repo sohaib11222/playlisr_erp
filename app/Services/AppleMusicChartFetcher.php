@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -15,6 +14,9 @@ use Illuminate\Support\Facades\Log;
  *
  * We try the canonical host first and fall back, so the "feed not found"
  * symptom Sarah saw doesn't recur if Apple flips the alias again.
+ *
+ * Uses native cURL because this Laravel version predates the Http facade
+ * (Laravel 7+). Same family of incompatibility as Request::boolean().
  *
  * Apple updates this daily. Caller is expected to throttle (the ICA cron
  * runs once a day; the manual button is rare).
@@ -43,19 +45,18 @@ class AppleMusicChartFetcher
         $body = null;
         $errors = [];
         foreach (self::ENDPOINTS as $url) {
-            try {
-                $resp = Http::timeout(10)
-                    ->withHeaders(['User-Agent' => 'NivessaERP/1.0 (+playlist.nivessa.com)'])
-                    ->get($url);
-                if ($resp->ok()) {
-                    $body = $resp->json();
+            $result = $this->curlGet($url);
+            if ($result['ok']) {
+                $decoded = json_decode($result['body'], true);
+                if (is_array($decoded)) {
+                    $body = $decoded;
                     $this->lastEndpoint = $url;
                     break;
                 }
-                $errors[] = $url . ' → HTTP ' . $resp->status();
-            } catch (\Throwable $e) {
-                $errors[] = $url . ' → ' . $e->getMessage();
+                $errors[] = $url . ' → response was not JSON';
+                continue;
             }
+            $errors[] = $url . ' → ' . $result['error'];
         }
 
         if ($body === null) {
@@ -95,5 +96,37 @@ class AppleMusicChartFetcher
         }
 
         return $out;
+    }
+
+    /**
+     * @return array{ok:bool, status:int, body:string, error:string}
+     */
+    protected function curlGet(string $url): array
+    {
+        $ch = curl_init($url);
+        if ($ch === false) {
+            return ['ok' => false, 'status' => 0, 'body' => '', 'error' => 'curl_init failed'];
+        }
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_TIMEOUT => 10,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_USERAGENT => 'NivessaERP/1.0 (+playlist.nivessa.com)',
+            CURLOPT_HTTPHEADER => ['Accept: application/json'],
+        ]);
+        $body = curl_exec($ch);
+        if ($body === false) {
+            $err = curl_error($ch) ?: 'curl_exec failed';
+            curl_close($ch);
+            return ['ok' => false, 'status' => 0, 'body' => '', 'error' => $err];
+        }
+        $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($status < 200 || $status >= 300) {
+            return ['ok' => false, 'status' => $status, 'body' => (string) $body, 'error' => 'HTTP ' . $status];
+        }
+        return ['ok' => true, 'status' => $status, 'body' => (string) $body, 'error' => ''];
     }
 }

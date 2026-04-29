@@ -87,17 +87,28 @@
         $root.innerHTML = '<div class="text-center text-muted" style="padding: 30px;"><i class="fa fa-spinner fa-spin fa-2x"></i><p>Building…</p></div>';
         $exportStrip.style.display = 'none';
 
+        // Surface what we sent so debugging "No candidates" is one F12 away.
+        console.log('[ICA] build request', { location_id: $location && $location.value, preset: $preset && $preset.value, category_id: $category && $category.value });
+
         fetch(window.ICA_BUCKETS_URL + '?' + params.toString(), {
             headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
             credentials: 'same-origin',
         })
-            .then((r) => r.json())
-            .then((payload) => {
+            .then((r) => r.text().then((t) => ({ status: r.status, text: t })))
+            .then(({ status, text }) => {
+                let payload = null;
+                try { payload = JSON.parse(text); } catch (_) { /* not json */ }
+                console.log('[ICA] build response', { status, payload, raw: payload ? null : text.substring(0, 500) });
+                if (!payload) {
+                    $root.innerHTML = '<div class="alert alert-danger"><strong>Server didn\'t return JSON (HTTP ' + status + ').</strong> The browser console (F12 → Console) has the first 500 chars of the response. Most common cause: a PHP error in InventoryCheckService — Sarah, screenshot the console and send me what it says.</div>';
+                    return;
+                }
                 lastResult = payload;
                 renderBuckets(payload);
-                if (payload.buckets) $exportStrip.style.display = 'block';
+                $exportStrip.style.display = 'block';
             })
             .catch((err) => {
+                console.error('[ICA] build error', err);
                 $root.innerHTML = '<div class="alert alert-danger">Failed to load: ' + (err && err.message ? err.message : 'unknown error') + '</div>';
             });
     }

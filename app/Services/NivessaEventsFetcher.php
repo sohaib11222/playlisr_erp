@@ -4,7 +4,6 @@ namespace App\Services;
 
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -29,16 +28,37 @@ class NivessaEventsFetcher
         $cacheKey = 'nivessa_events_upcoming_' . md5($url) . '_' . $lookaheadDays;
 
         return Cache::remember($cacheKey, now()->addMinutes(15), function () use ($url, $lookaheadDays) {
+            // Use native cURL — this Laravel predates the Http facade. Same
+            // family of incompatibility as Request::boolean().
+            $payload = null;
             try {
-                $resp = Http::timeout(10)->get($url);
-                if (!$resp->ok()) {
+                $ch = curl_init($url);
+                curl_setopt_array($ch, [
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_FOLLOWLOCATION => true,
+                    CURLOPT_TIMEOUT => 10,
+                    CURLOPT_CONNECTTIMEOUT => 5,
+                    CURLOPT_USERAGENT => 'NivessaERP/1.0 (+playlist.nivessa.com)',
+                    CURLOPT_HTTPHEADER => ['Accept: application/json'],
+                ]);
+                $body = curl_exec($ch);
+                $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                $err = curl_error($ch);
+                curl_close($ch);
+                if ($body === false || $status < 200 || $status >= 300) {
                     Log::warning('NivessaEventsFetcher: non-200 from events API', [
-                        'status' => $resp->status(),
+                        'status' => $status,
                         'url' => $url,
+                        'curl_error' => $err,
                     ]);
                     return [];
                 }
-                $payload = $resp->json();
+                $decoded = json_decode((string) $body, true);
+                if (!is_array($decoded)) {
+                    Log::warning('NivessaEventsFetcher: response not JSON', ['url' => $url]);
+                    return [];
+                }
+                $payload = $decoded;
             } catch (\Throwable $e) {
                 Log::warning('NivessaEventsFetcher: fetch failed', ['error' => $e->getMessage()]);
                 return [];

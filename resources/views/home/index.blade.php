@@ -340,6 +340,57 @@
          inline here caused "$ is not defined" and broke every tab + pill click. --}}
     @endif
 
+    {{-- ==========================================================
+         Fastest Selling Genres — turnover speed (avg days from
+         intake to sale). Complements "What's hot" which ranks by
+         revenue: a genre can be hot AND slow (high $ per record,
+         long shelf life) or fast but lower revenue. Both signals
+         together drive what to face out + what to keep stocking.
+         ========================================================== --}}
+    @if(!empty($fastest_genres) && $fastest_genres->isNotEmpty())
+    <style>
+        .fsg-module { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:20px 24px; margin-bottom:14px; box-shadow:0 1px 3px rgba(0,0,0,0.03); }
+        .fsg-title { font-size:16px; font-weight:600; margin:0; }
+        .fsg-sub { font-size:12px; color:#6b7280; margin:0 0 14px 0; }
+        .fsg-row { display:grid; grid-template-columns:24px 1fr 140px 90px 90px; gap:12px; align-items:center; padding:12px; background:#f8fafc; border-radius:8px; margin-bottom:8px; }
+        .fsg-rank { font-size:13px; font-weight:600; color:#6b7280; text-align:center; }
+        .fsg-label { font-size:14px; font-weight:500; margin:0; }
+        .fsg-sub-num { font-size:11px; color:#6b7280; margin:2px 0 0 0; }
+        .fsg-bar { height:8px; background:#e5e7eb; border-radius:4px; overflow:hidden; }
+        .fsg-bar > div { height:100%; background:#3b6d11; }
+        .fsg-days { font-size:13px; font-weight:600; color:#0f172a; text-align:right; }
+        .fsg-days-num { font-size:18px; }
+        .fsg-days-unit { font-size:11px; color:#6b7280; margin-left:2px; }
+        .fsg-tag { font-size:11px; color:#6b7280; }
+        .fsg-tag.blazing { color:#9a3412; font-weight:600; }
+        .fsg-tag.fast { color:#065f46; font-weight:600; }
+        .fsg-tag.slow { color:#991b1b; }
+    </style>
+
+    <div class="fsg-module">
+        <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:2px;">
+            <div class="fsg-title">Fastest selling genres</div>
+            <div class="fsg-sub" style="margin-bottom:0;">Last 90 days</div>
+        </div>
+        <div class="fsg-sub">Avg days from intake to sale — lower is faster (genres with ≥5 sales)</div>
+
+        @foreach($fastest_genres as $idx => $r)
+            <div class="fsg-row">
+                <div class="fsg-rank">{{ $idx + 1 }}</div>
+                <div>
+                    <p class="fsg-label">{{ $r->genre }}</p>
+                    <p class="fsg-sub-num">{{ number_format($r->units) }} units · ${{ number_format($r->revenue, 0) }}</p>
+                </div>
+                <div class="fsg-bar"><div style="width:{{ $r->bar_pct }}%;"></div></div>
+                <div class="fsg-days">
+                    <span class="fsg-days-num">{{ number_format($r->avg_sell_days, 1) }}</span><span class="fsg-days-unit">d</span>
+                </div>
+                <div class="fsg-tag {{ $r->tag }}">{{ $r->tag_emoji ? $r->tag_emoji . ' ' : '' }}{{ $r->tag }}</div>
+            </div>
+        @endforeach
+    </div>
+    @endif
+
     {{-- OLD metrics kept below as secondary "business-wide" dashboard.
          Can be collapsed/removed once the personal dashboard proves out. --}}
 

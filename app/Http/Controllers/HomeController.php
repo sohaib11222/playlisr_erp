@@ -558,6 +558,57 @@ class HomeController extends Controller
         }
 
         // ==========================================================
+        // Fastest Selling Genres — turnover speed per genre.
+        // Avg days from purchase/intake (purchase_lines.transaction)
+        // to sale (sell_lines.transaction), grouped by sub_category.
+        // Lower avg = faster mover. Last 90 days, ≥5 sales required
+        // so a single quick flip doesn't put a thin genre at the top.
+        // ==========================================================
+        $fsg_start = \Carbon::now()->subDays(89)->startOfDay()->toDateTimeString();
+        $fsg_end   = \Carbon::now()->endOfDay()->toDateTimeString();
+
+        $fastest_genres = \DB::table('transaction_sell_lines_purchase_lines as tslp')
+            ->join('purchase_lines as pl', 'pl.id', '=', 'tslp.purchase_line_id')
+            ->join('transactions as purchase', 'purchase.id', '=', 'pl.transaction_id')
+            ->join('transaction_sell_lines as tsl', 'tsl.id', '=', 'tslp.sell_line_id')
+            ->join('transactions as sale', 'sale.id', '=', 'tsl.transaction_id')
+            ->join('products as p', 'p.id', '=', 'tsl.product_id')
+            ->leftJoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')
+            ->where('sale.business_id', $business_id)
+            ->where('sale.type', 'sell')
+            ->where('sale.status', 'final')
+            ->whereNull('sale.import_source')
+            ->whereBetween('sale.transaction_date', [$fsg_start, $fsg_end])
+            ->whereNotNull('purchase.transaction_date')
+            ->whereRaw('DATEDIFF(sale.transaction_date, purchase.transaction_date) >= 0')
+            ->selectRaw("COALESCE(NULLIF(sc.name, ''), '(uncategorized)') as genre,
+                SUM(DATEDIFF(sale.transaction_date, purchase.transaction_date) * tslp.quantity) / NULLIF(SUM(tslp.quantity), 0) as avg_sell_days,
+                SUM(tslp.quantity) as units,
+                SUM(tslp.quantity * tsl.unit_price_inc_tax) as revenue")
+            ->groupBy('sc.name')
+            ->havingRaw('SUM(tslp.quantity) >= 5')
+            ->orderBy('avg_sell_days', 'asc')
+            ->limit(10)
+            ->get();
+
+        // Bar pct = fastest / this, so fastest = 100% and a genre that
+        // takes 2x as long shows a bar half as full. Floor avg_days at
+        // 0.5 to keep the ratio finite for same-day flips.
+        $fsg_min_days = (float) max(0.5, (float) ($fastest_genres->min('avg_sell_days') ?? 1));
+        $fastest_genres = $fastest_genres->map(function ($r) use ($fsg_min_days) {
+            $days = max(0.5, (float) $r->avg_sell_days);
+            $r->avg_sell_days = (float) $r->avg_sell_days;
+            $r->units = (int) $r->units;
+            $r->revenue = (float) $r->revenue;
+            $r->bar_pct = max(6, min(100, ($fsg_min_days / $days) * 100));
+            if ($r->avg_sell_days <= 7)       { $r->tag = 'blazing';  $r->tag_emoji = '🔥'; }
+            elseif ($r->avg_sell_days <= 21)  { $r->tag = 'fast';     $r->tag_emoji = '⚡'; }
+            elseif ($r->avg_sell_days <= 45)  { $r->tag = 'moderate'; $r->tag_emoji = ''; }
+            else                              { $r->tag = 'slow';     $r->tag_emoji = ''; }
+            return $r;
+        });
+
+        // ==========================================================
         // Nick-style personal progress dashboard
         // Per-employee $/hr today, vs 30-day avg, 7-day streak, goals
         // ==========================================================
@@ -881,7 +932,9 @@ class HomeController extends Controller
             'team_location_name', 'team_today_rev', 'team_goal', 'team_pct',
             'team_goal_so_far', 'team_bar_width',
             // Top sellers by store module
-            'ts_stores', 'ts_data', 'ts_insight'
+            'ts_stores', 'ts_data', 'ts_insight',
+            // Fastest selling genres module
+            'fastest_genres'
         ));
     }
 
