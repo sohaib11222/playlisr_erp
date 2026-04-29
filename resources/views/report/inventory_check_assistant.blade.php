@@ -4,7 +4,7 @@
 @section('content')
 <section class="content-header">
     <h1>Order for this Week <small class="text-muted">— Inventory Check Assistant</small></h1>
-    <p class="text-muted">One scroll. Seven buckets. Export for AMS.</p>
+    <p class="text-muted">Pick a store below. The page builds your reorder list automatically — fast sellers, low stock, chart picks, customer requests, all in one scroll. Export when done.</p>
 </section>
 
 <section class="content">
@@ -16,56 +16,86 @@
     </div>
     @endif
 
-    {{-- ── Top filter bar ─────────────────────────────────────────── --}}
+    {{-- ── Pick a store (one click → builds) ──────────────────────── --}}
     <div class="row no-print">
         <div class="col-md-12">
-            @component('components.filters', ['title' => __('report.filters')])
-            <div class="col-md-3">
-                <div class="form-group">
-                    {!! Form::label('ica_preset', 'Preset') !!}
-                    {!! Form::select('ica_preset', $presetOptions, 'hollywood_all', ['class' => 'form-control select2', 'id' => 'ica_preset', 'style' => 'width:100%']); !!}
-                </div>
+            <div class="ica-store-picker">
+                <span class="ica-store-picker-label">What are you ordering for?</span>
+                <button type="button" class="btn btn-lg btn-primary ica-store-btn" data-preset="hollywood_all">
+                    🎸 Hollywood — everything
+                </button>
+                <button type="button" class="btn btn-lg btn-default ica-store-btn" data-preset="hollywood_sealed_vinyl">
+                    Hollywood vinyl only
+                </button>
+                <button type="button" class="btn btn-lg btn-default ica-store-btn" data-preset="hollywood_sealed_cd">
+                    Hollywood CDs only
+                </button>
+                <span class="ica-store-divider">·</span>
+                <button type="button" class="btn btn-lg btn-primary ica-store-btn" data-preset="pico_all">
+                    🌴 Pico — everything
+                </button>
+                <button type="button" class="btn btn-lg btn-default ica-store-btn" data-preset="pico_sealed_vinyl">
+                    Pico vinyl only
+                </button>
+                <button type="button" class="btn btn-lg btn-default ica-store-btn" data-preset="pico_sealed_cd">
+                    Pico CDs only
+                </button>
+                <a class="btn btn-link btn-sm pull-right" data-toggle="collapse" href="#ica_advanced_filters" role="button">
+                    Advanced filters ▾
+                </a>
             </div>
-            <div class="col-md-3">
-                <div class="form-group">
-                    {!! Form::label('ica_location_id', __('purchase.business_location') . ':') !!}
-                    {!! Form::select('ica_location_id', $business_locations, null, ['class' => 'form-control select2', 'id' => 'ica_location_id', 'style' => 'width:100%', 'placeholder' => __('messages.please_select')]); !!}
+
+            <div class="collapse" id="ica_advanced_filters">
+                @component('components.filters', ['title' => __('report.filters')])
+                <div class="col-md-3">
+                    <div class="form-group">
+                        {!! Form::label('ica_preset', 'Preset (template)') !!}
+                        {!! Form::select('ica_preset', $presetOptions, 'hollywood_all', ['class' => 'form-control select2', 'id' => 'ica_preset', 'style' => 'width:100%']); !!}
+                    </div>
                 </div>
-            </div>
-            <div class="col-md-3">
-                <div class="form-group">
-                    {!! Form::label('ica_category_id', __('category.category') . ' (filter):') !!}
-                    {!! Form::select('ica_category_id', $categories, null, ['class' => 'form-control select2', 'id' => 'ica_category_id', 'style' => 'width:100%', 'placeholder' => __('messages.all')]); !!}
+                <div class="col-md-3">
+                    <div class="form-group">
+                        {!! Form::label('ica_location_id', __('purchase.business_location') . ':') !!}
+                        {!! Form::select('ica_location_id', $business_locations, null, ['class' => 'form-control select2', 'id' => 'ica_location_id', 'style' => 'width:100%', 'placeholder' => __('messages.please_select')]); !!}
+                    </div>
                 </div>
-            </div>
-            <div class="col-md-3">
-                <div class="form-group">
-                    <label>&nbsp;</label><br>
-                    <button type="button" class="btn btn-primary btn-lg" id="ica_apply">
-                        <i class="fa fa-magic"></i> Build order list
-                    </button>
+                <div class="col-md-3">
+                    <div class="form-group">
+                        {!! Form::label('ica_category_id', __('category.category') . ' (filter):') !!}
+                        {!! Form::select('ica_category_id', $categories, null, ['class' => 'form-control select2', 'id' => 'ica_category_id', 'style' => 'width:100%', 'placeholder' => __('messages.all')]); !!}
+                    </div>
                 </div>
+                <div class="col-md-3">
+                    <div class="form-group">
+                        <label>&nbsp;</label><br>
+                        <button type="button" class="btn btn-primary btn-lg" id="ica_apply">
+                            <i class="fa fa-magic"></i> Build order list
+                        </button>
+                    </div>
+                </div>
+                @endcomponent
             </div>
-            @endcomponent
         </div>
     </div>
 
-    {{-- ── Chart freshness banner ─────────────────────────────────── --}}
+    {{-- ── This-week chart imports (file upload + paste) ──────────── --}}
     <div class="row no-print" id="ica_freshness_banner">
         <div class="col-md-6">
-            @component('components.widget', ['class' => 'box-solid', 'title' => '📬 Street Pulse chart'])
-            <p class="text-muted small" id="ica_sp_freshness">Loading…</p>
+            @component('components.widget', ['class' => 'box-solid', 'title' => '📬 Street Pulse / Luminate chart'])
+            <p class="text-muted small" id="ica_sp_freshness">Not yet imported.</p>
             <button type="button" class="btn btn-default btn-sm" data-toggle="modal" data-target="#ica_sp_modal">
-                <i class="fa fa-paste"></i> Paste this week's chart
+                <i class="fa fa-upload"></i> Upload this week's chart
             </button>
+            <p class="text-muted small" style="margin-top:6px; margin-bottom:0;">Drag in the .xlsx or .csv from the weekly Luminate email.</p>
             @endcomponent
         </div>
         <div class="col-md-6">
-            @component('components.widget', ['class' => 'box-solid', 'title' => '🌍 Universal Top chart'])
-            <p class="text-muted small" id="ica_ut_freshness">Loading…</p>
+            @component('components.widget', ['class' => 'box-solid', 'title' => '🌍 UMe / Universal chart'])
+            <p class="text-muted small" id="ica_ut_freshness">Not yet imported.</p>
             <button type="button" class="btn btn-default btn-sm" data-toggle="modal" data-target="#ica_ut_modal">
-                <i class="fa fa-paste"></i> Paste this week's chart
+                <i class="fa fa-upload"></i> Upload this week's chart
             </button>
+            <p class="text-muted small" style="margin-top:6px; margin-bottom:0;">Drag in the "UMe Back-in-Stock + Active LPs and CDs" .xlsx attachment.</p>
             @endcomponent
         </div>
     </div>
@@ -220,6 +250,26 @@
 </div>
 
 <style>
+.ica-store-picker {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 14px 18px;
+    margin-bottom: 14px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+.ica-store-picker-label {
+    font-size: 15px;
+    font-weight: 600;
+    margin-right: 12px;
+    color: #555;
+}
+.ica-store-btn { font-weight: 500; }
+.ica-store-btn.is-active { background: #2c699a !important; color: #fff !important; border-color: #205373 !important; }
+.ica-store-divider { color: #aaa; font-weight: bold; padding: 0 8px; }
 .ica-export-strip {
     background: #f5f5f5;
     border: 1px solid #ddd;

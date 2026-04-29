@@ -37,18 +37,38 @@
     }
     if ($preset) $preset.addEventListener('change', applyPresetMeta);
 
-    // The page renders with a default preset already selected
-    // (e.g. hollywood_all). Apply its meta on first load and auto-build,
-    // so Clyde lands on a populated list instead of a "pick a location"
-    // error after clicking. Skips auto-build if no default preset is set.
+    // ── Big plain-English store picker (primary entry point) ─────────
+    // Sarah doesn't speak in "presets". The store-picker buttons sit
+    // above the advanced filters; clicking one sets the preset, applies
+    // location/category, and triggers Build immediately.
+    function pickStore(presetKey, btnEl) {
+        if (!$preset) return;
+        $preset.value = presetKey;
+        if (window.jQuery) jQuery($preset).trigger('change'); // syncs select2
+        applyPresetMeta();
+        document.querySelectorAll('.ica-store-btn').forEach((b) => b.classList.remove('is-active'));
+        if (btnEl) btnEl.classList.add('is-active');
+        // Defer so the select2/jQuery cascade settles before we POST.
+        setTimeout(function () { buildList(); }, 80);
+    }
+    document.querySelectorAll('.ica-store-btn').forEach((btn) => {
+        btn.addEventListener('click', function () {
+            pickStore(btn.dataset.preset, btn);
+        });
+    });
+
+    // The page renders with a default preset (hollywood_all). Apply its
+    // meta on first load and auto-build, so Clyde lands on a populated
+    // list instead of a "pick a location" error after clicking.
     if ($preset && $preset.value) {
         applyPresetMeta();
-        // Defer slightly so the select2/jQuery cascade settles before fetch.
+        const defaultBtn = document.querySelector('.ica-store-btn[data-preset="' + $preset.value + '"]');
+        if (defaultBtn) defaultBtn.classList.add('is-active');
         setTimeout(function () {
             if ($location && $location.value) {
                 buildList();
             }
-        }, 50);
+        }, 80);
     }
 
     // ── Build order list (main action) ────────────────────────────────
