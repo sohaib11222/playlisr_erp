@@ -168,12 +168,12 @@ class SellPosController extends Controller
         $limit = (int) $request->get('limit', 30);
         $location_id = $request->get('location_id');
         $created_by = $request->get('created_by');
-        // Discrepancy filter — '', 'mismatch', 'no_clover', 'any'. Applied
-        // *after* the Clover match runs (since both sides need to be paired
-        // before we can know which sales are discrepant), so when a filter
-        // is active we widen the DB pool and trim down post-match.
+        // Discrepancy filter — '', 'mismatch', 'no_clover', 'no_erp', 'any'.
+        // Applied *after* the Clover match runs (since both sides need to be
+        // paired before we can know which sales are discrepant), so when a
+        // filter is active we widen the DB pool and trim down post-match.
         $discrepancy = $request->get('discrepancy', '');
-        $allowedDiscrepancies = ['', 'mismatch', 'no_clover', 'any'];
+        $allowedDiscrepancies = ['', 'mismatch', 'no_clover', 'no_erp', 'any'];
         if (!in_array($discrepancy, $allowedDiscrepancies, true)) $discrepancy = '';
 
         $business_locations = BusinessLocation::forDropdown($business_id, false);
@@ -231,6 +231,9 @@ class SellPosController extends Controller
         // sales actually ran a card.
         $clover_by_transaction = [];
         $cpRows = collect();
+        $unclaimed_clover_payments = collect();
+        $matchedCpByTx = [];
+        $claimedCpKeys = [];
 
         if ($sales->isNotEmpty()) {
             $minDate = $sales->min('transaction_date');
@@ -268,9 +271,29 @@ class SellPosController extends Controller
             // 1¢ delta, but the float comparator rejected it).
             $toCents = function ($x) { return (int) round(((float) $x) * 100); };
 
-            $claimedCpKeys = [];
-            $matchedCpByTx = [];
-            foreach ($sales as $sale) {
+            // Match against ALL ERP sales in the window, not just the
+            // cashier-filtered $sales. A Clover charge that paired to a
+            // different cashier's sale is NOT an orphan — it's just paired
+            // elsewhere. If we ran the match against $sales while a cashier
+            // filter was active, every cross-cashier pair would falsely
+            // surface as "Clover charge with no ERP match" in the orphan
+            // list, which is wrong.
+            //
+            // Lightweight query — no eager loads — since we only need
+            // (id, final_total, transaction_date, location_id) to match.
+            // When no cashier filter is active this still costs one extra
+            // query but is bounded by the same time window cpRows uses.
+            $matchSales = Transaction::where('business_id', $business_id)
+                ->where('type', 'sell')
+                ->where('status', 'final')
+                ->whereNull('import_source')
+                ->where('transaction_date', '>=', \Carbon\Carbon::parse($minDate)->subDay())
+                ->where('transaction_date', '<=', \Carbon\Carbon::parse($maxDate)->addDay())
+                ->when($location_id, fn($q) => $q->where('location_id', $location_id))
+                ->orderByDesc('transaction_date')
+                ->get(['id', 'final_total', 'transaction_date', 'location_id']);
+
+            foreach ($matchSales as $sale) {
                 $erTs    = strtotime((string) $sale->transaction_date);
                 $erCents = $toCents($sale->final_total);
                 $erLoc   = $sale->location_id;
@@ -316,6 +339,15 @@ class SellPosController extends Controller
                     'cards'        => $cards,
                 ];
             }
+
+            // Clover charges that didn't pair to ANY ERP sale in the window —
+            // charges visible on the terminal (the customer paid) with no
+            // corresponding ring-up. The most concerning kind of reconcile
+            // gap: real money came in, but inventory wasn't decremented and
+            // the Z-out won't reflect it.
+            $unclaimed_clover_payments = $cpRows->reject(function ($cp, $key) use ($claimedCpKeys) {
+                return isset($claimedCpKeys[$key]);
+            })->values();
         }
 
         // Debug mode: ?debug_clover=1 — show why unmatched ERP sales didn't
@@ -405,8 +437,9 @@ class SellPosController extends Controller
         }
 
         // Pre-filter discrepancy counts (across the wider pool we just scanned)
-        // so the UI can show a "5 mismatches · 12 ERP-only" summary regardless
-        // of which filter the user has on. Always computed in cents.
+        // so the UI can show a "5 mismatches · 12 ERP-only · 3 Clover-only"
+        // summary regardless of which filter the user has on. Always computed
+        // in cents.
         $toCentsSummary = function ($x) { return (int) round(((float) $x) * 100); };
         $mismatch_count = 0;
         $no_clover_count = 0;
@@ -418,9 +451,14 @@ class SellPosController extends Controller
                 $mismatch_count++;
             }
         }
+        $no_erp_count = $unclaimed_clover_payments->count();
         $scanned_count = $sales->count();
 
-        if ($discrepancy !== '') {
+        if ($discrepancy === 'no_erp') {
+            // Special case: user wants ONLY orphan Clover charges. Hide all
+            // ERP rows; the view will render the unclaimed Clover list.
+            $sales = collect();
+        } elseif ($discrepancy !== '') {
             $sales = $sales->filter(function ($sale) use ($clover_by_transaction, $discrepancy, $toCentsSummary) {
                 $info = $clover_by_transaction[$sale->id] ?? null;
                 $isNoClover = $info === null;
@@ -432,7 +470,12 @@ class SellPosController extends Controller
             })->take($limit)->values();
         }
 
-        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'scanned_count', 'clover_by_transaction', 'clover_debug'));
+        // The view interleaves orphan Clover payments with ERP sales for
+        // discrepancy '' / 'any' / 'no_erp' modes. 'mismatch' and 'no_clover'
+        // are explicitly ERP-side filters, so suppress orphan Clover there.
+        $show_clover_only = in_array($discrepancy, ['', 'any', 'no_erp'], true);
+
+        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'show_clover_only', 'clover_debug'));
     }
 
     /**
@@ -455,7 +498,7 @@ class SellPosController extends Controller
         $location_id = $request->get('location_id');
         $created_by = $request->get('created_by');
         $discrepancy = $request->get('discrepancy', '');
-        if (!in_array($discrepancy, ['', 'mismatch', 'no_clover', 'any'], true)) $discrepancy = '';
+        if (!in_array($discrepancy, ['', 'mismatch', 'no_clover', 'no_erp', 'any'], true)) $discrepancy = '';
         // Same widening trick the page uses: when filtering for rare
         // discrepancies, scan a bigger pool then trim post-match. Capped
         // higher than the page since exports often want the long tail.
@@ -485,6 +528,8 @@ class SellPosController extends Controller
         // tender-method or cashier-name filter. Kept inline rather than
         // shared so a future change to the page's matching can't risk POS.
         $clover_by_transaction = [];
+        $unclaimed_clover_payments = collect();
+        $business_locations = BusinessLocation::forDropdown($business_id, false);
         if ($sales->isNotEmpty()) {
             $minDate = $sales->min('transaction_date');
             $maxDate = $sales->max('transaction_date');
@@ -499,9 +544,22 @@ class SellPosController extends Controller
             // Float math drops 1¢-rounding pairs (e.g. $2.19 ↔ $2.20).
             $toCents = function ($x) { return (int) round(((float) $x) * 100); };
 
+            // Match against ALL ERP sales in the window (no cashier filter)
+            // for accurate orphan-Clover determination. See recentSalesFeed
+            // for the why.
+            $matchSales = Transaction::where('business_id', $business_id)
+                ->where('type', 'sell')
+                ->where('status', 'final')
+                ->whereNull('import_source')
+                ->where('transaction_date', '>=', \Carbon\Carbon::parse($minDate)->subDay())
+                ->where('transaction_date', '<=', \Carbon\Carbon::parse($maxDate)->addDay())
+                ->when($location_id, fn($q) => $q->where('location_id', $location_id))
+                ->orderByDesc('transaction_date')
+                ->get(['id', 'final_total', 'transaction_date', 'location_id']);
+
             $claimedCpKeys = [];
             $matchedCpByTx = [];
-            foreach ($sales as $sale) {
+            foreach ($matchSales as $sale) {
                 $erTs    = strtotime((string) $sale->transaction_date);
                 $erCents = $toCents($sale->final_total);
                 $erLoc   = $sale->location_id;
@@ -537,9 +595,15 @@ class SellPosController extends Controller
                     })->filter()->unique()->values()->all(),
                 ];
             }
+
+            $unclaimed_clover_payments = $cpRows->reject(function ($cp, $key) use ($claimedCpKeys) {
+                return isset($claimedCpKeys[$key]);
+            })->values();
         }
 
-        if ($discrepancy !== '') {
+        if ($discrepancy === 'no_erp') {
+            $sales = collect();
+        } elseif ($discrepancy !== '') {
             $toCentsFilter = function ($x) { return (int) round(((float) $x) * 100); };
             $sales = $sales->filter(function ($sale) use ($clover_by_transaction, $discrepancy, $toCentsFilter) {
                 $info = $clover_by_transaction[$sale->id] ?? null;
@@ -552,13 +616,19 @@ class SellPosController extends Controller
             })->take($limit)->values();
         }
 
+        // Mirror the page: include orphan Clover charges in the export when
+        // the filter doesn't explicitly exclude them. 'mismatch' and
+        // 'no_clover' are ERP-side filters, so suppress orphans there.
+        $includeOrphanClover = in_array($discrepancy, ['', 'any', 'no_erp'], true);
+        $orphanCloverForExport = $includeOrphanClover ? $unclaimed_clover_payments : collect();
+
         $filename = 'recent-sales-feed-' . date('Y-m-d_His') . '.csv';
         $headers = [
             'Content-Type' => 'text/csv',
             'Content-Disposition' => "attachment; filename=\"{$filename}\"",
         ];
 
-        return response()->stream(function () use ($sales, $clover_by_transaction) {
+        return response()->stream(function () use ($sales, $clover_by_transaction, $orphanCloverForExport, $business_locations) {
             $out = fopen('php://output', 'w');
             fputcsv($out, [
                 'date', 'time', 'invoice_no', 'store', 'customer', 'cashier',
@@ -642,6 +712,41 @@ class SellPosController extends Controller
                     ]);
                 }
             }
+
+            // Orphan Clover charges — Clover terminal payments that didn't
+            // pair to any ERP sale. Each one gets a single self-contained
+            // row with sale-side columns blank and clover_mismatch='orphan'
+            // so Sarah can sort/filter to them in Excel.
+            foreach ($orphanCloverForExport as $cp) {
+                $cpDt = \Carbon\Carbon::parse($cp->paid_at);
+                $cpStore = $cp->location_id && isset($business_locations[$cp->location_id])
+                    ? $business_locations[$cp->location_id]
+                    : '';
+                $cpAmount = (float) $cp->amount;
+                $cpAmountStr = number_format($cpAmount, 2, '.', '');
+                $cpTax = (int) ($cp->tax_cents ?? 0);
+                $cpTip = (int) ($cp->tip_cents ?? 0);
+                $cpBrand = $cp->card_type ? strtoupper($cp->card_type) : '';
+                $cpLast4 = $cp->card_last4 ? '****' . $cp->card_last4 : '';
+                $cpCardLabel = trim($cpBrand . ' ' . $cpLast4);
+                $cpInvoice = !empty($cp->clover_payment_id) ? ('CLOVER:' . $cp->clover_payment_id) : ('CLOVER:#' . $cp->id);
+
+                fputcsv($out, [
+                    $cpDt->format('Y-m-d'), $cpDt->format('H:i:s'), $cpInvoice,
+                    $cpStore, '', '',
+                    '(Clover charge — no ERP sale)', '', '', '', '', '',
+                    '', '', '', $cpAmountStr,
+                    '',
+                    '',
+                    'clover orphan',
+                    $cpAmountStr,
+                    $cpTax > 0 ? number_format($cpTax / 100, 2, '.', '') : '',
+                    $cpTip > 0 ? number_format($cpTip / 100, 2, '.', '') : '',
+                    $cpCardLabel,
+                    'orphan',
+                ]);
+            }
+
             fclose($out);
         }, 200, $headers);
     }

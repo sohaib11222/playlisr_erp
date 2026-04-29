@@ -98,6 +98,18 @@
         font-size: 10px; font-weight: 700; text-transform: uppercase;
         letter-spacing: .06em; vertical-align: middle; }
 
+    /* Clover-only card: a charge that hit the terminal but has no ERP sale.
+       Distinct purple-tinted accent so it's obvious in the feed without
+       being alarming-red — these need investigation, not a fire drill. */
+    .rf-card.rf-clover-orphan { border-left: 4px solid #7B3FA0; }
+    .rf-card.rf-clover-orphan .rf-orphan-tag { display: inline-block; padding: 2px 8px;
+        border-radius: 4px; background: #EFE0F5; color: #5E2E80;
+        font-size: 11px; font-weight: 700; text-transform: uppercase;
+        letter-spacing: .06em; }
+    .rf-card.rf-clover-orphan .rf-orphan-note { color: #5A5045; font-size: 13px;
+        font-style: italic; padding: 4px 0 6px; }
+    .rf-card.rf-clover-orphan .rf-recon-clover .amt { color: #5E2E80; }
+
     .rf-empty { text-align: center; color: #8A7C6A; padding: 40px 20px;
         background: #FFFFFF; border: 1px dashed #DFD2B3; border-radius: 10px; }
 
@@ -173,16 +185,23 @@
                     @endforeach
                 </select>
             </div>
-            <div style="min-width: 200px;">
+            <div style="min-width: 220px;">
                 <label for="rf-discrepancy">Clover sync</label>
                 <select name="discrepancy" id="rf-discrepancy" class="form-control" onchange="this.form.submit()">
-                    <option value=""           {{ $discrepancy === ''           ? 'selected' : '' }}>All sales</option>
+                    <option value=""           {{ $discrepancy === ''           ? 'selected' : '' }}>All sales + Clover orphans</option>
                     <option value="any"        {{ $discrepancy === 'any'        ? 'selected' : '' }}>Any discrepancy</option>
                     <option value="mismatch"   {{ $discrepancy === 'mismatch'   ? 'selected' : '' }}>Mismatches only (ERP ≠ Clover)</option>
                     <option value="no_clover"  {{ $discrepancy === 'no_clover'  ? 'selected' : '' }}>ERP only (no Clover match)</option>
+                    <option value="no_erp"     {{ $discrepancy === 'no_erp'     ? 'selected' : '' }}>Clover only (no ERP match)</option>
                 </select>
             </div>
-            <div class="rf-count">{{ $sales->count() }} sale{{ $sales->count() === 1 ? '' : 's' }}</div>
+            @php
+                $cloverShown = $show_clover_only ? $unclaimed_clover_payments->count() : 0;
+                $rowsShown = $sales->count() + $cloverShown;
+            @endphp
+            <div class="rf-count">
+                {{ $rowsShown }} row{{ $rowsShown === 1 ? '' : 's' }}@if($cloverShown > 0) <span style="color:#8B6A1A;">({{ $cloverShown }} Clover-only)</span>@endif
+            </div>
             <button type="submit" class="rf-export"
                     formaction="{{ action('SellPosController@recentSalesFeedExport') }}"
                     title="Download these sales as CSV (one row per item)">
@@ -193,9 +212,9 @@
         {{-- Discrepancy summary across the scanned pool. Always shown so the user
              knows whether it's worth flipping the filter on, and whether to widen
              the date range / cashier filter. Reset link clears the filter. --}}
-        @if($scanned_count > 0)
+        @if($scanned_count > 0 || $no_erp_count > 0)
             @php
-                $matched_count = $scanned_count - $mismatch_count - $no_clover_count;
+                $matched_count = max(0, $scanned_count - $mismatch_count - $no_clover_count);
                 $isFiltered = $discrepancy !== '';
             @endphp
             <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;
@@ -207,6 +226,7 @@
                 <span><span style="color:#1F8B3F;font-weight:700;">{{ number_format($matched_count) }}</span> matched</span>
                 <span><span style="color:#B0451A;font-weight:700;">{{ number_format($mismatch_count) }}</span> mismatch{{ $mismatch_count === 1 ? '' : 'es' }}</span>
                 <span><span style="color:#8B6A1A;font-weight:700;">{{ number_format($no_clover_count) }}</span> ERP only (no Clover)</span>
+                <span><span style="color:#7B3FA0;font-weight:700;">{{ number_format($no_erp_count) }}</span> Clover only (no ERP)</span>
                 @if($isFiltered)
                     <a href="{{ action('SellPosController@recentSalesFeed', array_filter(['location_id' => $location_id, 'created_by' => $created_by, 'limit' => $limit])) }}"
                        style="margin-left:auto;color:#8B6A1A;text-decoration:underline;font-weight:600;">
@@ -248,8 +268,81 @@
             </div>
         @endif
 
-        @forelse($sales as $sale)
+        @php
+            // Interleave ERP sales with orphan Clover charges (when the
+            // current filter allows orphans). Each item carries a 'ts'
+            // for unified newest-first ordering — ERP uses transaction_date,
+            // orphan Clover uses paid_at (often the next morning's batch
+            // settlement, which is the right "when did the money show up"
+            // moment to surface in this feed).
+            $feedItems = collect();
+            foreach ($sales as $s) {
+                $feedItems->push(['type' => 'erp', 'sale' => $s, 'ts' => (string) $s->transaction_date]);
+            }
+            if ($show_clover_only) {
+                foreach ($unclaimed_clover_payments as $cp) {
+                    $feedItems->push(['type' => 'clover', 'cp' => $cp, 'ts' => (string) $cp->paid_at]);
+                }
+            }
+            $feedItems = $feedItems->sortByDesc('ts')->values();
+        @endphp
+
+        @forelse($feedItems as $item)
+        @if($item['type'] === 'clover')
             @php
+                $cp = $item['cp'];
+                $cpDt = \Carbon\Carbon::parse($cp->paid_at);
+                $cpWhen = $cpDt->isToday() ? $cpDt->format('g:i a') : $cpDt->format('M j · g:i a');
+                $cpStore = $cp->location_id && isset($business_locations[$cp->location_id])
+                    ? $business_locations[$cp->location_id]
+                    : '—';
+                $cpAmount = (float) $cp->amount;
+                $cpCardBrand = $cp->card_type ? strtoupper($cp->card_type) : '';
+                $cpCardLast4 = $cp->card_last4 ? '••' . $cp->card_last4 : '';
+                $cpCardLabel = trim($cpCardBrand . ' ' . $cpCardLast4);
+                $cpTax = (int) ($cp->tax_cents ?? 0);
+                $cpTip = (int) ($cp->tip_cents ?? 0);
+            @endphp
+            <div class="rf-card rf-clover-orphan">
+                <div class="rf-head">
+                    <div class="rf-head-left">
+                        <span class="rf-invoice"><span class="rf-orphan-tag">Clover only</span></span>
+                        <span class="rf-time">{{ $cpWhen }}</span>
+                        <span class="rf-store-badge">{{ $cpStore }}</span>
+                        @if($cpCardLabel)<span class="rf-customer">· {{ $cpCardLabel }}</span>@endif
+                    </div>
+                </div>
+                <div class="rf-orphan-note">
+                    Clover charged <strong>${{ number_format($cpAmount, 2) }}</strong> but no matching ERP sale was found for this store + amount in the scanned window. Investigate: missing ring-up, voided sale, or a charge from outside the scanned date range.
+                </div>
+                <div class="rf-foot">
+                    <div class="rf-foot-meta">
+                        @if(!empty($cp->clover_payment_id))
+                            Clover ID <code style="background:#F7F1E3;border:1px solid #DFD2B3;border-radius:3px;padding:1px 4px;font-size:11px;">{{ $cp->clover_payment_id }}</code>
+                        @endif
+                        @if(!empty($cp->employee_name))
+                            · by <strong>{{ $cp->employee_name }}</strong>
+                        @endif
+                    </div>
+                    <div class="rf-recon">
+                        <div class="rf-recon-col rf-recon-erp">
+                            <div class="lbl">ERP</div>
+                            <div class="amt" style="color:#8A7C6A;">—</div>
+                        </div>
+                        <div class="rf-recon-col rf-recon-clover">
+                            <div class="lbl">Clover</div>
+                            <div class="amt">${{ number_format($cpAmount, 2) }}</div>
+                            <div class="sub">
+                                @if($cpTax > 0)Tax ${{ number_format($cpTax / 100, 2) }}@endif
+                                @if($cpTip > 0) · Tip ${{ number_format($cpTip / 100, 2) }}@endif
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        @else
+            @php
+                $sale = $item['sale'];
                 $dt = \Carbon\Carbon::parse($sale->transaction_date);
                 $isToday = $dt->isToday();
                 $when = $isToday ? $dt->format('g:i a') : $dt->format('M j · g:i a');
@@ -360,12 +453,15 @@
                     @endif
                 </div>
             </div>
+        @endif
         @empty
             <div class="rf-empty">
                 @if($discrepancy === 'mismatch')
                     No mismatches in the scanned window — every paired ERP sale matches Clover within ±1¢.
                 @elseif($discrepancy === 'no_clover')
                     Every recent ERP sale paired to a Clover charge — nothing unmatched.
+                @elseif($discrepancy === 'no_erp')
+                    No orphan Clover charges in the scanned window — every Clover payment paired to an ERP sale.
                 @elseif($discrepancy === 'any')
                     No discrepancies in the scanned window — ERP and Clover are fully reconciled.
                 @else
