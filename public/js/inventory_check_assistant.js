@@ -114,6 +114,9 @@
                 lastResult = payload;
                 renderBuckets(payload);
                 $exportStrip.style.display = 'block';
+                // Lazy-load events bucket — it hits two external feeds and
+                // would block the main page render by 15-30s on cold cache.
+                lazyLoadEventsBucket();
             })
             .catch((err) => {
                 console.error('[ICA] build error', err);
@@ -122,6 +125,38 @@
     }
 
     // ── Rendering ────────────────────────────────────────────────────
+    function lazyLoadEventsBucket() {
+        const params = new URLSearchParams();
+        if ($location && $location.value) params.append('location_id', $location.value);
+        if ($preset && $preset.value) params.append('preset', $preset.value);
+        const url = window.ICA_EVENTS_URL || (window.ICA_BUCKETS_URL.replace('/buckets', '/events-bucket'));
+
+        fetch(url + '?' + params.toString(), {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': window.ICA_CSRF || '' },
+            credentials: 'same-origin',
+        })
+            .then((r) => r.json())
+            .then((resp) => {
+                if (!resp || !resp.bucket) return;
+                if (lastResult && lastResult.buckets) {
+                    lastResult.buckets.events_upcoming = resp.bucket;
+                }
+                // Replace the placeholder events section in the DOM with the real one.
+                const existing = $root.querySelector('.ica-bucket[data-bucket="events_upcoming"]');
+                if (existing) {
+                    const html = renderBucketSection('events_upcoming', resp.bucket);
+                    const tmp = document.createElement('div');
+                    tmp.innerHTML = html;
+                    const fresh = tmp.firstElementChild;
+                    if (fresh) {
+                        existing.replaceWith(fresh);
+                        attachBucketHandlers();
+                    }
+                }
+            })
+            .catch((err) => console.error('[ICA] events lazy-load failed', err));
+    }
+
     function renderBuckets(payload) {
         if (payload.meta && payload.meta.error === 'location_required') {
             $root.innerHTML = '<div class="alert alert-warning"><strong>Pick a location first.</strong> The store-button preset didn\'t resolve to a location_id. Open Advanced filters and pick one manually.</div>';

@@ -106,7 +106,18 @@ class InventoryCheckService
             'universal_top' => $this->bucketChartPicks($business_id, $locationId, 'universal_top', $topArtists, $permittedLocations),
             'apple_music_top' => $this->bucketChartPicks($business_id, $locationId, 'apple_music_top', $topArtists, $permittedLocations),
             'top_artist_new_releases' => $this->bucketTopArtistNewReleases($business_id, $locationId, $topArtists, $permittedLocations),
-            'events_upcoming' => $this->bucketEventsUpcoming($business_id, $locationId, $permittedLocations),
+            // events_upcoming is intentionally NOT computed here — it hits two
+            // external URLs (server.nivessa.com + ticketmaster-feed) and the
+            // cold-cache call ate 15-30s, blocking the whole page. JS now
+            // fetches it on a separate request via @eventsBucket so the rest
+            // of the page renders fast and events fills in when it's ready.
+            'events_upcoming' => [
+                'label' => '🎤 Upcoming events — stock up',
+                'why' => 'Loading separately from server.nivessa.com + Ticketmaster feed…',
+                'items' => [],
+                'count' => 0,
+                'lazy' => true,
+            ],
             'long_oos_essentials' => $this->bucketLongOosEssentials($business_id, $locationId, $permittedLocations),
             'hot_used_oos' => $this->bucketHotUsedOos($business_id, $locationId, $permittedLocations),
             'customer_wants' => $this->bucketCustomerWants($business_id, $locationId),
@@ -550,6 +561,12 @@ class InventoryCheckService
     }
 
     // ── Upcoming events → stock-up ────────────────────────────────────
+
+    /** Public alias used by the lazy-load endpoint (controller can't call protected). */
+    public function bucketEventsUpcomingPublic(int $business_id, int $locationId, $permittedLocations): array
+    {
+        return $this->bucketEventsUpcoming($business_id, $locationId, $permittedLocations);
+    }
 
     protected function bucketEventsUpcoming(int $business_id, int $locationId, $permittedLocations): array
     {

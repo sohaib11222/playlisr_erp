@@ -135,6 +135,55 @@ class InventoryCheckController extends Controller
         }
     }
 
+    /**
+     * Lazy-loaded events bucket. Pulled separately from the main buckets
+     * call because it hits two external feeds (server.nivessa.com +
+     * ticketmaster-feed) and on a cold cache that took 15-30s — blocking
+     * the whole page. JS calls this after the main render returns.
+     */
+    public function eventsBucket(Request $request)
+    {
+        try {
+            $business_id = (int) $request->session()->get('user.business_id');
+            $input = $request->only(['location_id', 'preset']);
+
+            if (!empty($input['preset'])) {
+                $resolved = $this->inventoryCheckService->resolvePreset($business_id, $input['preset']);
+                $input = array_merge($resolved, $input);
+            }
+
+            $locationId = !empty($input['location_id']) ? (int) $input['location_id'] : null;
+            if (!$locationId) {
+                return response()->json([
+                    'bucket' => [
+                        'label' => '🎤 Upcoming events — stock up',
+                        'why' => 'Pick a store first.',
+                        'items' => [],
+                        'count' => 0,
+                    ],
+                ]);
+            }
+
+            $permitted = auth()->user()->permitted_locations();
+            $bucket = $this->inventoryCheckService->bucketEventsUpcomingPublic($business_id, $locationId, $permitted);
+            return response()->json(['bucket' => $bucket]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('ICA events bucket failed', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile() . ':' . $e->getLine(),
+            ]);
+            return response()->json([
+                'bucket' => [
+                    'label' => '🎤 Upcoming events — stock up',
+                    'why' => 'Events feed failed to load: ' . $e->getMessage(),
+                    'items' => [],
+                    'count' => 0,
+                    'empty_reason' => 'fetch_error',
+                ],
+            ]);
+        }
+    }
+
     public function export(Request $request)
     {
         // Open to all authenticated staff — inventory check assistant is

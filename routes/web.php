@@ -343,6 +343,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/inventory-check-assistant', 'InventoryCheckController@index');
     Route::get('/reports/inventory-check-assistant/data', 'InventoryCheckController@data');
     Route::get('/reports/inventory-check-assistant/buckets', 'InventoryCheckController@buckets');
+    Route::get('/reports/inventory-check-assistant/events-bucket', 'InventoryCheckController@eventsBucket');
     Route::get('/reports/inventory-check-assistant/export', 'InventoryCheckController@export');
     Route::post('/reports/inventory-check-assistant/chart-import', 'InventoryCheckController@importChart');
     Route::get('/reports/inventory-check-assistant/chart-latest/{source}', 'InventoryCheckController@latestChart');
