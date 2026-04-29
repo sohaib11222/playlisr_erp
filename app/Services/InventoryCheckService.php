@@ -11,6 +11,10 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
+// Cache-bust: deploy 2026-04-29 to ensure FPM OPcache reloads chartPickReason
+// signature change (?array $match). Sarah saw stale "must be of the type array"
+// errors after the fix landed because OPcache held the pre-fix bytecode.
+
 class InventoryCheckService
 {
     /** @var NivessaEventsFetcher */
