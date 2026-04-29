@@ -288,17 +288,41 @@ class InventoryCheckController extends Controller
             }
         } else {
             $diagnostic['mode'] = 'paste';
-            $rows = $this->chartPickParser->parse($body, $source);
-            // Some pasted bodies are tab-separated tables (Luminate copy-paste).
-            // If the line parser found nothing, retry through the tabular
-            // parser using the body as a CSV/TSV blob.
-            if (empty($rows)) {
+            // Peek at the first non-blank line — if it looks like a header
+            // row with Title + Artist columns (e.g. the OCR output for
+            // Luminate, or a CSV paste), route through the column-aware
+            // TabularChartParser. ChartPickParser positionally assumes
+            // "rank, artist, title" order which would silently swap
+            // artist/title for Luminate's "rank, title, artist" layout.
+            $firstLine = '';
+            foreach (preg_split("/\r?\n/", $body) as $l) {
+                $l = trim($l);
+                if ($l !== '') { $firstLine = $l; break; }
+            }
+            $firstLower = mb_strtolower($firstLine);
+            $hasArtistHdr = mb_strpos($firstLower, 'artist') !== false || mb_strpos($firstLower, 'performer') !== false;
+            $hasTitleHdr = mb_strpos($firstLower, 'title') !== false || mb_strpos($firstLower, 'album') !== false;
+            $looksTabular = $hasArtistHdr && $hasTitleHdr;
+
+            if ($looksTabular) {
                 $tmp = tempnam(sys_get_temp_dir(), 'chartpaste');
                 file_put_contents($tmp, $body);
                 try {
                     $rows = app(TabularChartParser::class)->parseCsv($tmp);
                 } finally {
                     @unlink($tmp);
+                }
+            } else {
+                $rows = $this->chartPickParser->parse($body, $source);
+                // Fallback: if line parser came up empty, try tabular parse.
+                if (empty($rows)) {
+                    $tmp = tempnam(sys_get_temp_dir(), 'chartpaste');
+                    file_put_contents($tmp, $body);
+                    try {
+                        $rows = app(TabularChartParser::class)->parseCsv($tmp);
+                    } finally {
+                        @unlink($tmp);
+                    }
                 }
             }
         }
