@@ -397,8 +397,13 @@ class InventoryCheckService
         return $base;
     }
 
-    protected function chartPickReason($pick, bool $isTopArtist, array $match): string
+    protected function chartPickReason($pick, bool $isTopArtist, ?array $match): string
     {
+        // Accept null match — tryMatchChartPickToVariation returns null
+        // when nothing in the catalog matches the chart pick, and this
+        // method gets called with that null directly. Treating it as []
+        // keeps the rest of the logic happy (the empty checks all pass).
+        $match = $match ?? [];
         $bits = [];
         if ($isTopArtist) {
             $bits[] = 'popular in-store';
@@ -925,7 +930,9 @@ class InventoryCheckService
         $name = mb_strtolower((string) $loc->name);
 
         foreach ($byLocation as $pattern => $artists) {
-            if ($pattern !== '' && str_contains($name, mb_strtolower($pattern))) {
+            // mb_strpos for PHP 7.x compat — str_contains is PHP 8.0+ and
+            // this Laravel pairs with older PHP on the prod server.
+            if ($pattern !== '' && mb_strpos($name, mb_strtolower($pattern)) !== false) {
                 return is_array($artists) ? $artists : [];
             }
         }
