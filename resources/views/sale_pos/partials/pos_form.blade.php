@@ -122,7 +122,7 @@
 				value="{{ $walk_in_customer['selling_price_group_id'] ?? ''}}" >
 				@endif
 				{!! Form::select('contact_id',
-					[], null, ['class' => 'form-control mousetrap', 'id' => 'customer_id', 'placeholder' => 'Phone # (or name / email)…', 'required', 'style' => 'width: 100%;']) !!}
+					[], null, ['class' => 'form-control mousetrap', 'id' => 'customer_id', 'placeholder' => 'Phone # (or name / email)…', 'style' => 'width: 100%;']) !!}
 			</div>
 			<div style="margin-top: 10px;">
 				<button type="button" class="btn add_new_customer" data-name="" @if(!auth()->user()->can('customer.create')) disabled @endif title="Create a new Nivessa customer account">
