@@ -302,6 +302,8 @@
                 $cpCardLabel = trim($cpCardBrand . ' ' . $cpCardLast4);
                 $cpTax = (int) ($cp->tax_cents ?? 0);
                 $cpTip = (int) ($cp->tip_cents ?? 0);
+                $orphanCashierId = $cashier_for_orphan[$cp->id] ?? null;
+                $orphanCashierName = $orphanCashierId ? ($cashierNameById[$orphanCashierId] ?? null) : null;
             @endphp
             <div class="rf-card rf-clover-orphan">
                 <div class="rf-head">
@@ -310,6 +312,9 @@
                         <span class="rf-time">{{ $cpWhen }}</span>
                         <span class="rf-store-badge">{{ $cpStore }}</span>
                         @if($cpCardLabel)<span class="rf-customer">· {{ $cpCardLabel }}</span>@endif
+                        @if($orphanCashierName)
+                            <span class="rf-cashier" title="Most recent ERP login at this charge time (last 12h)">· logged in: <strong>{{ $orphanCashierName }}</strong></span>
+                        @endif
                     </div>
                 </div>
                 <div class="rf-orphan-note">

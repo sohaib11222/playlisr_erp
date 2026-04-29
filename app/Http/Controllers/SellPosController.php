@@ -350,6 +350,57 @@ class SellPosController extends Controller
             })->values();
         }
 
+        // Attribute each orphan Clover charge to whoever was logged into the
+        // ERP at that moment, using the activity_log 'login' events the auth
+        // controller writes on every successful login. We pick the most
+        // recent login before paid_at that's within 12 hours — a longer-ago
+        // login probably means the user closed the tab and someone else
+        // signed in elsewhere without a logout event being written.
+        //
+        // This is "who was at the keyboard," not "who rang nearby sales" —
+        // exactly what Sarah asked for, since the orphan case is precisely
+        // when nearby ERP sales don't exist or aren't reliable.
+        $cashier_for_orphan = [];
+        $cashierNameById = [];
+        if ($unclaimed_clover_payments->isNotEmpty()) {
+            $earliestPaidAt = $unclaimed_clover_payments->min('paid_at');
+            $latestPaidAt = $unclaimed_clover_payments->max('paid_at');
+            $loginEvents = \Spatie\Activitylog\Models\Activity::where('business_id', $business_id)
+                ->where('description', 'login')
+                ->where('created_at', '>=', \Carbon\Carbon::parse($earliestPaidAt)->subHours(24))
+                ->where('created_at', '<=', \Carbon\Carbon::parse($latestPaidAt)->addMinutes(5))
+                ->orderBy('created_at')
+                ->get(['causer_id', 'created_at']);
+
+            $maxStaleSeconds = 12 * 3600;
+            foreach ($unclaimed_clover_payments as $cp) {
+                $cpTs = strtotime((string) $cp->paid_at);
+                $recentUserId = null;
+                foreach ($loginEvents as $ev) {
+                    $evTs = strtotime((string) $ev->created_at);
+                    if ($evTs > $cpTs) break;
+                    if (($cpTs - $evTs) > $maxStaleSeconds) continue;
+                    $recentUserId = (int) $ev->causer_id;
+                }
+                if ($recentUserId) {
+                    $cashier_for_orphan[$cp->id] = $recentUserId;
+                }
+            }
+
+            $cashierIds = array_values(array_unique($cashier_for_orphan));
+            if (!empty($cashierIds)) {
+                // Include offboarded users (allow_login=0) — the lookup is
+                // by id and we still want their name on historical orphans.
+                $userRows = User::whereIn('id', $cashierIds)
+                    ->select('id', 'surname', 'first_name', 'last_name')
+                    ->get();
+                foreach ($userRows as $u) {
+                    $name = trim(($u->surname ?? '') . ' ' . ($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
+                    $cashierNameById[$u->id] = $name !== '' ? preg_replace('/\s+/', ' ', $name) : ('User #' . $u->id);
+                }
+            }
+        }
+
         // Debug mode: ?debug_clover=1 — show why unmatched ERP sales didn't
         // pair, AND list the unclaimed Clover payments (the other half of
         // the reconciliation gap). Most useful for spot-checking whether
@@ -475,7 +526,7 @@ class SellPosController extends Controller
         // are explicitly ERP-side filters, so suppress orphan Clover there.
         $show_clover_only = in_array($discrepancy, ['', 'any', 'no_erp'], true);
 
-        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'show_clover_only', 'clover_debug'));
+        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug'));
     }
 
     /**
@@ -601,6 +652,44 @@ class SellPosController extends Controller
             })->values();
         }
 
+        // Same logged-in-cashier inference as the page render: most recent
+        // ERP 'login' activity within 12 h before paid_at attributes the
+        // orphan charge to whoever was at the keyboard at the time.
+        $cashier_for_orphan = [];
+        $cashierNameById = [];
+        if ($unclaimed_clover_payments->isNotEmpty()) {
+            $earliestPaidAt = $unclaimed_clover_payments->min('paid_at');
+            $latestPaidAt = $unclaimed_clover_payments->max('paid_at');
+            $loginEvents = \Spatie\Activitylog\Models\Activity::where('business_id', $business_id)
+                ->where('description', 'login')
+                ->where('created_at', '>=', \Carbon\Carbon::parse($earliestPaidAt)->subHours(24))
+                ->where('created_at', '<=', \Carbon\Carbon::parse($latestPaidAt)->addMinutes(5))
+                ->orderBy('created_at')
+                ->get(['causer_id', 'created_at']);
+            $maxStaleSeconds = 12 * 3600;
+            foreach ($unclaimed_clover_payments as $cp) {
+                $cpTs = strtotime((string) $cp->paid_at);
+                $recentUserId = null;
+                foreach ($loginEvents as $ev) {
+                    $evTs = strtotime((string) $ev->created_at);
+                    if ($evTs > $cpTs) break;
+                    if (($cpTs - $evTs) > $maxStaleSeconds) continue;
+                    $recentUserId = (int) $ev->causer_id;
+                }
+                if ($recentUserId) $cashier_for_orphan[$cp->id] = $recentUserId;
+            }
+            $cashierIds = array_values(array_unique($cashier_for_orphan));
+            if (!empty($cashierIds)) {
+                $userRows = User::whereIn('id', $cashierIds)
+                    ->select('id', 'surname', 'first_name', 'last_name')
+                    ->get();
+                foreach ($userRows as $u) {
+                    $name = trim(($u->surname ?? '') . ' ' . ($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
+                    $cashierNameById[$u->id] = $name !== '' ? preg_replace('/\s+/', ' ', $name) : ('User #' . $u->id);
+                }
+            }
+        }
+
         if ($discrepancy === 'no_erp') {
             $sales = collect();
         } elseif ($discrepancy !== '') {
@@ -628,7 +717,7 @@ class SellPosController extends Controller
             'Content-Disposition' => "attachment; filename=\"{$filename}\"",
         ];
 
-        return response()->stream(function () use ($sales, $clover_by_transaction, $orphanCloverForExport, $business_locations) {
+        return response()->stream(function () use ($sales, $clover_by_transaction, $orphanCloverForExport, $business_locations, $cashier_for_orphan, $cashierNameById) {
             $out = fopen('php://output', 'w');
             fputcsv($out, [
                 'date', 'time', 'invoice_no', 'store', 'customer', 'cashier',
@@ -730,10 +819,12 @@ class SellPosController extends Controller
                 $cpLast4 = $cp->card_last4 ? '****' . $cp->card_last4 : '';
                 $cpCardLabel = trim($cpBrand . ' ' . $cpLast4);
                 $cpInvoice = !empty($cp->clover_payment_id) ? ('CLOVER:' . $cp->clover_payment_id) : ('CLOVER:#' . $cp->id);
+                $cpCashierId = $cashier_for_orphan[$cp->id] ?? null;
+                $cpCashier = $cpCashierId ? (($cashierNameById[$cpCashierId] ?? '') . ' (logged in)') : '';
 
                 fputcsv($out, [
                     $cpDt->format('Y-m-d'), $cpDt->format('H:i:s'), $cpInvoice,
-                    $cpStore, '', '',
+                    $cpStore, '', $cpCashier,
                     '(Clover charge — no ERP sale)', '', '', '', '', '',
                     '', '', '', $cpAmountStr,
                     '',
