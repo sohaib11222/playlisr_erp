@@ -141,6 +141,19 @@
     </button>
 </div>
 
+<div class="pos-quick-grid-title" style="margin-top:14px;">Quick Add — Clearance Vinyl</div>
+<div class="pos-quick-grid">
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="$1 Clearance Vinyl" data-preset-price="1.00" data-preset-category="Clearance Vinyl">
+        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">💿</span> $1 Clearance Vinyl <span class="pos-quick-price">$1.00</span>
+    </button>
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="$2 Clearance Vinyl" data-preset-price="2.00" data-preset-category="Clearance Vinyl">
+        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">💿</span> $2 Clearance Vinyl <span class="pos-quick-price">$2.00</span>
+    </button>
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="$3 Clearance Vinyl" data-preset-price="3.00" data-preset-category="Clearance Vinyl">
+        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">💿</span> $3 Clearance Vinyl <span class="pos-quick-price">$3.00</span>
+    </button>
+</div>
+
 {{-- Quick-add handler — skips the modal entirely and hits the same backend
      endpoint the manual-item modal uses, so the item lands directly in the
      cart. After the row renders, MutationObserver below moves the bag-fee
