@@ -72,7 +72,8 @@ class AdminActionHistoryController extends Controller
         // cost-price-rules use the same row schema.
         // future-product-dates: products id + the two timestamp columns.
         // fix-imported-dates: transactions id + transaction_date to restore.
-        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates'];
+        // fix-in-store-sold-dates: same row schema as fix-imported-dates.
+        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates'];
         if (!in_array($action, $supportedActions, true)) {
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 0, 'msg' => "Don't know how to undo action: " . $action]);
@@ -88,7 +89,7 @@ class AdminActionHistoryController extends Controller
                             'created_at' => $row['created_at'] ?: null,
                             'updated_at' => $row['updated_at'] ?: null,
                         ]);
-                } elseif ($action === 'fix-imported-dates') {
+                } elseif ($action === 'fix-imported-dates' || $action === 'fix-in-store-sold-dates') {
                     DB::table('transactions')
                         ->where('id', $row['id'])
                         ->update([

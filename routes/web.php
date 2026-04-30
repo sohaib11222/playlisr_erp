@@ -611,6 +611,13 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/fix-imported-dates', 'FixImportedDatesController@index');
     Route::post('/admin/fix-imported-dates/run', 'FixImportedDatesController@run');
 
+    // One-shot cleanup: re-parse the In Store New & Used Sales sheet from
+    // the uploaded xlsx and rewrite each transaction_date to the actual
+    // per-row Sold Date (col P) / Bought Date (col F). Snapshot + undo via
+    // /admin/admin-action-history.
+    Route::get('/admin/fix-in-store-sold-dates', 'FixInStoreSoldDatesController@index');
+    Route::post('/admin/fix-in-store-sold-dates/run', 'FixInStoreSoldDatesController@run');
+
     // One-shot cleanup: clears future created_at / updated_at on products
     // (sync TZ drift wrote them). Snapshots the BEFORE state so it can be
     // undone via /admin/admin-action-history.
