@@ -5622,6 +5622,30 @@ class ReportController extends Controller
             $overall_revenue += $dgs['revenue'];
         }
 
+        // eBay orders — live-fetched via Sell Fulfillment API. Requires the
+        // seller to have connected their account at /admin/ebay-seller.
+        $eby = $this->fetchEbayChannelTotals($business_id, $start_date, $end_date);
+        if ($eby !== null && ($eby['revenue'] > 0 || $eby['cnt'] > 0)) {
+            $key = 'online|ebay';
+            if (!isset($rows[$key])) {
+                $rows[$key] = [
+                    'label'           => 'eBay & Other',
+                    'channel'         => 'ebay',
+                    'location_id'     => null,
+                    'revenue'         => 0.0,
+                    'revenue_exc_tax' => 0.0,
+                    'cnt'             => 0,
+                    'gross_profit'    => 0.0,
+                    'cost_unknown'    => true,
+                ];
+            }
+            $rows[$key]['revenue']         += $eby['revenue'];
+            $rows[$key]['revenue_exc_tax'] += $eby['revenue'];
+            $rows[$key]['cnt']             += $eby['cnt'];
+            $rows[$key]['cost_unknown'] = true;
+            $overall_revenue += $eby['revenue'];
+        }
+
         // Compute share % and gross margin %, then sort by revenue desc.
         // Default cost_unknown=false for local rows so the view doesn't have
         // to null-check.
@@ -5905,6 +5929,67 @@ class ReportController extends Controller
     }
 
     /**
+     * Pull eBay order totals via Sell Fulfillment API. Requires a seller
+     * refresh token (set up at /admin/ebay-seller). Returns null on any
+     * config / auth / transport error; caller will simply omit the row.
+     */
+    protected function fetchEbayChannelTotals($business_id, $start_date, $end_date)
+    {
+        try {
+            $service = new \App\Services\EbayService($business_id);
+            if (!$service->isConfigured()) {
+                $this->setDiag('ebay', 'eBay app credentials not set in Business Settings.');
+                return null;
+            }
+            if (!$service->isSellerConnected()) {
+                $this->setDiag('ebay', 'eBay seller account not connected. Visit /admin/ebay-seller to authorise.');
+                return null;
+            }
+
+            // eBay's filter format: ISO-8601 with .000Z millis required.
+            $created_after  = $start_date . 'T00:00:00.000Z';
+            $created_before = $end_date . 'T23:59:59.999Z';
+            $revenue = 0.0;
+            $cnt = 0;
+            $offset = 0;
+            $limit = 200;
+            $max_iterations = 25; // 5000-order safety cap per render
+            for ($i = 0; $i < $max_iterations; $i++) {
+                $resp = $service->fetchOrders($created_after, $created_before, $offset, $limit);
+                if (!empty($resp['error'])) {
+                    $this->setDiag('ebay', 'eBay API call failed: ' . $resp['error']);
+                    return null;
+                }
+                $orders = $resp['orders'] ?? [];
+                foreach ($orders as $o) {
+                    // Revenue recognition: anything where buyer paid.
+                    // eBay's orderPaymentStatus enum: PAID, PARTIALLY_REFUNDED,
+                    // FULLY_REFUNDED, PENDING, FAILED. PAID + PARTIALLY_REFUNDED
+                    // count as revenue; FULLY_REFUNDED nets to zero anyway.
+                    $pay_status = $o['orderPaymentStatus'] ?? '';
+                    if (!in_array($pay_status, ['PAID', 'PARTIALLY_REFUNDED'], true)) {
+                        continue;
+                    }
+                    $revenue += isset($o['pricingSummary']['total']['value'])
+                        ? (float)$o['pricingSummary']['total']['value'] : 0.0;
+                    $cnt++;
+                }
+                $total = (int)($resp['total'] ?? 0);
+                $offset += $limit;
+                if ($offset >= $total) break;
+            }
+
+            $this->setDiag('ebay', $cnt > 0
+                ? "eBay: pulled {$cnt} order(s) from Sell API."
+                : 'eBay: API reachable but no PAID orders for this date range.');
+            return ['revenue' => $revenue, 'cnt' => $cnt];
+        } catch (\Exception $e) {
+            $this->setDiag('ebay', 'eBay service error: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
      * GET a JSON endpoint with a 5-second timeout and decode the body.
      * Returns null on any error — caller is expected to skip silently.
      */
@@ -6015,7 +6100,7 @@ class ReportController extends Controller
         $cnt          = (int)($summary->cnt ?? 0);
         $gross_profit = (float)($gp_obj->gross_profit ?? 0);
 
-        // For Discogs, also live-fetch from Discogs's marketplace API.
+        // For Discogs / eBay, also live-fetch from their respective APIs.
         // Header-level only (no line items mapped to local SKUs) so adds
         // to revenue + count but not gross profit.
         $external_revenue = 0.0;
@@ -6025,6 +6110,14 @@ class ReportController extends Controller
             if ($dgs !== null) {
                 $external_revenue = $dgs['revenue'];
                 $external_cnt = $dgs['cnt'];
+                $revenue += $external_revenue;
+                $cnt += $external_cnt;
+            }
+        } elseif ($channel === 'ebay') {
+            $eby = $this->fetchEbayChannelTotals($business_id, $start_date, $end_date);
+            if ($eby !== null) {
+                $external_revenue = $eby['revenue'];
+                $external_cnt = $eby['cnt'];
                 $revenue += $external_revenue;
                 $cnt += $external_cnt;
             }

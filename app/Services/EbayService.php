@@ -393,4 +393,222 @@ class EbayService
             ];
         }
     }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Seller OAuth — required for /sell/fulfillment/v1/order
+    //
+    // The catalog/browse APIs work with a client_credentials app token
+    // (handled by getOAuthToken above). Pulling the seller's own orders
+    // requires user consent: the seller authorises our app once via
+    // eBay's OAuth flow, we get back a refresh_token (valid ~18 months),
+    // and we mint short-lived access tokens from it on demand.
+    //
+    // Tokens are stored in business.api_settings.ebay_seller — same JSON
+    // column the rest of the eBay/Discogs creds live in, so no migration.
+    // ──────────────────────────────────────────────────────────────────────
+
+    /**
+     * Build the eBay OAuth consent URL the seller is redirected to.
+     * RuName must be registered in eBay Developer Console alongside the
+     * app's redirect URL; we accept it from settings (ebay.ru_name).
+     */
+    public function getSellerAuthorizationUrl($redirect_uri)
+    {
+        $ebay = $this->settings['ebay'] ?? [];
+        $environment = $ebay['environment'] ?? 'sandbox';
+        $auth_base = $environment === 'production'
+            ? 'https://auth.ebay.com/oauth2/authorize'
+            : 'https://auth.sandbox.ebay.com/oauth2/authorize';
+
+        $scopes = [
+            'https://api.ebay.com/oauth/api_scope',
+            'https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly',
+        ];
+
+        $params = [
+            'client_id' => $this->appId,
+            'response_type' => 'code',
+            // eBay requires RuName in production; in sandbox it accepts a
+            // raw URL but we still pass redirect_uri so the callback page
+            // can verify state.
+            'redirect_uri' => !empty($ebay['ru_name']) ? $ebay['ru_name'] : $redirect_uri,
+            'scope' => implode(' ', $scopes),
+            'state' => bin2hex(random_bytes(8)),
+            'prompt' => 'login',
+        ];
+        return $auth_base . '?' . http_build_query($params);
+    }
+
+    /**
+     * Exchange an OAuth authorisation code for a refresh+access token,
+     * and stash both in business.api_settings.ebay_seller.
+     *
+     * Returns ['success' => true] on success or ['success' => false,
+     * 'msg' => ...] on any failure.
+     */
+    public function exchangeAuthCode($code, $redirect_uri)
+    {
+        if (empty($this->appId) || empty($this->certId)) {
+            return ['success' => false, 'msg' => 'eBay app_id / cert_id not configured.'];
+        }
+        $ebay = $this->settings['ebay'] ?? [];
+        $redirect = !empty($ebay['ru_name']) ? $ebay['ru_name'] : $redirect_uri;
+
+        try {
+            $response = $this->makeRequest($this->baseUrl . '/identity/v1/oauth2/token', [
+                'headers' => [
+                    'Content-Type' => 'application/x-www-form-urlencoded',
+                    'Authorization' => 'Basic ' . base64_encode($this->appId . ':' . $this->certId),
+                ],
+                'post' => [
+                    'grant_type' => 'authorization_code',
+                    'code' => $code,
+                    'redirect_uri' => $redirect,
+                ],
+            ]);
+
+            if (empty($response['refresh_token'])) {
+                return ['success' => false, 'msg' => 'eBay did not return a refresh_token: ' . json_encode($response)];
+            }
+
+            $this->saveSellerTokens([
+                'refresh_token' => $response['refresh_token'],
+                'refresh_token_expires_at' => Carbon::now()->addSeconds((int)($response['refresh_token_expires_in'] ?? 47304000))->toDateTimeString(),
+                'access_token' => $response['access_token'] ?? null,
+                'access_token_expires_at' => isset($response['expires_in'])
+                    ? Carbon::now()->addSeconds((int)$response['expires_in'] - 60)->toDateTimeString()
+                    : null,
+                'connected_at' => now()->toDateTimeString(),
+            ]);
+
+            return ['success' => true];
+        } catch (\Exception $e) {
+            return ['success' => false, 'msg' => 'eBay token exchange failed: ' . $e->getMessage()];
+        }
+    }
+
+    /** True if a seller refresh_token is stored AND not expired. */
+    public function isSellerConnected()
+    {
+        $sel = $this->settings['ebay_seller'] ?? [];
+        if (empty($sel['refresh_token'])) return false;
+        if (!empty($sel['refresh_token_expires_at']) &&
+            strtotime($sel['refresh_token_expires_at']) < time()) {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Get a valid seller access_token, refreshing via refresh_token if
+     * the cached one is missing or expired. Returns null on failure.
+     */
+    public function getSellerAccessToken()
+    {
+        $sel = $this->settings['ebay_seller'] ?? [];
+        if (empty($sel['refresh_token'])) return null;
+
+        // Use cached access_token if it has more than 60s of life left.
+        if (!empty($sel['access_token']) && !empty($sel['access_token_expires_at']) &&
+            strtotime($sel['access_token_expires_at']) > time() + 60) {
+            return $sel['access_token'];
+        }
+
+        try {
+            $scopes = ['https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly'];
+            $response = $this->makeRequest($this->baseUrl . '/identity/v1/oauth2/token', [
+                'headers' => [
+                    'Content-Type' => 'application/x-www-form-urlencoded',
+                    'Authorization' => 'Basic ' . base64_encode($this->appId . ':' . $this->certId),
+                ],
+                'post' => [
+                    'grant_type' => 'refresh_token',
+                    'refresh_token' => $sel['refresh_token'],
+                    'scope' => implode(' ', $scopes),
+                ],
+            ]);
+            if (empty($response['access_token'])) return null;
+
+            $sel['access_token'] = $response['access_token'];
+            $sel['access_token_expires_at'] = Carbon::now()->addSeconds((int)$response['expires_in'] - 60)->toDateTimeString();
+            $this->saveSellerTokens($sel);
+
+            return $sel['access_token'];
+        } catch (\Exception $e) {
+            Log::warning('eBay refresh token mint failed: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Pull a single page of seller orders for a date range. Returns the
+     * decoded response (with `orders`, `total`, `next`) or ['error' => …].
+     */
+    public function fetchOrders($created_after, $created_before, $offset = 0, $limit = 200)
+    {
+        $token = $this->getSellerAccessToken();
+        if (!$token) {
+            return ['error' => 'No seller token (not connected, or refresh failed).'];
+        }
+
+        $filter = sprintf('creationdate:[%s..%s]', $created_after, $created_before);
+        $params = [
+            'filter' => $filter,
+            'limit' => max(1, min(200, (int)$limit)),
+            'offset' => max(0, (int)$offset),
+        ];
+
+        $url = $this->baseUrl . '/sell/fulfillment/v1/order?' . http_build_query($params);
+
+        try {
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'Authorization: Bearer ' . $token,
+                'Accept: application/json',
+                'Content-Type: application/json',
+            ]);
+            $body = curl_exec($ch);
+            $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $err = curl_error($ch);
+            curl_close($ch);
+
+            if ($err) return ['error' => 'cURL: ' . $err];
+            if ($code !== 200) return ['error' => 'eBay HTTP ' . $code, 'body' => $body];
+            $data = json_decode($body, true);
+            return is_array($data) ? $data : ['error' => 'Invalid JSON from eBay'];
+        } catch (\Exception $e) {
+            return ['error' => $e->getMessage()];
+        }
+    }
+
+    /** Persist the ebay_seller block back into business.api_settings. */
+    protected function saveSellerTokens(array $seller_data)
+    {
+        $business = \App\Business::find($this->businessId);
+        if (!$business) return;
+        $api = $business->api_settings ?? [];
+        if (is_string($api)) $api = json_decode($api, true) ?? [];
+        $api['ebay_seller'] = array_merge($api['ebay_seller'] ?? [], $seller_data);
+        $business->api_settings = $api;
+        $business->save();
+        // Refresh in-memory copy so subsequent calls in this request see the new tokens.
+        $this->settings['ebay_seller'] = $api['ebay_seller'];
+    }
+
+    /** Disconnect — wipe stored seller tokens. */
+    public function disconnectSeller()
+    {
+        $business = \App\Business::find($this->businessId);
+        if (!$business) return;
+        $api = $business->api_settings ?? [];
+        if (is_string($api)) $api = json_decode($api, true) ?? [];
+        unset($api['ebay_seller']);
+        $business->api_settings = $api;
+        $business->save();
+        $this->settings['ebay_seller'] = null;
+    }
 } 

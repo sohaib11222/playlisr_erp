@@ -374,6 +374,13 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/sales-by-channel', 'ReportController@salesByChannel');
     Route::get('/reports/discogs', 'ReportController@discogsReport');
     Route::get('/reports/ebay', 'ReportController@ebayReport');
+
+    // eBay seller OAuth — required to read /sell/fulfillment/v1/order.
+    // Tokens land in business.api_settings.ebay_seller (no migration).
+    Route::get('/admin/ebay-seller', 'EbaySellerAuthController@index');
+    Route::get('/admin/ebay-seller/connect', 'EbaySellerAuthController@connect');
+    Route::get('/admin/ebay-seller/callback', 'EbaySellerAuthController@callback');
+    Route::post('/admin/ebay-seller/disconnect', 'EbaySellerAuthController@disconnect');
     // The old "Clover vs ERP" rollup is superseded by the EOD reconciliation
     // page — same data, better structure (shift cards with drawer math).
     // Redirect preserves any bookmarks pointing at the old URL.
