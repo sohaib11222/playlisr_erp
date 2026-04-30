@@ -1,0 +1,100 @@
+# Specifically clean up the half-applied 2026-04-29 cashier-columns
+# migration: drop columns if they exist, remove the migration row, and
+# flush table locks. Targeted recovery for the canceled-migrate state.
+
+name: Cleanup bad migration
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: production-restart
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+      - name: Add server to known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+      - name: Clean up bad migration via Laravel PDO
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+
+            echo "=== current state of business_locations columns ==="
+            php artisan tinker --no-interaction --execute="
+              \$cols = DB::select('SHOW COLUMNS FROM business_locations LIKE \"%cashier%\"');
+              foreach (\$cols as \$c) echo '  found: ' . \$c->Field . ' (' . \$c->Type . ')' . PHP_EOL;
+              if (empty(\$cols)) echo '  no cashier columns present' . PHP_EOL;
+            "
+            echo
+
+            echo "=== current state of migrations row ==="
+            php artisan tinker --no-interaction --execute="
+              \$rows = DB::table('migrations')->where('migration', 'like', '%current_cashier%')->get();
+              foreach (\$rows as \$r) echo '  found: ' . \$r->migration . ' (batch ' . \$r->batch . ')' . PHP_EOL;
+              if (count(\$rows) == 0) echo '  no migration row present' . PHP_EOL;
+            "
+            echo
+
+            echo "=== killing any current ALTER / lock holders ==="
+            php artisan tinker --no-interaction --execute="
+              \$me = DB::select('SELECT CONNECTION_ID() AS id')[0]->id;
+              \$victims = DB::select('SELECT id FROM information_schema.processlist WHERE id != ? AND user != \"system user\"', [\$me]);
+              foreach (\$victims as \$v) { try { DB::statement('KILL ' . (int)\$v->id); } catch (\Throwable \$e) {} }
+              echo '  killed: ' . count(\$victims) . PHP_EOL;
+            "
+            echo
+
+            echo "=== dropping cashier columns if present ==="
+            php artisan tinker --no-interaction --execute="
+              try { DB::statement('ALTER TABLE business_locations DROP COLUMN current_cashier_id'); echo '  dropped current_cashier_id' . PHP_EOL; }
+              catch (\Throwable \$e) { echo '  current_cashier_id: ' . \$e->getMessage() . PHP_EOL; }
+              try { DB::statement('ALTER TABLE business_locations DROP COLUMN cashier_assigned_at'); echo '  dropped cashier_assigned_at' . PHP_EOL; }
+              catch (\Throwable \$e) { echo '  cashier_assigned_at: ' . \$e->getMessage() . PHP_EOL; }
+            "
+            echo
+
+            echo "=== removing migration row if present ==="
+            php artisan tinker --no-interaction --execute="
+              \$n = DB::table('migrations')->where('migration', 'like', '%current_cashier%')->delete();
+              echo '  rows deleted: ' . \$n . PHP_EOL;
+            "
+            echo
+
+            echo "=== flush tables ==="
+            php artisan tinker --no-interaction --execute="
+              try { DB::statement('FLUSH TABLES'); echo '  ok' . PHP_EOL; }
+              catch (\Throwable \$e) { echo '  flush: ' . \$e->getMessage() . PHP_EOL; }
+            "
+            echo
+
+            echo "=== clearing Laravel caches ==="
+            php artisan optimize:clear 2>&1 | head -10
+            echo
+
+            echo "=== HTTP smoke test ==="
+            for i in 1 2 3 4 5 6 7; do
+              CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 15 https://playlist.nivessa.com/login || echo TIMEOUT)
+              echo "  attempt $i: HTTP $CODE"
+              [ "$CODE" = "200" ] && break
+              sleep 3
+            done
