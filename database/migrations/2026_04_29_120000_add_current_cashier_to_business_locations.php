@@ -26,9 +26,28 @@ class AddCurrentCashierToBusinessLocations extends Migration
 {
     public function up()
     {
-        if (Schema::hasTable('business_locations') && !Schema::hasColumn('business_locations', 'current_cashier_id')) {
+        if (!Schema::hasTable('business_locations')) {
+            return;
+        }
+
+        // Add columns one at a time, no index. The previous version of this
+        // migration tried to add both columns plus an index in a single
+        // Schema::table closure and the migrate runner hung — almost
+        // certainly because the ALTER TABLE was waiting on a lock from a
+        // hot-path query against business_locations. Splitting the work
+        // gives MySQL a chance to acquire the lock, finish, release, and
+        // re-acquire for the next change. The index is omitted entirely;
+        // business_locations is tiny (one row per store) so a full scan on
+        // current_cashier_id costs nothing.
+
+        if (!Schema::hasColumn('business_locations', 'current_cashier_id')) {
             Schema::table('business_locations', function (Blueprint $table) {
-                $table->unsignedInteger('current_cashier_id')->nullable()->index();
+                $table->unsignedInteger('current_cashier_id')->nullable();
+            });
+        }
+
+        if (!Schema::hasColumn('business_locations', 'cashier_assigned_at')) {
+            Schema::table('business_locations', function (Blueprint $table) {
                 $table->timestamp('cashier_assigned_at')->nullable();
             });
         }
@@ -36,9 +55,17 @@ class AddCurrentCashierToBusinessLocations extends Migration
 
     public function down()
     {
-        if (Schema::hasTable('business_locations') && Schema::hasColumn('business_locations', 'current_cashier_id')) {
+        if (!Schema::hasTable('business_locations')) {
+            return;
+        }
+        if (Schema::hasColumn('business_locations', 'cashier_assigned_at')) {
             Schema::table('business_locations', function (Blueprint $table) {
-                $table->dropColumn(['current_cashier_id', 'cashier_assigned_at']);
+                $table->dropColumn('cashier_assigned_at');
+            });
+        }
+        if (Schema::hasColumn('business_locations', 'current_cashier_id')) {
+            Schema::table('business_locations', function (Blueprint $table) {
+                $table->dropColumn('current_cashier_id');
             });
         }
     }
