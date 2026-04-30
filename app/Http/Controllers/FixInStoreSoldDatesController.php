@@ -238,8 +238,14 @@ class FixInStoreSoldDatesController extends Controller
             $rowNum = $i + 1; // xlsx is 1-indexed
             $aDate = $this->coerceDate($row[0] ?? null);
             if ($aDate) {
+                // Update the running date AND map this row to it. The
+                // original importer treated some col-A-date rows as items
+                // (when they had item content), giving them the previous
+                // day's date by accident. The correct date for those rows
+                // is the col-A date itself.
                 $currentDate = $aDate;
-                continue; // separator row itself isn't an item
+                $map[$rowNum] = $currentDate;
+                continue;
             }
             if ($currentDate) {
                 $map[$rowNum] = $currentDate;
