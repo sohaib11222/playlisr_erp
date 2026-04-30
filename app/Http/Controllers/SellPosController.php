@@ -603,7 +603,7 @@ class SellPosController extends Controller
 
             $lines = TransactionSellLine::whereIn('transaction_id', $txIds)
                 ->with(['product:id,name,sku', 'variations:id,name,sub_sku,product_id'])
-                ->get(['id', 'transaction_id', 'product_id', 'variation_id', 'quantity', 'unit_price_inc_tax', 'unit_price']);
+                ->get(['id', 'transaction_id', 'product_id', 'variation_id', 'product_name', 'quantity', 'unit_price_inc_tax', 'unit_price']);
 
             $txById = $tx->keyBy('id');
 
@@ -615,11 +615,24 @@ class SellPosController extends Controller
                 $product = $line->product;
                 $variation = $line->variations;
 
+                // Resolve a display name. Quick-add presets (Water, Soda,
+                // bag fees, etc.) come through the "manual product" path —
+                // no real Product row, but `product_name` is stored on the
+                // sell line itself. Real product sales eager-load Product +
+                // Variation; manual sales fall through to product_name.
                 $name = $product ? ($product->name ?? '') : '';
                 if ($variation && !empty($variation->name) && $variation->name !== 'DUMMY') {
                     $name = trim($name . ' — ' . $variation->name);
                 }
+                if ($name === '' && !empty($line->product_name)) {
+                    $name = $line->product_name;
+                }
                 if ($name === '') { $name = 'Item'; }
+
+                // Skip bag fees — they're charged on every sale, would dominate
+                // the widget, and a "you just rang up a Bag Fee" warning is
+                // useless noise for cashiers.
+                if (stripos($name, 'bag fee') !== false) { continue; }
 
                 $unitPrice = $line->unit_price_inc_tax !== null
                     ? (float) $line->unit_price_inc_tax

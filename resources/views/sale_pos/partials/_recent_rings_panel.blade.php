@@ -175,66 +175,123 @@
             // can match them against the cached recent rings list. Using
             // MutationObserver instead of editing pos.js — keeps the sell
             // flow untouched.
+            function readRowSnapshot($row) {
+                var vid = $row.find('.row_variation_id').val() || null;
+                var rowPriceStr = $row.find('input.pos_unit_price_inc_tax').val()
+                               || $row.find('input.pos_unit_price').val() || '';
+                var rowPrice = parseFloat(String(rowPriceStr).replace(/[^0-9.\-]/g,''));
+
+                // Pull a name even for "manual product" rows (Quick-add tiles
+                // like Water/Soda — no variation_id but they DO carry a
+                // product_name input or visible label).
+                var productName = $row.find('.product_name, .product-name').first().text().trim();
+                if (!productName) {
+                    productName = ($row.find('input[name*="product_name"]').first().val() || '').trim();
+                }
+                if (!productName) {
+                    // Last resort: any text in the first cell.
+                    productName = $row.find('td').first().text().replace(/\s+/g,' ').trim().slice(0, 80);
+                }
+
+                return { vid: vid, name: productName, price: rowPrice };
+            }
+
+            function findRingMatch(snap) {
+                if (!rings || !rings.length) return null;
+                var nowS = Math.floor(Date.now()/1000);
+                var nameKey = (snap.name || '').toLowerCase();
+                // Skip obvious non-product lines.
+                if (!nameKey || nameKey.indexOf('bag fee') !== -1) return null;
+
+                for (var i = 0; i < rings.length; i++) {
+                    var r = rings[i];
+                    var ageSec = Math.max(0, nowS - r.ts_unix);
+                    if (ageSec > 5 * 60) continue;
+                    var idMatch = snap.vid && r.variation_id && String(r.variation_id) === String(snap.vid);
+                    var nameMatch = !idMatch && r.product_name &&
+                                    r.product_name.toLowerCase() === nameKey;
+                    if (!idMatch && !nameMatch) continue;
+                    var match = r;
+                    match._priceDelta = (!isNaN(snap.price) && r.unit_price)
+                        ? Math.abs(snap.price - r.unit_price) : null;
+                    return match;
+                }
+                return null;
+            }
+
+            function showRingMatchBanner(match, snap) {
+                var ageMin = Math.max(1, Math.round((Date.now()/1000 - match.ts_unix)/60));
+                var line = '<b>' + escapeHtml(match.product_name) + '</b> was rung up '
+                    + ageMin + ' min ago at ' + fmtMoney(match.unit_price)
+                    + ' by ' + escapeHtml(match.cashier_name || 'someone')
+                    + (match.invoice_no ? ' (' + escapeHtml(match.invoice_no) + ')' : '')
+                    + '.';
+                if (match._priceDelta !== null && match._priceDelta > 0.05) {
+                    line += ' This add is ' + fmtMoney(snap.price) + ' — different price.';
+                }
+                line += '<br><span style="color:#9a3412; font-size:12px;">'
+                      + 'If this is a different copy, click Keep it. Otherwise remove the line so the customer isn\'t charged twice.</span>';
+                showDupBanner(line);
+            }
+
             function checkForDuplicate($row) {
                 try {
-                    var vid = $row.find('.row_variation_id').val();
-                    if (!vid) return;
+                    var snap = readRowSnapshot($row);
 
-                    // (1) Already in this cart? Manolo's case: a record gets
-                    //     rung up 4x in the same sale. Count rows with the
-                    //     same variation_id; if there's more than one, the
-                    //     just-added row is a dup of an earlier line.
-                    var $sameVidRows = $('table#pos_table tbody tr.product_row')
-                        .filter(function(){
-                            return $(this).find('.row_variation_id').val() == vid;
-                        });
+                    // Bag fees are not "duplicates" worth warning about.
+                    if (snap.name && snap.name.toLowerCase().indexOf('bag fee') !== -1) return;
 
-                    var rowPriceStr = $row.find('input.pos_unit_price_inc_tax').val()
-                                   || $row.find('input.pos_unit_price').val() || '';
-                    var rowPrice = parseFloat(String(rowPriceStr).replace(/[^0-9.\-]/g,''));
-
-                    var productName = $row.find('.product_name, .product-name').first().text().trim()
-                                   || ($sameVidRows.first().find('.product_name, .product-name').first().text().trim())
-                                   || 'This item';
-
-                    if ($sameVidRows.length > 1) {
-                        var msg = '<b>' + escapeHtml(productName) + '</b> is already in this cart'
-                            + (!isNaN(rowPrice) ? ' (this add: ' + fmtMoney(rowPrice) + ')' : '')
+                    // (1) Already in THIS cart? Manolo's case — same item
+                    //     entered as multiple lines on one sale. Match on
+                    //     variation_id when present, otherwise on product
+                    //     name + same price.
+                    var $allRows = $('table#pos_table tbody tr.product_row');
+                    var sameCount = 0;
+                    $allRows.each(function(){
+                        var $r = $(this);
+                        if ($r[0] === $row[0]) { sameCount++; return; }
+                        var rs = readRowSnapshot($r);
+                        var idMatch = snap.vid && rs.vid && String(rs.vid) === String(snap.vid);
+                        var nameMatch = !idMatch && snap.name && rs.name &&
+                                        rs.name.toLowerCase() === snap.name.toLowerCase();
+                        if (idMatch || nameMatch) { sameCount++; }
+                    });
+                    if (sameCount > 1) {
+                        var msg = '<b>' + escapeHtml(snap.name || 'This item') + '</b> is already in this cart'
+                            + (!isNaN(snap.price) ? ' (this add: ' + fmtMoney(snap.price) + ')' : '')
                             + '.<br><span style="color:#9a3412; font-size:12px;">'
                             + 'If this is a different copy, click Keep it. Otherwise remove the duplicate line so the customer isn\'t charged twice.</span>';
                         showDupBanner(msg);
                         return;
                     }
 
-                    // (2) Just rung up at this location? Catches the case
-                    //     where a record was sold a few minutes ago on
-                    //     another sale (or by another cashier).
-                    if (!rings || !rings.length) return;
-                    var match = null;
-                    for (var i = 0; i < rings.length; i++) {
-                        var r = rings[i];
-                        if (String(r.variation_id) !== String(vid)) continue;
-                        var ageSec = Math.max(0, Math.floor(Date.now()/1000) - r.ts_unix);
-                        if (ageSec > 5 * 60) continue;
-                        match = r;
-                        match._priceDelta = (!isNaN(rowPrice) && r.unit_price)
-                            ? Math.abs(rowPrice - r.unit_price) : null;
-                        break;
+                    // (2) Recently rung up on a different sale at this location?
+                    var match = findRingMatch(snap);
+                    if (match) {
+                        showRingMatchBanner(match, snap);
+                        return;
                     }
-                    if (!match) return;
 
-                    var ageMin = Math.max(1, Math.round((Date.now()/1000 - match.ts_unix)/60));
-                    var line = '<b>' + escapeHtml(match.product_name) + '</b> was rung up '
-                        + ageMin + ' min ago at ' + fmtMoney(match.unit_price)
-                        + ' by ' + escapeHtml(match.cashier_name || 'someone')
-                        + (match.invoice_no ? ' (' + escapeHtml(match.invoice_no) + ')' : '')
-                        + '.';
-                    if (match._priceDelta !== null && match._priceDelta > 0.05) {
-                        line += ' This add is ' + fmtMoney(rowPrice) + ' — different price.';
-                    }
-                    line += '<br><span style="color:#9a3412; font-size:12px;">'
-                          + 'If this is a different copy, click Keep it. Otherwise remove the line so the customer isn\'t charged twice.</span>';
-                    showDupBanner(line);
+                    // (3) Cache miss — the previous sale may have completed
+                    //     between the last fetchRings tick and this add.
+                    //     Refetch fresh and try once more so a Water → save →
+                    //     Water-again sequence within ~30s still fires.
+                    var loc = locationId();
+                    if (!loc) return;
+                    $.ajax({
+                        method: 'GET',
+                        url: '/sells/pos/recent-rings',
+                        data: { location_id: loc, minutes: 30 },
+                        dataType: 'json',
+                        timeout: 4000
+                    }).done(function(resp){
+                        try {
+                            rings = (resp && resp.rings) ? resp.rings : rings;
+                            render(resp && resp.now_unix);
+                            var freshMatch = findRingMatch(snap);
+                            if (freshMatch) showRingMatchBanner(freshMatch, snap);
+                        } catch (e) { /* swallow */ }
+                    });
                 } catch (e) { /* swallow */ }
             }
 
