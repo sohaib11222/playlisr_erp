@@ -5584,21 +5584,41 @@ class ReportController extends Controller
             $overall_revenue += (float)$r->revenue;
         }
 
+        // Pull website-side channels from nivessa.com (Space Rentals + web
+        // sales — shipping & pickup). These don't live in the ERP DB, so
+        // we fetch live each render. Failures are swallowed: the rest of
+        // the report keeps working if the website is down.
+        $website_rows = $this->fetchWebsiteChannelTotals($start_date, $end_date);
+        foreach ($website_rows as $wr) {
+            $rows[$wr['key']] = $wr['row'];
+            $overall_revenue += $wr['row']['revenue'];
+        }
+
         // Compute share % and gross margin %, then sort by revenue desc.
+        // Default cost_unknown=false for local rows so the view doesn't have
+        // to null-check.
         $rows = array_map(function ($row) use ($overall_revenue) {
+            if (!isset($row['cost_unknown'])) {
+                $row['cost_unknown'] = false;
+            }
             $row['share_pct']    = $overall_revenue > 0 ? ($row['revenue'] / $overall_revenue) * 100 : 0;
-            $row['gross_margin'] = $row['revenue'] > 0 ? ($row['gross_profit'] / $row['revenue']) * 100 : 0;
+            $row['gross_margin'] = (!$row['cost_unknown'] && $row['revenue'] > 0)
+                ? ($row['gross_profit'] / $row['revenue']) * 100 : 0;
             return $row;
         }, $rows);
         usort($rows, function ($a, $b) { return $b['revenue'] <=> $a['revenue']; });
 
+        // Totals exclude rows with unknown cost from the gross-profit roll
+        // (would otherwise pull the consolidated margin down to zero).
+        $known_gp_rows = array_filter($rows, function ($r) { return empty($r['cost_unknown']); });
+        $known_gp_revenue = array_sum(array_column($known_gp_rows, 'revenue'));
         $totals = [
             'revenue'      => $overall_revenue,
             'cnt'          => array_sum(array_column($rows, 'cnt')),
-            'gross_profit' => array_sum(array_column($rows, 'gross_profit')),
+            'gross_profit' => array_sum(array_column($known_gp_rows, 'gross_profit')),
         ];
-        $totals['gross_margin'] = $totals['revenue'] > 0
-            ? ($totals['gross_profit'] / $totals['revenue']) * 100 : 0;
+        $totals['gross_margin'] = $known_gp_revenue > 0
+            ? ($totals['gross_profit'] / $known_gp_revenue) * 100 : 0;
 
         // CSV export — same data, no view chrome.
         if ($request->input('export') === 'csv') {
@@ -5616,8 +5636,8 @@ class ReportController extends Controller
                         number_format($r['revenue'], 2, '.', ''),
                         number_format($r['share_pct'], 2, '.', ''),
                         $r['cnt'],
-                        number_format($r['gross_profit'], 2, '.', ''),
-                        number_format($r['gross_margin'], 2, '.', ''),
+                        $r['cost_unknown'] ? '' : number_format($r['gross_profit'], 2, '.', ''),
+                        $r['cost_unknown'] ? '' : number_format($r['gross_margin'], 2, '.', ''),
                     ]);
                 }
                 fputcsv($out, [
@@ -5636,6 +5656,130 @@ class ReportController extends Controller
         return view('report.sales_by_channel')->with(compact(
             'rows', 'totals', 'start_date', 'end_date', 'business_locations'
         ));
+    }
+
+    /**
+     * Fetch revenue from the nivessa.com backend for the channels that
+     * don't live in the ERP DB: Space Rentals (venue bookings) and web
+     * sales (shipping + pickup).
+     *
+     * Returns an array of row entries shaped like the local rows in
+     * salesByChannel() — `[ ['key' => ..., 'row' => [...]] , ... ]`.
+     *
+     * Failure modes are intentionally quiet: any HTTP error, missing
+     * config, or malformed response just yields an empty array. The
+     * Sales-by-Channel report must keep rendering even if the website
+     * backend is down.
+     *
+     * Config (env):
+     *   NIVESSA_WEBSITE_API_URL   default: https://nivessa.com
+     *   NIVESSA_WEBSITE_API_KEY   the X-API-Key header (BLOG_API_KEY on
+     *                              the server side); without it we skip
+     *                              the fetch entirely.
+     */
+    protected function fetchWebsiteChannelTotals($start_date, $end_date)
+    {
+        $base = rtrim(env('NIVESSA_WEBSITE_API_URL', 'https://nivessa.com'), '/');
+        $key  = env('NIVESSA_WEBSITE_API_KEY', '');
+        if (empty($key)) {
+            return []; // Not configured — nothing to add.
+        }
+
+        $rows = [];
+
+        // Space Rentals — venue bookings.
+        $bookings = $this->httpGetJson(
+            $base . '/api/v1/bookings/sales-totals?start_date=' . urlencode($start_date) . '&end_date=' . urlencode($end_date),
+            $key
+        );
+        if (!empty($bookings) && !empty($bookings['success'])) {
+            $rev = (float)($bookings['totalRevenue'] ?? 0);
+            $cnt = (int)($bookings['count'] ?? 0);
+            $rows[] = [
+                'key' => 'web|space_rental',
+                'row' => [
+                    'label'           => 'Space Rentals',
+                    'channel'         => 'space_rental',
+                    'location_id'     => null,
+                    'revenue'         => $rev,
+                    'revenue_exc_tax' => $rev,
+                    'cnt'             => $cnt,
+                    'gross_profit'    => $rev, // No COGS on rentals.
+                ],
+            ];
+        }
+
+        // Web sales — shipping + pickup. One call returns both buckets.
+        $orders = $this->httpGetJson(
+            $base . '/api/v1/order/sales-totals?start_date=' . urlencode($start_date) . '&end_date=' . urlencode($end_date),
+            $key
+        );
+        if (!empty($orders) && !empty($orders['success']) && !empty($orders['byMethod'])) {
+            $bm = $orders['byMethod'];
+            $shipping = $bm['shipping'] ?? ['totalRevenue' => 0, 'count' => 0];
+            $pickup   = $bm['pickup']   ?? ['totalRevenue' => 0, 'count' => 0];
+
+            $rows[] = [
+                'key' => 'web|web_ship',
+                'row' => [
+                    'label'           => 'nivessa.com — Shipping',
+                    'channel'         => 'web_ship',
+                    'location_id'     => null,
+                    'revenue'         => (float)$shipping['totalRevenue'],
+                    'revenue_exc_tax' => (float)$shipping['totalRevenue'],
+                    'cnt'             => (int)$shipping['count'],
+                    // Cost basis lives in the website backend's order line items.
+                    // Not surfaced yet — view renders "—" for these.
+                    'gross_profit'    => 0.0,
+                    'cost_unknown'    => true,
+                ],
+            ];
+            $rows[] = [
+                'key' => 'web|web_pickup',
+                'row' => [
+                    'label'           => 'nivessa.com — Pickup',
+                    'channel'         => 'web_pickup',
+                    'location_id'     => null,
+                    'revenue'         => (float)$pickup['totalRevenue'],
+                    'revenue_exc_tax' => (float)$pickup['totalRevenue'],
+                    'cnt'             => (int)$pickup['count'],
+                    'gross_profit'    => 0.0,
+                    'cost_unknown'    => true,
+                ],
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * GET a JSON endpoint with a 5-second timeout and decode the body.
+     * Returns null on any error — caller is expected to skip silently.
+     */
+    protected function httpGetJson($url, $api_key)
+    {
+        try {
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 3);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'X-API-Key: ' . $api_key,
+                'Accept: application/json',
+                'User-Agent: NivessaERP/1.0 +https://playlist.nivessa.com',
+            ]);
+            $body = curl_exec($ch);
+            $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            if ($code !== 200 || empty($body)) {
+                return null;
+            }
+            $data = json_decode($body, true);
+            return is_array($data) ? $data : null;
+        } catch (\Exception $e) {
+            return null;
+        }
     }
 
 

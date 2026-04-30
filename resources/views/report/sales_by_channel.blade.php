@@ -110,8 +110,13 @@
                             <td class="text-right">${{ number_format($r['revenue'], 2) }}</td>
                             <td class="text-right">{{ number_format($r['share_pct'], 1) }}%</td>
                             <td class="text-right">{{ (int)$r['cnt'] }}</td>
-                            <td class="text-right">${{ number_format($r['gross_profit'], 2) }}</td>
-                            <td class="text-right">{{ number_format($r['gross_margin'], 1) }}%</td>
+                            @if(!empty($r['cost_unknown']))
+                                <td class="text-right text-muted" title="Cost basis lives on the website backend; not yet pulled into ERP.">—</td>
+                                <td class="text-right text-muted">—</td>
+                            @else
+                                <td class="text-right">${{ number_format($r['gross_profit'], 2) }}</td>
+                                <td class="text-right">{{ number_format($r['gross_margin'], 1) }}%</td>
+                            @endif
                             <td class="text-right text-muted">—</td>
                             <td class="text-right text-muted">—</td>
                         </tr>
@@ -136,7 +141,9 @@
             </table>
             <p class="text-muted" style="font-size:12px; margin-top:8px;">
                 Operating profit and net profit per channel require expense-allocation rules (rent, payroll, etc.) that are not yet defined.
-                See the <a href="{{ action('ReportController@getProfitLoss') }}">Profit / Loss report</a> for the consolidated view.
+                See the <a href="{{ action('ReportController@getProfitLoss') }}">Profit / Loss report</a> for the consolidated view.<br>
+                <em>nivessa.com</em> shipping &amp; pickup rows show revenue only — cost basis lives on the website backend and isn't pulled into the ERP yet.
+                Space Rentals are pure revenue (no COGS).
             </p>
         </div>
     </div>
