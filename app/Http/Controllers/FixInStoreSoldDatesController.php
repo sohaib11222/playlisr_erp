@@ -27,15 +27,17 @@ class FixInStoreSoldDatesController extends Controller
     public function index()
     {
         return view('admin.fix_in_store_sold_dates', [
-            'mode'             => null,
-            'session_id'       => null,
-            'sheet_row_count'  => 0,
-            'tx_total'         => 0,
-            'matched_count'    => 0,
-            'unmatched_count'  => 0,
-            'updated'          => 0,
-            'snapshot_key'     => null,
-            'samples'          => [],
+            'mode'              => null,
+            'session_id'        => null,
+            'sheet_row_count'   => 0,
+            'tx_total'          => 0,
+            'matched_count'     => 0,
+            'unmatched_count'   => 0,
+            'updated'           => 0,
+            'snapshot_key'      => null,
+            'samples'           => [],
+            'unmatched_samples' => [],
+            'row_date_samples'  => [],
         ]);
     }
 
@@ -127,6 +129,40 @@ class FixInStoreSoldDatesController extends Controller
             ];
         }
 
+        // Debug: capture sample unmatched external_ids so we can see why the
+        // 'row<N>' regex is failing or which rowNums have no xlsx date.
+        $unmatchedSamples = [];
+        foreach ($unmatched as $tx) {
+            if (count($unmatchedSamples) >= 10) break;
+            $extId = (string) $tx->import_external_id;
+            $reason = '?';
+            if (!preg_match('/^row(\d+)$/', $extId)) {
+                $reason = 'external_id format unexpected';
+            } else {
+                preg_match('/^row(\d+)$/', $extId, $m);
+                $rn = (int) $m[1];
+                $reason = "xlsx row $rn has no Sold/Bought date";
+            }
+            $unmatchedSamples[] = [
+                'id' => $tx->id,
+                'external_id' => $extId,
+                'current_date' => $tx->transaction_date,
+                'reason' => $reason,
+            ];
+        }
+
+        // Also: show what xlsx rows DO have dates (first 5) so we can compare
+        // ranges and spot whether the row-number space is just non-overlapping.
+        $rowDateSamples = [];
+        $rowKeys = array_keys($rowDateMap);
+        sort($rowKeys);
+        foreach (array_slice($rowKeys, 0, 5) as $rk) {
+            $rowDateSamples[] = ['row' => $rk, 'date' => $rowDateMap[$rk]];
+        }
+        foreach (array_slice($rowKeys, -5) as $rk) {
+            $rowDateSamples[] = ['row' => $rk, 'date' => $rowDateMap[$rk]];
+        }
+
         return view('admin.fix_in_store_sold_dates', [
             'mode'             => $commit ? 'commit' : 'preview',
             'session_id'       => $sessionId,
@@ -137,6 +173,8 @@ class FixInStoreSoldDatesController extends Controller
             'updated'          => $updated,
             'snapshot_key'     => $snapshotKey,
             'samples'          => $samples,
+            'unmatched_samples' => $unmatchedSamples,
+            'row_date_samples'  => $rowDateSamples,
         ]);
     }
 

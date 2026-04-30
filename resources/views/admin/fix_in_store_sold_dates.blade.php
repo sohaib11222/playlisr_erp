@@ -78,6 +78,70 @@
     </div>
 </div>
 
+@if (!empty($unmatched_samples))
+<div class="row">
+    <div class="col-md-12">
+        <div class="box box-warning">
+            <div class="box-header with-border">
+                <h3 class="box-title">Debug — sample unmatched transactions ({{ count($unmatched_samples) }} of {{ number_format($unmatched_count) }})</h3>
+            </div>
+            <div class="box-body" style="padding:0;">
+                <table class="table table-condensed table-striped" style="margin:0;">
+                    <thead>
+                        <tr>
+                            <th style="width:80px;">Tx ID</th>
+                            <th>import_external_id</th>
+                            <th>Current date</th>
+                            <th>Why unmatched</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($unmatched_samples as $u)
+                            <tr>
+                                <td>{{ $u['id'] }}</td>
+                                <td><code>{{ $u['external_id'] }}</code></td>
+                                <td>{{ \Carbon\Carbon::parse($u['current_date'])->format('m/d/y g:i A') }}</td>
+                                <td>{{ $u['reason'] }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+@endif
+
+@if (!empty($row_date_samples))
+<div class="row">
+    <div class="col-md-12">
+        <div class="box box-info">
+            <div class="box-header with-border">
+                <h3 class="box-title">Debug — xlsx rows that DO have a Sold/Bought date (first 5 + last 5)</h3>
+            </div>
+            <div class="box-body" style="padding:0;">
+                <table class="table table-condensed table-striped" style="margin:0;">
+                    <thead>
+                        <tr>
+                            <th style="width:120px;">xlsx row #</th>
+                            <th>Date from col P/F</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($row_date_samples as $r)
+                            <tr>
+                                <td><code>row{{ $r['row'] }}</code></td>
+                                <td>{{ $r['date'] }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+@endif
+
 @if (!empty($samples))
 <div class="row">
     <div class="col-md-12">
