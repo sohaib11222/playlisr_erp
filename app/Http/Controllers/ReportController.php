@@ -5514,14 +5514,14 @@ class ReportController extends Controller
             ->get()
             ->keyBy(function ($r) { return $r->location_id . '|' . $r->channel; });
 
-        // Channel display rules. Online channels collapse to one row.
-        $channel_label = [
-            'in_store' => '',
-            'whatnot'  => ' — Whatnot',
-            'discogs'  => 'Discogs',
-            'ebay'     => 'eBay & Other',
-        ];
+        // Channel display rules. Online channels collapse to one row;
+        // in-store and Whatnot get friendly per-store labels (Sarah
+        // 2026-04-30 — kill the "(BL0001)" location codes Sabina sees).
         $online_channels = ['discogs', 'ebay'];
+        $online_label = [
+            'discogs' => 'Discogs',
+            'ebay'    => 'eBay & Other',
+        ];
 
         // Build display rows.
         $rows = [];
@@ -5529,16 +5529,36 @@ class ReportController extends Controller
         foreach ($rev as $r) {
             $channel = $r->channel ?: 'in_store';
             $is_online = in_array($channel, $online_channels, true);
-            $loc_name = $business_locations[$r->location_id] ?? 'Unknown';
+            $loc_name_raw = $business_locations[$r->location_id] ?? 'Unknown';
+            // Strip a trailing " (code)" suffix so labels read as plain names.
+            $loc_name = trim(preg_replace('/\s*\([^)]*\)\s*$/', '', $loc_name_raw));
+            $loc_lower = strtolower($loc_name);
+            $is_hollywood = strpos($loc_lower, 'hollywood') !== false;
+            $is_pico = strpos($loc_lower, 'pico') !== false;
 
-            // Online channels: collapse across locations under one label.
             if ($is_online) {
                 $key = 'online|' . $channel;
-                $label = $channel_label[$channel];
+                $label = $online_label[$channel];
                 $loc_id_display = null;
-            } else {
-                $key = $r->location_id . '|' . $channel;
-                $label = $loc_name . $channel_label[$channel];
+            } elseif ($channel === 'whatnot') {
+                $key = $r->location_id . '|whatnot';
+                if ($is_hollywood) {
+                    $label = 'Whatnot Hollywood';
+                } elseif ($is_pico) {
+                    $label = 'Whatnot - Pico';
+                } else {
+                    $label = 'Whatnot - ' . ucwords($loc_name);
+                }
+                $loc_id_display = $r->location_id;
+            } else { // in_store
+                $key = $r->location_id . '|in_store';
+                if ($is_hollywood) {
+                    $label = 'Hollywood Store';
+                } elseif ($is_pico) {
+                    $label = 'Pico Store';
+                } else {
+                    $label = ucwords($loc_name) . ' Store';
+                }
                 $loc_id_display = $r->location_id;
             }
 
@@ -5615,6 +5635,168 @@ class ReportController extends Controller
 
         return view('report.sales_by_channel')->with(compact(
             'rows', 'totals', 'start_date', 'end_date', 'business_locations'
+        ));
+    }
+
+
+    /**
+     * Discogs Sales Report — date-range rollup for the Discogs channel
+     * (transactions.channel = 'discogs'). Slide 7 of the March business
+     * review flagged that "Online channel reports (Whatnot, Discogs) do
+     * not reconcile with P&L" and "lack cost prices" — with cost prices
+     * now backfilled, this is the page that closes the Discogs half.
+     *
+     * Thin wrapper around onlineChannelReport().
+     */
+    public function discogsReport(Request $request)
+    {
+        return $this->onlineChannelReport($request, 'discogs', 'Discogs');
+    }
+
+    /**
+     * eBay Sales Report — same shape as Discogs, scoped to channel='ebay'.
+     */
+    public function ebayReport(Request $request)
+    {
+        return $this->onlineChannelReport($request, 'ebay', 'eBay');
+    }
+
+    /**
+     * Shared implementation for online single-channel sales reports
+     * (Discogs, eBay). Surfaces revenue, gross profit, margin, txn count,
+     * a daily breakdown, and a top-50 items table. CSV export included.
+     *
+     * One report per channel because each one has different ops concerns
+     * (Discogs fees, eBay shipping etc.); the page itself is identical.
+     *
+     * @param string $channel       Value to filter transactions.channel by
+     *                              (must be present in the channel enum).
+     * @param string $channel_name  Human label for headers / filenames.
+     */
+    protected function onlineChannelReport(Request $request, $channel, $channel_name)
+    {
+        $this->ensureAdminOnlyReportAccess();
+
+        $business_id = $request->session()->get('user.business_id');
+        $start_date = $request->input('start_date');
+        $end_date = $request->input('end_date');
+        if (empty($start_date) || empty($end_date)) {
+            $start_date = $start_date ?: \Carbon::now()->startOfMonth()->format('Y-m-d');
+            $end_date = $end_date ?: \Carbon::now()->format('Y-m-d');
+        }
+
+        $base = DB::table('transactions as t')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->where('t.channel', $channel)
+            ->whereDate('t.transaction_date', '>=', $start_date)
+            ->whereDate('t.transaction_date', '<=', $end_date);
+
+        $summary = (clone $base)
+            ->selectRaw('COUNT(*) as cnt,
+                COALESCE(SUM(t.final_total), 0) as revenue,
+                COALESCE(SUM(t.total_before_tax), 0) as revenue_exc_tax')
+            ->first();
+
+        // Gross profit (mirrors getGrossProfit, channel-scoped, no combos).
+        $gp_obj = DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as sale', 'tsl.transaction_id', '=', 'sale.id')
+            ->leftJoin('transaction_sell_lines_purchase_lines as TSPL', 'tsl.id', '=', 'TSPL.sell_line_id')
+            ->leftJoin('purchase_lines as PL', 'TSPL.purchase_line_id', '=', 'PL.id')
+            ->where('sale.business_id', $business_id)
+            ->where('sale.type', 'sell')
+            ->where('sale.status', 'final')
+            ->where('sale.channel', $channel)
+            ->whereDate('sale.transaction_date', '>=', $start_date)
+            ->whereDate('sale.transaction_date', '<=', $end_date)
+            ->where('tsl.children_type', '!=', 'combo')
+            ->selectRaw('COALESCE(SUM((TSPL.quantity - TSPL.qty_returned) *
+                (tsl.unit_price_inc_tax - PL.purchase_price_inc_tax)), 0) as gross_profit')
+            ->first();
+
+        $revenue      = (float)($summary->revenue ?? 0);
+        $cnt          = (int)($summary->cnt ?? 0);
+        $gross_profit = (float)($gp_obj->gross_profit ?? 0);
+        $gross_margin = $revenue > 0 ? ($gross_profit / $revenue) * 100 : 0;
+
+        $daily = (clone $base)
+            ->selectRaw('DATE(t.transaction_date) as day,
+                COUNT(*) as cnt,
+                COALESCE(SUM(t.final_total), 0) as revenue')
+            ->groupBy(DB::raw('DATE(t.transaction_date)'))
+            ->orderByDesc('day')
+            ->get();
+
+        $top_items = DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as sale', 'tsl.transaction_id', '=', 'sale.id')
+            ->join('products as P', 'tsl.product_id', '=', 'P.id')
+            ->leftJoin('transaction_sell_lines_purchase_lines as TSPL', 'tsl.id', '=', 'TSPL.sell_line_id')
+            ->leftJoin('purchase_lines as PL', 'TSPL.purchase_line_id', '=', 'PL.id')
+            ->where('sale.business_id', $business_id)
+            ->where('sale.type', 'sell')
+            ->where('sale.status', 'final')
+            ->where('sale.channel', $channel)
+            ->whereDate('sale.transaction_date', '>=', $start_date)
+            ->whereDate('sale.transaction_date', '<=', $end_date)
+            ->where('tsl.children_type', '!=', 'combo')
+            ->selectRaw("P.id as product_id, P.name as product_name, P.sku,
+                SUM(tsl.quantity - tsl.quantity_returned) as qty,
+                COALESCE(SUM((tsl.quantity - tsl.quantity_returned) * tsl.unit_price_inc_tax), 0) as revenue,
+                COALESCE(SUM((TSPL.quantity - TSPL.qty_returned) *
+                    (tsl.unit_price_inc_tax - PL.purchase_price_inc_tax)), 0) as gross_profit")
+            ->groupBy('P.id', 'P.name', 'P.sku')
+            ->orderByDesc('revenue')
+            ->limit(50)
+            ->get();
+
+        if ($request->input('export') === 'csv') {
+            $filename = strtolower($channel) . '_' . $start_date . '_to_' . $end_date . '.csv';
+            $headers = [
+                'Content-Type'        => 'text/csv',
+                'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            ];
+            $callback = function () use ($daily, $top_items, $revenue, $cnt, $gross_profit, $gross_margin, $channel_name) {
+                $out = fopen('php://output', 'w');
+                fputcsv($out, [$channel_name . ' Sales Report']);
+                fputcsv($out, ['Revenue', number_format($revenue, 2, '.', '')]);
+                fputcsv($out, ['Transactions', $cnt]);
+                fputcsv($out, ['Gross profit', number_format($gross_profit, 2, '.', '')]);
+                fputcsv($out, ['Gross margin %', number_format($gross_margin, 2, '.', '')]);
+                fputcsv($out, []);
+                fputcsv($out, ['Daily breakdown']);
+                fputcsv($out, ['Date', 'Transactions', 'Revenue']);
+                foreach ($daily as $d) {
+                    fputcsv($out, [$d->day, $d->cnt, number_format($d->revenue, 2, '.', '')]);
+                }
+                fputcsv($out, []);
+                fputcsv($out, ['Top items (up to 50)']);
+                fputcsv($out, ['SKU', 'Product', 'Qty', 'Revenue', 'Gross Profit', 'Gross Margin %']);
+                foreach ($top_items as $it) {
+                    $margin = $it->revenue > 0 ? ($it->gross_profit / $it->revenue) * 100 : 0;
+                    fputcsv($out, [
+                        $it->sku,
+                        $it->product_name,
+                        (int)$it->qty,
+                        number_format($it->revenue, 2, '.', ''),
+                        number_format($it->gross_profit, 2, '.', ''),
+                        number_format($margin, 2, '.', ''),
+                    ]);
+                }
+                fclose($out);
+            };
+            return response()->stream($callback, 200, $headers);
+        }
+
+        $action = $channel === 'discogs'
+            ? 'ReportController@discogsReport'
+            : 'ReportController@ebayReport';
+
+        return view('report.online_channel_report')->with(compact(
+            'channel', 'channel_name', 'action',
+            'revenue', 'cnt', 'gross_profit', 'gross_margin',
+            'daily', 'top_items',
+            'start_date', 'end_date'
         ));
     }
 
