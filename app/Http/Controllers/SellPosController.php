@@ -550,6 +550,112 @@ class SellPosController extends Controller
     }
 
     /**
+     * Lightweight JSON feed of the last ~30 minutes of rung-up line items
+     * at a location. Used by /pos/create to surface a "recently rung up"
+     * panel and to flag duplicate entries (e.g. cashier rings the same
+     * record twice because they didn't see it was already sold).
+     *
+     * Wrapped in try/catch and returns an empty list on any failure — the
+     * POS sell flow must never break because this side-channel is degraded.
+     */
+    public function recentRings(Request $request)
+    {
+        try {
+            if (!auth()->user()->can('sell.create') && !auth()->user()->can('sell.view')) {
+                return response()->json(['rings' => []]);
+            }
+
+            $business_id = $request->session()->get('user.business_id');
+            $location_id = $request->get('location_id');
+            $minutes = (int) $request->get('minutes', 30);
+            if ($minutes < 5)  { $minutes = 5; }
+            if ($minutes > 180){ $minutes = 180; }
+
+            $since = \Carbon\Carbon::now()->subMinutes($minutes);
+
+            $tx = Transaction::where('business_id', $business_id)
+                ->where('type', 'sell')
+                ->whereIn('status', ['final', 'draft'])
+                ->whereNull('import_source')
+                ->where('transaction_date', '>=', $since)
+                ->when($location_id, fn($q) => $q->where('location_id', $location_id))
+                ->orderByDesc('transaction_date')
+                ->limit(50)
+                ->get(['id', 'invoice_no', 'transaction_date', 'created_by', 'location_id']);
+
+            if ($tx->isEmpty()) {
+                return response()->json(['rings' => []]);
+            }
+
+            $txIds = $tx->pluck('id')->all();
+            $userIds = $tx->pluck('created_by')->filter()->unique()->all();
+
+            $userNameById = [];
+            if (!empty($userIds)) {
+                $users = User::whereIn('id', $userIds)
+                    ->select('id', 'surname', 'first_name', 'last_name')
+                    ->get();
+                foreach ($users as $u) {
+                    $name = trim(($u->surname ?? '') . ' ' . ($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
+                    $userNameById[$u->id] = $name !== '' ? preg_replace('/\s+/', ' ', $name) : ('User #' . $u->id);
+                }
+            }
+
+            $lines = TransactionSellLine::whereIn('transaction_id', $txIds)
+                ->with(['product:id,name,sku', 'variations:id,name,sub_sku,product_id'])
+                ->get(['id', 'transaction_id', 'product_id', 'variation_id', 'quantity', 'unit_price_inc_tax', 'unit_price']);
+
+            $txById = $tx->keyBy('id');
+
+            $rings = [];
+            foreach ($lines as $line) {
+                $t = $txById[$line->transaction_id] ?? null;
+                if (!$t) { continue; }
+
+                $product = $line->product;
+                $variation = $line->variations;
+
+                $name = $product ? ($product->name ?? '') : '';
+                if ($variation && !empty($variation->name) && $variation->name !== 'DUMMY') {
+                    $name = trim($name . ' — ' . $variation->name);
+                }
+                if ($name === '') { $name = 'Item'; }
+
+                $unitPrice = $line->unit_price_inc_tax !== null
+                    ? (float) $line->unit_price_inc_tax
+                    : (float) $line->unit_price;
+
+                $rings[] = [
+                    'tx_id'         => (int) $t->id,
+                    'invoice_no'    => $t->invoice_no,
+                    'ts'            => (string) $t->transaction_date,
+                    'ts_unix'       => strtotime((string) $t->transaction_date),
+                    'variation_id'  => $line->variation_id ? (int) $line->variation_id : null,
+                    'product_id'    => $line->product_id ? (int) $line->product_id : null,
+                    'product_name'  => $name,
+                    'sku'           => $variation->sub_sku ?? ($product->sku ?? ''),
+                    'quantity'      => (float) $line->quantity,
+                    'unit_price'    => round($unitPrice, 2),
+                    'cashier_name'  => $userNameById[$t->created_by] ?? null,
+                    'created_by'    => $t->created_by ? (int) $t->created_by : null,
+                    'location_id'   => (int) $t->location_id,
+                ];
+            }
+
+            // Newest first
+            usort($rings, fn($a, $b) => $b['ts_unix'] <=> $a['ts_unix']);
+
+            return response()->json([
+                'rings'    => $rings,
+                'now_unix' => time(),
+            ]);
+        } catch (\Throwable $e) {
+            \Log::warning('recentRings failed: ' . $e->getMessage());
+            return response()->json(['rings' => []]);
+        }
+    }
+
+    /**
      * Export the same data shown on /pos/recent-feed as a CSV — one row per
      * sold line item, with sale-level and Clover reconciliation columns
      * repeated so each row is self-contained for sorting/filtering in Excel.

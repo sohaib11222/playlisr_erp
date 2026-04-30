@@ -275,6 +275,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
 
     Route::get('/pos/recent-feed', 'SellPosController@recentSalesFeed')->name('pos.recentFeed');
     Route::get('/pos/recent-feed/export', 'SellPosController@recentSalesFeedExport')->name('pos.recentFeedExport');
+    Route::get('/pos/recent-rings', 'SellPosController@recentRings')->name('pos.recentRings');
 
     Route::resource('pos', 'SellPosController');
 

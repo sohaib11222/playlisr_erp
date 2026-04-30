@@ -28,6 +28,9 @@
 		$is_rp_enabled = session('business.enable_rp') == 1 ? true : false;
 	@endphp
 	{!! Form::open(['url' => action('SellPosController@store'), 'method' => 'post', 'id' => 'add_pos_sell_form' ]) !!}
+	{{-- Sarah 2026-04-30: "Recently rung up" panel + soft duplicate warning.
+	     Wrapped in its own try/catch JS so a failure here cannot affect POS. --}}
+	@include('sale_pos.partials._recent_rings_panel')
 	<div class="row mb-12">
 		<div class="col-md-12">
 			<div class="row">
