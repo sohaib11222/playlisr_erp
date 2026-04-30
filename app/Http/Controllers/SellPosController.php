@@ -602,8 +602,8 @@ class SellPosController extends Controller
             }
 
             $lines = TransactionSellLine::whereIn('transaction_id', $txIds)
-                ->with(['product:id,name,sku', 'variations:id,name,sub_sku,product_id'])
-                ->get(['id', 'transaction_id', 'product_id', 'variation_id', 'product_name', 'quantity', 'unit_price_inc_tax', 'unit_price']);
+                ->with(['product:id,name,sku,artist', 'variations:id,name,sub_sku,product_id'])
+                ->get(['id', 'transaction_id', 'product_id', 'variation_id', 'product_name', 'product_artist', 'quantity', 'unit_price_inc_tax', 'unit_price']);
 
             $txById = $tx->keyBy('id');
 
@@ -634,6 +634,15 @@ class SellPosController extends Controller
                 // useless noise for cashiers.
                 if (stripos($name, 'bag fee') !== false) { continue; }
 
+                // Resolve artist: real products store it on Product.artist,
+                // manual rows store it on the sell line itself.
+                $artist = '';
+                if ($product && !empty($product->artist) && is_string($product->artist)) {
+                    $artist = $product->artist;
+                } elseif (!empty($line->product_artist)) {
+                    $artist = $line->product_artist;
+                }
+
                 $unitPrice = $line->unit_price_inc_tax !== null
                     ? (float) $line->unit_price_inc_tax
                     : (float) $line->unit_price;
@@ -646,6 +655,7 @@ class SellPosController extends Controller
                     'variation_id'  => $line->variation_id ? (int) $line->variation_id : null,
                     'product_id'    => $line->product_id ? (int) $line->product_id : null,
                     'product_name'  => $name,
+                    'artist'        => $artist,
                     'sku'           => $variation->sub_sku ?? ($product->sku ?? ''),
                     'quantity'      => (float) $line->quantity,
                     'unit_price'    => round($unitPrice, 2),
@@ -2457,13 +2467,10 @@ class SellPosController extends Controller
 
         // Check if product is tax exempt FIRST - this must override any existing tax_id
             $productModel = Product::find($product->product_id);
-        if ($productModel && !empty($productModel->tax_exempt) && $productModel->tax_exempt == 1) {
-            // Product is tax exempt - remove any tax and set price without tax
+        if ($productModel && $productModel->isTaxExempt()) {
+            // Product is tax exempt (explicit flag or drinks/snacks category)
             $product->tax_id = null;
-            // If price includes tax, recalculate to exclude tax
             if (!empty($product->sell_price_inc_tax) && $product->sell_price_inc_tax > 0) {
-                // Price is already set, but we need to ensure it's the base price without tax
-                // The sell_price_inc_tax should equal default_sell_price for tax exempt products
                 $product->sell_price_inc_tax = $product->default_sell_price;
             }
         } else {

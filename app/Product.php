@@ -113,6 +113,37 @@ class Product extends Model
     {
         return $this->belongsTo(\App\Category::class, 'sub_category_id', 'id');
     }
+
+    // Drinks and snacks are never taxed at POS — combine the explicit
+    // tax_exempt flag with a category-name match so newly added beverage/
+    // snack products inherit the rule without per-row toggling.
+    public function isTaxExempt()
+    {
+        if (!empty($this->tax_exempt) && $this->tax_exempt == 1) {
+            return true;
+        }
+
+        foreach ([$this->category_id, $this->sub_category_id] as $cat_id) {
+            if (empty($cat_id)) {
+                continue;
+            }
+            $name = \App\Category::where('id', $cat_id)->value('name');
+            if ($name && self::categoryNameIsTaxExempt($name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static function categoryNameIsTaxExempt($name)
+    {
+        if (!is_string($name) || $name === '') {
+            return false;
+        }
+        return stripos($name, 'drink') !== false
+            || stripos($name, 'snack') !== false
+            || stripos($name, 'beverage') !== false;
+    }
     
     /**
      * Get the brand associated with the product.

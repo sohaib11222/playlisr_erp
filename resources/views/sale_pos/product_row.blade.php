@@ -65,9 +65,10 @@
 			$is_tax_exempt = false;
 
 			// Check if product is tax exempt - override tax_id to null
+			// (explicit tax_exempt flag OR product is in a drinks/snacks category)
 			if (!empty($product->product_id)) {
 				$productModel = \App\Product::find($product->product_id);
-				if ($productModel && !empty($productModel->tax_exempt) && $productModel->tax_exempt == 1) {
+				if ($productModel && $productModel->isTaxExempt()) {
 					$tax_id = null;
 					$item_tax = 0;
 					$unit_price_inc_tax = $product->default_sell_price;
