@@ -635,6 +635,45 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/install-cashier-columns', 'InstallCashierColumnsController@index');
     Route::post('/admin/install-cashier-columns/run', 'InstallCashierColumnsController@run');
 
+    // Fallback installer: same job, inline closure. Useful when the dedicated
+    // controller class isn't picked up (composer autoload not refreshed,
+    // route cache stale). Hit GET /admin/install-cashier-columns-inline?go=1
+    // — no form, no POST, no CSRF dance.
+    Route::get('/admin/install-cashier-columns-inline', function () {
+        $log = [];
+        try {
+            if (!\Schema::hasColumn('business_locations', 'current_cashier_id')) {
+                \Schema::table('business_locations', function ($t) {
+                    $t->unsignedInteger('current_cashier_id')->nullable()->index();
+                });
+                $log[] = 'Added column current_cashier_id (with index)';
+            } else {
+                $log[] = 'current_cashier_id already exists';
+            }
+            if (!\Schema::hasColumn('business_locations', 'cashier_assigned_at')) {
+                \Schema::table('business_locations', function ($t) {
+                    $t->timestamp('cashier_assigned_at')->nullable();
+                });
+                $log[] = 'Added column cashier_assigned_at';
+            } else {
+                $log[] = 'cashier_assigned_at already exists';
+            }
+            $migrationName = '2026_04_29_120000_add_current_cashier_to_business_locations';
+            if (!\DB::table('migrations')->where('migration', $migrationName)->exists()) {
+                $batch = (int) (\DB::table('migrations')->max('batch') ?? 0) + 1;
+                \DB::table('migrations')->insert(['migration' => $migrationName, 'batch' => $batch]);
+                $log[] = "Marked migration as run (batch {$batch})";
+            } else {
+                $log[] = 'Migration row already present';
+            }
+        } catch (\Throwable $e) {
+            return response('FAILED: ' . $e->getMessage(), 500)->header('Content-Type', 'text/plain');
+        }
+        $body = "DONE.\n\n" . implode("\n", array_map(fn($l) => '  · ' . $l, $log))
+              . "\n\nNow visit /choose-role to confirm role-picker is live.";
+        return response($body, 200)->header('Content-Type', 'text/plain');
+    });
+
     // History of destructive admin backfills with one-click Undo. Every /admin/*
     // /run endpoint that mutates rows in bulk should write a snapshot here first.
     Route::get('/admin/admin-action-history', 'AdminActionHistoryController@index');
