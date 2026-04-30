@@ -374,6 +374,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/sales-by-channel', 'ReportController@salesByChannel');
     Route::get('/reports/discogs', 'ReportController@discogsReport');
     Route::get('/reports/ebay', 'ReportController@ebayReport');
+
+    // Discogs order sync — admin-only, idempotent. Pulls marketplace
+    // orders from Discogs into the discogs_orders table; the report
+    // pages then read from there alongside POS transactions.
+    Route::get('/admin/discogs-order-sync', 'DiscogsOrderSyncController@index');
+    Route::post('/admin/discogs-order-sync', 'DiscogsOrderSyncController@sync');
     // The old "Clover vs ERP" rollup is superseded by the EOD reconciliation
     // page — same data, better structure (shift cards with drawer math).
     // Redirect preserves any bookmarks pointing at the old URL.

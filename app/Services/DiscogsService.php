@@ -334,4 +334,68 @@ class DiscogsService
         }
     }
 
+    /**
+     * Pull a page of marketplace orders from Discogs.
+     *
+     * Discogs paginates with ?page=N, default per_page=50 (max 100). We
+     * accept date bounds so the caller can resync a window without paging
+     * through the entire history. `created_after` / `created_before`
+     * accept ISO-8601 timestamps.
+     *
+     * Returns the decoded response. Empty array on auth/transport error.
+     */
+    public function fetchOrders($created_after = null, $created_before = null, $page = 1, $per_page = 100, $status = null)
+    {
+        if (empty($this->token)) {
+            return ['error' => 'Discogs API token not configured'];
+        }
+
+        $params = [
+            'token' => $this->token,
+            'page' => max(1, (int)$page),
+            'per_page' => min(100, max(1, (int)$per_page)),
+            'sort' => 'created',
+            'sort_order' => 'desc',
+        ];
+        if (!empty($status)) {
+            $params['status'] = $status;
+        }
+        if (!empty($created_after)) {
+            $params['created_after'] = $created_after;
+        }
+        if (!empty($created_before)) {
+            $params['created_before'] = $created_before;
+        }
+
+        $url = $this->baseUrl . 'marketplace/orders?' . http_build_query($params);
+
+        try {
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'User-Agent: NivessaPlaylist/1.0 +https://playlist.nivessa.com',
+                'Accept: application/json',
+                'Authorization: Discogs token=' . $this->token,
+            ]);
+            $body = curl_exec($ch);
+            $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $err = curl_error($ch);
+            curl_close($ch);
+
+            if ($err) {
+                return ['error' => 'cURL: ' . $err];
+            }
+            if ($code !== 200) {
+                return ['error' => 'Discogs HTTP ' . $code, 'body' => $body];
+            }
+            $data = json_decode($body, true);
+            return is_array($data) ? $data : ['error' => 'Invalid JSON from Discogs'];
+        } catch (\Exception $e) {
+            return ['error' => $e->getMessage()];
+        }
+    }
+
 }

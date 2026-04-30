@@ -5594,6 +5594,44 @@ class ReportController extends Controller
             $overall_revenue += $wr['row']['revenue'];
         }
 
+        // Discogs orders pulled via /admin/discogs-order-sync live in
+        // their own table (kept out of POS transactions). Add to the
+        // Discogs row — or create one if there's no transactions-side
+        // Discogs row.
+        if (\Schema::hasTable('discogs_orders')) {
+            $discogs_extra = DB::table('discogs_orders')
+                ->where('business_id', $business_id)
+                ->whereDate('order_date', '>=', $start_date)
+                ->whereDate('order_date', '<=', $end_date)
+                ->whereIn('status', \App\DiscogsOrder::REVENUE_STATUSES)
+                ->selectRaw('COUNT(*) as cnt, COALESCE(SUM(total), 0) as revenue')
+                ->first();
+            $dgs_rev = (float)($discogs_extra->revenue ?? 0);
+            $dgs_cnt = (int)($discogs_extra->cnt ?? 0);
+            if ($dgs_rev > 0 || $dgs_cnt > 0) {
+                $key = 'online|discogs';
+                if (!isset($rows[$key])) {
+                    $rows[$key] = [
+                        'label'           => 'Discogs',
+                        'channel'         => 'discogs',
+                        'location_id'     => null,
+                        'revenue'         => 0.0,
+                        'revenue_exc_tax' => 0.0,
+                        'cnt'             => 0,
+                        'gross_profit'    => 0.0,
+                        'cost_unknown'    => true, // No COGS until release_id ↔ SKU mapping
+                    ];
+                }
+                $rows[$key]['revenue']         += $dgs_rev;
+                $rows[$key]['revenue_exc_tax'] += $dgs_rev;
+                $rows[$key]['cnt']             += $dgs_cnt;
+                // Mark unknown so the row's gross profit shows "—" instead
+                // of mixing real + zero values.
+                $rows[$key]['cost_unknown'] = true;
+                $overall_revenue += $dgs_rev;
+            }
+        }
+
         // Compute share % and gross margin %, then sort by revenue desc.
         // Default cost_unknown=false for local rows so the view doesn't have
         // to null-check.
@@ -5862,7 +5900,30 @@ class ReportController extends Controller
         $revenue      = (float)($summary->revenue ?? 0);
         $cnt          = (int)($summary->cnt ?? 0);
         $gross_profit = (float)($gp_obj->gross_profit ?? 0);
-        $gross_margin = $revenue > 0 ? ($gross_profit / $revenue) * 100 : 0;
+
+        // For Discogs, also pull from the discogs_orders table populated by
+        // /admin/discogs-order-sync. These are header-level only (no line
+        // items mapped to local SKUs) so they add to revenue + count but
+        // not gross profit.
+        $synced_revenue = 0.0;
+        $synced_cnt = 0;
+        if ($channel === 'discogs' && \Schema::hasTable('discogs_orders')) {
+            $synced = DB::table('discogs_orders')
+                ->where('business_id', $business_id)
+                ->whereDate('order_date', '>=', $start_date)
+                ->whereDate('order_date', '<=', $end_date)
+                ->whereIn('status', \App\DiscogsOrder::REVENUE_STATUSES)
+                ->selectRaw('COUNT(*) as cnt, COALESCE(SUM(total), 0) as revenue')
+                ->first();
+            $synced_revenue = (float)($synced->revenue ?? 0);
+            $synced_cnt = (int)($synced->cnt ?? 0);
+            $revenue += $synced_revenue;
+            $cnt += $synced_cnt;
+        }
+
+        // Margin only reflects POS-side rows (where we have cost basis).
+        $pos_revenue = $revenue - $synced_revenue;
+        $gross_margin = $pos_revenue > 0 ? ($gross_profit / $pos_revenue) * 100 : 0;
 
         $daily = (clone $base)
             ->selectRaw('DATE(t.transaction_date) as day,
@@ -5871,6 +5932,32 @@ class ReportController extends Controller
             ->groupBy(DB::raw('DATE(t.transaction_date)'))
             ->orderByDesc('day')
             ->get();
+
+        // Merge in synced Discogs orders' daily totals.
+        if ($channel === 'discogs' && \Schema::hasTable('discogs_orders')) {
+            $synced_daily = DB::table('discogs_orders')
+                ->where('business_id', $business_id)
+                ->whereDate('order_date', '>=', $start_date)
+                ->whereDate('order_date', '<=', $end_date)
+                ->whereIn('status', \App\DiscogsOrder::REVENUE_STATUSES)
+                ->selectRaw('DATE(order_date) as day,
+                    COUNT(*) as cnt,
+                    COALESCE(SUM(total), 0) as revenue')
+                ->groupBy(DB::raw('DATE(order_date)'))
+                ->get();
+            $by_day = [];
+            foreach ($daily as $d) { $by_day[$d->day] = $d; }
+            foreach ($synced_daily as $sd) {
+                if (isset($by_day[$sd->day])) {
+                    $by_day[$sd->day]->cnt += (int)$sd->cnt;
+                    $by_day[$sd->day]->revenue += (float)$sd->revenue;
+                } else {
+                    $by_day[$sd->day] = $sd;
+                }
+            }
+            krsort($by_day);
+            $daily = collect(array_values($by_day));
+        }
 
         $top_items = DB::table('transaction_sell_lines as tsl')
             ->join('transactions as sale', 'tsl.transaction_id', '=', 'sale.id')
