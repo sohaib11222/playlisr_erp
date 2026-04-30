@@ -628,6 +628,13 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/recover-zeroed-costs', 'RecoverZeroedCostsController@index');
     Route::post('/admin/recover-zeroed-costs/run', 'RecoverZeroedCostsController@run');
 
+    // Browser-based installer for the choose-role columns on business_locations.
+    // Saves Sarah from needing SSH / artisan migrate. Idempotent — already-
+    // installed columns are skipped, and the migrations row is upserted so a
+    // future `php artisan migrate` doesn't re-attempt.
+    Route::get('/admin/install-cashier-columns', 'InstallCashierColumnsController@index');
+    Route::post('/admin/install-cashier-columns/run', 'InstallCashierColumnsController@run');
+
     // History of destructive admin backfills with one-click Undo. Every /admin/*
     // /run endpoint that mutates rows in bulk should write a snapshot here first.
     Route::get('/admin/admin-action-history', 'AdminActionHistoryController@index');
