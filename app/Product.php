@@ -154,12 +154,15 @@ class Product extends Model
             || stripos($name, 'snack') !== false;
     }
 
-    // Carbonated drinks are taxable in CA. Detect by name so newly added
-    // sodas in the Snacks & Drinks category get taxed without per-row
-    // toggling. Keep the keyword list specific to obvious carbonated brands
-    // and stems — false positives only over-tax (worse than under-taxing
-    // legally, but still annoying), so avoid bare words like "pop" or "mug"
-    // that collide with non-drink products (popcorn, mug merch, etc.).
+    // Carbonated drinks (incl. energy drinks) are taxable in CA. Detect by
+    // name so newly added sodas/energy drinks in the Snacks & Drinks
+    // category get taxed without per-row toggling. Keep the keyword list
+    // specific to obvious carbonated brands and stems — false positives
+    // only over-tax (worse than under-taxing legally, but still annoying),
+    // so avoid bare words like "pop" or "mug" that collide with non-drink
+    // products (popcorn, mug merch, etc.). Energy-drink brand names use
+    // phrase form (e.g. "monster energy", "bang energy") where the bare
+    // brand could collide with snack SKUs in the same category.
     public static function nameIsCarbonatedDrink($name)
     {
         if (!is_string($name) || $name === '') {
@@ -174,6 +177,21 @@ class Product extends Model
             'ginger ale', 'root beer', 'cream soda',
             'la croix', 'lacroix', 'topo chico', 'perrier',
             'pellegrino', 'schweppes', 'canada dry', 'sunkist',
+            // Energy drinks — carbonated, taxable in CA.
+            'energy drink',
+            'red bull', 'redbull',
+            'monster energy',
+            'rockstar',
+            'celsius',
+            'bang energy',
+            'reign',
+            'c4 energy',
+            '5-hour energy', '5 hour energy',
+            'nos energy',
+            'alani nu', 'alani',
+            'ghost energy',
+            'prime energy',
+            'zoa',
         ];
         foreach ($needles as $needle) {
             if (stripos($name, $needle) !== false) {
