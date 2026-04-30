@@ -79,9 +79,14 @@ class FixImportedDatesController extends Controller
 
             foreach ($breakdown as $row) {
                 if (!$row['target_date'] || $row['bad_rows'] === 0) continue;
+                $targetYear = (int) substr($row['target_date'], 0, 4);
+                // Year-shift each row independently: preserves the original
+                // month/day/time the importer pulled from the xlsx (which is
+                // the exact transaction date, just typo'd to the wrong year).
+                // 11/11/14 → 11/11/24, 9/13/23 → 9/13/25, etc.
                 $count = $this->badRowQuery($businessId, $row)
                     ->update([
-                        'transaction_date' => $row['target_date'] . ' 12:00:00',
+                        'transaction_date' => DB::raw("DATE_ADD(transaction_date, INTERVAL ($targetYear - YEAR(transaction_date)) YEAR)"),
                         'updated_at' => $now,
                     ]);
                 $updatedTotal += $count;
@@ -178,12 +183,26 @@ class FixImportedDatesController extends Controller
                 ->limit(10 - count($samples))
                 ->get();
 
+            $targetYear = (int) substr($row['target_date'], 0, 4);
             foreach ($rows as $r) {
+                // Mirror the SQL year-shift for preview: keep month/day/time,
+                // replace year only.
+                $shifted = null;
+                if ($r->transaction_date) {
+                    $ts = strtotime($r->transaction_date);
+                    if ($ts !== false) {
+                        $month = date('m', $ts);
+                        $day   = date('d', $ts);
+                        $time  = date('H:i:s', $ts);
+                        $shifted = sprintf('%04d-%02d-%02d %s', $targetYear, $month, $day, $time);
+                    }
+                }
                 $samples[] = [
                     'id'           => $r->id,
                     'sheet_label'  => $this->humanSheetLabel($r->import_source),
                     'current_date' => $r->transaction_date,
-                    'target_date'  => $row['target_date'],
+                    'target_date'  => $shifted,
+                    'target_year'  => $targetYear,
                     'amount'       => $r->final_total,
                 ];
             }

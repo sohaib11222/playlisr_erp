@@ -6,12 +6,15 @@
     <h1>Fix Imported Dates</h1>
     <p class="text-muted">
         Historical xlsx imports carried date typos forward — a single bad date row
-        in the source sheet drags every item below it to the wrong year.
-        This page flags two kinds of bad rows in <code>nivessa_backend_sales_*</code> imports:
+        in the source sheet (e.g. <code>11/11/14</code> instead of <code>11/11/24</code>)
+        drags every item below it to the wrong year. This page flags two kinds of bad
+        rows in <code>nivessa_backend_sales_*</code> imports and fixes them by
+        <strong>shifting only the year</strong> (keeps the original month + day, which
+        was the actual transaction date):
     </p>
     <ul class="text-muted" style="margin-top:-6px;">
-        <li><strong>Sheet-name encodes a year</strong> (e.g. <code>HW SEP 25</code> → 2025): any row whose year doesn't match the sheet year is bad. Catches both 2014-style past strays and 2026-style future strays. Rewrites to the 1st of the encoded month.</li>
-        <li><strong>Sheet-name has no year</strong> (e.g. <code>IN STORE NEW USED SALES</code>): only future-dated rows (&gt; {{ $cutoff }}) are flagged. Type a <code>YYYY-MM-DD</code> override in the row to enable a year-mismatch fix here too.</li>
+        <li><strong>Sheet-name encodes a year</strong> (e.g. <code>HW SEP 25</code> → 2025): any row whose year doesn't match the sheet year is bad. Catches both 2014-style past strays and 2026-style future strays. <code>11/11/14</code> &rarr; <code>11/11/24</code>, <code>9/13/23</code> &rarr; <code>9/13/25</code>.</li>
+        <li><strong>Sheet-name has no year</strong> (e.g. <code>IN STORE NEW USED SALES</code>): only future-dated rows (&gt; {{ $cutoff }}) are flagged. Type a <code>YYYY-MM-DD</code> override in the row — only the year is used for the shift.</li>
     </ul>
     <p class="text-muted" style="margin-top:8px;">
         <strong>Reference (per Sarah):</strong> Nivessa opened 2021. Pico opened 2022. Hollywood opened June 2024.
@@ -90,7 +93,7 @@
                                 <th>Sheet</th>
                                 <th>Bad row count</th>
                                 <th>Current bad dates (min &rarr; max)</th>
-                                <th>Will rewrite to</th>
+                                <th>Will shift year to (keeps day/month)</th>
                                 <th>Override (YYYY-MM-DD)</th>
                                 @if ($mode === 'commit')
                                     <th>Updated</th>
@@ -115,7 +118,7 @@
                                     </td>
                                     <td>
                                         @if ($row['target_date'])
-                                            <strong>{{ \Carbon\Carbon::parse($row['target_date'])->format('m/d/y') }}</strong>
+                                            <strong>{{ substr($row['target_date'], 0, 4) }}</strong>
                                             @if ($row['override'])
                                                 <small class="text-muted">(from override)</small>
                                             @elseif ($row['derived_date'])
@@ -182,7 +185,7 @@
                                     <td>{{ \Carbon\Carbon::parse($s['current_date'])->format('m/d/y g:i A') }}</td>
                                     <td>
                                         @if ($s['target_date'])
-                                            <strong>{{ \Carbon\Carbon::parse($s['target_date'])->format('m/d/y') }}</strong>
+                                            <strong>{{ \Carbon\Carbon::parse($s['target_date'])->format('m/d/y g:i A') }}</strong>
                                         @else
                                             <span class="text-danger">— (skipped)</span>
                                         @endif
