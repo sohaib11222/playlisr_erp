@@ -80,6 +80,19 @@
         </div>
     </div>
 
+    @if(!empty($diagnostics))
+        <details style="margin: 0 0 12px 0; padding: 8px 12px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px;">
+            <summary style="cursor: pointer; font-size: 12px; color: #475569; font-weight: 600;">
+                Channel fetch status ({{ count($diagnostics) }})
+            </summary>
+            <ul style="margin: 8px 0 0 0; padding-left: 20px; font-size: 12px; color: #334155;">
+                @foreach($diagnostics as $d)
+                    <li>{{ $d }}</li>
+                @endforeach
+            </ul>
+        </details>
+    @endif
+
     <div class="box box-solid">
         <div class="box-header with-border">
             <h3 class="box-title">Breakdown</h3>

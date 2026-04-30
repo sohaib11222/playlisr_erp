@@ -5480,6 +5480,9 @@ class ReportController extends Controller
 
         $business_locations = BusinessLocation::forDropdown($business_id);
 
+        // Reset diagnostics — populated by the per-channel fetchers below.
+        $this->channelDiagnostics = [];
+
         // Revenue + transaction count per (location, channel).
         $rev = DB::table('transactions as t')
             ->where('t.business_id', $business_id)
@@ -5678,8 +5681,10 @@ class ReportController extends Controller
             return response()->stream($callback, 200, $headers);
         }
 
+        $diagnostics = $this->channelDiagnostics ?? [];
+
         return view('report.sales_by_channel')->with(compact(
-            'rows', 'totals', 'start_date', 'end_date', 'business_locations'
+            'rows', 'totals', 'start_date', 'end_date', 'business_locations', 'diagnostics'
         ));
     }
 
@@ -5707,7 +5712,8 @@ class ReportController extends Controller
         $base = rtrim(env('NIVESSA_WEBSITE_API_URL', 'https://nivessa.com'), '/');
         $key  = env('NIVESSA_WEBSITE_API_KEY', '');
         if (empty($key)) {
-            return []; // Not configured — nothing to add.
+            $this->setDiag('website', 'NIVESSA_WEBSITE_API_KEY not set in ERP .env. Web rows will not appear.');
+            return [];
         }
 
         $rows = [];
@@ -5732,6 +5738,9 @@ class ReportController extends Controller
                     'gross_profit'    => $rev, // No COGS on rentals.
                 ],
             ];
+            $this->setDiag('website_bookings', "Space Rentals: pulled {$cnt} booking(s) from nivessa.com.");
+        } else {
+            $this->setDiag('website_bookings', 'Space Rentals: nivessa.com /api/v1/bookings/sales-totals call failed (auth or network).');
         }
 
         // Web sales — shipping + pickup. One call returns both buckets.
@@ -5743,6 +5752,7 @@ class ReportController extends Controller
             $bm = $orders['byMethod'];
             $shipping = $bm['shipping'] ?? ['totalRevenue' => 0, 'count' => 0];
             $pickup   = $bm['pickup']   ?? ['totalRevenue' => 0, 'count' => 0];
+            $this->setDiag('website_orders', "nivessa.com orders: pulled " . ((int)$shipping['count'] + (int)$pickup['count']) . " order(s).");
 
             $rows[] = [
                 'key' => 'web|web_ship',
@@ -5772,6 +5782,8 @@ class ReportController extends Controller
                     'cost_unknown'    => true,
                 ],
             ];
+        } else {
+            $this->setDiag('website_orders', 'nivessa.com orders: /api/v1/order/sales-totals call failed (auth or network).');
         }
 
         return $rows;
@@ -5849,18 +5861,47 @@ class ReportController extends Controller
      * Pull Discogs marketplace order totals for a date range, live from
      * Discogs's API. Returns ['revenue' => float, 'cnt' => int] on
      * success, or null on any error / missing config.
+     *
+     * Also writes a one-line diagnostic to $this->channelDiagnostics
+     * (initialised by the caller) so the view can surface why a fetch
+     * came back empty without the user having to grep server logs.
      */
     protected function fetchDiscogsChannelTotals($business_id, $start_date, $end_date)
     {
+        try {
+            $service = new \App\Services\DiscogsService($business_id);
+            if (!$service->isConfigured()) {
+                $this->setDiag('discogs', 'Discogs API token not configured. Add it in Business Settings → Integrations.');
+                return null;
+            }
+        } catch (\Exception $e) {
+            $this->setDiag('discogs', 'Discogs service error: ' . $e->getMessage());
+            return null;
+        }
+
         $orders = $this->fetchDiscogsOrdersRaw($business_id, $start_date, $end_date);
         if ($orders === null) {
+            $this->setDiag('discogs', 'Discogs API call failed (token rejected or network error).');
             return null;
         }
         $revenue = 0.0;
         foreach ($orders as $o) {
             $revenue += isset($o['total']['value']) ? (float)$o['total']['value'] : 0.0;
         }
-        return ['revenue' => $revenue, 'cnt' => count($orders)];
+        $cnt = count($orders);
+        $this->setDiag('discogs', $cnt > 0
+            ? "Discogs: pulled {$cnt} order(s) from API."
+            : 'Discogs: API reachable but no orders in revenue statuses for this date range.');
+        return ['revenue' => $revenue, 'cnt' => $cnt];
+    }
+
+    /** Append a diagnostic line, keyed so callers can replace prior state. */
+    protected function setDiag($key, $msg)
+    {
+        if (!isset($this->channelDiagnostics) || !is_array($this->channelDiagnostics)) {
+            $this->channelDiagnostics = [];
+        }
+        $this->channelDiagnostics[$key] = $msg;
     }
 
     /**
