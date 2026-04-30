@@ -7,20 +7,28 @@
      ALL behaviour is wrapped in try/catch and lazy jQuery checks — if
      anything in here throws or 404s, the POS sell flow keeps working.
      This is a side-channel, not part of the cart. --}}
+{{-- position:fixed so it floats in the tan area to the left of the cart
+     box without touching the locked POS column layout. Hidden on narrow
+     screens so it doesn't overlap the form. --}}
 <div id="recent_rings_panel"
-     style="float:left; width:240px; max-width:34%; background:#f8fafc; border:1px solid #cbd5e1; border-radius:10px; padding:8px 10px; margin:0 14px 10px 0; font-size:12px;">
+     style="position:fixed; top:96px; left:10px; width:200px; z-index:50;
+            background:#fffaf0; border:1px solid #d4a574; border-radius:10px;
+            padding:8px 10px; font-size:12px; box-shadow:0 1px 3px rgba(0,0,0,0.06);">
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
-        <div style="font-size:10px; text-transform:uppercase; letter-spacing:1px; color:#475569; font-weight:700;">
+        <div style="font-size:10px; text-transform:uppercase; letter-spacing:1px; color:#7c2d12; font-weight:700;">
             <i class="fa fa-history"></i> Recently rung up
         </div>
         <a href="#" id="rr_refresh" style="font-size:10px; color:#0ea5e9; text-decoration:none;">refresh</a>
     </div>
-    <div id="rr_list" style="max-height:140px; overflow-y:auto;"></div>
+    <div id="rr_list" style="max-height:240px; overflow-y:auto;"></div>
     <div id="rr_empty" style="color:#94a3b8; font-style:italic; font-size:11px;">Loading…</div>
 </div>
-{{-- Clear the float so the cart/totals below render normally and the float
-     can't bleed into later sections of the form. --}}
-<div style="clear:both;"></div>
+{{-- Hide on narrow viewports so the widget can never overlap the cart. --}}
+<style>
+    @media (max-width: 1200px) {
+        #recent_rings_panel { display: none !important; }
+    }
+</style>
 
 <div id="rr_dup_banner"
      style="display:none; position:fixed; top:14px; left:50%; transform:translateX(-50%); z-index:9999;
@@ -97,7 +105,10 @@
                 }
                 $empty.hide();
                 var html = '';
-                for (var i = 0; i < rings.length && i < 25; i++) {
+                // Cap UI to ~8 entries — Sarah wants a small widget, not a
+                // novel. Older rings still live in `rings[]` so the duplicate
+                // check can match against them.
+                for (var i = 0; i < rings.length && i < 8; i++) {
                     var r = rings[i];
                     html += '<div style="display:flex; justify-content:space-between; gap:8px; padding:6px 0; border-bottom:1px dashed #e2e8f0;">'
                         +    '<div style="flex:1; min-width:0;">'

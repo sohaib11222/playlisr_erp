@@ -38,10 +38,6 @@
 							<!-- sub_type -->
 							{!! Form::hidden('sub_type', isset($sub_type) ? $sub_type : null) !!}
 							<input type="hidden" id="item_addition_method" value="{{$business_details->item_addition_method}}">
-								{{-- Sarah 2026-04-30: small widget at top of cart box, floated right
-								     so it sits beside the Customer search. Wrapped in try/catch JS;
-								     a failure here cannot affect POS. --}}
-								@include('sale_pos.partials._recent_rings_panel')
 								@include('sale_pos.partials.pos_form')
 
 								@include('sale_pos.partials.pos_form_totals')
@@ -97,6 +93,11 @@
 <div class="modal fade" id="expense_modal" tabindex="-1" role="dialog" aria-labelledby="gridSystemModalLabel"></div>
 
 @include('sale_pos.partials.configure_search_modal')
+
+{{-- Sarah 2026-04-30: "Recently rung up" widget — position:fixed in the
+     tan area to the left of the cart on wide screens, hidden under 1200px.
+     Pulled out of layout flow so it cannot affect the locked cart layout. --}}
+@include('sale_pos.partials._recent_rings_panel')
 
 @include('sale_pos.partials.recent_transactions_modal')
 
