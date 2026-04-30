@@ -8,17 +8,19 @@
      anything in here throws or 404s, the POS sell flow keeps working.
      This is a side-channel, not part of the cart. --}}
 <div id="recent_rings_panel"
-     style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:10px; padding:10px 12px; margin:0 0 14px 0; font-size:13px;">
-    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
-        <div style="font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#475569; font-weight:700;">
+     style="float:left; width:240px; max-width:34%; background:#f8fafc; border:1px solid #cbd5e1; border-radius:10px; padding:8px 10px; margin:0 14px 10px 0; font-size:12px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+        <div style="font-size:10px; text-transform:uppercase; letter-spacing:1px; color:#475569; font-weight:700;">
             <i class="fa fa-history"></i> Recently rung up
-            <span id="rr_window_label" style="font-weight:500; text-transform:none; letter-spacing:0; color:#94a3b8;">— last 30 min</span>
         </div>
-        <a href="#" id="rr_refresh" style="font-size:11px; color:#0ea5e9; text-decoration:none;">refresh</a>
+        <a href="#" id="rr_refresh" style="font-size:10px; color:#0ea5e9; text-decoration:none;">refresh</a>
     </div>
-    <div id="rr_list" style="max-height:220px; overflow-y:auto;"></div>
-    <div id="rr_empty" style="color:#94a3b8; font-style:italic;">Loading recent rings…</div>
+    <div id="rr_list" style="max-height:140px; overflow-y:auto;"></div>
+    <div id="rr_empty" style="color:#94a3b8; font-style:italic; font-size:11px;">Loading…</div>
 </div>
+{{-- Clear the float so the cart/totals below render normally and the float
+     can't bleed into later sections of the form. --}}
+<div style="clear:both;"></div>
 
 <div id="rr_dup_banner"
      style="display:none; position:fixed; top:14px; left:50%; transform:translateX(-50%); z-index:9999;

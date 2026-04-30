@@ -275,7 +275,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
 
     Route::get('/pos/recent-feed', 'SellPosController@recentSalesFeed')->name('pos.recentFeed');
     Route::get('/pos/recent-feed/export', 'SellPosController@recentSalesFeedExport')->name('pos.recentFeedExport');
-    Route::get('/pos/recent-rings', 'SellPosController@recentRings')->name('pos.recentRings');
+    Route::get('/sells/pos/recent-rings', 'SellPosController@recentRings')->name('pos.recentRings');
 
     Route::resource('pos', 'SellPosController');
 
@@ -372,6 +372,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/dead-stock', 'ReportController@deadStockReport');
     Route::get('/reports/whatnot', 'ReportController@whatnotReport');
     Route::get('/reports/sales-by-channel', 'ReportController@salesByChannel');
+    Route::get('/reports/discogs', 'ReportController@discogsReport');
+    Route::get('/reports/ebay', 'ReportController@ebayReport');
     // The old "Clover vs ERP" rollup is superseded by the EOD reconciliation
     // page — same data, better structure (shift cards with drawer math).
     // Redirect preserves any bookmarks pointing at the old URL.
