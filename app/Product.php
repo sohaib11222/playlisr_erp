@@ -174,7 +174,7 @@ class Product extends Model
             'sprite', 'fanta', 'dr pepper', 'dr. pepper',
             'mountain dew', 'mtn dew',
             '7up', '7-up', '7 up',
-            'ginger ale', 'root beer', 'cream soda',
+            'ginger ale', 'ginger beer', 'root beer', 'cream soda',
             'la croix', 'lacroix', 'topo chico', 'perrier',
             'pellegrino', 'schweppes', 'canada dry', 'sunkist',
             // Energy drinks — carbonated, taxable in CA.
