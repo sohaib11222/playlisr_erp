@@ -23,10 +23,19 @@
     <div id="rr_list"></div>
     <div id="rr_empty" style="color:#94a3b8; font-style:italic; font-size:11px;">Loading…</div>
 </div>
-{{-- Hide on narrow viewports so the widget can never overlap the cart. --}}
+{{-- Hide on narrow viewports so the widget can never overlap the cart.
+     2026-04-30: at 100% zoom on 1200–1500px screens the cart spans the
+     whole .content-wrapper, so the fixed widget was painting on top of
+     the customer/search inputs. Reserve 220px of left padding on the
+     POS section whenever the panel is visible so the cart shifts right
+     to clear it. The padding is scoped to body.pos-v2 section.content
+     so no other ERP page is touched. --}}
 <style>
-    @media (max-width: 1200px) {
+    @media (max-width: 1199.98px) {
         #recent_rings_panel { display: none !important; }
+    }
+    @media (min-width: 1200px) {
+        body.pos-v2 section.content { padding-left: 220px; }
     }
 </style>
 
