@@ -62,10 +62,11 @@
             </div>
             <div class="box-body" style="background: {{ $mode === 'commit' ? '#dff0d8' : '#d9edf7' }};">
                 <ul style="margin:0; padding-left:20px;">
-                    <li>Sheet rows with a usable date in col P or col F: <strong>{{ number_format($sheet_row_count) }}</strong></li>
+                    <li>Sheet rows with a usable date (col A running date or col P fallback): <strong>{{ number_format($sheet_row_count) }}</strong></li>
                     <li>Transactions tagged <code>{{ \App\Http\Controllers\FixInStoreSoldDatesController::IMPORT_SOURCE }}</code>: <strong>{{ number_format($tx_total) }}</strong></li>
-                    <li>Matched (xlsx row had a date): <strong>{{ number_format($matched_count) }}</strong></li>
-                    <li>Unmatched (no date in xlsx for that row, or external_id didn't parse): <strong>{{ number_format($unmatched_count) }}</strong> — left untouched</li>
+                    <li>Will rewrite (current date wrong): <strong>{{ number_format($matched_count) }}</strong></li>
+                    <li>Already correct (skip): <strong>{{ number_format($already_ok) }}</strong></li>
+                    <li>Unmatched (xlsx row had no date or external_id didn't parse): <strong>{{ number_format($unmatched_count) }}</strong> — left untouched</li>
                 </ul>
                 @if ($mode === 'commit' && !empty($snapshot_key))
                     <p style="margin-top:8px;">

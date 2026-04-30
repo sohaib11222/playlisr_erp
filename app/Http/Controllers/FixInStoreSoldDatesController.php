@@ -9,20 +9,26 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Shared\Date as PhpDate;
 
 // Re-parses the "In Store New & Used Sales" sheet from the Nivessa Backend
-// xlsx and rewrites each transaction's transaction_date to the actual Sold
-// Date (col P) per row — falling back to Bought Date (col F) if Sold Date
-// is blank. The original historical-sales importer didn't read either
-// column for this sheet, so 728 rows ended up with a placeholder date
-// (04/26/26 in this run). This pulls the real per-row date from the xlsx.
+// xlsx and rewrites each transaction's transaction_date to the actual sale
+// day from the sheet. Source priority:
+//   1. Col A running date — the sheet uses date-separator rows (e.g. row
+//      7071 holds the date 2023-10-01) and every item below inherits that
+//      date until the next separator. This is the "sale day" per the sheet.
+//   2. Col P (Sold Date) — only used as a fallback for rows above the first
+//      separator, where there's no running date to inherit.
 //
-// Reuses /admin/nivessa-backend-import/chunk for the upload, since the file
-// is ~23 MB and needs chunked transfer. The chunk dir is shared.
+// 1,300 transactions are tagged with this import_source. ~572 already got
+// correct col-A dates from the original importer; ~728 got a placeholder
+// (04/26/26 in this run). This rewrites both — but skips updates where the
+// existing date already matches the target so we don't churn updated_at.
+//
+// Reuses /admin/nivessa-backend-import/chunk for the upload (xlsx is ~23 MB
+// and needs chunked transfer). Snapshot + undo via admin-action-history.
 class FixInStoreSoldDatesController extends Controller
 {
-    const SHEET_NAME      = 'In Store New & Used Sales';
-    const IMPORT_SOURCE   = 'nivessa_backend_sales_in_store_new_used_sales';
-    const COL_SOLD_DATE   = 15; // col P, 0-indexed
-    const COL_BOUGHT_DATE = 5;  // col F, fallback
+    const SHEET_NAME    = 'In Store New & Used Sales';
+    const IMPORT_SOURCE = 'nivessa_backend_sales_in_store_new_used_sales';
+    const COL_SOLD_DATE = 15; // col P, 0-indexed
 
     public function index()
     {
@@ -32,6 +38,7 @@ class FixInStoreSoldDatesController extends Controller
             'sheet_row_count'   => 0,
             'tx_total'          => 0,
             'matched_count'     => 0,
+            'already_ok'        => 0,
             'unmatched_count'   => 0,
             'updated'           => 0,
             'snapshot_key'      => null,
@@ -67,8 +74,9 @@ class FixInStoreSoldDatesController extends Controller
             ->orderBy('id')
             ->get();
 
-        $matched = [];   // tx_id => 'YYYY-MM-DD'
-        $unmatched = []; // tx rows we couldn't match
+        $matched = [];     // tx_id => 'YYYY-MM-DD' — only when target differs from current
+        $alreadyOk = 0;    // ext_id mapped, but tx already has the right date
+        $unmatched = [];   // ext_id couldn't be parsed or row had no date
         foreach ($existing as $tx) {
             if (!preg_match('/^row(\d+)$/', (string) $tx->import_external_id, $m)) {
                 $unmatched[] = $tx;
@@ -79,7 +87,13 @@ class FixInStoreSoldDatesController extends Controller
                 $unmatched[] = $tx;
                 continue;
             }
-            $matched[$tx->id] = $rowDateMap[$rowNum];
+            $target = $rowDateMap[$rowNum];
+            $currentDateOnly = substr((string) $tx->transaction_date, 0, 10);
+            if ($currentDateOnly === $target) {
+                $alreadyOk++;
+                continue;
+            }
+            $matched[$tx->id] = $target;
         }
 
         $snapshotKey = null;
@@ -164,15 +178,16 @@ class FixInStoreSoldDatesController extends Controller
         }
 
         return view('admin.fix_in_store_sold_dates', [
-            'mode'             => $commit ? 'commit' : 'preview',
-            'session_id'       => $sessionId,
-            'sheet_row_count'  => count($rowDateMap),
-            'tx_total'         => $existing->count(),
-            'matched_count'    => count($matched),
-            'unmatched_count'  => count($unmatched),
-            'updated'          => $updated,
-            'snapshot_key'     => $snapshotKey,
-            'samples'          => $samples,
+            'mode'              => $commit ? 'commit' : 'preview',
+            'session_id'        => $sessionId,
+            'sheet_row_count'   => count($rowDateMap),
+            'tx_total'          => $existing->count(),
+            'matched_count'     => count($matched),
+            'already_ok'        => $alreadyOk,
+            'unmatched_count'   => count($unmatched),
+            'updated'           => $updated,
+            'snapshot_key'      => $snapshotKey,
+            'samples'           => $samples,
             'unmatched_samples' => $unmatchedSamples,
             'row_date_samples'  => $rowDateSamples,
         ]);
@@ -180,7 +195,10 @@ class FixInStoreSoldDatesController extends Controller
 
     /**
      * Walk the In Store sheet and build [xlsx_row_number => 'YYYY-MM-DD'].
-     * Sold Date wins; falls back to Bought Date when sold is empty.
+     * Mirrors the original importer's currentDate logic: col A separator
+     * rows set the running date; every row below inherits it until the
+     * next separator. Rows above the first separator fall back to col P
+     * (Sold Date) if it has a usable value.
      */
     private function buildRowDateMap($filePath)
     {
@@ -193,15 +211,20 @@ class FixInStoreSoldDatesController extends Controller
 
         $rows = $sheet->toArray(null, true, true, false);
         $map = [];
+        $currentDate = null;
         foreach ($rows as $i => $row) {
-            // toArray() with last param false → 0-indexed columns; rows are
-            // also 0-indexed. xlsx row number (1-indexed) = $i + 1.
-            $rowNum = $i + 1;
-            $sold   = $row[self::COL_SOLD_DATE]   ?? null;
-            $bought = $row[self::COL_BOUGHT_DATE] ?? null;
-            $date = $this->coerceDate($sold) ?: $this->coerceDate($bought);
-            if ($date) {
-                $map[$rowNum] = $date;
+            $rowNum = $i + 1; // xlsx is 1-indexed
+            $aDate = $this->coerceDate($row[0] ?? null);
+            if ($aDate) {
+                $currentDate = $aDate;
+                continue; // separator row itself isn't an item
+            }
+            if ($currentDate) {
+                $map[$rowNum] = $currentDate;
+            } else {
+                // Above first separator — try Sold Date as fallback.
+                $sold = $this->coerceDate($row[self::COL_SOLD_DATE] ?? null);
+                if ($sold) $map[$rowNum] = $sold;
             }
         }
         return $map;
