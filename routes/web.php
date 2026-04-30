@@ -711,6 +711,16 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/logout', 'Auth\LoginController@logout')->name('logout');
 });
 
+// "What are you working on today?" picker shown right after login.
+// Picking Cashier sets business_locations.current_cashier_id; picking
+// Manager / Inventory / Shipping just stamps the session role and is
+// attribution-free. See ChooseRoleController and the override block in
+// SellPosController. Needs SetSessionData for session('user.business_id').
+Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 'AdminSidebarMenu', 'CheckUserLogin'])->group(function () {
+    Route::get('/choose-role', 'ChooseRoleController@index')->name('chooseRole.index');
+    Route::post('/choose-role', 'ChooseRoleController@set')->name('chooseRole.set');
+});
+
 Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone'])->group(function () {
     Route::get('/load-more-notifications', 'HomeController@loadMoreNotifications');
     Route::get('/get-total-unread', 'HomeController@getTotalUnreadNotifications');
