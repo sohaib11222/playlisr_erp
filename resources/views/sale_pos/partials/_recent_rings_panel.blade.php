@@ -20,7 +20,7 @@
         </div>
         <a href="#" id="rr_refresh" style="font-size:10px; color:#0ea5e9; text-decoration:none;">refresh</a>
     </div>
-    <div id="rr_list" style="max-height:240px; overflow-y:auto;"></div>
+    <div id="rr_list"></div>
     <div id="rr_empty" style="color:#94a3b8; font-style:italic; font-size:11px;">Loading…</div>
 </div>
 {{-- Hide on narrow viewports so the widget can never overlap the cart. --}}
@@ -105,16 +105,21 @@
                 }
                 $empty.hide();
                 var html = '';
-                // Cap UI to ~8 entries — Sarah wants a small widget, not a
-                // novel. Older rings still live in `rings[]` so the duplicate
-                // check can match against them.
+                // Cap UI to 8 entries — small widget, not a novel. Older
+                // rings still live in `rings[]` so the duplicate check can
+                // still match them.
                 for (var i = 0; i < rings.length && i < 8; i++) {
                     var r = rings[i];
+                    var artistLine = r.artist
+                        ? '<div style="color:#64748b; font-size:11px; font-style:italic; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">'
+                          + escapeHtml(r.artist) + '</div>'
+                        : '';
                     html += '<div style="display:flex; justify-content:space-between; gap:8px; padding:6px 0; border-bottom:1px dashed #e2e8f0;">'
                         +    '<div style="flex:1; min-width:0;">'
                         +      '<div style="font-weight:600; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">'
                         +        escapeHtml(r.product_name)
                         +      '</div>'
+                        +      artistLine
                         +      '<div style="color:#64748b; font-size:11px;">'
                         +        escapeHtml(r.cashier_name || 'Unknown') + ' · ' + fmtAgo(r.ts_unix, now_unix)
                         +        (r.invoice_no ? ' · ' + escapeHtml(r.invoice_no) : '')
