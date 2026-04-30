@@ -79,6 +79,40 @@
     </div>
 </div>
 
+@if (!empty($already_ok_samples))
+<div class="row">
+    <div class="col-md-12">
+        <div class="box box-success">
+            <div class="box-header with-border">
+                <h3 class="box-title">Debug — sample "already correct" transactions ({{ count($already_ok_samples) }} of {{ number_format($already_ok) }})</h3>
+            </div>
+            <div class="box-body" style="padding:0;">
+                <table class="table table-condensed table-striped" style="margin:0;">
+                    <thead>
+                        <tr>
+                            <th style="width:80px;">Tx ID</th>
+                            <th>import_external_id</th>
+                            <th>Current date</th>
+                            <th>Computed target</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($already_ok_samples as $a)
+                            <tr>
+                                <td>{{ $a['id'] }}</td>
+                                <td><code>{{ $a['external_id'] }}</code></td>
+                                <td>{{ \Carbon\Carbon::parse($a['current_date'])->format('m/d/y g:i A') }}</td>
+                                <td><strong>{{ $a['target'] }}</strong></td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+@endif
+
 @if (!empty($unmatched_samples))
 <div class="row">
     <div class="col-md-12">

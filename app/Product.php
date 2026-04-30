@@ -117,6 +117,9 @@ class Product extends Model
     // Drinks and snacks are never taxed at POS — combine the explicit
     // tax_exempt flag with a category-name match so newly added beverage/
     // snack products inherit the rule without per-row toggling.
+    // Exception: carbonated drinks (sodas, seltzers) ARE taxable in CA even
+    // when the rest of the snacks/drinks shelf is exempt, so a name match
+    // pulls them back into the taxable subtotal.
     public function isTaxExempt()
     {
         if (!empty($this->tax_exempt) && $this->tax_exempt == 1) {
@@ -129,6 +132,9 @@ class Product extends Model
             }
             $name = \App\Category::where('id', $cat_id)->value('name');
             if ($name && self::categoryNameIsTaxExempt($name)) {
+                if (self::nameIsCarbonatedDrink($this->name ?? '')) {
+                    return false;
+                }
                 return true;
             }
         }
@@ -146,6 +152,35 @@ class Product extends Model
         }
         return stripos($name, 'drink') !== false
             || stripos($name, 'snack') !== false;
+    }
+
+    // Carbonated drinks are taxable in CA. Detect by name so newly added
+    // sodas in the Snacks & Drinks category get taxed without per-row
+    // toggling. Keep the keyword list specific to obvious carbonated brands
+    // and stems — false positives only over-tax (worse than under-taxing
+    // legally, but still annoying), so avoid bare words like "pop" or "mug"
+    // that collide with non-drink products (popcorn, mug merch, etc.).
+    public static function nameIsCarbonatedDrink($name)
+    {
+        if (!is_string($name) || $name === '') {
+            return false;
+        }
+        $needles = [
+            'carbonated', 'soda', 'sparkling', 'seltzer', 'fizzy',
+            'cola', 'coke', 'coca-cola', 'pepsi',
+            'sprite', 'fanta', 'dr pepper', 'dr. pepper',
+            'mountain dew', 'mtn dew',
+            '7up', '7-up', '7 up',
+            'ginger ale', 'root beer', 'cream soda',
+            'la croix', 'lacroix', 'topo chico', 'perrier',
+            'pellegrino', 'schweppes', 'canada dry', 'sunkist',
+        ];
+        foreach ($needles as $needle) {
+            if (stripos($name, $needle) !== false) {
+                return true;
+            }
+        }
+        return false;
     }
     
     /**

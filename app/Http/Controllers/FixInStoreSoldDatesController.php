@@ -33,18 +33,19 @@ class FixInStoreSoldDatesController extends Controller
     public function index()
     {
         return view('admin.fix_in_store_sold_dates', [
-            'mode'              => null,
-            'session_id'        => null,
-            'sheet_row_count'   => 0,
-            'tx_total'          => 0,
-            'matched_count'     => 0,
-            'already_ok'        => 0,
-            'unmatched_count'   => 0,
-            'updated'           => 0,
-            'snapshot_key'      => null,
-            'samples'           => [],
-            'unmatched_samples' => [],
-            'row_date_samples'  => [],
+            'mode'                => null,
+            'session_id'          => null,
+            'sheet_row_count'     => 0,
+            'tx_total'            => 0,
+            'matched_count'       => 0,
+            'already_ok'          => 0,
+            'unmatched_count'     => 0,
+            'updated'             => 0,
+            'snapshot_key'        => null,
+            'samples'             => [],
+            'unmatched_samples'   => [],
+            'already_ok_samples'  => [],
+            'row_date_samples'    => [],
         ]);
     }
 
@@ -155,13 +156,33 @@ class FixInStoreSoldDatesController extends Controller
             } else {
                 preg_match('/^row(\d+)$/', $extId, $m);
                 $rn = (int) $m[1];
-                $reason = "xlsx row $rn has no Sold/Bought date";
+                $reason = "xlsx row $rn has no usable date in map";
             }
             $unmatchedSamples[] = [
                 'id' => $tx->id,
                 'external_id' => $extId,
                 'current_date' => $tx->transaction_date,
                 'reason' => $reason,
+            ];
+        }
+
+        // Debug: alreadyOk samples — lets us verify that "already correct"
+        // really means current matches a sane target (and not e.g. both being
+        // a garbage 1900s date or both being 04/26/26).
+        $alreadyOkSamples = [];
+        foreach ($existing as $tx) {
+            if (count($alreadyOkSamples) >= 10) break;
+            if (!preg_match('/^row(\d+)$/', (string) $tx->import_external_id, $m)) continue;
+            $rn = (int) $m[1];
+            if (!isset($rowDateMap[$rn])) continue;
+            $target = $rowDateMap[$rn];
+            $cur = substr((string) $tx->transaction_date, 0, 10);
+            if ($cur !== $target) continue;
+            $alreadyOkSamples[] = [
+                'id' => $tx->id,
+                'external_id' => $tx->import_external_id,
+                'current_date' => $tx->transaction_date,
+                'target' => $target,
             ];
         }
 
@@ -178,18 +199,19 @@ class FixInStoreSoldDatesController extends Controller
         }
 
         return view('admin.fix_in_store_sold_dates', [
-            'mode'              => $commit ? 'commit' : 'preview',
-            'session_id'        => $sessionId,
-            'sheet_row_count'   => count($rowDateMap),
-            'tx_total'          => $existing->count(),
-            'matched_count'     => count($matched),
-            'already_ok'        => $alreadyOk,
-            'unmatched_count'   => count($unmatched),
-            'updated'           => $updated,
-            'snapshot_key'      => $snapshotKey,
-            'samples'           => $samples,
-            'unmatched_samples' => $unmatchedSamples,
-            'row_date_samples'  => $rowDateSamples,
+            'mode'                => $commit ? 'commit' : 'preview',
+            'session_id'          => $sessionId,
+            'sheet_row_count'     => count($rowDateMap),
+            'tx_total'            => $existing->count(),
+            'matched_count'       => count($matched),
+            'already_ok'          => $alreadyOk,
+            'unmatched_count'     => count($unmatched),
+            'updated'             => $updated,
+            'snapshot_key'        => $snapshotKey,
+            'samples'             => $samples,
+            'unmatched_samples'   => $unmatchedSamples,
+            'already_ok_samples'  => $alreadyOkSamples,
+            'row_date_samples'    => $rowDateSamples,
         ]);
     }
 
@@ -230,29 +252,49 @@ class FixInStoreSoldDatesController extends Controller
         return $map;
     }
 
+    /**
+     * Only treat a value as a date if it falls in a plausible Nivessa-era
+     * range (2020-2030). Without this guard, prices and qty values in col A
+     * (like 0.24, 192, 74) get misread as Excel serials → nonsense dates
+     * (1900-XX-XX, 1899-12-30) that pollute the running date for hundreds
+     * of rows below them.
+     */
     private function coerceDate($value)
     {
         if ($value === null || $value === '') return null;
+        if (is_object($value) && method_exists($value, 'format')) {
+            $iso = $value->format('Y-m-d');
+            return $this->withinPlausibleRange($iso) ? $iso : null;
+        }
         if (is_numeric($value)) {
+            $n = (float) $value;
+            // Excel serials: 2020-01-01 ≈ 43831, 2030-12-31 ≈ 47848. Anything
+            // outside that band is almost certainly not a real date cell.
+            if ($n < 43000 || $n > 48000) return null;
             try {
-                $dt = PhpDate::excelToDateTimeObject((float) $value);
-                return $dt->format('Y-m-d');
+                $dt = PhpDate::excelToDateTimeObject($n);
+                $iso = $dt->format('Y-m-d');
+                return $this->withinPlausibleRange($iso) ? $iso : null;
             } catch (\Throwable $e) {
                 return null;
             }
-        }
-        if (is_object($value) && method_exists($value, 'format')) {
-            return $value->format('Y-m-d');
         }
         if (is_string($value)) {
             $ts = strtotime($value);
             if ($ts !== false) {
                 $iso = date('Y-m-d', $ts);
-                // Reject implausible parses (e.g. random strings).
-                if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $iso)) return $iso;
+                if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $iso) && $this->withinPlausibleRange($iso)) {
+                    return $iso;
+                }
             }
         }
         return null;
+    }
+
+    private function withinPlausibleRange($iso)
+    {
+        $year = (int) substr($iso, 0, 4);
+        return $year >= 2020 && $year <= 2030;
     }
 
     private function safeSession($id): string

@@ -5,12 +5,17 @@
 	// Drinks/snacks are tax-exempt at POS. Resolve before the <tr> opens
 	// so data-tax-exempt makes it onto the row — get_taxable_subtotal in
 	// pos.js skips rows with that attribute when summing the tax base.
+	// Carbonated drinks are the exception: still taxable even inside the
+	// Snacks & Drinks category, so a name match overrides the exemption.
 	$is_tax_exempt = false;
 	if (!empty($category) && \App\Product::categoryNameIsTaxExempt($category->name ?? '')) {
 		$is_tax_exempt = true;
 	}
 	if (!$is_tax_exempt && !empty($subCategory) && \App\Product::categoryNameIsTaxExempt($subCategory->name ?? '')) {
 		$is_tax_exempt = true;
+	}
+	if ($is_tax_exempt && \App\Product::nameIsCarbonatedDrink($productName ?? '')) {
+		$is_tax_exempt = false;
 	}
 @endphp
 
