@@ -24,7 +24,7 @@
                     <button type="button" class="btn btn-default btn-lg" onclick="fidSubmit(0)">Preview</button>
                     <button type="button" class="btn btn-primary btn-lg" onclick="fidSubmit(1)">Apply</button>
                     <span id="fid-status" class="help-block" style="display:inline-block;margin-left:12px;vertical-align:middle;">
-                        Preview first to verify the per-sheet counts. Apply rewrites dates.
+                        Preview first to verify the per-sheet counts. Apply rewrites dates and saves a BEFORE snapshot so you can undo from <a href="{{ url('/admin/admin-action-history') }}">admin-action-history</a>.
                     </span>
                 </form>
                 <script>
@@ -49,12 +49,20 @@
             <div class="box-header" style="background: {{ $mode === 'commit' ? '#dff0d8' : '#d9edf7' }};">
                 <h3 class="box-title" style="font-size:20px;">
                     @if ($mode === 'commit')
-                        ✅ Applied — {{ number_format($updated_total ?? 0) }} transactions rewritten
+                        Applied — {{ number_format($updated_total ?? 0) }} transactions rewritten
                     @else
                         Preview — rows that would be updated
                     @endif
                 </h3>
             </div>
+            @if ($mode === 'commit' && !empty($snapshot_key))
+                <div class="box-body" style="background: #dff0d8;">
+                    Saved BEFORE state to snapshot
+                    <code>{{ $snapshot_key }}</code>.
+                    If anything looks wrong, undo from
+                    <a href="{{ url('/admin/admin-action-history') }}">/admin/admin-action-history</a>.
+                </div>
+            @endif
         </div>
     </div>
 </div>

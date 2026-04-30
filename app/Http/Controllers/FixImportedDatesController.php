@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class FixImportedDatesController extends Controller
 {
@@ -23,6 +24,7 @@ class FixImportedDatesController extends Controller
             'samples' => $this->buildSamples(),
             'mode' => null,
             'updated' => null,
+            'snapshot_key' => null,
         ]);
     }
 
@@ -33,10 +35,52 @@ class FixImportedDatesController extends Controller
 
         $commit = filter_var($request->input('commit'), FILTER_VALIDATE_BOOLEAN);
         $businessId = $request->session()->get('user.business_id');
+        $now = now();
 
         $breakdown = $this->buildBreakdown($businessId);
         $updatedTotal = 0;
         $updatedByImport = [];
+        $snapshotKey = null;
+
+        // Build a derivable-import_source → derived_date map so we can both
+        // snapshot the BEFORE rows in one shot AND skip non-derivable sheets.
+        $targetByImport = [];
+        foreach ($breakdown as $row) {
+            if ($row['derived_date'] && $row['bad_rows'] > 0) {
+                $targetByImport[$row['import_source']] = $row['derived_date'];
+            }
+        }
+
+        if ($commit && !empty($targetByImport)) {
+            // Snapshot every row we're about to mutate BEFORE any UPDATE so
+            // /admin/admin-action-history can roll the rewrite back.
+            $beforeRows = DB::table('transactions')
+                ->where('business_id', $businessId)
+                ->whereIn('import_source', array_keys($targetByImport))
+                ->where('transaction_date', '>', self::CUTOFF . ' 23:59:59')
+                ->get(['id', 'import_source', 'transaction_date']);
+
+            $snapshotRows = $beforeRows->map(function ($r) {
+                return [
+                    'id' => $r->id,
+                    'import_source' => $r->import_source,
+                    'transaction_date' => (string) $r->transaction_date,
+                ];
+            })->all();
+
+            if (!empty($snapshotRows)) {
+                $snapshotKey = 'fix-imported-dates-' . $now->format('Y-m-d_His');
+                Storage::disk('local')->put(
+                    "admin-snapshots/{$snapshotKey}.json",
+                    json_encode([
+                        'timestamp' => $now->toDateTimeString(),
+                        'action' => 'fix-imported-dates',
+                        'business_id' => $businessId,
+                        'rows' => $snapshotRows,
+                    ], JSON_PRETTY_PRINT)
+                );
+            }
+        }
 
         foreach ($breakdown as $row) {
             if (!$row['derived_date'] || $row['bad_rows'] === 0) continue;
@@ -51,7 +95,7 @@ class FixImportedDatesController extends Controller
                 ->where('transaction_date', '>', self::CUTOFF . ' 23:59:59')
                 ->update([
                     'transaction_date' => $row['derived_date'] . ' 12:00:00',
-                    'updated_at' => now(),
+                    'updated_at' => $now,
                 ]);
             $updatedTotal += $count;
             $updatedByImport[$row['import_source']] = $count;
@@ -64,6 +108,7 @@ class FixImportedDatesController extends Controller
             'mode' => $commit ? 'commit' : 'preview',
             'updated' => $updatedByImport,
             'updated_total' => $updatedTotal,
+            'snapshot_key' => $snapshotKey,
         ]);
     }
 
