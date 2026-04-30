@@ -53,38 +53,6 @@
         @endif
 
 
-        {{-- Current shift role pill — click to switch.
-             Color-coded so cashiers can see at a glance whether they're set
-             as Cashier (sales attribute to them) or in a back-office mode. --}}
-        @php
-            $shift_role = session('shift_role');
-            $shift_loc_id = session('shift_location_id');
-            $shift_loc_name = null;
-            if ($shift_role === 'cashier' && $shift_loc_id) {
-                $shift_loc_name = \App\BusinessLocation::where('id', $shift_loc_id)->value('name');
-            }
-            $role_styles = [
-                'cashier'   => ['bg' => '#1F8FE0', 'label' => 'Cashier' . ($shift_loc_name ? ' @ ' . $shift_loc_name : '')],
-                'manager'   => ['bg' => '#8E5BA8', 'label' => 'Manager'],
-                'inventory' => ['bg' => '#2C9F6F', 'label' => 'Inventory'],
-                'shipping'  => ['bg' => '#C97A2A', 'label' => 'Shipping'],
-            ];
-            $role_style = $role_styles[$shift_role] ?? null;
-        @endphp
-        @if($role_style)
-            <a href="{{ url('/choose-role') }}" class="m-8 pull-left mt-10 hidden-xs"
-               title="Click to switch role"
-               style="background:{{ $role_style['bg'] }}; color:#fff; padding:6px 12px; border-radius:14px; font-weight:600; font-size:12px; text-decoration:none; line-height:1.4;">
-                <i class="fa fa-user-circle"></i> {{ $role_style['label'] }}
-            </a>
-        @else
-            <a href="{{ url('/choose-role') }}" class="m-8 pull-left mt-10 hidden-xs"
-               title="Pick what you're working on"
-               style="background:#888; color:#fff; padding:6px 12px; border-radius:14px; font-weight:600; font-size:12px; text-decoration:none; line-height:1.4;">
-                <i class="fa fa-question-circle"></i> Pick role
-            </a>
-        @endif
-
         <div class="m-8 pull-left mt-15 hidden-xs" style="color: #fff;"><strong>{{ @format_date('now') }}</strong></div>
 
         <ul class="nav navbar-nav">

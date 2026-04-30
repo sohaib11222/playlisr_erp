@@ -113,18 +113,14 @@ class LoginController extends Controller
     protected function redirectTo()
     {
         $user = \Auth::user();
+        if (!$user->can('dashboard.data') && $user->can('sell.create')) {
+            return '/pos/create';
+        }
 
-        // External-customer logins go straight to the customer dashboard;
-        // they're not staff, so the role picker doesn't apply.
         if ($user->user_type == 'user_customer') {
             return 'contact/contact-dashboard';
         }
 
-        // Everyone else (cashiers, managers, inventory, shipping) chooses
-        // their role for this shift first. The choose-role page redirects on
-        // to /pos/create or /home depending on what they pick. This is what
-        // makes sale attribution deterministic — picking "Cashier" stamps
-        // them as business_locations.current_cashier_id for their store.
-        return '/choose-role';
+        return '/home';
     }
 }

@@ -1116,37 +1116,6 @@ class SellPosController extends Controller
         
                 $user_id = $request->session()->get('user.id');
 
-                // Active-cashier override: at the POS, the sale should be
-                // attributed to whoever picked "Cashier" for this location on
-                // the choose-role page, not to whoever happens to be logged
-                // in clicking the screen. This way when Manolo is the
-                // front-desk cashier and Clyde (logged in for inventory)
-                // rings something on the same terminal, the sale still goes
-                // to Manolo. Falls back to the logged-in user if no active
-                // cashier is set or the column is missing — POS must never
-                // block.
-                try {
-                    $loc_id_for_cashier = isset($input['location_id']) ? (int) $input['location_id'] : 0;
-                    if ($loc_id_for_cashier > 0 && \Schema::hasColumn('business_locations', 'current_cashier_id')) {
-                        $active_cashier_id = \DB::table('business_locations')
-                            ->where('id', $loc_id_for_cashier)
-                            ->where('business_id', $business_id)
-                            ->value('current_cashier_id');
-                        if (!empty($active_cashier_id)) {
-                            $cashier_ok = \App\User::where('id', $active_cashier_id)
-                                ->where('business_id', $business_id)
-                                ->where('status', 'active')
-                                ->exists();
-                            if ($cashier_ok) {
-                                $user_id = (int) $active_cashier_id;
-                            }
-                        }
-                    }
-                } catch (\Throwable $e) {
-                    // Swallow — keep $user_id = logged-in user. POS stays up.
-                    \Log::warning('current_cashier override failed: ' . $e->getMessage());
-                }
-
                 $discount = [
                     'discount_type' => $input['discount_type'],
                     'discount_amount' => $input['discount_amount']
