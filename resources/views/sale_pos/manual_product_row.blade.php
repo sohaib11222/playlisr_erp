@@ -1,9 +1,20 @@
 @php
 	$common_settings = session()->get('business.common_settings');
 	$hide_tax = session()->get('business.enable_inline_tax') == 1 ? '' : 'hide';
+
+	// Drinks/snacks are tax-exempt at POS. Resolve before the <tr> opens
+	// so data-tax-exempt makes it onto the row — get_taxable_subtotal in
+	// pos.js skips rows with that attribute when summing the tax base.
+	$is_tax_exempt = false;
+	if (!empty($category) && \App\Product::categoryNameIsTaxExempt($category->name ?? '')) {
+		$is_tax_exempt = true;
+	}
+	if (!$is_tax_exempt && !empty($subCategory) && \App\Product::categoryNameIsTaxExempt($subCategory->name ?? '')) {
+		$is_tax_exempt = true;
+	}
 @endphp
 
-<tr class="product_row manual_product_row" data-row_index="{{$rowCount}}">
+<tr class="product_row manual_product_row" data-row_index="{{$rowCount}}" @if($is_tax_exempt) data-tax-exempt="true" @endif>
 	<td>
 		{{-- Product Name and Artist --}}
 		<div>

@@ -135,14 +135,17 @@ class Product extends Model
         return false;
     }
 
+    // Narrow on purpose: only matches category names containing "drink" or
+    // "snack" so vinyl/records/equipment/clothing categories cannot be
+    // accidentally exempted. Sarah's category for drinks+snacks is literally
+    // "Snacks & Drinks", which both stems hit.
     public static function categoryNameIsTaxExempt($name)
     {
         if (!is_string($name) || $name === '') {
             return false;
         }
         return stripos($name, 'drink') !== false
-            || stripos($name, 'snack') !== false
-            || stripos($name, 'beverage') !== false;
+            || stripos($name, 'snack') !== false;
     }
     
     /**
