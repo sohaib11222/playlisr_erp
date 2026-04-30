@@ -641,6 +641,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/wipe-audit', 'WipeAuditController@index');
     Route::get('/admin/wipe-audit/csv', 'WipeAuditController@csv');
 
+    // Diagnose why a specific staff member can't open POS. Lists every staff
+    // user with the four POS gates (status, allow_login, user_type,
+    // sell.create) + open-register status. Hit /admin/staff-pos-access?user=luis
+    // to highlight a row.
+    Route::get('/admin/staff-pos-access', 'StaffPosAccessController@index');
+
     // Companion to /admin/cost-price-rules: lists every category that still
     // has $0-cost products, lets Sarah enter a cost per category inline,
     // applies the lot in one go with snapshot-for-undo.
