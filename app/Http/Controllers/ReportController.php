@@ -5447,6 +5447,179 @@ class ReportController extends Controller
 
 
     /**
+     * Sales by Channel — date-range rollup of revenue + gross profit per
+     * (location, channel) combination. Mirrors slide 3 of the monthly
+     * business review deck so Sabina doesn't have to compile it by hand.
+     *
+     * One row per (location, channel) pair. Display label is the location
+     * name plus a channel suffix when the channel is something other than
+     * the in-store register (e.g. "Hollywood — Whatnot", "Pico — Whatnot").
+     * Online channels (Discogs, eBay) are not tied to a physical store, so
+     * they collapse to a single row labelled by channel only.
+     *
+     * Columns: revenue (final_total incl tax), share % of period, txn count,
+     * gross profit (mirrors TransactionUtil::getGrossProfit math but grouped
+     * per location+channel), and gross margin %.
+     *
+     * Operating profit and net profit per channel are intentionally NOT
+     * computed here — they require expense-allocation rules (rent share,
+     * payroll split, etc.) that we have not codified. Those columns are
+     * surfaced as "—" with a footnote pointing at /reports/profit-loss.
+     */
+    public function salesByChannel(Request $request)
+    {
+        $this->ensureAdminOnlyReportAccess();
+
+        $business_id = $request->session()->get('user.business_id');
+        $start_date = $request->input('start_date');
+        $end_date = $request->input('end_date');
+        if (empty($start_date) || empty($end_date)) {
+            $start_date = $start_date ?: \Carbon::now()->startOfMonth()->format('Y-m-d');
+            $end_date = $end_date ?: \Carbon::now()->format('Y-m-d');
+        }
+
+        $business_locations = BusinessLocation::forDropdown($business_id);
+
+        // Revenue + transaction count per (location, channel).
+        $rev = DB::table('transactions as t')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereDate('t.transaction_date', '>=', $start_date)
+            ->whereDate('t.transaction_date', '<=', $end_date)
+            ->selectRaw("t.location_id, t.channel,
+                COUNT(*) as cnt,
+                COALESCE(SUM(t.final_total), 0) as revenue,
+                COALESCE(SUM(t.total_before_tax), 0) as revenue_exc_tax")
+            ->groupBy('t.location_id', 't.channel')
+            ->get();
+
+        // Gross profit per (location, channel). Mirrors getGrossProfit but
+        // skips combo recursion (Nivessa's catalog isn't combo-based) so the
+        // query stays cheap enough to group.
+        $gp_rows = DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as sale', 'tsl.transaction_id', '=', 'sale.id')
+            ->leftJoin('transaction_sell_lines_purchase_lines as TSPL', 'tsl.id', '=', 'TSPL.sell_line_id')
+            ->leftJoin('purchase_lines as PL', 'TSPL.purchase_line_id', '=', 'PL.id')
+            ->where('sale.business_id', $business_id)
+            ->where('sale.type', 'sell')
+            ->where('sale.status', 'final')
+            ->whereDate('sale.transaction_date', '>=', $start_date)
+            ->whereDate('sale.transaction_date', '<=', $end_date)
+            ->where('tsl.children_type', '!=', 'combo')
+            ->selectRaw("sale.location_id, sale.channel,
+                COALESCE(SUM((TSPL.quantity - TSPL.qty_returned) *
+                    (tsl.unit_price_inc_tax - PL.purchase_price_inc_tax)), 0) as gross_profit")
+            ->groupBy('sale.location_id', 'sale.channel')
+            ->get()
+            ->keyBy(function ($r) { return $r->location_id . '|' . $r->channel; });
+
+        // Channel display rules. Online channels collapse to one row.
+        $channel_label = [
+            'in_store' => '',
+            'whatnot'  => ' — Whatnot',
+            'discogs'  => 'Discogs',
+            'ebay'     => 'eBay & Other',
+        ];
+        $online_channels = ['discogs', 'ebay'];
+
+        // Build display rows.
+        $rows = [];
+        $overall_revenue = 0.0;
+        foreach ($rev as $r) {
+            $channel = $r->channel ?: 'in_store';
+            $is_online = in_array($channel, $online_channels, true);
+            $loc_name = $business_locations[$r->location_id] ?? 'Unknown';
+
+            // Online channels: collapse across locations under one label.
+            if ($is_online) {
+                $key = 'online|' . $channel;
+                $label = $channel_label[$channel];
+                $loc_id_display = null;
+            } else {
+                $key = $r->location_id . '|' . $channel;
+                $label = $loc_name . $channel_label[$channel];
+                $loc_id_display = $r->location_id;
+            }
+
+            $gp_key = $r->location_id . '|' . $channel;
+            $gp = isset($gp_rows[$gp_key]) ? (float)$gp_rows[$gp_key]->gross_profit : 0.0;
+
+            if (!isset($rows[$key])) {
+                $rows[$key] = [
+                    'label'           => $label,
+                    'channel'         => $channel,
+                    'location_id'     => $loc_id_display,
+                    'revenue'         => 0.0,
+                    'revenue_exc_tax' => 0.0,
+                    'cnt'             => 0,
+                    'gross_profit'    => 0.0,
+                ];
+            }
+            $rows[$key]['revenue']         += (float)$r->revenue;
+            $rows[$key]['revenue_exc_tax'] += (float)$r->revenue_exc_tax;
+            $rows[$key]['cnt']             += (int)$r->cnt;
+            $rows[$key]['gross_profit']    += $gp;
+
+            $overall_revenue += (float)$r->revenue;
+        }
+
+        // Compute share % and gross margin %, then sort by revenue desc.
+        $rows = array_map(function ($row) use ($overall_revenue) {
+            $row['share_pct']    = $overall_revenue > 0 ? ($row['revenue'] / $overall_revenue) * 100 : 0;
+            $row['gross_margin'] = $row['revenue'] > 0 ? ($row['gross_profit'] / $row['revenue']) * 100 : 0;
+            return $row;
+        }, $rows);
+        usort($rows, function ($a, $b) { return $b['revenue'] <=> $a['revenue']; });
+
+        $totals = [
+            'revenue'      => $overall_revenue,
+            'cnt'          => array_sum(array_column($rows, 'cnt')),
+            'gross_profit' => array_sum(array_column($rows, 'gross_profit')),
+        ];
+        $totals['gross_margin'] = $totals['revenue'] > 0
+            ? ($totals['gross_profit'] / $totals['revenue']) * 100 : 0;
+
+        // CSV export — same data, no view chrome.
+        if ($request->input('export') === 'csv') {
+            $filename = 'sales-by-channel_' . $start_date . '_to_' . $end_date . '.csv';
+            $headers = [
+                'Content-Type'        => 'text/csv',
+                'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            ];
+            $callback = function () use ($rows, $totals) {
+                $out = fopen('php://output', 'w');
+                fputcsv($out, ['Channel', 'Revenue', 'Share %', 'Transactions', 'Gross Profit', 'Gross Margin %']);
+                foreach ($rows as $r) {
+                    fputcsv($out, [
+                        $r['label'],
+                        number_format($r['revenue'], 2, '.', ''),
+                        number_format($r['share_pct'], 2, '.', ''),
+                        $r['cnt'],
+                        number_format($r['gross_profit'], 2, '.', ''),
+                        number_format($r['gross_margin'], 2, '.', ''),
+                    ]);
+                }
+                fputcsv($out, [
+                    'TOTAL',
+                    number_format($totals['revenue'], 2, '.', ''),
+                    '100.00',
+                    $totals['cnt'],
+                    number_format($totals['gross_profit'], 2, '.', ''),
+                    number_format($totals['gross_margin'], 2, '.', ''),
+                ]);
+                fclose($out);
+            };
+            return response()->stream($callback, 200, $headers);
+        }
+
+        return view('report.sales_by_channel')->with(compact(
+            'rows', 'totals', 'start_date', 'end_date', 'business_locations'
+        ));
+    }
+
+
+    /**
      * End-of-Day Clover Reconciliation — date-range view that compares ERP
      * card payments against Clover's settled payments per day per location.
      * Flags days whose variance exceeds \$1 so Sarah / Sabina don't have to

@@ -8,7 +8,7 @@
      anything in here throws or 404s, the POS sell flow keeps working.
      This is a side-channel, not part of the cart. --}}
 <div id="recent_rings_panel"
-     style="display:none; background:#f8fafc; border:1px solid #cbd5e1; border-radius:10px; padding:10px 12px; margin-bottom:14px; font-size:13px;">
+     style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:10px; padding:10px 12px; margin:0 0 14px 0; font-size:13px;">
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
         <div style="font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#475569; font-weight:700;">
             <i class="fa fa-history"></i> Recently rung up
@@ -17,7 +17,7 @@
         <a href="#" id="rr_refresh" style="font-size:11px; color:#0ea5e9; text-decoration:none;">refresh</a>
     </div>
     <div id="rr_list" style="max-height:220px; overflow-y:auto;"></div>
-    <div id="rr_empty" style="color:#94a3b8; font-style:italic;">No sales yet in this window.</div>
+    <div id="rr_empty" style="color:#94a3b8; font-style:italic;">Loading recent rings…</div>
 </div>
 
 <div id="rr_dup_banner"
@@ -91,7 +91,6 @@
                 if (!rings || !rings.length) {
                     $list.empty();
                     $empty.show();
-                    $panel.show();
                     return;
                 }
                 $empty.hide();
@@ -115,12 +114,14 @@
                         +  '</div>';
                 }
                 $list.html(html);
-                $panel.show();
             }
 
             function fetchRings() {
                 var loc = locationId();
-                if (!loc) return;
+                if (!loc) {
+                    $empty.text('No active location.');
+                    return;
+                }
                 $.ajax({
                     method: 'GET',
                     url: '/sells/pos/recent-rings',
@@ -130,10 +131,15 @@
                 }).done(function(resp){
                     try {
                         rings = (resp && resp.rings) ? resp.rings : [];
+                        if (!rings.length) {
+                            $empty.text('No sales yet in this window.');
+                        }
                         render(resp && resp.now_unix);
-                    } catch (e) { /* swallow */ }
-                }).fail(function(){
-                    // Silent — degraded panel is fine, POS keeps working.
+                    } catch (e) {
+                        $empty.text('Recent rings unavailable.');
+                    }
+                }).fail(function(xhr){
+                    $empty.text('Recent rings unavailable (' + (xhr ? xhr.status : '?') + ').');
                 });
             }
 
