@@ -291,7 +291,17 @@
         @if($item['type'] === 'clover')
             @php
                 $cp = $item['cp'];
-                $cpDt = \Carbon\Carbon::parse($cp->paid_at);
+                // paid_at is stored as a UTC moment by SyncCloverPayments
+                // (from Clover's createdTime epoch ms). Force-display in
+                // America/Los_Angeles so a 7:18 PM PDT charge doesn't
+                // render as "Apr 30 7:18 am" — the previous code displayed
+                // whatever TZ the model cast / PHP default produced, which
+                // was wrong on prod (Sarah, 2026-04-29: live cashiers were
+                // seeing tomorrow's timestamps on tonight's sales).
+                $rawPaidAt = $cp->getAttributes()['paid_at'] ?? null;
+                $cpDt = $rawPaidAt
+                    ? \Carbon\Carbon::parse((string) $rawPaidAt, 'UTC')->setTimezone('America/Los_Angeles')
+                    : \Carbon\Carbon::parse($cp->paid_at)->setTimezone('America/Los_Angeles');
                 $cpWhen = $cpDt->isToday() ? $cpDt->format('g:i a') : $cpDt->format('M j · g:i a');
                 $cpStore = $cp->location_id && isset($business_locations[$cp->location_id])
                     ? $business_locations[$cp->location_id]

@@ -114,6 +114,26 @@ class SellPosController extends Controller
     }
 
     /**
+     * Format a CloverPayment->paid_at value as Hollywood-local time so the
+     * recent feed and unclaimed/orphan lists never show tomorrow's UTC
+     * timestamp on tonight's sales. paid_at is stored as UTC by
+     * SyncCloverPayments (from createdTime epoch ms). Falls back to the
+     * cast value if the raw attribute isn't accessible.
+     */
+    public static function formatCloverPaidAt($cp): string
+    {
+        $raw = is_array($cp->getAttributes()) ? ($cp->getAttributes()['paid_at'] ?? null) : null;
+        try {
+            $dt = $raw
+                ? \Carbon\Carbon::parse((string) $raw, 'UTC')
+                : \Carbon\Carbon::parse((string) $cp->paid_at, 'UTC');
+            return $dt->setTimezone('America/Los_Angeles')->format('Y-m-d H:i:s');
+        } catch (\Throwable $e) {
+            return (string) $cp->paid_at;
+        }
+    }
+
+    /**
      * Display a listing of the resource.
      *
      * @return \Illuminate\Http\Response
@@ -437,7 +457,7 @@ class SellPosController extends Controller
                     if (isset($matchedCpIds[$cp->id])) $why[] = 'already claimed';
                     $candidates[] = [
                         'amount' => $cpAmt,
-                        'paid_at' => (string) $cp->paid_at,
+                        'paid_at' => self::formatCloverPaidAt($cp),
                         'card' => trim(($cp->card_type ?? '') . ' ' . ($cp->card_last4 ? '••' . $cp->card_last4 : '')),
                         'loc_id' => $cp->location_id,
                         'why' => $why ? implode(', ', $why) : 'WOULD MATCH',
@@ -468,7 +488,7 @@ class SellPosController extends Controller
                 if (isset($matchedCpIds[$cp->id])) continue;
                 $unclaimedCloverList[] = [
                     'amount' => round((float) $cp->amount, 2),
-                    'paid_at' => (string) $cp->paid_at,
+                    'paid_at' => self::formatCloverPaidAt($cp),
                     'loc_id' => $cp->location_id,
                     'card' => trim(($cp->card_type ?? '') . ' ' . ($cp->card_last4 ? '••' . $cp->card_last4 : '')),
                 ];
