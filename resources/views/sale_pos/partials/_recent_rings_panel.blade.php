@@ -24,18 +24,25 @@
     <div id="rr_empty" style="color:#94a3b8; font-style:italic; font-size:11px;">Loading…</div>
 </div>
 {{-- Hide on narrow viewports so the widget can never overlap the cart.
-     2026-04-30: at 100% zoom on 1200–1500px screens the cart spans the
-     whole .content-wrapper, so the fixed widget was painting on top of
-     the customer/search inputs. Reserve 220px of left padding on the
-     POS section whenever the panel is visible so the cart shifts right
-     to clear it. The padding is scoped to body.pos-v2 section.content
-     so no other ERP page is touched. --}}
+     2026-04-30 v2: the POS form has `max-width:1500px; margin:0 auto`
+     so it CENTERS within section.content. At ~1200–1500px viewports
+     the form spans the whole width and the fixed widget paints over
+     the cart inputs. Override the form's left margin so it stops
+     centering and instead leaves a fixed 220px gutter on the left
+     for the widget — same effect as 80% zoom, where the centered
+     form happens to leave room. !important is required because
+     _redesign_v2.blade.php sets `margin: 0 auto` with high
+     specificity. Scoped to /pos/create only. --}}
 <style>
     @media (max-width: 1199.98px) {
         #recent_rings_panel { display: none !important; }
     }
     @media (min-width: 1200px) {
-        body.pos-v2 section.content { padding-left: 220px; }
+        body.pos-v2 section.content > form#add_pos_sell_form {
+            margin-left: 220px !important;
+            margin-right: 0 !important;
+            max-width: calc(100% - 220px) !important;
+        }
     }
 </style>
 
