@@ -5718,6 +5718,126 @@ class ReportController extends Controller
     }
 
     /**
+     * Cash Flow report — pulls bank account balances + the standard QB
+     * Cash Flow statement straight from QuickBooks. Closes slide 7's
+     * "real-time cash visibility" ask without rebuilding bank-feed sync
+     * (QB already does it).
+     */
+    public function cashFlowReport(Request $request)
+    {
+        $this->ensureAdminOnlyReportAccess();
+
+        $business_id = $request->session()->get('user.business_id');
+        $start_date = $request->input('start_date');
+        $end_date   = $request->input('end_date');
+        if (empty($start_date) || empty($end_date)) {
+            $start_date = $start_date ?: \Carbon::now()->startOfMonth()->format('Y-m-d');
+            $end_date   = $end_date ?: \Carbon::now()->format('Y-m-d');
+        }
+
+        $qb = new \App\Services\QuickBooksService($business_id);
+        $configured = $qb->isConfigured();
+
+        $accounts = [];
+        $accounts_error = null;
+        $report = null;
+        $report_error = null;
+        $report_rows = [];
+        $totals = ['cash_in' => 0.0, 'cash_out' => 0.0, 'net' => 0.0];
+
+        if ($configured) {
+            $bank = $qb->getBankAccounts();
+            if (!empty($bank['success'])) {
+                $accounts = $bank['accounts'] ?? [];
+            } else {
+                $accounts_error = $bank['msg'] ?? 'Could not fetch bank accounts.';
+            }
+
+            $cf = $qb->getCashFlowReport($start_date, $end_date);
+            if (!empty($cf['success'])) {
+                $report = $cf['report'] ?? null;
+                // Flatten QB's nested report rows into a simple list for display.
+                [$report_rows, $totals] = $this->flattenCashFlowReport($report);
+            } else {
+                $report_error = $cf['msg'] ?? 'Could not fetch cash flow report.';
+            }
+        }
+
+        $bank_total = array_sum(array_column($accounts, 'balance'));
+
+        return view('report.cash_flow')->with(compact(
+            'configured', 'accounts', 'accounts_error', 'bank_total',
+            'report_rows', 'totals', 'report_error', 'report',
+            'start_date', 'end_date'
+        ));
+    }
+
+    /**
+     * QB returns CashFlow as nested Section/Header/Row/Summary nodes.
+     * Walk the tree once, return a flat list of [label, depth, type, amount]
+     * plus rolled-up totals (cash in / cash out / net).
+     */
+    protected function flattenCashFlowReport($report)
+    {
+        $out = [];
+        $totals = ['cash_in' => 0.0, 'cash_out' => 0.0, 'net' => 0.0];
+        if (empty($report) || empty($report['Rows']['Row'])) {
+            return [$out, $totals];
+        }
+
+        $walker = function ($rows, $depth) use (&$walker, &$out, &$totals) {
+            foreach ($rows as $r) {
+                $type = $r['type'] ?? '';
+                $label = $r['Header']['ColData'][0]['value'] ?? ($r['ColData'][0]['value'] ?? '');
+                $amount = isset($r['ColData'][1]['value']) ? (float) str_replace(',', '', $r['ColData'][1]['value']) : null;
+                if (!isset($amount) && isset($r['Summary']['ColData'][1]['value'])) {
+                    $amount = (float) str_replace(',', '', $r['Summary']['ColData'][1]['value']);
+                }
+
+                $out[] = [
+                    'label'  => $label,
+                    'depth'  => $depth,
+                    'type'   => $type,
+                    'amount' => $amount,
+                    'is_summary' => $type === 'Section' && !empty($r['Summary']),
+                ];
+
+                if (!empty($r['Rows']['Row'])) {
+                    $walker($r['Rows']['Row'], $depth + 1);
+                    if (!empty($r['Summary'])) {
+                        $sumLabel = $r['Summary']['ColData'][0]['value'] ?? ('Total ' . $label);
+                        $sumAmount = isset($r['Summary']['ColData'][1]['value'])
+                            ? (float) str_replace(',', '', $r['Summary']['ColData'][1]['value'])
+                            : 0;
+                        $out[] = [
+                            'label' => $sumLabel,
+                            'depth' => $depth,
+                            'type'  => 'Summary',
+                            'amount' => $sumAmount,
+                            'is_summary' => true,
+                        ];
+                    }
+                }
+            }
+        };
+
+        $walker($report['Rows']['Row'], 0);
+
+        // Rough totals: positives = cash in, negatives = cash out.
+        foreach ($out as $row) {
+            if ($row['type'] !== 'Summary' || !is_numeric($row['amount'])) continue;
+            // Skip nested summaries — only top-level (depth 0) summaries roll into totals.
+            if ($row['depth'] !== 0) continue;
+            $a = (float)$row['amount'];
+            if ($a >= 0) $totals['cash_in'] += $a;
+            else $totals['cash_out'] += abs($a);
+        }
+        $totals['net'] = $totals['cash_in'] - $totals['cash_out'];
+
+        return [$out, $totals];
+    }
+
+    /**
      * Add $0 rows for Discogs, eBay, and nivessa.com channels when no live
      * data row exists yet, with labels that point to Business Settings,
      * /admin/ebay-seller, or .env / API status.

@@ -37,9 +37,9 @@
                         across {{ number_format($affectedSales) }} historical sale lines.
                         <br>
                         <small class="text-muted">
-                            Calculated as <code>SUM(item_tax × quantity)</code> on past sales of the affected
-                            variations — the tax amount that was rolled into the sticker instead of being
-                            added on top at checkout.
+                            Calculated as <code>SUM(MAX(entered_sticker − price_charged, 0) × quantity)</code>
+                            on past sales of the affected variations — the gap between what was typed on
+                            Add Purchase and what the customer actually paid per unit at POS.
                         </small>
                     </p>
                 @endif

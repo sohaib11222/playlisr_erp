@@ -343,6 +343,61 @@ class QuickBooksService
             ->get();
     }
 
+    /**
+     * List bank accounts with their current balances. Used by the
+     * Sales-by-Channel-adjacent /reports/cash-flow page so Sarah can see
+     * "what's in each account right now" without leaving the ERP.
+     *
+     * Returns ['success' => true, 'accounts' => [['name', 'balance', 'type']]].
+     */
+    public function getBankAccounts()
+    {
+        $query = "SELECT Id, Name, FullyQualifiedName, AccountType, AccountSubType, CurrentBalance, Active "
+               . "FROM Account WHERE AccountType IN ('Bank','Credit Card') AND Active = true MAXRESULTS 100";
+        $result = $this->apiRequest('GET', '/query', null, ['query' => $query]);
+        if (empty($result['success'])) {
+            return $result;
+        }
+        $rows = $result['data']['QueryResponse']['Account'] ?? [];
+        if (isset($rows['Id'])) { $rows = [$rows]; } // QB returns single object when only 1 row.
+        $accounts = [];
+        foreach ($rows as $r) {
+            $accounts[] = [
+                'name'    => $r['Name'] ?? '',
+                'type'    => $r['AccountType'] ?? '',
+                'subtype' => $r['AccountSubType'] ?? '',
+                'balance' => (float)($r['CurrentBalance'] ?? 0),
+            ];
+        }
+        return ['success' => true, 'accounts' => $accounts];
+    }
+
+    /**
+     * Pull QuickBooks's standard Cash Flow report for a date range.
+     * Returns the raw report payload — caller flattens for display.
+     *
+     * QB's /reports/CashFlow returns a tree of sections (Operating,
+     * Investing, Financing) with nested rows + a summary "Net cash
+     * increase" line. We hand the structured payload back so the view
+     * can walk it however it wants.
+     */
+    public function getCashFlowReport($startDate, $endDate)
+    {
+        $params = [
+            'start_date' => $startDate,
+            'end_date'   => $endDate,
+            'accounting_method' => 'Accrual',
+        ];
+        $result = $this->apiRequest('GET', '/reports/CashFlow', null, $params);
+        if (empty($result['success'])) {
+            return $result;
+        }
+        return [
+            'success' => true,
+            'report'  => $result['data'] ?? [],
+        ];
+    }
+
     public function backfillSalesFromDate($fromDate)
     {
         $from = Carbon::parse($fromDate)->startOfDay();

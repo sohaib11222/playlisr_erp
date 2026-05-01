@@ -51,20 +51,24 @@ class SellPriceMismatchController extends Controller
 
         $totalAffected = $base()->count();
 
-        // Estimated lost revenue: sum item_tax * quantity over sell lines for
-        // the affected variations (the tax that rolled into the sticker rather
-        // than being charged on top). Scoped to type=sell, status=final.
-        $variationIds = $base()->pluck('v.id');
+        // Estimated lost revenue: for each historical sale of an affected
+        // variation, count the gap between the entered sticker
+        // (sell_price_inc_tax) and what the customer actually paid per unit
+        // (tsl.unit_price). MAX(...,0) so we don't subtract when a cashier
+        // manually charged MORE than the deflated sticker. We use unit_price
+        // not item_tax because item_tax is 0 in this DB (separate POS tax bug).
         $lostRevenue = 0;
         $affectedSales = 0;
+        $variationIds = $base()->pluck('v.id');
         if ($variationIds->isNotEmpty()) {
             $stats = DB::table('transaction_sell_lines as tsl')
                 ->join('transactions as t', 't.id', '=', 'tsl.transaction_id')
+                ->join('variations as v', 'v.id', '=', 'tsl.variation_id')
                 ->whereIn('tsl.variation_id', $variationIds)
                 ->where('t.business_id', $businessId)
                 ->where('t.type', 'sell')
                 ->where('t.status', 'final')
-                ->selectRaw('COALESCE(SUM(tsl.item_tax * tsl.quantity), 0) as lost_revenue, COUNT(*) as line_count')
+                ->selectRaw('COALESCE(SUM(GREATEST(v.sell_price_inc_tax - tsl.unit_price, 0) * tsl.quantity), 0) as lost_revenue, COUNT(*) as line_count')
                 ->first();
             $lostRevenue = (float) ($stats->lost_revenue ?? 0);
             $affectedSales = (int) ($stats->line_count ?? 0);
