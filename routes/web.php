@@ -625,6 +625,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/fix-in-store-sold-dates', 'FixInStoreSoldDatesController@index');
     Route::post('/admin/fix-in-store-sold-dates/run', 'FixInStoreSoldDatesController@run');
 
+    // Per-row date editor for the leftover In Store transactions whose date
+    // is still > CUTOFF after the bulk fix. Lists artist/title/amount so we
+    // can pick the right date for each. Snapshot + undo via admin-action-history.
+    Route::get('/admin/fix-stray-in-store-date', 'FixStrayInStoreDateController@index');
+    Route::post('/admin/fix-stray-in-store-date/run', 'FixStrayInStoreDateController@run');
+
     // One-shot cleanup: clears future created_at / updated_at on products
     // (sync TZ drift wrote them). Snapshots the BEFORE state so it can be
     // undone via /admin/admin-action-history.
