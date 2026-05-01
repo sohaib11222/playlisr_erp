@@ -5801,7 +5801,7 @@ class ReportController extends Controller
             }
         }
 
-        $webKey = trim((string) env('NIVESSA_WEBSITE_API_KEY', ''));
+        $webKey = trim((string) config('nivessa.website_api_key', ''));
         if (!isset($rows['web|space_rental'])) {
             $rows['web|space_rental'] = [
                 'label'           => $webKey === ''
@@ -5850,6 +5850,23 @@ class ReportController extends Controller
     }
 
     /**
+     * Masked one-liner so admins can confirm the ERP is loading the same key
+     * as in .env (fingerprint only — never log the full secret).
+     */
+    protected function describeNivessaWebsiteApiKeyForDiagnostics(string $key, string $baseUrl): string
+    {
+        $len = strlen($key);
+        if ($len < 8) {
+            return 'nivessa: will GET ' . $baseUrl . ' with X-API-Key (value only ' . $len . ' chars — verify .env).';
+        }
+        $mask = substr($key, 0, 4) . '…' . substr($key, -4);
+
+        return 'nivessa: will GET ' . $baseUrl . ' with header X-API-Key — value length ' . $len . ', fingerprint ' . $mask
+            . '. Compare fingerprint to your .env; if wrong, run `php artisan config:clear` (cached config ignores .env changes). '
+            . 'HTTP 401 here means the website API rejected this key or expects different auth.';
+    }
+
+    /**
      * Fetch revenue from the nivessa.com backend for the channels that
      * don't live in the ERP DB: Space Rentals (venue bookings) and web
      * sales (shipping + pickup).
@@ -5862,20 +5879,24 @@ class ReportController extends Controller
      * Sales-by-Channel report must keep rendering even if the website
      * backend is down.
      *
-     * Config (env):
-     *   NIVESSA_WEBSITE_API_URL   default: https://nivessa.com
-     *   NIVESSA_WEBSITE_API_KEY   the X-API-Key header (BLOG_API_KEY on
-     *                              the server side); without it we skip
-     *                              the fetch entirely.
+     * Config: `config/nivessa.php` (from NIVESSA_WEBSITE_API_* in .env).
+     * Use config(), not env() in app code, so values survive
+     * `php artisan config:cache` — after editing .env run config:clear or
+     * re-cache. Header sent: X-API-Key.
      */
     protected function fetchWebsiteChannelTotals($start_date, $end_date)
     {
-        $base = rtrim(env('NIVESSA_WEBSITE_API_URL', 'https://nivessa.com'), '/');
-        $key  = env('NIVESSA_WEBSITE_API_KEY', '');
-        if (empty($key)) {
-            $this->setDiag('website', 'NIVESSA_WEBSITE_API_KEY not set in ERP .env — placeholder rows appear until it is set.');
+        $base = rtrim((string) config('nivessa.website_api_url', 'https://nivessa.com'), '/');
+        $rawKey = config('nivessa.website_api_key');
+        $key = trim((string) ($rawKey ?? ''));
+        if ($key === '') {
+            $this->setDiag('website', 'NIVESSA_WEBSITE_API_KEY empty — set in .env and config/nivessa.php, then php artisan config:clear if cached config hides it.');
             return [];
         }
+        if (is_string($rawKey) && $rawKey !== '' && trim($rawKey) !== $rawKey) {
+            $this->setDiag('website_key_trim', 'NIVESSA_WEBSITE_API_KEY had leading/trailing whitespace; it was trimmed before sending X-API-Key.');
+        }
+        $this->setDiag('website_key', $this->describeNivessaWebsiteApiKeyForDiagnostics($key, $base));
 
         $rows = [];
 
