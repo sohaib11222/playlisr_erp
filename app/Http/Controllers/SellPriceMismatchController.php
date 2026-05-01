@@ -59,6 +59,7 @@ class SellPriceMismatchController extends Controller
         // not item_tax because item_tax is 0 in this DB (separate POS tax bug).
         $lostRevenue = 0;
         $affectedSales = 0;
+        $undercharged = collect();
         $variationIds = $base()->pluck('v.id');
         if ($variationIds->isNotEmpty()) {
             $stats = DB::table('transaction_sell_lines as tsl')
@@ -72,6 +73,34 @@ class SellPriceMismatchController extends Controller
                 ->first();
             $lostRevenue = (float) ($stats->lost_revenue ?? 0);
             $affectedSales = (int) ($stats->line_count ?? 0);
+
+            // Per-sale list — actual transactions where the customer paid less
+            // than the entered sticker. Newest first.
+            $undercharged = DB::table('transaction_sell_lines as tsl')
+                ->join('transactions as t', 't.id', '=', 'tsl.transaction_id')
+                ->join('variations as v', 'v.id', '=', 'tsl.variation_id')
+                ->join('products as p', 'p.id', '=', 'v.product_id')
+                ->leftJoin('business_locations as bl', 'bl.id', '=', 't.location_id')
+                ->whereIn('tsl.variation_id', $variationIds)
+                ->where('t.business_id', $businessId)
+                ->where('t.type', 'sell')
+                ->where('t.status', 'final')
+                ->whereRaw('v.sell_price_inc_tax > tsl.unit_price + 0.01')
+                ->select(
+                    't.transaction_date',
+                    't.invoice_no',
+                    'bl.name as location',
+                    'p.id as product_id',
+                    'p.name as product_name',
+                    'p.sku',
+                    'tsl.quantity',
+                    'tsl.unit_price as charged',
+                    'v.sell_price_inc_tax as intended',
+                    DB::raw('(v.sell_price_inc_tax - tsl.unit_price) * tsl.quantity as loss')
+                )
+                ->orderByDesc('t.transaction_date')
+                ->limit(1000)
+                ->get();
         }
 
         return view('admin.sell_price_mismatch', [
@@ -79,6 +108,7 @@ class SellPriceMismatchController extends Controller
             'totalAffected' => $totalAffected,
             'lostRevenue' => $lostRevenue,
             'affectedSales' => $affectedSales,
+            'undercharged' => $undercharged,
         ]);
     }
 
