@@ -64,10 +64,10 @@ class SellPriceMismatchController extends Controller
                 ->where('t.business_id', $businessId)
                 ->where('t.type', 'sell')
                 ->where('t.status', 'final')
-                ->selectRaw('COALESCE(SUM(tsl.item_tax * tsl.quantity), 0) as lost, COUNT(*) as lines')
+                ->selectRaw('COALESCE(SUM(tsl.item_tax * tsl.quantity), 0) as lost_revenue, COUNT(*) as line_count')
                 ->first();
-            $lostRevenue = (float) ($stats->lost ?? 0);
-            $affectedSales = (int) ($stats->lines ?? 0);
+            $lostRevenue = (float) ($stats->lost_revenue ?? 0);
+            $affectedSales = (int) ($stats->line_count ?? 0);
         }
 
         return view('admin.sell_price_mismatch', [
