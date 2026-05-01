@@ -323,7 +323,9 @@
                         <span class="rf-store-badge">{{ $cpStore }}</span>
                         @if($cpCardLabel)<span class="rf-customer">· {{ $cpCardLabel }}</span>@endif
                         @if($orphanCashierName)
-                            <span class="rf-cashier" title="Most recent ERP login at this charge time (last 12h)">· logged in: <strong>{{ $orphanCashierName }}</strong></span>
+                            <span class="rf-cashier" title="Who was logged into the ERP (POS) around this charge — not who is clocked into Clover">· <strong>ERP (POS): {{ $orphanCashierName }}</strong></span>
+                        @else
+                            <span class="rf-cashier" style="color:#8A7C6A;">· ERP session unknown (no login in activity log near this time)</span>
                         @endif
                     </div>
                 </div>
@@ -336,7 +338,7 @@
                             Clover ID <code style="background:#F7F1E3;border:1px solid #DFD2B3;border-radius:3px;padding:1px 4px;font-size:11px;">{{ $cp->clover_payment_id }}</code>
                         @endif
                         @if(!empty($cp->employee_name))
-                            · by <strong>{{ $cp->employee_name }}</strong>
+                            <span style="color:#8A7C6A;" title="Clover time-clock / terminal pin — can differ from who was on the ERP"> · Clover clock: {{ $cp->employee_name }}</span>
                         @endif
                     </div>
                     <div class="rf-recon">
@@ -363,8 +365,13 @@
                 $when = $isToday ? $dt->format('g:i a') : $dt->format('M j · g:i a');
                 $customer = optional($sale->contact)->name ?: 'Walk-In Customer';
                 $store = optional($sale->location)->name ?: '—';
+                {{-- sales_person → User via created_by (who saved the sale in ERP) --}}
                 $cashier = optional($sale->sales_person)->user_full_name;
                 $cashier = $cashier ? trim($cashier) : null;
+                if ($cashier === null || $cashier === '') {
+                    $cashier = optional($sale->sales_person)->username;
+                    $cashier = $cashier ? trim((string) $cashier) : null;
+                }
                 $total = (float) $sale->final_total;
                 $discount = (float) ($sale->discount_amount ?? 0);
             @endphp
@@ -377,7 +384,7 @@
                         <span class="rf-time">{{ $when }}</span>
                         <span class="rf-store-badge">{{ $store }}</span>
                         <span class="rf-customer">· {{ $customer }}</span>
-                        @if($cashier)<span class="rf-cashier">· by <strong>{{ $cashier }}</strong></span>@endif
+                        @if($cashier)<span class="rf-cashier" title="User who created this sale in the ERP (POS)">· ERP: <strong>{{ $cashier }}</strong></span>@endif
                     </div>
                 </div>
 

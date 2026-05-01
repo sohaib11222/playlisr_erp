@@ -882,6 +882,9 @@ class SellPosController extends Controller
                 $store = optional($sale->location)->name ?: '';
                 $cashier = optional($sale->sales_person)->user_full_name;
                 $cashier = $cashier ? trim($cashier) : '';
+                if ($cashier === '') {
+                    $cashier = trim((string) (optional($sale->sales_person)->username ?? ''));
+                }
                 $saleTotal = (float) $sale->final_total;
                 $saleDiscount = (float) ($sale->discount_amount ?? 0);
 

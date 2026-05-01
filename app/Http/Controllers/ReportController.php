@@ -7298,8 +7298,9 @@ class ReportController extends Controller
 
     /**
      * Transaction-level match — pair each Clover payment to its ERP
-     * counterpart by (first_name of cashier, amount, within ±60s). Then
-     * group everything per cashier so Fatteen can see, per person:
+     * counterpart by (location, amount within ±1¢, closest timestamp
+     * within 72h). Per-cashier grouping uses the ERP user who created the
+     * sale, not Clover's time-clock name. Then group so Fatteen can see:
      *
      *   ✓ Matched    — Clover swipe lines up with an ERP sale record
      *   ❌ Clover-only — card ran on Clover, no ERP record
@@ -7393,26 +7394,44 @@ class ReportController extends Controller
             ->orderBy('cp.paid_at')
             ->get();
 
-        // ---- Greedy 1-to-1 match: for each Clover payment, find the
-        // ----  nearest-time ERP payment with same first-name + same amount
-        // ----  within ±60s that isn't already claimed.
+        // ---- Greedy 1-to-1 match: for each Clover payment, find the best
+        // ----  unmatched ERP card payment with same store + same amount
+        // ----  (±1¢) + closest timestamp. Clover time-clock names are NOT
+        // ----  used — they often differ from who rang the sale in the ERP
+        // ----  (Sarah 2026-05). Batch-settled Clover rows can land many
+        // ----  hours after the ERP sale, so the time window is wide; we
+        // ----  still pick the single closest ERP row per Clover charge.
         $claimedErp = [];
         $matched = [];
         $cloverOnly = [];
+        $toCentsEod = function ($x) {
+            return (int) round(((float) $x) * 100);
+        };
+        $maxDeltaSec = 72 * 3600;
 
         foreach ($cpRows as $cp) {
-            $cpName = $firstName($cp->employee_name);
+            $cpAmtCents = $toCentsEod($cp->amount);
             $cpAmt = round((float) $cp->amount, 2);
-            $cpTs  = strtotime((string) $cp->ts);
+            $cpTs = strtotime((string) $cp->ts);
 
             $bestIdx = null;
             $bestDelta = PHP_INT_MAX;
             foreach ($erpRows as $i => $er) {
-                if (isset($claimedErp[$i])) continue;
-                if (round((float) $er->amount, 2) !== $cpAmt) continue;
-                if ($cpName !== '' && $firstName($er->employee_name) !== $cpName) continue;
+                if (isset($claimedErp[$i])) {
+                    continue;
+                }
+                if (abs($toCentsEod($er->amount) - $cpAmtCents) > 1) {
+                    continue;
+                }
+                if ($cp->location_id !== null && (int) $cp->location_id !== 0) {
+                    if ((int) $cp->location_id !== (int) ($er->location_id ?? 0)) {
+                        continue;
+                    }
+                }
                 $delta = abs(strtotime((string) $er->ts) - $cpTs);
-                if ($delta > 60) continue;
+                if ($delta > $maxDeltaSec) {
+                    continue;
+                }
                 if ($delta < $bestDelta) {
                     $bestDelta = $delta;
                     $bestIdx = $i;
@@ -7421,10 +7440,11 @@ class ReportController extends Controller
 
             if ($bestIdx !== null) {
                 $claimedErp[$bestIdx] = true;
+                $erpCashierKey = $firstName($erpRows[$bestIdx]->employee_name);
                 $matched[] = (object) [
                     'ts' => $cp->ts,
                     'amount' => $cpAmt,
-                    'cashier' => $cpName ?: $firstName($erpRows[$bestIdx]->employee_name),
+                    'cashier' => $erpCashierKey !== '' ? $erpCashierKey : ($firstName($cp->employee_name) ?: 'unknown'),
                     'location_id' => $cp->location_id ?: $erpRows[$bestIdx]->location_id,
                     'location_name' => $cp->location_name ?: $erpRows[$bestIdx]->location_name,
                     'clover_payment_id' => $cp->clover_payment_id,
@@ -7436,7 +7456,7 @@ class ReportController extends Controller
                 $cloverOnly[] = (object) [
                     'ts' => $cp->ts,
                     'amount' => $cpAmt,
-                    'cashier' => $cpName,
+                    'cashier' => $firstName($cp->employee_name),
                     'location_id' => $cp->location_id,
                     'location_name' => $cp->location_name,
                     'clover_payment_id' => $cp->clover_payment_id,
