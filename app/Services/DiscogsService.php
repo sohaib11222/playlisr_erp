@@ -39,7 +39,10 @@ class DiscogsService
             $this->settings = $this->businessUtil->getApiSettings($this->businessId);
             
             $discogs = $this->settings['discogs'] ?? [];
-            $this->token = $discogs['token'] ?? '';
+            $primary = trim((string)($discogs['token'] ?? ''));
+            $fallback = trim((string)($discogs['user_token'] ?? ''));
+            // Some installs only populated User Token; marketplace orders accept either.
+            $this->token = $primary !== '' ? $primary : $fallback;
         } else {
             $this->token = '';
         }

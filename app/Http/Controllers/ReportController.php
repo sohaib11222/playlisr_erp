@@ -5598,10 +5598,10 @@ class ReportController extends Controller
         }
 
         // Discogs marketplace orders — live-fetched from Discogs's API
-        // each render (no separate sync step). Same fail-quiet pattern as
-        // the website fetch above: any error → row simply omitted.
+        // each render (no separate sync step). Non-null = API succeeded; we
+        // always add a row (even $0 / 0 txns) so the channel shows as live.
         $dgs = $this->fetchDiscogsChannelTotals($business_id, $start_date, $end_date);
-        if ($dgs !== null && ($dgs['revenue'] > 0 || $dgs['cnt'] > 0)) {
+        if ($dgs !== null) {
             $key = 'online|discogs';
             if (!isset($rows[$key])) {
                 $rows[$key] = [
@@ -5625,7 +5625,7 @@ class ReportController extends Controller
         // eBay orders — live-fetched via Sell Fulfillment API. Requires the
         // seller to have connected their account at /admin/ebay-seller.
         $eby = $this->fetchEbayChannelTotals($business_id, $start_date, $end_date);
-        if ($eby !== null && ($eby['revenue'] > 0 || $eby['cnt'] > 0)) {
+        if ($eby !== null) {
             $key = 'online|ebay';
             if (!isset($rows[$key])) {
                 $rows[$key] = [
@@ -5745,7 +5745,8 @@ class ReportController extends Controller
         // Space Rentals — venue bookings.
         $bookings = $this->httpGetJson(
             $base . '/api/v1/bookings/sales-totals?start_date=' . urlencode($start_date) . '&end_date=' . urlencode($end_date),
-            $key
+            $key,
+            10
         );
         if (!empty($bookings) && !empty($bookings['success'])) {
             $rev = (float)($bookings['totalRevenue'] ?? 0);
@@ -5770,13 +5771,22 @@ class ReportController extends Controller
         // Web sales — shipping + pickup. One call returns both buckets.
         $orders = $this->httpGetJson(
             $base . '/api/v1/order/sales-totals?start_date=' . urlencode($start_date) . '&end_date=' . urlencode($end_date),
-            $key
+            $key,
+            10
         );
-        if (!empty($orders) && !empty($orders['success']) && !empty($orders['byMethod'])) {
-            $bm = $orders['byMethod'];
+        if (!empty($orders) && !empty($orders['success'])) {
+            $bm = (isset($orders['byMethod']) && is_array($orders['byMethod']))
+                ? $orders['byMethod']
+                : [];
+            if (empty($bm)) {
+                $this->setDiag('website_orders', 'nivessa.com orders: API OK but no byMethod breakdown — showing $0 for shipping & pickup.');
+            }
             $shipping = $bm['shipping'] ?? ['totalRevenue' => 0, 'count' => 0];
             $pickup   = $bm['pickup']   ?? ['totalRevenue' => 0, 'count' => 0];
-            $this->setDiag('website_orders', "nivessa.com orders: pulled " . ((int)$shipping['count'] + (int)$pickup['count']) . " order(s).");
+            $orderCnt = (int)($shipping['count'] ?? 0) + (int)($pickup['count'] ?? 0);
+            if (!empty($bm)) {
+                $this->setDiag('website_orders', "nivessa.com orders: pulled {$orderCnt} order(s).");
+            }
 
             $rows[] = [
                 'key' => 'web|web_ship',
@@ -5990,17 +6000,20 @@ class ReportController extends Controller
     }
 
     /**
-     * GET a JSON endpoint with a 5-second timeout and decode the body.
+     * GET a JSON endpoint with a bounded timeout and decode the body.
      * Returns null on any error — caller is expected to skip silently.
+     *
+     * @param int $timeoutSeconds Total cURL timeout (connect uses min(5, timeout)).
      */
-    protected function httpGetJson($url, $api_key)
+    protected function httpGetJson($url, $api_key, $timeoutSeconds = 8)
     {
         try {
+            $timeoutSeconds = max(3, min(30, (int)$timeoutSeconds));
             $ch = curl_init();
             curl_setopt($ch, CURLOPT_URL, $url);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 3);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, min(5, $timeoutSeconds));
+            curl_setopt($ch, CURLOPT_TIMEOUT, $timeoutSeconds);
             curl_setopt($ch, CURLOPT_HTTPHEADER, [
                 'X-API-Key: ' . $api_key,
                 'Accept: application/json',

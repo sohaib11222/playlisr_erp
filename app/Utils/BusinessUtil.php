@@ -532,7 +532,19 @@ class BusinessUtil extends Util
         
         $defaults = $this->defaultApiSettings();
 
-        // Merge defaults with existing settings
-        return array_merge($defaults, $api_settings);
+        // Shallow merge first, then deep-merge known integration subtrees so a
+        // partial save (e.g. only ebay.environment) does not wipe sibling keys
+        // like discogs.token.
+        $merged = array_merge($defaults, $api_settings);
+        foreach (['discogs', 'ebay', 'clover', 'streetpulse', 'quickbooks'] as $sub) {
+            if (isset($api_settings[$sub]) && is_array($api_settings[$sub]) && isset($defaults[$sub]) && is_array($defaults[$sub])) {
+                $merged[$sub] = array_merge($defaults[$sub], $api_settings[$sub]);
+            }
+        }
+        if (isset($api_settings['ebay_seller']) && is_array($api_settings['ebay_seller'])) {
+            $merged['ebay_seller'] = array_merge($merged['ebay_seller'] ?? [], $api_settings['ebay_seller']);
+        }
+
+        return $merged;
     }
 }

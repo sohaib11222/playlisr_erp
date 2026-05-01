@@ -81,7 +81,22 @@
     </div>
 
     @if(!empty($diagnostics))
-        <details style="margin: 0 0 12px 0; padding: 8px 12px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px;">
+        @php
+            $diagnostics_open = false;
+            foreach ($diagnostics as $_d) {
+                $dlow = strtolower((string) $_d);
+                if (strpos($dlow, 'failed') !== false
+                    || strpos($dlow, 'not set') !== false
+                    || strpos($dlow, 'not configured') !== false
+                    || strpos($dlow, 'not connected') !== false
+                    || strpos($dlow, 'rejected') !== false
+                    || strpos($dlow, 'error') !== false) {
+                    $diagnostics_open = true;
+                    break;
+                }
+            }
+        @endphp
+        <details @if($diagnostics_open) open @endif style="margin: 0 0 12px 0; padding: 8px 12px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px;">
             <summary style="cursor: pointer; font-size: 12px; color: #475569; font-weight: 600;">
                 Channel fetch status ({{ count($diagnostics) }})
             </summary>
