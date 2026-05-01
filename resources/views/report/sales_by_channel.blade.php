@@ -128,10 +128,12 @@
                 </thead>
                 <tbody>
                     @forelse($rows as $r)
-                        <tr>
+                        <tr @if(!empty($r['integration_placeholder'])) class="warning" style="background:#fffbeb;" @endif>
                             <td>
                                 <strong>{{ $r['label'] }}</strong>
-                                @if($r['channel'] !== 'in_store')
+                                @if(!empty($r['integration_placeholder']))
+                                    <span class="label label-warning" style="font-weight:500;">setup</span>
+                                @elseif($r['channel'] !== 'in_store')
                                     <span class="label label-default" style="font-weight:500;">{{ $r['channel'] }}</span>
                                 @endif
                             </td>

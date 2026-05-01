@@ -5646,6 +5646,11 @@ class ReportController extends Controller
             $overall_revenue += $eby['revenue'];
         }
 
+        // $0 placeholder rows when a channel never appeared (not configured,
+        // not connected, or API error) so the table matches the expected
+        // channel set and labels point to the fix.
+        $this->mergeSalesByChannelPlaceholderRows($business_id, $rows, $dgs, $eby);
+
         // Compute share % and gross margin %, then sort by revenue desc.
         // Default cost_unknown=false for local rows so the view doesn't have
         // to null-check.
@@ -5713,6 +5718,138 @@ class ReportController extends Controller
     }
 
     /**
+     * Add $0 rows for Discogs, eBay, and nivessa.com channels when no live
+     * data row exists yet, with labels that point to Business Settings,
+     * /admin/ebay-seller, or .env / API status.
+     */
+    protected function mergeSalesByChannelPlaceholderRows($business_id, array &$rows, $dgs, $eby)
+    {
+        if (!isset($rows['online|discogs'])) {
+            try {
+                $svc = new \App\Services\DiscogsService($business_id);
+                if (!$svc->isConfigured()) {
+                    $rows['online|discogs'] = [
+                        'label'           => 'Discogs — add API token (Business Settings → Integrations)',
+                        'channel'         => 'discogs',
+                        'location_id'     => null,
+                        'revenue'         => 0.0,
+                        'revenue_exc_tax' => 0.0,
+                        'cnt'             => 0,
+                        'gross_profit'    => 0.0,
+                        'cost_unknown'    => true,
+                        'integration_placeholder' => true,
+                    ];
+                } else {
+                    $rows['online|discogs'] = [
+                        'label'           => 'Discogs — API error (see Channel fetch status)',
+                        'channel'         => 'discogs',
+                        'location_id'     => null,
+                        'revenue'         => 0.0,
+                        'revenue_exc_tax' => 0.0,
+                        'cnt'             => 0,
+                        'gross_profit'    => 0.0,
+                        'cost_unknown'    => true,
+                        'integration_placeholder' => true,
+                    ];
+                }
+            } catch (\Exception $e) {
+                // leave row absent
+            }
+        }
+
+        if (!isset($rows['online|ebay'])) {
+            try {
+                $svc = new \App\Services\EbayService($business_id);
+                if (!$svc->isConfigured()) {
+                    $rows['online|ebay'] = [
+                        'label'           => 'eBay — add App ID, Cert ID, Dev ID (Business Settings)',
+                        'channel'         => 'ebay',
+                        'location_id'     => null,
+                        'revenue'         => 0.0,
+                        'revenue_exc_tax' => 0.0,
+                        'cnt'             => 0,
+                        'gross_profit'    => 0.0,
+                        'cost_unknown'    => true,
+                        'integration_placeholder' => true,
+                    ];
+                } elseif (!$svc->isSellerConnected()) {
+                    $rows['online|ebay'] = [
+                        'label'           => 'eBay — connect seller (/admin/ebay-seller)',
+                        'channel'         => 'ebay',
+                        'location_id'     => null,
+                        'revenue'         => 0.0,
+                        'revenue_exc_tax' => 0.0,
+                        'cnt'             => 0,
+                        'gross_profit'    => 0.0,
+                        'cost_unknown'    => true,
+                        'integration_placeholder' => true,
+                    ];
+                } else {
+                    $rows['online|ebay'] = [
+                        'label'           => 'eBay — API error (see Channel fetch status)',
+                        'channel'         => 'ebay',
+                        'location_id'     => null,
+                        'revenue'         => 0.0,
+                        'revenue_exc_tax' => 0.0,
+                        'cnt'             => 0,
+                        'gross_profit'    => 0.0,
+                        'cost_unknown'    => true,
+                        'integration_placeholder' => true,
+                    ];
+                }
+            } catch (\Exception $e) {
+            }
+        }
+
+        $webKey = trim((string) env('NIVESSA_WEBSITE_API_KEY', ''));
+        if (!isset($rows['web|space_rental'])) {
+            $rows['web|space_rental'] = [
+                'label'           => $webKey === ''
+                    ? 'Space Rentals — set NIVESSA_WEBSITE_API_KEY on the ERP server'
+                    : 'Space Rentals — nivessa.com API failed (see Channel fetch status)',
+                'channel'         => 'space_rental',
+                'location_id'     => null,
+                'revenue'         => 0.0,
+                'revenue_exc_tax' => 0.0,
+                'cnt'             => 0,
+                'gross_profit'    => 0.0,
+                'cost_unknown'    => true,
+                'integration_placeholder' => true,
+            ];
+        }
+        if (!isset($rows['web|web_ship'])) {
+            $rows['web|web_ship'] = [
+                'label'           => $webKey === ''
+                    ? 'nivessa.com — Shipping (set NIVESSA_WEBSITE_API_KEY on the ERP server)'
+                    : 'nivessa.com — Shipping (API failed — see Channel fetch status)',
+                'channel'         => 'web_ship',
+                'location_id'     => null,
+                'revenue'         => 0.0,
+                'revenue_exc_tax' => 0.0,
+                'cnt'             => 0,
+                'gross_profit'    => 0.0,
+                'cost_unknown'    => true,
+                'integration_placeholder' => true,
+            ];
+        }
+        if (!isset($rows['web|web_pickup'])) {
+            $rows['web|web_pickup'] = [
+                'label'           => $webKey === ''
+                    ? 'nivessa.com — Pickup (set NIVESSA_WEBSITE_API_KEY on the ERP server)'
+                    : 'nivessa.com — Pickup (API failed — see Channel fetch status)',
+                'channel'         => 'web_pickup',
+                'location_id'     => null,
+                'revenue'         => 0.0,
+                'revenue_exc_tax' => 0.0,
+                'cnt'             => 0,
+                'gross_profit'    => 0.0,
+                'cost_unknown'    => true,
+                'integration_placeholder' => true,
+            ];
+        }
+    }
+
+    /**
      * Fetch revenue from the nivessa.com backend for the channels that
      * don't live in the ERP DB: Space Rentals (venue bookings) and web
      * sales (shipping + pickup).
@@ -5736,18 +5873,16 @@ class ReportController extends Controller
         $base = rtrim(env('NIVESSA_WEBSITE_API_URL', 'https://nivessa.com'), '/');
         $key  = env('NIVESSA_WEBSITE_API_KEY', '');
         if (empty($key)) {
-            $this->setDiag('website', 'NIVESSA_WEBSITE_API_KEY not set in ERP .env. Web rows will not appear.');
+            $this->setDiag('website', 'NIVESSA_WEBSITE_API_KEY not set in ERP .env — placeholder rows appear until it is set.');
             return [];
         }
 
         $rows = [];
 
         // Space Rentals — venue bookings.
-        $bookings = $this->httpGetJson(
-            $base . '/api/v1/bookings/sales-totals?start_date=' . urlencode($start_date) . '&end_date=' . urlencode($end_date),
-            $key,
-            10
-        );
+        $bookingsUrl = $base . '/api/v1/bookings/sales-totals?start_date=' . urlencode($start_date) . '&end_date=' . urlencode($end_date);
+        $bookingsDet = $this->httpGetJsonDetailed($bookingsUrl, $key, 10);
+        $bookings = $bookingsDet['decoded'];
         if (!empty($bookings) && !empty($bookings['success'])) {
             $rev = (float)($bookings['totalRevenue'] ?? 0);
             $cnt = (int)($bookings['count'] ?? 0);
@@ -5765,15 +5900,16 @@ class ReportController extends Controller
             ];
             $this->setDiag('website_bookings', "Space Rentals: pulled {$cnt} booking(s) from nivessa.com.");
         } else {
-            $this->setDiag('website_bookings', 'Space Rentals: nivessa.com /api/v1/bookings/sales-totals call failed (auth or network).');
+            $this->setDiag(
+                'website_bookings',
+                'Space Rentals /api/v1/bookings/sales-totals — ' . $this->formatNivessaWebsiteApiFailure($bookingsDet)
+            );
         }
 
         // Web sales — shipping + pickup. One call returns both buckets.
-        $orders = $this->httpGetJson(
-            $base . '/api/v1/order/sales-totals?start_date=' . urlencode($start_date) . '&end_date=' . urlencode($end_date),
-            $key,
-            10
-        );
+        $ordersUrl = $base . '/api/v1/order/sales-totals?start_date=' . urlencode($start_date) . '&end_date=' . urlencode($end_date);
+        $ordersDet = $this->httpGetJsonDetailed($ordersUrl, $key, 10);
+        $orders = $ordersDet['decoded'];
         if (!empty($orders) && !empty($orders['success'])) {
             $bm = (isset($orders['byMethod']) && is_array($orders['byMethod']))
                 ? $orders['byMethod']
@@ -5817,7 +5953,10 @@ class ReportController extends Controller
                 ],
             ];
         } else {
-            $this->setDiag('website_orders', 'nivessa.com orders: /api/v1/order/sales-totals call failed (auth or network).');
+            $this->setDiag(
+                'website_orders',
+                'nivessa.com orders /api/v1/order/sales-totals — ' . $this->formatNivessaWebsiteApiFailure($ordersDet)
+            );
         }
 
         return $rows;
@@ -6000,15 +6139,23 @@ class ReportController extends Controller
     }
 
     /**
-     * GET a JSON endpoint with a bounded timeout and decode the body.
-     * Returns null on any error — caller is expected to skip silently.
+     * GET JSON from the nivessa website API and return transport + parse
+     * metadata for diagnostics (HTTP status, cURL error, decoded JSON,
+     * parse errors, raw body for short preview).
      *
-     * @param int $timeoutSeconds Total cURL timeout (connect uses min(5, timeout)).
+     * @return array{http_code:int,curl_error:string,body:string,decoded:?array,json_error:?string}
      */
-    protected function httpGetJson($url, $api_key, $timeoutSeconds = 8)
+    protected function httpGetJsonDetailed($url, $api_key, $timeoutSeconds = 8): array
     {
+        $det = [
+            'http_code' => 0,
+            'curl_error' => '',
+            'body' => '',
+            'decoded' => null,
+            'json_error' => null,
+        ];
         try {
-            $timeoutSeconds = max(3, min(30, (int)$timeoutSeconds));
+            $timeoutSeconds = max(3, min(30, (int) $timeoutSeconds));
             $ch = curl_init();
             curl_setopt($ch, CURLOPT_URL, $url);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -6020,16 +6167,147 @@ class ReportController extends Controller
                 'User-Agent: NivessaERP/1.0 +https://playlist.nivessa.com',
             ]);
             $body = curl_exec($ch);
-            $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $det['http_code'] = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $det['curl_error'] = (string) curl_error($ch);
             curl_close($ch);
-            if ($code !== 200 || empty($body)) {
-                return null;
+
+            $det['body'] = is_string($body) ? $body : '';
+            if ($det['curl_error'] !== '') {
+                return $det;
             }
-            $data = json_decode($body, true);
-            return is_array($data) ? $data : null;
+
+            if ($det['body'] === '') {
+                return $det;
+            }
+
+            $decoded = json_decode($det['body'], true);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                $det['json_error'] = json_last_error_msg();
+
+                return $det;
+            }
+            $det['decoded'] = is_array($decoded) ? $decoded : null;
+            if ($det['decoded'] === null) {
+                $det['json_error'] = 'JSON root is not an object or array';
+            }
+
+            return $det;
         } catch (\Exception $e) {
-            return null;
+            $det['curl_error'] = $e->getMessage();
+
+            return $det;
         }
+    }
+
+    /**
+     * One-line explanation for Sales-by-Channel when a nivessa.com API
+     * call did not yield success=true (includes HTTP code, API message
+     * fields, JSON parse errors, and a short raw body preview).
+     */
+    protected function formatNivessaWebsiteApiFailure(array $det): string
+    {
+        $curl = isset($det['curl_error']) ? trim((string) $det['curl_error']) : '';
+        if ($curl !== '') {
+            return 'cURL: ' . $curl;
+        }
+
+        $code = (int) ($det['http_code'] ?? 0);
+        $dec = isset($det['decoded']) && is_array($det['decoded']) ? $det['decoded'] : null;
+
+        $apiMsg = '';
+        if ($dec !== null) {
+            foreach (['message', 'error', 'msg', 'detail'] as $k) {
+                if (!empty($dec[$k]) && is_string($dec[$k])) {
+                    $apiMsg = trim($dec[$k]);
+                    break;
+                }
+            }
+            if ($apiMsg === '' && !empty($dec['errors']) && is_array($dec['errors'])) {
+                $flat = [];
+                foreach ($dec['errors'] as $e) {
+                    if (is_string($e)) {
+                        $flat[] = $e;
+                    } elseif (is_array($e) && isset($e['message'])) {
+                        $flat[] = (string) $e['message'];
+                    }
+                    if (count($flat) >= 4) {
+                        break;
+                    }
+                }
+                $apiMsg = implode('; ', $flat);
+            }
+            if ($apiMsg === '' && array_key_exists('success', $dec) && $dec['success'] === false) {
+                $apiMsg = 'success=false (no message field in JSON)';
+            }
+            if ($apiMsg === '' && !array_key_exists('success', $dec)) {
+                $apiMsg = 'response JSON has no success field';
+            }
+        }
+
+        $parts = [];
+        if ($code > 0) {
+            $parts[] = "HTTP {$code}";
+        }
+        if ($apiMsg !== '') {
+            $parts[] = $apiMsg;
+        }
+        if (!empty($det['json_error'])) {
+            $parts[] = 'parse: ' . $det['json_error'];
+        }
+
+        $out = implode(' — ', array_filter($parts));
+        if ($out === '') {
+            $out = 'HTTP ' . ($code > 0 ? (string) $code : '(unknown)');
+        }
+
+        $preview = $this->truncateDiagnosticText((string) ($det['body'] ?? ''), 300);
+        $appendBody = $preview !== ''
+            && ($code !== 200 || !empty($det['json_error']) || $dec === null
+                || (is_array($dec) && array_key_exists('success', $dec) && $dec['success'] === false && $apiMsg === ''));
+        if ($appendBody) {
+            $out .= ' — body: ' . $preview;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Collapse whitespace and cap length for safe display in admin UI.
+     */
+    protected function truncateDiagnosticText(string $s, int $maxLen): string
+    {
+        $s = trim(preg_replace('/\s+/', ' ', $s));
+        if ($s === '') {
+            return '';
+        }
+        if (function_exists('mb_strlen') && function_exists('mb_substr')) {
+            if (mb_strlen($s) > $maxLen) {
+                return mb_substr($s, 0, $maxLen) . '…';
+            }
+
+            return $s;
+        }
+        if (strlen($s) > $maxLen) {
+            return substr($s, 0, $maxLen) . '…';
+        }
+
+        return $s;
+    }
+
+    /**
+     * GET a JSON endpoint with a bounded timeout and decode the body.
+     * Returns null on any error — caller is expected to skip silently.
+     *
+     * @param int $timeoutSeconds Total cURL timeout (connect uses min(5, timeout)).
+     */
+    protected function httpGetJson($url, $api_key, $timeoutSeconds = 8)
+    {
+        $det = $this->httpGetJsonDetailed($url, $api_key, $timeoutSeconds);
+        if ($det['http_code'] === 200 && $det['decoded'] !== null && $det['curl_error'] === '') {
+            return $det['decoded'];
+        }
+
+        return null;
     }
 
 
