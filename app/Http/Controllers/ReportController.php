@@ -5850,20 +5850,24 @@ class ReportController extends Controller
     }
 
     /**
-     * Masked one-liner so admins can confirm the ERP is loading the same key
-     * as in .env (fingerprint only — never log the full secret).
+     * Masked lines so admins can confirm the loaded key is the same string
+     * as in .env (start/end slices only — never log the full secret).
      */
     protected function describeNivessaWebsiteApiKeyForDiagnostics(string $key, string $baseUrl): string
     {
         $len = strlen($key);
         if ($len < 8) {
-            return 'nivessa: will GET ' . $baseUrl . ' with X-API-Key (value only ' . $len . ' chars — verify .env).';
+            return 'nivessa: ERP sends X-API-Key to ' . $baseUrl . ' (length ' . $len . ' — check NIVESSA_WEBSITE_API_KEY in .env).';
         }
-        $mask = substr($key, 0, 4) . '…' . substr($key, -4);
 
-        return 'nivessa: will GET ' . $baseUrl . ' with header X-API-Key — value length ' . $len . ', fingerprint ' . $mask
-            . '. Compare fingerprint to your .env; if wrong, run `php artisan config:clear` (cached config ignores .env changes). '
-            . 'HTTP 401 here means the website API rejected this key or expects different auth.';
+        $edgeLen = $len >= 32 ? 8 : 4;
+        $starts = substr($key, 0, $edgeLen);
+        $ends = substr($key, -$edgeLen);
+
+        return 'nivessa key — ERP uses this value as HTTP header X-API-Key on GET ' . $baseUrl . ' (length ' . $len . '). '
+            . 'To match your .env: NIVESSA_WEBSITE_API_KEY should be exactly ' . $len . ' characters, start with ' . $starts . ' and end with ' . $ends . '. '
+            . 'If your .env line matches those start/end and length, the ERP is sending your key. If not, run php artisan config:clear. '
+            . 'If it matches but you get HTTP 401, nivessa must be configured to accept this same key for that API (server-side secret mismatch).';
     }
 
     /**
