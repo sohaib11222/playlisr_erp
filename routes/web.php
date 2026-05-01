@@ -647,6 +647,13 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/purchase-price-mismatch', 'PurchasePriceMismatchController@index');
     Route::post('/admin/purchase-price-mismatch/run', 'PurchasePriceMismatchController@run');
 
+    // Sister page: variations whose POS sticker (default_sell_price) is below
+    // the price entered on the Add Purchase form (sell_price_inc_tax) — the
+    // signature of the May 1, 2026 tax-deflation bug. Shows estimated lost
+    // revenue and one-click backfills the sticker up to the entered price.
+    Route::get('/admin/sell-price-mismatch', 'SellPriceMismatchController@index');
+    Route::post('/admin/sell-price-mismatch/run', 'SellPriceMismatchController@run');
+
     // Recovery for variations whose cost was zeroed by the 2026-04-27 backfill.
     // Pulls the most recent purchase_lines entry per variation and copies it back.
     Route::get('/admin/recover-zeroed-costs', 'RecoverZeroedCostsController@index');
