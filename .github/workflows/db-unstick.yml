@@ -1,0 +1,81 @@
+# Kill long-running MySQL queries using Laravel's DB connection (bypasses sudo).
+# Use when php-fpm workers are blocked on a stuck transaction / lock and the
+# Restart services workflow can't actually restart MySQL because the SSH user
+# lacks passwordless sudo on the box.
+#
+# Reads the Laravel .env via Artisan tinker — uses the same credentials the
+# app already uses, so no extra secrets needed. Only kills queries running
+# longer than 20 seconds and not in 'Sleep' state, and only from the
+# application's user (never system / replication threads).
+
+name: DB unstick
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: production-restart
+  cancel-in-progress: false
+
+jobs:
+  unstick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Kill stuck MySQL queries via Laravel PDO
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+
+            echo "=== before: long-running queries ==="
+            php artisan tinker --no-interaction --execute="
+              \$rows = DB::select('SELECT id, user, time, state, LEFT(info,120) AS info FROM information_schema.processlist WHERE time > 20 AND command != \"Sleep\" AND user != \"system user\" ORDER BY time DESC LIMIT 20');
+              foreach (\$rows as \$r) { echo str_pad(\$r->id, 8) . str_pad(\$r->user, 16) . str_pad(\$r->time . 's', 8) . str_pad(\$r->state ?? '', 24) . (\$r->info ?? '') . PHP_EOL; }
+              if (empty(\$rows)) echo '  (none)' . PHP_EOL;
+            "
+            echo
+
+            echo "=== killing them ==="
+            php artisan tinker --no-interaction --execute="
+              \$me = DB::select('SELECT CONNECTION_ID() AS id')[0]->id;
+              \$victims = DB::select('SELECT id FROM information_schema.processlist WHERE time > 20 AND command != \"Sleep\" AND user != \"system user\" AND id != ?', [\$me]);
+              \$killed = 0;
+              foreach (\$victims as \$v) {
+                try { DB::statement('KILL ' . (int)\$v->id); echo 'killed ' . \$v->id . PHP_EOL; \$killed++; }
+                catch (\Throwable \$e) { echo 'could not kill ' . \$v->id . ': ' . \$e->getMessage() . PHP_EOL; }
+              }
+              echo 'total killed: ' . \$killed . PHP_EOL;
+            "
+            echo
+
+            echo "=== clearing Laravel caches ==="
+            php artisan optimize:clear 2>&1 | head -20
+
+            echo
+            echo "=== HTTP smoke test ==="
+            for i in 1 2 3 4 5; do
+              CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 15 https://playlist.nivessa.com/login || echo TIMEOUT)
+              echo "  attempt $i: HTTP $CODE"
+              [ "$CODE" = "200" ] && break
+              sleep 3
+            done

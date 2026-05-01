@@ -275,6 +275,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
 
     Route::get('/pos/recent-feed', 'SellPosController@recentSalesFeed')->name('pos.recentFeed');
     Route::get('/pos/recent-feed/export', 'SellPosController@recentSalesFeedExport')->name('pos.recentFeedExport');
+    Route::get('/sells/pos/recent-rings', 'SellPosController@recentRings')->name('pos.recentRings');
 
     Route::resource('pos', 'SellPosController');
 
@@ -343,6 +344,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/inventory-check-assistant', 'InventoryCheckController@index');
     Route::get('/reports/inventory-check-assistant/data', 'InventoryCheckController@data');
     Route::get('/reports/inventory-check-assistant/buckets', 'InventoryCheckController@buckets');
+    Route::get('/reports/inventory-check-assistant/events-bucket', 'InventoryCheckController@eventsBucket');
     Route::get('/reports/inventory-check-assistant/export', 'InventoryCheckController@export');
     Route::post('/reports/inventory-check-assistant/chart-import', 'InventoryCheckController@importChart');
     Route::get('/reports/inventory-check-assistant/chart-latest/{source}', 'InventoryCheckController@latestChart');
@@ -369,6 +371,16 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/product-entry-productivity', 'ReportController@productEntryProductivity');
     Route::get('/reports/dead-stock', 'ReportController@deadStockReport');
     Route::get('/reports/whatnot', 'ReportController@whatnotReport');
+    Route::get('/reports/sales-by-channel', 'ReportController@salesByChannel');
+    Route::get('/reports/discogs', 'ReportController@discogsReport');
+    Route::get('/reports/ebay', 'ReportController@ebayReport');
+
+    // eBay seller OAuth — required to read /sell/fulfillment/v1/order.
+    // Tokens land in business.api_settings.ebay_seller (no migration).
+    Route::get('/admin/ebay-seller', 'EbaySellerAuthController@index');
+    Route::get('/admin/ebay-seller/connect', 'EbaySellerAuthController@connect');
+    Route::get('/admin/ebay-seller/callback', 'EbaySellerAuthController@callback');
+    Route::post('/admin/ebay-seller/disconnect', 'EbaySellerAuthController@disconnect');
     // The old "Clover vs ERP" rollup is superseded by the EOD reconciliation
     // page — same data, better structure (shift cards with drawer math).
     // Redirect preserves any bookmarks pointing at the old URL.
@@ -606,6 +618,13 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/fix-imported-dates', 'FixImportedDatesController@index');
     Route::post('/admin/fix-imported-dates/run', 'FixImportedDatesController@run');
 
+    // One-shot cleanup: re-parse the In Store New & Used Sales sheet from
+    // the uploaded xlsx and rewrite each transaction_date to the actual
+    // per-row Sold Date (col P) / Bought Date (col F). Snapshot + undo via
+    // /admin/admin-action-history.
+    Route::get('/admin/fix-in-store-sold-dates', 'FixInStoreSoldDatesController@index');
+    Route::post('/admin/fix-in-store-sold-dates/run', 'FixInStoreSoldDatesController@run');
+
     // One-shot cleanup: clears future created_at / updated_at on products
     // (sync TZ drift wrote them). Snapshots the BEFORE state so it can be
     // undone via /admin/admin-action-history.
@@ -627,6 +646,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/recover-zeroed-costs', 'RecoverZeroedCostsController@index');
     Route::post('/admin/recover-zeroed-costs/run', 'RecoverZeroedCostsController@run');
 
+    // CHOOSE-ROLE INSTALLER ROUTES TEMPORARILY REMOVED — caused outage 2026-04-29.
+    // Controller files + view files preserved on disk for re-enable later.
+
     // History of destructive admin backfills with one-click Undo. Every /admin/*
     // /run endpoint that mutates rows in bulk should write a snapshot here first.
     Route::get('/admin/admin-action-history', 'AdminActionHistoryController@index');
@@ -636,6 +658,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // surgical restore from the 04-24 backup hits only the victims.
     Route::get('/admin/wipe-audit', 'WipeAuditController@index');
     Route::get('/admin/wipe-audit/csv', 'WipeAuditController@csv');
+
+    // Diagnose why a specific staff member can't open POS. Lists every staff
+    // user with the four POS gates (status, allow_login, user_type,
+    // sell.create) + open-register status. Hit /admin/staff-pos-access?user=luis
+    // to highlight a row.
+    Route::get('/admin/staff-pos-access', 'StaffPosAccessController@index');
 
     // Companion to /admin/cost-price-rules: lists every category that still
     // has $0-cost products, lets Sarah enter a cost per category inline,
@@ -709,6 +737,9 @@ Route::middleware(['EcomApi'])->prefix('api/ecom')->group(function () {
 Route::middleware(['auth'])->group(function () {
     Route::get('/logout', 'Auth\LoginController@logout')->name('logout');
 });
+
+// CHOOSE-ROLE PICKER ROUTES TEMPORARILY REMOVED — caused outage 2026-04-29.
+// ChooseRoleController.php + auth/choose_role.blade.php preserved on disk.
 
 Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone'])->group(function () {
     Route::get('/load-more-notifications', 'HomeController@loadMoreNotifications');

@@ -1,0 +1,72 @@
+# NUCLEAR: kill every MySQL connection except this one. Use only when
+# db-unstick (which only kills > 20s) hasn't been enough — when the lock
+# is being held by short-lived but constantly-recreated transactions.
+
+name: DB nuke
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: production-restart
+  cancel-in-progress: false
+
+jobs:
+  nuke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+      - name: Add server to known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+      - name: Nuke all MySQL connections via Laravel PDO
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+
+            echo "=== current processlist (top 30) ==="
+            php artisan tinker --no-interaction --execute="
+              \$rows = DB::select('SELECT id, user, time, command, state, LEFT(info,80) AS info FROM information_schema.processlist ORDER BY time DESC LIMIT 30');
+              foreach (\$rows as \$r) { echo str_pad(\$r->id, 8) . str_pad(\$r->user, 16) . str_pad(\$r->time . 's', 8) . str_pad(\$r->command, 10) . str_pad(\$r->state ?? '', 24) . (\$r->info ?? '') . PHP_EOL; }
+            "
+            echo
+
+            echo "=== killing every non-system, non-Sleep connection (and ALL > 5s) ==="
+            php artisan tinker --no-interaction --execute="
+              \$me = DB::select('SELECT CONNECTION_ID() AS id')[0]->id;
+              \$victims = DB::select('SELECT id FROM information_schema.processlist WHERE id != ? AND user != \"system user\" AND user != \"event_scheduler\"', [\$me]);
+              \$killed = 0;
+              foreach (\$victims as \$v) {
+                try { DB::statement('KILL ' . (int)\$v->id); \$killed++; }
+                catch (\Throwable \$e) {}
+              }
+              echo 'killed: ' . \$killed . PHP_EOL;
+            "
+            echo
+
+            echo "=== clearing Laravel caches ==="
+            php artisan optimize:clear 2>&1 | head -10
+            echo
+
+            echo "=== HTTP smoke test ==="
+            for i in 1 2 3 4 5; do
+              CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 15 https://playlist.nivessa.com/login || echo TIMEOUT)
+              echo "  attempt $i: HTTP $CODE"
+              [ "$CODE" = "200" ] && break
+              sleep 3
+            done

@@ -95,24 +95,93 @@ class InventoryCheckController extends Controller
         // Open to all authenticated staff — inventory check assistant is
         // operational reorder data, not aggregated sales (Sarah 2026-04-28).
 
-        $business_id = (int) $request->session()->get('user.business_id');
-        $input = $request->only([
-            'location_id', 'category_id', 'category_ids', 'preset',
-        ]);
+        try {
+            $business_id = (int) $request->session()->get('user.business_id');
+            $input = $request->only([
+                'location_id', 'category_id', 'category_ids', 'preset',
+            ]);
 
-        if (!empty($input['preset'])) {
-            $resolved = $this->inventoryCheckService->resolvePreset($business_id, $input['preset']);
-            $input = array_merge($resolved, $input);
+            if (!empty($input['preset'])) {
+                $resolved = $this->inventoryCheckService->resolvePreset($business_id, $input['preset']);
+                $input = array_merge($resolved, $input);
+            }
+
+            if (!empty($input['category_ids']) && is_string($input['category_ids'])) {
+                $input['category_ids'] = array_filter(array_map('intval', explode(',', $input['category_ids'])));
+            }
+
+            $permitted = auth()->user()->permitted_locations();
+            $result = $this->inventoryCheckService->buildBuckets($business_id, $input, $permitted);
+
+            return response()->json($result);
+        } catch (\Throwable $e) {
+            // Don't let a buildBuckets exception become a Laravel HTML
+            // error page — it'd render as the misleading "Server returned
+            // no buckets" empty state. Instead surface the exact reason
+            // back to the JS so the page can show it.
+            \Illuminate\Support\Facades\Log::error('ICA buckets build failed', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+            return response()->json([
+                'buckets' => [],
+                'meta' => [
+                    'error' => 'build_failed',
+                    'message' => $e->getMessage(),
+                    'file' => basename($e->getFile()) . ':' . $e->getLine(),
+                ],
+            ], 200);
         }
+    }
 
-        if (!empty($input['category_ids']) && is_string($input['category_ids'])) {
-            $input['category_ids'] = array_filter(array_map('intval', explode(',', $input['category_ids'])));
+    /**
+     * Lazy-loaded events bucket. Pulled separately from the main buckets
+     * call because it hits two external feeds (server.nivessa.com +
+     * ticketmaster-feed) and on a cold cache that took 15-30s — blocking
+     * the whole page. JS calls this after the main render returns.
+     */
+    public function eventsBucket(Request $request)
+    {
+        try {
+            $business_id = (int) $request->session()->get('user.business_id');
+            $input = $request->only(['location_id', 'preset']);
+
+            if (!empty($input['preset'])) {
+                $resolved = $this->inventoryCheckService->resolvePreset($business_id, $input['preset']);
+                $input = array_merge($resolved, $input);
+            }
+
+            $locationId = !empty($input['location_id']) ? (int) $input['location_id'] : null;
+            if (!$locationId) {
+                return response()->json([
+                    'bucket' => [
+                        'label' => '🎤 Upcoming events — stock up',
+                        'why' => 'Pick a store first.',
+                        'items' => [],
+                        'count' => 0,
+                    ],
+                ]);
+            }
+
+            $permitted = auth()->user()->permitted_locations();
+            $bucket = $this->inventoryCheckService->bucketEventsUpcomingPublic($business_id, $locationId, $permitted);
+            return response()->json(['bucket' => $bucket]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('ICA events bucket failed', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile() . ':' . $e->getLine(),
+            ]);
+            return response()->json([
+                'bucket' => [
+                    'label' => '🎤 Upcoming events — stock up',
+                    'why' => 'Events feed failed to load: ' . $e->getMessage(),
+                    'items' => [],
+                    'count' => 0,
+                    'empty_reason' => 'fetch_error',
+                ],
+            ]);
         }
-
-        $permitted = auth()->user()->permitted_locations();
-        $result = $this->inventoryCheckService->buildBuckets($business_id, $input, $permitted);
-
-        return response()->json($result);
     }
 
     public function export(Request $request)
@@ -196,19 +265,41 @@ class InventoryCheckController extends Controller
         // Accept EITHER a pasted body OR an uploaded chart file (xlsx, csv, tsv).
         // Sarah's actual sources don't fit a single textarea: Universal sends
         // an xlsx attachment; Luminate / Street Pulse exports as a tabular
-        // chart. Validate one-or-the-other; downstream picks the parser.
-        $request->validate([
+        // chart. Validate one-or-the-other manually so the failure path is
+        // a clean JSON 422 (Laravel's validate() helper sometimes redirects
+        // with HTML on this older version, which the JS choked on with
+        // "Unexpected token '<'").
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
             'source' => 'required|in:street_pulse,universal_top',
             'body' => 'nullable|string|max:500000',
             'week_of' => 'nullable|date',
-            'chart_file' => 'nullable|file|max:20480|mimes:xlsx,xls,csv,tsv,txt',
+            'chart_file' => 'nullable|file|max:20480',
         ]);
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'error' => 'validation_failed',
+                'message' => implode(' ', $validator->errors()->all()),
+            ], 422);
+        }
         if (!$request->filled('body') && !$request->hasFile('chart_file')) {
             return response()->json([
                 'success' => false,
                 'error' => 'no_input',
                 'message' => 'Paste the chart body or upload an .xlsx / .csv file.',
             ], 422);
+        }
+        // Reject images cleanly (OCR is supposed to happen client-side)
+        if ($request->hasFile('chart_file')) {
+            $ext = strtolower($request->file('chart_file')->getClientOriginalExtension());
+            $allowed = ['xlsx', 'xls', 'csv', 'tsv', 'txt'];
+            if (!in_array($ext, $allowed, true)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'unsupported_file_type',
+                    'message' => 'For image files (.png/.jpg), the browser OCR fills the paste box automatically — wait for "✓ Extracted N rows" before clicking Import. For other files use ' . implode(', ', $allowed) . '.',
+                ], 422);
+            }
         }
 
         if (!Schema::hasTable('chart_pick_imports') || !Schema::hasTable('chart_picks')) {
@@ -246,17 +337,41 @@ class InventoryCheckController extends Controller
             }
         } else {
             $diagnostic['mode'] = 'paste';
-            $rows = $this->chartPickParser->parse($body, $source);
-            // Some pasted bodies are tab-separated tables (Luminate copy-paste).
-            // If the line parser found nothing, retry through the tabular
-            // parser using the body as a CSV/TSV blob.
-            if (empty($rows)) {
+            // Peek at the first non-blank line — if it looks like a header
+            // row with Title + Artist columns (e.g. the OCR output for
+            // Luminate, or a CSV paste), route through the column-aware
+            // TabularChartParser. ChartPickParser positionally assumes
+            // "rank, artist, title" order which would silently swap
+            // artist/title for Luminate's "rank, title, artist" layout.
+            $firstLine = '';
+            foreach (preg_split("/\r?\n/", $body) as $l) {
+                $l = trim($l);
+                if ($l !== '') { $firstLine = $l; break; }
+            }
+            $firstLower = mb_strtolower($firstLine);
+            $hasArtistHdr = mb_strpos($firstLower, 'artist') !== false || mb_strpos($firstLower, 'performer') !== false;
+            $hasTitleHdr = mb_strpos($firstLower, 'title') !== false || mb_strpos($firstLower, 'album') !== false;
+            $looksTabular = $hasArtistHdr && $hasTitleHdr;
+
+            if ($looksTabular) {
                 $tmp = tempnam(sys_get_temp_dir(), 'chartpaste');
                 file_put_contents($tmp, $body);
                 try {
                     $rows = app(TabularChartParser::class)->parseCsv($tmp);
                 } finally {
                     @unlink($tmp);
+                }
+            } else {
+                $rows = $this->chartPickParser->parse($body, $source);
+                // Fallback: if line parser came up empty, try tabular parse.
+                if (empty($rows)) {
+                    $tmp = tempnam(sys_get_temp_dir(), 'chartpaste');
+                    file_put_contents($tmp, $body);
+                    try {
+                        $rows = app(TabularChartParser::class)->parseCsv($tmp);
+                    } finally {
+                        @unlink($tmp);
+                    }
                 }
             }
         }

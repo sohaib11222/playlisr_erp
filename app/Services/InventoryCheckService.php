@@ -11,6 +11,10 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
+// Cache-bust: deploy 2026-04-29 to ensure FPM OPcache reloads chartPickReason
+// signature change (?array $match). Sarah saw stale "must be of the type array"
+// errors after the fix landed because OPcache held the pre-fix bytecode.
+
 class InventoryCheckService
 {
     /** @var NivessaEventsFetcher */
@@ -106,7 +110,18 @@ class InventoryCheckService
             'universal_top' => $this->bucketChartPicks($business_id, $locationId, 'universal_top', $topArtists, $permittedLocations),
             'apple_music_top' => $this->bucketChartPicks($business_id, $locationId, 'apple_music_top', $topArtists, $permittedLocations),
             'top_artist_new_releases' => $this->bucketTopArtistNewReleases($business_id, $locationId, $topArtists, $permittedLocations),
-            'events_upcoming' => $this->bucketEventsUpcoming($business_id, $locationId, $permittedLocations),
+            // events_upcoming is intentionally NOT computed here — it hits two
+            // external URLs (server.nivessa.com + ticketmaster-feed) and the
+            // cold-cache call ate 15-30s, blocking the whole page. JS now
+            // fetches it on a separate request via @eventsBucket so the rest
+            // of the page renders fast and events fills in when it's ready.
+            'events_upcoming' => [
+                'label' => '🎤 Upcoming events — stock up',
+                'why' => 'Loading separately from server.nivessa.com + Ticketmaster feed…',
+                'items' => [],
+                'count' => 0,
+                'lazy' => true,
+            ],
             'long_oos_essentials' => $this->bucketLongOosEssentials($business_id, $locationId, $permittedLocations),
             'hot_used_oos' => $this->bucketHotUsedOos($business_id, $locationId, $permittedLocations),
             'customer_wants' => $this->bucketCustomerWants($business_id, $locationId),
@@ -397,8 +412,13 @@ class InventoryCheckService
         return $base;
     }
 
-    protected function chartPickReason($pick, bool $isTopArtist, array $match): string
+    protected function chartPickReason($pick, bool $isTopArtist, ?array $match): string
     {
+        // Accept null match — tryMatchChartPickToVariation returns null
+        // when nothing in the catalog matches the chart pick, and this
+        // method gets called with that null directly. Treating it as []
+        // keeps the rest of the logic happy (the empty checks all pass).
+        $match = $match ?? [];
         $bits = [];
         if ($isTopArtist) {
             $bits[] = 'popular in-store';
@@ -545,6 +565,12 @@ class InventoryCheckService
     }
 
     // ── Upcoming events → stock-up ────────────────────────────────────
+
+    /** Public alias used by the lazy-load endpoint (controller can't call protected). */
+    public function bucketEventsUpcomingPublic(int $business_id, int $locationId, $permittedLocations): array
+    {
+        return $this->bucketEventsUpcoming($business_id, $locationId, $permittedLocations);
+    }
 
     protected function bucketEventsUpcoming(int $business_id, int $locationId, $permittedLocations): array
     {
@@ -925,7 +951,9 @@ class InventoryCheckService
         $name = mb_strtolower((string) $loc->name);
 
         foreach ($byLocation as $pattern => $artists) {
-            if ($pattern !== '' && str_contains($name, mb_strtolower($pattern))) {
+            // mb_strpos for PHP 7.x compat — str_contains is PHP 8.0+ and
+            // this Laravel pairs with older PHP on the prod server.
+            if ($pattern !== '' && mb_strpos($name, mb_strtolower($pattern)) !== false) {
                 return is_array($artists) ? $artists : [];
             }
         }

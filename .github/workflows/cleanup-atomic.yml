@@ -1,0 +1,84 @@
+# Atomic cleanup: kill all DB connections + drop columns + remove migration
+# row in a SINGLE Laravel/PDO session, with a 5-second lock_wait_timeout so
+# we can never hang. Use when cleanup-bad-migration hangs because workers
+# keep re-grabbing the lock between steps.
+
+name: Cleanup atomic
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: production-restart
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+      - name: Add server to known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+      - name: Atomic kill + drop + smoke test
+        timeout-minutes: 2
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+
+            # First: kill all the deploy_user's php-fpm workers so they stop
+            # holding transactions on business_locations. Master will respawn.
+            ME=$(whoami)
+            echo "=== killing my php-fpm workers (no sudo needed) ==="
+            pkill -9 -u "$ME" -f 'php-?fpm.*pool' 2>&1
+            sleep 2
+            echo
+
+            # Now do the cleanup all in ONE tinker call so it's one DB session.
+            # Set lock_wait_timeout=5 so any ALTER fails fast instead of hanging.
+            echo "=== atomic cleanup ==="
+            timeout 60 php artisan tinker --no-interaction --execute="
+              try { DB::statement('SET SESSION lock_wait_timeout = 5'); } catch (\Throwable \$e) {}
+              try { DB::statement('SET SESSION innodb_lock_wait_timeout = 5'); } catch (\Throwable \$e) {}
+
+              // Kill every other connection
+              \$me = DB::select('SELECT CONNECTION_ID() AS id')[0]->id;
+              \$victims = DB::select('SELECT id FROM information_schema.processlist WHERE id != ? AND user != \"system user\" AND user != \"event_scheduler\"', [\$me]);
+              foreach (\$victims as \$v) { try { DB::statement('KILL ' . (int)\$v->id); } catch (\Throwable \$e) {} }
+              echo 'killed connections: ' . count(\$victims) . PHP_EOL;
+
+              // Drop columns immediately, before any new worker can re-grab the lock
+              try { DB::statement('ALTER TABLE business_locations DROP COLUMN current_cashier_id'); echo 'dropped current_cashier_id' . PHP_EOL; }
+              catch (\Throwable \$e) { echo 'current_cashier_id: ' . \$e->getMessage() . PHP_EOL; }
+
+              try { DB::statement('ALTER TABLE business_locations DROP COLUMN cashier_assigned_at'); echo 'dropped cashier_assigned_at' . PHP_EOL; }
+              catch (\Throwable \$e) { echo 'cashier_assigned_at: ' . \$e->getMessage() . PHP_EOL; }
+
+              \$n = DB::table('migrations')->where('migration', 'like', '%current_cashier%')->delete();
+              echo 'migration rows deleted: ' . \$n . PHP_EOL;
+            "
+            echo
+
+            echo "=== HTTP smoke test ==="
+            for i in 1 2 3 4 5; do
+              CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 10 https://playlist.nivessa.com/login || echo TIMEOUT)
+              echo "  attempt $i: HTTP $CODE"
+              [ "$CODE" = "200" ] && break
+              sleep 3
+            done

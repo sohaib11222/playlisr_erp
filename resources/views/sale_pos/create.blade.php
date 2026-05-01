@@ -94,6 +94,11 @@
 
 @include('sale_pos.partials.configure_search_modal')
 
+{{-- Sarah 2026-04-30: "Recently rung up" widget — position:fixed in the
+     tan area to the left of the cart on wide screens, hidden under 1200px.
+     Pulled out of layout flow so it cannot affect the locked cart layout. --}}
+@include('sale_pos.partials._recent_rings_panel')
+
 @include('sale_pos.partials.recent_transactions_modal')
 
 @include('sale_pos.partials.weighing_scale_modal')

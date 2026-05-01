@@ -5,6 +5,47 @@
 <section class="content-header">
     <h1>Order for this Week <small class="text-muted">— Inventory Check Assistant</small></h1>
     <p class="text-muted">Pick a store below. The page builds your reorder list automatically — fast sellers, low stock, chart picks, customer requests, all in one scroll. Export when done.</p>
+
+    <div class="ica-help-toggle">
+        <a data-toggle="collapse" href="#ica_help" role="button" aria-expanded="false">
+            📖 How to use this page (click to expand)
+        </a>
+    </div>
+    <div class="collapse" id="ica_help">
+        <div class="ica-help-panel">
+            <h4 style="margin-top:0;">Step-by-step</h4>
+            <ol style="margin-bottom:8px;">
+                <li><strong>Pick the store</strong> you're ordering for. Click <em>Hollywood — everything</em> or <em>Pico — everything</em>. The page rebuilds for that store automatically.</li>
+                <li><strong>Wait for it to load</strong> — usually 2-5 seconds. Events load separately and may appear a few seconds after the rest of the page.</li>
+                <li><strong>(Optional) Refresh this week's chart data:</strong>
+                    <ul>
+                        <li>🍎 <em>Run Apple Music pull now</em> — pulls today's Apple Music top 100 (takes ~3s).</li>
+                        <li>📬 <em>Street Pulse / Luminate</em> — click "Upload this week's chart". For PNG email screenshots, select all of them at once (cmd-click in the file picker). The browser OCRs each one and fills the paste box. Review the rows for typos, then click Import.</li>
+                        <li>🌍 <em>UMe / Universal</em> — click "Upload this week's chart" and drag in the weekly "UMe Back-in-Stock + Active LPs and CDs" .xlsx attachment.</li>
+                    </ul>
+                </li>
+                <li><strong>Scroll the buckets</strong> to review what's recommended:
+                    <ul>
+                        <li>🔥 <em>Fast-moving, out of stock</em> — sealed vinyl/CDs that sold quickly and we have ≤ 0 on shelf. <em>Sell Speed</em> column shows avg days to sell.</li>
+                        <li>📬 <em>Street Pulse picks</em> / 🌍 <em>Universal top</em> / 🍎 <em>Apple Music top 100</em> — this week's charts, with rows tagged <em>top_artist</em> for artists already popular in our store.</li>
+                        <li>🎵 <em>New releases from your top artists</em> — chart picks from artists popular in-store that we don't yet carry that title.</li>
+                        <li>🎤 <em>Upcoming events — stock up</em> — LA Ticketmaster shows + nivessa-hosted listening parties in the next 30 days, with the artists' titles we already carry.</li>
+                        <li>🔁 <em>Long out-of-stock essentials</em> — items we've sold a lot of historically but haven't restocked in 14+ days.</li>
+                        <li>🎸 <em>Hot used, out of stock</em> — used vinyl/CD titles that sell fast when we have them; advisory only (used inventory comes from trade-ins, not orders).</li>
+                        <li>📞 <em>Customer Wants</em> — open customer requests. Click <em>Fulfilled</em> when you order or stock the title.</li>
+                    </ul>
+                </li>
+                <li><strong>Adjust quantities</strong> in each row's qty box if the suggestion isn't right. Uncheck rows you don't want to order.</li>
+                <li><strong>Export for AMS</strong> (top button bar) → opens a CSV with all checked rows. Upload that to AMS, or use <em>Copy for cart</em> to paste a one-line-per-item list into another tool.</li>
+            </ol>
+            <p class="text-muted small" style="margin-bottom:0;">
+                <strong>Tips:</strong>
+                Re-uploading a chart for the same week replaces the prior import.
+                The first time you load the page each session, events take a few extra seconds (cold cache).
+                Need a different store/category combo not in the buttons? Open <em>Advanced filters</em>.
+            </p>
+        </div>
+    </div>
 </section>
 
 <section class="content">
@@ -196,10 +237,10 @@
                     <input type="date" class="form-control" id="ica_sp_week" value="{{ \Carbon\Carbon::now()->format('Y-m-d') }}">
                 </div>
                 <div class="form-group">
-                    <label>Chart file <small class="text-muted">(.xlsx / .csv / .png / .jpg)</small></label>
-                    <input type="file" class="form-control" id="ica_sp_file" accept=".xlsx,.xls,.csv,.tsv,.txt,.png,.jpg,.jpeg,.webp">
+                    <label>Chart file <small class="text-muted">(.xlsx / .csv / .png / .jpg — pick multiple PNGs at once)</small></label>
+                    <input type="file" class="form-control" id="ica_sp_file" accept=".xlsx,.xls,.csv,.tsv,.txt,.png,.jpg,.jpeg,.webp" multiple>
                     <p class="help-block small">
-                        <strong>If you only have the email screenshot (Luminate PNG),</strong> drop it in here — we'll OCR it in your browser and fill the paste box below so you can double-check before importing. Takes 20-40s for a 200-row chart.
+                        <strong>If you only have email screenshots (Luminate PNG),</strong> select all of them at once (Cmd-click or Shift-click in the file picker) — we'll OCR each one in your browser and append the rows to the paste box. ~30s per image.
                     </p>
                     <div id="ica_sp_ocr_status" class="text-muted small" style="display:none; margin-top:6px;"></div>
                 </div>
@@ -253,6 +294,21 @@
 </div>
 
 <style>
+.ica-help-toggle { margin-bottom: 6px; }
+.ica-help-toggle a { font-size: 13px; font-weight: 500; color: #2c699a; text-decoration: none; }
+.ica-help-toggle a:hover { text-decoration: underline; }
+.ica-help-panel {
+    background: #fffbe6;
+    border: 1px solid #ffeaa7;
+    border-radius: 4px;
+    padding: 14px 18px;
+    margin-bottom: 14px;
+    font-size: 13px;
+    line-height: 1.55;
+}
+.ica-help-panel h4 { font-size: 15px; }
+.ica-help-panel ol > li { margin-bottom: 6px; }
+.ica-help-panel ul { margin: 4px 0 6px 0; }
 .ica-store-picker {
     background: #fff;
     border: 1px solid #ddd;
@@ -336,6 +392,7 @@
     window.ICA_CHART_FRESHNESS = @json($chartFreshness ?? []);
     window.ICA_COPY_FORMAT = @json($copyFormat);
     window.ICA_BUCKETS_URL = "{{ action('InventoryCheckController@buckets') }}";
+    window.ICA_EVENTS_URL = "{{ action('InventoryCheckController@eventsBucket') }}";
     window.ICA_EXPORT_URL = "{{ action('InventoryCheckController@export') }}";
     window.ICA_CHART_IMPORT_URL = "{{ url('reports/inventory-check-assistant/chart-import') }}";
     window.ICA_CHART_LATEST_URL = "{{ url('reports/inventory-check-assistant/chart-latest') }}";

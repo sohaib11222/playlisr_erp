@@ -1,0 +1,92 @@
+# Emergency: site is down, do everything at once. Kills stuck artisan
+# processes, kills long-running MySQL queries, clears Laravel caches,
+# restarts MySQL + php-fpm + nginx, then HTTP smoke-tests.
+
+name: Emergency unstick
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: production-restart
+  cancel-in-progress: false
+
+jobs:
+  unstick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Unstick everything
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          script: |
+            set +e
+            DEPLOY_PATH=/www/playlist.nivessa.com/app
+
+            echo "=== killing stuck artisan processes ==="
+            ps -eo pid,etime,cmd | grep -E 'artisan' | grep -v grep || echo "  (none)"
+            sudo -n pkill -9 -f 'artisan' 2>&1 || pkill -9 -f 'artisan' 2>&1 || true
+            echo
+
+            echo "=== killing long-running MySQL queries ==="
+            (sudo -n mysql -e "SELECT id, time, state, LEFT(info,80) FROM information_schema.processlist WHERE time > 30 AND command != 'Sleep';" 2>&1 \
+              || mysql -e "SELECT id, time, state, LEFT(info,80) FROM information_schema.processlist WHERE time > 30 AND command != 'Sleep';" 2>&1) | head -40
+            (sudo -n mysql -Bse "SELECT CONCAT('KILL ', id, ';') FROM information_schema.processlist WHERE time > 30 AND command != 'Sleep' AND user != 'system user';" 2>/dev/null \
+              | sudo -n mysql 2>&1) || true
+            echo
+
+            echo "=== clearing Laravel caches + bootstrap/cache ==="
+            cd "$DEPLOY_PATH" 2>/dev/null
+            php artisan optimize:clear 2>&1 | head -10 || true
+            rm -f bootstrap/cache/routes-v7.php bootstrap/cache/config.php bootstrap/cache/packages.php bootstrap/cache/services.php bootstrap/cache/events.php bootstrap/cache/connector_module.php
+            echo
+
+            MYSQL_SVC=$(systemctl list-units --type=service --all --no-legend 2>/dev/null \
+              | awk '{print $1}' | grep -E '^(mysql|mariadb|mysqld)\.service' | head -1)
+            FPM_SVC=$(systemctl list-units --type=service --all --no-legend 2>/dev/null \
+              | awk '{print $1}' | grep -E 'php[0-9.]*-fpm\.service|^php-fpm\.service' | head -1)
+
+            echo "=== restarting mysql ($MYSQL_SVC) ==="
+            [ -n "$MYSQL_SVC" ] && sudo -n systemctl restart "$MYSQL_SVC" 2>&1 | head -5
+            for i in $(seq 1 30); do
+              (sudo -n mysql -e "SELECT 1;" >/dev/null 2>&1 || mysql -e "SELECT 1;" >/dev/null 2>&1) && { echo "  mysql up after ${i}s"; break; }
+              sleep 1
+            done
+            echo
+
+            echo "=== restarting php-fpm ($FPM_SVC) ==="
+            [ -n "$FPM_SVC" ] && sudo -n systemctl restart "$FPM_SVC" 2>&1 | head -5
+            echo
+
+            echo "=== restarting nginx ==="
+            sudo -n systemctl restart nginx 2>&1 | head -5
+            echo
+
+            echo "=== HTTP smoke test ==="
+            for i in 1 2 3 4 5; do
+              CODE=$(curl -s -o /tmp/smoke.html -w "%{http_code}" -m 15 https://playlist.nivessa.com/login 2>&1 || echo TIMEOUT)
+              echo "  attempt $i: HTTP $CODE"
+              [ "$CODE" = "200" ] && break
+              sleep 3
+            done
+            echo
+            echo "=== last 40 lines of laravel.log ==="
+            tail -n 40 "$DEPLOY_PATH/storage/logs/laravel.log" 2>&1 | tail -40

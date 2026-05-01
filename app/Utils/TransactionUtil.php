@@ -54,9 +54,11 @@ class TransactionUtil extends Util
 
         //if pay term empty set contact pay term
         if (empty($pay_term_number) || empty($pay_term_type)) {
-            $contact = Contact::find($input['contact_id']);
-            $pay_term_number = $contact->pay_term_number;
-            $pay_term_type = $contact->pay_term_type;
+            $contact = !empty($input['contact_id']) ? Contact::find($input['contact_id']) : null;
+            if ($contact) {
+                $pay_term_number = $contact->pay_term_number;
+                $pay_term_type = $contact->pay_term_type;
+            }
         }
 
         // Sarah 2026-04-22: derive channel once so we can conditionally
@@ -210,9 +212,11 @@ class TransactionUtil extends Util
 
         //if pay term empty set contact pay term
         if (empty($pay_term_number) || empty($pay_term_type)) {
-            $contact = Contact::find($input['contact_id']);
-            $pay_term_number = $contact->pay_term_number;
-            $pay_term_type = $contact->pay_term_type;
+            $contact = !empty($input['contact_id']) ? Contact::find($input['contact_id']) : null;
+            if ($contact) {
+                $pay_term_number = $contact->pay_term_number;
+                $pay_term_type = $contact->pay_term_type;
+            }
         }
 
         $update_date = [

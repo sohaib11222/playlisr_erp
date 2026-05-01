@@ -5447,6 +5447,773 @@ class ReportController extends Controller
 
 
     /**
+     * Sales by Channel — date-range rollup of revenue + gross profit per
+     * (location, channel) combination. Mirrors slide 3 of the monthly
+     * business review deck so Sabina doesn't have to compile it by hand.
+     *
+     * One row per (location, channel) pair. Display label is the location
+     * name plus a channel suffix when the channel is something other than
+     * the in-store register (e.g. "Hollywood — Whatnot", "Pico — Whatnot").
+     * Online channels (Discogs, eBay) are not tied to a physical store, so
+     * they collapse to a single row labelled by channel only.
+     *
+     * Columns: revenue (final_total incl tax), share % of period, txn count,
+     * gross profit (mirrors TransactionUtil::getGrossProfit math but grouped
+     * per location+channel), and gross margin %.
+     *
+     * Operating profit and net profit per channel are intentionally NOT
+     * computed here — they require expense-allocation rules (rent share,
+     * payroll split, etc.) that we have not codified. Those columns are
+     * surfaced as "—" with a footnote pointing at /reports/profit-loss.
+     */
+    public function salesByChannel(Request $request)
+    {
+        $this->ensureAdminOnlyReportAccess();
+
+        $business_id = $request->session()->get('user.business_id');
+        $start_date = $request->input('start_date');
+        $end_date = $request->input('end_date');
+        if (empty($start_date) || empty($end_date)) {
+            $start_date = $start_date ?: \Carbon::now()->startOfMonth()->format('Y-m-d');
+            $end_date = $end_date ?: \Carbon::now()->format('Y-m-d');
+        }
+
+        $business_locations = BusinessLocation::forDropdown($business_id);
+
+        // Reset diagnostics — populated by the per-channel fetchers below.
+        $this->channelDiagnostics = [];
+
+        // Revenue + transaction count per (location, channel).
+        $rev = DB::table('transactions as t')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereDate('t.transaction_date', '>=', $start_date)
+            ->whereDate('t.transaction_date', '<=', $end_date)
+            ->selectRaw("t.location_id, t.channel,
+                COUNT(*) as cnt,
+                COALESCE(SUM(t.final_total), 0) as revenue,
+                COALESCE(SUM(t.total_before_tax), 0) as revenue_exc_tax")
+            ->groupBy('t.location_id', 't.channel')
+            ->get();
+
+        // Gross profit per (location, channel). Mirrors getGrossProfit but
+        // skips combo recursion (Nivessa's catalog isn't combo-based) so the
+        // query stays cheap enough to group.
+        $gp_rows = DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as sale', 'tsl.transaction_id', '=', 'sale.id')
+            ->leftJoin('transaction_sell_lines_purchase_lines as TSPL', 'tsl.id', '=', 'TSPL.sell_line_id')
+            ->leftJoin('purchase_lines as PL', 'TSPL.purchase_line_id', '=', 'PL.id')
+            ->where('sale.business_id', $business_id)
+            ->where('sale.type', 'sell')
+            ->where('sale.status', 'final')
+            ->whereDate('sale.transaction_date', '>=', $start_date)
+            ->whereDate('sale.transaction_date', '<=', $end_date)
+            ->where('tsl.children_type', '!=', 'combo')
+            ->selectRaw("sale.location_id, sale.channel,
+                COALESCE(SUM((TSPL.quantity - TSPL.qty_returned) *
+                    (tsl.unit_price_inc_tax - PL.purchase_price_inc_tax)), 0) as gross_profit")
+            ->groupBy('sale.location_id', 'sale.channel')
+            ->get()
+            ->keyBy(function ($r) { return $r->location_id . '|' . $r->channel; });
+
+        // Channel display rules. Online channels collapse to one row;
+        // in-store and Whatnot get friendly per-store labels (Sarah
+        // 2026-04-30 — kill the "(BL0001)" location codes Sabina sees).
+        $online_channels = ['discogs', 'ebay'];
+        $online_label = [
+            'discogs' => 'Discogs',
+            'ebay'    => 'eBay & Other',
+        ];
+
+        // Build display rows.
+        $rows = [];
+        $overall_revenue = 0.0;
+        foreach ($rev as $r) {
+            $channel = $r->channel ?: 'in_store';
+            $is_online = in_array($channel, $online_channels, true);
+            $loc_name_raw = $business_locations[$r->location_id] ?? 'Unknown';
+            // Strip a trailing " (code)" suffix so labels read as plain names.
+            $loc_name = trim(preg_replace('/\s*\([^)]*\)\s*$/', '', $loc_name_raw));
+            $loc_lower = strtolower($loc_name);
+            $is_hollywood = strpos($loc_lower, 'hollywood') !== false;
+            $is_pico = strpos($loc_lower, 'pico') !== false;
+
+            if ($is_online) {
+                $key = 'online|' . $channel;
+                $label = $online_label[$channel];
+                $loc_id_display = null;
+            } elseif ($channel === 'whatnot') {
+                $key = $r->location_id . '|whatnot';
+                if ($is_hollywood) {
+                    $label = 'Whatnot Hollywood';
+                } elseif ($is_pico) {
+                    $label = 'Whatnot - Pico';
+                } else {
+                    $label = 'Whatnot - ' . ucwords($loc_name);
+                }
+                $loc_id_display = $r->location_id;
+            } else { // in_store
+                $key = $r->location_id . '|in_store';
+                if ($is_hollywood) {
+                    $label = 'Hollywood Store';
+                } elseif ($is_pico) {
+                    $label = 'Pico Store';
+                } else {
+                    $label = ucwords($loc_name) . ' Store';
+                }
+                $loc_id_display = $r->location_id;
+            }
+
+            $gp_key = $r->location_id . '|' . $channel;
+            $gp = isset($gp_rows[$gp_key]) ? (float)$gp_rows[$gp_key]->gross_profit : 0.0;
+
+            if (!isset($rows[$key])) {
+                $rows[$key] = [
+                    'label'           => $label,
+                    'channel'         => $channel,
+                    'location_id'     => $loc_id_display,
+                    'revenue'         => 0.0,
+                    'revenue_exc_tax' => 0.0,
+                    'cnt'             => 0,
+                    'gross_profit'    => 0.0,
+                ];
+            }
+            $rows[$key]['revenue']         += (float)$r->revenue;
+            $rows[$key]['revenue_exc_tax'] += (float)$r->revenue_exc_tax;
+            $rows[$key]['cnt']             += (int)$r->cnt;
+            $rows[$key]['gross_profit']    += $gp;
+
+            $overall_revenue += (float)$r->revenue;
+        }
+
+        // Pull website-side channels from nivessa.com (Space Rentals + web
+        // sales — shipping & pickup). These don't live in the ERP DB, so
+        // we fetch live each render. Failures are swallowed: the rest of
+        // the report keeps working if the website is down.
+        $website_rows = $this->fetchWebsiteChannelTotals($start_date, $end_date);
+        foreach ($website_rows as $wr) {
+            $rows[$wr['key']] = $wr['row'];
+            $overall_revenue += $wr['row']['revenue'];
+        }
+
+        // Discogs marketplace orders — live-fetched from Discogs's API
+        // each render (no separate sync step). Same fail-quiet pattern as
+        // the website fetch above: any error → row simply omitted.
+        $dgs = $this->fetchDiscogsChannelTotals($business_id, $start_date, $end_date);
+        if ($dgs !== null && ($dgs['revenue'] > 0 || $dgs['cnt'] > 0)) {
+            $key = 'online|discogs';
+            if (!isset($rows[$key])) {
+                $rows[$key] = [
+                    'label'           => 'Discogs',
+                    'channel'         => 'discogs',
+                    'location_id'     => null,
+                    'revenue'         => 0.0,
+                    'revenue_exc_tax' => 0.0,
+                    'cnt'             => 0,
+                    'gross_profit'    => 0.0,
+                    'cost_unknown'    => true, // No COGS until release_id ↔ SKU mapping ships
+                ];
+            }
+            $rows[$key]['revenue']         += $dgs['revenue'];
+            $rows[$key]['revenue_exc_tax'] += $dgs['revenue'];
+            $rows[$key]['cnt']             += $dgs['cnt'];
+            $rows[$key]['cost_unknown'] = true;
+            $overall_revenue += $dgs['revenue'];
+        }
+
+        // eBay orders — live-fetched via Sell Fulfillment API. Requires the
+        // seller to have connected their account at /admin/ebay-seller.
+        $eby = $this->fetchEbayChannelTotals($business_id, $start_date, $end_date);
+        if ($eby !== null && ($eby['revenue'] > 0 || $eby['cnt'] > 0)) {
+            $key = 'online|ebay';
+            if (!isset($rows[$key])) {
+                $rows[$key] = [
+                    'label'           => 'eBay & Other',
+                    'channel'         => 'ebay',
+                    'location_id'     => null,
+                    'revenue'         => 0.0,
+                    'revenue_exc_tax' => 0.0,
+                    'cnt'             => 0,
+                    'gross_profit'    => 0.0,
+                    'cost_unknown'    => true,
+                ];
+            }
+            $rows[$key]['revenue']         += $eby['revenue'];
+            $rows[$key]['revenue_exc_tax'] += $eby['revenue'];
+            $rows[$key]['cnt']             += $eby['cnt'];
+            $rows[$key]['cost_unknown'] = true;
+            $overall_revenue += $eby['revenue'];
+        }
+
+        // Compute share % and gross margin %, then sort by revenue desc.
+        // Default cost_unknown=false for local rows so the view doesn't have
+        // to null-check.
+        $rows = array_map(function ($row) use ($overall_revenue) {
+            if (!isset($row['cost_unknown'])) {
+                $row['cost_unknown'] = false;
+            }
+            $row['share_pct']    = $overall_revenue > 0 ? ($row['revenue'] / $overall_revenue) * 100 : 0;
+            $row['gross_margin'] = (!$row['cost_unknown'] && $row['revenue'] > 0)
+                ? ($row['gross_profit'] / $row['revenue']) * 100 : 0;
+            return $row;
+        }, $rows);
+        usort($rows, function ($a, $b) { return $b['revenue'] <=> $a['revenue']; });
+
+        // Totals exclude rows with unknown cost from the gross-profit roll
+        // (would otherwise pull the consolidated margin down to zero).
+        $known_gp_rows = array_filter($rows, function ($r) { return empty($r['cost_unknown']); });
+        $known_gp_revenue = array_sum(array_column($known_gp_rows, 'revenue'));
+        $totals = [
+            'revenue'      => $overall_revenue,
+            'cnt'          => array_sum(array_column($rows, 'cnt')),
+            'gross_profit' => array_sum(array_column($known_gp_rows, 'gross_profit')),
+        ];
+        $totals['gross_margin'] = $known_gp_revenue > 0
+            ? ($totals['gross_profit'] / $known_gp_revenue) * 100 : 0;
+
+        // CSV export — same data, no view chrome.
+        if ($request->input('export') === 'csv') {
+            $filename = 'sales-by-channel_' . $start_date . '_to_' . $end_date . '.csv';
+            $headers = [
+                'Content-Type'        => 'text/csv',
+                'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            ];
+            $callback = function () use ($rows, $totals) {
+                $out = fopen('php://output', 'w');
+                fputcsv($out, ['Channel', 'Revenue', 'Share %', 'Transactions', 'Gross Profit', 'Gross Margin %']);
+                foreach ($rows as $r) {
+                    fputcsv($out, [
+                        $r['label'],
+                        number_format($r['revenue'], 2, '.', ''),
+                        number_format($r['share_pct'], 2, '.', ''),
+                        $r['cnt'],
+                        $r['cost_unknown'] ? '' : number_format($r['gross_profit'], 2, '.', ''),
+                        $r['cost_unknown'] ? '' : number_format($r['gross_margin'], 2, '.', ''),
+                    ]);
+                }
+                fputcsv($out, [
+                    'TOTAL',
+                    number_format($totals['revenue'], 2, '.', ''),
+                    '100.00',
+                    $totals['cnt'],
+                    number_format($totals['gross_profit'], 2, '.', ''),
+                    number_format($totals['gross_margin'], 2, '.', ''),
+                ]);
+                fclose($out);
+            };
+            return response()->stream($callback, 200, $headers);
+        }
+
+        $diagnostics = $this->channelDiagnostics ?? [];
+
+        return view('report.sales_by_channel')->with(compact(
+            'rows', 'totals', 'start_date', 'end_date', 'business_locations', 'diagnostics'
+        ));
+    }
+
+    /**
+     * Fetch revenue from the nivessa.com backend for the channels that
+     * don't live in the ERP DB: Space Rentals (venue bookings) and web
+     * sales (shipping + pickup).
+     *
+     * Returns an array of row entries shaped like the local rows in
+     * salesByChannel() — `[ ['key' => ..., 'row' => [...]] , ... ]`.
+     *
+     * Failure modes are intentionally quiet: any HTTP error, missing
+     * config, or malformed response just yields an empty array. The
+     * Sales-by-Channel report must keep rendering even if the website
+     * backend is down.
+     *
+     * Config (env):
+     *   NIVESSA_WEBSITE_API_URL   default: https://nivessa.com
+     *   NIVESSA_WEBSITE_API_KEY   the X-API-Key header (BLOG_API_KEY on
+     *                              the server side); without it we skip
+     *                              the fetch entirely.
+     */
+    protected function fetchWebsiteChannelTotals($start_date, $end_date)
+    {
+        $base = rtrim(env('NIVESSA_WEBSITE_API_URL', 'https://nivessa.com'), '/');
+        $key  = env('NIVESSA_WEBSITE_API_KEY', '');
+        if (empty($key)) {
+            $this->setDiag('website', 'NIVESSA_WEBSITE_API_KEY not set in ERP .env. Web rows will not appear.');
+            return [];
+        }
+
+        $rows = [];
+
+        // Space Rentals — venue bookings.
+        $bookings = $this->httpGetJson(
+            $base . '/api/v1/bookings/sales-totals?start_date=' . urlencode($start_date) . '&end_date=' . urlencode($end_date),
+            $key
+        );
+        if (!empty($bookings) && !empty($bookings['success'])) {
+            $rev = (float)($bookings['totalRevenue'] ?? 0);
+            $cnt = (int)($bookings['count'] ?? 0);
+            $rows[] = [
+                'key' => 'web|space_rental',
+                'row' => [
+                    'label'           => 'Space Rentals',
+                    'channel'         => 'space_rental',
+                    'location_id'     => null,
+                    'revenue'         => $rev,
+                    'revenue_exc_tax' => $rev,
+                    'cnt'             => $cnt,
+                    'gross_profit'    => $rev, // No COGS on rentals.
+                ],
+            ];
+            $this->setDiag('website_bookings', "Space Rentals: pulled {$cnt} booking(s) from nivessa.com.");
+        } else {
+            $this->setDiag('website_bookings', 'Space Rentals: nivessa.com /api/v1/bookings/sales-totals call failed (auth or network).');
+        }
+
+        // Web sales — shipping + pickup. One call returns both buckets.
+        $orders = $this->httpGetJson(
+            $base . '/api/v1/order/sales-totals?start_date=' . urlencode($start_date) . '&end_date=' . urlencode($end_date),
+            $key
+        );
+        if (!empty($orders) && !empty($orders['success']) && !empty($orders['byMethod'])) {
+            $bm = $orders['byMethod'];
+            $shipping = $bm['shipping'] ?? ['totalRevenue' => 0, 'count' => 0];
+            $pickup   = $bm['pickup']   ?? ['totalRevenue' => 0, 'count' => 0];
+            $this->setDiag('website_orders', "nivessa.com orders: pulled " . ((int)$shipping['count'] + (int)$pickup['count']) . " order(s).");
+
+            $rows[] = [
+                'key' => 'web|web_ship',
+                'row' => [
+                    'label'           => 'nivessa.com — Shipping',
+                    'channel'         => 'web_ship',
+                    'location_id'     => null,
+                    'revenue'         => (float)$shipping['totalRevenue'],
+                    'revenue_exc_tax' => (float)$shipping['totalRevenue'],
+                    'cnt'             => (int)$shipping['count'],
+                    // Cost basis lives in the website backend's order line items.
+                    // Not surfaced yet — view renders "—" for these.
+                    'gross_profit'    => 0.0,
+                    'cost_unknown'    => true,
+                ],
+            ];
+            $rows[] = [
+                'key' => 'web|web_pickup',
+                'row' => [
+                    'label'           => 'nivessa.com — Pickup',
+                    'channel'         => 'web_pickup',
+                    'location_id'     => null,
+                    'revenue'         => (float)$pickup['totalRevenue'],
+                    'revenue_exc_tax' => (float)$pickup['totalRevenue'],
+                    'cnt'             => (int)$pickup['count'],
+                    'gross_profit'    => 0.0,
+                    'cost_unknown'    => true,
+                ],
+            ];
+        } else {
+            $this->setDiag('website_orders', 'nivessa.com orders: /api/v1/order/sales-totals call failed (auth or network).');
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Add a Discogs day row into the existing $daily collection, summed
+     * per-day. Returned as a collection sorted desc by day (matching the
+     * shape the view expects).
+     */
+    protected function mergeDiscogsDaily($daily, $business_id, $start_date, $end_date)
+    {
+        $orders = $this->fetchDiscogsOrdersRaw($business_id, $start_date, $end_date);
+        if ($orders === null) {
+            return $daily;
+        }
+        $by_day = [];
+        foreach ($daily as $d) { $by_day[$d->day] = $d; }
+        foreach ($orders as $o) {
+            $day = substr($o['created'] ?? '', 0, 10);
+            if ($day === '') continue;
+            $rev = isset($o['total']['value']) ? (float)$o['total']['value'] : 0.0;
+            if (isset($by_day[$day])) {
+                $by_day[$day]->cnt = (int)$by_day[$day]->cnt + 1;
+                $by_day[$day]->revenue = (float)$by_day[$day]->revenue + $rev;
+            } else {
+                $by_day[$day] = (object)['day' => $day, 'cnt' => 1, 'revenue' => $rev];
+            }
+        }
+        krsort($by_day);
+        return collect(array_values($by_day));
+    }
+
+    /**
+     * Raw fetch of Discogs orders for a date range — used both by the
+     * channel-totals helper and the daily-merge helper. Filters to
+     * revenue statuses. Returns array of order rows, or null on error.
+     */
+    protected function fetchDiscogsOrdersRaw($business_id, $start_date, $end_date)
+    {
+        try {
+            $service = new \App\Services\DiscogsService($business_id);
+            if (!$service->isConfigured()) {
+                return null;
+            }
+            $revenue_statuses = [
+                'Payment Received', 'In Progress', 'Shipped',
+                'Refund Sent', 'Refund Pending', 'Merged',
+            ];
+            $created_after = $start_date . 'T00:00:00Z';
+            $created_before = $end_date . 'T23:59:59Z';
+            $out = [];
+            $page = 1;
+            $max_pages = 20;
+            do {
+                $resp = $service->fetchOrders($created_after, $created_before, $page, 100);
+                if (!empty($resp['error'])) {
+                    return null;
+                }
+                $orders = $resp['orders'] ?? [];
+                foreach ($orders as $o) {
+                    if (!in_array($o['status'] ?? '', $revenue_statuses, true)) continue;
+                    $out[] = $o;
+                }
+                $has_more = !empty($resp['pagination']['urls']['next']);
+                $page++;
+            } while ($has_more && $page <= $max_pages);
+            return $out;
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Pull Discogs marketplace order totals for a date range, live from
+     * Discogs's API. Returns ['revenue' => float, 'cnt' => int] on
+     * success, or null on any error / missing config.
+     *
+     * Also writes a one-line diagnostic to $this->channelDiagnostics
+     * (initialised by the caller) so the view can surface why a fetch
+     * came back empty without the user having to grep server logs.
+     */
+    protected function fetchDiscogsChannelTotals($business_id, $start_date, $end_date)
+    {
+        try {
+            $service = new \App\Services\DiscogsService($business_id);
+            if (!$service->isConfigured()) {
+                $this->setDiag('discogs', 'Discogs API token not configured. Add it in Business Settings → Integrations.');
+                return null;
+            }
+        } catch (\Exception $e) {
+            $this->setDiag('discogs', 'Discogs service error: ' . $e->getMessage());
+            return null;
+        }
+
+        $orders = $this->fetchDiscogsOrdersRaw($business_id, $start_date, $end_date);
+        if ($orders === null) {
+            $this->setDiag('discogs', 'Discogs API call failed (token rejected or network error).');
+            return null;
+        }
+        $revenue = 0.0;
+        foreach ($orders as $o) {
+            $revenue += isset($o['total']['value']) ? (float)$o['total']['value'] : 0.0;
+        }
+        $cnt = count($orders);
+        $this->setDiag('discogs', $cnt > 0
+            ? "Discogs: pulled {$cnt} order(s) from API."
+            : 'Discogs: API reachable but no orders in revenue statuses for this date range.');
+        return ['revenue' => $revenue, 'cnt' => $cnt];
+    }
+
+    /** Append a diagnostic line, keyed so callers can replace prior state. */
+    protected function setDiag($key, $msg)
+    {
+        if (!isset($this->channelDiagnostics) || !is_array($this->channelDiagnostics)) {
+            $this->channelDiagnostics = [];
+        }
+        $this->channelDiagnostics[$key] = $msg;
+    }
+
+    /**
+     * Pull eBay order totals via Sell Fulfillment API. Requires a seller
+     * refresh token (set up at /admin/ebay-seller). Returns null on any
+     * config / auth / transport error; caller will simply omit the row.
+     */
+    protected function fetchEbayChannelTotals($business_id, $start_date, $end_date)
+    {
+        try {
+            $service = new \App\Services\EbayService($business_id);
+            if (!$service->isConfigured()) {
+                $this->setDiag('ebay', 'eBay app credentials not set in Business Settings.');
+                return null;
+            }
+            if (!$service->isSellerConnected()) {
+                $this->setDiag('ebay', 'eBay seller account not connected. Visit /admin/ebay-seller to authorise.');
+                return null;
+            }
+
+            // eBay's filter format: ISO-8601 with .000Z millis required.
+            $created_after  = $start_date . 'T00:00:00.000Z';
+            $created_before = $end_date . 'T23:59:59.999Z';
+            $revenue = 0.0;
+            $cnt = 0;
+            $offset = 0;
+            $limit = 200;
+            $max_iterations = 25; // 5000-order safety cap per render
+            for ($i = 0; $i < $max_iterations; $i++) {
+                $resp = $service->fetchOrders($created_after, $created_before, $offset, $limit);
+                if (!empty($resp['error'])) {
+                    $this->setDiag('ebay', 'eBay API call failed: ' . $resp['error']);
+                    return null;
+                }
+                $orders = $resp['orders'] ?? [];
+                foreach ($orders as $o) {
+                    // Revenue recognition: anything where buyer paid.
+                    // eBay's orderPaymentStatus enum: PAID, PARTIALLY_REFUNDED,
+                    // FULLY_REFUNDED, PENDING, FAILED. PAID + PARTIALLY_REFUNDED
+                    // count as revenue; FULLY_REFUNDED nets to zero anyway.
+                    $pay_status = $o['orderPaymentStatus'] ?? '';
+                    if (!in_array($pay_status, ['PAID', 'PARTIALLY_REFUNDED'], true)) {
+                        continue;
+                    }
+                    $revenue += isset($o['pricingSummary']['total']['value'])
+                        ? (float)$o['pricingSummary']['total']['value'] : 0.0;
+                    $cnt++;
+                }
+                $total = (int)($resp['total'] ?? 0);
+                $offset += $limit;
+                if ($offset >= $total) break;
+            }
+
+            $this->setDiag('ebay', $cnt > 0
+                ? "eBay: pulled {$cnt} order(s) from Sell API."
+                : 'eBay: API reachable but no PAID orders for this date range.');
+            return ['revenue' => $revenue, 'cnt' => $cnt];
+        } catch (\Exception $e) {
+            $this->setDiag('ebay', 'eBay service error: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * GET a JSON endpoint with a 5-second timeout and decode the body.
+     * Returns null on any error — caller is expected to skip silently.
+     */
+    protected function httpGetJson($url, $api_key)
+    {
+        try {
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 3);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'X-API-Key: ' . $api_key,
+                'Accept: application/json',
+                'User-Agent: NivessaERP/1.0 +https://playlist.nivessa.com',
+            ]);
+            $body = curl_exec($ch);
+            $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            if ($code !== 200 || empty($body)) {
+                return null;
+            }
+            $data = json_decode($body, true);
+            return is_array($data) ? $data : null;
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
+
+
+    /**
+     * Discogs Sales Report — date-range rollup for the Discogs channel
+     * (transactions.channel = 'discogs'). Slide 7 of the March business
+     * review flagged that "Online channel reports (Whatnot, Discogs) do
+     * not reconcile with P&L" and "lack cost prices" — with cost prices
+     * now backfilled, this is the page that closes the Discogs half.
+     *
+     * Thin wrapper around onlineChannelReport().
+     */
+    public function discogsReport(Request $request)
+    {
+        return $this->onlineChannelReport($request, 'discogs', 'Discogs');
+    }
+
+    /**
+     * eBay Sales Report — same shape as Discogs, scoped to channel='ebay'.
+     */
+    public function ebayReport(Request $request)
+    {
+        return $this->onlineChannelReport($request, 'ebay', 'eBay');
+    }
+
+    /**
+     * Shared implementation for online single-channel sales reports
+     * (Discogs, eBay). Surfaces revenue, gross profit, margin, txn count,
+     * a daily breakdown, and a top-50 items table. CSV export included.
+     *
+     * One report per channel because each one has different ops concerns
+     * (Discogs fees, eBay shipping etc.); the page itself is identical.
+     *
+     * @param string $channel       Value to filter transactions.channel by
+     *                              (must be present in the channel enum).
+     * @param string $channel_name  Human label for headers / filenames.
+     */
+    protected function onlineChannelReport(Request $request, $channel, $channel_name)
+    {
+        $this->ensureAdminOnlyReportAccess();
+
+        $business_id = $request->session()->get('user.business_id');
+        $start_date = $request->input('start_date');
+        $end_date = $request->input('end_date');
+        if (empty($start_date) || empty($end_date)) {
+            $start_date = $start_date ?: \Carbon::now()->startOfMonth()->format('Y-m-d');
+            $end_date = $end_date ?: \Carbon::now()->format('Y-m-d');
+        }
+
+        $base = DB::table('transactions as t')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->where('t.channel', $channel)
+            ->whereDate('t.transaction_date', '>=', $start_date)
+            ->whereDate('t.transaction_date', '<=', $end_date);
+
+        $summary = (clone $base)
+            ->selectRaw('COUNT(*) as cnt,
+                COALESCE(SUM(t.final_total), 0) as revenue,
+                COALESCE(SUM(t.total_before_tax), 0) as revenue_exc_tax')
+            ->first();
+
+        // Gross profit (mirrors getGrossProfit, channel-scoped, no combos).
+        $gp_obj = DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as sale', 'tsl.transaction_id', '=', 'sale.id')
+            ->leftJoin('transaction_sell_lines_purchase_lines as TSPL', 'tsl.id', '=', 'TSPL.sell_line_id')
+            ->leftJoin('purchase_lines as PL', 'TSPL.purchase_line_id', '=', 'PL.id')
+            ->where('sale.business_id', $business_id)
+            ->where('sale.type', 'sell')
+            ->where('sale.status', 'final')
+            ->where('sale.channel', $channel)
+            ->whereDate('sale.transaction_date', '>=', $start_date)
+            ->whereDate('sale.transaction_date', '<=', $end_date)
+            ->where('tsl.children_type', '!=', 'combo')
+            ->selectRaw('COALESCE(SUM((TSPL.quantity - TSPL.qty_returned) *
+                (tsl.unit_price_inc_tax - PL.purchase_price_inc_tax)), 0) as gross_profit')
+            ->first();
+
+        $revenue      = (float)($summary->revenue ?? 0);
+        $cnt          = (int)($summary->cnt ?? 0);
+        $gross_profit = (float)($gp_obj->gross_profit ?? 0);
+
+        // For Discogs / eBay, also live-fetch from their respective APIs.
+        // Header-level only (no line items mapped to local SKUs) so adds
+        // to revenue + count but not gross profit.
+        $external_revenue = 0.0;
+        $external_cnt = 0;
+        if ($channel === 'discogs') {
+            $dgs = $this->fetchDiscogsChannelTotals($business_id, $start_date, $end_date);
+            if ($dgs !== null) {
+                $external_revenue = $dgs['revenue'];
+                $external_cnt = $dgs['cnt'];
+                $revenue += $external_revenue;
+                $cnt += $external_cnt;
+            }
+        } elseif ($channel === 'ebay') {
+            $eby = $this->fetchEbayChannelTotals($business_id, $start_date, $end_date);
+            if ($eby !== null) {
+                $external_revenue = $eby['revenue'];
+                $external_cnt = $eby['cnt'];
+                $revenue += $external_revenue;
+                $cnt += $external_cnt;
+            }
+        }
+
+        // Margin only reflects POS-side rows (where we have cost basis).
+        $pos_revenue = $revenue - $external_revenue;
+        $gross_margin = $pos_revenue > 0 ? ($gross_profit / $pos_revenue) * 100 : 0;
+
+        $daily = (clone $base)
+            ->selectRaw('DATE(t.transaction_date) as day,
+                COUNT(*) as cnt,
+                COALESCE(SUM(t.final_total), 0) as revenue')
+            ->groupBy(DB::raw('DATE(t.transaction_date)'))
+            ->orderByDesc('day')
+            ->get();
+
+        // Merge in live-fetched Discogs orders into the daily breakdown.
+        if ($channel === 'discogs') {
+            $daily = $this->mergeDiscogsDaily($daily, $business_id, $start_date, $end_date);
+        }
+
+        $top_items = DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as sale', 'tsl.transaction_id', '=', 'sale.id')
+            ->join('products as P', 'tsl.product_id', '=', 'P.id')
+            ->leftJoin('transaction_sell_lines_purchase_lines as TSPL', 'tsl.id', '=', 'TSPL.sell_line_id')
+            ->leftJoin('purchase_lines as PL', 'TSPL.purchase_line_id', '=', 'PL.id')
+            ->where('sale.business_id', $business_id)
+            ->where('sale.type', 'sell')
+            ->where('sale.status', 'final')
+            ->where('sale.channel', $channel)
+            ->whereDate('sale.transaction_date', '>=', $start_date)
+            ->whereDate('sale.transaction_date', '<=', $end_date)
+            ->where('tsl.children_type', '!=', 'combo')
+            ->selectRaw("P.id as product_id, P.name as product_name, P.sku,
+                SUM(tsl.quantity - tsl.quantity_returned) as qty,
+                COALESCE(SUM((tsl.quantity - tsl.quantity_returned) * tsl.unit_price_inc_tax), 0) as revenue,
+                COALESCE(SUM((TSPL.quantity - TSPL.qty_returned) *
+                    (tsl.unit_price_inc_tax - PL.purchase_price_inc_tax)), 0) as gross_profit")
+            ->groupBy('P.id', 'P.name', 'P.sku')
+            ->orderByDesc('revenue')
+            ->limit(50)
+            ->get();
+
+        if ($request->input('export') === 'csv') {
+            $filename = strtolower($channel) . '_' . $start_date . '_to_' . $end_date . '.csv';
+            $headers = [
+                'Content-Type'        => 'text/csv',
+                'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            ];
+            $callback = function () use ($daily, $top_items, $revenue, $cnt, $gross_profit, $gross_margin, $channel_name) {
+                $out = fopen('php://output', 'w');
+                fputcsv($out, [$channel_name . ' Sales Report']);
+                fputcsv($out, ['Revenue', number_format($revenue, 2, '.', '')]);
+                fputcsv($out, ['Transactions', $cnt]);
+                fputcsv($out, ['Gross profit', number_format($gross_profit, 2, '.', '')]);
+                fputcsv($out, ['Gross margin %', number_format($gross_margin, 2, '.', '')]);
+                fputcsv($out, []);
+                fputcsv($out, ['Daily breakdown']);
+                fputcsv($out, ['Date', 'Transactions', 'Revenue']);
+                foreach ($daily as $d) {
+                    fputcsv($out, [$d->day, $d->cnt, number_format($d->revenue, 2, '.', '')]);
+                }
+                fputcsv($out, []);
+                fputcsv($out, ['Top items (up to 50)']);
+                fputcsv($out, ['SKU', 'Product', 'Qty', 'Revenue', 'Gross Profit', 'Gross Margin %']);
+                foreach ($top_items as $it) {
+                    $margin = $it->revenue > 0 ? ($it->gross_profit / $it->revenue) * 100 : 0;
+                    fputcsv($out, [
+                        $it->sku,
+                        $it->product_name,
+                        (int)$it->qty,
+                        number_format($it->revenue, 2, '.', ''),
+                        number_format($it->gross_profit, 2, '.', ''),
+                        number_format($margin, 2, '.', ''),
+                    ]);
+                }
+                fclose($out);
+            };
+            return response()->stream($callback, 200, $headers);
+        }
+
+        $action = $channel === 'discogs'
+            ? 'ReportController@discogsReport'
+            : 'ReportController@ebayReport';
+
+        return view('report.online_channel_report')->with(compact(
+            'channel', 'channel_name', 'action',
+            'revenue', 'cnt', 'gross_profit', 'gross_margin',
+            'daily', 'top_items',
+            'start_date', 'end_date'
+        ));
+    }
+
+
+    /**
      * End-of-Day Clover Reconciliation — date-range view that compares ERP
      * card payments against Clover's settled payments per day per location.
      * Flags days whose variance exceeds \$1 so Sarah / Sabina don't have to

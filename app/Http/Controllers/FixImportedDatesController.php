@@ -4,26 +4,31 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class FixImportedDatesController extends Controller
 {
-    // Any row imported via the Nivessa Backend xlsx with a transaction_date
-    // in the future is bad data (xlsx is from April 2026; nothing later than
-    // Oct 2025 is real). We rewrite those dates using the sheet-name slug
-    // embedded in import_source — e.g. nivessa_backend_sales_pico_oct_25 →
-    // 2025-10-01.
+    // Historical xlsx imports populated transactions.transaction_date by
+    // walking date-separator rows top-to-bottom. Source typos (e.g. a
+    // "9/17/14" entered as "9/17/2014" or "10/7/26" instead of "10/7/24")
+    // got carried forward to every item below — so a single typo can drag
+    // hundreds of rows to the wrong year.
+    //
+    // We classify a row as "bad" two ways:
+    //   1. Sheet name encodes a year (HW SEP 25 → 2025), or Sarah typed an
+    //      override year — any row in that sheet whose YEAR doesn't match
+    //      is bad. This catches both 2014-style past strays and 2026-style
+    //      future strays.
+    //   2. Sheet name has no year and no override (e.g. IN STORE NEW USED
+    //      SALES) — fall back to "future-dated" only (> CUTOFF). The page
+    //      shows a text input so Sarah can supply a YYYY-MM-DD override
+    //      that promotes the sheet into rule 1.
     const CUTOFF = '2025-12-31';
     const IMPORT_SOURCE_PREFIX = 'nivessa_backend_sales_';
 
     public function index()
     {
-        return view('admin.fix_imported_dates', [
-            'cutoff' => self::CUTOFF,
-            'breakdown' => $this->buildBreakdown(),
-            'samples' => $this->buildSamples(),
-            'mode' => null,
-            'updated' => null,
-        ]);
+        return $this->renderResult(null, [], null, []);
     }
 
     public function run(Request $request)
@@ -33,98 +38,228 @@ class FixImportedDatesController extends Controller
 
         $commit = filter_var($request->input('commit'), FILTER_VALIDATE_BOOLEAN);
         $businessId = $request->session()->get('user.business_id');
+        $overrides = $this->normalizeOverrides($request->input('override', []));
+        $now = now();
 
-        $breakdown = $this->buildBreakdown($businessId);
+        $breakdown = $this->buildBreakdown($businessId, $overrides);
+
         $updatedTotal = 0;
         $updatedByImport = [];
+        $snapshotKey = null;
 
-        foreach ($breakdown as $row) {
-            if (!$row['derived_date'] || $row['bad_rows'] === 0) continue;
-            if (!$commit) {
-                $updatedByImport[$row['import_source']] = 0;
-                continue;
+        if ($commit) {
+            // Snapshot every row we're about to mutate BEFORE any UPDATE so
+            // /admin/admin-action-history can roll the rewrite back.
+            $snapshotRows = [];
+            foreach ($breakdown as $row) {
+                if (!$row['target_date'] || $row['bad_rows'] === 0) continue;
+                $rows = $this->badRowQuery($businessId, $row)
+                    ->get(['id', 'import_source', 'transaction_date']);
+                foreach ($rows as $r) {
+                    $snapshotRows[] = [
+                        'id' => $r->id,
+                        'import_source' => $r->import_source,
+                        'transaction_date' => (string) $r->transaction_date,
+                    ];
+                }
             }
 
-            $count = DB::table('transactions')
-                ->where('business_id', $businessId)
-                ->where('import_source', $row['import_source'])
-                ->where('transaction_date', '>', self::CUTOFF . ' 23:59:59')
-                ->update([
-                    'transaction_date' => $row['derived_date'] . ' 12:00:00',
-                    'updated_at' => now(),
-                ]);
-            $updatedTotal += $count;
-            $updatedByImport[$row['import_source']] = $count;
+            if (!empty($snapshotRows)) {
+                $snapshotKey = 'fix-imported-dates-' . $now->format('Y-m-d_His');
+                Storage::disk('local')->put(
+                    "admin-snapshots/{$snapshotKey}.json",
+                    json_encode([
+                        'timestamp' => $now->toDateTimeString(),
+                        'action' => 'fix-imported-dates',
+                        'business_id' => $businessId,
+                        'rows' => $snapshotRows,
+                    ], JSON_PRETTY_PRINT)
+                );
+            }
+
+            foreach ($breakdown as $row) {
+                if (!$row['target_date'] || $row['bad_rows'] === 0) continue;
+                $targetYear = (int) substr($row['target_date'], 0, 4);
+                // Year-shift each row independently: preserves the original
+                // month/day/time the importer pulled from the xlsx (which is
+                // the exact transaction date, just typo'd to the wrong year).
+                // 11/11/14 → 11/11/24, 9/13/23 → 9/13/25, etc.
+                $count = $this->badRowQuery($businessId, $row)
+                    ->update([
+                        'transaction_date' => DB::raw("DATE_ADD(transaction_date, INTERVAL ($targetYear - YEAR(transaction_date)) YEAR)"),
+                        'updated_at' => $now,
+                    ]);
+                $updatedTotal += $count;
+                $updatedByImport[$row['import_source']] = $count;
+            }
         }
+
+        return $this->renderResult(
+            $commit ? 'commit' : 'preview',
+            ['updated' => $updatedByImport, 'updated_total' => $updatedTotal],
+            $snapshotKey,
+            $overrides
+        );
+    }
+
+    private function renderResult($mode, array $extras, $snapshotKey, array $overrides)
+    {
+        $businessId = request()->session()->get('user.business_id');
+        $breakdown = $this->buildBreakdown($businessId, $overrides);
 
         return view('admin.fix_imported_dates', [
             'cutoff' => self::CUTOFF,
-            'breakdown' => $this->buildBreakdown($businessId),
-            'samples' => $this->buildSamples($businessId),
-            'mode' => $commit ? 'commit' : 'preview',
-            'updated' => $updatedByImport,
-            'updated_total' => $updatedTotal,
+            'breakdown' => $breakdown,
+            'samples' => $this->buildSamples($businessId, $breakdown),
+            'mode' => $mode,
+            'updated' => $extras['updated'] ?? null,
+            'updated_total' => $extras['updated_total'] ?? null,
+            'snapshot_key' => $snapshotKey,
+            'overrides' => $overrides,
         ]);
     }
 
     /**
-     * Per-import_source counts of bad rows + derived target date.
+     * One row per import_source with at least 1 bad row. Each row carries the
+     * derived target (from sheet name) + Sarah's override + the final
+     * target_date (override wins). bad_rows is computed using the right
+     * predicate for that source's target state.
      */
-    private function buildBreakdown($businessId = null)
+    private function buildBreakdown($businessId, array $overrides = [])
     {
-        $businessId = $businessId ?: request()->session()->get('user.business_id');
-
-        $rows = DB::table('transactions')
-            ->select(
-                'import_source',
-                DB::raw('COUNT(*) as bad_rows'),
-                DB::raw('MIN(transaction_date) as min_bad_date'),
-                DB::raw('MAX(transaction_date) as max_bad_date')
-            )
+        $sources = DB::table('transactions')
             ->where('business_id', $businessId)
             ->where('import_source', 'like', self::IMPORT_SOURCE_PREFIX . '%')
-            ->where('transaction_date', '>', self::CUTOFF . ' 23:59:59')
             ->groupBy('import_source')
-            ->orderByDesc('bad_rows')
-            ->get();
+            ->pluck('import_source');
 
-        return $rows->map(function ($r) {
-            return [
-                'import_source' => $r->import_source,
-                'sheet_label'   => $this->humanSheetLabel($r->import_source),
-                'bad_rows'      => (int) $r->bad_rows,
-                'min_bad_date'  => $r->min_bad_date,
-                'max_bad_date'  => $r->max_bad_date,
-                'derived_date'  => $this->deriveDateFromImportSource($r->import_source),
+        $out = [];
+        foreach ($sources as $importSource) {
+            $derived = $this->deriveDateFromImportSource($importSource);
+            $override = $overrides[$importSource] ?? null;
+            $target = $override ?: $derived;
+
+            $rowMeta = [
+                'import_source' => $importSource,
+                'sheet_label'   => $this->humanSheetLabel($importSource),
+                'derived_date'  => $derived,
+                'override'      => $override,
+                'target_date'   => $target,
+                'has_target'    => (bool) $target,
             ];
-        })->all();
+
+            $stats = $this->badRowQuery($businessId, $rowMeta)
+                ->selectRaw('COUNT(*) as bad_rows, MIN(transaction_date) as min_bad_date, MAX(transaction_date) as max_bad_date')
+                ->first();
+
+            $badRows = (int) ($stats->bad_rows ?? 0);
+            if ($badRows === 0 && !$override) continue; // hide clean sheets unless Sarah is mid-override
+
+            $out[] = $rowMeta + [
+                'bad_rows'     => $badRows,
+                'min_bad_date' => $stats->min_bad_date,
+                'max_bad_date' => $stats->max_bad_date,
+            ];
+        }
+
+        usort($out, function ($a, $b) { return $b['bad_rows'] <=> $a['bad_rows']; });
+        return $out;
     }
 
     /**
-     * 10-row sample of what would change — gives Sarah eyes on before Apply.
+     * Up to 10 affected rows across all bad sheets — gives Sarah eyes on
+     * specific transactions before Apply.
      */
-    private function buildSamples($businessId = null)
+    private function buildSamples($businessId, array $breakdown)
     {
-        $businessId = $businessId ?: request()->session()->get('user.business_id');
+        $samples = [];
+        foreach ($breakdown as $row) {
+            if (count($samples) >= 10) break;
+            if (!$row['has_target'] || $row['bad_rows'] === 0) continue;
 
-        $rows = DB::table('transactions')
-            ->select('id', 'import_source', 'transaction_date', 'final_total')
+            $rows = $this->badRowQuery($businessId, $row)
+                ->select('id', 'import_source', 'transaction_date', 'final_total')
+                ->orderBy('id')
+                ->limit(10 - count($samples))
+                ->get();
+
+            $targetYear = (int) substr($row['target_date'], 0, 4);
+            foreach ($rows as $r) {
+                // Mirror the SQL year-shift for preview: keep month/day/time,
+                // replace year only.
+                $shifted = null;
+                if ($r->transaction_date) {
+                    $ts = strtotime($r->transaction_date);
+                    if ($ts !== false) {
+                        $month = date('m', $ts);
+                        $day   = date('d', $ts);
+                        $time  = date('H:i:s', $ts);
+                        $shifted = sprintf('%04d-%02d-%02d %s', $targetYear, $month, $day, $time);
+                    }
+                }
+                $samples[] = [
+                    'id'           => $r->id,
+                    'sheet_label'  => $this->humanSheetLabel($r->import_source),
+                    'current_date' => $r->transaction_date,
+                    'target_date'  => $shifted,
+                    'target_year'  => $targetYear,
+                    'amount'       => $r->final_total,
+                ];
+            }
+        }
+        return $samples;
+    }
+
+    /**
+     * Bad-row predicate for one import_source:
+     *   - has_target: rows whose YEAR(transaction_date) != target_year
+     *   - no target: rows dated past CUTOFF (future-only fallback)
+     */
+    private function badRowQuery($businessId, array $row)
+    {
+        $q = DB::table('transactions')
             ->where('business_id', $businessId)
-            ->where('import_source', 'like', self::IMPORT_SOURCE_PREFIX . '%')
-            ->where('transaction_date', '>', self::CUTOFF . ' 23:59:59')
-            ->orderBy('id')
-            ->limit(10)
-            ->get();
+            ->where('import_source', $row['import_source']);
 
-        return $rows->map(function ($r) {
-            return [
-                'id' => $r->id,
-                'sheet_label' => $this->humanSheetLabel($r->import_source),
-                'current_date' => $r->transaction_date,
-                'target_date' => $this->deriveDateFromImportSource($r->import_source),
-                'amount' => $r->final_total,
-            ];
-        })->all();
+        if (!empty($row['has_target'])) {
+            $year = (int) substr($row['target_date'], 0, 4);
+            $start = sprintf('%04d-01-01 00:00:00', $year);
+            $end   = sprintf('%04d-01-01 00:00:00', $year + 1);
+            $q->where(function ($qq) use ($start, $end) {
+                $qq->where('transaction_date', '<', $start)
+                   ->orWhere('transaction_date', '>=', $end);
+            });
+        } else {
+            $q->where('transaction_date', '>', self::CUTOFF . ' 23:59:59');
+        }
+
+        return $q;
+    }
+
+    /**
+     * Accept YYYY-MM-DD or YYYY-MM (treat as YYYY-MM-01). Drop garbage and
+     * out-of-range entries silently — bad input shouldn't break the page.
+     */
+    private function normalizeOverrides($input)
+    {
+        if (!is_array($input)) return [];
+        $out = [];
+        foreach ($input as $importSource => $value) {
+            $value = trim((string) $value);
+            if ($value === '') continue;
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+                $date = $value;
+            } elseif (preg_match('/^\d{4}-\d{2}$/', $value)) {
+                $date = $value . '-01';
+            } else {
+                continue;
+            }
+            if (strtotime($date) === false) continue;
+            // Refuse a future override — same safety as deriveDateFromImportSource.
+            if ($date > self::CUTOFF) continue;
+            $out[(string) $importSource] = $date;
+        }
+        return $out;
     }
 
     private function humanSheetLabel($importSource)
@@ -165,7 +300,6 @@ class FixImportedDatesController extends Controller
         }
 
         if (!$month || !$year) return null;
-        // Safety: refuse to derive a date that is itself in the future.
         $derived = sprintf('%04d-%02d-01', $year, $month);
         if ($derived > self::CUTOFF) return null;
         return $derived;

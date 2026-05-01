@@ -1,6 +1,17 @@
 @php
 	$common_settings = session()->get('business.common_settings');
 	$multiplier = 1;
+
+	// Resolve tax-exempt state BEFORE the <tr> opens so the
+	// data-tax-exempt attribute makes it onto the row — the order-level
+	// tax JS (get_taxable_subtotal in pos.js) keys off this attribute.
+	$is_tax_exempt = false;
+	if (!empty($product->product_id)) {
+		$productModel = \App\Product::find($product->product_id);
+		if ($productModel && $productModel->isTaxExempt()) {
+			$is_tax_exempt = true;
+		}
+	}
 @endphp
 
 @foreach($sub_units as $key => $value)
@@ -62,18 +73,15 @@
 			$unit_purchase_price_inc_tax = !empty($product->dpp_inc_tax)
 				? $product->dpp_inc_tax
 				: (!empty($product->default_purchase_price) ? $product->default_purchase_price : 0);
-			$is_tax_exempt = false;
 
-			// Check if product is tax exempt - override tax_id to null
-			if (!empty($product->product_id)) {
-				$productModel = \App\Product::find($product->product_id);
-				if ($productModel && !empty($productModel->tax_exempt) && $productModel->tax_exempt == 1) {
-					$tax_id = null;
-					$item_tax = 0;
-					$unit_price_inc_tax = $product->default_sell_price;
-					$unit_purchase_price_inc_tax = !empty($product->default_purchase_price) ? $product->default_purchase_price : $unit_purchase_price_inc_tax;
-					$is_tax_exempt = true;
-				}
+			// $is_tax_exempt was resolved at the top of this template so the
+			// <tr data-tax-exempt> attribute renders. Re-apply the side effects
+			// here (zero out tax_id, drop price to default) for the form fields.
+			if ($is_tax_exempt) {
+				$tax_id = null;
+				$item_tax = 0;
+				$unit_price_inc_tax = $product->default_sell_price;
+				$unit_purchase_price_inc_tax = !empty($product->default_purchase_price) ? $product->default_purchase_price : $unit_purchase_price_inc_tax;
 			}
 
 			if($hide_tax == 'hide'){

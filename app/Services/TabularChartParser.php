@@ -106,7 +106,7 @@ class TabularChartParser
         $col = function (array $needles) use ($headers) {
             foreach ($headers as $i => $h) {
                 foreach ($needles as $n) {
-                    if ($h === $n || (mb_strlen($n) >= 3 && str_contains($h, $n))) {
+                    if ($h === $n || (mb_strlen($n) >= 3 && mb_strpos($h, $n) !== false)) {
                         return $i;
                     }
                 }
@@ -191,8 +191,8 @@ class TabularChartParser
                 continue;
             }
             $joined = mb_strtolower(implode('|', array_map(fn ($c) => (string) $c, $row)));
-            $hasArtist = str_contains($joined, 'artist') || str_contains($joined, 'performer');
-            $hasTitle = str_contains($joined, 'title') || str_contains($joined, 'album');
+            $hasArtist = mb_strpos($joined, 'artist') !== false || mb_strpos($joined, 'performer') !== false;
+            $hasTitle = mb_strpos($joined, 'title') !== false || mb_strpos($joined, 'album') !== false;
             if ($hasArtist && $hasTitle) {
                 return $r;
             }

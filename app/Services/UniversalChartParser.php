@@ -75,15 +75,15 @@ class UniversalChartParser
             $out['meta']['sheets'][] = $sheetName;
             $lower = mb_strtolower($sheetName);
 
-            if (str_contains($lower, 'vinyl top 200')) {
+            if ((mb_strpos($lower, 'vinyl top 200') !== false)) {
                 $out['top_200_vinyl'] = $this->parseMusicRows($spreadsheet->getSheetByName($sheetName), 'LP', true);
-            } elseif (str_contains($lower, 'cd top 200')) {
+            } elseif ((mb_strpos($lower, 'cd top 200') !== false)) {
                 $out['top_200_cd'] = $this->parseMusicRows($spreadsheet->getSheetByName($sheetName), 'CD', true);
-            } elseif (str_contains($lower, 'vinyl-deliveries') || str_contains($lower, 'vinyl-delivery')) {
+            } elseif ((mb_strpos($lower, 'vinyl-deliveries') !== false) || (mb_strpos($lower, 'vinyl-delivery') !== false)) {
                 $out['deliveries_vinyl'] = $this->parseMusicRows($spreadsheet->getSheetByName($sheetName), 'LP', false, true);
-            } elseif (str_contains($lower, 'cd-deliveries') || str_contains($lower, 'cd-delivery')) {
+            } elseif ((mb_strpos($lower, 'cd-deliveries') !== false) || (mb_strpos($lower, 'cd-delivery') !== false)) {
                 $out['deliveries_cd'] = $this->parseMusicRows($spreadsheet->getSheetByName($sheetName), 'CD', false, true);
-            } elseif (str_contains($lower, 'anniversar') || str_contains($lower, 'birthday')) {
+            } elseif ((mb_strpos($lower, 'anniversar') !== false) || (mb_strpos($lower, 'birthday') !== false)) {
                 $out['anniversaries'] = $this->parseAnniversaries($spreadsheet->getSheetByName($sheetName));
             }
         }
@@ -110,7 +110,7 @@ class UniversalChartParser
         $headers = array_map(fn ($h) => mb_strtolower(trim((string) $h)), $rows[0]);
         $col = function (string $needle) use ($headers) {
             foreach ($headers as $i => $h) {
-                if ($h === $needle || str_contains($h, $needle)) {
+                if ($h === $needle || (mb_strpos($h, $needle) !== false)) {
                     return $i;
                 }
             }
@@ -171,7 +171,7 @@ class UniversalChartParser
         $headers = array_map(fn ($h) => mb_strtolower(trim((string) $h)), $rows[0]);
         $col = function (string $needle) use ($headers) {
             foreach ($headers as $i => $h) {
-                if ($h === $needle || str_contains($h, $needle)) {
+                if ($h === $needle || (mb_strpos($h, $needle) !== false)) {
                     return $i;
                 }
             }

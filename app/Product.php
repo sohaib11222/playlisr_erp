@@ -113,6 +113,93 @@ class Product extends Model
     {
         return $this->belongsTo(\App\Category::class, 'sub_category_id', 'id');
     }
+
+    // Drinks and snacks are never taxed at POS — combine the explicit
+    // tax_exempt flag with a category-name match so newly added beverage/
+    // snack products inherit the rule without per-row toggling.
+    // Exception: carbonated drinks (sodas, seltzers) ARE taxable in CA even
+    // when the rest of the snacks/drinks shelf is exempt, so a name match
+    // pulls them back into the taxable subtotal.
+    public function isTaxExempt()
+    {
+        if (!empty($this->tax_exempt) && $this->tax_exempt == 1) {
+            return true;
+        }
+
+        foreach ([$this->category_id, $this->sub_category_id] as $cat_id) {
+            if (empty($cat_id)) {
+                continue;
+            }
+            $name = \App\Category::where('id', $cat_id)->value('name');
+            if ($name && self::categoryNameIsTaxExempt($name)) {
+                if (self::nameIsCarbonatedDrink($this->name ?? '')) {
+                    return false;
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Narrow on purpose: only matches category names containing "drink" or
+    // "snack" so vinyl/records/equipment/clothing categories cannot be
+    // accidentally exempted. Sarah's category for drinks+snacks is literally
+    // "Snacks & Drinks", which both stems hit.
+    public static function categoryNameIsTaxExempt($name)
+    {
+        if (!is_string($name) || $name === '') {
+            return false;
+        }
+        return stripos($name, 'drink') !== false
+            || stripos($name, 'snack') !== false;
+    }
+
+    // Carbonated drinks (incl. energy drinks) are taxable in CA. Detect by
+    // name so newly added sodas/energy drinks in the Snacks & Drinks
+    // category get taxed without per-row toggling. Keep the keyword list
+    // specific to obvious carbonated brands and stems — false positives
+    // only over-tax (worse than under-taxing legally, but still annoying),
+    // so avoid bare words like "pop" or "mug" that collide with non-drink
+    // products (popcorn, mug merch, etc.). Energy-drink brand names use
+    // phrase form (e.g. "monster energy", "bang energy") where the bare
+    // brand could collide with snack SKUs in the same category.
+    public static function nameIsCarbonatedDrink($name)
+    {
+        if (!is_string($name) || $name === '') {
+            return false;
+        }
+        $needles = [
+            'carbonated', 'soda', 'sparkling', 'seltzer', 'fizzy',
+            'cola', 'coke', 'coca-cola', 'pepsi',
+            'sprite', 'fanta', 'dr pepper', 'dr. pepper',
+            'mountain dew', 'mtn dew',
+            '7up', '7-up', '7 up',
+            'ginger ale', 'ginger beer', 'root beer', 'cream soda',
+            'la croix', 'lacroix', 'topo chico', 'perrier',
+            'pellegrino', 'schweppes', 'canada dry', 'sunkist',
+            // Energy drinks — carbonated, taxable in CA.
+            'energy drink',
+            'red bull', 'redbull',
+            'monster energy',
+            'rockstar',
+            'celsius',
+            'bang energy',
+            'reign',
+            'c4 energy',
+            '5-hour energy', '5 hour energy',
+            'nos energy',
+            'alani nu', 'alani',
+            'ghost energy',
+            'prime energy',
+            'zoa',
+        ];
+        foreach ($needles as $needle) {
+            if (stripos($name, $needle) !== false) {
+                return true;
+            }
+        }
+        return false;
+    }
     
     /**
      * Get the brand associated with the product.

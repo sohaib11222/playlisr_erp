@@ -114,6 +114,26 @@ class SellPosController extends Controller
     }
 
     /**
+     * Format a CloverPayment->paid_at value as Hollywood-local time so the
+     * recent feed and unclaimed/orphan lists never show tomorrow's UTC
+     * timestamp on tonight's sales. paid_at is stored as UTC by
+     * SyncCloverPayments (from createdTime epoch ms). Falls back to the
+     * cast value if the raw attribute isn't accessible.
+     */
+    public static function formatCloverPaidAt($cp): string
+    {
+        $raw = is_array($cp->getAttributes()) ? ($cp->getAttributes()['paid_at'] ?? null) : null;
+        try {
+            $dt = $raw
+                ? \Carbon\Carbon::parse((string) $raw, 'UTC')
+                : \Carbon\Carbon::parse((string) $cp->paid_at, 'UTC');
+            return $dt->setTimezone('America/Los_Angeles')->format('Y-m-d H:i:s');
+        } catch (\Throwable $e) {
+            return (string) $cp->paid_at;
+        }
+    }
+
+    /**
      * Display a listing of the resource.
      *
      * @return \Illuminate\Http\Response
@@ -167,8 +187,25 @@ class SellPosController extends Controller
         $business_id = $request->session()->get('user.business_id');
         $limit = (int) $request->get('limit', 30);
         $location_id = $request->get('location_id');
+        $created_by = $request->get('created_by');
+        // Discrepancy filter — '', 'mismatch', 'no_clover', 'no_erp', 'any'.
+        // Applied *after* the Clover match runs (since both sides need to be
+        // paired before we can know which sales are discrepant), so when a
+        // filter is active we widen the DB pool and trim down post-match.
+        $discrepancy = $request->get('discrepancy', '');
+        $allowedDiscrepancies = ['', 'mismatch', 'no_clover', 'no_erp', 'any'];
+        if (!in_array($discrepancy, $allowedDiscrepancies, true)) $discrepancy = '';
 
         $business_locations = BusinessLocation::forDropdown($business_id, false);
+        // Employee picker: only currently-active staff with login allowed —
+        // ex-employees (allow_login=0) shouldn't clutter the cashier filter.
+        $employees = User::forDropdown($business_id, false, false, true, false, true);
+
+        // When filtering for discrepancies, scan a wider pool so the user
+        // actually sees `limit` results — mismatches are rare, so a vanilla
+        // `LIMIT 30` would usually return 0–2 rows. Capped at 500 to keep
+        // the eager-load + Clover match cheap.
+        $fetchLimit = $discrepancy ? min(max($limit, 30) * 20, 500) : $limit;
 
         // Exclude historical xlsx imports — they're backfilled "Legacy Historical Item"
         // rows with old transaction_dates that were drowning out actual recent POS sales.
@@ -177,6 +214,7 @@ class SellPosController extends Controller
             ->where('transactions.status', 'final')
             ->whereNull('transactions.import_source')
             ->when($location_id, fn($q) => $q->where('transactions.location_id', $location_id))
+            ->when($created_by, fn($q) => $q->where('transactions.created_by', $created_by))
             ->with([
                 'sell_lines' => fn($q) => $q->whereNull('parent_sell_line_id'),
                 'sell_lines.product',
@@ -189,7 +227,7 @@ class SellPosController extends Controller
                 'sales_person',
             ])
             ->orderByDesc('transaction_date')
-            ->limit($limit)
+            ->limit($fetchLimit)
             ->get();
 
         // Pull Clover-side charge totals for these sales by matching each
@@ -213,6 +251,9 @@ class SellPosController extends Controller
         // sales actually ran a card.
         $clover_by_transaction = [];
         $cpRows = collect();
+        $unclaimed_clover_payments = collect();
+        $matchedCpByTx = [];
+        $claimedCpKeys = [];
 
         if ($sales->isNotEmpty()) {
             $minDate = $sales->min('transaction_date');
@@ -250,9 +291,29 @@ class SellPosController extends Controller
             // 1¢ delta, but the float comparator rejected it).
             $toCents = function ($x) { return (int) round(((float) $x) * 100); };
 
-            $claimedCpKeys = [];
-            $matchedCpByTx = [];
-            foreach ($sales as $sale) {
+            // Match against ALL ERP sales in the window, not just the
+            // cashier-filtered $sales. A Clover charge that paired to a
+            // different cashier's sale is NOT an orphan — it's just paired
+            // elsewhere. If we ran the match against $sales while a cashier
+            // filter was active, every cross-cashier pair would falsely
+            // surface as "Clover charge with no ERP match" in the orphan
+            // list, which is wrong.
+            //
+            // Lightweight query — no eager loads — since we only need
+            // (id, final_total, transaction_date, location_id) to match.
+            // When no cashier filter is active this still costs one extra
+            // query but is bounded by the same time window cpRows uses.
+            $matchSales = Transaction::where('business_id', $business_id)
+                ->where('type', 'sell')
+                ->where('status', 'final')
+                ->whereNull('import_source')
+                ->where('transaction_date', '>=', \Carbon\Carbon::parse($minDate)->subDay())
+                ->where('transaction_date', '<=', \Carbon\Carbon::parse($maxDate)->addDay())
+                ->when($location_id, fn($q) => $q->where('location_id', $location_id))
+                ->orderByDesc('transaction_date')
+                ->get(['id', 'final_total', 'transaction_date', 'location_id']);
+
+            foreach ($matchSales as $sale) {
                 $erTs    = strtotime((string) $sale->transaction_date);
                 $erCents = $toCents($sale->final_total);
                 $erLoc   = $sale->location_id;
@@ -298,6 +359,66 @@ class SellPosController extends Controller
                     'cards'        => $cards,
                 ];
             }
+
+            // Clover charges that didn't pair to ANY ERP sale in the window —
+            // charges visible on the terminal (the customer paid) with no
+            // corresponding ring-up. The most concerning kind of reconcile
+            // gap: real money came in, but inventory wasn't decremented and
+            // the Z-out won't reflect it.
+            $unclaimed_clover_payments = $cpRows->reject(function ($cp, $key) use ($claimedCpKeys) {
+                return isset($claimedCpKeys[$key]);
+            })->values();
+        }
+
+        // Attribute each orphan Clover charge to whoever was logged into the
+        // ERP at that moment, using the activity_log 'login' events the auth
+        // controller writes on every successful login. We pick the most
+        // recent login before paid_at that's within 12 hours — a longer-ago
+        // login probably means the user closed the tab and someone else
+        // signed in elsewhere without a logout event being written.
+        //
+        // This is "who was at the keyboard," not "who rang nearby sales" —
+        // exactly what Sarah asked for, since the orphan case is precisely
+        // when nearby ERP sales don't exist or aren't reliable.
+        $cashier_for_orphan = [];
+        $cashierNameById = [];
+        if ($unclaimed_clover_payments->isNotEmpty()) {
+            $earliestPaidAt = $unclaimed_clover_payments->min('paid_at');
+            $latestPaidAt = $unclaimed_clover_payments->max('paid_at');
+            $loginEvents = \Spatie\Activitylog\Models\Activity::where('business_id', $business_id)
+                ->where('description', 'login')
+                ->where('created_at', '>=', \Carbon\Carbon::parse($earliestPaidAt)->subHours(24))
+                ->where('created_at', '<=', \Carbon\Carbon::parse($latestPaidAt)->addMinutes(5))
+                ->orderBy('created_at')
+                ->get(['causer_id', 'created_at']);
+
+            $maxStaleSeconds = 12 * 3600;
+            foreach ($unclaimed_clover_payments as $cp) {
+                $cpTs = strtotime((string) $cp->paid_at);
+                $recentUserId = null;
+                foreach ($loginEvents as $ev) {
+                    $evTs = strtotime((string) $ev->created_at);
+                    if ($evTs > $cpTs) break;
+                    if (($cpTs - $evTs) > $maxStaleSeconds) continue;
+                    $recentUserId = (int) $ev->causer_id;
+                }
+                if ($recentUserId) {
+                    $cashier_for_orphan[$cp->id] = $recentUserId;
+                }
+            }
+
+            $cashierIds = array_values(array_unique($cashier_for_orphan));
+            if (!empty($cashierIds)) {
+                // Include offboarded users (allow_login=0) — the lookup is
+                // by id and we still want their name on historical orphans.
+                $userRows = User::whereIn('id', $cashierIds)
+                    ->select('id', 'surname', 'first_name', 'last_name')
+                    ->get();
+                foreach ($userRows as $u) {
+                    $name = trim(($u->surname ?? '') . ' ' . ($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
+                    $cashierNameById[$u->id] = $name !== '' ? preg_replace('/\s+/', ' ', $name) : ('User #' . $u->id);
+                }
+            }
         }
 
         // Debug mode: ?debug_clover=1 — show why unmatched ERP sales didn't
@@ -336,7 +457,7 @@ class SellPosController extends Controller
                     if (isset($matchedCpIds[$cp->id])) $why[] = 'already claimed';
                     $candidates[] = [
                         'amount' => $cpAmt,
-                        'paid_at' => (string) $cp->paid_at,
+                        'paid_at' => self::formatCloverPaidAt($cp),
                         'card' => trim(($cp->card_type ?? '') . ' ' . ($cp->card_last4 ? '••' . $cp->card_last4 : '')),
                         'loc_id' => $cp->location_id,
                         'why' => $why ? implode(', ', $why) : 'WOULD MATCH',
@@ -367,7 +488,7 @@ class SellPosController extends Controller
                 if (isset($matchedCpIds[$cp->id])) continue;
                 $unclaimedCloverList[] = [
                     'amount' => round((float) $cp->amount, 2),
-                    'paid_at' => (string) $cp->paid_at,
+                    'paid_at' => self::formatCloverPaidAt($cp),
                     'loc_id' => $cp->location_id,
                     'card' => trim(($cp->card_type ?? '') . ' ' . ($cp->card_last4 ? '••' . $cp->card_last4 : '')),
                 ];
@@ -386,7 +507,175 @@ class SellPosController extends Controller
             ];
         }
 
-        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'limit', 'location_id', 'clover_by_transaction', 'clover_debug'));
+        // Pre-filter discrepancy counts (across the wider pool we just scanned)
+        // so the UI can show a "5 mismatches · 12 ERP-only · 3 Clover-only"
+        // summary regardless of which filter the user has on. Always computed
+        // in cents.
+        $toCentsSummary = function ($x) { return (int) round(((float) $x) * 100); };
+        $mismatch_count = 0;
+        $no_clover_count = 0;
+        foreach ($sales as $sale) {
+            $info = $clover_by_transaction[$sale->id] ?? null;
+            if ($info === null) {
+                $no_clover_count++;
+            } elseif (abs($info['amount_cents'] - $toCentsSummary($sale->final_total)) > 1) {
+                $mismatch_count++;
+            }
+        }
+        $no_erp_count = $unclaimed_clover_payments->count();
+        $scanned_count = $sales->count();
+
+        if ($discrepancy === 'no_erp') {
+            // Special case: user wants ONLY orphan Clover charges. Hide all
+            // ERP rows; the view will render the unclaimed Clover list.
+            $sales = collect();
+        } elseif ($discrepancy !== '') {
+            $sales = $sales->filter(function ($sale) use ($clover_by_transaction, $discrepancy, $toCentsSummary) {
+                $info = $clover_by_transaction[$sale->id] ?? null;
+                $isNoClover = $info === null;
+                $isMismatch = $info !== null && abs($info['amount_cents'] - $toCentsSummary($sale->final_total)) > 1;
+                if ($discrepancy === 'mismatch')   return $isMismatch;
+                if ($discrepancy === 'no_clover')  return $isNoClover;
+                if ($discrepancy === 'any')        return $isMismatch || $isNoClover;
+                return true;
+            })->take($limit)->values();
+        }
+
+        // The view interleaves orphan Clover payments with ERP sales for
+        // discrepancy '' / 'any' / 'no_erp' modes. 'mismatch' and 'no_clover'
+        // are explicitly ERP-side filters, so suppress orphan Clover there.
+        $show_clover_only = in_array($discrepancy, ['', 'any', 'no_erp'], true);
+
+        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug'));
+    }
+
+    /**
+     * Lightweight JSON feed of the last ~30 minutes of rung-up line items
+     * at a location. Used by /pos/create to surface a "recently rung up"
+     * panel and to flag duplicate entries (e.g. cashier rings the same
+     * record twice because they didn't see it was already sold).
+     *
+     * Wrapped in try/catch and returns an empty list on any failure — the
+     * POS sell flow must never break because this side-channel is degraded.
+     */
+    public function recentRings(Request $request)
+    {
+        try {
+            if (!auth()->user()->can('sell.create') && !auth()->user()->can('sell.view')) {
+                return response()->json(['rings' => []]);
+            }
+
+            $business_id = $request->session()->get('user.business_id');
+            $location_id = $request->get('location_id');
+            $minutes = (int) $request->get('minutes', 30);
+            if ($minutes < 5)  { $minutes = 5; }
+            if ($minutes > 180){ $minutes = 180; }
+
+            $since = \Carbon\Carbon::now()->subMinutes($minutes);
+
+            $tx = Transaction::where('business_id', $business_id)
+                ->where('type', 'sell')
+                ->whereIn('status', ['final', 'draft'])
+                ->whereNull('import_source')
+                ->where('transaction_date', '>=', $since)
+                ->when($location_id, fn($q) => $q->where('location_id', $location_id))
+                ->orderByDesc('transaction_date')
+                ->limit(50)
+                ->get(['id', 'invoice_no', 'transaction_date', 'created_by', 'location_id']);
+
+            if ($tx->isEmpty()) {
+                return response()->json(['rings' => []]);
+            }
+
+            $txIds = $tx->pluck('id')->all();
+            $userIds = $tx->pluck('created_by')->filter()->unique()->all();
+
+            $userNameById = [];
+            if (!empty($userIds)) {
+                $users = User::whereIn('id', $userIds)
+                    ->select('id', 'surname', 'first_name', 'last_name')
+                    ->get();
+                foreach ($users as $u) {
+                    $name = trim(($u->surname ?? '') . ' ' . ($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
+                    $userNameById[$u->id] = $name !== '' ? preg_replace('/\s+/', ' ', $name) : ('User #' . $u->id);
+                }
+            }
+
+            $lines = TransactionSellLine::whereIn('transaction_id', $txIds)
+                ->with(['product:id,name,sku,artist', 'variations:id,name,sub_sku,product_id'])
+                ->get(['id', 'transaction_id', 'product_id', 'variation_id', 'product_name', 'product_artist', 'quantity', 'unit_price_inc_tax', 'unit_price']);
+
+            $txById = $tx->keyBy('id');
+
+            $rings = [];
+            foreach ($lines as $line) {
+                $t = $txById[$line->transaction_id] ?? null;
+                if (!$t) { continue; }
+
+                $product = $line->product;
+                $variation = $line->variations;
+
+                // Resolve a display name. Quick-add presets (Water, Soda,
+                // bag fees, etc.) come through the "manual product" path —
+                // no real Product row, but `product_name` is stored on the
+                // sell line itself. Real product sales eager-load Product +
+                // Variation; manual sales fall through to product_name.
+                $name = $product ? ($product->name ?? '') : '';
+                if ($variation && !empty($variation->name) && $variation->name !== 'DUMMY') {
+                    $name = trim($name . ' — ' . $variation->name);
+                }
+                if ($name === '' && !empty($line->product_name)) {
+                    $name = $line->product_name;
+                }
+                if ($name === '') { $name = 'Item'; }
+
+                // Skip bag fees — they're charged on every sale, would dominate
+                // the widget, and a "you just rang up a Bag Fee" warning is
+                // useless noise for cashiers.
+                if (stripos($name, 'bag fee') !== false) { continue; }
+
+                // Resolve artist: real products store it on Product.artist,
+                // manual rows store it on the sell line itself.
+                $artist = '';
+                if ($product && !empty($product->artist) && is_string($product->artist)) {
+                    $artist = $product->artist;
+                } elseif (!empty($line->product_artist)) {
+                    $artist = $line->product_artist;
+                }
+
+                $unitPrice = $line->unit_price_inc_tax !== null
+                    ? (float) $line->unit_price_inc_tax
+                    : (float) $line->unit_price;
+
+                $rings[] = [
+                    'tx_id'         => (int) $t->id,
+                    'invoice_no'    => $t->invoice_no,
+                    'ts'            => (string) $t->transaction_date,
+                    'ts_unix'       => strtotime((string) $t->transaction_date),
+                    'variation_id'  => $line->variation_id ? (int) $line->variation_id : null,
+                    'product_id'    => $line->product_id ? (int) $line->product_id : null,
+                    'product_name'  => $name,
+                    'artist'        => $artist,
+                    'sku'           => $variation->sub_sku ?? ($product->sku ?? ''),
+                    'quantity'      => (float) $line->quantity,
+                    'unit_price'    => round($unitPrice, 2),
+                    'cashier_name'  => $userNameById[$t->created_by] ?? null,
+                    'created_by'    => $t->created_by ? (int) $t->created_by : null,
+                    'location_id'   => (int) $t->location_id,
+                ];
+            }
+
+            // Newest first
+            usort($rings, fn($a, $b) => $b['ts_unix'] <=> $a['ts_unix']);
+
+            return response()->json([
+                'rings'    => $rings,
+                'now_unix' => time(),
+            ]);
+        } catch (\Throwable $e) {
+            \Log::warning('recentRings failed: ' . $e->getMessage());
+            return response()->json(['rings' => []]);
+        }
     }
 
     /**
@@ -407,12 +696,20 @@ class SellPosController extends Controller
         // Allow a higher cap for exports than the page's 100-row dropdown.
         $limit = min((int) $request->get('limit', 30), 1000);
         $location_id = $request->get('location_id');
+        $created_by = $request->get('created_by');
+        $discrepancy = $request->get('discrepancy', '');
+        if (!in_array($discrepancy, ['', 'mismatch', 'no_clover', 'no_erp', 'any'], true)) $discrepancy = '';
+        // Same widening trick the page uses: when filtering for rare
+        // discrepancies, scan a bigger pool then trim post-match. Capped
+        // higher than the page since exports often want the long tail.
+        $fetchLimit = $discrepancy ? min(max($limit, 50) * 20, 2000) : $limit;
 
         $sales = Transaction::where('transactions.business_id', $business_id)
             ->where('transactions.type', 'sell')
             ->where('transactions.status', 'final')
             ->whereNull('transactions.import_source')
             ->when($location_id, fn($q) => $q->where('transactions.location_id', $location_id))
+            ->when($created_by, fn($q) => $q->where('transactions.created_by', $created_by))
             ->with([
                 'sell_lines' => fn($q) => $q->whereNull('parent_sell_line_id'),
                 'sell_lines.product',
@@ -423,7 +720,7 @@ class SellPosController extends Controller
                 'sales_person',
             ])
             ->orderByDesc('transaction_date')
-            ->limit($limit)
+            ->limit($fetchLimit)
             ->get();
 
         // Match Clover charges using the same heuristic as the page render:
@@ -431,6 +728,8 @@ class SellPosController extends Controller
         // tender-method or cashier-name filter. Kept inline rather than
         // shared so a future change to the page's matching can't risk POS.
         $clover_by_transaction = [];
+        $unclaimed_clover_payments = collect();
+        $business_locations = BusinessLocation::forDropdown($business_id, false);
         if ($sales->isNotEmpty()) {
             $minDate = $sales->min('transaction_date');
             $maxDate = $sales->max('transaction_date');
@@ -445,9 +744,22 @@ class SellPosController extends Controller
             // Float math drops 1¢-rounding pairs (e.g. $2.19 ↔ $2.20).
             $toCents = function ($x) { return (int) round(((float) $x) * 100); };
 
+            // Match against ALL ERP sales in the window (no cashier filter)
+            // for accurate orphan-Clover determination. See recentSalesFeed
+            // for the why.
+            $matchSales = Transaction::where('business_id', $business_id)
+                ->where('type', 'sell')
+                ->where('status', 'final')
+                ->whereNull('import_source')
+                ->where('transaction_date', '>=', \Carbon\Carbon::parse($minDate)->subDay())
+                ->where('transaction_date', '<=', \Carbon\Carbon::parse($maxDate)->addDay())
+                ->when($location_id, fn($q) => $q->where('location_id', $location_id))
+                ->orderByDesc('transaction_date')
+                ->get(['id', 'final_total', 'transaction_date', 'location_id']);
+
             $claimedCpKeys = [];
             $matchedCpByTx = [];
-            foreach ($sales as $sale) {
+            foreach ($matchSales as $sale) {
                 $erTs    = strtotime((string) $sale->transaction_date);
                 $erCents = $toCents($sale->final_total);
                 $erLoc   = $sale->location_id;
@@ -483,7 +795,70 @@ class SellPosController extends Controller
                     })->filter()->unique()->values()->all(),
                 ];
             }
+
+            $unclaimed_clover_payments = $cpRows->reject(function ($cp, $key) use ($claimedCpKeys) {
+                return isset($claimedCpKeys[$key]);
+            })->values();
         }
+
+        // Same logged-in-cashier inference as the page render: most recent
+        // ERP 'login' activity within 12 h before paid_at attributes the
+        // orphan charge to whoever was at the keyboard at the time.
+        $cashier_for_orphan = [];
+        $cashierNameById = [];
+        if ($unclaimed_clover_payments->isNotEmpty()) {
+            $earliestPaidAt = $unclaimed_clover_payments->min('paid_at');
+            $latestPaidAt = $unclaimed_clover_payments->max('paid_at');
+            $loginEvents = \Spatie\Activitylog\Models\Activity::where('business_id', $business_id)
+                ->where('description', 'login')
+                ->where('created_at', '>=', \Carbon\Carbon::parse($earliestPaidAt)->subHours(24))
+                ->where('created_at', '<=', \Carbon\Carbon::parse($latestPaidAt)->addMinutes(5))
+                ->orderBy('created_at')
+                ->get(['causer_id', 'created_at']);
+            $maxStaleSeconds = 12 * 3600;
+            foreach ($unclaimed_clover_payments as $cp) {
+                $cpTs = strtotime((string) $cp->paid_at);
+                $recentUserId = null;
+                foreach ($loginEvents as $ev) {
+                    $evTs = strtotime((string) $ev->created_at);
+                    if ($evTs > $cpTs) break;
+                    if (($cpTs - $evTs) > $maxStaleSeconds) continue;
+                    $recentUserId = (int) $ev->causer_id;
+                }
+                if ($recentUserId) $cashier_for_orphan[$cp->id] = $recentUserId;
+            }
+            $cashierIds = array_values(array_unique($cashier_for_orphan));
+            if (!empty($cashierIds)) {
+                $userRows = User::whereIn('id', $cashierIds)
+                    ->select('id', 'surname', 'first_name', 'last_name')
+                    ->get();
+                foreach ($userRows as $u) {
+                    $name = trim(($u->surname ?? '') . ' ' . ($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
+                    $cashierNameById[$u->id] = $name !== '' ? preg_replace('/\s+/', ' ', $name) : ('User #' . $u->id);
+                }
+            }
+        }
+
+        if ($discrepancy === 'no_erp') {
+            $sales = collect();
+        } elseif ($discrepancy !== '') {
+            $toCentsFilter = function ($x) { return (int) round(((float) $x) * 100); };
+            $sales = $sales->filter(function ($sale) use ($clover_by_transaction, $discrepancy, $toCentsFilter) {
+                $info = $clover_by_transaction[$sale->id] ?? null;
+                $isNoClover = $info === null;
+                $isMismatch = $info !== null && abs($info['amount_cents'] - $toCentsFilter($sale->final_total)) > 1;
+                if ($discrepancy === 'mismatch')   return $isMismatch;
+                if ($discrepancy === 'no_clover')  return $isNoClover;
+                if ($discrepancy === 'any')        return $isMismatch || $isNoClover;
+                return true;
+            })->take($limit)->values();
+        }
+
+        // Mirror the page: include orphan Clover charges in the export when
+        // the filter doesn't explicitly exclude them. 'mismatch' and
+        // 'no_clover' are ERP-side filters, so suppress orphans there.
+        $includeOrphanClover = in_array($discrepancy, ['', 'any', 'no_erp'], true);
+        $orphanCloverForExport = $includeOrphanClover ? $unclaimed_clover_payments : collect();
 
         $filename = 'recent-sales-feed-' . date('Y-m-d_His') . '.csv';
         $headers = [
@@ -491,7 +866,7 @@ class SellPosController extends Controller
             'Content-Disposition' => "attachment; filename=\"{$filename}\"",
         ];
 
-        return response()->stream(function () use ($sales, $clover_by_transaction) {
+        return response()->stream(function () use ($sales, $clover_by_transaction, $orphanCloverForExport, $business_locations, $cashier_for_orphan, $cashierNameById) {
             $out = fopen('php://output', 'w');
             fputcsv($out, [
                 'date', 'time', 'invoice_no', 'store', 'customer', 'cashier',
@@ -575,6 +950,43 @@ class SellPosController extends Controller
                     ]);
                 }
             }
+
+            // Orphan Clover charges — Clover terminal payments that didn't
+            // pair to any ERP sale. Each one gets a single self-contained
+            // row with sale-side columns blank and clover_mismatch='orphan'
+            // so Sarah can sort/filter to them in Excel.
+            foreach ($orphanCloverForExport as $cp) {
+                $cpDt = \Carbon\Carbon::parse($cp->paid_at);
+                $cpStore = $cp->location_id && isset($business_locations[$cp->location_id])
+                    ? $business_locations[$cp->location_id]
+                    : '';
+                $cpAmount = (float) $cp->amount;
+                $cpAmountStr = number_format($cpAmount, 2, '.', '');
+                $cpTax = (int) ($cp->tax_cents ?? 0);
+                $cpTip = (int) ($cp->tip_cents ?? 0);
+                $cpBrand = $cp->card_type ? strtoupper($cp->card_type) : '';
+                $cpLast4 = $cp->card_last4 ? '****' . $cp->card_last4 : '';
+                $cpCardLabel = trim($cpBrand . ' ' . $cpLast4);
+                $cpInvoice = !empty($cp->clover_payment_id) ? ('CLOVER:' . $cp->clover_payment_id) : ('CLOVER:#' . $cp->id);
+                $cpCashierId = $cashier_for_orphan[$cp->id] ?? null;
+                $cpCashier = $cpCashierId ? (($cashierNameById[$cpCashierId] ?? '') . ' (logged in)') : '';
+
+                fputcsv($out, [
+                    $cpDt->format('Y-m-d'), $cpDt->format('H:i:s'), $cpInvoice,
+                    $cpStore, '', $cpCashier,
+                    '(Clover charge — no ERP sale)', '', '', '', '', '',
+                    '', '', '', $cpAmountStr,
+                    '',
+                    '',
+                    'clover orphan',
+                    $cpAmountStr,
+                    $cpTax > 0 ? number_format($cpTax / 100, 2, '.', '') : '',
+                    $cpTip > 0 ? number_format($cpTip / 100, 2, '.', '') : '',
+                    $cpCardLabel,
+                    'orphan',
+                ]);
+            }
+
             fclose($out);
         }, 200, $headers);
     }
@@ -2055,13 +2467,10 @@ class SellPosController extends Controller
 
         // Check if product is tax exempt FIRST - this must override any existing tax_id
             $productModel = Product::find($product->product_id);
-        if ($productModel && !empty($productModel->tax_exempt) && $productModel->tax_exempt == 1) {
-            // Product is tax exempt - remove any tax and set price without tax
+        if ($productModel && $productModel->isTaxExempt()) {
+            // Product is tax exempt (explicit flag or drinks/snacks category)
             $product->tax_id = null;
-            // If price includes tax, recalculate to exclude tax
             if (!empty($product->sell_price_inc_tax) && $product->sell_price_inc_tax > 0) {
-                // Price is already set, but we need to ensure it's the base price without tax
-                // The sell_price_inc_tax should equal default_sell_price for tax exempt products
                 $product->sell_price_inc_tax = $product->default_sell_price;
             }
         } else {

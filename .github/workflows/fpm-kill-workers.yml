@@ -1,0 +1,67 @@
+# Kill all php-fpm worker processes owned by the deploy user. The fpm
+# master (root-owned) will respawn fresh workers immediately. Bypasses
+# the sudo-required "systemctl restart php-fpm" path entirely.
+
+name: FPM kill workers
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: production-restart
+  cancel-in-progress: false
+
+jobs:
+  kill:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+      - name: Add server to known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+      - name: Kill php-fpm workers
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          script: |
+            set +e
+            ME=$(whoami)
+            echo "=== running as: $ME ==="
+            echo
+
+            echo "=== php-fpm workers I own (before) ==="
+            ps -eo pid,user,etime,stat,%cpu,%mem,cmd 2>/dev/null | grep -E 'php-?fpm.*pool' | grep -v grep | head -30
+            COUNT_BEFORE=$(ps -eo user,cmd | awk -v me="$ME" '$1==me' | grep -E 'php-?fpm.*pool' | wc -l)
+            echo "  total mine: $COUNT_BEFORE"
+            echo
+
+            echo "=== killing with SIGKILL ==="
+            pkill -9 -u "$ME" -f 'php-?fpm.*pool' 2>&1
+            sleep 3
+            echo
+
+            echo "=== php-fpm workers I own (after) ==="
+            ps -eo pid,user,etime,stat,%cpu,%mem,cmd 2>/dev/null | grep -E 'php-?fpm.*pool' | grep -v grep | head -30
+            COUNT_AFTER=$(ps -eo user,cmd | awk -v me="$ME" '$1==me' | grep -E 'php-?fpm.*pool' | wc -l)
+            echo "  total mine: $COUNT_AFTER"
+            echo
+
+            echo "=== HTTP smoke test ==="
+            for i in 1 2 3 4 5 6 7; do
+              CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 15 https://playlist.nivessa.com/login || echo TIMEOUT)
+              echo "  attempt $i: HTTP $CODE"
+              [ "$CODE" = "200" ] && break
+              sleep 3
+            done

@@ -99,7 +99,7 @@
         }
 
         fetch(window.ICA_BUCKETS_URL + '?' + params.toString(), {
-            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': window.ICA_CSRF || '' },
             credentials: 'same-origin',
         })
             .then((r) => r.text().then((t) => ({ status: r.status, text: t })))
@@ -114,6 +114,9 @@
                 lastResult = payload;
                 renderBuckets(payload);
                 $exportStrip.style.display = 'block';
+                // Lazy-load events bucket — it hits two external feeds and
+                // would block the main page render by 15-30s on cold cache.
+                lazyLoadEventsBucket();
             })
             .catch((err) => {
                 console.error('[ICA] build error', err);
@@ -122,9 +125,51 @@
     }
 
     // ── Rendering ────────────────────────────────────────────────────
+    function lazyLoadEventsBucket() {
+        const params = new URLSearchParams();
+        if ($location && $location.value) params.append('location_id', $location.value);
+        if ($preset && $preset.value) params.append('preset', $preset.value);
+        const url = window.ICA_EVENTS_URL || (window.ICA_BUCKETS_URL.replace('/buckets', '/events-bucket'));
+
+        fetch(url + '?' + params.toString(), {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': window.ICA_CSRF || '' },
+            credentials: 'same-origin',
+        })
+            .then((r) => r.json())
+            .then((resp) => {
+                if (!resp || !resp.bucket) return;
+                if (lastResult && lastResult.buckets) {
+                    lastResult.buckets.events_upcoming = resp.bucket;
+                }
+                // Replace the placeholder events section in the DOM with the real one.
+                const existing = $root.querySelector('.ica-bucket[data-bucket="events_upcoming"]');
+                if (existing) {
+                    const html = renderBucketSection('events_upcoming', resp.bucket);
+                    const tmp = document.createElement('div');
+                    tmp.innerHTML = html;
+                    const fresh = tmp.firstElementChild;
+                    if (fresh) {
+                        existing.replaceWith(fresh);
+                        attachBucketHandlers();
+                    }
+                }
+            })
+            .catch((err) => console.error('[ICA] events lazy-load failed', err));
+    }
+
     function renderBuckets(payload) {
         if (payload.meta && payload.meta.error === 'location_required') {
-            $root.innerHTML = '<div class="alert alert-warning"><strong>Pick a location first.</strong></div>';
+            $root.innerHTML = '<div class="alert alert-warning"><strong>Pick a location first.</strong> The store-button preset didn\'t resolve to a location_id. Open Advanced filters and pick one manually.</div>';
+            return;
+        }
+        if (payload.meta && payload.meta.error === 'build_failed') {
+            // Server caught an exception in buildBuckets — surface the
+            // actual message so we can fix the underlying issue instead
+            // of staring at "0 items".
+            $root.innerHTML = '<div class="alert alert-danger"><strong>Build failed on the server.</strong><br><br>'
+                + '<code>' + escapeHtml(payload.meta.message || 'unknown') + '</code><br><small>'
+                + escapeHtml(payload.meta.file || '') + '</small><br><br>'
+                + 'Send Sarah/Claude this message and the page will get fixed.</div>';
             return;
         }
 
@@ -297,6 +342,16 @@
             return;
         }
 
+        // Image files are never submitted to the server — they get OCR'd in
+        // the browser into the textarea first. If we see an image at Import
+        // time, the OCR hasn't finished yet (or the user changed their
+        // mind). Block the submit so the server never sees the .png and
+        // returns its 422 HTML page.
+        if (file && isImageFile(file) && !body) {
+            alert('OCR is still running on the image — wait for the green ✓ in the status line, then click Import again. (Or paste rows manually below.)');
+            return;
+        }
+
         btn.disabled = true;
         btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Importing…';
 
@@ -305,12 +360,16 @@
         fd.append('source', source);
         fd.append('week_of', week);
         if (body) fd.append('body', body);
-        if (file) fd.append('chart_file', file);
+        // Only forward the file if it's a tabular file the server can parse.
+        // Images were already converted into `body` by Tesseract, so don't
+        // double-submit.
+        if (file && !isImageFile(file)) fd.append('chart_file', file);
 
         fetch(window.ICA_CHART_IMPORT_URL, {
             method: 'POST',
             headers: {
                 'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
                 'X-CSRF-TOKEN': window.ICA_CSRF,
             },
             credentials: 'same-origin',
@@ -358,45 +417,82 @@
         return /\.(png|jpe?g|webp)$/i.test(file.name || '');
     }
 
-    function ocrLuminateImage(fileInput, textarea, statusEl, fileEl) {
-        const file = fileInput.files && fileInput.files[0];
-        if (!file || !isImageFile(file)) return;
+    function ocrLuminateImages(fileInput, textarea, statusEl, fileEl, importBtn) {
+        const allFiles = fileInput.files ? Array.from(fileInput.files) : [];
+        const imageFiles = allFiles.filter(isImageFile);
+        if (imageFiles.length === 0) return;
         if (typeof Tesseract === 'undefined') {
             alert('OCR library failed to load (network blocked?). Paste the rows manually for now.');
             return;
         }
         statusEl.style.display = 'block';
-        statusEl.textContent = 'Reading image… 0%';
 
-        Tesseract.recognize(file, 'eng', {
-            logger: (m) => {
-                if (m && m.status) {
-                    const pct = m.progress ? Math.round(m.progress * 100) : 0;
-                    statusEl.textContent = m.status + '… ' + pct + '%';
+        if (importBtn) {
+            importBtn.disabled = true;
+            importBtn.dataset.origHtml = importBtn.dataset.origHtml || importBtn.innerHTML;
+            importBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> OCR running, please wait…';
+        }
+
+        // Process images sequentially — running 5 Tesseract workers in
+        // parallel would crush the user's laptop. Append rows to the
+        // textarea as we go so the user sees progress.
+        const allRows = [];
+        const total = imageFiles.length;
+
+        const processNext = (idx) => {
+            if (idx >= total) {
+                // Done with all images — write the consolidated TSV.
+                if (allRows.length === 0) {
+                    statusEl.innerHTML = '<span class="text-danger">No Title/Artist rows recognized in any of the ' + total + ' image' + (total > 1 ? 's' : '') + '. Try clearer screenshots, or paste rows manually.</span>';
+                } else {
+                    // Existing textarea content stays — append, don't overwrite.
+                    const existing = (textarea.value || '').trim();
+                    const header = 'Rank\tTitle\tArtist';
+                    const hasHeader = existing.indexOf(header) !== -1 || /^rank\b/i.test(existing.split('\n')[0] || '');
+                    let combined;
+                    if (existing) {
+                        combined = existing + '\n' + allRows.join('\n');
+                    } else {
+                        combined = header + '\n' + allRows.join('\n');
+                    }
+                    textarea.value = combined;
+                    statusEl.innerHTML = '<span class="text-success">✓ Extracted ' + allRows.length + ' rows from ' + total + ' image' + (total > 1 ? 's' : '') + '. Review the paste box below, fix any obvious OCR mistakes, then click Import.</span>';
                 }
-            },
-        })
-            .then(({ data }) => {
-                const text = (data && data.text) || '';
-                const tsv = luminateOcrToTsv(text);
-                if (!tsv) {
-                    statusEl.innerHTML = '<span class="text-danger">Could not find Title/Artist columns in the OCR output. Paste the rows manually below — one per line, "Artist — Title".</span>';
-                    return;
-                }
-                if (textarea) {
-                    textarea.value = tsv;
-                }
-                // Now that the textarea is populated, clear the file input
-                // so it doesn't also POST as chart_file (which would route
-                // through the xlsx parser and fail on a PNG).
                 if (fileEl) fileEl.value = '';
-                const rowCount = tsv.split('\n').length - 1; // minus header
-                statusEl.innerHTML = '<span class="text-success">✓ Extracted ' + rowCount + ' rows. Review the box below, fix any OCR mistakes, then click Import.</span>';
+                if (importBtn) {
+                    importBtn.disabled = false;
+                    if (importBtn.dataset.origHtml) importBtn.innerHTML = importBtn.dataset.origHtml;
+                }
+                return;
+            }
+
+            const file = imageFiles[idx];
+            const fileLabel = (idx + 1) + '/' + total;
+            statusEl.textContent = 'Image ' + fileLabel + ': starting…';
+
+            Tesseract.recognize(file, 'eng', {
+                logger: (m) => {
+                    if (m && m.status) {
+                        const pct = m.progress ? Math.round(m.progress * 100) : 0;
+                        statusEl.textContent = 'Image ' + fileLabel + ': ' + m.status + '… ' + pct + '%';
+                    }
+                },
             })
-            .catch((err) => {
-                console.error('[ICA] tesseract failed', err);
-                statusEl.innerHTML = '<span class="text-danger">OCR failed: ' + (err && err.message ? err.message : 'unknown') + '. Paste the rows manually.</span>';
-            });
+                .then(({ data }) => {
+                    const text = (data && data.text) || '';
+                    const rows = luminateOcrToRows(text);
+                    rows.forEach((r) => allRows.push(r));
+                })
+                .catch((err) => {
+                    console.error('[ICA] tesseract failed on image ' + fileLabel, err);
+                    statusEl.innerHTML = '<span class="text-warning">⚠ OCR failed on image ' + fileLabel + ': ' + escapeHtml(err && err.message ? err.message : 'unknown') + '. Continuing with the rest…</span>';
+                })
+                .finally(() => {
+                    processNext(idx + 1);
+                });
+        };
+
+        processNext(0);
     }
 
     /**
@@ -405,13 +501,12 @@
      *   "1 MUTINY AFTER MIDNIGHT  JOHNNY BLUE SKIES & THE DARK ATLANTIC ..."
      * We split on runs of 2+ spaces (Tesseract preserves multi-space gaps
      * between columns) and take rank/title/artist as the first three cells.
-     * Output is a TSV header + one line per row that the server's
-     * TabularChartParser already understands.
+     * Returns an array of TSV-formatted strings (no header) so multiple
+     * images can be concatenated cleanly.
      */
-    function luminateOcrToTsv(rawText) {
+    function luminateOcrToRows(rawText) {
         const lines = rawText.split(/\r?\n/);
         const out = [];
-        let sawHeader = false;
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i].replace(/[—–]/g, '-').trim();
             if (!line) continue;
@@ -420,7 +515,6 @@
                 continue;
             }
             if (/^rank\b/i.test(line) && /artist/i.test(line) && /title/i.test(line)) {
-                sawHeader = true;
                 continue;
             }
             // A row should start with a rank number
@@ -440,19 +534,19 @@
             if (!title || !artist) continue;
             out.push([rank, title, artist].join('\t'));
         }
-        if (out.length === 0) return '';
-        // Prepend a header the TabularChartParser can match.
-        return ['Rank\tTitle\tArtist', ...out].join('\n');
+        return out;
     }
 
     const $spFile = document.getElementById('ica_sp_file');
     const $spStatus = document.getElementById('ica_sp_ocr_status');
     const $spBody = document.getElementById('ica_sp_body');
+    const $spImportBtn = document.getElementById('ica_sp_import');
     if ($spFile && $spStatus && $spBody) {
         $spFile.addEventListener('change', function () {
-            const f = $spFile.files && $spFile.files[0];
-            if (f && isImageFile(f)) {
-                ocrLuminateImage($spFile, $spBody, $spStatus, $spFile);
+            const files = $spFile.files ? Array.from($spFile.files) : [];
+            const anyImages = files.some(isImageFile);
+            if (anyImages) {
+                ocrLuminateImages($spFile, $spBody, $spStatus, $spFile, $spImportBtn);
             } else {
                 $spStatus.style.display = 'none';
             }
