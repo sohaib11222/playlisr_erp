@@ -124,6 +124,47 @@ class DiscogsService
         ];
     }
 
+    /**
+     * Fetch a single release by Discogs catalog release id (GET /releases/{id}).
+     * Prefer this over database/search when the id is already known.
+     *
+     * @param int|string $releaseId
+     * @return array{error: bool, message?: string, data?: object}
+     */
+    public function getReleaseById($releaseId)
+    {
+        if (!$this->isConfigured()) {
+            return [
+                'error' => true,
+                'message' => 'Discogs API token not configured.',
+            ];
+        }
+
+        $id = (int) $releaseId;
+        if ($id < 1) {
+            return [
+                'error' => true,
+                'message' => 'Invalid release id.',
+            ];
+        }
+
+        $url = $this->baseUrl . 'releases/' . $id . '?token=' . urlencode($this->token);
+        $response = $this->callApi($url);
+
+        if (!empty($response['error'])) {
+            return [
+                'error' => true,
+                'message' => $response['message'],
+            ];
+        }
+
+        return [
+            'error' => false,
+            'message' => 'Success',
+            'data' => $response['data'],
+        ];
+    }
+
     public function getPriceSuggesions($releaseId)
     {
         $url = $this->getPriceSuggestionApiUrl($releaseId);
