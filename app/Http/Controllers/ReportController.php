@@ -5850,15 +5850,23 @@ class ReportController extends Controller
     }
 
     /**
-     * TEMPORARY DEBUG — shows full X-API-Key in Sales-by-Channel diagnostics.
-     * Revert to masked fingerprint before shipping / next commit (security).
+     * Masked one-liner so admins can confirm the loaded key matches .env
+     * (start/end only — never log the full secret).
      */
     protected function describeNivessaWebsiteApiKeyForDiagnostics(string $key, string $baseUrl): string
     {
         $len = strlen($key);
+        if ($len < 8) {
+            return 'nivessa: ERP sends X-API-Key to ' . $baseUrl . ' (length ' . $len . ' — check NIVESSA_WEBSITE_API_KEY in .env).';
+        }
 
-        return '[TEMP DEBUG — remove before prod] nivessa GET ' . $baseUrl
-            . ' — X-API-Key length ' . $len . ', value: ' . $key;
+        $edgeLen = $len >= 32 ? 8 : 4;
+        $starts = substr($key, 0, $edgeLen);
+        $ends = substr($key, -$edgeLen);
+
+        return 'nivessa key — ERP sends X-API-Key on GET ' . $baseUrl . ' (length ' . $len . '). '
+            . 'Compare to .env: should start ' . $starts . ' and end ' . $ends . '. '
+            . 'If mismatch vs .env, run php artisan config:clear. HTTP 401 = nivessa rejected the key or expects different auth.';
     }
 
     /**
