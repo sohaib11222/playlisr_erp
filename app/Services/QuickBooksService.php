@@ -373,6 +373,99 @@ class QuickBooksService
     }
 
     /**
+     * Find Opening Balance Equity account ID — used as the offset for
+     * one-shot balance corrections so the P&L stays clean.
+     */
+    public function getOpeningBalanceEquityId()
+    {
+        $query = "SELECT Id, Name FROM Account WHERE Name = 'Opening Balance Equity' MAXRESULTS 1";
+        $result = $this->apiRequest('GET', '/query', null, ['query' => $query]);
+        if (empty($result['success'])) {
+            return null;
+        }
+        $rows = $result['data']['QueryResponse']['Account'] ?? [];
+        if (isset($rows['Id'])) return (string)$rows['Id'];
+        if (is_array($rows) && isset($rows[0]['Id'])) return (string)$rows[0]['Id'];
+        return null;
+    }
+
+    /**
+     * Get a single account's full record (id, name, type, current balance).
+     */
+    public function getAccountById($accountId)
+    {
+        $result = $this->apiRequest('GET', '/account/' . urlencode($accountId));
+        if (empty($result['success'])) return null;
+        return $result['data']['Account'] ?? null;
+    }
+
+    /**
+     * Post a journal entry that moves a bank/CC account's balance by a
+     * delta, offset against Opening Balance Equity. Returns the JE id on
+     * success so callers can audit / undo.
+     *
+     * Convention based on QB API CurrentBalance display:
+     *   - Bank-type asset:    +delta = Debit Bank  / Credit OBE
+     *                         -delta = Credit Bank / Debit OBE
+     *   - Credit-card-type:   QB shows liability balance with positive sign
+     *                         when overpaid, negative when owed (in this
+     *                         install — verified against Sarah's screenshots).
+     *                         Treat the same as a Bank delta — the API's
+     *                         displayed CurrentBalance is what we move.
+     */
+    public function postBalanceCorrectionJE($accountId, $accountType, $delta, $obeAccountId, $note = 'Balance correction')
+    {
+        if (empty($accountId) || empty($obeAccountId)) {
+            return ['success' => false, 'msg' => 'Missing account or OBE id'];
+        }
+        $delta = (float)$delta;
+        if (abs($delta) < 0.005) {
+            return ['success' => true, 'skipped' => true, 'msg' => 'No adjustment needed (delta < $0.01)'];
+        }
+
+        $amount = round(abs($delta), 2);
+        $accountIncreases = $delta > 0; // We want CurrentBalance to go UP
+        $accountDebit = $accountIncreases; // see method docblock
+
+        $payload = [
+            'TxnDate' => Carbon::now()->toDateString(),
+            'PrivateNote' => $note,
+            'Line' => [
+                [
+                    'Description' => $note,
+                    'Amount' => $amount,
+                    'DetailType' => 'JournalEntryLineDetail',
+                    'JournalEntryLineDetail' => [
+                        'PostingType' => $accountDebit ? 'Debit' : 'Credit',
+                        'AccountRef' => ['value' => (string)$accountId],
+                    ],
+                ],
+                [
+                    'Description' => $note . ' (offset)',
+                    'Amount' => $amount,
+                    'DetailType' => 'JournalEntryLineDetail',
+                    'JournalEntryLineDetail' => [
+                        'PostingType' => $accountDebit ? 'Credit' : 'Debit',
+                        'AccountRef' => ['value' => (string)$obeAccountId],
+                    ],
+                ],
+            ],
+        ];
+
+        $result = $this->apiRequest('POST', '/journalentry', $payload);
+        if (empty($result['success'])) {
+            return ['success' => false, 'msg' => $result['msg'] ?? 'JE post failed'];
+        }
+        $je = $result['data']['JournalEntry'] ?? [];
+        return [
+            'success' => true,
+            'je_id' => $je['Id'] ?? null,
+            'amount' => $amount,
+            'direction' => $accountDebit ? 'Debit' : 'Credit',
+        ];
+    }
+
+    /**
      * Pull QuickBooks's standard Cash Flow report for a date range.
      * Returns the raw report payload — caller flattens for display.
      *
