@@ -5763,7 +5763,18 @@ class ReportController extends Controller
             }
         }
 
-        $bank_total = array_sum(array_column($accounts, 'balance'));
+        // Net cash position: bank balances are positive cash, credit-card
+        // "balance" in QB is the amount owed (a liability) so it gets
+        // subtracted. Otherwise the headline KPI was double-counting card
+        // debt as if it were cash on hand.
+        $bank_total = 0.0;
+        foreach ($accounts as $a) {
+            if (strtolower($a['type']) === 'credit card') {
+                $bank_total -= (float)$a['balance'];
+            } else {
+                $bank_total += (float)$a['balance'];
+            }
+        }
 
         return view('report.cash_flow')->with(compact(
             'configured', 'accounts', 'accounts_error', 'bank_total',
@@ -5775,17 +5786,24 @@ class ReportController extends Controller
     /**
      * QB returns CashFlow as nested Section/Header/Row/Summary nodes.
      * Walk the tree once, return a flat list of [label, depth, type, amount]
-     * plus rolled-up totals (cash in / cash out / net).
+     * plus three KPIs read straight from the report's known total lines:
+     * Beginning cash, Ending cash, and Net change for the period.
+     *
+     * Why not sum positives/negatives ourselves: QB's tree includes
+     * "Beginning cash" and "Ending cash" rows whose magnitudes dwarf the
+     * actual period flow, plus nested adjustment rows that net to zero
+     * inside their parent. Pulling the labelled summary lines is the
+     * only reliable way to get the right numbers.
      */
     protected function flattenCashFlowReport($report)
     {
         $out = [];
-        $totals = ['cash_in' => 0.0, 'cash_out' => 0.0, 'net' => 0.0];
+        $totals = ['beginning' => 0.0, 'ending' => 0.0, 'net' => 0.0];
         if (empty($report) || empty($report['Rows']['Row'])) {
             return [$out, $totals];
         }
 
-        $walker = function ($rows, $depth) use (&$walker, &$out, &$totals) {
+        $walker = function ($rows, $depth) use (&$walker, &$out) {
             foreach ($rows as $r) {
                 $type = $r['type'] ?? '';
                 $label = $r['Header']['ColData'][0]['value'] ?? ($r['ColData'][0]['value'] ?? '');
@@ -5823,16 +5841,25 @@ class ReportController extends Controller
 
         $walker($report['Rows']['Row'], 0);
 
-        // Rough totals: positives = cash in, negatives = cash out.
+        // Pull the three headline numbers by label match. QB's exact
+        // wording can vary slightly ("Cash at beginning of period" vs
+        // "Beginning cash"), so we substring-match.
         foreach ($out as $row) {
-            if ($row['type'] !== 'Summary' || !is_numeric($row['amount'])) continue;
-            // Skip nested summaries — only top-level (depth 0) summaries roll into totals.
-            if ($row['depth'] !== 0) continue;
-            $a = (float)$row['amount'];
-            if ($a >= 0) $totals['cash_in'] += $a;
-            else $totals['cash_out'] += abs($a);
+            if (!is_numeric($row['amount'])) continue;
+            $lbl = strtolower((string)$row['label']);
+            if ($totals['beginning'] === 0.0 && (strpos($lbl, 'cash at beginning') !== false || strpos($lbl, 'beginning cash') !== false)) {
+                $totals['beginning'] = (float)$row['amount'];
+            } elseif ($totals['ending'] === 0.0 && (strpos($lbl, 'cash at end') !== false || strpos($lbl, 'ending cash') !== false)) {
+                $totals['ending'] = (float)$row['amount'];
+            } elseif ($totals['net'] === 0.0 && (strpos($lbl, 'net cash increase') !== false || strpos($lbl, 'net change in cash') !== false || strpos($lbl, 'net cash change') !== false)) {
+                $totals['net'] = (float)$row['amount'];
+            }
         }
-        $totals['net'] = $totals['cash_in'] - $totals['cash_out'];
+
+        // Fallback if "Net change" line wasn't found but we have begin/end.
+        if ($totals['net'] === 0.0 && ($totals['beginning'] !== 0.0 || $totals['ending'] !== 0.0)) {
+            $totals['net'] = $totals['ending'] - $totals['beginning'];
+        }
 
         return [$out, $totals];
     }

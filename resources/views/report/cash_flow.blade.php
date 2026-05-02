@@ -27,36 +27,36 @@
             <div class="info-box bg-blue">
                 <span class="info-box-icon"><i class="fa fa-university"></i></span>
                 <div class="info-box-content">
-                    <span class="info-box-text">Bank balance (now)</span>
+                    <span class="info-box-text">Net cash position (now)</span>
                     <span class="info-box-number">${{ number_format($bank_total, 2) }}</span>
-                    <span class="progress-description">{{ count($accounts) }} account(s)</span>
+                    <span class="progress-description">bank − credit card debt</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="info-box bg-aqua">
+                <span class="info-box-icon"><i class="fa fa-flag-checkered"></i></span>
+                <div class="info-box-content">
+                    <span class="info-box-text">Cash at start of period</span>
+                    <span class="info-box-number">${{ number_format($totals['beginning'] ?? 0, 2) }}</span>
                 </div>
             </div>
         </div>
         <div class="col-md-3">
             <div class="info-box bg-green">
-                <span class="info-box-icon"><i class="fa fa-arrow-down"></i></span>
+                <span class="info-box-icon"><i class="fa fa-flag"></i></span>
                 <div class="info-box-content">
-                    <span class="info-box-text">Cash in (period)</span>
-                    <span class="info-box-number">${{ number_format($totals['cash_in'], 2) }}</span>
+                    <span class="info-box-text">Cash at end of period</span>
+                    <span class="info-box-number">${{ number_format($totals['ending'] ?? 0, 2) }}</span>
                 </div>
             </div>
         </div>
         <div class="col-md-3">
-            <div class="info-box bg-red">
-                <span class="info-box-icon"><i class="fa fa-arrow-up"></i></span>
+            <div class="info-box {{ ($totals['net'] ?? 0) >= 0 ? 'bg-purple' : 'bg-yellow' }}">
+                <span class="info-box-icon"><i class="fa fa-exchange-alt"></i></span>
                 <div class="info-box-content">
-                    <span class="info-box-text">Cash out (period)</span>
-                    <span class="info-box-number">${{ number_format($totals['cash_out'], 2) }}</span>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="info-box {{ $totals['net'] >= 0 ? 'bg-aqua' : 'bg-yellow' }}">
-                <span class="info-box-icon"><i class="fa fa-balance-scale"></i></span>
-                <div class="info-box-content">
-                    <span class="info-box-text">Net change</span>
-                    <span class="info-box-number">${{ number_format($totals['net'], 2) }}</span>
+                    <span class="info-box-text">Net change for period</span>
+                    <span class="info-box-number">${{ number_format($totals['net'] ?? 0, 2) }}</span>
                     <span class="progress-description">{{ $start_date }} → {{ $end_date }}</span>
                 </div>
             </div>

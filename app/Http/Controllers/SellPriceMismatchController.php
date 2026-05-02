@@ -140,6 +140,14 @@ class SellPriceMismatchController extends Controller
                 }
                 $snapVariationIds = array_keys($byVariation);
 
+                // qty_kept = original sold qty minus anything returned later.
+                // Joins through transaction_sell_lines_purchase_lines since
+                // qty_returned lives on the bridging table (matches the
+                // pattern used in TransactionUtil for COGS / margin reports).
+                $qtyKeptSubquery = '(SELECT COALESCE(SUM(tspl.quantity - tspl.qty_returned), 0) '
+                                 . 'FROM transaction_sell_lines_purchase_lines tspl '
+                                 . 'WHERE tspl.sell_line_id = tsl.id)';
+
                 $historical = DB::table('transaction_sell_lines as tsl')
                     ->join('transactions as t', 't.id', '=', 'tsl.transaction_id')
                     ->join('variations as v', 'v.id', '=', 'tsl.variation_id')
@@ -157,7 +165,8 @@ class SellPriceMismatchController extends Controller
                         'p.id as product_id',
                         'p.name as product_name',
                         'p.sku',
-                        'tsl.quantity',
+                        'tsl.quantity as qty_sold',
+                        DB::raw("$qtyKeptSubquery as qty_kept"),
                         'tsl.unit_price as charged'
                     )
                     ->orderByDesc('t.transaction_date')
@@ -169,16 +178,17 @@ class SellPriceMismatchController extends Controller
                         $deflated = $info['deflated'];
                         $taxGap = max(0, $intended - $deflated); // max bug loss per unit
                         $charged = (float) $row->charged;
-                        // Bug-attributable loss per unit: min of (intended-charged) and (intended-deflated).
-                        // Beyond the tax gap is a cashier discount, not this bug.
                         $perUnitLoss = max(0, min($intended - $charged, $taxGap));
+                        $qtyKept = (float) $row->qty_kept;
                         $row->intended = $intended;
                         $row->deflated = $deflated;
-                        $row->loss = $perUnitLoss * (float) $row->quantity;
+                        $row->quantity = $qtyKept; // for display
+                        $row->loss = $perUnitLoss * $qtyKept;
                         return $row;
                     })
+                    // qty_kept = 0 means the customer returned everything — drop it.
                     ->filter(function ($row) {
-                        return $row->loss > 0.01;
+                        return $row->loss > 0.01 && $row->quantity > 0;
                     })
                     ->values();
 
