@@ -374,6 +374,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/sales-by-channel', 'ReportController@salesByChannel');
     Route::get('/reports/discogs', 'ReportController@discogsReport');
     Route::get('/reports/ebay', 'ReportController@ebayReport');
+    Route::get('/reports/cash-flow', 'ReportController@cashFlowReport');
 
     // eBay seller OAuth — required to read /sell/fulfillment/v1/order.
     // Tokens land in business.api_settings.ebay_seller (no migration).
