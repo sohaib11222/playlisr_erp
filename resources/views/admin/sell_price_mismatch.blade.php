@@ -103,6 +103,64 @@
             @endif
         </div>
 
+        @if (!empty($historical) && $historical->count())
+        <div class="box box-solid" style="margin-top:24px;border:2px solid #c00;">
+            <div class="box-header" style="background:#f2dede;">
+                <h3 class="box-title" style="font-size:20px;">
+                    Historical undercharges (from snapshot {{ $historicalSnapshotKey }})
+                </h3>
+                <p style="margin:6px 0 0;">
+                    <strong>Total undercharged:</strong>
+                    <span style="color:#c00;font-weight:bold;">${{ number_format($historicalLost, 2) }}</span>
+                    across {{ number_format($historical->count()) }} sale lines.
+                    @if ($historicalSnapshotTime)
+                        <br><small class="text-muted">Snapshot taken {{ $historicalSnapshotTime }} — based on the deflated stickers as they existed at that moment.</small>
+                    @endif
+                </p>
+            </div>
+            <div class="box-body">
+                <div class="table-responsive">
+                    <table class="table table-striped table-condensed">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Invoice</th>
+                                <th>Location</th>
+                                <th>Product</th>
+                                <th>SKU</th>
+                                <th style="text-align:right;">Qty</th>
+                                <th style="text-align:right;">Charged</th>
+                                <th style="text-align:right;">Should have charged</th>
+                                <th style="text-align:right;">Loss</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach ($historical as $u)
+                                <tr>
+                                    <td>{{ \Carbon\Carbon::parse($u->transaction_date)->format('Y-m-d') }}</td>
+                                    <td>{{ $u->invoice_no ?? '—' }}</td>
+                                    <td>{{ $u->location ?? '—' }}</td>
+                                    <td>
+                                        <a href="{{ url('/products/' . $u->product_id . '/edit') }}" target="_blank">
+                                            {{ $u->product_name }}
+                                        </a>
+                                    </td>
+                                    <td>{{ $u->sku }}</td>
+                                    <td style="text-align:right;">{{ rtrim(rtrim(number_format((float)$u->quantity, 2), '0'), '.') }}</td>
+                                    <td style="text-align:right;color:#c00;">${{ number_format((float)$u->charged, 2) }}</td>
+                                    <td style="text-align:right;">${{ number_format((float)$u->intended, 2) }}</td>
+                                    <td style="text-align:right;color:#c00;font-weight:bold;">
+                                        ${{ number_format((float)$u->loss, 2) }}
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        @endif
+
         @if (!empty($undercharged) && $undercharged->count())
         <div class="box box-solid" style="margin-top:24px;border:2px solid #c00;">
             <div class="box-header" style="background:#f2dede;">

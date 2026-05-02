@@ -103,12 +103,84 @@ class SellPriceMismatchController extends Controller
                 ->get();
         }
 
+        // After Restore is clicked, the live mismatch goes to 0 — but the
+        // damage in the historical sales table is still real. Read the most
+        // recent snapshot (it preserves the original deflated default_sell_price
+        // alongside the intended sell_price_inc_tax) and rebuild the per-sale
+        // list from it. This way Sarah can see what undercharged even after
+        // backfilling the live variations.
+        $historical = collect();
+        $historicalLost = 0;
+        $historicalSnapshotKey = null;
+        $historicalSnapshotTime = null;
+        $snapshotFiles = collect(Storage::disk('local')->files('admin-snapshots'))
+            ->filter(function ($f) {
+                return strpos(basename($f), 'sell-price-mismatch-') === 0 && substr($f, -5) === '.json';
+            })
+            ->sort()
+            ->reverse()
+            ->values();
+
+        if ($snapshotFiles->isNotEmpty()) {
+            $latest = $snapshotFiles->first();
+            $snap = json_decode(Storage::disk('local')->get($latest), true);
+            if (!empty($snap['rows'])) {
+                $historicalSnapshotKey = pathinfo($latest, PATHINFO_FILENAME);
+                $historicalSnapshotTime = $snap['timestamp'] ?? null;
+                $byVariation = [];
+                foreach ($snap['rows'] as $r) {
+                    $byVariation[(int) $r['id']] = (float) $r['sell_price_inc_tax'];
+                }
+                $snapVariationIds = array_keys($byVariation);
+
+                $historical = DB::table('transaction_sell_lines as tsl')
+                    ->join('transactions as t', 't.id', '=', 'tsl.transaction_id')
+                    ->join('variations as v', 'v.id', '=', 'tsl.variation_id')
+                    ->join('products as p', 'p.id', '=', 'v.product_id')
+                    ->leftJoin('business_locations as bl', 'bl.id', '=', 't.location_id')
+                    ->whereIn('tsl.variation_id', $snapVariationIds)
+                    ->where('t.business_id', $businessId)
+                    ->where('t.type', 'sell')
+                    ->where('t.status', 'final')
+                    ->select(
+                        'tsl.variation_id',
+                        't.transaction_date',
+                        't.invoice_no',
+                        'bl.name as location',
+                        'p.id as product_id',
+                        'p.name as product_name',
+                        'p.sku',
+                        'tsl.quantity',
+                        'tsl.unit_price as charged'
+                    )
+                    ->orderByDesc('t.transaction_date')
+                    ->limit(2000)
+                    ->get()
+                    ->map(function ($row) use ($byVariation) {
+                        $intended = $byVariation[(int) $row->variation_id] ?? 0;
+                        $row->intended = $intended;
+                        $row->loss = max(0, $intended - (float) $row->charged) * (float) $row->quantity;
+                        return $row;
+                    })
+                    ->filter(function ($row) {
+                        return $row->loss > 0.01;
+                    })
+                    ->values();
+
+                $historicalLost = $historical->sum('loss');
+            }
+        }
+
         return view('admin.sell_price_mismatch', [
             'rows' => $rows,
             'totalAffected' => $totalAffected,
             'lostRevenue' => $lostRevenue,
             'affectedSales' => $affectedSales,
             'undercharged' => $undercharged,
+            'historical' => $historical,
+            'historicalLost' => $historicalLost,
+            'historicalSnapshotKey' => $historicalSnapshotKey,
+            'historicalSnapshotTime' => $historicalSnapshotTime,
         ]);
     }
 
