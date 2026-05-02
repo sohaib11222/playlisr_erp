@@ -466,6 +466,29 @@ class QuickBooksService
     }
 
     /**
+     * Pull QuickBooks's Profit & Loss report for a date range. Used to
+     * summarise "money in / money out / net" + top expense categories
+     * for the cash-flow page (way more readable than QB's accrual cash
+     * flow statement, which is CPA-jargon-heavy).
+     */
+    public function getProfitLossReport($startDate, $endDate, $accountingMethod = 'Cash')
+    {
+        $params = [
+            'start_date' => $startDate,
+            'end_date' => $endDate,
+            'accounting_method' => $accountingMethod,
+        ];
+        $result = $this->apiRequest('GET', '/reports/ProfitAndLoss', null, $params);
+        if (empty($result['success'])) {
+            return $result;
+        }
+        return [
+            'success' => true,
+            'report' => $result['data'] ?? [],
+        ];
+    }
+
+    /**
      * Pull QuickBooks's standard Cash Flow report for a date range.
      * Returns the raw report payload — caller flattens for display.
      *
