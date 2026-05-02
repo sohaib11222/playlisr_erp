@@ -110,12 +110,17 @@
                     Historical undercharges (from snapshot {{ $historicalSnapshotKey }})
                 </h3>
                 <p style="margin:6px 0 0;">
-                    <strong>Total undercharged:</strong>
+                    <strong>Lost to this bug:</strong>
                     <span style="color:#c00;font-weight:bold;">${{ number_format($historicalLost, 2) }}</span>
                     across {{ number_format($historical->count()) }} sale lines.
-                    @if ($historicalSnapshotTime)
-                        <br><small class="text-muted">Snapshot taken {{ $historicalSnapshotTime }} — based on the deflated stickers as they existed at that moment.</small>
-                    @endif
+                    <br><small class="text-muted">
+                        Per-sale loss is capped at (intended sticker − deflated sticker) — anything below
+                        that is a cashier discount, not the tax bug. So a $33 item that sold for $22
+                        counts as $2.93 of bug loss + $8.07 of intentional discount.
+                        @if ($historicalSnapshotTime)
+                            Snapshot taken {{ $historicalSnapshotTime }}.
+                        @endif
+                    </small>
                 </p>
             </div>
             <div class="box-body">

@@ -127,9 +127,16 @@ class SellPriceMismatchController extends Controller
             if (!empty($snap['rows'])) {
                 $historicalSnapshotKey = pathinfo($latest, PATHINFO_FILENAME);
                 $historicalSnapshotTime = $snap['timestamp'] ?? null;
+                // Track BOTH the intended sticker (sell_price_inc_tax) AND the
+                // deflated one (default_sell_price). Per-sale undercharge from
+                // this specific bug is capped at (intended - deflated) — anything
+                // beyond that gap is a cashier discount, not the bug.
                 $byVariation = [];
                 foreach ($snap['rows'] as $r) {
-                    $byVariation[(int) $r['id']] = (float) $r['sell_price_inc_tax'];
+                    $byVariation[(int) $r['id']] = [
+                        'intended' => (float) $r['sell_price_inc_tax'],
+                        'deflated' => (float) $r['default_sell_price'],
+                    ];
                 }
                 $snapVariationIds = array_keys($byVariation);
 
@@ -157,9 +164,17 @@ class SellPriceMismatchController extends Controller
                     ->limit(2000)
                     ->get()
                     ->map(function ($row) use ($byVariation) {
-                        $intended = $byVariation[(int) $row->variation_id] ?? 0;
+                        $info = $byVariation[(int) $row->variation_id] ?? ['intended' => 0, 'deflated' => 0];
+                        $intended = $info['intended'];
+                        $deflated = $info['deflated'];
+                        $taxGap = max(0, $intended - $deflated); // max bug loss per unit
+                        $charged = (float) $row->charged;
+                        // Bug-attributable loss per unit: min of (intended-charged) and (intended-deflated).
+                        // Beyond the tax gap is a cashier discount, not this bug.
+                        $perUnitLoss = max(0, min($intended - $charged, $taxGap));
                         $row->intended = $intended;
-                        $row->loss = max(0, $intended - (float) $row->charged) * (float) $row->quantity;
+                        $row->deflated = $deflated;
+                        $row->loss = $perUnitLoss * (float) $row->quantity;
                         return $row;
                     })
                     ->filter(function ($row) {
