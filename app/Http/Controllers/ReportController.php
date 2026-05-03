@@ -5718,6 +5718,209 @@ class ReportController extends Controller
     }
 
     /**
+     * Cash Flow report — pulls bank account balances + the standard QB
+     * Cash Flow statement straight from QuickBooks. Closes slide 7's
+     * "real-time cash visibility" ask without rebuilding bank-feed sync
+     * (QB already does it).
+     */
+    public function cashFlowReport(Request $request)
+    {
+        $this->ensureAdminOnlyReportAccess();
+
+        $business_id = $request->session()->get('user.business_id');
+        $start_date = $request->input('start_date');
+        $end_date   = $request->input('end_date');
+        // Default to previous full month — current month-to-date on day 1
+        // gives a single-day window, which is useless for cash flow.
+        if (empty($start_date) || empty($end_date)) {
+            $start_date = $start_date ?: \Carbon::now()->subMonthNoOverflow()->startOfMonth()->format('Y-m-d');
+            $end_date   = $end_date ?: \Carbon::now()->subMonthNoOverflow()->endOfMonth()->format('Y-m-d');
+        }
+
+        $qb = new \App\Services\QuickBooksService($business_id);
+        $configured = $qb->isConfigured();
+
+        $accounts = [];
+        $accounts_error = null;
+        $report = null;
+        $report_error = null;
+        $report_rows = [];
+        $totals = ['beginning' => 0.0, 'ending' => 0.0, 'net' => 0.0];
+        // Plain-English summary for non-accountants.
+        $summary = ['income' => 0.0, 'expenses' => 0.0, 'net' => 0.0, 'top_expenses' => []];
+        $summary_error = null;
+
+        if ($configured) {
+            $bank = $qb->getBankAccounts();
+            if (!empty($bank['success'])) {
+                $accounts = $bank['accounts'] ?? [];
+            } else {
+                $accounts_error = $bank['msg'] ?? 'Could not fetch bank accounts.';
+            }
+
+            $cf = $qb->getCashFlowReport($start_date, $end_date);
+            if (!empty($cf['success'])) {
+                $report = $cf['report'] ?? null;
+                [$report_rows, $totals] = $this->flattenCashFlowReport($report);
+            } else {
+                $report_error = $cf['msg'] ?? 'Could not fetch cash flow report.';
+            }
+
+            $pl = $qb->getProfitLossReport($start_date, $end_date, 'Cash');
+            if (!empty($pl['success'])) {
+                $summary = $this->buildPlainSummary($pl['report'] ?? null);
+            } else {
+                $summary_error = $pl['msg'] ?? 'Could not fetch P&L report.';
+            }
+        }
+
+        $bank_total = 0.0;
+        foreach ($accounts as $a) {
+            if (strtolower($a['type']) === 'credit card') {
+                $bank_total -= (float)$a['balance'];
+            } else {
+                $bank_total += (float)$a['balance'];
+            }
+        }
+
+        return view('report.cash_flow')->with(compact(
+            'configured', 'accounts', 'accounts_error', 'bank_total',
+            'report_rows', 'totals', 'report_error', 'report',
+            'summary', 'summary_error',
+            'start_date', 'end_date'
+        ));
+    }
+
+    /**
+     * Walk QB's P&L report payload and produce a plain "money in / money
+     * out / net + top 5 expense categories" summary that's readable
+     * without an accounting background.
+     */
+    protected function buildPlainSummary($report)
+    {
+        $out = ['income' => 0.0, 'expenses' => 0.0, 'net' => 0.0, 'top_expenses' => []];
+        if (empty($report) || empty($report['Rows']['Row'])) return $out;
+
+        $expense_lines = [];
+
+        $walk = function ($rows, $section = null) use (&$walk, &$expense_lines, &$out) {
+            foreach ($rows as $r) {
+                $group = $r['group'] ?? null;
+                $current_section = $group ?: $section;
+
+                if ($current_section === 'Income' || $current_section === 'Expenses') {
+                    // Capture leaf rows (data rows) for top-N expense list,
+                    // and use Summary rows for the section totals.
+                    if (($r['type'] ?? '') === 'Data' && $current_section === 'Expenses') {
+                        $label = $r['ColData'][0]['value'] ?? '';
+                        $amt = isset($r['ColData'][1]['value']) ? (float) str_replace(',', '', $r['ColData'][1]['value']) : 0;
+                        if ($amt > 0 && $label !== '') {
+                            $expense_lines[] = ['label' => $label, 'amount' => $amt];
+                        }
+                    }
+                    if (!empty($r['Summary']['ColData'][1]['value'])) {
+                        $sum = (float) str_replace(',', '', $r['Summary']['ColData'][1]['value']);
+                        if ($current_section === 'Income') $out['income'] = $sum;
+                        if ($current_section === 'Expenses') $out['expenses'] = $sum;
+                    }
+                }
+
+                if (!empty($r['Rows']['Row'])) {
+                    $walk($r['Rows']['Row'], $current_section);
+                }
+            }
+        };
+        $walk($report['Rows']['Row']);
+
+        // Top 5 expenses by amount.
+        usort($expense_lines, function ($a, $b) { return $b['amount'] <=> $a['amount']; });
+        $out['top_expenses'] = array_slice($expense_lines, 0, 5);
+        $out['net'] = $out['income'] - $out['expenses'];
+        return $out;
+    }
+
+    /**
+     * QB returns CashFlow as nested Section/Header/Row/Summary nodes.
+     * Walk the tree once, return a flat list of [label, depth, type, amount]
+     * plus three KPIs read straight from the report's known total lines:
+     * Beginning cash, Ending cash, and Net change for the period.
+     *
+     * Why not sum positives/negatives ourselves: QB's tree includes
+     * "Beginning cash" and "Ending cash" rows whose magnitudes dwarf the
+     * actual period flow, plus nested adjustment rows that net to zero
+     * inside their parent. Pulling the labelled summary lines is the
+     * only reliable way to get the right numbers.
+     */
+    protected function flattenCashFlowReport($report)
+    {
+        $out = [];
+        $totals = ['beginning' => 0.0, 'ending' => 0.0, 'net' => 0.0];
+        if (empty($report) || empty($report['Rows']['Row'])) {
+            return [$out, $totals];
+        }
+
+        $walker = function ($rows, $depth) use (&$walker, &$out) {
+            foreach ($rows as $r) {
+                $type = $r['type'] ?? '';
+                $label = $r['Header']['ColData'][0]['value'] ?? ($r['ColData'][0]['value'] ?? '');
+                $amount = isset($r['ColData'][1]['value']) ? (float) str_replace(',', '', $r['ColData'][1]['value']) : null;
+                if (!isset($amount) && isset($r['Summary']['ColData'][1]['value'])) {
+                    $amount = (float) str_replace(',', '', $r['Summary']['ColData'][1]['value']);
+                }
+
+                $out[] = [
+                    'label'  => $label,
+                    'depth'  => $depth,
+                    'type'   => $type,
+                    'amount' => $amount,
+                    'is_summary' => $type === 'Section' && !empty($r['Summary']),
+                ];
+
+                if (!empty($r['Rows']['Row'])) {
+                    $walker($r['Rows']['Row'], $depth + 1);
+                    if (!empty($r['Summary'])) {
+                        $sumLabel = $r['Summary']['ColData'][0]['value'] ?? ('Total ' . $label);
+                        $sumAmount = isset($r['Summary']['ColData'][1]['value'])
+                            ? (float) str_replace(',', '', $r['Summary']['ColData'][1]['value'])
+                            : 0;
+                        $out[] = [
+                            'label' => $sumLabel,
+                            'depth' => $depth,
+                            'type'  => 'Summary',
+                            'amount' => $sumAmount,
+                            'is_summary' => true,
+                        ];
+                    }
+                }
+            }
+        };
+
+        $walker($report['Rows']['Row'], 0);
+
+        // Pull the three headline numbers by label match. QB's exact
+        // wording can vary slightly ("Cash at beginning of period" vs
+        // "Beginning cash"), so we substring-match.
+        foreach ($out as $row) {
+            if (!is_numeric($row['amount'])) continue;
+            $lbl = strtolower((string)$row['label']);
+            if ($totals['beginning'] === 0.0 && (strpos($lbl, 'cash at beginning') !== false || strpos($lbl, 'beginning cash') !== false)) {
+                $totals['beginning'] = (float)$row['amount'];
+            } elseif ($totals['ending'] === 0.0 && (strpos($lbl, 'cash at end') !== false || strpos($lbl, 'ending cash') !== false)) {
+                $totals['ending'] = (float)$row['amount'];
+            } elseif ($totals['net'] === 0.0 && (strpos($lbl, 'net cash increase') !== false || strpos($lbl, 'net change in cash') !== false || strpos($lbl, 'net cash change') !== false)) {
+                $totals['net'] = (float)$row['amount'];
+            }
+        }
+
+        // Fallback if "Net change" line wasn't found but we have begin/end.
+        if ($totals['net'] === 0.0 && ($totals['beginning'] !== 0.0 || $totals['ending'] !== 0.0)) {
+            $totals['net'] = $totals['ending'] - $totals['beginning'];
+        }
+
+        return [$out, $totals];
+    }
+
+    /**
      * Add $0 rows for Discogs, eBay, and nivessa.com channels when no live
      * data row exists yet, with labels that point to Business Settings,
      * /admin/ebay-seller, or .env / API status.

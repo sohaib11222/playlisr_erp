@@ -343,6 +343,177 @@ class QuickBooksService
             ->get();
     }
 
+    /**
+     * List bank accounts with their current balances. Used by the
+     * Sales-by-Channel-adjacent /reports/cash-flow page so Sarah can see
+     * "what's in each account right now" without leaving the ERP.
+     *
+     * Returns ['success' => true, 'accounts' => [['name', 'balance', 'type']]].
+     */
+    public function getBankAccounts()
+    {
+        $query = "SELECT Id, Name, FullyQualifiedName, AccountType, AccountSubType, CurrentBalance, Active "
+               . "FROM Account WHERE AccountType IN ('Bank','Credit Card') AND Active = true MAXRESULTS 100";
+        $result = $this->apiRequest('GET', '/query', null, ['query' => $query]);
+        if (empty($result['success'])) {
+            return $result;
+        }
+        $rows = $result['data']['QueryResponse']['Account'] ?? [];
+        if (isset($rows['Id'])) { $rows = [$rows]; } // QB returns single object when only 1 row.
+        $accounts = [];
+        foreach ($rows as $r) {
+            $accounts[] = [
+                'name'    => $r['Name'] ?? '',
+                'type'    => $r['AccountType'] ?? '',
+                'subtype' => $r['AccountSubType'] ?? '',
+                'balance' => (float)($r['CurrentBalance'] ?? 0),
+            ];
+        }
+        return ['success' => true, 'accounts' => $accounts];
+    }
+
+    /**
+     * Find Opening Balance Equity account ID — used as the offset for
+     * one-shot balance corrections so the P&L stays clean.
+     */
+    public function getOpeningBalanceEquityId()
+    {
+        $query = "SELECT Id, Name FROM Account WHERE Name = 'Opening Balance Equity' MAXRESULTS 1";
+        $result = $this->apiRequest('GET', '/query', null, ['query' => $query]);
+        if (empty($result['success'])) {
+            return null;
+        }
+        $rows = $result['data']['QueryResponse']['Account'] ?? [];
+        if (isset($rows['Id'])) return (string)$rows['Id'];
+        if (is_array($rows) && isset($rows[0]['Id'])) return (string)$rows[0]['Id'];
+        return null;
+    }
+
+    /**
+     * Get a single account's full record (id, name, type, current balance).
+     */
+    public function getAccountById($accountId)
+    {
+        $result = $this->apiRequest('GET', '/account/' . urlencode($accountId));
+        if (empty($result['success'])) return null;
+        return $result['data']['Account'] ?? null;
+    }
+
+    /**
+     * Post a journal entry that moves a bank/CC account's balance by a
+     * delta, offset against Opening Balance Equity. Returns the JE id on
+     * success so callers can audit / undo.
+     *
+     * Convention based on QB API CurrentBalance display:
+     *   - Bank-type asset:    +delta = Debit Bank  / Credit OBE
+     *                         -delta = Credit Bank / Debit OBE
+     *   - Credit-card-type:   QB shows liability balance with positive sign
+     *                         when overpaid, negative when owed (in this
+     *                         install — verified against Sarah's screenshots).
+     *                         Treat the same as a Bank delta — the API's
+     *                         displayed CurrentBalance is what we move.
+     */
+    public function postBalanceCorrectionJE($accountId, $accountType, $delta, $obeAccountId, $note = 'Balance correction')
+    {
+        if (empty($accountId) || empty($obeAccountId)) {
+            return ['success' => false, 'msg' => 'Missing account or OBE id'];
+        }
+        $delta = (float)$delta;
+        if (abs($delta) < 0.005) {
+            return ['success' => true, 'skipped' => true, 'msg' => 'No adjustment needed (delta < $0.01)'];
+        }
+
+        $amount = round(abs($delta), 2);
+        $accountIncreases = $delta > 0; // We want CurrentBalance to go UP
+        $accountDebit = $accountIncreases; // see method docblock
+
+        $payload = [
+            'TxnDate' => Carbon::now()->toDateString(),
+            'PrivateNote' => $note,
+            'Line' => [
+                [
+                    'Description' => $note,
+                    'Amount' => $amount,
+                    'DetailType' => 'JournalEntryLineDetail',
+                    'JournalEntryLineDetail' => [
+                        'PostingType' => $accountDebit ? 'Debit' : 'Credit',
+                        'AccountRef' => ['value' => (string)$accountId],
+                    ],
+                ],
+                [
+                    'Description' => $note . ' (offset)',
+                    'Amount' => $amount,
+                    'DetailType' => 'JournalEntryLineDetail',
+                    'JournalEntryLineDetail' => [
+                        'PostingType' => $accountDebit ? 'Credit' : 'Debit',
+                        'AccountRef' => ['value' => (string)$obeAccountId],
+                    ],
+                ],
+            ],
+        ];
+
+        $result = $this->apiRequest('POST', '/journalentry', $payload);
+        if (empty($result['success'])) {
+            return ['success' => false, 'msg' => $result['msg'] ?? 'JE post failed'];
+        }
+        $je = $result['data']['JournalEntry'] ?? [];
+        return [
+            'success' => true,
+            'je_id' => $je['Id'] ?? null,
+            'amount' => $amount,
+            'direction' => $accountDebit ? 'Debit' : 'Credit',
+        ];
+    }
+
+    /**
+     * Pull QuickBooks's Profit & Loss report for a date range. Used to
+     * summarise "money in / money out / net" + top expense categories
+     * for the cash-flow page (way more readable than QB's accrual cash
+     * flow statement, which is CPA-jargon-heavy).
+     */
+    public function getProfitLossReport($startDate, $endDate, $accountingMethod = 'Cash')
+    {
+        $params = [
+            'start_date' => $startDate,
+            'end_date' => $endDate,
+            'accounting_method' => $accountingMethod,
+        ];
+        $result = $this->apiRequest('GET', '/reports/ProfitAndLoss', null, $params);
+        if (empty($result['success'])) {
+            return $result;
+        }
+        return [
+            'success' => true,
+            'report' => $result['data'] ?? [],
+        ];
+    }
+
+    /**
+     * Pull QuickBooks's standard Cash Flow report for a date range.
+     * Returns the raw report payload — caller flattens for display.
+     *
+     * QB's /reports/CashFlow returns a tree of sections (Operating,
+     * Investing, Financing) with nested rows + a summary "Net cash
+     * increase" line. We hand the structured payload back so the view
+     * can walk it however it wants.
+     */
+    public function getCashFlowReport($startDate, $endDate)
+    {
+        $params = [
+            'start_date' => $startDate,
+            'end_date'   => $endDate,
+            'accounting_method' => 'Accrual',
+        ];
+        $result = $this->apiRequest('GET', '/reports/CashFlow', null, $params);
+        if (empty($result['success'])) {
+            return $result;
+        }
+        return [
+            'success' => true,
+            'report'  => $result['data'] ?? [],
+        ];
+    }
+
     public function backfillSalesFromDate($fromDate)
     {
         $from = Carbon::parse($fromDate)->startOfDay();

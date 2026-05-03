@@ -1126,32 +1126,28 @@ class ProductUtil extends Util
      */
     public function updateProductFromPurchase($variation_data)
     {
+        // Nivessa has a resale certificate, so purchase prices have no sales tax
+        // and the entered selling price IS the pre-tax sticker (Clover adds sales
+        // tax on top at checkout). Mirror exc/inc columns here — no tax math —
+        // otherwise the inc-tax value gets back-deflated into default_sell_price
+        // and POS undercharges the customer by the tax amount.
         $variation_details = Variation::where('id', $variation_data['variation_id'])
-                                        ->with(['product', 'product.product_tax'])
                                         ->first();
-        $tax_rate = 0;
-        if (!empty($variation_details->product->product_tax->amount)) {
-            $tax_rate = $variation_details->product->product_tax->amount;
-        }
 
         if (!isset($variation_data['sell_price_inc_tax'])) {
             $variation_data['sell_price_inc_tax'] = $variation_details->sell_price_inc_tax;
         }
-        
+
         if (($variation_details->default_purchase_price != $variation_data['pp_without_discount']) ||
             ($variation_details->sell_price_inc_tax != $variation_data['sell_price_inc_tax'])
             ) {
-            //Set default purchase price exc. tax
+            //Purchase price: mirror exc <-> inc (resale cert)
             $variation_details->default_purchase_price = $variation_data['pp_without_discount'];
+            $variation_details->dpp_inc_tax = $variation_data['pp_without_discount'];
 
-            //Set default purchase price inc. tax
-            $variation_details->dpp_inc_tax = $this->calc_percentage($variation_details->default_purchase_price, $tax_rate, $variation_details->default_purchase_price);
-       
-            //Set default sell price inc. tax
+            //Selling price: mirror inc <-> exc (entered value is the sticker)
             $variation_details->sell_price_inc_tax = $variation_data['sell_price_inc_tax'];
-
-            //set sell price inc. tax
-            $variation_details->default_sell_price = $this->calc_percentage_base($variation_details->sell_price_inc_tax, $tax_rate);
+            $variation_details->default_sell_price = $variation_data['sell_price_inc_tax'];
 
             //set profit margin
             $variation_details->profit_percent = $this->get_percent($variation_details->default_purchase_price, $variation_details->default_sell_price);

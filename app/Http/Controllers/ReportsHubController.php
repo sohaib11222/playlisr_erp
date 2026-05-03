@@ -99,6 +99,7 @@ class ReportsHubController extends Controller
                 'title' => 'Operations',
                 'icon'  => 'fa-tools',
                 'reports' => [
+                    ['key' => 'cash-flow',             'name' => 'Cash Flow',             'icon' => 'fa-university',         'action' => 'ReportController@cashFlowReport',             'desc' => 'Live bank balances + QB cash flow statement.', 'admin_only' => true],
                     ['key' => 'expense-report',        'name' => 'Expense Report',        'icon' => 'fa-receipt',            'action' => 'ReportController@getExpenseReport',           'desc' => 'Expenses by category.'],
                     ['key' => 'purchase-payment',      'name' => 'Purchase Payment Report', 'icon' => 'fa-hand-holding-usd', 'action' => 'ReportController@getPurchasePaymentReport',   'desc' => 'Payments against purchases.'],
                     ['key' => 'activity-log',          'name' => 'Activity Log',          'icon' => 'fa-stream',             'action' => 'ReportController@activityLog',                'desc' => 'System activity audit trail.'],

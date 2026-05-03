@@ -382,6 +382,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/sales-by-channel', 'ReportController@salesByChannel');
     Route::get('/reports/discogs', 'ReportController@discogsReport');
     Route::get('/reports/ebay', 'ReportController@ebayReport');
+    Route::get('/reports/cash-flow', 'ReportController@cashFlowReport');
+    Route::get('/admin/qb-balance-fix', 'QbBalanceFixController@index');
+    Route::post('/admin/qb-balance-fix', 'QbBalanceFixController@apply');
 
     // eBay seller OAuth — required to read /sell/fulfillment/v1/order.
     // Tokens land in business.api_settings.ebay_seller (no migration).
@@ -633,6 +636,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/fix-in-store-sold-dates', 'FixInStoreSoldDatesController@index');
     Route::post('/admin/fix-in-store-sold-dates/run', 'FixInStoreSoldDatesController@run');
 
+    // Per-row date editor for the leftover In Store transactions whose date
+    // is still > CUTOFF after the bulk fix. Lists artist/title/amount so we
+    // can pick the right date for each. Snapshot + undo via admin-action-history.
+    Route::get('/admin/fix-stray-in-store-date', 'FixStrayInStoreDateController@index');
+    Route::post('/admin/fix-stray-in-store-date/run', 'FixStrayInStoreDateController@run');
+
     // One-shot cleanup: clears future created_at / updated_at on products
     // (sync TZ drift wrote them). Snapshots the BEFORE state so it can be
     // undone via /admin/admin-action-history.
@@ -648,6 +657,13 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // One-click aligns both columns to a chosen value.
     Route::get('/admin/purchase-price-mismatch', 'PurchasePriceMismatchController@index');
     Route::post('/admin/purchase-price-mismatch/run', 'PurchasePriceMismatchController@run');
+
+    // Sister page: variations whose POS sticker (default_sell_price) is below
+    // the price entered on the Add Purchase form (sell_price_inc_tax) — the
+    // signature of the May 1, 2026 tax-deflation bug. Shows estimated lost
+    // revenue and one-click backfills the sticker up to the entered price.
+    Route::get('/admin/sell-price-mismatch', 'SellPriceMismatchController@index');
+    Route::post('/admin/sell-price-mismatch/run', 'SellPriceMismatchController@run');
 
     // Recovery for variations whose cost was zeroed by the 2026-04-27 backfill.
     // Pulls the most recent purchase_lines entry per variation and copies it back.
