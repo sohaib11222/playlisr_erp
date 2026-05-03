@@ -6,7 +6,6 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\ProductStockCache;
-use App\Variation;
 use App\Business;
 use Carbon\Carbon;
 
@@ -116,25 +115,57 @@ class RefreshProductStockCache extends Command
      */
     protected function refreshStockForBusiness($business_id)
     {
-        // Build the main query
-        $query = Variation::join('products as p', 'p.id', '=', 'variations.product_id')
+        $businessStartedAt = microtime(true);
+
+        // Pre-aggregate transaction metrics once per (variation_id, location_id), then join.
+        // The old query used correlated subqueries (5× per row) plus OFFSET chunking, which
+        // made each 500-row page scan transactions repeatedly (40s+ per chunk at high offset).
+        $sellAgg = $this->aggregateSellQtyByVariationLocation($business_id);
+        $transferAgg = $this->aggregateSellTransferQtyByVariationLocation($business_id);
+        $adjustAgg = $this->aggregateStockAdjustmentByVariationLocation($business_id);
+        $stockPriceAgg = $this->aggregateStockPriceByVariationLocation($business_id);
+        $mfgAgg = $this->aggregateMfgStockByVariationLocation($business_id);
+
+        $query = DB::table('variation_location_details as vld')
+            ->join('variations', function ($join) {
+                $join->on('variations.id', '=', 'vld.variation_id')
+                    ->whereNull('variations.deleted_at');
+            })
+            ->join('products as p', 'p.id', '=', 'variations.product_id')
             ->join('units', 'p.unit_id', '=', 'units.id')
-            ->leftJoin('variation_location_details as vld', 'variations.id', '=', 'vld.variation_id')
             ->leftJoin('business_locations as l', 'vld.location_id', '=', 'l.id')
             ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
-            ->leftJoin('categories as sc', 'p.sub_category_id', '=', 'sc.id')
             ->join('product_variations as pv', 'variations.product_variation_id', '=', 'pv.id')
+            ->leftJoinSub($sellAgg, 'agg_sell', function ($join) {
+                $join->on('agg_sell.agg_variation_id', '=', 'vld.variation_id')
+                    ->on('agg_sell.agg_location_id', '=', 'vld.location_id');
+            })
+            ->leftJoinSub($transferAgg, 'agg_transfer', function ($join) {
+                $join->on('agg_transfer.agg_variation_id', '=', 'vld.variation_id')
+                    ->on('agg_transfer.agg_location_id', '=', 'vld.location_id');
+            })
+            ->leftJoinSub($adjustAgg, 'agg_adj', function ($join) {
+                $join->on('agg_adj.agg_variation_id', '=', 'vld.variation_id')
+                    ->on('agg_adj.agg_location_id', '=', 'vld.location_id');
+            })
+            ->leftJoinSub($stockPriceAgg, 'agg_stock_price', function ($join) {
+                $join->on('agg_stock_price.agg_variation_id', '=', 'vld.variation_id')
+                    ->on('agg_stock_price.agg_location_id', '=', 'vld.location_id');
+            })
+            ->leftJoinSub($mfgAgg, 'agg_mfg', function ($join) {
+                $join->on('agg_mfg.agg_variation_id', '=', 'vld.variation_id')
+                    ->on('agg_mfg.agg_location_id', '=', 'vld.location_id');
+            })
             ->where('p.business_id', $business_id)
-            ->whereIn('p.type', ['single', 'variable']);
+            ->whereIn('p.type', ['single', 'variable'])
+            ->whereNotNull('vld.location_id');
 
-        // Apply location filter if specified
         if ($this->option('location_id')) {
             $query->where('vld.location_id', $this->option('location_id'));
         }
 
-        // Select all required fields
-        $products = $query->select(
-            DB::raw("$business_id as business_id"),
+        $query->select(
+            DB::raw((int) $business_id.' as business_id'),
             'p.id as product_id',
             'variations.id as variation_id',
             'l.id as location_id',
@@ -142,38 +173,12 @@ class RefreshProductStockCache extends Command
             'p.sub_category_id',
             'p.brand_id',
             'p.unit_id',
-            
-            // Stock calculation fields
-            DB::raw("COALESCE((SELECT SUM(TSL.quantity - TSL.quantity_returned) FROM transactions 
-                JOIN transaction_sell_lines AS TSL ON transactions.id=TSL.transaction_id
-                WHERE transactions.status='final' AND transactions.type='sell' AND transactions.location_id=vld.location_id
-                AND TSL.product_id is not null 
-                AND TSL.variation_id=variations.id), 0) as total_sold"),
-            
-            DB::raw("COALESCE((SELECT SUM(IF(transactions.type='sell_transfer', TSL.quantity, 0)) FROM transactions 
-                JOIN transaction_sell_lines AS TSL ON transactions.id=TSL.transaction_id
-                WHERE transactions.status='final' AND transactions.type='sell_transfer' AND transactions.location_id=vld.location_id 
-                AND TSL.product_id is not null AND TSL.variation_id=variations.id), 0) as total_transfered"),
-            
-            DB::raw("COALESCE((SELECT SUM(IF(transactions.type='stock_adjustment', SAL.quantity, 0)) FROM transactions 
-                JOIN stock_adjustment_lines AS SAL ON transactions.id=SAL.transaction_id
-                WHERE transactions.type='stock_adjustment' AND transactions.location_id=vld.location_id 
-                AND SAL.variation_id=variations.id), 0) as total_adjusted"),
-            
-            DB::raw("COALESCE((SELECT SUM(COALESCE(pl.quantity - COALESCE(pl.quantity_sold, 0) - COALESCE(pl.quantity_adjusted, 0) - COALESCE(pl.quantity_returned, 0) - COALESCE(pl.mfg_quantity_used, 0), 0) * purchase_price_inc_tax) FROM transactions 
-                JOIN purchase_lines AS pl ON transactions.id=pl.transaction_id
-                WHERE (transactions.status='received' OR transactions.type='purchase_return') AND transactions.location_id=vld.location_id 
-                AND pl.variation_id=variations.id), 0) as stock_price"),
-            
-            DB::raw("COALESCE(SUM(vld.qty_available), 0) as stock"),
-            
-            // Manufacturing stock
-            DB::raw("COALESCE((SELECT SUM(PL.quantity - COALESCE(PL.quantity_sold, 0) - COALESCE(PL.quantity_adjusted, 0) - COALESCE(PL.quantity_returned, 0) - COALESCE(PL.mfg_quantity_used, 0)) FROM transactions 
-                JOIN purchase_lines AS PL ON transactions.id=PL.transaction_id
-                WHERE transactions.status='received' AND transactions.type='production_purchase' AND transactions.location_id=vld.location_id  
-                AND PL.variation_id=variations.id), 0) as total_mfg_stock"),
-                
-            // Product details
+            DB::raw('COALESCE(agg_sell.total_sold, 0) as total_sold'),
+            DB::raw('COALESCE(agg_transfer.total_transfered, 0) as total_transfered'),
+            DB::raw('COALESCE(agg_adj.total_adjusted, 0) as total_adjusted'),
+            DB::raw('COALESCE(agg_stock_price.stock_price, 0) as stock_price'),
+            DB::raw('COALESCE(vld.qty_available, 0) as stock'),
+            DB::raw('COALESCE(agg_mfg.total_mfg_stock, 0) as total_mfg_stock'),
             'variations.sub_sku as sku',
             'p.name as product',
             'p.type',
@@ -189,69 +194,243 @@ class RefreshProductStockCache extends Command
             'p.product_custom_field2',
             'p.product_custom_field3',
             'p.product_custom_field4',
-            
-            // Additional fields for filtering (to avoid joins)
             'p.tax as tax_id',
             'p.is_inactive',
-            'p.not_for_selling'
-        )
-        ->groupBy('variations.id', 'vld.location_id')
-        ->whereNotNull('vld.location_id'); // Only include products with location data
+            'p.not_for_selling',
+            'vld.id as chunk_pk'
+        );
 
-        // Process in chunks to avoid memory issues
         $totalProcessed = 0;
         $chunkSize = 500;
 
-        $query->chunk($chunkSize, function ($items) use (&$totalProcessed, $business_id) {
-            foreach ($items as $item) {
-                // Update or create cache record
-                ProductStockCache::updateOrCreate(
-                    [
-                        'business_id' => $business_id,
-                        'variation_id' => $item->variation_id,
-                        'location_id' => $item->location_id,
-                    ],
-                    [
-                        'product_id' => $item->product_id,
-                        'category_id' => $item->category_id,
-                        'sub_category_id' => $item->sub_category_id,
-                        'brand_id' => $item->brand_id,
-                        'unit_id' => $item->unit_id,
-                        'total_sold' => $item->total_sold ?? 0,
-                        'total_transfered' => $item->total_transfered ?? 0,
-                        'total_adjusted' => $item->total_adjusted ?? 0,
-                        'stock_price' => $item->stock_price ?? 0,
-                        'stock' => $item->stock ?? 0,
-                        'total_mfg_stock' => $item->total_mfg_stock ?? 0,
-                        'sku' => $item->sku,
-                        'product' => $item->product,
-                        'type' => $item->type,
-                        'alert_quantity' => $item->alert_quantity,
-                        'unit' => $item->unit,
-                        'enable_stock' => $item->enable_stock,
-                        'unit_price' => $item->unit_price,
-                        'product_variation' => $item->product_variation,
-                        'variation_name' => $item->variation_name,
-                        'location_name' => $item->location_name,
-                        'category_name' => $item->category_name,
-                        'product_custom_field1' => $item->product_custom_field1,
-                        'product_custom_field2' => $item->product_custom_field2,
-                        'product_custom_field3' => $item->product_custom_field3,
-                        'product_custom_field4' => $item->product_custom_field4,
-                        'tax_id' => $item->tax_id,
-                        'is_inactive' => $item->is_inactive ?? 0,
-                        'not_for_selling' => $item->not_for_selling ?? 0,
-                        'calculated_at' => Carbon::now(),
-                    ]
-                );
-
-                $totalProcessed++;
-            }
+        $query->orderBy('vld.id')->chunkById($chunkSize, function ($items) use (&$totalProcessed, $business_id) {
+            $this->bulkUpsertProductStockCacheRows((int) $business_id, $items);
+            $totalProcessed += $items->count();
 
             $this->info("Processed {$totalProcessed} records...");
-        });
+        }, 'vld.id', 'chunk_pk');
 
-        $this->info("Completed business {$business_id}: {$totalProcessed} records processed");
+        $elapsed = round(microtime(true) - $businessStartedAt, 2);
+        $this->info("Completed business {$business_id}: {$totalProcessed} records in {$elapsed}s");
+        Log::info('stock:refresh-cache business done', [
+            'business_id' => $business_id,
+            'rows' => $totalProcessed,
+            'duration_seconds' => $elapsed,
+        ]);
+    }
+
+    /**
+     * One INSERT ... ON DUPLICATE KEY UPDATE per chunk (unique_stock_cache).
+     * Avoids N× updateOrCreate round-trips. repair_model_id is not updated on conflict.
+     *
+     * @param int $business_id
+     * @param \Illuminate\Support\Collection|\Traversable|array $items
+     * @return void
+     */
+    protected function bulkUpsertProductStockCacheRows($business_id, $items)
+    {
+        $items = collect($items);
+        if ($items->isEmpty()) {
+            return;
+        }
+
+        $now = Carbon::now()->toDateTimeString();
+
+        $columns = [
+            'business_id',
+            'product_id',
+            'variation_id',
+            'location_id',
+            'category_id',
+            'sub_category_id',
+            'brand_id',
+            'unit_id',
+            'total_sold',
+            'total_transfered',
+            'total_adjusted',
+            'stock_price',
+            'stock',
+            'total_mfg_stock',
+            'sku',
+            'product',
+            'type',
+            'alert_quantity',
+            'unit',
+            'enable_stock',
+            'unit_price',
+            'product_variation',
+            'variation_name',
+            'location_name',
+            'category_name',
+            'product_custom_field1',
+            'product_custom_field2',
+            'product_custom_field3',
+            'product_custom_field4',
+            'tax_id',
+            'is_inactive',
+            'not_for_selling',
+            'repair_model_id',
+            'calculated_at',
+            'created_at',
+            'updated_at',
+        ];
+
+        $quotedCols = array_map(function ($c) {
+            return '`' . str_replace('`', '``', $c) . '`';
+        }, $columns);
+
+        $rowPlaceholders = '(' . implode(',', array_fill(0, count($columns), '?')) . ')';
+
+        $bindings = [];
+        $valueGroups = [];
+
+        foreach ($items as $item) {
+            $valueGroups[] = $rowPlaceholders;
+            $bindings[] = $business_id;
+            $bindings[] = $item->product_id;
+            $bindings[] = $item->variation_id;
+            $bindings[] = $item->location_id;
+            $bindings[] = $item->category_id;
+            $bindings[] = $item->sub_category_id;
+            $bindings[] = $item->brand_id;
+            $bindings[] = $item->unit_id;
+            $bindings[] = $item->total_sold ?? 0;
+            $bindings[] = $item->total_transfered ?? 0;
+            $bindings[] = $item->total_adjusted ?? 0;
+            $bindings[] = $item->stock_price ?? 0;
+            $bindings[] = $item->stock ?? 0;
+            $bindings[] = isset($item->total_mfg_stock) ? $item->total_mfg_stock : null;
+            $bindings[] = $item->sku;
+            $bindings[] = $item->product;
+            $bindings[] = $item->type;
+            $bindings[] = $item->alert_quantity;
+            $bindings[] = $item->unit;
+            $bindings[] = $item->enable_stock;
+            $bindings[] = $item->unit_price;
+            $bindings[] = $item->product_variation;
+            $bindings[] = $item->variation_name;
+            $bindings[] = $item->location_name;
+            $bindings[] = $item->category_name;
+            $bindings[] = $item->product_custom_field1;
+            $bindings[] = $item->product_custom_field2;
+            $bindings[] = $item->product_custom_field3;
+            $bindings[] = $item->product_custom_field4;
+            $bindings[] = $item->tax_id;
+            $bindings[] = $item->is_inactive ?? 0;
+            $bindings[] = $item->not_for_selling ?? 0;
+            $bindings[] = null; // repair_model_id — preserve on duplicate
+            $bindings[] = $now;
+            $bindings[] = $now;
+            $bindings[] = $now;
+        }
+
+        $updateParts = [];
+        foreach ($columns as $c) {
+            if (in_array($c, ['business_id', 'variation_id', 'location_id', 'repair_model_id', 'created_at'], true)) {
+                continue;
+            }
+            $qc = '`' . str_replace('`', '``', $c) . '`';
+            $updateParts[] = "{$qc} = VALUES({$qc})";
+        }
+
+        $sql = 'INSERT INTO `product_stock_cache` (' . implode(',', $quotedCols) . ') VALUES '
+            . implode(',', $valueGroups)
+            . ' ON DUPLICATE KEY UPDATE ' . implode(', ', $updateParts);
+
+        DB::transaction(function () use ($sql, $bindings) {
+            DB::statement($sql, $bindings);
+        });
+    }
+
+    /**
+     * Final sell lines: quantity minus returns, grouped for cache joins.
+     */
+    protected function aggregateSellQtyByVariationLocation(int $business_id)
+    {
+        return DB::table('transactions as t')
+            ->join('transaction_sell_lines as tsl', 't.id', '=', 'tsl.transaction_id')
+            ->where('t.business_id', $business_id)
+            ->where('t.status', 'final')
+            ->where('t.type', 'sell')
+            ->whereNotNull('tsl.product_id')
+            ->groupBy('tsl.variation_id', 't.location_id')
+            ->selectRaw(
+                'tsl.variation_id as agg_variation_id, t.location_id as agg_location_id, '
+                .'SUM(tsl.quantity - tsl.quantity_returned) as total_sold'
+            );
+    }
+
+    /**
+     * Sell transfer quantities by variation and location.
+     */
+    protected function aggregateSellTransferQtyByVariationLocation(int $business_id)
+    {
+        return DB::table('transactions as t')
+            ->join('transaction_sell_lines as tsl', 't.id', '=', 'tsl.transaction_id')
+            ->where('t.business_id', $business_id)
+            ->where('t.status', 'final')
+            ->where('t.type', 'sell_transfer')
+            ->whereNotNull('tsl.product_id')
+            ->groupBy('tsl.variation_id', 't.location_id')
+            ->selectRaw(
+                'tsl.variation_id as agg_variation_id, t.location_id as agg_location_id, '
+                .'SUM(tsl.quantity) as total_transfered'
+            );
+    }
+
+    /**
+     * Stock adjustment lines summed by variation and location.
+     */
+    protected function aggregateStockAdjustmentByVariationLocation(int $business_id)
+    {
+        return DB::table('transactions as t')
+            ->join('stock_adjustment_lines as sal', 't.id', '=', 'sal.transaction_id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'stock_adjustment')
+            ->groupBy('sal.variation_id', 't.location_id')
+            ->selectRaw(
+                'sal.variation_id as agg_variation_id, t.location_id as agg_location_id, '
+                .'SUM(sal.quantity) as total_adjusted'
+            );
+    }
+
+    /**
+     * Remaining purchase value (for stock price column) by variation and location.
+     */
+    protected function aggregateStockPriceByVariationLocation(int $business_id)
+    {
+        return DB::table('transactions as t')
+            ->join('purchase_lines as pl', 't.id', '=', 'pl.transaction_id')
+            ->where('t.business_id', $business_id)
+            ->where(function ($q) {
+                $q->where('t.status', 'received')
+                    ->orWhere('t.type', 'purchase_return');
+            })
+            ->groupBy('pl.variation_id', 't.location_id')
+            ->selectRaw(
+                'pl.variation_id as agg_variation_id, t.location_id as agg_location_id, '
+                .'SUM(COALESCE(pl.quantity - COALESCE(pl.quantity_sold, 0) - COALESCE(pl.quantity_adjusted, 0) '
+                .'- COALESCE(pl.quantity_returned, 0) - COALESCE(pl.mfg_quantity_used, 0), 0) * pl.purchase_price_inc_tax) '
+                .'as stock_price'
+            );
+    }
+
+    /**
+     * Manufacturing / production purchase remaining qty by variation and location.
+     */
+    protected function aggregateMfgStockByVariationLocation(int $business_id)
+    {
+        return DB::table('transactions as t')
+            ->join('purchase_lines as pl', 't.id', '=', 'pl.transaction_id')
+            ->where('t.business_id', $business_id)
+            ->where('t.status', 'received')
+            ->where('t.type', 'production_purchase')
+            ->groupBy('pl.variation_id', 't.location_id')
+            ->selectRaw(
+                'pl.variation_id as agg_variation_id, t.location_id as agg_location_id, '
+                .'SUM(pl.quantity - COALESCE(pl.quantity_sold, 0) - COALESCE(pl.quantity_adjusted, 0) '
+                .'- COALESCE(pl.quantity_returned, 0) - COALESCE(pl.mfg_quantity_used, 0)) as total_mfg_stock'
+            );
     }
 
     /**
