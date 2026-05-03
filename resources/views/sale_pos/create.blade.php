@@ -15,6 +15,7 @@
      file under /public/css/ so nginx serves them directly. Takes PHP
      OPcache / Blade compile cache out of the loop entirely. --}}
 <link rel="stylesheet" href="{{ asset('css/pos-create-layout.css?v=' . $asset_v) }}">
+@include('sale_pos.partials.pos_duty_banner')
 <section class="content no-print">
 	<input type="hidden" id="amount_rounding_method" value="{{$pos_settings['amount_rounding_method'] ?? ''}}">
 	@if(!empty($pos_settings['allow_overselling']))

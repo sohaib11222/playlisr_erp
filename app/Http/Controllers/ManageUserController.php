@@ -444,6 +444,7 @@ class ManageUserController extends Controller
         }
 
         Auth::loginUsingId($id);
+        session()->forget(['pos_duty', 'pos_duty_location_id', 'pos_duty_location_label']);
 
         return redirect()->route('home');
     }

@@ -79,6 +79,10 @@ class LoginController extends Controller
     {
         $this->businessUtil->activityLog($user, 'login', null, [], false, $user->business_id);
 
+        // Fresh POS duty pick after each login (Sarah 2026-05 — cashier vs
+        // shipping vs inventory, separate from auth roles).
+        $request->session()->forget(['pos_duty', 'pos_duty_location_id', 'pos_duty_location_label']);
+
         if (!$user->business->is_active) {
             \Auth::logout();
             return redirect('/login')

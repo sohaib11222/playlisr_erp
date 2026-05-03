@@ -134,6 +134,211 @@ class SellPosController extends Controller
     }
 
     /**
+     * One-time screen after login: what are you doing at the store today?
+     * Session-only + activity log — does not alter auth roles (Sarah 2026-05).
+     */
+    public function selectPosDuty(Request $request)
+    {
+        if (!auth()->user()->can('sell.view') && !auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = (int) $request->session()->get('user.business_id');
+        $business_locations = BusinessLocation::forDropdown($business_id, false);
+        $intended = $request->input('intended', action('SellPosController@create'));
+        if (!is_string($intended)) {
+            $intended = action('SellPosController@create');
+        } else {
+            $parsed = @parse_url($intended);
+            if (!empty($parsed['host']) && strcasecmp($parsed['host'], $request->getHost()) !== 0) {
+                $intended = action('SellPosController@create');
+            }
+        }
+
+        return view('sale_pos.select_pos_duty', compact('business_locations', 'intended'));
+    }
+
+    /**
+     * Persist POS duty to session and activity_log (pos_duty).
+     */
+    public function savePosDuty(Request $request)
+    {
+        if (!auth()->user()->can('sell.view') && !auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $request->validate([
+            'duty' => 'required|in:cashier,shipping,inventory',
+            'location_id' => 'nullable|integer',
+            'intended' => 'nullable|string|max:2048',
+        ]);
+
+        $business_id = (int) $request->session()->get('user.business_id');
+        $duty = $request->input('duty');
+        $locationId = $request->input('location_id');
+        if ($locationId !== null && $locationId !== '') {
+            $ok = BusinessLocation::where('business_id', $business_id)->where('id', $locationId)->exists();
+            if (!$ok) {
+                return back()->with('status', ['success' => 0, 'msg' => 'Invalid store for this business.'])->withInput();
+            }
+        } else {
+            $locationId = null;
+        }
+
+        $request->session()->put('pos_duty', $duty);
+        $request->session()->put('pos_duty_location_id', $locationId);
+        $locLabel = null;
+        if ($locationId) {
+            $locLabel = BusinessLocation::where('business_id', $business_id)->where('id', $locationId)->value('name');
+        }
+        $request->session()->put('pos_duty_location_label', $locLabel);
+
+        $this->businessUtil->activityLog(
+            auth()->user(),
+            'pos_duty',
+            null,
+            ['duty' => $duty, 'location_id' => $locationId],
+            false,
+            $business_id
+        );
+
+        $intended = $request->input('intended', action('SellPosController@create'));
+        if (!is_string($intended)) {
+            return redirect()->action('SellPosController@create');
+        }
+        $parsed = @parse_url($intended);
+        if (!empty($parsed['host']) && strcasecmp($parsed['host'], $request->getHost()) !== 0) {
+            return redirect()->action('SellPosController@create');
+        }
+
+        return redirect()->to($intended);
+    }
+
+    /**
+     * Map orphan Clover payments → ERP user: prefer last pos_duty=cashier at
+     * the same store before the charge; otherwise fall back to login events.
+     *
+     * @param  \Illuminate\Support\Collection  $unclaimed_clover_payments
+     * @return array{0: array<int,int>, 1: array<int,string>}
+     */
+    protected function inferOrphanCloverCashierMaps(int $business_id, $unclaimed_clover_payments): array
+    {
+        if ($unclaimed_clover_payments->isEmpty()) {
+            return [[], []];
+        }
+
+        $earliestPaidAt = $unclaimed_clover_payments->min('paid_at');
+        $latestPaidAt = $unclaimed_clover_payments->max('paid_at');
+        $from = \Carbon\Carbon::parse($earliestPaidAt)->subHours(48);
+        $to = \Carbon\Carbon::parse($latestPaidAt)->addMinutes(10);
+
+        $activities = \Spatie\Activitylog\Models\Activity::where('business_id', $business_id)
+            ->whereIn('description', ['login', 'pos_duty'])
+            ->whereNotNull('causer_id')
+            ->where('created_at', '>=', $from)
+            ->where('created_at', '<=', $to)
+            ->orderBy('created_at')
+            ->get(['causer_id', 'created_at', 'description', 'properties']);
+
+        $dutyByUser = [];
+        foreach ($activities as $act) {
+            if ($act->description !== 'pos_duty') {
+                continue;
+            }
+            $uid = (int) $act->causer_id;
+            $duty = null;
+            $locId = null;
+            $props = $act->properties;
+            if ($props instanceof \Illuminate\Support\Collection) {
+                $duty = $props->get('duty');
+                $locId = $props->get('location_id');
+            } elseif (is_array($props)) {
+                $duty = $props['duty'] ?? null;
+                $locId = $props['location_id'] ?? null;
+            }
+            if (!in_array($duty, ['cashier', 'shipping', 'inventory'], true)) {
+                continue;
+            }
+            $t = strtotime((string) $act->created_at);
+            $dutyByUser[$uid][] = [
+                't' => $t,
+                'duty' => $duty,
+                'location_id' => $locId !== null && $locId !== '' ? (int) $locId : null,
+            ];
+        }
+
+        $loginEvents = $activities->where('description', 'login')->values();
+        $cashier_for_orphan = [];
+        $maxStaleSeconds = 12 * 3600;
+
+        foreach ($unclaimed_clover_payments as $cp) {
+            $cpTs = strtotime((string) $cp->paid_at);
+            $cpLoc = $cp->location_id !== null ? (int) $cp->location_id : null;
+
+            $bestUid = null;
+            $bestGap = PHP_INT_MAX;
+
+            foreach ($dutyByUser as $uid => $events) {
+                $roleAtCharge = null;
+                $lastChangeTs = null;
+                foreach ($events as $ev) {
+                    if ($ev['t'] > $cpTs) {
+                        break;
+                    }
+                    if ($cpLoc !== null && $cpLoc !== 0 && $ev['location_id'] !== null
+                        && (int) $ev['location_id'] !== $cpLoc) {
+                        continue;
+                    }
+                    $roleAtCharge = $ev['duty'];
+                    $lastChangeTs = $ev['t'];
+                }
+                if ($roleAtCharge !== 'cashier' || $lastChangeTs === null) {
+                    continue;
+                }
+                $gap = $cpTs - $lastChangeTs;
+                if ($gap >= 0 && $gap < $bestGap) {
+                    $bestGap = $gap;
+                    $bestUid = $uid;
+                }
+            }
+
+            if ($bestUid !== null) {
+                $cashier_for_orphan[$cp->id] = $bestUid;
+                continue;
+            }
+
+            $recentUserId = null;
+            foreach ($loginEvents as $ev) {
+                $evTs = strtotime((string) $ev->created_at);
+                if ($evTs > $cpTs) {
+                    break;
+                }
+                if (($cpTs - $evTs) > $maxStaleSeconds) {
+                    continue;
+                }
+                $recentUserId = (int) $ev->causer_id;
+            }
+            if ($recentUserId) {
+                $cashier_for_orphan[$cp->id] = $recentUserId;
+            }
+        }
+
+        $cashierNameById = [];
+        $cashierIds = array_values(array_unique($cashier_for_orphan));
+        if (!empty($cashierIds)) {
+            $userRows = User::whereIn('id', $cashierIds)
+                ->select('id', 'surname', 'first_name', 'last_name')
+                ->get();
+            foreach ($userRows as $u) {
+                $name = trim(($u->surname ?? '') . ' ' . ($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
+                $cashierNameById[$u->id] = $name !== '' ? preg_replace('/\s+/', ' ', $name) : ('User #' . $u->id);
+            }
+        }
+
+        return [$cashier_for_orphan, $cashierNameById];
+    }
+
+    /**
      * Display a listing of the resource.
      *
      * @return \Illuminate\Http\Response
@@ -370,56 +575,12 @@ class SellPosController extends Controller
             })->values();
         }
 
-        // Attribute each orphan Clover charge to whoever was logged into the
-        // ERP at that moment, using the activity_log 'login' events the auth
-        // controller writes on every successful login. We pick the most
-        // recent login before paid_at that's within 12 hours — a longer-ago
-        // login probably means the user closed the tab and someone else
-        // signed in elsewhere without a logout event being written.
-        //
-        // This is "who was at the keyboard," not "who rang nearby sales" —
-        // exactly what Sarah asked for, since the orphan case is precisely
-        // when nearby ERP sales don't exist or aren't reliable.
-        $cashier_for_orphan = [];
-        $cashierNameById = [];
-        if ($unclaimed_clover_payments->isNotEmpty()) {
-            $earliestPaidAt = $unclaimed_clover_payments->min('paid_at');
-            $latestPaidAt = $unclaimed_clover_payments->max('paid_at');
-            $loginEvents = \Spatie\Activitylog\Models\Activity::where('business_id', $business_id)
-                ->where('description', 'login')
-                ->where('created_at', '>=', \Carbon\Carbon::parse($earliestPaidAt)->subHours(24))
-                ->where('created_at', '<=', \Carbon\Carbon::parse($latestPaidAt)->addMinutes(5))
-                ->orderBy('created_at')
-                ->get(['causer_id', 'created_at']);
-
-            $maxStaleSeconds = 12 * 3600;
-            foreach ($unclaimed_clover_payments as $cp) {
-                $cpTs = strtotime((string) $cp->paid_at);
-                $recentUserId = null;
-                foreach ($loginEvents as $ev) {
-                    $evTs = strtotime((string) $ev->created_at);
-                    if ($evTs > $cpTs) break;
-                    if (($cpTs - $evTs) > $maxStaleSeconds) continue;
-                    $recentUserId = (int) $ev->causer_id;
-                }
-                if ($recentUserId) {
-                    $cashier_for_orphan[$cp->id] = $recentUserId;
-                }
-            }
-
-            $cashierIds = array_values(array_unique($cashier_for_orphan));
-            if (!empty($cashierIds)) {
-                // Include offboarded users (allow_login=0) — the lookup is
-                // by id and we still want their name on historical orphans.
-                $userRows = User::whereIn('id', $cashierIds)
-                    ->select('id', 'surname', 'first_name', 'last_name')
-                    ->get();
-                foreach ($userRows as $u) {
-                    $name = trim(($u->surname ?? '') . ' ' . ($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
-                    $cashierNameById[$u->id] = $name !== '' ? preg_replace('/\s+/', ' ', $name) : ('User #' . $u->id);
-                }
-            }
-        }
+        // Orphan Clover → ERP user: prefer activity_log pos_duty=cashier at
+        // this store before the charge; else login heuristic (Sarah 2026-05).
+        [$cashier_for_orphan, $cashierNameById] = $this->inferOrphanCloverCashierMaps(
+            (int) $business_id,
+            $unclaimed_clover_payments
+        );
 
         // Debug mode: ?debug_clover=1 — show why unmatched ERP sales didn't
         // pair, AND list the unclaimed Clover payments (the other half of
@@ -801,43 +962,10 @@ class SellPosController extends Controller
             })->values();
         }
 
-        // Same logged-in-cashier inference as the page render: most recent
-        // ERP 'login' activity within 12 h before paid_at attributes the
-        // orphan charge to whoever was at the keyboard at the time.
-        $cashier_for_orphan = [];
-        $cashierNameById = [];
-        if ($unclaimed_clover_payments->isNotEmpty()) {
-            $earliestPaidAt = $unclaimed_clover_payments->min('paid_at');
-            $latestPaidAt = $unclaimed_clover_payments->max('paid_at');
-            $loginEvents = \Spatie\Activitylog\Models\Activity::where('business_id', $business_id)
-                ->where('description', 'login')
-                ->where('created_at', '>=', \Carbon\Carbon::parse($earliestPaidAt)->subHours(24))
-                ->where('created_at', '<=', \Carbon\Carbon::parse($latestPaidAt)->addMinutes(5))
-                ->orderBy('created_at')
-                ->get(['causer_id', 'created_at']);
-            $maxStaleSeconds = 12 * 3600;
-            foreach ($unclaimed_clover_payments as $cp) {
-                $cpTs = strtotime((string) $cp->paid_at);
-                $recentUserId = null;
-                foreach ($loginEvents as $ev) {
-                    $evTs = strtotime((string) $ev->created_at);
-                    if ($evTs > $cpTs) break;
-                    if (($cpTs - $evTs) > $maxStaleSeconds) continue;
-                    $recentUserId = (int) $ev->causer_id;
-                }
-                if ($recentUserId) $cashier_for_orphan[$cp->id] = $recentUserId;
-            }
-            $cashierIds = array_values(array_unique($cashier_for_orphan));
-            if (!empty($cashierIds)) {
-                $userRows = User::whereIn('id', $cashierIds)
-                    ->select('id', 'surname', 'first_name', 'last_name')
-                    ->get();
-                foreach ($userRows as $u) {
-                    $name = trim(($u->surname ?? '') . ' ' . ($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
-                    $cashierNameById[$u->id] = $name !== '' ? preg_replace('/\s+/', ' ', $name) : ('User #' . $u->id);
-                }
-            }
-        }
+        [$cashier_for_orphan, $cashierNameById] = $this->inferOrphanCloverCashierMaps(
+            (int) $business_id,
+            $unclaimed_clover_payments
+        );
 
         if ($discrepancy === 'no_erp') {
             $sales = collect();

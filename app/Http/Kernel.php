@@ -67,7 +67,8 @@ class Kernel extends HttpKernel
         'verify.nivessa_web' => \App\Http\Middleware\VerifyNivessaWebToken::class,
         'AdminSidebarMenu' => \App\Http\Middleware\AdminSidebarMenu::class,
         'superadmin' => \App\Http\Middleware\Superadmin::class,
-        'CheckUserLogin' => \App\Http\Middleware\CheckUserLogin::class,        
+        'CheckUserLogin' => \App\Http\Middleware\CheckUserLogin::class,
+        'pos.duty' => \App\Http\Middleware\EnsurePosDuty::class,
     ];
     /**
      * The priority-sorted list of middleware.

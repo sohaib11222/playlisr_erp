@@ -268,16 +268,24 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/settings/product-entry-rules/resolve', 'ProductEntryRuleController@resolve')->name('product-entry-rules.resolve');
     Route::get('/reset-mapping', 'SellController@resetMapping');
 
+    // POS duty (cashier / shipping / inventory) — must be outside pos.duty
+    // middleware so staff can reach the picker itself.
+    Route::get('/pos/select-duty', 'SellPosController@selectPosDuty')->name('pos.selectDuty');
+    Route::post('/pos/duty', 'SellPosController@savePosDuty')->name('pos.setDuty');
+
     // Export routes must be defined BEFORE resource route to avoid conflicts
-    Route::get('/pos/export-csv', 'SellPosController@exportPosSalesCsv')->name('pos.exportCsv');
-    Route::get('/pos/export-excel', 'SellPosController@exportPosSalesExcel')->name('pos.exportExcel');
-    Route::get('/pos/export-manual-products', 'SellPosController@exportManualProducts')->name('pos.exportManualProducts');
+    Route::middleware(['pos.duty'])->group(function () {
+        Route::get('/pos/export-csv', 'SellPosController@exportPosSalesCsv')->name('pos.exportCsv');
+        Route::get('/pos/export-excel', 'SellPosController@exportPosSalesExcel')->name('pos.exportExcel');
+        Route::get('/pos/export-manual-products', 'SellPosController@exportManualProducts')->name('pos.exportManualProducts');
 
-    Route::get('/pos/recent-feed', 'SellPosController@recentSalesFeed')->name('pos.recentFeed');
-    Route::get('/pos/recent-feed/export', 'SellPosController@recentSalesFeedExport')->name('pos.recentFeedExport');
+        Route::get('/pos/recent-feed', 'SellPosController@recentSalesFeed')->name('pos.recentFeed');
+        Route::get('/pos/recent-feed/export', 'SellPosController@recentSalesFeedExport')->name('pos.recentFeedExport');
+
+        Route::resource('pos', 'SellPosController');
+    });
+
     Route::get('/sells/pos/recent-rings', 'SellPosController@recentRings')->name('pos.recentRings');
-
-    Route::resource('pos', 'SellPosController');
 
     Route::resource('roles', 'RoleController');
 

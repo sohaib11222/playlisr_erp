@@ -157,6 +157,7 @@
 </section>
 
 <section class="content">
+    @include('sale_pos.partials.pos_duty_banner')
     <div class="rf-wrap">
         <form method="GET" action="{{ action('SellPosController@recentSalesFeed') }}" class="rf-filters">
             <div style="min-width: 180px;">
