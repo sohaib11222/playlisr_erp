@@ -5730,11 +5730,12 @@ class ReportController extends Controller
         $business_id = $request->session()->get('user.business_id');
         $start_date = $request->input('start_date');
         $end_date   = $request->input('end_date');
-        // Default to previous full month — current month-to-date on day 1
-        // gives a single-day window, which is useless for cash flow.
+        // Default to last 30 days ending today. Always includes today's
+        // activity and gives a meaningful window (current-month-to-date
+        // collapses to a single day on the 1st, useless for cash flow).
         if (empty($start_date) || empty($end_date)) {
-            $start_date = $start_date ?: \Carbon::now()->subMonthNoOverflow()->startOfMonth()->format('Y-m-d');
-            $end_date   = $end_date ?: \Carbon::now()->subMonthNoOverflow()->endOfMonth()->format('Y-m-d');
+            $start_date = $start_date ?: \Carbon::now()->subDays(30)->format('Y-m-d');
+            $end_date   = $end_date ?: \Carbon::now()->format('Y-m-d');
         }
 
         $qb = new \App\Services\QuickBooksService($business_id);
