@@ -59,9 +59,10 @@
             }
         });
         
-        @if(config('app.debug') == false)
-            $.fn.dataTable.ext.errMode = 'throw';
-        @endif
+        // Never show raw SQL/DB errors to users in a JS alert — log to console instead.
+        $.fn.dataTable.ext.errMode = function (settings, helpPage, message) {
+            if (window.console && console.error) { console.error(message); }
+        };
     });
     
     var financial_year = {

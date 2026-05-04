@@ -467,9 +467,6 @@
             // Array to track the ids of the details displayed rows
             var detailRows = [];
 
-            $('.add-stock').on( 'click',  function () {
-                alert($(this).data('pr'))
-            })
 
             // Bulk Actions dropdown triggers
             $(document).on('click', '#bulk_action_bulk_category_update', function(e) {
