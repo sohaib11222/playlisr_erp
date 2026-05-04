@@ -393,6 +393,9 @@ class BuyFromCustomerController extends Controller
         // New contact — save every field we have, not just name+mobile. This
         // is what made "seller info isn't saved anywhere" true: email was
         // silently dropped.
+        // contacts.mobile is NOT NULL on prod, so when the seller didn't give
+        // a phone we store the literal 0 — matches the convention used in
+        // ContactController::createCustomer (the API-token path).
         $fallbackName = $name ?: ('Walk-in Seller ' . ($phone ?: $email ?: uniqid('buy-')));
         return Contact::create([
             'business_id'    => $business_id,
@@ -400,7 +403,7 @@ class BuyFromCustomerController extends Controller
             'name'           => $fallbackName,
             'first_name'     => $first ?: null,
             'last_name'      => $last ?: null,
-            'mobile'         => $phone ?: null,
+            'mobile'         => $phone ?: 0,
             'email'          => $email ?: null,
             'created_by'     => $user_id,
             'contact_status' => 'active',
