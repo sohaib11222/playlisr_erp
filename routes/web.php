@@ -94,6 +94,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/business/settings', 'BusinessController@getBusinessSettings')->name('business.getBusinessSettings');
     Route::post('/business/update', 'BusinessController@postBusinessSettings')->name('business.postBusinessSettings');
     Route::post('/business/update-artists', 'BusinessController@updateArtistNames')->name('business.updateArtistNames');
+    Route::get('/business/database-backup', 'DatabaseBackupController@index')->name('business.database-backup.index');
+    Route::post('/business/database-backup', 'DatabaseBackupController@store')->name('business.database-backup.store');
+    Route::get('/business/database-backup/download/{file}', 'DatabaseBackupController@download')
+        ->where('file', '[A-Za-z0-9_\-\.]+')
+        ->name('business.database-backup.download');
     Route::get('/user/profile', 'UserController@getProfile')->name('user.getProfile');
     Route::post('/user/update', 'UserController@updateProfile')->name('user.updateProfile');
     Route::post('/user/update-password', 'UserController@updatePassword')->name('user.updatePassword');

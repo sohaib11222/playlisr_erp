@@ -38,7 +38,7 @@
                     <a href="#" class="list-group-item text-center">Integrations</a>
                     <a href="#" class="list-group-item text-center">@lang('lang_v1.modules')</a>
                     <a href="#" class="list-group-item text-center">@lang('lang_v1.custom_labels')</a>
-                    <a href="#" class="list-group-item text-center">Data Tools</a>
+                    <a href="#" id="tab-trigger-data-tools" class="list-group-item text-center">Data Tools</a>
                 </div>
             </div>
             <div class="col-lg-10 col-md-10 col-sm-10 col-xs-10 pos-tab">
@@ -343,5 +343,88 @@
             });
         });
     });
+
+    @if(!empty($is_business_admin))
+    (function() {
+        var backupListUrl = '{{ action("DatabaseBackupController@index") }}';
+        var backupCreateUrl = '{{ action("DatabaseBackupController@store") }}';
+        var backupDownloadBase = '{{ url("business/database-backup/download") }}/';
+
+        function formatBytes(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / 1048576).toFixed(2) + ' MB';
+        }
+
+        function loadDatabaseBackupList() {
+            var $tbody = $('#database-backup-list tbody');
+            $tbody.html('<tr><td colspan="3" class="text-muted">Loading…</td></tr>');
+            $.ajax({
+                url: backupListUrl,
+                method: 'GET',
+                dataType: 'json',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                success: function(res) {
+                    $tbody.empty();
+                    if (!res.success || !res.backups || res.backups.length === 0) {
+                        $tbody.html('<tr><td colspan="3" class="text-muted">{{ __("business.database_backup_none") }}</td></tr>');
+                        return;
+                    }
+                    for (var i = 0; i < res.backups.length; i++) {
+                        var b = res.backups[i];
+                        var dl = backupDownloadBase + encodeURIComponent(b.name);
+                        $tbody.append(
+                            '<tr><td><code>' + $('<span>').text(b.name).html() + '</code></td>'
+                            + '<td>' + formatBytes(b.size) + '</td>'
+                            + '<td><a class="btn btn-xs btn-primary" href="' + dl + '"><i class="fa fa-download"></i> {{ __("business.database_backup_download") }}</a></td></tr>'
+                        );
+                    }
+                },
+                error: function() {
+                    $tbody.html('<tr><td colspan="3" class="text-danger">Could not load backup list.</td></tr>');
+                }
+            });
+        }
+
+        $('#btn_database_backup_refresh').on('click', function() {
+            loadDatabaseBackupList();
+        });
+
+        $('#btn_database_backup_create').on('click', function() {
+            var $btn = $(this);
+            $btn.prop('disabled', true);
+            $('#database_backup_spinner').removeClass('hide');
+            $.ajax({
+                url: backupCreateUrl,
+                method: 'POST',
+                data: { _token: $('meta[name="csrf-token"]').attr('content') },
+                dataType: 'json',
+                success: function(res) {
+                    $('#database_backup_spinner').addClass('hide');
+                    $btn.prop('disabled', false);
+                    if (res.success) {
+                        toastr.success(res.msg || 'Backup ready.');
+                        loadDatabaseBackupList();
+                        if (res.download_url) {
+                            window.location.href = res.download_url;
+                        }
+                    } else {
+                        toastr.error(res.msg || 'Backup failed.');
+                    }
+                },
+                error: function(xhr) {
+                    $('#database_backup_spinner').addClass('hide');
+                    $btn.prop('disabled', false);
+                    var msg = (xhr.responseJSON && xhr.responseJSON.msg) ? xhr.responseJSON.msg : 'Backup failed.';
+                    toastr.error(msg);
+                }
+            });
+        });
+
+        $('#tab-trigger-data-tools').on('click', function() {
+            window.setTimeout(loadDatabaseBackupList, 150);
+        });
+    })();
+    @endif
 </script>
 @endsection

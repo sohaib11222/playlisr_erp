@@ -1,4 +1,48 @@
 <div class="pos-tab-content">
+    @if(!empty($is_business_admin))
+    <div class="row" id="database-backup-section">
+        <div class="col-sm-12">
+            <h4>@lang('business.database_backup_heading')</h4>
+            <p class="text-muted">
+                @lang('business.database_backup_intro', ['count' => 15])
+            </p>
+            <p>
+                <button type="button" class="btn btn-primary" id="btn_database_backup_create">
+                    <i class="fa fa-database"></i> @lang('business.database_backup_create')
+                </button>
+                <button type="button" class="btn btn-default" id="btn_database_backup_refresh">
+                    <i class="fa fa-refresh"></i> @lang('business.database_backup_refresh_list')
+                </button>
+                <span id="database_backup_spinner" class="hide" style="margin-left: 10px;">
+                    <i class="fa fa-spinner fa-spin fa-lg"></i> @lang('business.database_backup_please_wait')…
+                </span>
+            </p>
+            <div class="table-responsive">
+                <table class="table table-bordered table-condensed" id="database-backup-list">
+                    <thead>
+                        <tr>
+                            <th>@lang('business.database_backup_col_file')</th>
+                            <th>@lang('business.database_backup_col_size')</th>
+                            <th>@lang('business.database_backup_col_actions')</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="3" class="text-muted">—</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <hr>
+        </div>
+    </div>
+    @else
+    <div class="row">
+        <div class="col-sm-12">
+            <p class="text-muted"><i class="fa fa-lock"></i> @lang('business.database_backup_admin_only')</p>
+            <hr>
+        </div>
+    </div>
+    @endif
+
     <div class="row">
         <div class="col-sm-12">
             <h4>Update Artist Names from Product Titles</h4>
