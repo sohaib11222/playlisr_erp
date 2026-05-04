@@ -366,7 +366,7 @@
                 $when = $isToday ? $dt->format('g:i a') : $dt->format('M j · g:i a');
                 $customer = optional($sale->contact)->name ?: 'Walk-In Customer';
                 $store = optional($sale->location)->name ?: '—';
-                {{-- sales_person → User via created_by (who saved the sale in ERP) --}}
+                // sales_person -> User via created_by (who saved the sale in ERP)
                 $cashier = optional($sale->sales_person)->user_full_name;
                 $cashier = $cashier ? trim($cashier) : null;
                 if ($cashier === null || $cashier === '') {
