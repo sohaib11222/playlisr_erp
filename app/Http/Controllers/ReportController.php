@@ -8203,17 +8203,76 @@ class ReportController extends Controller
             ->orderBy('cr.created_at')
             ->get();
 
-        // Attribute pin-less swipes to whoever's register was open at that
-        // (time, location). Small ±5min slack on each side so a swipe that
-        // happens just before "open" or just after "close" still attributes
-        // (cashiers commonly close the drawer while finishing a final sale).
-        foreach ($cpRaw as $r) {
+        // Pull raw ERP transactions for amount-based matching (same logic
+        // as recentSalesFeed). Each Clover swipe is paired to the ERP
+        // transaction with matching final_total at the same location,
+        // closest in time. The ERP txn's created_by is the source of truth
+        // for who rang the sale — beats shift-window attribution because
+        // it doesn't depend on slack at the edges of two cashiers' shifts.
+        $txnQ = \DB::table('transactions as t')
+            ->leftJoin('users as u', 't.created_by', '=', 'u.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereDate('t.transaction_date', '>=', \Carbon::parse($start)->subDay())
+            ->whereDate('t.transaction_date', '<=', \Carbon::parse($end)->addDay());
+        if (!empty($location_id)) {
+            $txnQ->where('t.location_id', $location_id);
+        }
+        $txns = $txnQ->selectRaw("
+                t.id, t.location_id, t.final_total, t.transaction_date,
+                COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, '') as cashier_name
+            ")
+            ->get();
+
+        $toCents = function ($x) { return (int) round(((float) $x) * 100); };
+        $claimedTxns = [];
+
+        // Attribution pass: for each Clover swipe (newest-first to keep
+        // the latest sales paired first), try to find an unclaimed ERP
+        // sale at the same location with the same dollar amount (±1¢).
+        // Tiebreak by closest time. If found, override employee_name with
+        // the ERP cashier — they're the one who rang it. Otherwise fall
+        // back to shift-window attribution for pin-less swipes only.
+        $cpForMatch = $cpRaw->sortByDesc('ts')->values();
+        foreach ($cpForMatch as $r) {
+            $cpTs    = strtotime((string) $r->ts);
+            $cpCents = $toCents($r->amount);
+            $cpLoc   = $r->location_id;
+
+            $bestId = null;
+            $bestDelta = PHP_INT_MAX;
+            foreach ($txns as $t) {
+                if (isset($claimedTxns[$t->id])) continue;
+                if ($toCents($t->final_total) !== $cpCents) continue;
+                if ($cpLoc !== null && $t->location_id !== null
+                    && (int) $cpLoc !== (int) $t->location_id) continue;
+                $delta = abs(strtotime((string) $t->transaction_date) - $cpTs);
+                if ($delta < $bestDelta) {
+                    $bestDelta = $delta;
+                    $bestId = $t->id;
+                }
+            }
+            if ($bestId !== null) {
+                $claimedTxns[$bestId] = true;
+                foreach ($txns as $t) {
+                    if ($t->id === $bestId && $t->cashier_name !== '') {
+                        $r->employee_name = $t->cashier_name;
+                        break;
+                    }
+                }
+                continue;
+            }
+
+            // Fallback: shift-window attribution for swipes that don't
+            // have a matching ERP sale (online charges, voids, weird
+            // rounding). Only override pin-less rows here so a Clover-
+            // pinned swipe with no ERP match still keeps Clover's pin.
             if ($r->employee_name !== '') continue;
-            $cpTs = strtotime((string) $r->ts);
             foreach ($registers as $reg) {
                 if ((int) ($reg->location_id ?? 0) !== (int) ($r->location_id ?? 0)) continue;
-                $open  = strtotime((string) $reg->opened_at) - 300;
-                $close = $reg->closed_at ? (strtotime((string) $reg->closed_at) + 300) : PHP_INT_MAX;
+                $open  = strtotime((string) $reg->opened_at) - 60;
+                $close = $reg->closed_at ? (strtotime((string) $reg->closed_at) + 60) : PHP_INT_MAX;
                 if ($cpTs >= $open && $cpTs <= $close && $reg->user_name !== '') {
                     $r->employee_name = $reg->user_name;
                     break;
@@ -8335,6 +8394,42 @@ class ReportController extends Controller
                     // by the Clover-paid portion. Same reason expected_
                     // ending_cash is recomputed downstream.
                     unset($e);
+                }
+            }
+        }
+
+        // Filter out admins/owners — Sarah 2026-05-05: "Jonathan is the
+        // owner, not a cashier. What does his card mean?". Owners
+        // occasionally ring a sale or open a register for admin work but
+        // they don't run a cashier shift, so reconciliation cards for
+        // them are meaningless and crowd the page. We pull the set of
+        // admin first-names from the Spatie permissions table and drop
+        // matching keys; first-name match is fine because the rest of the
+        // pipeline already keys on first name and a duplicate-first-name
+        // collision with a real cashier is extremely unlikely on a small
+        // staff.
+        $adminFirstNames = \DB::table('model_has_permissions as mhp')
+            ->join('permissions as p', 'mhp.permission_id', '=', 'p.id')
+            ->join('users as u', 'mhp.model_id', '=', 'u.id')
+            ->where('mhp.model_type', 'App\\User')
+            ->where('p.name', 'Admin#' . $business_id)
+            ->pluck('u.first_name', 'u.id')
+            ->map(function ($n) {
+                $n = trim((string) $n);
+                if ($n === '') return null;
+                $parts = preg_split('/\s+/', $n);
+                return strtolower($parts[0] ?? '');
+            })
+            ->filter()->unique()->values()->all();
+        if (!empty($adminFirstNames)) {
+            $adminSet = array_flip($adminFirstNames);
+            foreach ($buckets as $day => $locs2) {
+                foreach ($locs2 as $locKey => $loc2) {
+                    foreach (array_keys($loc2['employees'] ?? []) as $k) {
+                        if (isset($adminSet[strtolower($k)])) {
+                            unset($buckets[$day][$locKey]['employees'][$k]);
+                        }
+                    }
                 }
             }
         }
