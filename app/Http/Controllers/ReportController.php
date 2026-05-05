@@ -5663,7 +5663,21 @@ class ReportController extends Controller
                 ? ($row['gross_profit'] / $row['revenue']) * 100 : 0;
             return $row;
         }, $rows);
-        usort($rows, function ($a, $b) { return $b['revenue'] <=> $a['revenue']; });
+        // Group rows by channel family so the two Whatnot rows always sit
+        // adjacent (Sarah 2026-05-05 — was getting separated by Discogs /
+        // web rows when sorted purely by revenue). Within each group, sort
+        // by revenue desc so the dominant location/channel still bubbles up.
+        $family = function ($channel) {
+            if ($channel === 'in_store') return 1;
+            if ($channel === 'whatnot')  return 2;
+            return 3; // discogs, ebay, web_ship, web_pickup, space_rental
+        };
+        usort($rows, function ($a, $b) use ($family) {
+            $fa = $family($a['channel']);
+            $fb = $family($b['channel']);
+            if ($fa !== $fb) return $fa <=> $fb;
+            return $b['revenue'] <=> $a['revenue'];
+        });
 
         // Totals exclude rows with unknown cost from the gross-profit roll
         // (would otherwise pull the consolidated margin down to zero).
@@ -6024,8 +6038,8 @@ class ReportController extends Controller
         if (!isset($rows['web|web_ship'])) {
             $rows['web|web_ship'] = [
                 'label'           => $webKey === ''
-                    ? 'nivessa.com — Shipping (set NIVESSA_WEBSITE_API_KEY on the ERP server)'
-                    : 'nivessa.com — Shipping (API failed — see Channel fetch status)',
+                    ? 'Website Shipping Orders (set NIVESSA_WEBSITE_API_KEY on the ERP server)'
+                    : 'Website Shipping Orders (API failed — see Channel fetch status)',
                 'channel'         => 'web_ship',
                 'location_id'     => null,
                 'revenue'         => 0.0,
@@ -6039,8 +6053,8 @@ class ReportController extends Controller
         if (!isset($rows['web|web_pickup'])) {
             $rows['web|web_pickup'] = [
                 'label'           => $webKey === ''
-                    ? 'nivessa.com — Pickup (set NIVESSA_WEBSITE_API_KEY on the ERP server)'
-                    : 'nivessa.com — Pickup (API failed — see Channel fetch status)',
+                    ? 'Website Pickup Orders (set NIVESSA_WEBSITE_API_KEY on the ERP server)'
+                    : 'Website Pickup Orders (API failed — see Channel fetch status)',
                 'channel'         => 'web_pickup',
                 'location_id'     => null,
                 'revenue'         => 0.0,
@@ -6155,7 +6169,7 @@ class ReportController extends Controller
             $rows[] = [
                 'key' => 'web|web_ship',
                 'row' => [
-                    'label'           => 'nivessa.com — Shipping',
+                    'label'           => 'Website Shipping Orders',
                     'channel'         => 'web_ship',
                     'location_id'     => null,
                     'revenue'         => (float)$shipping['totalRevenue'],
@@ -6170,7 +6184,7 @@ class ReportController extends Controller
             $rows[] = [
                 'key' => 'web|web_pickup',
                 'row' => [
-                    'label'           => 'nivessa.com — Pickup',
+                    'label'           => 'Website Pickup Orders',
                     'channel'         => 'web_pickup',
                     'location_id'     => null,
                     'revenue'         => (float)$pickup['totalRevenue'],
