@@ -7034,12 +7034,18 @@ class ReportController extends Controller
         // can see at a glance which days are already signed off on.
         $reconciliations = $this->loadReconciliations($business_id, $start, $end);
 
-        // Per-shift theft-prevention audit — the PRIMARY view Sarah wants
-        // for daily reconciliation. One card per cash_registers row, with
-        // SALES CHECK (Clover ↔ ERP during shift) and CASH CHECK (drawer
-        // math). Replaces the previous xlsx / match / shift-breakdown
-        // experiments which we were told made the page worse.
+        // Per-shift theft-prevention audit — kept around in case Sarah
+        // wants it back later, but the blade currently hides it.
         $shift_audit = $this->cloverEodShiftAudit(
+            $business_id, $start, $end, $location_id, $card_methods, $used_all_methods
+        );
+
+        // Sarah 2026-05-05: shift-audit cards are unusable for daily cash
+        // reconciliation. She does it from a spreadsheet with one
+        // per-employee summary at top and a side-by-side Clover↔ERP
+        // payment list per store. cloverEodXlsxLayout produces exactly
+        // that — wire it through and the blade renders her layout.
+        $xlsx_layout = $this->cloverEodXlsxLayout(
             $business_id, $start, $end, $location_id, $card_methods, $used_all_methods
         );
 
@@ -7047,7 +7053,7 @@ class ReportController extends Controller
             'rows', 'grand', 'start', 'end', 'location_id', 'business_locations',
             'employee_breakdown_by_day', 'unknown_rows',
             'is_single_day', 'prev_day', 'next_day', 'today_str',
-            'reconciliations', 'shift_audit'
+            'reconciliations', 'shift_audit', 'xlsx_layout'
         ));
     }
 

@@ -134,8 +134,12 @@
          = expected vs reported) catches drawer shortages.
          Drill-in on the SALES CHECK shows the raw Clover + ERP payment
          lists side-by-side, so Fatteen can find the specific sale with
-         a typo when the totals disagree. --}}
-    @if(!empty($shift_audit))
+         a typo when the totals disagree.
+
+         Sarah 2026-05-05: hidden — daily cash reconciliation now uses the
+         xlsx-style per-store side-by-side panel below. Block is kept so
+         it can be re-enabled later by removing the `false &&` guard. --}}
+    @if(false && !empty($shift_audit))
         <style>
             .sa-card { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:16px 18px; margin-bottom:14px; }
             .sa-card.flag { border-color:#fecaca; background:#fef2f2; }
@@ -352,11 +356,12 @@
         <div class="alert alert-info" style="margin-bottom:20px;">No shifts in this window. Pick a different day or open a register.</div>
     @endif
 
-    {{-- Old panels (xlsx layout, old per-cashier breakdown) retired
-         2026-04-23 in favor of the cashier shift audit above. Gated
-         behind @if(false) so their referenced variables don't break
-         renders. --}}
-    @if(false && (!empty($xlsx_layout['employee_summary']) || !empty($xlsx_layout['by_day'])))
+    {{-- Daily cash reconciliation — mirrors Sarah's xlsx workflow
+         (one per-employee summary at top, then per-store side-by-side
+         Clover/ERP raw payment lists with totals at the bottom).
+         Re-enabled 2026-05-05 after the shift-audit cards above were
+         judged unusable for the daily flow. --}}
+    @if(!empty($xlsx_layout['employee_summary']) || !empty($xlsx_layout['by_day']))
         <style>
             .rx-summary-wrap { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:12px 14px; margin-bottom:20px; }
             .rx-summary-wrap h4 { margin:0 0 8px; font-size:14px; color:#111827; font-weight:700; }
@@ -490,9 +495,9 @@
                                 <table class="rx-list">
                                     <thead>
                                         <tr>
-                                            <th>Time</th>
+                                            <th>Payment Date</th>
                                             <th class="num">Amount</th>
-                                            <th>Employee</th>
+                                            <th>Employee Name</th>
                                         </tr>
                                     </thead>
                                     <tbody>
