@@ -187,6 +187,20 @@
             .cc-flag.bad { background:#fee2e2; color:#991b1b; }
             .cc-flag.muted { background:#f3f4f6; color:#6b7280; }
             .cc-foot { margin-top:10px; padding-top:10px; border-top:1px solid #e5e7eb; }
+
+            /* Collapsed cards — once Sarah ticks "Mark reconciled" we
+               shrink the card to just its header + total so signed-off
+               cashiers fall out of her field of view but stay clickable
+               to re-expand if she needs to revisit. Click the title to
+               un-collapse, click the checkbox to toggle reconciled. */
+            .cc-card.cc-collapsed { padding:10px 14px; cursor:pointer; opacity:.65; background:#f9fafb; }
+            .cc-card.cc-collapsed.flag,
+            .cc-card.cc-collapsed.warn { background:#f9fafb; border-color:#e5e7eb; }
+            .cc-card.cc-collapsed .cc-head { margin-bottom:0; padding-bottom:0; border-bottom:none; }
+            .cc-card.cc-collapsed .cc-section,
+            .cc-card.cc-collapsed .cc-foot { display:none; }
+            .cc-card.cc-collapsed .cc-collapsed-summary { display:block; }
+            .cc-collapsed-summary { display:none; font-size:12px; color:#6b7280; margin-top:4px; font-variant-numeric: tabular-nums; }
         </style>
 
         @foreach($employee_breakdown_by_day as $dayBlock)
@@ -281,7 +295,7 @@
                                 }
                                 $txnCount = (int) ($e['txn_count'] ?? 0);
                             @endphp
-                            <div class="cc-card {{ $cardKind }} eod-loc-card"
+                            <div class="cc-card {{ $cardKind }} {{ $isReconciled ? 'cc-collapsed' : '' }} eod-loc-card"
                                  data-day="{{ $dayBlock['day'] }}"
                                  data-location-id="{{ $loc['location_id'] ?: 0 }}"
                                  data-employee-key="{{ $empKey }}">
@@ -289,8 +303,9 @@
                                     <div style="flex:1; min-width:0;">
                                         <div class="cc-title">{{ $e['display_name'] }}</div>
                                         <div class="cc-sub">{{ $locNameDisplay }}@if($shiftLabel) · {{ $shiftLabel }}@endif</div>
+                                        <div class="cc-collapsed-summary">${{ number_format($totalSold, 2) }} sold @if($txnCount) · {{ $txnCount }} sale{{ $txnCount === 1 ? '' : 's' }}@endif @if(!is_null($cashVar)) · drawer {{ $cashVar >= 0 ? '+' : '' }}${{ number_format($cashVar, 2) }}@endif</div>
                                     </div>
-                                    <label class="eod-recon-toggle" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; cursor:pointer; color:{{ $isReconciled ? '#166534' : '#374151' }}; white-space:nowrap;">
+                                    <label class="eod-recon-toggle" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; cursor:pointer; color:{{ $isReconciled ? '#166534' : '#374151' }}; white-space:nowrap;" onclick="event.stopPropagation();">
                                         <input type="checkbox" class="eod-recon-checkbox" {{ $isReconciled ? 'checked' : '' }}>
                                         <span class="eod-recon-label">{{ $isReconciled ? '✓ Reconciled' : 'Mark reconciled' }}</span>
                                     </label>
@@ -343,9 +358,13 @@
                                 </div>
 
                                 <div class="cc-foot">
-                                    <a href="/pos/recent-feed?location_id={{ $loc['location_id'] ?: '' }}" target="_blank"
+                                    @php
+                                        $viewQs = ['location_id' => $loc['location_id'] ?: '', 'start_date' => $dayBlock['day'], 'end_date' => $dayBlock['day'], 'limit' => 200, 'hide_orphans' => 1];
+                                        if (!empty($e['user_id'])) $viewQs['created_by'] = (int) $e['user_id'];
+                                    @endphp
+                                    <a href="/pos/recent-feed?{{ http_build_query($viewQs) }}" target="_blank"
                                        style="font-size:11px; color:#4f46e5; text-decoration:none; font-weight:600;">
-                                        View {{ $e['display_name'] }}'s sales →
+                                        View {{ $e['display_name'] }}'s sales (today) →
                                     </a>
                                     <textarea class="eod-recon-notes form-control" rows="2"
                                         placeholder="Notes for {{ $e['display_name'] }} (auto-saves)"
@@ -1517,15 +1536,26 @@ $(function () {
                 $lbl.text('✓ Reconciled');
                 $toggle.css('color', '#166534');
                 $stamp.text('Reconciled' + (r.reconciled_by ? ' by ' + r.reconciled_by : '') + ' · ' + (r.reconciled_at || ''));
+                // Collapse the card to a single-line summary so signed-off
+                // cashiers fall out of Sarah's field of view. Card stays
+                // clickable to expand again.
+                $card.addClass('cc-collapsed');
             } else {
                 $lbl.text('Mark reconciled');
                 $toggle.css('color', '#374151');
                 $stamp.text('');
+                $card.removeClass('cc-collapsed');
             }
         }).fail(function () {
             $lbl.text('Mark reconciled');
             alert('Network error — try again.');
         });
+    });
+
+    // Click a collapsed card (anywhere except the checkbox label which
+    // stops-propagation) to re-expand it for review.
+    $('body').on('click', '.eod-loc-card.cc-collapsed', function () {
+        $(this).removeClass('cc-collapsed');
     });
 
     // Per-store notes — debounced autosave on input + immediate save on blur.

@@ -393,6 +393,14 @@ class SellPosController extends Controller
         $limit = (int) $request->get('limit', 30);
         $location_id = $request->get('location_id');
         $created_by = $request->get('created_by');
+        // Sarah 2026-05-05: when the EOD reconciliation page deep-links
+        // here for a single cashier-day ("View Manolo's sales"), pass
+        // start_date / end_date / hide_orphans so the feed scopes to that
+        // window and suppresses the global Clover-orphan rows that have
+        // nothing to do with the filtered cashier.
+        $start_date = $request->get('start_date');
+        $end_date   = $request->get('end_date');
+        $hide_orphans = (bool) $request->get('hide_orphans');
         // Discrepancy filter — '', 'mismatch', 'no_clover', 'no_erp', 'any'.
         // Applied *after* the Clover match runs (since both sides need to be
         // paired before we can know which sales are discrepant), so when a
@@ -420,6 +428,8 @@ class SellPosController extends Controller
             ->whereNull('transactions.import_source')
             ->when($location_id, fn($q) => $q->where('transactions.location_id', $location_id))
             ->when($created_by, fn($q) => $q->where('transactions.created_by', $created_by))
+            ->when($start_date, fn($q) => $q->whereDate('transactions.transaction_date', '>=', $start_date))
+            ->when($end_date,   fn($q) => $q->whereDate('transactions.transaction_date', '<=', $end_date))
             ->with([
                 'sell_lines' => fn($q) => $q->whereNull('parent_sell_line_id'),
                 'sell_lines.product',
@@ -573,6 +583,13 @@ class SellPosController extends Controller
             $unclaimed_clover_payments = $cpRows->reject(function ($cp, $key) use ($claimedCpKeys) {
                 return isset($claimedCpKeys[$key]);
             })->values();
+        }
+        // Suppress the orphan list when this is a per-cashier deep-link
+        // (Sarah 2026-05-05): the orphans aren't tied to any cashier, so
+        // showing them inside a Manolo-filtered view leaks Henry's swipes
+        // into Manolo's feed.
+        if ($hide_orphans) {
+            $unclaimed_clover_payments = collect();
         }
 
         // Orphan Clover → ERP user: prefer activity_log pos_duty=cashier at
@@ -871,6 +888,8 @@ class SellPosController extends Controller
             ->whereNull('transactions.import_source')
             ->when($location_id, fn($q) => $q->where('transactions.location_id', $location_id))
             ->when($created_by, fn($q) => $q->where('transactions.created_by', $created_by))
+            ->when($start_date, fn($q) => $q->whereDate('transactions.transaction_date', '>=', $start_date))
+            ->when($end_date,   fn($q) => $q->whereDate('transactions.transaction_date', '<=', $end_date))
             ->with([
                 'sell_lines' => fn($q) => $q->whereNull('parent_sell_line_id'),
                 'sell_lines.product',

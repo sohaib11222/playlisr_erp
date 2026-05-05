@@ -8129,31 +8129,10 @@ class ReportController extends Controller
             ->groupBy(DB::raw('DATE(t.transaction_date)'), 't.location_id', 'bl.name', 'employee_name')
             ->get();
 
-        // Total ERP sales per cashier-day-location, ignoring payment method.
-        // Sarah 2026-05-05: cashiers ring every sale as 'cash' regardless of
-        // how the customer paid (the 'card' button opens a form they don't
-        // want), then re-tap the same amount on Clover. So the only
-        // trustworthy "what they sold" number is t.final_total summed per
-        // cashier — payment-method-filtered totals double-count or under-
-        // count depending on which side you trust. From this we derive
-        // implied cash = total_sales − clover_total.
-        $totalQ = \DB::table('transactions as t')
-            ->leftJoin('users as u', 't.created_by', '=', 'u.id')
-            ->where('t.business_id', $business_id)
-            ->where('t.type', 'sell')
-            ->where('t.status', 'final')
-            ->whereDate('t.transaction_date', '>=', $start)
-            ->whereDate('t.transaction_date', '<=', $end);
-        if (!empty($location_id)) {
-            $totalQ->where('t.location_id', $location_id);
-        }
-        $totalRows = $totalQ->selectRaw("DATE(t.transaction_date) as day,
-                t.location_id,
-                COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, 'Unknown') as employee_name,
-                COUNT(t.id) as txn_count,
-                COALESCE(SUM(t.final_total), 0) as total_sales")
-            ->groupBy(DB::raw('DATE(t.transaction_date)'), 't.location_id', 'employee_name')
-            ->get();
+        // total_sales aggregation now happens in PHP from $txns below
+        // (so we can re-attribute admin-rung sales to the on-shift
+        // cashier). $totalQ used to do the SUM in SQL but lost that
+        // ability when we needed per-row admin awareness.
 
         // Pull RAW Clover payments (one row each) so we can do shift-window
         // attribution before aggregating. Sarah 2026-05-05: at Nivessa most
@@ -8221,9 +8200,52 @@ class ReportController extends Controller
         }
         $txns = $txnQ->selectRaw("
                 t.id, t.location_id, t.final_total, t.transaction_date,
+                t.created_by as cashier_user_id,
                 COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, '') as cashier_name
             ")
             ->get();
+
+        // Admin/owner detection — Sarah 2026-05-05: "Jonathan rings up
+        // customers sometimes but the sale should attribute to the
+        // cashier on shift, not him." We pull the admin-permission
+        // first-name set once and use it on both sides:
+        //   - Clover amount-match: if the matched ERP txn was rung by
+        //     an admin, fall back to shift-window attribution.
+        //   - ERP aggregation: admin-rung sales get re-attributed to
+        //     whoever's register was open at the time, before bucketing.
+        $adminFirstNames = \DB::table('model_has_permissions as mhp')
+            ->join('permissions as p', 'mhp.permission_id', '=', 'p.id')
+            ->join('users as u', 'mhp.model_id', '=', 'u.id')
+            ->where('mhp.model_type', 'App\\User')
+            ->where('p.name', 'Admin#' . $business_id)
+            ->pluck('u.first_name')
+            ->map(function ($n) { $n = trim((string) $n); $parts = $n === '' ? [] : preg_split('/\s+/', $n); return strtolower($parts[0] ?? ''); })
+            ->filter()->unique()->values()->all();
+        $adminSet = array_flip($adminFirstNames);
+
+        // Helper: which non-admin cashier had a register open at (ts, loc)?
+        // Returns full user_name string or null. Excludes admins so an
+        // admin-rung sale doesn't re-attribute to another admin who
+        // happened to also have a register open. Also caps how stale a
+        // still-"open" register can be — 18h — so yesterday's register
+        // that was never closed doesn't absorb today's swipes.
+        $findShiftCashier = function ($ts, $locId) use ($registers, $adminSet) {
+            $cpTs = strtotime((string) $ts);
+            foreach ($registers as $reg) {
+                if ((int) ($reg->location_id ?? 0) !== (int) ($locId ?? 0)) continue;
+                if ($reg->user_name === '') continue;
+                $rfn = strtolower(preg_split('/\s+/', trim($reg->user_name))[0] ?? '');
+                if (isset($adminSet[$rfn])) continue;
+                $openTs  = strtotime((string) $reg->opened_at);
+                $open    = $openTs - 60;
+                $close   = $reg->closed_at ? (strtotime((string) $reg->closed_at) + 60) : PHP_INT_MAX;
+                $stale   = !$reg->closed_at && ($cpTs - $openTs > 18 * 3600);
+                if (!$stale && $cpTs >= $open && $cpTs <= $close) {
+                    return $reg->user_name;
+                }
+            }
+            return null;
+        };
 
         $toCents = function ($x) { return (int) round(((float) $x) * 100); };
         $claimedTxns = [];
@@ -8255,28 +8277,28 @@ class ReportController extends Controller
             }
             if ($bestId !== null) {
                 $claimedTxns[$bestId] = true;
+                $matchedCashier = '';
                 foreach ($txns as $t) {
-                    if ($t->id === $bestId && $t->cashier_name !== '') {
-                        $r->employee_name = $t->cashier_name;
-                        break;
-                    }
+                    if ($t->id === $bestId) { $matchedCashier = $t->cashier_name; break; }
                 }
-                continue;
+                $matchedFirst = strtolower(preg_split('/\s+/', trim($matchedCashier))[0] ?? '');
+                if ($matchedCashier !== '' && !isset($adminSet[$matchedFirst])) {
+                    $r->employee_name = $matchedCashier;
+                    continue;
+                }
+                // Matched ERP txn was rung by an admin (Jon) — fall through
+                // to shift-window attribution so the swipe credits to the
+                // actual cashier on shift, not the owner.
             }
 
             // Fallback: shift-window attribution for swipes that don't
-            // have a matching ERP sale (online charges, voids, weird
-            // rounding). Only override pin-less rows here so a Clover-
-            // pinned swipe with no ERP match still keeps Clover's pin.
+            // have a matching ERP sale OR matched to an admin-rung sale.
+            // Only override pin-less rows here so a Clover-pinned swipe
+            // with no ERP match still keeps Clover's pin.
             if ($r->employee_name !== '') continue;
-            foreach ($registers as $reg) {
-                if ((int) ($reg->location_id ?? 0) !== (int) ($r->location_id ?? 0)) continue;
-                $open  = strtotime((string) $reg->opened_at) - 60;
-                $close = $reg->closed_at ? (strtotime((string) $reg->closed_at) + 60) : PHP_INT_MAX;
-                if ($cpTs >= $open && $cpTs <= $close && $reg->user_name !== '') {
-                    $r->employee_name = $reg->user_name;
-                    break;
-                }
+            $sw = $findShiftCashier($r->ts, $r->location_id);
+            if ($sw) {
+                $r->employee_name = $sw;
             }
         }
 
@@ -8334,16 +8356,38 @@ class ReportController extends Controller
             $buckets[$day][$locKey]['employees'][$empKey]['erp_total'] += (float) $r->erp_total;
             $buckets[$day][$locKey]['employees'][$empKey]['erp_count'] += (int) $r->erp_count;
         }
-        foreach ($totalRows as $r) {
-            $day = $r->day;
-            $locKey = $r->location_id ?: 0;
-            $empKey = $firstName($r->employee_name);
-            if (!isset($buckets[$day][$locKey]['employees'][$empKey])) {
-                $buckets[$day][$locKey]['employees'][$empKey] = ['display_name' => ucfirst($empKey)] + $emptyEmployee;
+        // total_sales aggregation runs over the raw $txns rather than the
+        // pre-aggregated $totalRows so we can re-attribute admin-rung
+        // sales to the on-shift cashier (Sarah 2026-05-05: "Jon rings up
+        // people sometimes, those sales should attribute to the cashier
+        // assigned"). Admin-rung sales with no on-shift non-admin cashier
+        // at the moment fall through and get dropped — the staff list
+        // shouldn't include "owner did one sale" cards.
+        $userIdByFirstName = [];
+        foreach ($txns as $t) {
+            $day = substr((string) $t->transaction_date, 0, 10);
+            if ($day < $start || $day > $end) continue; // matching pool only
+            $rangBy = $t->cashier_name;
+            $rangFn = $firstName($rangBy);
+            if (isset($adminSet[$rangFn])) {
+                $reassigned = $findShiftCashier($t->transaction_date, $t->location_id);
+                if ($reassigned === null) continue;
+                $rangBy = $reassigned;
+                $rangFn = $firstName($rangBy);
+            }
+            $locKey = $t->location_id ?: 0;
+            if (!isset($buckets[$day][$locKey]['employees'][$rangFn])) {
+                $buckets[$day][$locKey]['employees'][$rangFn] = ['display_name' => ucfirst($rangFn)] + $emptyEmployee;
                 $buckets[$day][$locKey]['location_name'] = $buckets[$day][$locKey]['location_name'] ?? '(no location)';
             }
-            $buckets[$day][$locKey]['employees'][$empKey]['total_sales'] += (float) $r->total_sales;
-            $buckets[$day][$locKey]['employees'][$empKey]['txn_count']   += (int) $r->txn_count;
+            $buckets[$day][$locKey]['employees'][$rangFn]['total_sales'] += (float) $t->final_total;
+            $buckets[$day][$locKey]['employees'][$rangFn]['txn_count']   += 1;
+            // Capture the first non-admin user_id we see for each first
+            // name. Used by the "View {cashier}'s sales" deep link so
+            // the recent-sells feed opens already filtered to that user.
+            if (!isset($userIdByFirstName[$rangFn]) && $t->cashier_user_id && !isset($adminSet[$firstName($t->cashier_name)])) {
+                $userIdByFirstName[$rangFn] = (int) $t->cashier_user_id;
+            }
         }
         foreach ($cloverRows as $r) {
             $day = $r->day;
@@ -8398,31 +8442,12 @@ class ReportController extends Controller
             }
         }
 
-        // Filter out admins/owners — Sarah 2026-05-05: "Jonathan is the
-        // owner, not a cashier. What does his card mean?". Owners
-        // occasionally ring a sale or open a register for admin work but
-        // they don't run a cashier shift, so reconciliation cards for
-        // them are meaningless and crowd the page. We pull the set of
-        // admin first-names from the Spatie permissions table and drop
-        // matching keys; first-name match is fine because the rest of the
-        // pipeline already keys on first name and a duplicate-first-name
-        // collision with a real cashier is extremely unlikely on a small
-        // staff.
-        $adminFirstNames = \DB::table('model_has_permissions as mhp')
-            ->join('permissions as p', 'mhp.permission_id', '=', 'p.id')
-            ->join('users as u', 'mhp.model_id', '=', 'u.id')
-            ->where('mhp.model_type', 'App\\User')
-            ->where('p.name', 'Admin#' . $business_id)
-            ->pluck('u.first_name', 'u.id')
-            ->map(function ($n) {
-                $n = trim((string) $n);
-                if ($n === '') return null;
-                $parts = preg_split('/\s+/', $n);
-                return strtolower($parts[0] ?? '');
-            })
-            ->filter()->unique()->values()->all();
-        if (!empty($adminFirstNames)) {
-            $adminSet = array_flip($adminFirstNames);
+        // Drop admin buckets — admin-rung sales were re-attributed to the
+        // on-shift cashier above, so any admin first-name still in the
+        // bucket got there via Clover-side attribution (a swipe whose
+        // employee_name on Clover happened to be an admin) and isn't a
+        // real cashier card.
+        if (!empty($adminSet)) {
             foreach ($buckets as $day => $locs2) {
                 foreach ($locs2 as $locKey => $loc2) {
                     foreach (array_keys($loc2['employees'] ?? []) as $k) {
@@ -8433,6 +8458,44 @@ class ReportController extends Controller
                 }
             }
         }
+
+        // Drop "ghost" cashier buckets — Sarah 2026-05-05: "when I go back
+        // to previous day and back to today all new cashiers get added to
+        // my screen from yesterday." Cause: a register opened yesterday
+        // and never closed will look "open" today, and shift-window
+        // attribution credits today's pin-less swipes to that yesterday
+        // cashier. They show up here without a real shift today (no float
+        // opened, no sales rung) so the card reads as $0/$0. We drop any
+        // bucket that has no real activity today.
+        foreach ($buckets as $day => $locs2) {
+            foreach ($locs2 as $locKey => $loc2) {
+                foreach (array_keys($loc2['employees'] ?? []) as $k) {
+                    $e = $loc2['employees'][$k];
+                    $hasFloat   = !is_null($e['opening_cash']) && (float) $e['opening_cash'] > 0;
+                    $rangSales  = ((float) ($e['total_sales']  ?? 0)) > 0;
+                    $hasCounted = !is_null($e['reported_ending_cash']) && (float) $e['reported_ending_cash'] > 0;
+                    if (!$hasFloat && !$rangSales && !$hasCounted) {
+                        unset($buckets[$day][$locKey]['employees'][$k]);
+                    }
+                }
+            }
+        }
+
+        // Attach user_id to surviving buckets so the blade can deep-link
+        // "View {cashier}'s sales" to the recent-feed page filtered to
+        // that user + that day.
+        foreach ($buckets as $day => &$locs2) {
+            foreach ($locs2 as $locKey => &$loc2) {
+                foreach ($loc2['employees'] as $k => &$e) {
+                    if (!isset($e['user_id']) && isset($userIdByFirstName[$k])) {
+                        $e['user_id'] = $userIdByFirstName[$k];
+                    }
+                }
+                unset($e);
+            }
+            unset($loc2);
+        }
+        unset($locs2);
 
         // Derived numbers — total_sales is the only trustworthy "what they
         // sold" number, clover_total is what was paid by card. Implied cash
