@@ -6780,11 +6780,16 @@ class ReportController extends Controller
         // reconciliation flow wants one day at a time, with a prev/next
         // nav. A historical range is still available via the date-range
         // picker; when start != end we fall back to the multi-day render.
+        // Force single-day mode (Sarah 2026-05-05: this is a daily-cash
+        // reconciliation flow; multi-day rollups blur the picture). The
+        // prev/next/today nav handles moving between days. URL is still
+        // honored — a deep link with explicit start/end gets coerced to
+        // a single day rather than rejected.
         $start = $request->input('start_date') ?: \Carbon::today()->format('Y-m-d');
-        $end   = $request->input('end_date')   ?: \Carbon::today()->format('Y-m-d');
+        $end   = $start;
         $location_id = $request->input('location_id');
 
-        $is_single_day = ($start === $end);
+        $is_single_day = true;
         $prev_day = \Carbon::parse($start)->subDay()->format('Y-m-d');
         $next_day = \Carbon::parse($start)->addDay()->format('Y-m-d');
         $today_str = \Carbon::today()->format('Y-m-d');
@@ -8110,6 +8115,32 @@ class ReportController extends Controller
             ->groupBy(DB::raw('DATE(t.transaction_date)'), 't.location_id', 'bl.name', 'employee_name')
             ->get();
 
+        // Total ERP sales per cashier-day-location, ignoring payment method.
+        // Sarah 2026-05-05: cashiers ring every sale as 'cash' regardless of
+        // how the customer paid (the 'card' button opens a form they don't
+        // want), then re-tap the same amount on Clover. So the only
+        // trustworthy "what they sold" number is t.final_total summed per
+        // cashier — payment-method-filtered totals double-count or under-
+        // count depending on which side you trust. From this we derive
+        // implied cash = total_sales − clover_total.
+        $totalQ = \DB::table('transactions as t')
+            ->leftJoin('users as u', 't.created_by', '=', 'u.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereDate('t.transaction_date', '>=', $start)
+            ->whereDate('t.transaction_date', '<=', $end);
+        if (!empty($location_id)) {
+            $totalQ->where('t.location_id', $location_id);
+        }
+        $totalRows = $totalQ->selectRaw("DATE(t.transaction_date) as day,
+                t.location_id,
+                COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, 'Unknown') as employee_name,
+                COUNT(t.id) as txn_count,
+                COALESCE(SUM(t.final_total), 0) as total_sales")
+            ->groupBy(DB::raw('DATE(t.transaction_date)'), 't.location_id', 'employee_name')
+            ->get();
+
         $cloverQ = \DB::table('clover_payments as cp')
             ->leftJoin('business_locations as bl', 'cp.location_id', '=', 'bl.id')
             ->where('cp.business_id', $business_id)
@@ -8140,25 +8171,38 @@ class ReportController extends Controller
 
         // Bucket into [day][locKey][empKey] => running totals.
         $buckets = [];
+        $emptyEmployee = [
+            'display_name' => '',
+            'erp_total' => 0.0, 'erp_count' => 0,
+            'clover_total' => 0.0, 'clover_count' => 0,
+            'total_sales' => 0.0, 'txn_count' => 0,
+            'shift_start' => null, 'shift_end' => null, 'shift_status' => null,
+            'opening_cash' => null, 'cash_sales' => 0.0,
+            'cash_buys' => 0.0, 'collection_buys_all' => 0.0,
+            'expected_ending_cash' => null, 'reported_ending_cash' => null,
+            'cash_variance' => null, 'has_shift' => false,
+        ];
         foreach ($erpRows as $r) {
             $day = $r->day;
             $locKey = $r->location_id ?: 0;
             $empKey = $firstName($r->employee_name);
             $buckets[$day][$locKey]['location_name'] = $r->location_name ?: '(no location)';
             if (!isset($buckets[$day][$locKey]['employees'][$empKey])) {
-                $buckets[$day][$locKey]['employees'][$empKey] = [
-                    'display_name' => ucfirst($empKey),
-                    'erp_total' => 0.0, 'erp_count' => 0,
-                    'clover_total' => 0.0, 'clover_count' => 0,
-                    'shift_start' => null, 'shift_end' => null, 'shift_status' => null,
-                    'opening_cash' => null, 'cash_sales' => 0.0,
-                    'cash_buys' => 0.0, 'collection_buys_all' => 0.0,
-                    'expected_ending_cash' => null, 'reported_ending_cash' => null,
-                    'cash_variance' => null, 'has_shift' => false,
-                ];
+                $buckets[$day][$locKey]['employees'][$empKey] = ['display_name' => ucfirst($empKey)] + $emptyEmployee;
             }
             $buckets[$day][$locKey]['employees'][$empKey]['erp_total'] += (float) $r->erp_total;
             $buckets[$day][$locKey]['employees'][$empKey]['erp_count'] += (int) $r->erp_count;
+        }
+        foreach ($totalRows as $r) {
+            $day = $r->day;
+            $locKey = $r->location_id ?: 0;
+            $empKey = $firstName($r->employee_name);
+            if (!isset($buckets[$day][$locKey]['employees'][$empKey])) {
+                $buckets[$day][$locKey]['employees'][$empKey] = ['display_name' => ucfirst($empKey)] + $emptyEmployee;
+                $buckets[$day][$locKey]['location_name'] = $buckets[$day][$locKey]['location_name'] ?? '(no location)';
+            }
+            $buckets[$day][$locKey]['employees'][$empKey]['total_sales'] += (float) $r->total_sales;
+            $buckets[$day][$locKey]['employees'][$empKey]['txn_count']   += (int) $r->txn_count;
         }
         foreach ($cloverRows as $r) {
             $day = $r->day;
@@ -8167,16 +8211,7 @@ class ReportController extends Controller
             $buckets[$day][$locKey]['location_name'] = $buckets[$day][$locKey]['location_name']
                 ?? ($r->location_name ?: '(unlinked Clover MID)');
             if (!isset($buckets[$day][$locKey]['employees'][$empKey])) {
-                $buckets[$day][$locKey]['employees'][$empKey] = [
-                    'display_name' => ucfirst($empKey),
-                    'erp_total' => 0.0, 'erp_count' => 0,
-                    'clover_total' => 0.0, 'clover_count' => 0,
-                    'shift_start' => null, 'shift_end' => null, 'shift_status' => null,
-                    'opening_cash' => null, 'cash_sales' => 0.0,
-                    'cash_buys' => 0.0, 'collection_buys_all' => 0.0,
-                    'expected_ending_cash' => null, 'reported_ending_cash' => null,
-                    'cash_variance' => null, 'has_shift' => false,
-                ];
+                $buckets[$day][$locKey]['employees'][$empKey] = ['display_name' => ucfirst($empKey)] + $emptyEmployee;
             }
             $buckets[$day][$locKey]['employees'][$empKey]['clover_total'] += (float) $r->clover_total;
             $buckets[$day][$locKey]['employees'][$empKey]['clover_count'] += (int) $r->clover_count;
@@ -8193,16 +8228,7 @@ class ReportController extends Controller
             foreach ($locs as $locKey => $emps) {
                 foreach ($emps as $empKey => $shift) {
                     if (!isset($buckets[$day][$locKey]['employees'][$empKey])) {
-                        $buckets[$day][$locKey]['employees'][$empKey] = [
-                            'display_name' => ucfirst($empKey),
-                            'erp_total' => 0.0, 'erp_count' => 0,
-                            'clover_total' => 0.0, 'clover_count' => 0,
-                            'shift_start' => null, 'shift_end' => null, 'shift_status' => null,
-                            'opening_cash' => null, 'cash_sales' => 0.0,
-                            'cash_buys' => 0.0, 'collection_buys_all' => 0.0,
-                            'expected_ending_cash' => null, 'reported_ending_cash' => null,
-                            'cash_variance' => null, 'has_shift' => false,
-                        ];
+                        $buckets[$day][$locKey]['employees'][$empKey] = ['display_name' => ucfirst($empKey)] + $emptyEmployee;
                         $buckets[$day][$locKey]['location_name'] = $buckets[$day][$locKey]['location_name']
                             ?? '(no location)';
                     }
@@ -8212,23 +8238,51 @@ class ReportController extends Controller
                     $e['shift_end'] = $shift['shift_end'];
                     $e['shift_status'] = $shift['shift_status'];
                     $e['opening_cash'] = (float) $shift['opening_cash'];
-                    $e['cash_sales'] = (float) $shift['cash_sales'];
                     $e['cash_buys'] = (float) $shift['cash_buys'];
                     $e['collection_buys_all'] = (float) $shift['collection_buys_all'];
-                    $e['expected_ending_cash'] = (float) $shift['expected_ending_cash'];
                     $e['reported_ending_cash'] = (float) $shift['reported_ending_cash'];
-                    // Variance only meaningful for CLOSED shifts — open shifts
-                    // haven't had a reported count yet so the diff is noise.
-                    if ($shift['shift_status'] === 'closed') {
-                        $e['cash_variance'] = round(
-                            (float) $shift['reported_ending_cash'] - (float) $shift['expected_ending_cash'],
-                            2
-                        );
-                    }
+                    // cash_sales is intentionally derived from total_sales −
+                    // clover_total below, NOT from crt.cash_sales: cashiers
+                    // ring every sale as 'cash' regardless of how the
+                    // customer paid, so crt.cash_sales overstates real cash
+                    // by the Clover-paid portion. Same reason expected_
+                    // ending_cash is recomputed downstream.
                     unset($e);
                 }
             }
         }
+
+        // Derived numbers — total_sales is the only trustworthy "what they
+        // sold" number, clover_total is what was paid by card. Implied cash
+        // = total_sales − clover_total, and the drawer should hold opening
+        // + that cash − cash buys at close. Variance only meaningful when
+        // the shift is closed (open shifts have no reported count yet).
+        foreach ($buckets as $day => &$locs) {
+            foreach ($locs as $locKey => &$loc) {
+                if (!isset($loc['employees'])) continue;
+                foreach ($loc['employees'] as &$e) {
+                    $impliedCash = max(0.0, round(((float) $e['total_sales']) - ((float) $e['clover_total']), 2));
+                    $e['cash_sales'] = $impliedCash;
+                    if ($e['has_shift'] && !is_null($e['opening_cash'])) {
+                        $e['expected_ending_cash'] = round(
+                            ((float) $e['opening_cash']) + $impliedCash - ((float) $e['cash_buys']),
+                            2
+                        );
+                        if ($e['shift_status'] === 'closed' && !is_null($e['reported_ending_cash'])) {
+                            $e['cash_variance'] = round(
+                                ((float) $e['reported_ending_cash']) - ((float) $e['expected_ending_cash']),
+                                2
+                            );
+                        } else {
+                            $e['cash_variance'] = null;
+                        }
+                    }
+                }
+                unset($e);
+            }
+            unset($loc);
+        }
+        unset($locs);
 
         // Finalize: compute differences, sort employees by abs-diff desc,
         // sort locations alphabetically, sort days most-recent first.
