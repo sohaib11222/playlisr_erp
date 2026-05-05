@@ -308,11 +308,35 @@
                                 </div>
 
                                 {{-- CASH DRAWER — opening + cash collected − buys = expected vs counted --}}
+                                @php
+                                    $cashRefunds      = (float) ($e['cash_refunds']       ?? 0);
+                                    $cashExpenses     = (float) ($e['cash_expenses']      ?? 0);
+                                    $cashTransfersOut = (float) ($e['cash_transfers_out'] ?? 0);
+                                    $cashTransfersIn  = (float) ($e['cash_transfers_in']  ?? 0);
+                                    $cashOtherNet     = (float) ($e['cash_other_net']     ?? 0);
+                                @endphp
                                 <div class="cc-section">
                                     <div class="cc-sec-h">Cash drawer <span class="cc-flag {{ $cashCls }}">{{ $cashLabel }}</span></div>
                                     <div class="cc-line"><span class="cc-label minor">Opening cash</span><span class="cc-val {{ is_null($opening) ? 'muted' : '' }}">{{ is_null($opening) ? '—' : '$' . number_format($opening, 2) }}</span></div>
                                     <div class="cc-line"><span class="cc-label minor">+ Cash collected</span><span class="cc-val">${{ number_format($impliedCash, 2) }}</span></div>
-                                    <div class="cc-line"><span class="cc-label minor">− Cash buys</span><span class="cc-val {{ $hasShift ? '' : 'muted' }}">{{ $hasShift ? '$' . number_format($cashBuys, 2) : '—' }}</span></div>
+                                    @if($cashBuys > 0 || $hasShift)
+                                        <div class="cc-line"><span class="cc-label minor">− Collection buys (cash)</span><span class="cc-val {{ $hasShift ? '' : 'muted' }}">{{ $hasShift ? '$' . number_format($cashBuys, 2) : '—' }}</span></div>
+                                    @endif
+                                    @if($cashRefunds > 0)
+                                        <div class="cc-line"><span class="cc-label minor">− Cash refunds</span><span class="cc-val">$ {{ number_format($cashRefunds, 2) }}</span></div>
+                                    @endif
+                                    @if($cashExpenses > 0)
+                                        <div class="cc-line"><span class="cc-label minor">− Expenses</span><span class="cc-val">$ {{ number_format($cashExpenses, 2) }}</span></div>
+                                    @endif
+                                    @if($cashTransfersOut > 0)
+                                        <div class="cc-line"><span class="cc-label minor">− Transferred out</span><span class="cc-val">$ {{ number_format($cashTransfersOut, 2) }}</span></div>
+                                    @endif
+                                    @if($cashTransfersIn > 0)
+                                        <div class="cc-line"><span class="cc-label minor">+ Transferred in</span><span class="cc-val">$ {{ number_format($cashTransfersIn, 2) }}</span></div>
+                                    @endif
+                                    @if(abs($cashOtherNet) >= 0.01)
+                                        <div class="cc-line"><span class="cc-label minor">{{ $cashOtherNet >= 0 ? '+' : '−' }} Other movements</span><span class="cc-val">${{ number_format(abs($cashOtherNet), 2) }}</span></div>
+                                    @endif
                                     <div class="cc-line sum"><span class="cc-label">Expected in drawer</span><span class="cc-val {{ is_null($expected) ? 'muted' : '' }}">{{ is_null($expected) ? '—' : '$' . number_format($expected, 2) }}</span></div>
                                     <div class="cc-line"><span class="cc-label">Counted at close</span><span class="cc-val {{ is_null($reported) ? 'muted' : '' }}">{{ is_null($reported) ? '—' : '$' . number_format($reported, 2) }}</span></div>
                                     <div class="cc-line sum"><span class="cc-label">Variance</span><span class="cc-val {{ $cashCls }}">{{ is_null($cashVar) ? '—' : (($cashVar >= 0 ? '+' : '') . '$' . number_format($cashVar, 2)) }}</span></div>
@@ -1217,7 +1241,7 @@
          walk-in / online-checkout from actual data problems (deleted
          users, broken imports). Collapsed by default so the panel stays
          small unless she cares. --}}
-    @if(!empty($unknown_rows) && (count($unknown_rows['erp'] ?? []) > 0 || count($unknown_rows['clover'] ?? []) > 0 || count($unknown_rows['clover_fields'] ?? []) > 0))
+    @if(false && !empty($unknown_rows) && (count($unknown_rows['erp'] ?? []) > 0 || count($unknown_rows['clover'] ?? []) > 0 || count($unknown_rows['clover_fields'] ?? []) > 0))
         @component('components.widget', ['class' => 'box-warning', 'title' => 'Why Unknown / Manual Clover Fields? &mdash; ' . (count($unknown_rows['erp']) + count($unknown_rows['clover']) + count($unknown_rows['clover_fields'] ?? [])) . ' row(s)'])
             <p class="help-block" style="margin-top:-6px;">
                 Each row below is a payment that bucketed as <em>Unknown</em> in the per-cashier breakdown.

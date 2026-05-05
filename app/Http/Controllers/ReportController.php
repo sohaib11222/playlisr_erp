@@ -8037,6 +8037,13 @@ class ReportController extends Controller
                 SUM(CASE WHEN crt.transaction_type='purchase' AND crt.type='debit' THEN crt.amount ELSE 0 END) as collection_buys_all,
                 SUM(CASE WHEN crt.pay_method='cash' AND crt.transaction_type='purchase' AND crt.type='debit' THEN crt.amount ELSE 0 END) as cash_buys,
                 SUM(CASE WHEN crt.pay_method='cash' AND crt.transaction_type='refund' AND crt.type='debit' THEN crt.amount ELSE 0 END) as cash_refunds,
+                SUM(CASE WHEN crt.pay_method='cash' AND crt.transaction_type='expense' AND crt.type='debit' THEN crt.amount ELSE 0 END) as cash_expenses,
+                SUM(CASE WHEN crt.pay_method='cash' AND crt.transaction_type='transfer' AND crt.type='debit' THEN crt.amount ELSE 0 END) as cash_transfers_out,
+                SUM(CASE WHEN crt.pay_method='cash' AND crt.transaction_type='transfer' AND crt.type='credit' THEN crt.amount ELSE 0 END) as cash_transfers_in,
+                SUM(CASE WHEN crt.pay_method='cash'
+                         AND crt.transaction_type NOT IN ('initial','sell','purchase','refund','expense','transfer')
+                    THEN CASE WHEN crt.type='credit' THEN crt.amount ELSE -crt.amount END
+                    ELSE 0 END) as cash_other_net,
                 SUM(CASE WHEN crt.pay_method='cash' THEN CASE WHEN crt.type='credit' THEN crt.amount ELSE -crt.amount END ELSE 0 END) as cash_net
             ")
             ->groupBy('cr.id', DB::raw('DATE(cr.created_at)'), 'cr.location_id',
@@ -8061,6 +8068,9 @@ class ReportController extends Controller
                     'shift_status' => 'closed',
                     'opening_cash' => 0.0, 'cash_sales' => 0.0,
                     'cash_buys' => 0.0, 'cash_refunds' => 0.0,
+                    'cash_expenses' => 0.0,
+                    'cash_transfers_out' => 0.0, 'cash_transfers_in' => 0.0,
+                    'cash_other_net' => 0.0,
                     'collection_buys_all' => 0.0,
                     'expected_ending_cash' => 0.0, 'reported_ending_cash' => 0.0,
                 ];
@@ -8073,6 +8083,10 @@ class ReportController extends Controller
             $row['cash_sales'] += (float) $s->cash_sales;
             $row['cash_buys'] += (float) $s->cash_buys;
             $row['cash_refunds'] += (float) $s->cash_refunds;
+            $row['cash_expenses'] += (float) $s->cash_expenses;
+            $row['cash_transfers_out'] += (float) $s->cash_transfers_out;
+            $row['cash_transfers_in'] += (float) $s->cash_transfers_in;
+            $row['cash_other_net'] += (float) $s->cash_other_net;
             $row['collection_buys_all'] += (float) $s->collection_buys_all;
             $row['expected_ending_cash'] += (float) $s->cash_net;
             $row['reported_ending_cash'] += (float) $s->reported_ending_cash;
@@ -8141,7 +8155,15 @@ class ReportController extends Controller
             ->groupBy(DB::raw('DATE(t.transaction_date)'), 't.location_id', 'employee_name')
             ->get();
 
-        $cloverQ = \DB::table('clover_payments as cp')
+        // Pull RAW Clover payments (one row each) so we can do shift-window
+        // attribution before aggregating. Sarah 2026-05-05: at Nivessa most
+        // Clover swipes don't carry an employee pin, so a naive GROUP BY
+        // employee_name dumps every swipe into "Unknown" and the per-cashier
+        // breakdown shows $0 paid-by-card for everyone. We fix that here by
+        // looking up which cashier's register was open at (paid_at, location)
+        // for each pin-less swipe and attributing it to them — same logic
+        // already used in cloverEodXlsxLayout.
+        $cpQ = \DB::table('clover_payments as cp')
             ->leftJoin('business_locations as bl', 'cp.location_id', '=', 'bl.id')
             ->where('cp.business_id', $business_id)
             ->where(function ($q) {
@@ -8150,17 +8172,77 @@ class ReportController extends Controller
             ->whereDate('cp.paid_on', '>=', $start)
             ->whereDate('cp.paid_on', '<=', $end);
         if (!empty($location_id)) {
-            $cloverQ->where(function ($q) use ($location_id) {
+            $cpQ->where(function ($q) use ($location_id) {
                 $q->where('cp.location_id', $location_id)->orWhereNull('cp.location_id');
             });
         }
-        $cloverRows = $cloverQ->selectRaw("DATE(cp.paid_on) as day,
+        $cpRaw = $cpQ->selectRaw("DATE(cp.paid_on) as day,
                 cp.location_id, bl.name as location_name,
-                COALESCE(NULLIF(TRIM(cp.employee_name), ''), 'Unknown') as employee_name,
-                COUNT(*) as clover_count,
-                COALESCE(SUM(cp.amount), 0) as clover_total")
-            ->groupBy(DB::raw('DATE(cp.paid_on)'), 'cp.location_id', 'bl.name', 'employee_name')
+                cp.paid_at as ts,
+                cp.amount as amount,
+                COALESCE(NULLIF(TRIM(cp.employee_name), ''), '') as employee_name")
+            ->orderBy('cp.paid_at')
             ->get();
+
+        // Pull cash_registers (with a 1-day buffer on each side) so we can
+        // resolve "whose register was open at the moment of this swipe?".
+        $regQ = \DB::table('cash_registers as cr')
+            ->leftJoin('users as u', 'cr.user_id', '=', 'u.id')
+            ->where('cr.business_id', $business_id)
+            ->whereDate('cr.created_at', '>=', \Carbon::parse($start)->subDay())
+            ->whereDate('cr.created_at', '<=', \Carbon::parse($end)->addDay());
+        if (!empty($location_id)) {
+            $regQ->where('cr.location_id', $location_id);
+        }
+        $registers = $regQ->selectRaw("
+                cr.location_id,
+                cr.created_at as opened_at,
+                cr.closed_at,
+                COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, '') as user_name
+            ")
+            ->orderBy('cr.created_at')
+            ->get();
+
+        // Attribute pin-less swipes to whoever's register was open at that
+        // (time, location). Small ±5min slack on each side so a swipe that
+        // happens just before "open" or just after "close" still attributes
+        // (cashiers commonly close the drawer while finishing a final sale).
+        foreach ($cpRaw as $r) {
+            if ($r->employee_name !== '') continue;
+            $cpTs = strtotime((string) $r->ts);
+            foreach ($registers as $reg) {
+                if ((int) ($reg->location_id ?? 0) !== (int) ($r->location_id ?? 0)) continue;
+                $open  = strtotime((string) $reg->opened_at) - 300;
+                $close = $reg->closed_at ? (strtotime((string) $reg->closed_at) + 300) : PHP_INT_MAX;
+                if ($cpTs >= $open && $cpTs <= $close && $reg->user_name !== '') {
+                    $r->employee_name = $reg->user_name;
+                    break;
+                }
+            }
+        }
+
+        // Aggregate post-attribution. Pin-less swipes that still have no
+        // matching open shift fall through to 'Unknown' and get skipped by
+        // the card render — usually means a register was closed when a
+        // card-on-file / online charge ran.
+        $cloverAgg = [];
+        foreach ($cpRaw as $r) {
+            $emp = $r->employee_name !== '' ? $r->employee_name : 'Unknown';
+            $key = $r->day . '|' . ($r->location_id ?: 0) . '|' . strtolower($emp);
+            if (!isset($cloverAgg[$key])) {
+                $cloverAgg[$key] = (object) [
+                    'day' => $r->day,
+                    'location_id' => $r->location_id,
+                    'location_name' => $r->location_name,
+                    'employee_name' => $emp,
+                    'clover_count' => 0,
+                    'clover_total' => 0.0,
+                ];
+            }
+            $cloverAgg[$key]->clover_count += 1;
+            $cloverAgg[$key]->clover_total += (float) $r->amount;
+        }
+        $cloverRows = collect(array_values($cloverAgg));
 
         $firstName = function ($full) {
             $full = trim((string) $full);
@@ -8239,6 +8321,11 @@ class ReportController extends Controller
                     $e['shift_status'] = $shift['shift_status'];
                     $e['opening_cash'] = (float) $shift['opening_cash'];
                     $e['cash_buys'] = (float) $shift['cash_buys'];
+                    $e['cash_refunds'] = (float) ($shift['cash_refunds'] ?? 0);
+                    $e['cash_expenses'] = (float) ($shift['cash_expenses'] ?? 0);
+                    $e['cash_transfers_out'] = (float) ($shift['cash_transfers_out'] ?? 0);
+                    $e['cash_transfers_in']  = (float) ($shift['cash_transfers_in'] ?? 0);
+                    $e['cash_other_net'] = (float) ($shift['cash_other_net'] ?? 0);
                     $e['collection_buys_all'] = (float) $shift['collection_buys_all'];
                     $e['reported_ending_cash'] = (float) $shift['reported_ending_cash'];
                     // cash_sales is intentionally derived from total_sales −
@@ -8264,8 +8351,14 @@ class ReportController extends Controller
                     $impliedCash = max(0.0, round(((float) $e['total_sales']) - ((float) $e['clover_total']), 2));
                     $e['cash_sales'] = $impliedCash;
                     if ($e['has_shift'] && !is_null($e['opening_cash'])) {
+                        $cashOut = ((float) ($e['cash_buys']           ?? 0))
+                                 + ((float) ($e['cash_refunds']        ?? 0))
+                                 + ((float) ($e['cash_expenses']       ?? 0))
+                                 + ((float) ($e['cash_transfers_out']  ?? 0));
+                        $cashIn  = ((float) ($e['cash_transfers_in']   ?? 0))
+                                 + ((float) ($e['cash_other_net']      ?? 0));
                         $e['expected_ending_cash'] = round(
-                            ((float) $e['opening_cash']) + $impliedCash - ((float) $e['cash_buys']),
+                            ((float) $e['opening_cash']) + $impliedCash - $cashOut + $cashIn,
                             2
                         );
                         if ($e['shift_status'] === 'closed' && !is_null($e['reported_ending_cash'])) {
