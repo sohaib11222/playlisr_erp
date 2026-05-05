@@ -127,6 +127,192 @@
         </div>
     @endif
 
+    {{-- Per-cashier daily reconciliation — the primary view (Sarah,
+         2026-05-05). One card per (cashier, day, location). Three plain
+         sections answer her three questions:
+           · WHAT THEY SOLD — cash + card, with the totals broken out
+           · CARD CHECK — Clover settled vs ERP card sales for that
+             cashier (the theft signal: a card swiped on Clover but
+             never rung into the POS = pocketed)
+           · CASH DRAWER — opening + cash sales − cash buys = expected,
+             vs what the cashier counted at close (the wrong-change /
+             skim signal)
+         Each card has its own ✓ Reconciled toggle + notes so she can
+         sign each cashier off independently. --}}
+    @if(!empty($employee_breakdown_by_day))
+        <style>
+            .cc-day-block { margin-bottom: 22px; }
+            .cc-day-head { font-size:13px; color:#6b7280; font-weight:700; letter-spacing:.04em; text-transform:uppercase; margin:6px 0 10px; }
+            .cc-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap:14px; }
+            .cc-card { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:14px 16px; }
+            .cc-card.flag { border-color:#fecaca; background:#fff5f5; }
+            .cc-card.warn { border-color:#fde68a; background:#fffbeb; }
+            .cc-card.ok   { border-color:#bbf7d0; }
+            .cc-head { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid #e5e7eb; }
+            .cc-title { font-size:16px; font-weight:800; color:#111827; }
+            .cc-sub { font-size:11px; color:#6b7280; margin-top:2px; text-transform:uppercase; letter-spacing:.04em; }
+            .cc-section { margin:10px 0 6px; }
+            .cc-sec-h { font-size:10px; font-weight:800; color:#374151; text-transform:uppercase; letter-spacing:.06em; margin-bottom:4px; }
+            .cc-line { display:flex; justify-content:space-between; align-items:baseline; font-size:13px; padding:2px 0; font-variant-numeric: tabular-nums; }
+            .cc-line.sum { border-top:1px solid #d1d5db; padding-top:5px; margin-top:4px; font-weight:700; }
+            .cc-label { color:#374151; }
+            .cc-label.minor { color:#6b7280; font-size:12px; }
+            .cc-val { font-weight:600; color:#111827; }
+            .cc-val.muted { color:#9ca3af; font-weight:500; }
+            .cc-val.ok { color:#166534; }
+            .cc-val.warn { color:#b45309; }
+            .cc-val.bad  { color:#b91c1c; }
+            .cc-flag { display:inline-block; margin-left:6px; padding:1px 6px; border-radius:10px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
+            .cc-flag.ok { background:#dcfce7; color:#166534; }
+            .cc-flag.warn { background:#fef3c7; color:#92400e; }
+            .cc-flag.bad { background:#fee2e2; color:#991b1b; }
+            .cc-flag.muted { background:#f3f4f6; color:#6b7280; }
+            .cc-foot { margin-top:10px; padding-top:10px; border-top:1px solid #e5e7eb; }
+        </style>
+
+        @foreach($employee_breakdown_by_day as $dayBlock)
+            @php
+                $dayDate = \Carbon\Carbon::parse($dayBlock['day']);
+                $dayHeader = $dayDate->isToday() ? 'Today'
+                    : ($dayDate->isYesterday() ? 'Yesterday'
+                    : $dayDate->format('l, F j'));
+            @endphp
+            <div class="cc-day-block">
+                <div class="cc-day-head">{{ $dayHeader }} <span style="color:#9ca3af; font-weight:500; margin-left:6px;">{{ $dayDate->format('Y-m-d') }}</span></div>
+                <div class="cc-grid">
+                    @foreach($dayBlock['locations'] as $loc)
+                        @php
+                            $locNameRaw = $loc['location_name'];
+                            $isNoLoc = (strtolower($locNameRaw) === '(no location)' || stripos($locNameRaw, 'no location') !== false);
+                            $locNameDisplay = $isNoLoc ? 'No location' : $locNameRaw;
+                        @endphp
+                        @foreach($loc['employees'] as $e)
+                            @php
+                                $cashSales   = (float) ($e['cash_sales'] ?? 0);
+                                $cardErp     = (float) ($e['erp_total'] ?? 0);
+                                $cardClover  = (float) ($e['clover_total'] ?? 0);
+                                $cardDiff    = round($cardClover - $cardErp, 2);
+                                $totalSold   = round($cashSales + $cardErp, 2);
+
+                                $opening     = $e['opening_cash'];
+                                $cashBuys    = (float) ($e['cash_buys'] ?? 0);
+                                $expected    = $e['expected_ending_cash'];
+                                $reported    = $e['reported_ending_cash'];
+                                $cashVar     = $e['cash_variance']; // null until shift closes
+                                $hasShift    = !empty($e['has_shift']);
+                                $shiftStatus = $e['shift_status'] ?? null;
+
+                                // Card-check signal — usually the theft tell.
+                                $cardAbs = abs($cardDiff);
+                                if ($cardAbs < 1) { $cardCls = 'ok'; $cardLabel = 'Match'; }
+                                elseif ($cardAbs < 10) { $cardCls = 'warn'; $cardLabel = 'Minor'; }
+                                else { $cardCls = 'bad'; $cardLabel = 'Mismatch'; }
+
+                                // Cash-check signal — drawer short / over.
+                                if ($cashVar === null) {
+                                    $cashCls = 'muted'; $cashLabel = $hasShift && $shiftStatus === 'open' ? 'Shift open' : 'No drawer count';
+                                } else {
+                                    $cashAbs = abs($cashVar);
+                                    if ($cashAbs < 1) { $cashCls = 'ok'; $cashLabel = 'Even'; }
+                                    elseif ($cashAbs < 5) { $cashCls = 'warn'; $cashLabel = $cashVar < 0 ? 'Short' : 'Over'; }
+                                    else { $cashCls = 'bad'; $cashLabel = $cashVar < 0 ? 'Short' : 'Over'; }
+                                }
+
+                                $cardKind = ($cardCls === 'bad' || $cashCls === 'bad') ? 'flag'
+                                          : (($cardCls === 'warn' || $cashCls === 'warn') ? 'warn' : 'ok');
+
+                                // Skip the synthetic "Unknown" cashier bucket — those rows
+                                // are walk-in / online / no-pin sales and don't have a
+                                // physical drawer to reconcile.
+                                $empKey = strtolower(trim($e['display_name']));
+                                if ($empKey === 'unknown' || $empKey === 'unattributed') continue;
+
+                                // Reconciliation lookup — per-cashier key.
+                                $rKey = $dayBlock['day'] . '|' . ($loc['location_id'] ?: 0) . '|' . $empKey;
+                                $rec = $reconciliations[$rKey] ?? null;
+                                $isReconciled = (bool) optional($rec)->reconciled_at;
+                                $recNotes = $rec ? (string) $rec->notes : '';
+                                $recStampLabel = null;
+                                if ($rec && $rec->reconciled_at) {
+                                    $u = $rec->user;
+                                    $who = $u ? (trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: $u->username) : null;
+                                    $recStampLabel = 'Reconciled' . ($who ? ' by ' . $who : '') . ' · '
+                                        . \Carbon\Carbon::parse($rec->reconciled_at)->format('M j, g:i a');
+                                }
+
+                                $fmt = function ($t) {
+                                    if (!$t) return null;
+                                    try { return \Carbon\Carbon::parse($t)->setTimezone(config('app.timezone'))->format('g:i a'); }
+                                    catch (\Exception $ex) { return null; }
+                                };
+                                $shiftLabel = null;
+                                if (!empty($e['shift_start'])) {
+                                    $a = $fmt($e['shift_start']);
+                                    $b = $shiftStatus === 'open' ? 'open' : $fmt($e['shift_end']);
+                                    if ($a) $shiftLabel = $a . ' → ' . ($b ?: '—');
+                                }
+                            @endphp
+                            <div class="cc-card {{ $cardKind }} eod-loc-card"
+                                 data-day="{{ $dayBlock['day'] }}"
+                                 data-location-id="{{ $loc['location_id'] ?: 0 }}"
+                                 data-employee-key="{{ $empKey }}">
+                                <div class="cc-head">
+                                    <div style="flex:1; min-width:0;">
+                                        <div class="cc-title">{{ $e['display_name'] }}</div>
+                                        <div class="cc-sub">{{ $locNameDisplay }}@if($shiftLabel) · {{ $shiftLabel }}@endif</div>
+                                    </div>
+                                    <label class="eod-recon-toggle" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; cursor:pointer; color:{{ $isReconciled ? '#166534' : '#374151' }}; white-space:nowrap;">
+                                        <input type="checkbox" class="eod-recon-checkbox" {{ $isReconciled ? 'checked' : '' }}>
+                                        <span class="eod-recon-label">{{ $isReconciled ? '✓ Reconciled' : 'Mark reconciled' }}</span>
+                                    </label>
+                                </div>
+
+                                {{-- WHAT THEY SOLD --}}
+                                <div class="cc-section">
+                                    <div class="cc-sec-h">What they sold</div>
+                                    <div class="cc-line"><span class="cc-label">Cash sales</span><span class="cc-val {{ $hasShift ? '' : 'muted' }}">{{ $hasShift ? '$' . number_format($cashSales, 2) : '—' }}</span></div>
+                                    <div class="cc-line"><span class="cc-label">Card sales (ERP)</span><span class="cc-val">${{ number_format($cardErp, 2) }}</span></div>
+                                    <div class="cc-line sum"><span class="cc-label">Total sales</span><span class="cc-val">${{ number_format($totalSold, 2) }}</span></div>
+                                </div>
+
+                                {{-- CARD CHECK --}}
+                                <div class="cc-section">
+                                    <div class="cc-sec-h">Card check · Clover ↔ ERP <span class="cc-flag {{ $cardCls }}">{{ $cardLabel }}</span></div>
+                                    <div class="cc-line"><span class="cc-label minor">Clover settled</span><span class="cc-val">${{ number_format($cardClover, 2) }}</span></div>
+                                    <div class="cc-line"><span class="cc-label minor">ERP card sales</span><span class="cc-val">${{ number_format($cardErp, 2) }}</span></div>
+                                    <div class="cc-line sum"><span class="cc-label">Difference</span><span class="cc-val {{ $cardCls }}">{{ $cardDiff >= 0 ? '+' : '' }}${{ number_format($cardDiff, 2) }}</span></div>
+                                </div>
+
+                                {{-- CASH DRAWER --}}
+                                <div class="cc-section">
+                                    <div class="cc-sec-h">Cash drawer <span class="cc-flag {{ $cashCls }}">{{ $cashLabel }}</span></div>
+                                    <div class="cc-line"><span class="cc-label minor">Opening cash</span><span class="cc-val {{ is_null($opening) ? 'muted' : '' }}">{{ is_null($opening) ? '—' : '$' . number_format($opening, 2) }}</span></div>
+                                    <div class="cc-line"><span class="cc-label minor">+ Cash sales</span><span class="cc-val {{ $hasShift ? '' : 'muted' }}">{{ $hasShift ? '$' . number_format($cashSales, 2) : '—' }}</span></div>
+                                    <div class="cc-line"><span class="cc-label minor">− Cash buys</span><span class="cc-val {{ $hasShift ? '' : 'muted' }}">{{ $hasShift ? '$' . number_format($cashBuys, 2) : '—' }}</span></div>
+                                    <div class="cc-line sum"><span class="cc-label">Expected at close</span><span class="cc-val {{ is_null($expected) ? 'muted' : '' }}">{{ is_null($expected) ? '—' : '$' . number_format($expected, 2) }}</span></div>
+                                    <div class="cc-line"><span class="cc-label">Counted</span><span class="cc-val {{ is_null($reported) ? 'muted' : '' }}">{{ is_null($reported) ? '—' : '$' . number_format($reported, 2) }}</span></div>
+                                    <div class="cc-line sum"><span class="cc-label">Variance</span><span class="cc-val {{ $cashCls }}">{{ is_null($cashVar) ? '—' : (($cashVar >= 0 ? '+' : '') . '$' . number_format($cashVar, 2)) }}</span></div>
+                                </div>
+
+                                <div class="cc-foot">
+                                    <textarea class="eod-recon-notes form-control" rows="2"
+                                        placeholder="Notes for {{ $e['display_name'] }} (auto-saves)"
+                                        style="font-size:12px; resize:vertical;">{{ $recNotes }}</textarea>
+                                    <div class="eod-recon-notes-status" style="font-size:11px; color:#9ca3af; margin-top:2px; min-height:14px;">{{ $recStampLabel }}</div>
+                                </div>
+                            </div>
+                        @endforeach
+                    @endforeach
+                </div>
+            </div>
+        @endforeach
+        <p class="help-block" style="margin-top:-6px; margin-bottom:18px;">
+            <strong>Card check</strong> compares Clover settlements to ERP card sales for the same cashier — a mismatch usually means a swipe ran on Clover but the sale wasn't rung into the POS.
+            <strong>Cash drawer</strong> reconciles the till: opening + cash sales − cash buys = expected vs counted. Short = drawer ended low (skim or wrong change), Over = drawer ended high (mis-rung sale).
+            Use the side-by-side payment lists below to find the specific transaction when totals disagree.
+        </p>
+    @endif
+
     {{-- Per-shift theft audit — the view Sarah actually wants. One card
          per cashier shift, two plain-language checks:
          SALES CHECK (Clover card ↔ ERP card during shift) catches keying
@@ -394,8 +580,13 @@
 
         {{-- Employee summary (top of Sarah's xlsx) — one row per first
              name, aggregated across both stores. Sorted by |diff| desc so
-             biggest mismatches float to the top. --}}
-        @if(!empty($xlsx_layout['employee_summary']))
+             biggest mismatches float to the top.
+
+             Sarah 2026-05-05: hidden because the per-cashier cards above
+             already show the same Clover↔ERP card-check per employee in
+             plainer language. Kept in code so it's a one-line flip if
+             she wants the dense summary back. --}}
+        @if(false && !empty($xlsx_layout['employee_summary']))
             @php
                 $sumClover = array_sum(array_column($xlsx_layout['employee_summary'], 'clover'));
                 $sumErp    = array_sum(array_column($xlsx_layout['employee_summary'], 'erp'));
@@ -1103,7 +1294,16 @@
 @section('javascript')
 <script>
 $(function () {
-    $('#eod_date_range').daterangepicker(dateRangeSettings, function (start, end) {
+    // Force the picker to default to today/today, not the inherited
+    // dateRangeSettings (which is "last 30 days" most places). Sarah
+    // 2026-05-05: this report is a daily-cash flow, multi-day blurs it.
+    var eodPickerOpts = $.extend({}, dateRangeSettings || {}, {
+        startDate: moment(),
+        endDate: moment(),
+        singleDatePicker: false,
+        autoApply: true
+    });
+    $('#eod_date_range').daterangepicker(eodPickerOpts, function (start, end) {
         $('#eod_date_range').val(start.format(moment_date_format) + ' ~ ' + end.format(moment_date_format));
     });
     $('#eod_apply_btn').on('click', function () {
@@ -1229,10 +1429,10 @@ $(function () {
 
     // Per-store "Mark reconciled" checkbox — toggles the audit stamp on
     // the clover_reconciliations row for (day, location_id).
-    $('.eod-loc-card').on('change', '.eod-recon-checkbox', function () {
+    $('body').on('change', '.eod-loc-card .eod-recon-checkbox', function () {
         var $card = $(this).closest('.eod-loc-card');
         var $lbl = $card.find('.eod-recon-label');
-        var $stamp = $card.find('.eod-recon-stamp');
+        var $stamp = $card.find('.eod-recon-stamp, .eod-recon-notes-status').first();
         var $toggle = $card.find('.eod-recon-toggle');
         $lbl.text('Saving…');
         $.ajax({
@@ -1242,7 +1442,8 @@ $(function () {
             data: {
                 _token: $('meta[name="csrf-token"]').attr('content'),
                 day: $card.data('day'),
-                location_id: $card.data('location-id')
+                location_id: $card.data('location-id'),
+                employee_key: $card.data('employee-key') || ''
             }
         }).done(function (r) {
             if (!r.success) {
@@ -1268,14 +1469,14 @@ $(function () {
     // Per-store notes — debounced autosave on input + immediate save on blur.
     (function () {
         var timers = new WeakMap();
-        $('.eod-loc-card').on('input', '.eod-recon-notes', function () {
+        $('body').on('input', '.eod-loc-card .eod-recon-notes', function () {
             var el = this;
             var $status = $(el).siblings('.eod-recon-notes-status');
             $status.text('Typing…').css('color', '#9ca3af');
             if (timers.get(el)) clearTimeout(timers.get(el));
             timers.set(el, setTimeout(function () { saveNotes(el); }, 900));
         });
-        $('.eod-loc-card').on('blur', '.eod-recon-notes', function () {
+        $('body').on('blur', '.eod-loc-card .eod-recon-notes', function () {
             if (timers.get(this)) clearTimeout(timers.get(this));
             saveNotes(this);
         });
@@ -1293,6 +1494,7 @@ $(function () {
                     _token: $('meta[name="csrf-token"]').attr('content'),
                     day: $card.data('day'),
                     location_id: $card.data('location-id'),
+                    employee_key: $card.data('employee-key') || '',
                     notes: $el.val()
                 }
             }).done(function (r) {

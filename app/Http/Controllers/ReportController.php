@@ -7788,7 +7788,12 @@ class ReportController extends Controller
         $out = [];
         foreach ($rows as $r) {
             $loc = $r->location_id === null ? 0 : (int) $r->location_id;
-            $key = $r->day->format('Y-m-d') . '|' . $loc;
+            $emp = $r->employee_key === null || $r->employee_key === ''
+                ? '' : strtolower($r->employee_key);
+            // Legacy store-level rows still index under "day|loc" (empty
+            // employee suffix); per-cashier rows append "|<empKey>" so the
+            // blade can look up either granularity in O(1).
+            $key = $r->day->format('Y-m-d') . '|' . $loc . '|' . $emp;
             $out[$key] = $r;
         }
         return $out;
@@ -7809,9 +7814,10 @@ class ReportController extends Controller
         $business_id = (int) $request->session()->get('user.business_id');
         $day = $request->input('day');
         $locationId = $request->input('location_id'); // may be '' / '0' for no-location bucket
+        $employeeKey = $request->input('employee_key'); // null/empty = store-level
         if (!$day) return response()->json(['success' => false, 'msg' => 'day required'], 422);
 
-        $row = \App\CloverReconciliation::findOrCreateFor($business_id, $locationId, $day);
+        $row = \App\CloverReconciliation::findOrCreateFor($business_id, $locationId, $day, $employeeKey);
         if ($row->reconciled_at) {
             $row->reconciled_by_user_id = null;
             $row->reconciled_at = null;
@@ -7846,10 +7852,11 @@ class ReportController extends Controller
         $business_id = (int) $request->session()->get('user.business_id');
         $day = $request->input('day');
         $locationId = $request->input('location_id');
+        $employeeKey = $request->input('employee_key');
         $notes = (string) $request->input('notes', '');
         if (!$day) return response()->json(['success' => false, 'msg' => 'day required'], 422);
 
-        $row = \App\CloverReconciliation::findOrCreateFor($business_id, $locationId, $day);
+        $row = \App\CloverReconciliation::findOrCreateFor($business_id, $locationId, $day, $employeeKey);
         $row->notes = $notes !== '' ? $notes : null;
         $row->save();
 
