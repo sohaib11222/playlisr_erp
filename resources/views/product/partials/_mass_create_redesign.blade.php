@@ -310,31 +310,34 @@ body.mass-add-v2 .alert-warning {
     color: var(--pos-accent-text) !important;
 }
 
-/* ===== Table footer action area — align both rows to a single 320px column.
-        2026-05-06: Sarah asked to align the action buttons better. The two
-        tfoot rows previously rendered with different widths (Add-row pair
-        sized to content, action stack stretched to td) — now both groups
-        share a fixed 320px column for visual consistency. ===== */
+/* ===== Table footer action toolbar.
+        2026-05-06 v2 (Sarah): the previous 320px column made the page feel
+        squished. Now the action area is a wide toolbar:
+          ROW 1: [Add New Product Row] [Add 5 Product Rows]   ← compact, content-sized
+          ROW 2: [   Verify All Categories   ]                ← full toolbar width
+          ROW 3: [ Save All Products ] [ Save & send to add purchase ]
+        Toolbar fills the table width up to a comfortable 720px max. ===== */
 body.mass-add-v2 #mass_create_table > tfoot > tr > td {
     border: none !important;
-    padding: 14px 0 0 !important;
+    padding: 16px 0 0 !important;
     background: transparent !important;
 }
-/* Row 1 — "Add New Product Row" + "Add 5 Product Rows" sit side-by-side. */
+
+/* Row 1 — Add row buttons: left-aligned, content-sized. */
 body.mass-add-v2 #mass_create_table > tfoot > tr:first-child > td {
     display: flex !important;
     flex-wrap: wrap !important;
     gap: 10px !important;
-    width: 320px !important;
-    max-width: 320px !important;
+    width: auto !important;
+    max-width: none !important;
 }
 body.mass-add-v2 #add_row,
 body.mass-add-v2 #add_5_rows {
-    flex: 1 1 145px !important;
-    margin: 0 !important;            /* override inline margin-left:6px */
-    min-width: 145px !important;
+    flex: 0 0 auto !important;
+    margin: 0 !important;
+    min-width: 170px !important;
     height: 44px !important;
-    padding: 11px 14px !important;
+    padding: 11px 18px !important;
     font-weight: 600 !important;
     letter-spacing: .02em !important;
     border-radius: var(--pos-radius-sm) !important;
@@ -342,20 +345,30 @@ body.mass-add-v2 #add_5_rows {
     align-items: center !important;
     justify-content: center !important;
 }
-/* Row 2 — action stack: 320px column, all 3 buttons same height/width. */
+
+/* Row 2 — action toolbar: wider grid so labels breathe. */
 body.mass-add-v2 #mass_add_action_buttons {
-    width: 320px !important;
-    max-width: 320px !important;
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    grid-auto-rows: 48px !important;
     gap: 10px !important;
-    margin-top: 4px !important;
+    width: 100% !important;
+    max-width: 720px !important;
+    margin-top: 6px !important;
+    padding: 0 !important;
+}
+/* Verify spans the full toolbar — it's a precondition for save, so it reads
+   as a setup step, then the two save actions sit side-by-side underneath. */
+body.mass-add-v2 #verify_all_categories {
+    grid-column: 1 / -1 !important;
 }
 body.mass-add-v2 #mass_add_action_buttons .btn-block {
     border-radius: var(--pos-radius-sm) !important;
     font-weight: 600 !important;
     letter-spacing: .02em !important;
-    height: 44px !important;
-    min-height: 44px !important;
-    padding: 11px 14px !important;
+    height: 48px !important;
+    min-height: 48px !important;
+    padding: 0 16px !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -364,14 +377,13 @@ body.mass-add-v2 #mass_add_action_buttons .btn-block {
     word-break: normal !important;
     line-height: 1.2 !important;
     margin: 0 !important;
+    width: 100% !important;
 }
-/* Longest label — let it wrap to 2 lines inside the 320px column rather
-   than getting clipped on one. */
+/* "Save & send to add purchase" — keep on a single line at the wider width. */
 body.mass-add-v2 #save_and_send_to_purchase {
-    white-space: normal !important;
-    height: auto !important;
-    min-height: 44px !important;
-    line-height: 1.25 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
 }
 
 /* ===== Misc: code/kbd inside the bulk-entry helper text ===== */

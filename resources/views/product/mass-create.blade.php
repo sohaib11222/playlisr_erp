@@ -1876,7 +1876,10 @@
                 data: { index: rowIndex },
                 success: function (row) {
                     const $row = $(row);
-                    $('#product_rows_container').append($row);
+                    // Sarah 2026-05-06: bulk-paste rows go to the TOP, not the bottom.
+                    // Caller reverses the parsed array so iterating + prepending preserves
+                    // the user's typed order (first-typed row ends up at the very top).
+                    $('#product_rows_container').prepend($row);
                     
                     // Fill in the data
                     const rowSelector = `.product-row[data-row-index="${rowIndex}"]`;
@@ -2023,7 +2026,12 @@
         $('#bulk_parse_status').html(`<i class="fa fa-spinner fa-spin"></i> Adding ${products.length} products...`);
         $(this).prop('disabled', true);
         $('#preview_bulk_text').prop('disabled', true);
-        
+
+        // Sarah 2026-05-06: rows are PREPENDED to the table now (see addProductFromParsedData).
+        // Reverse the parsed list so each subsequent prepend pushes the previous one down,
+        // ending with the first-typed product at the very top.
+        products.reverse();
+
         let currentRowIndex = parseInt($('#product_rows_container .product-row').last().attr('data-row-index') || '0');
         let addedCount = 0;
         let errorCount = 0;
