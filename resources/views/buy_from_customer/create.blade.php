@@ -84,6 +84,11 @@
             outline: none;
         }
         .bfc-create #offer_lines_table .remove-line .fa { font-size: 11px; }
+        /* Compliance + signature — visually obvious so the cashier doesn't skip them. */
+        .bfc-create .bfc-compliance-row { padding: 6px 10px; margin-bottom: 4px; border-left: 3px solid #d9534f; background: #fff7f6; border-radius: 3px; }
+        .bfc-create .bfc-compliance-row label { font-size: 13px; color: #333; text-transform: none; letter-spacing: 0; font-weight: 500; margin-bottom: 0; cursor: pointer; }
+        .bfc-create .bfc-compliance-row .bfc-compliance-cb { margin-right: 6px; transform: scale(1.1); }
+        .bfc-create #buy_signature_box { border: 2px dashed #c0392b !important; }
     </style>
     @if($is_embed)
         {{-- When opened inside the POS modal iframe, hide the admin chrome so only the calculator shows. --}}
@@ -110,6 +115,21 @@
             @if(($saved_offer_id ?? session('saved_offer_id')))
                 <br><strong>Buy record:</strong> BFC-{{ str_pad((string) ($saved_offer_id ?? session('saved_offer_id')), 6, '0', STR_PAD_LEFT) }}
             @endif
+        </div>
+    @endif
+
+    {{-- Sarah 2026-05-06: surface validation failures. Without this the Accept
+         button silently rejects (e.g. compliance boxes unchecked, signature
+         missing) and the offer stays at its prior auto-saved Draft, which
+         looks like the form just did nothing. --}}
+    @if ($errors->any())
+        <div class="alert alert-danger">
+            <strong>The form couldn't be submitted:</strong>
+            <ul style="margin-top:6px; margin-bottom:0;">
+                @foreach ($errors->all() as $error)
+                    <li>{{ $error }}</li>
+                @endforeach
+            </ul>
         </div>
     @endif
 
@@ -435,7 +455,7 @@
                                     @endif
                                 @endforeach
 
-                                <div class="well" style="margin-top:15px; max-width:920px;">
+                                <div class="well bfc-accept-well" style="margin-top:15px; max-width:920px;">
                                     <h4>Final price &amp; override</h4>
                                     <p class="text-muted small">If final paid differs from calculator suggested total for the selected payment method, explain briefly.</p>
                                     <div class="form-group">
@@ -443,21 +463,21 @@
                                         <textarea name="price_override_reason" class="form-control" rows="2" placeholder="e.g. Manager approved bump for sealed box set">{{ $input['price_override_reason'] ?? '' }}</textarea>
                                     </div>
 
-                                    <h4>Compliance <small class="text-danger">required to accept</small></h4>
-                                    <div class="checkbox">
+                                    <h4>Compliance <small class="text-danger">both required to accept</small></h4>
+                                    <div class="bfc-compliance-row">
                                         <label>
-                                            <input type="checkbox" name="compliance_items_owned" value="1"> Seller confirms the items are legally theirs and not stolen.
+                                            <input type="checkbox" name="compliance_items_owned" value="1" class="bfc-compliance-cb"> Seller confirms the items are legally theirs and not stolen.
                                         </label>
                                     </div>
-                                    <div class="checkbox">
+                                    <div class="bfc-compliance-row">
                                         <label>
-                                            <input type="checkbox" name="compliance_sales_final" value="1"> Seller acknowledges all sales are final.
+                                            <input type="checkbox" name="compliance_sales_final" value="1" class="bfc-compliance-cb"> Seller acknowledges all sales are final.
                                         </label>
                                     </div>
-                                    <p class="help-block">Seller signs below to acknowledge the statements above.</p>
+                                    <p class="help-block">Seller signs below to acknowledge the statements above. <strong class="text-danger">Signature is required.</strong></p>
                                     <div class="form-group">
-                                        <label>Signature</label>
-                                        <div style="border:1px solid #ccc; background:#fafafa; display:inline-block;">
+                                        <label>Signature <span class="text-danger">*</span></label>
+                                        <div id="buy_signature_box" style="border:1px solid #ccc; background:#fafafa; display:inline-block;">
                                             <canvas id="buy_signature_canvas" width="700" height="180" style="max-width:100%; height:auto; touch-action:none;"></canvas>
                                         </div>
                                         <div style="margin-top:6px;">
@@ -465,6 +485,7 @@
                                         </div>
                                         <input type="hidden" name="seller_signature_data" id="buy_signature_input" value="">
                                     </div>
+                                    <div id="bfc_accept_error" class="alert alert-danger" style="display:none;"></div>
                                 </div>
 
                                 <button type="submit" class="btn btn-success" id="accept_buy_offer_btn"><i class="fa fa-check"></i> Accept offer (create purchase)</button>
@@ -582,6 +603,7 @@
             if (!canvas || !canvas.getContext) return;
             var ctx = canvas.getContext('2d');
             var drawing = false;
+            var hasSignature = false; // tracks whether the user actually drew anything
             // Override-reason hint: kept for parity with the controller validation,
             // but with read-only offer fields the submitted final always matches the
             // calculator's auto-final, so this stays hidden in the normal flow.
@@ -597,6 +619,7 @@
             }
             function start(e) {
                 drawing = true;
+                hasSignature = true;
                 ctx.beginPath();
                 var p = pos(e);
                 ctx.moveTo(p.x, p.y);
@@ -604,6 +627,7 @@
             }
             function move(e) {
                 if (!drawing) return;
+                hasSignature = true;
                 var p = pos(e);
                 ctx.lineTo(p.x, p.y);
                 ctx.strokeStyle = '#111';
@@ -627,14 +651,40 @@
             $('#buy_signature_clear').on('click', function () {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 $('#buy_signature_input').val('');
+                hasSignature = false;
             });
 
-            $('#accept_buy_offer_form').on('submit', function () {
+            // Pre-flight check on Accept submit. Catches the silent-fail cases
+            // (compliance unchecked, signature blank) on the client so the
+            // cashier sees an inline error instead of a server redirect that
+            // looks like nothing happened. Sarah 2026-05-06: BFC offers were
+            // staying as Drafts because Accept was failing validation server-
+            // side with no UI feedback. We still show server errors at the top
+            // (see $errors block) — this is the first line of defense.
+            $('#accept_buy_offer_form').on('submit', function (e) {
+                var problems = [];
+                if (!$('input[name="compliance_items_owned"]').is(':checked')) {
+                    problems.push('Tick "Seller confirms the items are legally theirs and not stolen."');
+                }
+                if (!$('input[name="compliance_sales_final"]').is(':checked')) {
+                    problems.push('Tick "Seller acknowledges all sales are final."');
+                }
+                if (!hasSignature) {
+                    problems.push('Seller must sign in the signature box.');
+                }
+                if (problems.length) {
+                    e.preventDefault();
+                    var $err = $('#bfc_accept_error');
+                    $err.html('<strong>Can\'t accept yet:</strong><ul style="margin-top:6px; margin-bottom:0;"><li>' + problems.join('</li><li>') + '</li></ul>').show();
+                    $('html, body').animate({ scrollTop: $err.offset().top - 80 }, 200);
+                    return false;
+                }
                 try {
                     $('#buy_signature_input').val(canvas.toDataURL('image/png'));
                 } catch (err) {
                     $('#buy_signature_input').val('');
                 }
+                $('#bfc_accept_error').hide();
             });
         })();
         @endif
