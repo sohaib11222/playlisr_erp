@@ -60,6 +60,11 @@
         /* Readonly offer-amount displays — look like read-outs, not inputs. */
         .bfc-create .bfc-offer-display { background: #f5f5f5; border-color: #e6e6e6; color: #333; font-weight: 600; cursor: default; }
         .bfc-create .bfc-offer-display:focus { outline: none; box-shadow: none; }
+        /* Three-row offer table: Starting / 2nd / Final × Cash / Credit. */
+        .bfc-create .bfc-offer-table { max-width: 560px; margin-bottom: 12px; }
+        .bfc-create .bfc-offer-table th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; color: #666; background: #f7f7f7; padding: 8px 10px; border-bottom: 1px solid #ddd; }
+        .bfc-create .bfc-offer-table td { padding: 6px; vertical-align: middle; }
+        .bfc-create .bfc-offer-table .bfc-offer-rowlabel { width: 160px; font-weight: 600; color: #333; text-transform: none; letter-spacing: 0; background: #fafafa; }
         /* Make per-row remove "X" subtle — just a muted glyph, no big red block. */
         .bfc-create #offer_lines_table .remove-line {
             background: transparent;
@@ -289,7 +294,7 @@
                          from lines so re-Calculate after editing items always reflects the
                          new total. Save / Accept / Reject forms below DO emit the calc values
                          as hidden inputs so the saveOffer / override-reason logic still works. --}}
-                    <h4>Offer to customer <small class="text-muted">starting / 2nd / final — auto-calculated from items above</small></h4>
+                    <h4>Offer to customer <small class="text-muted">auto-calculated from items above</small></h4>
                     @php
                         $offerStartingCash = data_get($calc, 'starting_offer_cash');
                         $offerStartingCredit = data_get($calc, 'starting_offer_credit');
@@ -301,16 +306,35 @@
                             return $v === null || $v === '' ? '—' : '$' . number_format((float) $v, 2);
                         };
                     @endphp
-                    <div class="negotiation-row">
-                        <div class="form-group"><label>Starting cash</label><input type="text" class="form-control bfc-offer-display" value="{{ $fmtOffer($offerStartingCash) }}" readonly tabindex="-1"></div>
-                        <div class="form-group"><label>Starting credit</label><input type="text" class="form-control bfc-offer-display" value="{{ $fmtOffer($offerStartingCredit) }}" readonly tabindex="-1"></div>
-                        <div class="form-group"><label>2nd cash</label><input type="text" class="form-control bfc-offer-display" value="{{ $fmtOffer($offerSecondCash) }}" readonly tabindex="-1"></div>
-                        <div class="form-group"><label>2nd credit</label><input type="text" class="form-control bfc-offer-display" value="{{ $fmtOffer($offerSecondCredit) }}" readonly tabindex="-1"></div>
-                    </div>
-                    <div class="negotiation-row">
-                        <div class="form-group"><label>Final cash</label><input type="text" class="form-control bfc-offer-display" value="{{ $fmtOffer($offerFinalCash) }}" readonly tabindex="-1"></div>
-                        <div class="form-group"><label>Final credit</label><input type="text" class="form-control bfc-offer-display" value="{{ $fmtOffer($offerFinalCredit) }}" readonly tabindex="-1"></div>
-                        <div class="form-group" style="grid-column: 3 / span 3;"><label>Notes <span class="text-muted">(sealed items, rare finds, condition concerns)</span></label>{!! Form::textarea('notes', $input['notes'] ?? null, ['class' => 'form-control', 'rows' => 2]) !!}</div>
+                    <table class="table table-bordered bfc-offer-table">
+                        <thead>
+                            <tr>
+                                <th class="bfc-offer-rowlabel"></th>
+                                <th>Cash</th>
+                                <th>Credit</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <th class="bfc-offer-rowlabel">1. Starting offer</th>
+                                <td><input type="text" class="form-control bfc-offer-display" value="{{ $fmtOffer($offerStartingCash) }}" readonly tabindex="-1"></td>
+                                <td><input type="text" class="form-control bfc-offer-display" value="{{ $fmtOffer($offerStartingCredit) }}" readonly tabindex="-1"></td>
+                            </tr>
+                            <tr>
+                                <th class="bfc-offer-rowlabel">2. 2nd offer</th>
+                                <td><input type="text" class="form-control bfc-offer-display" value="{{ $fmtOffer($offerSecondCash) }}" readonly tabindex="-1"></td>
+                                <td><input type="text" class="form-control bfc-offer-display" value="{{ $fmtOffer($offerSecondCredit) }}" readonly tabindex="-1"></td>
+                            </tr>
+                            <tr>
+                                <th class="bfc-offer-rowlabel">3. Final offer</th>
+                                <td><input type="text" class="form-control bfc-offer-display" value="{{ $fmtOffer($offerFinalCash) }}" readonly tabindex="-1"></td>
+                                <td><input type="text" class="form-control bfc-offer-display" value="{{ $fmtOffer($offerFinalCredit) }}" readonly tabindex="-1"></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div class="form-group">
+                        <label>Notes <span class="text-muted">(sealed items, rare finds, condition concerns)</span></label>
+                        {!! Form::textarea('notes', $input['notes'] ?? null, ['class' => 'form-control', 'rows' => 2]) !!}
                     </div>
 
                     <div class="pos-action-row">
@@ -483,32 +507,23 @@
         $(document).on('change', '#seller_mode', toggleSellerMode);
         toggleSellerMode();
 
-        // Sarah 2026-05-06: auto-fill the per-row "Standard Multiplier" based on
-        // the Discogs median price + condition grade in the same row. The cashier
-        // can still type a manual override and it sticks (we mark the cell as
-        // touched on input so we don't clobber their value). Tiers err on the
-        // side of paying more for cheap items so the offer doesn't round to zero,
-        // and trim a little when condition is rough since gradeMultiplier already
-        // discounts those — this is just a small additional nudge. Tweak these
-        // numbers in one place when buy economics change.
-        function computeStdMult(price, grade) {
+        // Sarah 2026-05-06: auto-fill the per-row "Standard Multiplier" from the
+        // Discogs median price (the value tier from Sarah's sheet). Condition is
+        // already factored in separately by the calculator's gradeMultiplier, so
+        // we don't double-apply it here. Cashier can type over the value and the
+        // override sticks (we mark the cell as touched on input).
+        function computeStdMult(price) {
             var p = parseFloat(price);
             if (!isFinite(p) || p <= 0) {
                 return 0.10;
             }
-            var base;
-            if (p < 5)        base = 0.25;
-            else if (p < 10)  base = 0.20;
-            else if (p < 25)  base = 0.15;
-            else if (p < 50)  base = 0.12;
-            else if (p < 100) base = 0.10;
-            else              base = 0.08;
-            var bump = 0;
-            if (grade === 'Mint' || grade === 'Near Mint') bump = 0.02;
-            else if (grade === 'Good+' || grade === 'Good' || grade === 'Fair') bump = -0.02;
-            var v = base + bump;
-            if (v < 0.05) v = 0.05;
-            return Math.round(v * 100) / 100;
+            if (p < 5)    return 0.10;
+            if (p < 10)   return 0.20;
+            if (p < 15)   return 0.22;
+            if (p < 20)   return 0.25;
+            if (p < 30)   return 0.26;
+            if (p < 375)  return 0.27;
+            return 0.31;
         }
 
         function refreshStdMultForRow($row) {
@@ -516,11 +531,10 @@
             if (!$stdMult.length) return;
             if ($stdMult.data('manual')) return;
             var price = $row.find('input[name$="[discogs_median_price]"]').val();
-            var grade = $row.find('select[name$="[condition_grade]"]').val();
-            $stdMult.val(computeStdMult(price, grade).toFixed(2));
+            $stdMult.val(computeStdMult(price).toFixed(2));
         }
 
-        $(document).on('input change', '#offer_lines_table input[name$="[discogs_median_price]"], #offer_lines_table select[name$="[condition_grade]"]', function () {
+        $(document).on('input change', '#offer_lines_table input[name$="[discogs_median_price]"]', function () {
             refreshStdMultForRow($(this).closest('tr'));
         });
 
