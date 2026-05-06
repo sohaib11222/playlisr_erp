@@ -8213,14 +8213,22 @@ class ReportController extends Controller
         //     an admin, fall back to shift-window attribution.
         //   - ERP aggregation: admin-rung sales get re-attributed to
         //     whoever's register was open at the time, before bucketing.
-        $adminFirstNames = \DB::table('model_has_permissions as mhp')
-            ->join('permissions as p', 'mhp.permission_id', '=', 'p.id')
-            ->join('users as u', 'mhp.model_id', '=', 'u.id')
-            ->where('mhp.model_type', 'App\\User')
-            ->where('p.name', 'Admin#' . $business_id)
-            ->pluck('u.first_name')
-            ->map(function ($n) { $n = trim((string) $n); $parts = $n === '' ? [] : preg_split('/\s+/', $n); return strtolower($parts[0] ?? ''); })
-            ->filter()->unique()->values()->all();
+        // Sarah 2026-05-06: "what is total sales for jon? he wasn't the
+        // cashier." The previous raw permissions-table query missed
+        // role-derived admins (Jonathan held Admin via a role, not a
+        // direct permission). Use Spatie's HasRoles scope which walks
+        // both paths.
+        try {
+            $adminFirstNames = \App\User::permission('Admin#' . $business_id)
+                ->where('users.business_id', $business_id)
+                ->pluck('first_name')
+                ->map(function ($n) { $n = trim((string) $n); $parts = $n === '' ? [] : preg_split('/\s+/', $n); return strtolower($parts[0] ?? ''); })
+                ->filter()->unique()->values()->all();
+        } catch (\Throwable $ex) {
+            // Permission name may not exist on a fresh install — fall
+            // back to no admins rather than crash the whole report.
+            $adminFirstNames = [];
+        }
         $adminSet = array_flip($adminFirstNames);
 
         // Helper: which non-admin cashier had a register open at (ts, loc)?
@@ -8440,6 +8448,70 @@ class ReportController extends Controller
                     unset($e);
                 }
             }
+        }
+
+        // Customer collection buys — Sarah 2026-05-06: "why are there 0
+        // buys for yesterday, we had buys?". Buy-from-customer offers
+        // create a transactions row with type='purchase' but never write
+        // a cash_register_transactions row, so the CRT-based cash_buys
+        // we'd been pulling was always $0. Pull the cash-paid offers
+        // directly from buy_customer_offers, re-attribute admin-rung
+        // ones to the on-shift cashier, and use them to OVERRIDE
+        // cash_buys / collection_buys_all for each bucket.
+        $buyQ = \DB::table('transactions as t')
+            ->join('buy_customer_offers as o', 'o.accepted_purchase_id', '=', 't.id')
+            ->leftJoin('users as u', 't.created_by', '=', 'u.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'purchase')
+            ->where('o.payment_method', 'cash_in_store')
+            ->whereDate('t.transaction_date', '>=', $start)
+            ->whereDate('t.transaction_date', '<=', $end);
+        if (!empty($location_id)) {
+            $buyQ->where('t.location_id', $location_id);
+        }
+        $buyRows = $buyQ->selectRaw("
+                DATE(t.transaction_date) as day,
+                t.location_id,
+                t.transaction_date as ts,
+                t.final_total as amount,
+                COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, '') as cashier_name
+            ")->get();
+
+        // Reset CRT-derived cash_buys before applying the real offer-based
+        // numbers. collection_buys_all also gets rebuilt because it was
+        // previously the "all-method" purchase total from CRT (i.e. zero
+        // for these offers).
+        foreach ($buckets as $day => &$locsR) {
+            foreach ($locsR as $locKey => &$locR) {
+                if (empty($locR['employees'])) continue;
+                foreach ($locR['employees'] as &$eR) {
+                    $eR['cash_buys'] = 0.0;
+                    $eR['collection_buys_all'] = 0.0;
+                }
+                unset($eR);
+            }
+            unset($locR);
+        }
+        unset($locsR);
+
+        foreach ($buyRows as $r) {
+            $day = substr((string) $r->ts, 0, 10);
+            if ($day < $start || $day > $end) continue;
+            $cn = $r->cashier_name;
+            $cFn = $firstName($cn);
+            if (isset($adminSet[$cFn])) {
+                $reassigned = $findShiftCashier($r->ts, $r->location_id);
+                if ($reassigned === null) continue; // can't attribute
+                $cn = $reassigned;
+                $cFn = $firstName($reassigned);
+            }
+            $locKey = $r->location_id ?: 0;
+            if (!isset($buckets[$day][$locKey]['employees'][$cFn])) {
+                $buckets[$day][$locKey]['employees'][$cFn] = ['display_name' => ucfirst($cFn)] + $emptyEmployee;
+                $buckets[$day][$locKey]['location_name'] = $buckets[$day][$locKey]['location_name'] ?? '(no location)';
+            }
+            $buckets[$day][$locKey]['employees'][$cFn]['cash_buys']           += (float) $r->amount;
+            $buckets[$day][$locKey]['employees'][$cFn]['collection_buys_all'] += (float) $r->amount;
         }
 
         // Drop admin buckets — admin-rung sales were re-attributed to the

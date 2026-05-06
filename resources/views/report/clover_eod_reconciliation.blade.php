@@ -46,28 +46,17 @@
          API call / missing creds / zero-payment day are all visible
          instead of buried in a log file. Admin-only on the backend. --}}
     <div style="margin-bottom:12px; text-align:right;">
-        {{-- Sarah 2026-05-06: the "Last 2 days" label was being read as a
-             report-window filter. It's actually how far back the Clover
-             sync command pulls. Relabeled as "Pull last N days" and
-             tucked into a smaller caption next to the button so it
-             doesn't look like a filter. --}}
+        {{-- Sarah 2026-05-06: removed the days-back dropdown and the
+             "Sync everything" button — both confusing. This page only
+             needs the Clover-payments sync (the swipes). "Sync
+             everything" was the broader items+orders+customers sync,
+             which is irrelevant to the daily cash reconciliation flow
+             and lives elsewhere if she ever needs it. Hidden input
+             keeps the existing JS handler working with a fixed 2-day
+             pull window. --}}
+        <input type="hidden" id="eod_sync_days" value="2">
         <button type="button" class="btn btn-default" id="eod_sync_now_btn">
-            <i class="fa fa-sync"></i> Sync Clover now
-        </button>
-        <select id="eod_sync_days" class="form-control input-sm" style="display:inline-block; width:auto; vertical-align:middle; margin-left:4px; font-size:11px; color:#6b7280;">
-            <option value="2" selected>pull 2 days</option>
-            <option value="7">pull 7 days</option>
-            <option value="30">pull 30 days</option>
-            <option value="90">pull 90 days</option>
-        </select>
-        {{-- Sync Everything — full bidirectional sync (items, orders,
-             customers + push dirty products/contacts). Lives next to the
-             payments-only button because that's the first place Sarah
-             looks when numbers feel off, and "resync all" is usually the
-             shotgun answer. Reuses /business/clover/sync-now wired in
-             CloverController. --}}
-        <button type="button" class="btn btn-info" id="eod_sync_all_btn" style="margin-left:6px;">
-            <i class="fa fa-exchange"></i> Sync everything
+            <i class="fa fa-sync"></i> Refresh Clover swipes
         </button>
         <span id="eod_sync_status" style="margin-left:8px; font-size:12px; color:#6b7280;"></span>
     </div>
@@ -306,12 +295,24 @@
                                     </label>
                                 </div>
 
-                                {{-- WHAT THEY SOLD — total + payment split --}}
+                                {{-- WHAT THEY SOLD — total + payment split.
+                                     Sarah 2026-05-06: "we don't necessarily
+                                     know if cash or credit was collected" —
+                                     so the non-Clover bucket is labeled
+                                     "Not on Clover" rather than asserted as
+                                     cash. The cashier could've taken cash,
+                                     or Clover sync might be lagging. --}}
+                                @php
+                                    $missingClover = $totalSold > 0 && $cardClover == 0;
+                                @endphp
                                 <div class="cc-section">
                                     <div class="cc-sec-h">What they sold @if($txnCount)<span style="font-weight:500; color:#9ca3af;">· {{ $txnCount }} sale{{ $txnCount === 1 ? '' : 's' }}</span>@endif</div>
                                     <div class="cc-line sum"><span class="cc-label">Total sales</span><span class="cc-val">${{ number_format($totalSold, 2) }}</span></div>
-                                    <div class="cc-line"><span class="cc-label minor">— paid by card (Clover)</span><span class="cc-val">${{ number_format($cardClover, 2) }}</span></div>
-                                    <div class="cc-line"><span class="cc-label minor">— paid in cash</span><span class="cc-val">${{ number_format($impliedCash, 2) }}</span></div>
+                                    <div class="cc-line"><span class="cc-label minor">— matched on Clover</span><span class="cc-val">${{ number_format($cardClover, 2) }}</span></div>
+                                    <div class="cc-line"><span class="cc-label minor">— not on Clover (cash or unsynced)</span><span class="cc-val">${{ number_format($impliedCash, 2) }}</span></div>
+                                    @if($missingClover)
+                                        <div class="cc-line"><span class="cc-label" style="color:#92400e;">⚠ No Clover swipes matched — sync may be stale</span><span class="cc-val"></span></div>
+                                    @endif
                                     @if($overSwipe >= 1)
                                         <div class="cc-line"><span class="cc-label" style="color:#b91c1c;">⚠ Clover collected more than rung</span><span class="cc-val bad">+${{ number_format($overSwipe, 2) }}</span></div>
                                     @endif
@@ -328,7 +329,7 @@
                                 <div class="cc-section">
                                     <div class="cc-sec-h">Cash drawer <span class="cc-flag {{ $cashCls }}">{{ $cashLabel }}</span></div>
                                     <div class="cc-line"><span class="cc-label minor">Opening cash</span><span class="cc-val {{ is_null($opening) ? 'muted' : '' }}">{{ is_null($opening) ? '—' : '$' . number_format($opening, 2) }}</span></div>
-                                    <div class="cc-line"><span class="cc-label minor">+ Cash collected</span><span class="cc-val">${{ number_format($impliedCash, 2) }}</span></div>
+                                    <div class="cc-line"><span class="cc-label minor">+ Not on Clover (assumed cash)</span><span class="cc-val">${{ number_format($impliedCash, 2) }}</span></div>
                                     @if($cashBuys > 0 || $hasShift)
                                         <div class="cc-line"><span class="cc-label minor">− Collection buys (cash)</span><span class="cc-val {{ $hasShift ? '' : 'muted' }}">{{ $hasShift ? '$' . number_format($cashBuys, 2) : '—' }}</span></div>
                                     @endif
@@ -1438,70 +1439,11 @@ $(function () {
         });
     });
 
-    // Sync-everything handler — kicks off the umbrella clover:sync
-    // command as a background process (nginx times out at 60s, and full
-    // syncs can run minutes) and then polls /sync-status to pipe the log
-    // tail into the same console block. Defaults to --days=30 so the
-    // reconciliation report lights up for the last month of history.
-    $('#eod_sync_all_btn').on('click', function () {
-        var $btn = $(this);
-        var $status = $('#eod_sync_status');
-        var $out = $('#eod_sync_output');
-        var $pre = $('#eod_sync_output_pre');
-        var original = $btn.html();
-        $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Syncing everything…');
-        $status.text('Starting background sync (last 30 days)…').css('color', '#6b7280');
-        $out.hide();
+    // Sync-everything handler retired 2026-05-06 — Sarah found two
+    // sync buttons confusing. Daily reconciliation only needs the
+    // Clover-payments sync above. The full bidirectional sync still
+    // exists at /business/clover/sync-now if it's needed elsewhere.
 
-        $.ajax({
-            url: '/business/clover/sync-now',
-            method: 'POST',
-            dataType: 'json',
-            timeout: 20000,
-            data: { _token: $('meta[name="csrf-token"]').attr('content'), days: 30 }
-        }).done(function (r) {
-            if (!r.success || !r.run_id) {
-                $status.text('Could not start sync: ' + (r.msg || 'unknown')).css('color', '#b91c1c');
-                $btn.prop('disabled', false).html(original);
-                return;
-            }
-            $status.text('Sync running in background — tailing log…').css('color', '#6b7280');
-            $out.show();
-            $pre.text('(starting…)');
-
-            var runId = r.run_id;
-            var elapsed = 0;
-            var interval = setInterval(function () {
-                elapsed += 3;
-                $.ajax({
-                    url: '/business/clover/sync-status',
-                    method: 'GET',
-                    dataType: 'json',
-                    data: { run_id: runId }
-                }).done(function (s) {
-                    if (s.output) $pre.text(s.output);
-                    if (s.finished) {
-                        clearInterval(interval);
-                        $status.text('Sync complete (' + elapsed + 's) — refresh to see updated numbers.').css('color', '#166534');
-                        $btn.prop('disabled', false).html(original);
-                    } else {
-                        $status.text('Sync running… ' + elapsed + 's').css('color', '#6b7280');
-                    }
-                });
-                // Give up polling after 10 min; the sync may still be
-                // running server-side but we stop spamming the status
-                // endpoint.
-                if (elapsed > 600) {
-                    clearInterval(interval);
-                    $status.text('Still running after 10 min — check logs on server.').css('color', '#b45309');
-                    $btn.prop('disabled', false).html(original);
-                }
-            }, 3000);
-        }).fail(function (xhr) {
-            $status.text('Failed to start sync — ' + xhr.status).css('color', '#b91c1c');
-            $btn.prop('disabled', false).html(original);
-        });
-    });
 
     // Per-store "Mark reconciled" checkbox — toggles the audit stamp on
     // the clover_reconciliations row for (day, location_id).
