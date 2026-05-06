@@ -589,8 +589,11 @@
         <table class="table-wrapper" id="mass_create_table">
             <!-- Шапка таблицы с восстановленными колонками -->
             <thead class="thead">
+                {{-- Sarah 2026-05-06 (rev 2): Artist must sit at col 2 to match the
+                     row partial (mass_product_row.blade.php). Touching this comment
+                     to bust any stale Blade compiled-view / OPcache holding the
+                     pre-move column order. --}}
                 <tr class="tr">
-                    {{-- Sarah 2026-05-06: Artist moved next to Product Name --}}
                     <th class="th col-name">@lang('product.product_name')*</th>
                     <th class="th col-artist">Artist</th>
                     <th class="th col-sku">@lang('product.sku')</th>

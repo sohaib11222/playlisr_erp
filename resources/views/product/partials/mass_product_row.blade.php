@@ -12,8 +12,8 @@
         <input type="hidden" name="{{ "products[{$index}][id]" }}" class="product-id" data-row-index="{{ $index }}"/>
         <input type="hidden" name="{{ "products[{$index}][variation_id]" }}" class="variation-id" data-row-index="{{ $index }}"/>
     </td>
-    {{-- Sarah 2026-05-06: Artist moved next to Product Name. Original
-         position was after Category. --}}
+    {{-- Sarah 2026-05-06 (rev 2): Artist at col 2, matches header in
+         mass-create.blade.php. Touching to force Blade re-compile. --}}
     <td class="td col-artist">
         <div class="mass-add-artist-wrap">
             {!! Form::text("products[{$index}][artist]", null, [
