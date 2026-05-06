@@ -1,5 +1,5 @@
 @extends('layouts.app')
-@section('title', 'Buy from Customer Calculator')
+@section('title', 'Buy from Customer Form')
 
 @php
     $is_embed = request()->get('embed') == '1';
@@ -57,6 +57,9 @@
         .bfc-create details.bfc-advanced[open] summary { color: #555; margin-bottom: 6px; }
         .bfc-create .pos-action-row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
         .bfc-create .well { background: #fafafa; border: 1px solid #eee; border-radius: 8px; padding: 14px; }
+        /* Readonly offer-amount displays — look like read-outs, not inputs. */
+        .bfc-create .bfc-offer-display { background: #f5f5f5; border-color: #e6e6e6; color: #333; font-weight: 600; cursor: default; }
+        .bfc-create .bfc-offer-display:focus { outline: none; box-shadow: none; }
     </style>
     @if($is_embed)
         {{-- When opened inside the POS modal iframe, hide the admin chrome so only the calculator shows. --}}
@@ -73,7 +76,7 @@
 
 @section('content')
 <section class="content-header">
-    <h1>Buy from Customer <small>Offer calculator</small></h1>
+    <h1>Buy from Customer Form</h1>
 </section>
 
 <section class="content bfc-create">
@@ -93,6 +96,17 @@
         $pmVal = $input['payment_method'] ?? ($input['payout_type'] ?? 'cash');
         if ($pmVal === 'cash') {
             $pmVal = 'cash_in_store';
+        }
+        // Sarah 2026-05-06: starting / 2nd / final offers are no longer typed by the
+        // cashier — they're whatever the calculator returned (50% / 75% / 95% of the
+        // calculated total). Mirror $calc back into $input so the Save / Accept /
+        // Reject foreach loops below still emit them as hidden inputs (and the
+        // override-reason validation in BuyFromCustomerController still sees a
+        // matching final amount).
+        if ($calc) {
+            foreach (['starting_offer_cash', 'starting_offer_credit', 'second_offer_cash', 'second_offer_credit', 'final_offer_cash', 'final_offer_credit'] as $offerKey) {
+                $input[$offerKey] = data_get($calc, $offerKey);
+            }
         }
     @endphp
 
@@ -187,20 +201,26 @@
                             </div>
                         </details>
                     </div>
-                    <div class="row">
-                        <div class="col-md-3">
-                            <div class="form-group">
-                                <label>ID type <span class="text-muted">(optional)</span></label>
-                                {!! Form::select('seller_id_type', $idTypes, $input['seller_id_type'] ?? null, ['class' => 'form-control']) !!}
+                    {{-- ID capture is hidden behind "more" — only fill if you suspect the seller may
+                         be sketchy. Auto-opens if either field already has a value (e.g. on re-render
+                         after Calculate) so the cashier doesn't lose what they typed. --}}
+                    <details class="bfc-advanced bfc-id-block" @if(!empty($input['seller_id_type']) || !empty($input['seller_id_last_four'])) open @endif>
+                        <summary>more</summary>
+                        <div class="row">
+                            <div class="col-md-3">
+                                <div class="form-group">
+                                    <label>ID type <span class="text-muted">(optional)</span></label>
+                                    {!! Form::select('seller_id_type', $idTypes, $input['seller_id_type'] ?? null, ['class' => 'form-control']) !!}
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-group">
+                                    <label>Last 4 of ID # <span class="text-muted">(optional)</span></label>
+                                    {!! Form::text('seller_id_last_four', $input['seller_id_last_four'] ?? null, ['class' => 'form-control', 'maxlength' => 4, 'pattern' => '[0-9]*', 'inputmode' => 'numeric', 'placeholder' => '1234']) !!}
+                                </div>
                             </div>
                         </div>
-                        <div class="col-md-3">
-                            <div class="form-group">
-                                <label>Last 4 of ID # <span class="text-muted">(optional)</span></label>
-                                {!! Form::text('seller_id_last_four', $input['seller_id_last_four'] ?? null, ['class' => 'form-control', 'maxlength' => 4, 'pattern' => '[0-9]*', 'inputmode' => 'numeric', 'placeholder' => '1234']) !!}
-                            </div>
-                        </div>
-                    </div>
+                    </details>
 
                     <hr>
                     <h4>Items brought in</h4>
@@ -220,7 +240,10 @@
                             </thead>
                             <tbody>
                                 @php
-                                    $lines = $input['lines'] ?? [['item_type' => 'individual_vinyl', 'quantity' => 1, 'condition_grade' => 'VG+', 'standard_multiplier' => 0.10]];
+                                    // Sarah 2026-05-06: render 7 blank rows on first load so the cashier can
+                                    // type a typical haul without having to click "Add line" each time.
+                                    $defaultRow = ['item_type' => 'individual_vinyl', 'quantity' => 1, 'condition_grade' => 'VG+', 'standard_multiplier' => 0.10];
+                                    $lines = $input['lines'] ?? array_fill(0, 7, $defaultRow);
                                 @endphp
                                 @foreach($lines as $i => $line)
                                     <tr>
@@ -240,16 +263,34 @@
                     <button type="button" class="btn btn-default btn-sm" id="add_line_btn"><i class="fa fa-plus"></i> Add line</button>
 
                     <hr>
-                    <h4>Negotiation offers <small class="text-muted">defaults: 50% / 75% / 95% of calculated total</small></h4>
+                    {{-- Sarah 2026-05-06: Starting / 2nd / Final cash + credit are no longer
+                         editable — they ARE the offer the calculator computed (50% / 75% / 95%
+                         of the calculated total). Cashier just reads them off. The calculate
+                         form does NOT POST the offer fields — calculator always recomputes
+                         from lines so re-Calculate after editing items always reflects the
+                         new total. Save / Accept / Reject forms below DO emit the calc values
+                         as hidden inputs so the saveOffer / override-reason logic still works. --}}
+                    <h4>Offer to customer <small class="text-muted">starting / 2nd / final — auto-calculated from items above</small></h4>
+                    @php
+                        $offerStartingCash = data_get($calc, 'starting_offer_cash');
+                        $offerStartingCredit = data_get($calc, 'starting_offer_credit');
+                        $offerSecondCash = data_get($calc, 'second_offer_cash');
+                        $offerSecondCredit = data_get($calc, 'second_offer_credit');
+                        $offerFinalCash = data_get($calc, 'final_offer_cash');
+                        $offerFinalCredit = data_get($calc, 'final_offer_credit');
+                        $fmtOffer = function ($v) {
+                            return $v === null || $v === '' ? '—' : '$' . number_format((float) $v, 2);
+                        };
+                    @endphp
                     <div class="negotiation-row">
-                        <div class="form-group"><label>Starting cash</label>{!! Form::number('starting_offer_cash', $input['starting_offer_cash'] ?? null, ['class' => 'form-control', 'step' => '0.01']) !!}</div>
-                        <div class="form-group"><label>Starting credit</label>{!! Form::number('starting_offer_credit', $input['starting_offer_credit'] ?? null, ['class' => 'form-control', 'step' => '0.01']) !!}</div>
-                        <div class="form-group"><label>2nd cash</label>{!! Form::number('second_offer_cash', $input['second_offer_cash'] ?? null, ['class' => 'form-control', 'step' => '0.01']) !!}</div>
-                        <div class="form-group"><label>2nd credit</label>{!! Form::number('second_offer_credit', $input['second_offer_credit'] ?? null, ['class' => 'form-control', 'step' => '0.01']) !!}</div>
+                        <div class="form-group"><label>Starting cash</label><input type="text" class="form-control bfc-offer-display" value="{{ $fmtOffer($offerStartingCash) }}" readonly tabindex="-1"></div>
+                        <div class="form-group"><label>Starting credit</label><input type="text" class="form-control bfc-offer-display" value="{{ $fmtOffer($offerStartingCredit) }}" readonly tabindex="-1"></div>
+                        <div class="form-group"><label>2nd cash</label><input type="text" class="form-control bfc-offer-display" value="{{ $fmtOffer($offerSecondCash) }}" readonly tabindex="-1"></div>
+                        <div class="form-group"><label>2nd credit</label><input type="text" class="form-control bfc-offer-display" value="{{ $fmtOffer($offerSecondCredit) }}" readonly tabindex="-1"></div>
                     </div>
                     <div class="negotiation-row">
-                        <div class="form-group"><label>Final cash</label>{!! Form::number('final_offer_cash', $input['final_offer_cash'] ?? null, ['class' => 'form-control', 'step' => '0.01']) !!}</div>
-                        <div class="form-group"><label>Final credit</label>{!! Form::number('final_offer_credit', $input['final_offer_credit'] ?? null, ['class' => 'form-control', 'step' => '0.01']) !!}</div>
+                        <div class="form-group"><label>Final cash</label><input type="text" class="form-control bfc-offer-display" value="{{ $fmtOffer($offerFinalCash) }}" readonly tabindex="-1"></div>
+                        <div class="form-group"><label>Final credit</label><input type="text" class="form-control bfc-offer-display" value="{{ $fmtOffer($offerFinalCredit) }}" readonly tabindex="-1"></div>
                         <div class="form-group" style="grid-column: 3 / span 3;"><label>Notes <span class="text-muted">(sealed items, rare finds, condition concerns)</span></label>{!! Form::textarea('notes', $input['notes'] ?? null, ['class' => 'form-control', 'rows' => 2]) !!}</div>
                     </div>
 
@@ -423,6 +464,53 @@
         $(document).on('change', '#seller_mode', toggleSellerMode);
         toggleSellerMode();
 
+        // Sarah 2026-05-06: auto-fill the per-row "Standard Multiplier" based on
+        // the Discogs median price + condition grade in the same row. The cashier
+        // can still type a manual override and it sticks (we mark the cell as
+        // touched on input so we don't clobber their value). Tiers err on the
+        // side of paying more for cheap items so the offer doesn't round to zero,
+        // and trim a little when condition is rough since gradeMultiplier already
+        // discounts those — this is just a small additional nudge. Tweak these
+        // numbers in one place when buy economics change.
+        function computeStdMult(price, grade) {
+            var p = parseFloat(price);
+            if (!isFinite(p) || p <= 0) {
+                return 0.10;
+            }
+            var base;
+            if (p < 5)        base = 0.25;
+            else if (p < 10)  base = 0.20;
+            else if (p < 25)  base = 0.15;
+            else if (p < 50)  base = 0.12;
+            else if (p < 100) base = 0.10;
+            else              base = 0.08;
+            var bump = 0;
+            if (grade === 'Mint' || grade === 'Near Mint') bump = 0.02;
+            else if (grade === 'Good+' || grade === 'Good' || grade === 'Fair') bump = -0.02;
+            var v = base + bump;
+            if (v < 0.05) v = 0.05;
+            return Math.round(v * 100) / 100;
+        }
+
+        function refreshStdMultForRow($row) {
+            var $stdMult = $row.find('input[name$="[standard_multiplier]"]');
+            if (!$stdMult.length) return;
+            if ($stdMult.data('manual')) return;
+            var price = $row.find('input[name$="[discogs_median_price]"]').val();
+            var grade = $row.find('select[name$="[condition_grade]"]').val();
+            $stdMult.val(computeStdMult(price, grade).toFixed(2));
+        }
+
+        $(document).on('input change', '#offer_lines_table input[name$="[discogs_median_price]"], #offer_lines_table select[name$="[condition_grade]"]', function () {
+            refreshStdMultForRow($(this).closest('tr'));
+        });
+
+        // If the cashier types directly into the multiplier, treat it as a
+        // manual override and stop auto-recomputing for that row.
+        $(document).on('input', '#offer_lines_table input[name$="[standard_multiplier]"]', function () {
+            $(this).data('manual', true);
+        });
+
         $(document).on('click', '#add_line_btn', function () {
             var $tbody = $('#offer_lines_table tbody');
             var $lastRow = $tbody.find('tr').last();
@@ -461,19 +549,10 @@
             if (!canvas || !canvas.getContext) return;
             var ctx = canvas.getContext('2d');
             var drawing = false;
-            var pm = @json($pmVal);
-            var suggestedCash = {{ (float) data_get($calc, 'calculated_cash_total', 0) }};
-            var suggestedCredit = {{ (float) data_get($calc, 'calculated_credit_total', 0) }};
-            var finalCash = {{ (float) data_get($calc, 'final_offer_cash', 0) }};
-            var finalCredit = {{ (float) data_get($calc, 'final_offer_credit', 0) }};
-
-            function refreshOverrideHint() {
-                var sug = pm === 'store_credit' ? suggestedCredit : suggestedCash;
-                var fin = pm === 'store_credit' ? finalCredit : finalCash;
-                var diff = Math.abs(fin - sug) > 0.009;
-                $('#override_required_label').toggle(diff);
-            }
-            refreshOverrideHint();
+            // Override-reason hint: kept for parity with the controller validation,
+            // but with read-only offer fields the submitted final always matches the
+            // calculator's auto-final, so this stays hidden in the normal flow.
+            $('#override_required_label').hide();
 
             function pos(e) {
                 var r = canvas.getBoundingClientRect();
