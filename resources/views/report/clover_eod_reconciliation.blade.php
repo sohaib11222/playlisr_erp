@@ -365,11 +365,12 @@
                                      Collapsed by default to keep the card
                                      compact. Click to expand. --}}
                                 @php
-                                    $details = $e['details'] ?? ['clover_unmatched'=>[], 'erp_unmatched'=>[], 'buys'=>[]];
+                                    $details = $e['details'] ?? ['clover_unmatched'=>[], 'erp_unmatched'=>[], 'amount_mismatch'=>[], 'buys'=>[]];
                                     $cuCount = count($details['clover_unmatched'] ?? []);
                                     $euCount = count($details['erp_unmatched'] ?? []);
+                                    $amCount = count($details['amount_mismatch'] ?? []);
                                     $bCount  = count($details['buys'] ?? []);
-                                    $detailsTotal = $cuCount + $euCount + $bCount;
+                                    $detailsTotal = $cuCount + $euCount + $amCount + $bCount;
                                     $tFmt = function ($t) {
                                         if (!$t) return '—';
                                         try { return \Carbon\Carbon::parse($t)->setTimezone(config('app.timezone'))->format('g:i a'); }
@@ -381,6 +382,7 @@
                                         <summary style="cursor:pointer; font-size:11px; font-weight:700; color:#374151; text-transform:uppercase; letter-spacing:.04em; padding:2px 0; user-select:none;">
                                             Show breakdown
                                             @if($cuCount > 0)<span style="color:#b91c1c; font-weight:600; text-transform:none; margin-left:6px;">· {{ $cuCount }} over-swipe</span>@endif
+                                            @if($amCount > 0)<span style="color:#b45309; font-weight:600; text-transform:none; margin-left:6px;">· {{ $amCount }} keying error{{ $amCount === 1 ? '' : 's' }}</span>@endif
                                             @if($euCount > 0)<span style="color:#374151; font-weight:500; text-transform:none; margin-left:6px;">· {{ $euCount }} cash sale{{ $euCount === 1 ? '' : 's' }}</span>@endif
                                             @if($bCount > 0)<span style="color:#374151; font-weight:500; text-transform:none; margin-left:6px;">· {{ $bCount }} buy{{ $bCount === 1 ? '' : 's' }}</span>@endif
                                         </summary>
@@ -396,6 +398,23 @@
                                                     </div>
                                                 @endforeach
                                                 <div style="display:flex; justify-content:space-between; padding:3px 0; font-weight:700;"><span>Subtotal</span><span style="color:#b91c1c;">${{ number_format($cuSum, 2) }}</span></div>
+                                            @endif
+                                            @if($amCount > 0)
+                                                <div style="margin-top:8px;"><span style="font-size:10px; font-weight:700; color:#b45309; text-transform:uppercase;">Keying errors (Clover amount ≠ ERP amount)</span></div>
+                                                @php $amSum = 0; @endphp
+                                                @foreach($details['amount_mismatch'] as $row)
+                                                    @php $amSum += (float) $row->diff; @endphp
+                                                    <div style="display:flex; justify-content:space-between; padding:2px 0; border-bottom:1px dotted #f3f4f6;">
+                                                        <span style="color:#6b7280;">{{ $tFmt($row->ts) }}</span>
+                                                        <span style="text-align:right;">
+                                                            <a href="{{ route('sell.printInvoice', $row->transaction_id) }}" target="_blank" style="color:#1f2937; font-weight:600; text-decoration:none;">
+                                                                Clover ${{ number_format($row->clover_amount, 2) }} vs ERP ${{ number_format($row->erp_amount, 2) }}
+                                                            </a>
+                                                            <span style="color:{{ $row->diff < 0 ? '#b91c1c' : '#92400e' }}; font-weight:700; margin-left:6px;">{{ $row->diff < 0 ? 'under' : 'over' }} ${{ number_format(abs($row->diff), 2) }}</span>
+                                                        </span>
+                                                    </div>
+                                                @endforeach
+                                                <div style="display:flex; justify-content:space-between; padding:3px 0; font-weight:700;"><span>Net keying drift</span><span style="color:{{ $amSum < 0 ? '#b91c1c' : '#92400e' }};">{{ $amSum >= 0 ? '+' : '' }}${{ number_format($amSum, 2) }}</span></div>
                                             @endif
                                             @if($euCount > 0)
                                                 <div style="margin-top:8px;"><span style="font-size:10px; font-weight:700; color:#374151; text-transform:uppercase;">ERP-only (likely cash, or missed swipe)</span></div>

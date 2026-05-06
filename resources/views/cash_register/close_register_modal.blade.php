@@ -266,6 +266,37 @@
 				{!! Form::textarea('closing_note', null, ['class' => '', 'placeholder' => 'Anything unusual about today?', 'rows' => 2 ]); !!}
 			</div>
 
+			{{-- Clover keying-error feedback (Sarah 2026-05-06): show
+			     during close so the cashier sees their typos before
+			     leaving the shift and can self-correct next time.
+			     Server-side $keying_errors is an array of pairs where
+			     this cashier's Clover swipe drifted >5¢ from the
+			     matching ERP sale; empty array = no feedback. --}}
+			@if(!empty($keying_errors))
+				<div style="background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:14px 16px; margin-top:14px;">
+					<div style="font-size:12px; font-weight:800; color:#92400e; text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px;">
+						⚠ {{ count($keying_errors) }} Clover amount{{ count($keying_errors) === 1 ? '' : 's' }} didn't match the ERP sale
+					</div>
+					<div style="font-size:12px; color:#78350f; margin-bottom:8px;">
+						Type the same amount on Clover that the POS shows. Mismatches by even a few cents add up to drawer variance at end of shift.
+					</div>
+					<div style="font-size:12px; font-variant-numeric: tabular-nums;">
+						@foreach($keying_errors as $err)
+							<div style="display:flex; justify-content:space-between; padding:3px 0; border-top:1px solid #fef3c7;">
+								<span style="color:#92400e;">{{ \Carbon\Carbon::parse($err['ts'])->setTimezone(config('app.timezone'))->format('g:i a') }}</span>
+								<span>
+									Clover <strong>${{ number_format($err['clover_amount'], 2) }}</strong>
+									vs POS <strong>${{ number_format($err['erp_amount'], 2) }}</strong>
+									<span style="color:{{ $err['diff'] < 0 ? '#b91c1c' : '#92400e' }}; font-weight:700; margin-left:6px;">
+										{{ $err['diff'] < 0 ? 'under' : 'over' }} ${{ number_format(abs($err['diff']), 2) }}
+									</span>
+								</span>
+							</div>
+						@endforeach
+					</div>
+				</div>
+			@endif
+
 			{{-- Reference breakdown (collapsed) --}}
 			<div class="cr-ref" id="cr-ref">
 				<button type="button" class="cr-ref-toggle" onclick="document.getElementById('cr-ref').classList.toggle('cr-ref-open')">

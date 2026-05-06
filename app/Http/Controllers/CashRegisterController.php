@@ -179,13 +179,102 @@ class CashRegisterController extends Controller
         $is_types_of_service_enabled = $this->moduleUtil->isModuleEnabled('types_of_service');
 
         $details = $this->cashRegisterUtil->getRegisterTransactionDetails($user_id, $open_time, $close_time, $is_types_of_service_enabled);
-        
+
         $payment_types = $this->cashRegisterUtil->payment_types($register_details->location_id, true, $business_id);
 
         $pos_settings = !empty(request()->session()->get('business.pos_settings')) ? json_decode(request()->session()->get('business.pos_settings'), true) : [];
 
+        // Sarah 2026-05-06: surface keying errors at close so the cashier
+        // sees "you typed $6.59 on Clover but the sale was $6.71" before
+        // leaving their shift. Wrapped in try/catch — POS close flow
+        // MUST never break, so any DB hiccup just yields no warnings
+        // rather than crashing the modal.
+        $keying_errors = [];
+        try {
+            $keying_errors = $this->detectShiftKeyingErrors(
+                $business_id, $user_id, $register_details->location_id, $open_time, $close_time
+            );
+        } catch (\Throwable $ex) {
+            \Log::warning('detectShiftKeyingErrors failed: ' . $ex->getMessage());
+        }
+
         return view('cash_register.close_register_modal')
-                    ->with(compact('register_details', 'details', 'payment_types', 'pos_settings'));
+                    ->with(compact('register_details', 'details', 'payment_types', 'pos_settings', 'keying_errors'));
+    }
+
+    /**
+     * Find Clover swipes during this cashier's shift whose amount
+     * matched an ERP sale within 25¢ + 10min but drifted by more than
+     * 5¢. These are the "you typed the wrong amount" tells: same sale,
+     * but Clover charged a different number than the POS recorded.
+     *
+     * Returns an array of ['ts', 'clover_amount', 'erp_amount', 'diff']
+     * pairs. Negative diff = Clover undercharged.
+     */
+    private function detectShiftKeyingErrors($business_id, $user_id, $location_id, $open_time, $close_time): array
+    {
+        $cps = \DB::table('clover_payments as cp')
+            ->where('cp.business_id', $business_id)
+            ->where(function ($q) {
+                $q->whereNull('cp.result')->orWhere('cp.result', 'SUCCESS')->orWhere('cp.result', 'APPROVED');
+            })
+            ->where('cp.paid_at', '>=', $open_time)
+            ->where('cp.paid_at', '<=', $close_time)
+            ->when($location_id, function ($q) use ($location_id) {
+                $q->where(function ($q2) use ($location_id) {
+                    $q2->where('cp.location_id', $location_id)->orWhereNull('cp.location_id');
+                });
+            })
+            ->orderBy('cp.paid_at')
+            ->get(['cp.id', 'cp.paid_at as ts', 'cp.amount']);
+
+        if ($cps->isEmpty()) return [];
+
+        $sells = \DB::table('transactions as t')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->where('t.created_by', $user_id)
+            ->where('t.transaction_date', '>=', $open_time)
+            ->where('t.transaction_date', '<=', $close_time)
+            ->when($location_id, fn($q) => $q->where('t.location_id', $location_id))
+            ->get(['t.id', 't.transaction_date as ts', 't.final_total']);
+
+        if ($sells->isEmpty()) return [];
+
+        $toCents = function ($x) { return (int) round(((float) $x) * 100); };
+        $claimed = [];
+        $errors  = [];
+        foreach ($cps as $cp) {
+            $cpTs = strtotime((string) $cp->ts);
+            $cpC  = $toCents($cp->amount);
+            $bestId = null; $bestScore = PHP_INT_MAX; $bestAbs = 0; $bestERP = 0;
+            foreach ($sells as $s) {
+                if (isset($claimed[$s->id])) continue;
+                $erpC = $toCents($s->final_total);
+                $abs = abs($cpC - $erpC);
+                if ($abs > 25) continue;
+                $td = abs(strtotime((string) $s->ts) - $cpTs);
+                if ($td > 600) continue;
+                $score = $abs * 1000 + $td;
+                if ($score < $bestScore) {
+                    $bestScore = $score; $bestId = $s->id; $bestAbs = $abs;
+                    $bestERP = (float) $s->final_total;
+                }
+            }
+            if ($bestId !== null && $bestAbs > 5) {
+                $claimed[$bestId] = true;
+                $errors[] = [
+                    'ts' => $cp->ts,
+                    'clover_amount' => round((float) $cp->amount, 2),
+                    'erp_amount'    => round($bestERP, 2),
+                    'diff'          => round(((float) $cp->amount) - $bestERP, 2),
+                ];
+            } elseif ($bestId !== null) {
+                $claimed[$bestId] = true; // claim clean matches so they don't re-pair
+            }
+        }
+        return $errors;
     }
 
     /**

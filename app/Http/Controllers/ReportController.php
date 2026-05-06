@@ -8261,15 +8261,18 @@ class ReportController extends Controller
         // Attribution pass: for each Clover swipe (newest-first to keep
         // the latest sales paired first), try to find an unclaimed ERP
         // sale at the same location with a near-matching amount and
-        // close-in-time. Sarah 2026-05-06 looking at Manolo's drilldown:
-        // a $33.06 Clover swipe at 11:47am pairs to a $32.92 ERP sale
-        // at 11:47am — same sale, 14¢ tax-rounding gap. The previous
-        // exact-cent rule treated these as unmatched. Now: match within
-        // ±5¢ AND within 10 minutes, prefer the smallest amount gap then
-        // the smallest time gap.
+        // close-in-time. Sarah 2026-05-06 looking at Manolo's then
+        // Henry's drilldowns: $6.59 Clover at 2:07 vs $6.71 ERP at
+        // 2:08 is the same sale undercharged by 12¢ on Clover. Tax-
+        // rounding gaps of up to ~25¢ are real here. Match within
+        // ±25¢ AND within 10 minutes, prefer the smallest amount gap
+        // then the smallest time gap. Pairs with >5¢ drift are
+        // surfaced as "amount mismatch" in the drilldown rather than
+        // hidden as clean matches.
         $cpForMatch = $cpRaw->sortByDesc('ts')->values();
-        $matchAmountCents = 5;
-        $matchTimeWindow  = 600; // seconds
+        $matchAmountCents     = 25;
+        $cleanMatchCents      = 5;
+        $matchTimeWindow      = 600; // seconds
         foreach ($cpForMatch as $r) {
             $cpTs    = strtotime((string) $r->ts);
             $cpCents = $toCents($r->amount);
@@ -8277,9 +8280,12 @@ class ReportController extends Controller
 
             $bestId = null;
             $bestScore = PHP_INT_MAX;
+            $bestAmtDelta = 0;
+            $bestSignedDelta = 0;
             foreach ($txns as $t) {
                 if (isset($claimedTxns[$t->id])) continue;
-                $amtDelta = abs($toCents($t->final_total) - $cpCents);
+                $signedDelta = $cpCents - $toCents($t->final_total); // + means Clover > ERP
+                $amtDelta = abs($signedDelta);
                 if ($amtDelta > $matchAmountCents) continue;
                 if ($cpLoc !== null && $t->location_id !== null
                     && (int) $cpLoc !== (int) $t->location_id) continue;
@@ -8287,19 +8293,19 @@ class ReportController extends Controller
                 if ($timeDelta > $matchTimeWindow) continue;
                 // Score: amount gap weighted heavier than time gap so an
                 // exact-cent match within 10min beats a 5¢-off match in
-                // the same minute. 1000s tip for time so e.g. a $0.01
-                // diff at 200s scores 1200 < a $0.00 diff at 600s = 600.
-                // Wait — we WANT exact match to win, so amount delta
-                // (cents) × 1000 + time delta (s).
+                // the same minute. amount-cents × 1000 + time-seconds.
                 $score = $amtDelta * 1000 + $timeDelta;
                 if ($score < $bestScore) {
                     $bestScore = $score;
                     $bestId = $t->id;
+                    $bestAmtDelta = $amtDelta;
+                    $bestSignedDelta = $signedDelta;
                 }
             }
             if ($bestId !== null) {
                 $claimedTxns[$bestId] = true;
                 $r->matched_txn_id = $bestId;
+                $r->matched_diff_cents = $bestSignedDelta; // signed: + = Clover over, − = under
                 $matchedCashier = '';
                 foreach ($txns as $t) {
                     if ($t->id === $bestId) { $matchedCashier = $t->cashier_name; break; }
@@ -8586,6 +8592,7 @@ class ReportController extends Controller
                     $e['details'] = [
                         'clover_unmatched' => [],
                         'erp_unmatched'    => [],
+                        'amount_mismatch'  => [],
                         'buys'             => [],
                     ];
                 }
@@ -8598,19 +8605,39 @@ class ReportController extends Controller
         // Populate the drill-down: unmatched Clover swipes attributed to
         // this cashier. These are the over-swipe / theft tells — Clover
         // collected the money but no ERP sale of that exact amount
-        // exists for this day at this store.
+        // exists for this day at this store. Also surface MATCHED pairs
+        // whose amounts drift > 5¢ — same sale, but the cashier typed
+        // the wrong amount on Clover, so this is the "we charged too
+        // little / too much on Clover" tell (Sarah 2026-05-06).
         foreach ($cpRaw as $r) {
-            if (!empty($r->matched_txn_id)) continue;
             if ($r->employee_name === '') continue;
             $emp = $firstName($r->employee_name);
             if (isset($adminSet[$emp])) continue;
             $day = $r->day instanceof \DateTimeInterface ? $r->day->format('Y-m-d') : (string) $r->day;
             $locKey = $r->location_id ?: 0;
             if (!isset($buckets[$day][$locKey]['employees'][$emp])) continue;
-            $buckets[$day][$locKey]['employees'][$emp]['details']['clover_unmatched'][] = (object) [
-                'ts' => $r->ts,
-                'amount' => round((float) $r->amount, 2),
-            ];
+            if (empty($r->matched_txn_id)) {
+                $buckets[$day][$locKey]['employees'][$emp]['details']['clover_unmatched'][] = (object) [
+                    'ts' => $r->ts,
+                    'amount' => round((float) $r->amount, 2),
+                ];
+            } elseif (abs((int) ($r->matched_diff_cents ?? 0)) > $cleanMatchCents) {
+                // Look up the matched ERP txn's amount + id for display.
+                $erpAmount = null;
+                $erpTxnId = (int) $r->matched_txn_id;
+                foreach ($txns as $t) {
+                    if ($t->id === $r->matched_txn_id) { $erpAmount = (float) $t->final_total; break; }
+                }
+                if ($erpAmount !== null) {
+                    $buckets[$day][$locKey]['employees'][$emp]['details']['amount_mismatch'][] = (object) [
+                        'ts' => $r->ts,
+                        'clover_amount' => round((float) $r->amount, 2),
+                        'erp_amount'    => round($erpAmount, 2),
+                        'diff'          => round(((float) $r->amount) - $erpAmount, 2), // + = Clover over, − = under
+                        'transaction_id' => $erpTxnId,
+                    ];
+                }
+            }
         }
 
         // Unmatched ERP sales — sales rung but no Clover swipe found.
@@ -8659,7 +8686,7 @@ class ReportController extends Controller
         foreach ($buckets as $day => &$locsD) {
             foreach ($locsD as $locKey => &$locD) {
                 foreach ($locD['employees'] as &$eD) {
-                    foreach (['clover_unmatched', 'erp_unmatched', 'buys'] as $key) {
+                    foreach (['clover_unmatched', 'erp_unmatched', 'amount_mismatch', 'buys'] as $key) {
                         usort($eD['details'][$key], function ($a, $b) {
                             return strcmp((string) $a->ts, (string) $b->ts);
                         });
