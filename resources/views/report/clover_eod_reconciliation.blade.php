@@ -3,7 +3,7 @@
 
 @section('content')
 <section class="content-header no-print">
-    <h1>Clover EOD Reconciliation <small>ERP card sales vs Clover settlements, day by day</small></h1>
+    <h1>Daily Cash Reconciliation <small>per-cashier sales + drawer check, one day at a time</small></h1>
 </section>
 
 <section class="content no-print">
@@ -46,15 +46,20 @@
          API call / missing creds / zero-payment day are all visible
          instead of buried in a log file. Admin-only on the backend. --}}
     <div style="margin-bottom:12px; text-align:right;">
-        <select id="eod_sync_days" class="form-control" style="display:inline-block; width:auto; vertical-align:middle; margin-right:4px;">
-            <option value="2" selected>Last 2 days</option>
-            <option value="7">Last 7 days</option>
-            <option value="30">Last 30 days (backfill)</option>
-            <option value="90">Last 90 days (backfill)</option>
-        </select>
+        {{-- Sarah 2026-05-06: the "Last 2 days" label was being read as a
+             report-window filter. It's actually how far back the Clover
+             sync command pulls. Relabeled as "Pull last N days" and
+             tucked into a smaller caption next to the button so it
+             doesn't look like a filter. --}}
         <button type="button" class="btn btn-default" id="eod_sync_now_btn">
             <i class="fa fa-sync"></i> Sync Clover now
         </button>
+        <select id="eod_sync_days" class="form-control input-sm" style="display:inline-block; width:auto; vertical-align:middle; margin-left:4px; font-size:11px; color:#6b7280;">
+            <option value="2" selected>pull 2 days</option>
+            <option value="7">pull 7 days</option>
+            <option value="30">pull 30 days</option>
+            <option value="90">pull 90 days</option>
+        </select>
         {{-- Sync Everything — full bidirectional sync (items, orders,
              customers + push dirty products/contacts). Lives next to the
              payments-only button because that's the first place Sarah
@@ -72,12 +77,12 @@
 
     {{-- Day summary — tallied from the per-cashier card data so it
          reflects the same source of truth Sarah's reading below.
-         The previous "ERP card $ vs Clover" banner was meaningless once
-         we learned cashiers ring everything as cash regardless of
-         payment method. --}}
+         Sarah 2026-05-06: previous red banner with aggregate over-swipe
+         and "drawer off" alerts was confusing because per-cashier cards
+         already flag those issues themselves. Calmer neutral summary
+         now: just the totals and reconcile progress. --}}
     @php
         $sumTotal = 0.0; $sumCard = 0.0; $sumCashiers = 0; $sumReconciled = 0;
-        $sumOverSwipe = 0.0; $sumCashShortBad = 0; $sumCashShortWarn = 0;
         foreach ($employee_breakdown_by_day as $_dayBlock) {
             foreach ($_dayBlock['locations'] as $_loc) {
                 foreach ($_loc['employees'] as $_e) {
@@ -86,33 +91,23 @@
                     $sumCashiers++;
                     $sumTotal += (float) ($_e['total_sales'] ?? 0);
                     $sumCard  += (float) ($_e['clover_total'] ?? 0);
-                    $_over = round(((float) ($_e['clover_total'] ?? 0)) - ((float) ($_e['total_sales'] ?? 0)), 2);
-                    if ($_over >= 1) $sumOverSwipe += $_over;
-                    $_cv = $_e['cash_variance'] ?? null;
-                    if (!is_null($_cv)) {
-                        if (abs($_cv) >= 5) $sumCashShortBad++;
-                        elseif (abs($_cv) >= 1) $sumCashShortWarn++;
-                    }
                     $_rKey = $_dayBlock['day'] . '|' . ($_loc['location_id'] ?: 0) . '|' . $_emp;
                     if (!empty($reconciliations[$_rKey]) && optional($reconciliations[$_rKey])->reconciled_at) $sumReconciled++;
                 }
             }
         }
-        $sumCash = round($sumTotal - $sumCard, 2);
-        $hasFlag = $sumOverSwipe >= 1 || $sumCashShortBad > 0;
-        $bannerClass = $hasFlag ? 'danger' : ($sumCashShortWarn > 0 ? 'warning' : 'info');
+        // Clamp implied cash at zero — a negative number here means the
+        // amount-match attribution credited Clover swipes from outside
+        // this day to a today cashier. Showing a negative "Paid in cash"
+        // is more confusing than helpful; the per-card warnings flag the
+        // specific cashier where it happened.
+        $sumCash = max(0, round($sumTotal - $sumCard, 2));
     @endphp
-    <div class="alert alert-{{ $bannerClass }}" style="margin-bottom:16px;">
+    <div style="background:#f3f4f6; border:1px solid #e5e7eb; border-radius:8px; padding:10px 14px; margin-bottom:16px; font-size:14px; color:#1f2937; font-variant-numeric: tabular-nums;">
         Total sold: <strong>${{ number_format($sumTotal, 2) }}</strong>
         &nbsp;·&nbsp; Paid by card: <strong>${{ number_format($sumCard, 2) }}</strong>
         &nbsp;·&nbsp; Paid in cash: <strong>${{ number_format($sumCash, 2) }}</strong>
-        &nbsp;·&nbsp; Cashiers: <strong>{{ $sumReconciled }}/{{ $sumCashiers }}</strong> reconciled
-        @if($sumOverSwipe >= 1)
-            &nbsp;·&nbsp; <span style="color:#7f1d1d;">⚠ Over-swipe ${{ number_format($sumOverSwipe, 2) }}</span>
-        @endif
-        @if($sumCashShortBad > 0)
-            &nbsp;·&nbsp; <span style="color:#7f1d1d;">⚠ {{ $sumCashShortBad }} drawer{{ $sumCashShortBad === 1 ? '' : 's' }} off ≥ $5</span>
-        @endif
+        &nbsp;·&nbsp; Reconciled: <strong>{{ $sumReconciled }} of {{ $sumCashiers }}</strong>
     </div>
 
     {{-- Daily-nav bar — shown in single-day mode so Fatteen can step
