@@ -555,22 +555,21 @@
             <div class="form-group">
                 <label for="preset_bulk_text">
                     <strong>2. Paste product lines (one per line).</strong>
-                    Same formats as Bulk Product Entry (the category in the line, if any, is ignored — the preset wins).
+                    Each row gets pre-filled with <em>Product Name, Artist, SKU</em> and your preset Category — same set of columns the Bulk Discogs IDs flow fills. You finish price / location / bin inline.
                 </label>
                 <div class="alert alert-info" style="margin-bottom: 10px; padding: 10px;">
                     <strong>Supported per-line formats:</strong>
                     <ul style="margin-bottom: 0; padding-left: 20px;">
                         <li><code>Product Name</code> (just the title)</li>
                         <li><code>Product Name - Artist</code></li>
-                        <li><code>Product Name | Artist | SKU | Price | Bin | Location</code></li>
-                        <li><code>Product Name,Artist,SKU,Price,Bin,Location</code></li>
+                        <li><code>Product Name | Artist | SKU</code> (pipe / comma / tab)</li>
                     </ul>
                 </div>
                 <textarea
                     id="preset_bulk_text"
                     class="form-control"
                     rows="10"
-                    placeholder="Example:&#10;Thriller - Michael Jackson&#10;Greatest Hits - Dionne Warwick&#10;Rumours - Fleetwood Mac"
+                    placeholder="Example:&#10;Thriller - Michael Jackson&#10;Greatest Hits - Dionne Warwick&#10;Rumours | Fleetwood Mac | BSK 3010"
                     style="font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.6;"></textarea>
             </div>
             <div class="form-group">
@@ -2350,12 +2349,13 @@
     //  Sarah 2026-05-06: Preset Category bulk entry
     //  Pick a category once, paste names, every new row uses that category.
     // ============================================================
+    // Sarah 2026-05-06: parsed columns intentionally narrowed to match the
+    // Bulk Discogs IDs flow — Name, Artist, SKU, plus the preset category.
+    // Price/Bin/Location are filled by hand in the row, same as Discogs.
     function parsePresetBulkLine(line) {
-        // Strip blank/comment lines
         const trimmed = line.trim();
         if (!trimmed) return null;
 
-        // Pipe / CSV / Tab — order: Name, Artist, SKU, Price, Bin, Location
         let parts = null;
         if (trimmed.indexOf('|') !== -1) {
             parts = trimmed.split('|').map(s => s.trim());
@@ -2369,12 +2369,8 @@
                 name: parts[0] || '',
                 artist: parts[1] || '',
                 sku: parts[2] || '',
-                price: parts[3] || '',
-                bin_position: parts[4] || '',
-                listing_location: parts[5] || '',
             };
         }
-        // Simple "Name - Artist"
         const dashIdx = trimmed.indexOf(' - ');
         if (dashIdx !== -1) {
             return {
@@ -2382,7 +2378,6 @@
                 artist: trimmed.slice(dashIdx + 3).trim(),
             };
         }
-        // Just a name
         return { name: trimmed };
     }
 
@@ -2395,12 +2390,10 @@
                 success: function(rowHtml) {
                     const $row = $(rowHtml);
                     $('#product_rows_container').prepend($row);
-                    if (productData.name)             $row.find('.product-name-autocomplete').val(productData.name);
-                    if (productData.artist)           $row.find('input[name*="[artist]"]').val(productData.artist);
-                    if (productData.sku)              $row.find('input[name*="[sku]"]').val(productData.sku);
-                    if (productData.price)            $row.find('input[name*="[selling_price]"]').val(productData.price);
-                    if (productData.bin_position)     $row.find('input[name*="[bin_position]"]').val(productData.bin_position);
-                    if (productData.listing_location) $row.find('input[name*="[listing_location]"]').val(productData.listing_location);
+                    // Same column set as the Bulk Discogs flow: Name, Artist, SKU.
+                    if (productData.name)   $row.find('.product-name-autocomplete').val(productData.name);
+                    if (productData.artist) $row.find('input[name*="[artist]"]').val(productData.artist);
+                    if (productData.sku)    $row.find('input[name*="[sku]"]').val(productData.sku);
 
                     // Apply the preset category combo.
                     if (comboVal) {
