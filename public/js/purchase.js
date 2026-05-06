@@ -849,6 +849,19 @@ function add_mass_products_sequentially(product_ids) {
 
     function process_next() {
         if (index >= product_ids.length) {
+            // Final pass: bypass any number-formatter quirks and brute-force
+            // qty=1 on every row that ended up at 0 or empty, then trigger
+            // change so subtotals/grand total recompute.
+            $('#purchase_entry_table tbody tr').each(function() {
+                var $qty = $(this).find('input.purchase_quantity').first();
+                if (!$qty.length) return;
+                var raw = String($qty.val() || '').trim();
+                var n = parseFloat(raw.replace(/,/g, '')) || 0;
+                if (n < 1) {
+                    $qty.val('1');
+                    $qty.trigger('change');
+                }
+            });
             return;
         }
 
