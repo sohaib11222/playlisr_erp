@@ -3417,7 +3417,14 @@ class ProductController extends Controller
             ]);
         }
 
-        $release = $this->discogsService->getReleaseById($id);
+        // Sarah 2026-05-06: instantiate DiscogsService with the explicit
+        // business_id instead of relying on the injected (request-scoped)
+        // instance. The injected one resolves at controller construction
+        // time, before the session-business binding is reliable for AJAX
+        // calls — leading to a spurious "Discogs API token not configured"
+        // even when the token IS set in Business Settings.
+        $svc = new \App\Services\DiscogsService($business_id);
+        $release = $svc->getReleaseById($id);
         if (!empty($release['error'])) {
             return response()->json([
                 'success' => false,
