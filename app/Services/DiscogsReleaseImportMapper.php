@@ -103,6 +103,7 @@ class DiscogsReleaseImportMapper
 
         return [
             'name' => $name,
+            'title' => $title !== '' ? $title : null,
             'artist' => $artistStr !== '' ? $artistStr : null,
             'format' => $formatStr !== '' ? $formatStr : null,
             'product_description' => $productDescription,

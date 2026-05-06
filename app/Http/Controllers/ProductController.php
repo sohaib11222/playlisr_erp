@@ -3457,6 +3457,7 @@ class ProductController extends Controller
             'success' => true,
             'data' => [
                 'name' => $mapped['name'] ?? null,
+                'title' => $mapped['title'] ?? null,
                 'artist' => $mapped['artist'] ?? null,
                 'category_id' => $mapped['category_id'] ?? null,
                 'sub_category_id' => $mapped['sub_category_id'] ?? null,

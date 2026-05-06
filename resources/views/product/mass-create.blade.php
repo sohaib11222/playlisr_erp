@@ -2227,8 +2227,13 @@
                     const $row = $(rowHtml);
                     $('#product_rows_container').prepend($row);
 
-                    if (discogsData.name) {
-                        $row.find('.product-name-autocomplete').val(discogsData.name);
+                    // Sarah 2026-05-06: ONLY the title goes into Product Name
+                    // and ONLY the artist goes into Artist — don't combine them
+                    // into "Artist — Title" for the name input. Falls back to
+                    // .name if title is missing for some reason.
+                    const productTitle = discogsData.title || discogsData.name;
+                    if (productTitle) {
+                        $row.find('.product-name-autocomplete').val(productTitle);
                     }
                     if (discogsData.artist) {
                         $row.find('input[name*="[artist]"]').val(discogsData.artist);
