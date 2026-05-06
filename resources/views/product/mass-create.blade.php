@@ -489,22 +489,22 @@
         <div class="box-body" style="display: none;">
             <div class="form-group">
                 <label for="bulk_discogs_ids">
-                    <strong>Paste Discogs release IDs (one per line).</strong>
+                    <strong>Paste Discogs release IDs <em>or</em> URLs (one per line).</strong>
                 </label>
                 <div class="alert alert-info" style="margin-bottom: 10px; padding: 10px;">
-                    Each ID is looked up against the Discogs API. We auto-fill
-                    the product name (Artist &mdash; Title), artist, and best-guess
-                    category/subcategory based on Discogs genres. You finish the
-                    rest (SKU, price, location, bin) inline.
+                    Each entry is looked up against the Discogs API. We auto-fill
+                    Product Name (title), Artist, SKU (catalog number), and
+                    best-guess Category/Subcategory. You finish price / location /
+                    bin inline.
                 </div>
                 <textarea
                     id="bulk_discogs_ids"
                     class="form-control"
                     rows="8"
-                    placeholder="Example:&#10;1873085&#10;249504&#10;366070&#10;&#10;One Discogs release ID per line."
+                    placeholder="Examples (mix and match):&#10;1873085&#10;https://www.discogs.com/release/249504-Pink-Floyd-The-Dark-Side-Of-The-Moon&#10;discogs.com/release/366070"
                     style="font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.6;"></textarea>
                 <small class="text-muted">
-                    <i class="fa fa-info-circle"></i> The release ID is the number in a Discogs URL: <code>discogs.com/release/<strong>1873085</strong>-...</code>
+                    <i class="fa fa-info-circle"></i> Either the bare ID number, or a full Discogs URL like <code>discogs.com/release/<strong>1873085</strong>-...</code> &mdash; we'll pull the ID out.
                 </small>
             </div>
             <div class="form-group">
@@ -2261,13 +2261,24 @@
         });
     }
 
+    // Sarah 2026-05-06: accept either a bare numeric ID or a full Discogs URL
+    // like https://www.discogs.com/release/1873085-Pink-Floyd-Atom-Heart-Mother
+    // Extracts the digits after `/release/` when a URL is pasted.
+    function extractDiscogsReleaseId(line) {
+        const trimmed = (line || '').trim();
+        if (!trimmed) return null;
+        if (/^\d+$/.test(trimmed)) return trimmed;
+        const m = trimmed.match(/\/release\/(\d+)/i);
+        return m ? m[1] : null;
+    }
+
     $('#fetch_discogs_ids').on('click', function() {
         const raw = $('#bulk_discogs_ids').val() || '';
         const ids = raw.split(/\r?\n/)
-                       .map(s => s.trim())
-                       .filter(s => s.length > 0 && /^\d+$/.test(s));
+                       .map(extractDiscogsReleaseId)
+                       .filter(Boolean);
         if (!ids.length) {
-            toastr.warning('Paste at least one numeric Discogs release ID.');
+            toastr.warning('Paste at least one Discogs release ID or release URL.');
             return;
         }
         if (!confirm(`Fetch ${ids.length} releases from Discogs and add them to the table?`)) {
