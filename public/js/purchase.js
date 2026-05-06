@@ -851,16 +851,22 @@ function add_mass_products_sequentially(product_ids) {
         if (index >= product_ids.length) {
             // Final pass: bypass any number-formatter quirks and brute-force
             // qty=1 on every row that ended up at 0 or empty, then trigger
-            // change so subtotals/grand total recompute.
+            // change so subtotals/grand total recompute. Also covers the
+            // secondary "Quantity in Pc(s)" input rendered when the product
+            // has a second unit — it ships with value="" which leaves the
+            // pieces field blank for the cashier.
             $('#purchase_entry_table tbody tr').each(function() {
-                var $qty = $(this).find('input.purchase_quantity').first();
-                if (!$qty.length) return;
-                var raw = String($qty.val() || '').trim();
-                var n = parseFloat(raw.replace(/,/g, '')) || 0;
-                if (n < 1) {
-                    $qty.val('1');
-                    $qty.trigger('change');
-                }
+                var $row = $(this);
+                ['input.purchase_quantity', 'input[name$="[secondary_unit_quantity]"]'].forEach(function(sel) {
+                    var $el = $row.find(sel).first();
+                    if (!$el.length) return;
+                    var raw = String($el.val() || '').trim();
+                    var n = parseFloat(raw.replace(/,/g, '')) || 0;
+                    if (n < 1) {
+                        $el.val('1');
+                        $el.trigger('change');
+                    }
+                });
             });
             return;
         }

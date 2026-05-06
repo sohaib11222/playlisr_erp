@@ -70,11 +70,16 @@
             @endif
 
             @if(!empty($product->second_unit))
+                @php
+                    // Default to 1 (matches primary qty default) so Save & Send
+                    // to Add Purchase lands with both qty fields populated.
+                    $secondary_qty_value = !empty($imported_data['secondary_unit_quantity']) ? $imported_data['secondary_unit_quantity'] : 1;
+                @endphp
                 <span style="font-size: 11px !important; white-space: nowrap !important; display: inline-block !important; margin-left: 5px !important;">@lang('lang_v1.quantity_in_second_unit', ['unit' => $product->second_unit->short_name])*:</span>
                 <input type="text"
                 name="purchases[{{$row_count}}][secondary_unit_quantity]"
-                value=""
-                class="form-control input-sm input_number input_quantity"
+                value="{{ $secondary_qty_value }}"
+                class="form-control input-sm input_number input_quantity secondary_unit_quantity"
                 data-decimal="0"
                 style="width: 60px !important; margin: 0 !important; flex-shrink: 0 !important; display: inline-block !important;"
                 required>
