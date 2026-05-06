@@ -392,7 +392,7 @@ body.mass-add-v2 #save_and_send_to_purchase {
     box-sizing: border-box !important;
     transition: transform .1s ease, box-shadow .15s !important;
 }
-/* Secondary — smaller, no glow. */
+/* Secondary — yellow Save All Products, smaller, no glow. */
 body.mass-add-v2 #save_all_products {
     height: 40px !important;
     min-height: 40px !important;
@@ -405,7 +405,8 @@ body.mass-add-v2 #save_all_products {
 body.mass-add-v2 #save_all_products:hover {
     transform: translateY(-1px);
 }
-/* HERO — bigger, bolder, soft yellow glow so it reads as THE action. */
+/* HERO — green Save & send to add purchase. Bigger, bolder, soft green
+   glow so it reads as THE action. */
 body.mass-add-v2 #save_and_send_to_purchase {
     height: 48px !important;
     min-height: 48px !important;
@@ -413,11 +414,11 @@ body.mass-add-v2 #save_and_send_to_purchase {
     font-weight: 700 !important;
     font-size: 14px !important;
     letter-spacing: .03em !important;
-    box-shadow: 0 0 0 3px rgba(232,207,104,.30),
+    box-shadow: 0 0 0 3px rgba(47,107,62,.22),
                 0 2px 6px rgba(0,0,0,.06) !important;
 }
 body.mass-add-v2 #save_and_send_to_purchase:hover {
-    box-shadow: 0 0 0 4px rgba(232,207,104,.45),
+    box-shadow: 0 0 0 4px rgba(47,107,62,.35),
                 0 4px 10px rgba(0,0,0,.08) !important;
     transform: translateY(-1px);
 }

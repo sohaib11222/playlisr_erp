@@ -3397,6 +3397,59 @@ class ProductController extends Controller
         ]);
     }
 
+    /**
+     * Mass-create helper: fetch a Discogs release by ID and return mapped
+     * product fields (name, artist, category_id, sub_category_id, ...) for
+     * the bulk-Discogs-IDs entry mode on /products/mass-create.
+     *
+     * Sarah 2026-05-06 — paste a list of Discogs release IDs, the frontend
+     * calls this once per ID, then prepends a row with the returned data.
+     */
+    public function fetchDiscogsReleaseForMassCreate(Request $request, $releaseId)
+    {
+        $business_id = $request->session()->get('user.business_id');
+        $id = (int) $releaseId;
+
+        if ($id < 1) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid Discogs release id.',
+            ]);
+        }
+
+        $release = $this->discogsService->getReleaseById($id);
+        if (!empty($release['error'])) {
+            return response()->json([
+                'success' => false,
+                'message' => $release['message'] ?? 'Discogs lookup failed.',
+            ]);
+        }
+
+        $payload = $release['data'] ?? null;
+        if (!$payload || !is_object($payload)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Discogs returned no data for release ' . $id . '.',
+            ]);
+        }
+
+        $mapper = new \App\Services\DiscogsReleaseImportMapper();
+        $mapped = $mapper->mapFromApiPayload($business_id, $payload, $id);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'name' => $mapped['name'] ?? null,
+                'artist' => $mapped['artist'] ?? null,
+                'category_id' => $mapped['category_id'] ?? null,
+                'sub_category_id' => $mapped['sub_category_id'] ?? null,
+                'product_description' => $mapped['product_description'] ?? null,
+                'discogs_release_id' => $mapped['discogs_release_id'] ?? $id,
+                'warnings' => $mapped['warnings'] ?? [],
+            ],
+        ]);
+    }
+
     public function getDiscogsPrices(Request $request)
     {
         $releaseId = $request->input('release_id');
@@ -3406,7 +3459,7 @@ class ProductController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => $discogsPrices['message']
-            ]); 
+            ]);
         }
 
         $prices = [];
