@@ -271,15 +271,30 @@ class DiscogsReleaseImportMapper
         }
 
         if (!empty($matches)) {
+            // Sarah 2026-05-06: most mass-add work is used LPs, so default
+            // to "Used Vinyl > Genre" unless the release's format clearly
+            // points elsewhere (specific size like 7"/12", RPM, cd, cassette).
+            //   - +5  baseline bonus for any parent containing "used vinyl"
+            //   - +10 when a SPECIFIC format token (size/RPM/medium) matches
+            //         the parent name
+            //   - +2  for generic tokens that overlap (e.g. "vinyl", "album")
+            // Specific format wins decisively when applicable, but Used
+            // Vinyl wins ties / vague matches.
+            $specificTokens = ['7"', '10"', '12"', '33 rpm', '45 rpm', '78 rpm', 'cd', 'cassette', 'reel', 'box set'];
+
             $best = null;
             $bestScore = -1;
             foreach ($matches as $m) {
                 $score = $m['sub_exact'] ? 1 : 0;
+                $pn = $m['parent_name'];
+
+                if ($pn !== '' && mb_strpos($pn, 'used vinyl') !== false) {
+                    $score += 5;
+                }
                 foreach ($formatTokens as $tok) {
-                    if ($tok === '') continue;
-                    if ($m['parent_name'] !== '' && mb_strpos($m['parent_name'], $tok) !== false) {
-                        // Reward longer, more specific format matches more.
-                        $score += 2 + mb_strlen($tok);
+                    if ($tok === '' || $pn === '') continue;
+                    if (mb_strpos($pn, $tok) !== false) {
+                        $score += in_array($tok, $specificTokens, true) ? 10 : 2;
                     }
                 }
                 if ($score > $bestScore) {
