@@ -2,10 +2,6 @@
 @section('title', __('product.mass_add_new_products'))
 
 @section('content')
-    {{-- Sarah 2026-05-06: visual reskin to match /pos/create. Pure CSS,
-         scoped under body.mass-add-v2 — leaves all IDs / handlers alone. --}}
-    @include('product.partials._mass_create_redesign')
-    <script>document.body.classList.add('mass-add-v2');</script>
 
     <!-- Content Header (Page header) -->
     <section class="content-header">
