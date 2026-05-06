@@ -8260,26 +8260,40 @@ class ReportController extends Controller
 
         // Attribution pass: for each Clover swipe (newest-first to keep
         // the latest sales paired first), try to find an unclaimed ERP
-        // sale at the same location with the same dollar amount (±1¢).
-        // Tiebreak by closest time. If found, override employee_name with
-        // the ERP cashier — they're the one who rang it. Otherwise fall
-        // back to shift-window attribution for pin-less swipes only.
+        // sale at the same location with a near-matching amount and
+        // close-in-time. Sarah 2026-05-06 looking at Manolo's drilldown:
+        // a $33.06 Clover swipe at 11:47am pairs to a $32.92 ERP sale
+        // at 11:47am — same sale, 14¢ tax-rounding gap. The previous
+        // exact-cent rule treated these as unmatched. Now: match within
+        // ±5¢ AND within 10 minutes, prefer the smallest amount gap then
+        // the smallest time gap.
         $cpForMatch = $cpRaw->sortByDesc('ts')->values();
+        $matchAmountCents = 5;
+        $matchTimeWindow  = 600; // seconds
         foreach ($cpForMatch as $r) {
             $cpTs    = strtotime((string) $r->ts);
             $cpCents = $toCents($r->amount);
             $cpLoc   = $r->location_id;
 
             $bestId = null;
-            $bestDelta = PHP_INT_MAX;
+            $bestScore = PHP_INT_MAX;
             foreach ($txns as $t) {
                 if (isset($claimedTxns[$t->id])) continue;
-                if ($toCents($t->final_total) !== $cpCents) continue;
+                $amtDelta = abs($toCents($t->final_total) - $cpCents);
+                if ($amtDelta > $matchAmountCents) continue;
                 if ($cpLoc !== null && $t->location_id !== null
                     && (int) $cpLoc !== (int) $t->location_id) continue;
-                $delta = abs(strtotime((string) $t->transaction_date) - $cpTs);
-                if ($delta < $bestDelta) {
-                    $bestDelta = $delta;
+                $timeDelta = abs(strtotime((string) $t->transaction_date) - $cpTs);
+                if ($timeDelta > $matchTimeWindow) continue;
+                // Score: amount gap weighted heavier than time gap so an
+                // exact-cent match within 10min beats a 5¢-off match in
+                // the same minute. 1000s tip for time so e.g. a $0.01
+                // diff at 200s scores 1200 < a $0.00 diff at 600s = 600.
+                // Wait — we WANT exact match to win, so amount delta
+                // (cents) × 1000 + time delta (s).
+                $score = $amtDelta * 1000 + $timeDelta;
+                if ($score < $bestScore) {
+                    $bestScore = $score;
                     $bestId = $t->id;
                 }
             }

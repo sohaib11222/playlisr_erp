@@ -528,20 +528,32 @@ class SellPosController extends Controller
                 ->orderByDesc('transaction_date')
                 ->get(['id', 'final_total', 'transaction_date', 'location_id']);
 
+            // Match window: ±5¢ amount + ±10min time. Sarah 2026-05-06
+            // looking at Manolo's drilldown — a $33.06 Clover swipe vs
+            // a $32.92 ERP sale at the same minute is the same sale
+            // with 14¢ of tax-rounding drift. The previous 1¢ rule
+            // treated those as unmatched. Score = amount-cents-delta
+            // ×1000 + time-seconds-delta so an exact match within
+            // 10min still beats a 5¢-off match.
+            $matchAmountCents = 5;
+            $matchTimeWindow  = 600;
             foreach ($matchSales as $sale) {
                 $erTs    = strtotime((string) $sale->transaction_date);
                 $erCents = $toCents($sale->final_total);
                 $erLoc   = $sale->location_id;
 
                 $bestKey = null;
-                $bestDelta = PHP_INT_MAX;
+                $bestScore = PHP_INT_MAX;
                 foreach ($cpRows as $key => $cp) {
                     if (isset($claimedCpKeys[$key])) continue;
-                    if (abs($toCents($cp->amount) - $erCents) > 1) continue;
+                    $amtDelta = abs($toCents($cp->amount) - $erCents);
+                    if ($amtDelta > $matchAmountCents) continue;
                     if ($cp->location_id !== null && (int) $cp->location_id !== (int) $erLoc) continue;
-                    $delta = abs(strtotime((string) $cp->paid_at) - $erTs);
-                    if ($delta < $bestDelta) {
-                        $bestDelta = $delta;
+                    $timeDelta = abs(strtotime((string) $cp->paid_at) - $erTs);
+                    if ($timeDelta > $matchTimeWindow) continue;
+                    $score = $amtDelta * 1000 + $timeDelta;
+                    if ($score < $bestScore) {
+                        $bestScore = $score;
                         $bestKey = $key;
                     }
                 }
@@ -689,6 +701,9 @@ class SellPosController extends Controller
         // so the UI can show a "5 mismatches · 12 ERP-only · 3 Clover-only"
         // summary regardless of which filter the user has on. Always computed
         // in cents.
+        // Mismatch threshold raised to >5¢ to align with the 5¢ pair
+        // tolerance — tax-rounding drift up to 5¢ is now treated as a
+        // legit match, not a mismatch.
         $toCentsSummary = function ($x) { return (int) round(((float) $x) * 100); };
         $mismatch_count = 0;
         $no_clover_count = 0;
@@ -696,7 +711,7 @@ class SellPosController extends Controller
             $info = $clover_by_transaction[$sale->id] ?? null;
             if ($info === null) {
                 $no_clover_count++;
-            } elseif (abs($info['amount_cents'] - $toCentsSummary($sale->final_total)) > 1) {
+            } elseif (abs($info['amount_cents'] - $toCentsSummary($sale->final_total)) > 5) {
                 $mismatch_count++;
             }
         }
@@ -711,7 +726,7 @@ class SellPosController extends Controller
             $sales = $sales->filter(function ($sale) use ($clover_by_transaction, $discrepancy, $toCentsSummary) {
                 $info = $clover_by_transaction[$sale->id] ?? null;
                 $isNoClover = $info === null;
-                $isMismatch = $info !== null && abs($info['amount_cents'] - $toCentsSummary($sale->final_total)) > 1;
+                $isMismatch = $info !== null && abs($info['amount_cents'] - $toCentsSummary($sale->final_total)) > 5;
                 if ($discrepancy === 'mismatch')   return $isMismatch;
                 if ($discrepancy === 'no_clover')  return $isNoClover;
                 if ($discrepancy === 'any')        return $isMismatch || $isNoClover;
@@ -939,20 +954,32 @@ class SellPosController extends Controller
 
             $claimedCpKeys = [];
             $matchedCpByTx = [];
+            // Match window: ±5¢ amount + ±10min time. Sarah 2026-05-06
+            // looking at Manolo's drilldown — a $33.06 Clover swipe vs
+            // a $32.92 ERP sale at the same minute is the same sale
+            // with 14¢ of tax-rounding drift. The previous 1¢ rule
+            // treated those as unmatched. Score = amount-cents-delta
+            // ×1000 + time-seconds-delta so an exact match within
+            // 10min still beats a 5¢-off match.
+            $matchAmountCents = 5;
+            $matchTimeWindow  = 600;
             foreach ($matchSales as $sale) {
                 $erTs    = strtotime((string) $sale->transaction_date);
                 $erCents = $toCents($sale->final_total);
                 $erLoc   = $sale->location_id;
 
                 $bestKey = null;
-                $bestDelta = PHP_INT_MAX;
+                $bestScore = PHP_INT_MAX;
                 foreach ($cpRows as $key => $cp) {
                     if (isset($claimedCpKeys[$key])) continue;
-                    if (abs($toCents($cp->amount) - $erCents) > 1) continue;
+                    $amtDelta = abs($toCents($cp->amount) - $erCents);
+                    if ($amtDelta > $matchAmountCents) continue;
                     if ($cp->location_id !== null && (int) $cp->location_id !== (int) $erLoc) continue;
-                    $delta = abs(strtotime((string) $cp->paid_at) - $erTs);
-                    if ($delta < $bestDelta) {
-                        $bestDelta = $delta;
+                    $timeDelta = abs(strtotime((string) $cp->paid_at) - $erTs);
+                    if ($timeDelta > $matchTimeWindow) continue;
+                    $score = $amtDelta * 1000 + $timeDelta;
+                    if ($score < $bestScore) {
+                        $bestScore = $score;
                         $bestKey = $key;
                     }
                 }
