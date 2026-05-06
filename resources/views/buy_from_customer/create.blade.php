@@ -60,6 +60,25 @@
         /* Readonly offer-amount displays — look like read-outs, not inputs. */
         .bfc-create .bfc-offer-display { background: #f5f5f5; border-color: #e6e6e6; color: #333; font-weight: 600; cursor: default; }
         .bfc-create .bfc-offer-display:focus { outline: none; box-shadow: none; }
+        /* Make per-row remove "X" subtle — just a muted glyph, no big red block. */
+        .bfc-create #offer_lines_table .remove-line {
+            background: transparent;
+            border: 0;
+            color: #c8c0b8;
+            padding: 4px 6px;
+            line-height: 1;
+            box-shadow: none;
+            opacity: 0.7;
+            transition: color 0.15s ease, opacity 0.15s ease;
+        }
+        .bfc-create #offer_lines_table .remove-line:hover,
+        .bfc-create #offer_lines_table .remove-line:focus {
+            background: transparent;
+            color: #c0392b;
+            opacity: 1;
+            outline: none;
+        }
+        .bfc-create #offer_lines_table .remove-line .fa { font-size: 11px; }
     </style>
     @if($is_embed)
         {{-- When opened inside the POS modal iframe, hide the admin chrome so only the calculator shows. --}}
