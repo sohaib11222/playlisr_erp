@@ -124,6 +124,9 @@
                         <button type="button" class="btn btn-success" id="add_another_product">
                             <i class="fa fa-plus"></i> Add Another Product
                         </button>
+                        <button type="button" class="btn btn-info" id="add_5_manual_products" style="margin-left: 6px;">
+                            <i class="fa fa-plus"></i> Add 5 Rows
+                        </button>
                     </div>
                 </div>
                 
