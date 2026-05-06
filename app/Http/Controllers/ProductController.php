@@ -3460,6 +3460,7 @@ class ProductController extends Controller
                 'artist' => $mapped['artist'] ?? null,
                 'category_id' => $mapped['category_id'] ?? null,
                 'sub_category_id' => $mapped['sub_category_id'] ?? null,
+                'sku' => $mapped['sku'] ?? null,
                 'product_description' => $mapped['product_description'] ?? null,
                 'discogs_release_id' => $mapped['discogs_release_id'] ?? $id,
                 'warnings' => $mapped['warnings'] ?? [],

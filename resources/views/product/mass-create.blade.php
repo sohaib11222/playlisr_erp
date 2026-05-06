@@ -590,10 +590,11 @@
             <!-- Шапка таблицы с восстановленными колонками -->
             <thead class="thead">
                 <tr class="tr">
+                    {{-- Sarah 2026-05-06: Artist moved next to Product Name --}}
                     <th class="th col-name">@lang('product.product_name')*</th>
+                    <th class="th col-artist">Artist</th>
                     <th class="th col-sku">@lang('product.sku')</th>
                     <th class="th col-select">@lang('product.category') / @lang('product.sub_category')</th>
-                    <th class="th col-artist">Artist</th>
                     <th class="th col-locations">@lang('business.business_locations')</th>
                     <th class="th price-col">Purchase Price</th>
                     <th class="th price-col">Selling Price</th>
@@ -2229,6 +2230,9 @@
                     }
                     if (discogsData.artist) {
                         $row.find('input[name*="[artist]"]').val(discogsData.artist);
+                    }
+                    if (discogsData.sku) {
+                        $row.find('input[name*="[sku]"]').val(discogsData.sku);
                     }
                     // Pre-select category combo if Discogs gave us a match.
                     if (discogsData.category_id) {

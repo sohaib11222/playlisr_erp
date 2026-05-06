@@ -12,6 +12,18 @@
         <input type="hidden" name="{{ "products[{$index}][id]" }}" class="product-id" data-row-index="{{ $index }}"/>
         <input type="hidden" name="{{ "products[{$index}][variation_id]" }}" class="variation-id" data-row-index="{{ $index }}"/>
     </td>
+    {{-- Sarah 2026-05-06: Artist moved next to Product Name. Original
+         position was after Category. --}}
+    <td class="td col-artist">
+        <div class="mass-add-artist-wrap">
+            {!! Form::text("products[{$index}][artist]", null, [
+                'class' => 'form-control mass-add-artist-input',
+                'placeholder' => "Artist",
+                'id' => "products_{$index}_artist",
+                'autocomplete' => 'off',
+            ]) !!}
+        </div>
+    </td>
     <td class="td col-sku" data-hide-on-selection="yes" data-row-index="{{ $index }}">
         {!! Form::text("products[{$index}][sku]", null, [
             'class' => 'form-control sku-input',
@@ -57,16 +69,6 @@
             <div class="sub-category-suggestions-container" data-row-index="{{ $index }}">
                 {{-- Suggestions will be added here --}}
             </div>
-        </div>
-    </td>
-    <td class="td col-artist">
-        <div class="mass-add-artist-wrap">
-            {!! Form::text("products[{$index}][artist]", null, [
-                'class' => 'form-control mass-add-artist-input',
-                'placeholder' => "Artist",
-                'id' => "products_{$index}_artist",
-                'autocomplete' => 'off',
-            ]) !!}
         </div>
     </td>
     <td class="td col-locations">
