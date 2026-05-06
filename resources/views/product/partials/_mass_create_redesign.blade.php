@@ -310,11 +310,68 @@ body.mass-add-v2 .alert-warning {
     color: var(--pos-accent-text) !important;
 }
 
-/* ===== Bottom action stack: keep block buttons tidy + match POS payment row ===== */
+/* ===== Table footer action area — align both rows to a single 320px column.
+        2026-05-06: Sarah asked to align the action buttons better. The two
+        tfoot rows previously rendered with different widths (Add-row pair
+        sized to content, action stack stretched to td) — now both groups
+        share a fixed 320px column for visual consistency. ===== */
+body.mass-add-v2 #mass_create_table > tfoot > tr > td {
+    border: none !important;
+    padding: 14px 0 0 !important;
+    background: transparent !important;
+}
+/* Row 1 — "Add New Product Row" + "Add 5 Product Rows" sit side-by-side. */
+body.mass-add-v2 #mass_create_table > tfoot > tr:first-child > td {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 10px !important;
+    width: 320px !important;
+    max-width: 320px !important;
+}
+body.mass-add-v2 #add_row,
+body.mass-add-v2 #add_5_rows {
+    flex: 1 1 145px !important;
+    margin: 0 !important;            /* override inline margin-left:6px */
+    min-width: 145px !important;
+    height: 44px !important;
+    padding: 11px 14px !important;
+    font-weight: 600 !important;
+    letter-spacing: .02em !important;
+    border-radius: var(--pos-radius-sm) !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+/* Row 2 — action stack: 320px column, all 3 buttons same height/width. */
+body.mass-add-v2 #mass_add_action_buttons {
+    width: 320px !important;
+    max-width: 320px !important;
+    gap: 10px !important;
+    margin-top: 4px !important;
+}
 body.mass-add-v2 #mass_add_action_buttons .btn-block {
     border-radius: var(--pos-radius-sm) !important;
     font-weight: 600 !important;
     letter-spacing: .02em !important;
+    height: 44px !important;
+    min-height: 44px !important;
+    padding: 11px 14px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    white-space: nowrap !important;
+    word-break: normal !important;
+    line-height: 1.2 !important;
+    margin: 0 !important;
+}
+/* Longest label — let it wrap to 2 lines inside the 320px column rather
+   than getting clipped on one. */
+body.mass-add-v2 #save_and_send_to_purchase {
+    white-space: normal !important;
+    height: auto !important;
+    min-height: 44px !important;
+    line-height: 1.25 !important;
 }
 
 /* ===== Misc: code/kbd inside the bulk-entry helper text ===== */
