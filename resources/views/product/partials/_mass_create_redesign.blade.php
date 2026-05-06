@@ -321,90 +321,98 @@ body.mass-add-v2 .alert-warning {
           ROW 2: [    Save All Products    ] [  Save & send to add purchase  ]
                  ← primary save actions, two equal prominent buttons
         ===== */
+/* 2026-05-06 v6 (Sarah):
+   - Buttons were too tall — bring everything down.
+   - "Save & send to add purchase" is the MAIN action; treat it as the
+     hero (wider, taller, glow). "Save All Products" is the secondary
+     save action sitting beside it. */
 body.mass-add-v2 .mass-add-footer-actions {
     margin-top: 16px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
     width: 100%;
-    max-width: 900px;
+    max-width: 720px;
 }
 
-/* ROW 1 — three equal buttons. */
+/* ROW 1 — three equal compact action buttons. */
 body.mass-add-v2 .mass-add-row-actions {
     display: grid !important;
     grid-template-columns: repeat(3, 1fr) !important;
-    gap: 10px !important;
+    gap: 8px !important;
     width: 100% !important;
 }
 body.mass-add-v2 #add_row,
 body.mass-add-v2 #add_5_rows,
 body.mass-add-v2 #verify_all_categories {
     margin: 0 !important;
-    min-height: 48px !important;
-    height: auto !important;
-    padding: 11px 14px !important;
-    font-weight: 600 !important;
-    font-size: 13.5px !important;
-    letter-spacing: .02em !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    padding: 0 12px !important;
+    font-weight: 500 !important;
+    font-size: 12.5px !important;
+    letter-spacing: .01em !important;
     border-radius: var(--pos-radius-sm) !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
     gap: 6px !important;
-    /* Never clip — let labels wrap to a second line if the column is narrow. */
-    white-space: normal !important;
+    white-space: nowrap !important;     /* labels fit at this height */
     overflow: visible !important;
     text-overflow: clip !important;
     word-break: normal !important;
-    line-height: 1.25 !important;
+    line-height: 1.2 !important;
     width: 100% !important;
     box-sizing: border-box !important;
 }
 
-/* ROW 2 — two equal primary save buttons side-by-side, both prominent. */
+/* ROW 2 — Save All (secondary, narrower) + Save & send (HERO, wider).
+   1fr 2fr grid so the primary action is twice as wide. */
 body.mass-add-v2 .mass-add-footer-actions #mass_add_action_buttons {
     display: grid !important;
-    grid-template-columns: 1fr 1fr !important;
-    gap: 10px !important;
+    grid-template-columns: 1fr 2fr !important;
+    gap: 8px !important;
     width: 100% !important;
-    margin-top: 0 !important;
+    margin-top: 2px !important;
     padding: 0 !important;
 }
 body.mass-add-v2 #save_all_products,
 body.mass-add-v2 #save_and_send_to_purchase {
     margin: 0 !important;
-    min-height: 56px !important;
-    height: auto !important;
-    padding: 14px 16px !important;
-    font-weight: 700 !important;
-    font-size: 14.5px !important;
-    letter-spacing: .03em !important;
     border-radius: var(--pos-radius-sm) !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
     gap: 8px !important;
-    white-space: normal !important;
+    white-space: nowrap !important;
     overflow: visible !important;
     text-overflow: clip !important;
-    word-break: normal !important;
-    line-height: 1.25 !important;
+    line-height: 1.2 !important;
     width: 100% !important;
     box-sizing: border-box !important;
     transition: transform .1s ease, box-shadow .15s !important;
 }
-/* Both save buttons get the soft "primary action" glow. */
+/* Secondary — smaller, no glow. */
 body.mass-add-v2 #save_all_products {
-    box-shadow: 0 0 0 3px rgba(47,107,62,.18),
-                0 2px 6px rgba(0,0,0,.06) !important;
+    height: 40px !important;
+    min-height: 40px !important;
+    padding: 0 14px !important;
+    font-weight: 500 !important;
+    font-size: 13px !important;
+    letter-spacing: .01em !important;
+    box-shadow: none !important;
 }
 body.mass-add-v2 #save_all_products:hover {
-    box-shadow: 0 0 0 4px rgba(47,107,62,.28),
-                0 4px 10px rgba(0,0,0,.08) !important;
     transform: translateY(-1px);
 }
+/* HERO — bigger, bolder, soft yellow glow so it reads as THE action. */
 body.mass-add-v2 #save_and_send_to_purchase {
+    height: 48px !important;
+    min-height: 48px !important;
+    padding: 0 18px !important;
+    font-weight: 700 !important;
+    font-size: 14px !important;
+    letter-spacing: .03em !important;
     box-shadow: 0 0 0 3px rgba(232,207,104,.30),
                 0 2px 6px rgba(0,0,0,.06) !important;
 }
@@ -414,7 +422,7 @@ body.mass-add-v2 #save_and_send_to_purchase:hover {
     transform: translateY(-1px);
 }
 
-/* Stack to a single column on narrow screens to keep labels readable. */
+/* Stack to a single column on narrow screens. */
 @media (max-width: 720px) {
     body.mass-add-v2 .mass-add-row-actions,
     body.mass-add-v2 .mass-add-footer-actions #mass_add_action_buttons {
