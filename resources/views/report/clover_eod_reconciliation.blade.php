@@ -353,6 +353,78 @@
                                     <div class="cc-line sum"><span class="cc-label">Variance</span><span class="cc-val {{ $cashCls }}">{{ is_null($cashVar) ? '—' : (($cashVar >= 0 ? '+' : '') . '$' . number_format($cashVar, 2)) }}</span></div>
                                 </div>
 
+                                {{-- Variance investigation drill-down — Sarah
+                                     2026-05-06: "I need to figure out all
+                                     these variances daily." Each list is the
+                                     transactions that explain (or fail to
+                                     explain) the variance:
+                                       · Clover-only = over-swipe (theft tell)
+                                       · ERP-only = likely cash, but a missed
+                                         swipe shows up here too
+                                       · Cash buys = real money out of drawer
+                                     Collapsed by default to keep the card
+                                     compact. Click to expand. --}}
+                                @php
+                                    $details = $e['details'] ?? ['clover_unmatched'=>[], 'erp_unmatched'=>[], 'buys'=>[]];
+                                    $cuCount = count($details['clover_unmatched'] ?? []);
+                                    $euCount = count($details['erp_unmatched'] ?? []);
+                                    $bCount  = count($details['buys'] ?? []);
+                                    $detailsTotal = $cuCount + $euCount + $bCount;
+                                    $tFmt = function ($t) {
+                                        if (!$t) return '—';
+                                        try { return \Carbon\Carbon::parse($t)->setTimezone(config('app.timezone'))->format('g:i a'); }
+                                        catch (\Exception $ex) { return '—'; }
+                                    };
+                                @endphp
+                                @if($detailsTotal > 0)
+                                    <details class="cc-details" style="margin-top:8px; border-top:1px solid #e5e7eb; padding-top:8px;" onclick="event.stopPropagation();">
+                                        <summary style="cursor:pointer; font-size:11px; font-weight:700; color:#374151; text-transform:uppercase; letter-spacing:.04em; padding:2px 0; user-select:none;">
+                                            Show breakdown
+                                            @if($cuCount > 0)<span style="color:#b91c1c; font-weight:600; text-transform:none; margin-left:6px;">· {{ $cuCount }} over-swipe</span>@endif
+                                            @if($euCount > 0)<span style="color:#374151; font-weight:500; text-transform:none; margin-left:6px;">· {{ $euCount }} cash sale{{ $euCount === 1 ? '' : 's' }}</span>@endif
+                                            @if($bCount > 0)<span style="color:#374151; font-weight:500; text-transform:none; margin-left:6px;">· {{ $bCount }} buy{{ $bCount === 1 ? '' : 's' }}</span>@endif
+                                        </summary>
+                                        <div style="margin-top:8px; font-size:12px; font-variant-numeric: tabular-nums;">
+                                            @if($cuCount > 0)
+                                                <div style="margin-top:4px;"><span style="font-size:10px; font-weight:700; color:#b91c1c; text-transform:uppercase;">Clover-only (over-swipe)</span></div>
+                                                @php $cuSum = 0; @endphp
+                                                @foreach($details['clover_unmatched'] as $row)
+                                                    @php $cuSum += (float) $row->amount; @endphp
+                                                    <div style="display:flex; justify-content:space-between; padding:2px 0; border-bottom:1px dotted #f3f4f6;">
+                                                        <span style="color:#6b7280;">{{ $tFmt($row->ts) }}</span>
+                                                        <span style="color:#b91c1c; font-weight:600;">${{ number_format($row->amount, 2) }}</span>
+                                                    </div>
+                                                @endforeach
+                                                <div style="display:flex; justify-content:space-between; padding:3px 0; font-weight:700;"><span>Subtotal</span><span style="color:#b91c1c;">${{ number_format($cuSum, 2) }}</span></div>
+                                            @endif
+                                            @if($euCount > 0)
+                                                <div style="margin-top:8px;"><span style="font-size:10px; font-weight:700; color:#374151; text-transform:uppercase;">ERP-only (likely cash, or missed swipe)</span></div>
+                                                @php $euSum = 0; @endphp
+                                                @foreach($details['erp_unmatched'] as $row)
+                                                    @php $euSum += (float) $row->amount; @endphp
+                                                    <div style="display:flex; justify-content:space-between; padding:2px 0; border-bottom:1px dotted #f3f4f6;">
+                                                        <span style="color:#6b7280;">{{ $tFmt($row->ts) }}</span>
+                                                        <span><a href="{{ route('sell.printInvoice', $row->transaction_id) }}" target="_blank" style="color:#1f2937; font-weight:600; text-decoration:none;">${{ number_format($row->amount, 2) }}</a></span>
+                                                    </div>
+                                                @endforeach
+                                                <div style="display:flex; justify-content:space-between; padding:3px 0; font-weight:700;"><span>Subtotal</span><span>${{ number_format($euSum, 2) }}</span></div>
+                                            @endif
+                                            @if($bCount > 0)
+                                                <div style="margin-top:8px;"><span style="font-size:10px; font-weight:700; color:#374151; text-transform:uppercase;">Cash buys (collection purchases)</span></div>
+                                                @php $bSum = 0; @endphp
+                                                @foreach($details['buys'] as $row)
+                                                    @php $bSum += (float) $row->amount; @endphp
+                                                    <div style="display:flex; justify-content:space-between; padding:2px 0; border-bottom:1px dotted #f3f4f6;">
+                                                        <span style="color:#6b7280;">{{ $tFmt($row->ts) }}</span>
+                                                        <span style="color:#1f2937; font-weight:600;">−${{ number_format($row->amount, 2) }}</span>
+                                                    </div>
+                                                @endforeach
+                                                <div style="display:flex; justify-content:space-between; padding:3px 0; font-weight:700;"><span>Subtotal</span><span>−${{ number_format($bSum, 2) }}</span></div>
+                                            @endif
+                                        </div>
+                                    </details>
+                                @endif
+
                                 <div class="cc-foot">
                                     @php
                                         $viewQs = ['location_id' => $loc['location_id'] ?: '', 'start_date' => $dayBlock['day'], 'end_date' => $dayBlock['day'], 'limit' => 200, 'hide_orphans' => 1];

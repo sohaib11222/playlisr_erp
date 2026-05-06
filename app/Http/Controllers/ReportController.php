@@ -8285,6 +8285,7 @@ class ReportController extends Controller
             }
             if ($bestId !== null) {
                 $claimedTxns[$bestId] = true;
+                $r->matched_txn_id = $bestId;
                 $matchedCashier = '';
                 foreach ($txns as $t) {
                     if ($t->id === $bestId) { $matchedCashier = $t->cashier_name; break; }
@@ -8562,12 +8563,99 @@ class ReportController extends Controller
                     if (!isset($e['user_id']) && isset($userIdByFirstName[$k])) {
                         $e['user_id'] = $userIdByFirstName[$k];
                     }
+                    // Initialize the variance-investigation drill-down
+                    // lists. Sarah 2026-05-06: "I need to figure out all
+                    // these variances daily." Each card gets a "Show
+                    // breakdown" panel listing the unmatched Clover
+                    // (over-swipe), unmatched ERP (likely cash), and
+                    // cash-paid customer buys, in chronological order.
+                    $e['details'] = [
+                        'clover_unmatched' => [],
+                        'erp_unmatched'    => [],
+                        'buys'             => [],
+                    ];
                 }
                 unset($e);
             }
             unset($loc2);
         }
         unset($locs2);
+
+        // Populate the drill-down: unmatched Clover swipes attributed to
+        // this cashier. These are the over-swipe / theft tells — Clover
+        // collected the money but no ERP sale of that exact amount
+        // exists for this day at this store.
+        foreach ($cpRaw as $r) {
+            if (!empty($r->matched_txn_id)) continue;
+            if ($r->employee_name === '') continue;
+            $emp = $firstName($r->employee_name);
+            if (isset($adminSet[$emp])) continue;
+            $day = $r->day instanceof \DateTimeInterface ? $r->day->format('Y-m-d') : (string) $r->day;
+            $locKey = $r->location_id ?: 0;
+            if (!isset($buckets[$day][$locKey]['employees'][$emp])) continue;
+            $buckets[$day][$locKey]['employees'][$emp]['details']['clover_unmatched'][] = (object) [
+                'ts' => $r->ts,
+                'amount' => round((float) $r->amount, 2),
+            ];
+        }
+
+        // Unmatched ERP sales — sales rung but no Clover swipe found.
+        // Could be true cash (legitimate) or a missed swipe (suspect).
+        // Sarah eyeballs these against her gut feel for which sales
+        // were actually card-paid vs cash.
+        foreach ($txns as $t) {
+            if (isset($claimedTxns[$t->id])) continue;
+            $day = substr((string) $t->transaction_date, 0, 10);
+            if ($day < $start || $day > $end) continue;
+            $emp = $firstName($t->cashier_name);
+            if (isset($adminSet[$emp])) {
+                $sw = $findShiftCashier($t->transaction_date, $t->location_id);
+                if ($sw === null) continue;
+                $emp = $firstName($sw);
+            }
+            $locKey = $t->location_id ?: 0;
+            if (!isset($buckets[$day][$locKey]['employees'][$emp])) continue;
+            $buckets[$day][$locKey]['employees'][$emp]['details']['erp_unmatched'][] = (object) [
+                'ts' => $t->transaction_date,
+                'amount' => round((float) $t->final_total, 2),
+                'transaction_id' => (int) $t->id,
+            ];
+        }
+
+        // Cash-paid customer buys — attributed to the on-shift cashier
+        // when an admin keyed them.
+        foreach ($buyRows as $r) {
+            $day = substr((string) $r->ts, 0, 10);
+            if ($day < $start || $day > $end) continue;
+            $emp = $firstName($r->cashier_name);
+            if (isset($adminSet[$emp])) {
+                $sw = $findShiftCashier($r->ts, $r->location_id);
+                if ($sw === null) continue;
+                $emp = $firstName($sw);
+            }
+            $locKey = $r->location_id ?: 0;
+            if (!isset($buckets[$day][$locKey]['employees'][$emp])) continue;
+            $buckets[$day][$locKey]['employees'][$emp]['details']['buys'][] = (object) [
+                'ts' => $r->ts,
+                'amount' => round((float) $r->amount, 2),
+            ];
+        }
+
+        // Order each list by time so the panel reads top-to-bottom.
+        foreach ($buckets as $day => &$locsD) {
+            foreach ($locsD as $locKey => &$locD) {
+                foreach ($locD['employees'] as &$eD) {
+                    foreach (['clover_unmatched', 'erp_unmatched', 'buys'] as $key) {
+                        usort($eD['details'][$key], function ($a, $b) {
+                            return strcmp((string) $a->ts, (string) $b->ts);
+                        });
+                    }
+                }
+                unset($eD);
+            }
+            unset($locD);
+        }
+        unset($locsD);
 
         // Derived numbers — total_sales is the only trustworthy "what they
         // sold" number, clover_total is what was paid by card. Implied cash
