@@ -70,10 +70,13 @@ class DiscogsReleaseImportMapper
             $warnings[] = 'No matching ERP category/subcategory for Discogs genres/styles — pick manually.';
         }
 
-        // Sarah 2026-05-06: pull catalog number off the first label as SKU.
-        // Discogs uses 'none' literally for releases without a catno —
-        // ignore those and "n/a"-ish placeholders.
+        // Sarah 2026-05-06: pull SKU from the release's Label section.
+        // Prefer the catalog number (e.g. "SKAO-391"), fall back to the
+        // label name if catno is missing/placeholder. Either way, if the
+        // Label section has *any* item or code, surface it as the SKU.
+        // Discogs uses literal "none" / "n/a" for releases without a catno.
         $sku = null;
+        $skuFallback = null; // label name, used only if no real catno found
         if (!empty($payload->labels) && is_array($payload->labels)) {
             foreach ($payload->labels as $label) {
                 if (!is_object($label)) {
@@ -81,11 +84,21 @@ class DiscogsReleaseImportMapper
                 }
                 $catno = trim((string) ($label->catno ?? ''));
                 $catnoLower = mb_strtolower($catno);
-                if ($catno !== '' && $catnoLower !== 'none' && $catnoLower !== 'n/a' && $catnoLower !== 'na') {
+                $isRealCatno = ($catno !== '' && $catnoLower !== 'none' && $catnoLower !== 'n/a' && $catnoLower !== 'na');
+                if ($isRealCatno) {
                     $sku = $catno;
                     break;
                 }
+                if ($skuFallback === null) {
+                    $labelName = trim((string) ($label->name ?? ''));
+                    if ($labelName !== '') {
+                        $skuFallback = $labelName;
+                    }
+                }
             }
+        }
+        if ($sku === null && $skuFallback !== null) {
+            $sku = $skuFallback;
         }
 
         return [
