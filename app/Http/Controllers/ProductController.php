@@ -3433,8 +3433,18 @@ class ProductController extends Controller
             ]);
         }
 
-        $mapper = new \App\Services\DiscogsReleaseImportMapper();
-        $mapped = $mapper->mapFromApiPayload($business_id, $payload, $id);
+        try {
+            $mapper = new \App\Services\DiscogsReleaseImportMapper();
+            $mapped = $mapper->mapFromApiPayload($business_id, $payload, $id);
+        } catch (\Throwable $e) {
+            \Log::error('mass-create Discogs map error for ' . $id . ': ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Mapper error: ' . $e->getMessage(),
+            ]);
+        }
 
         return response()->json([
             'success' => true,

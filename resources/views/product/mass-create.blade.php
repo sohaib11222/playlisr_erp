@@ -2202,9 +2202,16 @@
     //  Sarah 2026-05-06: Bulk Discogs Release IDs
     //  Paste IDs → server fetches each from Discogs → prepend a row.
     // ============================================================
+    // Returns the next safe data-row-index across the WHOLE container.
+    // Bug fix: previous version read .last() which after prepending always
+    // returned the original tail row → every new index collided.
     function nextMassRowIndex() {
-        const lastIdx = parseInt($('#product_rows_container .product-row').last().attr('data-row-index') || '0', 10);
-        return (isNaN(lastIdx) ? 0 : lastIdx) + 1;
+        let max = -1;
+        $('#product_rows_container .product-row').each(function() {
+            const v = parseInt($(this).attr('data-row-index'), 10);
+            if (!isNaN(v) && v > max) max = v;
+        });
+        return max + 1;
     }
 
     function addRowFromDiscogsData(discogsData, rowIdx) {
@@ -2261,19 +2268,34 @@
         const $btn = $(this).prop('disabled', true);
         const total = ids.length;
         let added = 0, failed = 0;
+        const failures = [];
+
+        function renderFailures() {
+            if (!failures.length) return '';
+            const items = failures.map(f =>
+                `<li><code>${f.id}</code> &mdash; ${$('<div>').text(f.msg).html()}</li>`
+            ).join('');
+            return `<div class="alert alert-warning" style="margin-top:10px;">
+                <strong>Failed (${failures.length}):</strong>
+                <ul style="margin:6px 0 0 18px;">${items}</ul>
+            </div>`;
+        }
 
         function next() {
             if (!queue.length) {
                 $btn.prop('disabled', false);
-                const msg = failed
-                    ? `Added ${added}/${total} (${failed} failed). Check console for details.`
+                const summary = failed
+                    ? `Added ${added}/${total} &mdash; ${failed} failed (see below).`
                     : `Added ${added}/${total} from Discogs.`;
-                $('#discogs_fetch_status').html(`<span class="${failed ? 'text-warning' : 'text-success'}"><i class="fa fa-check"></i> ${msg}</span>`);
+                $('#discogs_fetch_status').html(
+                    `<span class="${failed ? 'text-warning' : 'text-success'}"><i class="fa fa-${failed ? 'exclamation-triangle' : 'check'}"></i> ${summary}</span>` +
+                    renderFailures()
+                );
                 if (!failed) {
-                    toastr.success(msg);
+                    toastr.success(`Added ${added} from Discogs.`);
                     $('#bulk_discogs_ids').val('');
                 } else {
-                    toastr.warning(msg);
+                    toastr.warning(`${failed} of ${total} Discogs lookups failed. See details on the page.`);
                 }
                 return;
             }
@@ -2288,13 +2310,23 @@
                             .then(() => { added++; setTimeout(next, 250); });
                     } else {
                         failed++;
-                        console.warn('Discogs fetch failed for ' + id + ':', resp && resp.message);
+                        const msg = (resp && resp.message) ? resp.message : 'Unknown error from server.';
+                        failures.push({ id: id, msg: msg });
+                        console.warn('Discogs fetch failed for ' + id + ':', msg);
                         setTimeout(next, 250);
                     }
                 },
                 error: function(xhr) {
                     failed++;
-                    console.warn('Discogs fetch HTTP error for ' + id, xhr && xhr.status);
+                    let msg = 'HTTP ' + (xhr && xhr.status ? xhr.status : '?');
+                    if (xhr && xhr.responseJSON && xhr.responseJSON.message) {
+                        msg += ' &mdash; ' + xhr.responseJSON.message;
+                    } else if (xhr && xhr.responseText) {
+                        // Show first 200 chars of HTML/error body so we can see Laravel's message.
+                        msg += ' &mdash; ' + xhr.responseText.substring(0, 200).replace(/<[^>]+>/g, ' ').trim();
+                    }
+                    failures.push({ id: id, msg: msg });
+                    console.warn('Discogs fetch HTTP error for ' + id, xhr);
                     setTimeout(next, 250);
                 }
             });
