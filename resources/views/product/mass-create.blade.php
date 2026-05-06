@@ -503,40 +503,33 @@
                 <!-- Добавляйте новые .tr для каждой новой строки продукта -->
             </tbody>
 
-            <!-- Подвал таблицы -->
-            <tfoot class="tfoot">
-                {{-- Sarah 2026-05-06: row 1 = the three "row-management" actions
-                     (Add new / Add 5 / Verify) sized identically and inline.
-                     Row 2 = the two primary save actions side-by-side. --}}
-                <tr class="tr">
-                    <td class="td" colspan="1">
-                        <button type="button" class="btn btn-primary" id="add_row">
-                            Add New Product Row
-                        </button>
-                        <button type="button" class="btn btn-info" id="add_5_rows">
-                            Add 5 Product Rows
-                        </button>
-                        <button type="button" class="btn btn-info" id="verify_all_categories">
-                            <i class="fa fa-check-circle"></i> Verify All Categories
-                        </button>
-                    </td>
-                </tr>
-                <tr class="tr">
-                    <td class="td" colspan="1">
-                        <div id="mass_add_action_buttons">
-                            <button type="button" class="btn btn-success" id="save_all_products">
-                                <i class="fa fa-check"></i> Save All Products
-                            </button>
-                            <button type="button" class="btn btn-warning" id="save_and_send_to_purchase">
-                                <i class="fa fa-save"></i> Save &amp; send to add purchase
-                            </button>
-                        </div>
-                    </td>
-                </tr>
-            </tfoot>
-
-
         </table>
+    </div>
+
+    {{-- Sarah 2026-05-06: action buttons moved OUT of <tfoot><td colspan=1>
+         (which clamped them to a single column width and squished labels).
+         Now they're a sibling block under the table and free to size to the
+         viewport. --}}
+    <div class="mass-add-footer-actions">
+        <div class="mass-add-row-actions">
+            <button type="button" class="btn btn-primary" id="add_row">
+                Add New Product Row
+            </button>
+            <button type="button" class="btn btn-info" id="add_5_rows">
+                Add 5 Product Rows
+            </button>
+            <button type="button" class="btn btn-info" id="verify_all_categories">
+                <i class="fa fa-check-circle"></i> Verify All Categories
+            </button>
+        </div>
+        <div id="mass_add_action_buttons">
+            <button type="button" class="btn btn-success" id="save_all_products">
+                <i class="fa fa-check"></i> Save All Products
+            </button>
+            <button type="button" class="btn btn-warning" id="save_and_send_to_purchase">
+                <i class="fa fa-save"></i> Save &amp; send to add purchase
+            </button>
+        </div>
     </div>
 
     {!! Form::close() !!}

@@ -310,27 +310,32 @@ body.mass-add-v2 .alert-warning {
     color: var(--pos-accent-text) !important;
 }
 
-/* ===== Table footer action area.
-        2026-05-06 v4 (Sarah): two clear rows of equal-size buttons.
+/* ===== Footer action block (moved OUT of <tfoot>).
+        2026-05-06 v5 (Sarah): the two action rows now live in their own
+        <div class="mass-add-footer-actions"> sibling under the table, so
+        they size to the viewport instead of being clamped to one table
+        column.
 
           ROW 1: [Add New Product Row] [Add 5 Product Rows] [Verify All Categories]
                  ← row-management actions, three equal buttons, no text clipping
           ROW 2: [    Save All Products    ] [  Save & send to add purchase  ]
                  ← primary save actions, two equal prominent buttons
         ===== */
-body.mass-add-v2 #mass_create_table > tfoot > tr > td {
-    border: none !important;
-    padding: 16px 0 0 !important;
-    background: transparent !important;
+body.mass-add-v2 .mass-add-footer-actions {
+    margin-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+    max-width: 900px;
 }
 
-/* ROW 1 — three equal buttons in a flex row that wraps cleanly on narrow screens. */
-body.mass-add-v2 #mass_create_table > tfoot > tr:first-child > td {
+/* ROW 1 — three equal buttons. */
+body.mass-add-v2 .mass-add-row-actions {
     display: grid !important;
     grid-template-columns: repeat(3, 1fr) !important;
     gap: 10px !important;
     width: 100% !important;
-    max-width: 720px !important;
 }
 body.mass-add-v2 #add_row,
 body.mass-add-v2 #add_5_rows,
@@ -358,13 +363,12 @@ body.mass-add-v2 #verify_all_categories {
 }
 
 /* ROW 2 — two equal primary save buttons side-by-side, both prominent. */
-body.mass-add-v2 #mass_add_action_buttons {
+body.mass-add-v2 .mass-add-footer-actions #mass_add_action_buttons {
     display: grid !important;
     grid-template-columns: 1fr 1fr !important;
     gap: 10px !important;
     width: 100% !important;
-    max-width: 720px !important;
-    margin-top: 4px !important;
+    margin-top: 0 !important;
     padding: 0 !important;
 }
 body.mass-add-v2 #save_all_products,
@@ -412,10 +416,8 @@ body.mass-add-v2 #save_and_send_to_purchase:hover {
 
 /* Stack to a single column on narrow screens to keep labels readable. */
 @media (max-width: 720px) {
-    body.mass-add-v2 #mass_create_table > tfoot > tr:first-child > td {
-        grid-template-columns: 1fr !important;
-    }
-    body.mass-add-v2 #mass_add_action_buttons {
+    body.mass-add-v2 .mass-add-row-actions,
+    body.mass-add-v2 .mass-add-footer-actions #mass_add_action_buttons {
         grid-template-columns: 1fr !important;
     }
 }
