@@ -506,6 +506,9 @@
                         <button type="button" class="btn btn-primary" id="add_row">
                             Add New Product Row
                         </button>
+                        <button type="button" class="btn btn-info" id="add_5_rows" style="margin-left: 6px;">
+                            Add 5 Product Rows
+                        </button>
                     </td>
                 </tr>
                 <tr class="tr">
@@ -669,51 +672,110 @@
         })(jQuery);
 
         let rowIndex = 1;
+
+        // Resolve the next data-row-index to use. Reading the last row's
+        // attribute is robust to rows added via bulk paste, which would
+        // otherwise collide with the local rowIndex counter.
+        function nextRowIndex() {
+            const $last = $('#product_rows_container .product-row').last();
+            const lastAttr = parseInt($last.attr('data-row-index'), 10);
+            const fromDom = isNaN(lastAttr) ? 0 : lastAttr + 1;
+            const next = Math.max(rowIndex, fromDom);
+            rowIndex = next + 1;
+            return next;
+        }
+
+        // Append one fresh product row. Returns a Promise that resolves
+        // once the row is in the DOM and its select2 widgets are ready.
+        function appendOneProductRow() {
+            return new Promise(function(resolve, reject) {
+                const idx = nextRowIndex();
+                $.ajax({
+                    url: "{{ route('product.getMassProductRow') }}",
+                    type: 'GET',
+                    data: { index: idx },
+                    success: function (row) {
+                        $('#product_rows_container').append(row);
+                        const $newRow = $('#product_rows_container .product-row').last();
+                        $newRow.find('.select2').select2();
+                        applyCategoryComboSelect2Matcher($newRow);
+                        window.setupProductNameSelect2();
+                        resolve($newRow);
+                    },
+                    error: function () {
+                        reject();
+                    },
+                });
+            });
+        }
+
         // Add a new row
-        // Add new row
         $('#add_row').on('click', function () {
             if (window.isAddingNewRow) {
                 return;
             }
-
             window.isAddingNewRow = true;
             $(this).html('Adding row...');
-            $.ajax({
-                url: "{{ route('product.getMassProductRow') }}",
-                type: 'GET',
-                data: { index: rowIndex },
-                success: function (row) {
-                    $('#product_rows_container').append(row);
-                    rowIndex++;
-
-                    // Reinitialize Select2 for new elements
-                    $('#product_rows_container .product-row').last().find('.select2').select2();
-                    applyCategoryComboSelect2Matcher($('#product_rows_container .product-row').last());
-                    window.setupProductNameSelect2();
+            appendOneProductRow()
+                .then(function() {
                     window.isAddingNewRow = false;
                     $('#add_row').html('Add New Product Row');
-                },
-                error: function () {
+                })
+                .catch(function() {
                     toastr.error('Failed to add a new row.');
                     window.isAddingNewRow = false;
                     $('#add_row').html('Add New Product Row');
-                },
-            });
+                });
         });
 
-        // Copy down feature
+        // Add 5 rows at once
+        $('#add_5_rows').on('click', function () {
+            if (window.isAddingNewRow) {
+                return;
+            }
+            window.isAddingNewRow = true;
+            const $btn = $(this);
+            const originalLabel = $btn.html();
+            const total = 5;
+            let added = 0;
+            let failed = 0;
+
+            function addNext() {
+                if (added + failed >= total) {
+                    window.isAddingNewRow = false;
+                    $btn.html(originalLabel);
+                    if (failed > 0) {
+                        toastr.warning('Added ' + added + ' of ' + total + ' rows.');
+                    }
+                    return;
+                }
+                $btn.html('Adding row ' + (added + failed + 1) + ' of ' + total + '...');
+                appendOneProductRow()
+                    .then(function() { added++; addNext(); })
+                    .catch(function() { failed++; addNext(); });
+            }
+
+            addNext();
+        });
+
+        // Copy down feature.
+        // Use closest()+nextAll() instead of .eq()/.slice() so this works
+        // regardless of how rows were added (manual, bulk-paste) or whether
+        // earlier rows were removed — DOM order is the source of truth, not
+        // the data-row-index attribute (which can drift after bulk-add or delete).
         $(document).on('click', '.copy-down', function() {
-            const rowIndex = parseInt($(this).attr('data-row-index'));
-            const inputClass = $(this).attr('data-class');
-            const row = $('#product_rows_container .product-row').eq(rowIndex);
+            const $btn = $(this);
+            const inputClass = $btn.attr('data-class');
+            if (!inputClass) return;
+            const $sourceRow = $btn.closest('.product-row');
+            if (!$sourceRow.length) return;
 
-            const value = row.find(`.${inputClass}`).val();
+            const $sourceField = $sourceRow.find(`.${inputClass}`).first();
+            const value = $sourceField.val();
 
-            $('#product_rows_container .product-row')
-                .slice(rowIndex + 1) // Ambil semua baris setelah rowIndex
-                .each(function() {
-                    $(this).find(`.${inputClass}`).val(value).trigger('change');
-                });
+            $sourceRow.nextAll('.product-row').each(function() {
+                $(this).find(`.${inputClass}`).val(value).trigger('change');
+            });
         });
 
         // Remove row
@@ -1712,13 +1774,45 @@
             return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
         }
 
+        function tokenize(s) {
+            const norm = normalizeForMatch(s);
+            if (!norm) return [];
+            // Drop short stop-words; keep useful tokens like "lp", "cd", "7", "12"
+            return norm.split(/\s+/).filter(function(t) {
+                return t.length > 0 && t !== 'and' && t !== 'the';
+            });
+        }
+
+        // Score a single option label against a set of hint tokens.
+        // Higher score = better match. Bidirectional: counts hint tokens
+        // present in label AND label tokens present in hint.
+        function scoreOptionForHint(labelTokens, hintTokens, weight) {
+            if (!hintTokens.length || !labelTokens.length) return 0;
+            const labelSet = {};
+            labelTokens.forEach(function(t) { labelSet[t] = true; });
+            const hintSet = {};
+            hintTokens.forEach(function(t) { hintSet[t] = true; });
+
+            let matches = 0;
+            Object.keys(hintSet).forEach(function(t) {
+                if (labelSet[t]) matches++;
+            });
+            if (!matches) return 0;
+            // Reward higher coverage of hint tokens in label.
+            const coverage = matches / Object.keys(hintSet).length;
+            return weight * (matches + coverage);
+        }
+
         function findBestCategoryComboValue($combo, product) {
             if (!$combo || !$combo.length) {
                 return '';
             }
-            const categoryHint = normalizeForMatch(product.category);
-            const subHint = normalizeForMatch(product.subcategory);
-            const raw = normalizeForMatch(product.raw_line);
+            const categoryTokens = tokenize(product.category);
+            const subTokens = tokenize(product.subcategory);
+            const nameTokens = tokenize(product.name);
+            const artistTokens = tokenize(product.artist);
+            const rawTokens = tokenize(product.raw_line);
+
             let bestVal = '';
             let bestScore = 0;
 
@@ -1726,18 +1820,35 @@
                 const $opt = $(this);
                 const val = String($opt.val() || '');
                 if (!val) return;
-                const label = normalizeForMatch($opt.text());
+                const labelTokens = tokenize($opt.text());
+                if (!labelTokens.length) return;
+
                 let score = 0;
-                if (categoryHint && label.indexOf(categoryHint) !== -1) score += 3;
-                if (subHint && label.indexOf(subHint) !== -1) score += 4;
-                if (raw && label && raw.indexOf(label) !== -1) score += 2;
+                // Subcategory hints are most reliable (e.g. "Vinyl LP", "7 Inch")
+                score += scoreOptionForHint(labelTokens, subTokens, 5);
+                // Category hints (e.g. "Records", "Cassettes")
+                score += scoreOptionForHint(labelTokens, categoryTokens, 4);
+                // Direct substring match of full hint within label as a tiebreaker
+                const labelStr = labelTokens.join(' ');
+                const catStr = categoryTokens.join(' ');
+                const subStr = subTokens.join(' ');
+                if (catStr && labelStr.indexOf(catStr) !== -1) score += 2;
+                if (subStr && labelStr.indexOf(subStr) !== -1) score += 3;
+                // Fall back to product name / artist hints when no category was provided
+                if (!categoryTokens.length && !subTokens.length) {
+                    score += scoreOptionForHint(labelTokens, nameTokens, 1);
+                    score += scoreOptionForHint(labelTokens, rawTokens, 1);
+                    score += scoreOptionForHint(labelTokens, artistTokens, 0.5);
+                }
                 if (score > bestScore) {
                     bestScore = score;
                     bestVal = val;
                 }
             });
 
-            return bestScore > 0 ? bestVal : '';
+            // Require a meaningful score before auto-selecting; very weak matches
+            // (e.g. a single common word) shouldn't auto-pick a wrong combo.
+            return bestScore >= 2 ? bestVal : '';
         }
 
         function findLocationIdsByText($locations, hintText) {

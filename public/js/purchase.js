@@ -794,9 +794,10 @@ function append_purchase_lines(data, row_count, trigger_change = false, options 
     $(data)
         .find('.purchase_quantity')
         .each(function() {
-            row = $(this).closest('tr');
+            var $qtyInput = $(this);
+            row = $qtyInput.closest('tr');
             if (defaultQtyOne) {
-                __write_number($(this), 1, true);
+                __write_number($qtyInput, 1, true);
             }
 
             $('#purchase_entry_table tbody').append(
@@ -817,6 +818,17 @@ function append_purchase_lines(data, row_count, trigger_change = false, options 
 
             if (trigger_change && row.find('.purchase_unit_cost_without_discount').length) {
                 row.find('.purchase_unit_cost_without_discount').trigger('change');
+            }
+
+            // Re-apply default qty AFTER trigger_change so any side effects of
+            // the cost-change handler can't leave the field at 0/empty. Then
+            // fire a change event so subtotal/grand-total recompute with qty=1.
+            if (defaultQtyOne) {
+                var currentQty = Math.floor(__read_number($qtyInput, true) || 0);
+                if (currentQty < 1) {
+                    __write_number($qtyInput, 1, true);
+                    $qtyInput.trigger('change');
+                }
             }
         });
     var added_rows = $(data).find('.purchase_quantity').length;

@@ -140,6 +140,14 @@ class BuyFromCustomerController extends Controller
         }
 
         $business_id = request()->session()->get('user.business_id');
+
+        // Only admins can delete buy-from-customer history records.
+        // Cashiers and other staff can view history but not destroy entries.
+        if (!auth()->user()->hasRole('Admin#' . $business_id)) {
+            return redirect()->route('buy-from-customer.history')
+                ->with('status', ['success' => 0, 'msg' => 'Only admins can delete buy-from-customer records.']);
+        }
+
         $offer = BuyCustomerOffer::where('business_id', $business_id)->findOrFail($id);
 
         // Accepted offers are tied to a real Purchase record (money paid out).
@@ -183,7 +191,9 @@ class BuyFromCustomerController extends Controller
         }
         $offers = $query->latest()->paginate(30)->appends(request()->only('show_all'));
 
-        return view('buy_from_customer.history', compact('offers', 'diagnostics'));
+        $is_admin = auth()->user()->hasRole('Admin#' . $business_id);
+
+        return view('buy_from_customer.history', compact('offers', 'diagnostics', 'is_admin'));
     }
 
     protected function validateRequest(Request $request, $requireFinal)
