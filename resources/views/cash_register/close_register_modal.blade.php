@@ -237,8 +237,7 @@
 						Put <span id="cr-safe-amount">$0</span> in the safe.
 					</div>
 					<div class="cr-safe-alert-count">
-						Count what you're putting in the safe <u>very</u> carefully —
-						people often drop the wrong amount.
+						Count what you're putting in the safe <u>very</u> carefully.
 					</div>
 					<div class="cr-safe-alert-postit">
 						Stick a post-it on the bundle with <strong>your initials</strong>

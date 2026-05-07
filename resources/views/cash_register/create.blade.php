@@ -54,8 +54,7 @@
                 in the safe.
               </div>
               <div style="font-size:15px; font-weight:700; margin-top:10px; color:#6B2A14;">
-                Count what you're putting in the safe <u>very</u> carefully —
-                people often drop the wrong amount.
+                Count what you're putting in the safe <u>very</u> carefully.
               </div>
               <div style="font-size:14px; font-weight:600; margin-top:8px; color:#6B2A14;">
                 Stick a post-it on the bundle with <strong>your initials</strong>
