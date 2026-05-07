@@ -885,7 +885,7 @@ HTML,
                 [
                     'selector' => '#search_product',
                     'title' => 'Add Items',
-                    'body' => 'Scan the barcode or type the title. The price comes from the sticker — <strong>cashiers do not adjust prices at the register</strong>. If a sticker is missing or wrong, ask a manager before ringing it up.',
+                    'body' => 'Scan the barcode or type the title.',
                 ],
                 [
                     'selector' => null,
