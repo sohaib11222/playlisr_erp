@@ -38,17 +38,29 @@
                  reports more than $500 in the drawer at open, ask them
                  to move the excess (rounded down to the nearest $100)
                  into the safe and recount what's left. Soft warning,
-                 doesn't block the open-register submit. --}}
-            <div id="cr-safe-alert" style="display:none; margin-top:10px;
-                background:#FFE5DA; border:1px solid #E8A07A; border-radius:10px;
-                padding:12px 14px; color:#6B2A14; font-weight:600; line-height:1.45;">
-              <span style="display:inline-block; font-size:10px; font-weight:800;
-                  letter-spacing:.12em; background:#6B2A14; color:#FFE5DA;
-                  padding:2px 8px; border-radius:999px; margin-right:6px; vertical-align:1px;">
-                HEADS UP
-              </span>
-              Please put <strong><span id="cr-safe-amount">$0</span></strong> in the safe
-              and count what's left in the drawer very carefully.
+                 doesn't block the open-register submit. Big amount +
+                 post-it instruction because people frequently put the
+                 wrong amount in the safe. --}}
+            <div id="cr-safe-alert" style="display:none; margin-top:14px;
+                background:#FFE5DA; border:2px solid #E8A07A; border-radius:12px;
+                padding:18px 20px; color:#6B2A14;">
+              <div style="font-size:11px; font-weight:800; letter-spacing:.14em;
+                  text-transform:uppercase; color:#6B2A14; margin-bottom:6px;">
+                ⚠ Heads up — safe drop
+              </div>
+              <div style="font-size:28px; font-weight:800; line-height:1.15; color:#6B2A14;
+                  letter-spacing:-.01em;">
+                Put <span id="cr-safe-amount" style="font-variant-numeric:tabular-nums;">$0</span>
+                in the safe.
+              </div>
+              <div style="font-size:15px; font-weight:700; margin-top:10px; color:#6B2A14;">
+                Count what you're putting in the safe <u>very</u> carefully —
+                people often drop the wrong amount.
+              </div>
+              <div style="font-size:14px; font-weight:600; margin-top:8px; color:#6B2A14;">
+                Stick a post-it on the bundle with <strong>your initials</strong>
+                and the <strong>amount you're dropping</strong>.
+              </div>
             </div>
           </div>
         </div>

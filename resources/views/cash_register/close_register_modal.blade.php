@@ -151,31 +151,38 @@
 
 	/* Over-$500 safe alert (Sarah 2026-05-07): if the closing count is
 	   over $500, nudge the cashier to move the excess (rounded down to
-	   nearest $100) into the safe and recount the remainder carefully.
-	   Soft warning — does not block the form submit. */
+	   nearest $100) into the safe. Big amount + explicit "count what
+	   you're putting in" + post-it instruction, because people often
+	   drop the wrong amount in the safe. Soft warning — does not block
+	   submit. */
 	.cr-safe-alert {
 		display: none;
-		margin-top: 14px;
+		margin-top: 16px;
 		background: #FFE5DA;
-		border: 1px solid #E8A07A;
-		border-radius: 10px;
-		padding: 12px 14px;
-		font-size: 13px;
-		font-weight: 600;
+		border: 2px solid #E8A07A;
+		border-radius: 12px;
+		padding: 18px 20px;
 		color: #6B2A14;
-		line-height: 1.45;
 	}
 	.cr-safe-alert.cr-safe-alert-on { display: block; }
 	.cr-safe-alert-tag {
-		display: inline-block;
-		font-size: 10px; font-weight: 800;
-		letter-spacing: .12em;
-		background: #6B2A14; color: #FFE5DA;
-		padding: 2px 8px; border-radius: 999px;
-		margin-right: 6px; vertical-align: 1px;
+		display: block;
+		font-size: 11px; font-weight: 800;
+		letter-spacing: .14em; text-transform: uppercase;
+		color: #6B2A14; margin-bottom: 6px;
 	}
-	.cr-safe-alert strong {
+	.cr-safe-alert-amount {
+		font-size: 28px; font-weight: 800; line-height: 1.15;
+		letter-spacing: -.01em; color: #6B2A14;
+	}
+	.cr-safe-alert-amount #cr-safe-amount {
 		font-variant-numeric: tabular-nums;
+	}
+	.cr-safe-alert-count {
+		font-size: 15px; font-weight: 700; margin-top: 10px; color: #6B2A14;
+	}
+	.cr-safe-alert-postit {
+		font-size: 14px; font-weight: 600; margin-top: 8px; color: #6B2A14;
 	}
 
 	/* Denominations — kept but tucked into the reference block */
@@ -225,9 +232,18 @@
 				</div>
 
 				<div class="cr-safe-alert" id="cr-safe-alert">
-					<span class="cr-safe-alert-tag">HEADS UP</span>
-					Please put <strong><span id="cr-safe-amount">$0</span></strong> in the safe
-					and count what's left in the drawer very carefully.
+					<span class="cr-safe-alert-tag">⚠ Heads up — safe drop</span>
+					<div class="cr-safe-alert-amount">
+						Put <span id="cr-safe-amount">$0</span> in the safe.
+					</div>
+					<div class="cr-safe-alert-count">
+						Count what you're putting in the safe <u>very</u> carefully —
+						people often drop the wrong amount.
+					</div>
+					<div class="cr-safe-alert-postit">
+						Stick a post-it on the bundle with <strong>your initials</strong>
+						and the <strong>amount you're dropping</strong>.
+					</div>
 				</div>
 
 				<div class="cr-card-slips"
