@@ -365,16 +365,26 @@
                                      Collapsed by default to keep the card
                                      compact. Click to expand. --}}
                                 @php
-                                    $details = $e['details'] ?? ['clover_unmatched'=>[], 'erp_unmatched'=>[], 'amount_mismatch'=>[], 'buys'=>[]];
+                                    $details = $e['details'] ?? ['clover_unmatched'=>[], 'erp_unmatched'=>[], 'amount_mismatch'=>[], 'buys'=>[], 'other_channels'=>[]];
                                     $cuCount = count($details['clover_unmatched'] ?? []);
                                     $euCount = count($details['erp_unmatched'] ?? []);
                                     $amCount = count($details['amount_mismatch'] ?? []);
                                     $bCount  = count($details['buys'] ?? []);
-                                    $detailsTotal = $cuCount + $euCount + $amCount + $bCount;
+                                    $ocCount = count($details['other_channels'] ?? []);
+                                    $detailsTotal = $cuCount + $euCount + $amCount + $bCount + $ocCount;
                                     $tFmt = function ($t) {
                                         if (!$t) return '—';
                                         try { return \Carbon\Carbon::parse($t)->setTimezone(config('app.timezone'))->format('g:i a'); }
                                         catch (\Exception $ex) { return '—'; }
+                                    };
+                                    // Bag-fee hint: Nivessa charges $0.12 per bag in
+                                    // the POS but cashiers sometimes don't add it on
+                                    // Clover. A keying-error diff that's an exact
+                                    // multiple of 12¢ (1-12 bags) is almost always
+                                    // bag fees, not actual mis-keying.
+                                    $isBagFee = function ($diffDollars) {
+                                        $cents = (int) round(abs((float) $diffDollars) * 100);
+                                        return $cents > 0 && $cents <= 144 && $cents % 12 === 0;
                                     };
                                 @endphp
                                 @if($detailsTotal > 0)
@@ -385,6 +395,7 @@
                                             @if($amCount > 0)<span style="color:#b45309; font-weight:600; text-transform:none; margin-left:6px;">· {{ $amCount }} keying error{{ $amCount === 1 ? '' : 's' }}</span>@endif
                                             @if($euCount > 0)<span style="color:#374151; font-weight:500; text-transform:none; margin-left:6px;">· {{ $euCount }} cash sale{{ $euCount === 1 ? '' : 's' }}</span>@endif
                                             @if($bCount > 0)<span style="color:#374151; font-weight:500; text-transform:none; margin-left:6px;">· {{ $bCount }} buy{{ $bCount === 1 ? '' : 's' }}</span>@endif
+                                            @if($ocCount > 0)<span style="color:#1d4ed8; font-weight:500; text-transform:none; margin-left:6px;">· {{ $ocCount }} other-channel</span>@endif
                                         </summary>
                                         <div style="margin-top:8px; font-size:12px; font-variant-numeric: tabular-nums;">
                                             @if($cuCount > 0)
@@ -404,8 +415,12 @@
                                                 @php $amSum = 0; @endphp
                                                 @foreach($details['amount_mismatch'] as $row)
                                                     @php $amSum += (float) $row->diff; @endphp
+                                                    @php $bagHint = $isBagFee($row->diff); @endphp
                                                     <div style="display:flex; justify-content:space-between; padding:2px 0; border-bottom:1px dotted #f3f4f6;">
-                                                        <span style="color:#6b7280;">{{ $tFmt($row->ts) }}</span>
+                                                        <span style="color:#6b7280;">
+                                                            {{ $tFmt($row->ts) }}
+                                                            @if($bagHint)<span style="color:#1d4ed8; font-size:10px; font-weight:700; margin-left:4px;" title="Diff is an exact multiple of $0.12 — likely bag fee not added on Clover">· likely bag fee</span>@endif
+                                                        </span>
                                                         <span style="text-align:right;">
                                                             <a href="{{ route('sell.printInvoice', $row->transaction_id) }}" target="_blank" style="color:#1f2937; font-weight:600; text-decoration:none;">
                                                                 Clover ${{ number_format($row->clover_amount, 2) }} vs ERP ${{ number_format($row->erp_amount, 2) }}
@@ -439,6 +454,18 @@
                                                     </div>
                                                 @endforeach
                                                 <div style="display:flex; justify-content:space-between; padding:3px 0; font-weight:700;"><span>Subtotal</span><span>−${{ number_format($bSum, 2) }}</span></div>
+                                            @endif
+                                            @if(($ocCount ?? 0) > 0)
+                                                <div style="margin-top:8px;"><span style="font-size:10px; font-weight:700; color:#1d4ed8; text-transform:uppercase;">Other channels (not in drawer)</span></div>
+                                                @php $ocSum = 0; @endphp
+                                                @foreach($details['other_channels'] as $row)
+                                                    @php $ocSum += (float) $row->amount; @endphp
+                                                    <div style="display:flex; justify-content:space-between; padding:2px 0; border-bottom:1px dotted #f3f4f6;">
+                                                        <span style="color:#6b7280;">{{ $tFmt($row->ts) }} · <span style="text-transform:uppercase; font-size:10px; font-weight:700; color:#1d4ed8; letter-spacing:.04em;">{{ $row->channel }}</span></span>
+                                                        <span><a href="{{ route('sell.printInvoice', $row->transaction_id) }}" target="_blank" style="color:#1f2937; font-weight:600; text-decoration:none;">${{ number_format($row->amount, 2) }}</a></span>
+                                                    </div>
+                                                @endforeach
+                                                <div style="display:flex; justify-content:space-between; padding:3px 0; font-weight:700;"><span>Subtotal</span><span>${{ number_format($ocSum, 2) }}</span></div>
                                             @endif
                                         </div>
                                     </details>

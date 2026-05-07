@@ -282,8 +282,15 @@
 					</div>
 					<div style="font-size:12px; font-variant-numeric: tabular-nums;">
 						@foreach($keying_errors as $err)
+							@php
+								$_diffCents = (int) round(abs((float) $err['diff']) * 100);
+								$_isBagFee  = $_diffCents > 0 && $_diffCents <= 144 && $_diffCents % 12 === 0;
+							@endphp
 							<div style="display:flex; justify-content:space-between; padding:3px 0; border-top:1px solid #fef3c7;">
-								<span style="color:#92400e;">{{ \Carbon\Carbon::parse($err['ts'])->setTimezone(config('app.timezone'))->format('g:i a') }}</span>
+								<span style="color:#92400e;">
+									{{ \Carbon\Carbon::parse($err['ts'])->setTimezone(config('app.timezone'))->format('g:i a') }}
+									@if($_isBagFee)<span style="color:#1d4ed8; font-size:10px; font-weight:700; margin-left:4px;" title="Diff is an exact multiple of $0.12 — likely a bag fee you forgot to add on Clover">· likely bag fee</span>@endif
+								</span>
 								<span>
 									Clover <strong>${{ number_format($err['clover_amount'], 2) }}</strong>
 									vs POS <strong>${{ number_format($err['erp_amount'], 2) }}</strong>

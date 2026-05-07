@@ -8525,6 +8525,50 @@ class ReportController extends Controller
                 $userIdByFirstName[$rangFn] = (int) $t->cashier_user_id;
             }
         }
+
+        // Sarah 2026-05-07: "I want to show the whatnot entries we put
+        // in the pos". These are sales the cashier rang into the ERP
+        // but that don't touch the drawer or Clover (Whatnot stream
+        // sales, Discogs, eBay). Pulled separately so they stay out of
+        // the drawer-math totals (in_store filter on $txns above) but
+        // are visible per cashier so Sarah can verify each cashier
+        // entered their channel orders correctly.
+        $otherChannelByEmp = [];
+        if (\Schema::hasColumn('transactions', 'channel')) {
+            $ocQ = \DB::table('transactions as t')
+                ->leftJoin('users as u', 't.created_by', '=', 'u.id')
+                ->where('t.business_id', $business_id)
+                ->where('t.type', 'sell')
+                ->where('t.status', 'final')
+                ->where('t.channel', '!=', 'in_store')
+                ->whereDate('t.transaction_date', '>=', $start)
+                ->whereDate('t.transaction_date', '<=', $end);
+            if (!empty($location_id)) {
+                $ocQ->where('t.location_id', $location_id);
+            }
+            $ocRows = $ocQ->selectRaw("
+                    DATE(t.transaction_date) as day,
+                    t.id, t.location_id, t.final_total, t.transaction_date,
+                    t.channel,
+                    COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, '') as cashier_name
+                ")->get();
+            foreach ($ocRows as $r) {
+                $rangFn = $firstName($r->cashier_name);
+                if (isset($adminSet[$rangFn])) {
+                    $reassigned = $findShiftCashier($r->transaction_date, $r->location_id);
+                    if ($reassigned === null) continue;
+                    $rangFn = $firstName($reassigned);
+                }
+                $key = $r->day . '|' . $rangFn;
+                if (!isset($otherChannelByEmp[$key])) $otherChannelByEmp[$key] = [];
+                $otherChannelByEmp[$key][] = (object) [
+                    'ts' => $r->transaction_date,
+                    'amount' => round((float) $r->final_total, 2),
+                    'channel' => (string) $r->channel,
+                    'transaction_id' => (int) $r->id,
+                ];
+            }
+        }
         foreach ($cloverRows as $r) {
             $day = $r->day;
             $locKey = $r->location_id ?: 0;
@@ -8677,7 +8721,12 @@ class ReportController extends Controller
                     $hasFloat   = !is_null($e['opening_cash']) && (float) $e['opening_cash'] > 0;
                     $rangSales  = ((float) ($e['total_sales']  ?? 0)) > 0;
                     $hasCounted = !is_null($e['reported_ending_cash']) && (float) $e['reported_ending_cash'] > 0;
-                    if (!$hasFloat && !$rangSales && !$hasCounted) {
+                    // Also keep buckets that exist only because the cashier
+                    // entered Whatnot/Discogs/eBay orders today — Sarah
+                    // wants to verify those entries even if the same
+                    // cashier didn't open a drawer.
+                    $hasOther   = !empty($otherChannelByEmp[$day . '|' . $k] ?? []);
+                    if (!$hasFloat && !$rangSales && !$hasCounted && !$hasOther) {
                         unset($buckets[$day][$locKey]['employees'][$k]);
                     }
                 }
@@ -8704,6 +8753,7 @@ class ReportController extends Controller
                         'erp_unmatched'    => [],
                         'amount_mismatch'  => [],
                         'buys'             => [],
+                        'other_channels'   => $otherChannelByEmp[$day . '|' . $k] ?? [],
                     ];
                 }
                 unset($e);
@@ -8820,7 +8870,7 @@ class ReportController extends Controller
                          'collection_buys_all'] as $k) {
                     $dst[$k] = ((float) ($dst[$k] ?? 0)) + ((float) ($src[$k] ?? 0));
                 }
-                foreach (['clover_unmatched','erp_unmatched','amount_mismatch','buys'] as $k) {
+                foreach (['clover_unmatched','erp_unmatched','amount_mismatch','buys','other_channels'] as $k) {
                     $dst['details'][$k] = array_merge(
                         $dst['details'][$k] ?? [],
                         $src['details'][$k] ?? []
@@ -8838,10 +8888,12 @@ class ReportController extends Controller
         foreach ($buckets as $day => &$locsD) {
             foreach ($locsD as $locKey => &$locD) {
                 foreach ($locD['employees'] as &$eD) {
-                    foreach (['clover_unmatched', 'erp_unmatched', 'amount_mismatch', 'buys'] as $key) {
-                        usort($eD['details'][$key], function ($a, $b) {
+                    foreach (['clover_unmatched', 'erp_unmatched', 'amount_mismatch', 'buys', 'other_channels'] as $key) {
+                        $list = $eD['details'][$key] ?? [];
+                        usort($list, function ($a, $b) {
                             return strcmp((string) $a->ts, (string) $b->ts);
                         });
+                        $eD['details'][$key] = $list;
                     }
                 }
                 unset($eD);
