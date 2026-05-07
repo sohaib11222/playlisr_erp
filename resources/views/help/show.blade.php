@@ -4,57 +4,61 @@
 
 @section('content')
 
-<section class="content-header">
+@include('help.partials.styles')
+
+<script>document.body.classList.add('help-v2');</script>
+
+<section class="content-header help-content-header">
     <h1>
-        <a href="{{ route('help.index') }}" style="color: inherit;"><i class="fa fa-life-ring"></i> Help</a>
+        <a href="{{ route('help.index') }}" class="help-breadcrumb-link"><i class="fa fa-life-ring"></i> Help</a>
         <small>&raquo; {{ $article['section'] ?? 'General' }}</small>
     </h1>
 </section>
 
-<section class="content">
-    <div class="row">
-        <div class="col-md-9">
-            @component('components.widget', ['class' => 'box-primary', 'title' => $article['title']])
-                @if(!empty($article['summary']))
-                    <p class="lead">{{ $article['summary'] }}</p>
-                @endif
-                <div class="help-article-body">
-                    {!! $article['body_html'] !!}
+<section class="content help-page">
+    <div class="help-show-grid">
+        <div class="help-show-main">
+            <div class="help-card">
+                <div class="help-card-header help-card-header--article">
+                    <span>{{ $article['title'] }}</span>
+                    @if(!empty($article['section']))
+                        <span class="help-pill">{{ $article['section'] }}</span>
+                    @endif
                 </div>
-                <hr>
-                <p class="text-muted small">
-                    See something wrong or out of date?
-                    <a href="mailto:sarah@nivessa.com?subject=Handbook%20fix:%20{{ urlencode($article['title']) }}">Email Sarah</a>
-                </p>
-            @endcomponent
+                <div class="help-card-body help-article">
+                    @if(!empty($article['summary']))
+                        <p class="help-article-lead">{{ $article['summary'] }}</p>
+                    @endif
+                    <div class="help-article-body">
+                        {!! $article['body_html'] !!}
+                    </div>
+                    <hr>
+                    <p class="help-article-footer">
+                        <i class="fa fa-flag"></i>
+                        See something wrong or out of date?
+                        <a href="mailto:sarah@nivessa.com?subject=Handbook%20fix:%20{{ urlencode($article['title']) }}">Email Sarah</a>
+                    </p>
+                </div>
+            </div>
         </div>
-        <div class="col-md-3">
-            <div class="panel panel-default">
-                <div class="panel-heading"><strong>In this section</strong></div>
-                <ul class="list-group">
+        <aside class="help-show-side">
+            <div class="help-card">
+                <div class="help-card-header">In this section</div>
+                <ul class="help-article-list">
                     @forelse($related as $r)
-                        <li class="list-group-item">
-                            <a href="{{ route('help.show', $r['slug']) }}">{{ $r['title'] }}</a>
+                        <li>
+                            <a href="{{ route('help.show', $r['slug']) }}" class="help-article-link">
+                                <div class="help-article-title">{{ $r['title'] }}</div>
+                            </a>
                         </li>
                     @empty
-                        <li class="list-group-item text-muted">No related articles yet.</li>
+                        <li class="help-empty-side">No related articles yet.</li>
                     @endforelse
                 </ul>
             </div>
-            <p><a href="{{ route('help.index') }}" class="btn btn-default btn-block"><i class="fa fa-list"></i> All help</a></p>
-        </div>
+            <a href="{{ route('help.index') }}" class="btn btn-default help-back-btn"><i class="fa fa-list"></i> All help</a>
+        </aside>
     </div>
 </section>
-
-<style>
-.help-article-body h2 { font-size: 18px; margin-top: 18px; }
-.help-article-body h3 { font-size: 16px; margin-top: 14px; }
-.help-article-body ol, .help-article-body ul { padding-left: 22px; }
-.help-article-body li { margin-bottom: 4px; }
-.help-article-body code { background: #f5f5f5; padding: 1px 4px; border-radius: 3px; }
-.help-article-body table { margin: 10px 0; }
-.help-article-body .help-tip { background: #fffbe5; border-left: 4px solid #f0c419; padding: 8px 12px; margin: 10px 0; border-radius: 3px; }
-.help-article-body .help-warn { background: #fdecea; border-left: 4px solid #d9534f; padding: 8px 12px; margin: 10px 0; border-radius: 3px; }
-</style>
 
 @endsection

@@ -53,14 +53,14 @@ HTML,
 <ol>
   <li><strong>Pick the customer.</strong> Search by name or phone in the customer field. If they're new, click "+ Add" to make them on the spot — name + phone is enough.</li>
   <li><strong>Add items.</strong> Scan the barcode if the item has one. If it's a used record with our red/white price tag, search by title or use "Manual entry" and type artist + title + price.</li>
-  <li><strong>Confirm condition + price.</strong> If the cover is rougher than the vinyl, knock 5–10% off the vinyl price (do not use the cover heavily in weighting). For sealed/new, the AMS price stands.</li>
+  <li><strong>Check that the price matches the sticker.</strong> The sticker price is the price — cashiers don't adjust prices at the register. If something has no sticker or the sticker is wrong, ask a manager before ringing it up.</li>
   <li><strong>Sales tax</strong> is applied automatically based on the store location. Cash <em>and</em> card both pay tax.</li>
   <li><strong>Pick payment.</strong> Cash, card, or store credit. If the customer has store credit, it shows on their customer record — don't go searching the old credit spreadsheet.</li>
   <li><strong>Finalize</strong> and send the receipt by phone or email if they want one.</li>
 </ol>
 
 <h3>Discounts</h3>
-<p>Confirm the current threshold with Jon if you're unsure — the staff handbook had two different numbers (10% off $300+ vs 15% off $200+). Until that's resolved, ask before applying a discount over 10%.</p>
+<div class="help-warn"><strong>Manager-only.</strong> Cashiers don't apply discounts. If a customer asks for one, get a manager — they're the only ones who can authorize it.</div>
 
 <h3>Returns</h3>
 <div class="help-warn"><strong>Manager-only.</strong> Only a manager can authorize refunds. If the manager is out, tell the customer it can be processed when they're back, or call Jon. Receipts are required. Used products: no returns — direct them to sell it back as a collection.</div>
