@@ -33,6 +33,12 @@
     .rf-invoice a:hover { color: #8B6A1A; border-bottom-color: #8B6A1A; }
     .rf-time, .rf-store, .rf-customer, .rf-cashier { color: #5A5045; font-size: 13px; }
     .rf-cashier strong { color: #1F1B16; font-weight: 700; }
+    .rf-tender { display: inline-block; padding: 1px 7px; border-radius: 999px;
+        font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+    .rf-tender.tender-cash { background: #E6F2E0; border: 1px solid #B8D9A8; color: #2E6F40; }
+    .rf-tender.tender-card { background: #E0EAF7; border: 1px solid #A8C0DD; color: #2E4A8A; }
+    .rf-tender.tender-other { background: #F2EAE0; border: 1px solid #DDC8A8; color: #8B6A1A; }
+    .rf-tender.tender-mixed { background: #F0E0F2; border: 1px solid #D5A8DD; color: #5E2E80; }
     .rf-store-badge { display: inline-block; padding: 1px 7px; border-radius: 999px;
         background: #F7F1E3; border: 1px solid #DFD2B3; color: #5A5045;
         font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
@@ -374,6 +380,26 @@
                 }
                 $total = (float) $sale->final_total;
                 $discount = (float) ($sale->discount_amount ?? 0);
+
+                // Tender the cashier picked at checkout. Per-payment-row method
+                // ('cash' / 'card' / 'bank_transfer' / 'cheque' / 'custom_pay_*' /
+                // 'other'). Note (memory, 2026-04-28): Nivessa cashiers ring nearly
+                // every sale as 'cash' even when the customer paid by card —
+                // they manually re-enter on Clover. So this shows what the
+                // cashier *chose*, which is mostly 'Cash'; the Clover column
+                // tells you what actually ran.
+                $methods = $sale->payment_lines->pluck('method')->filter()->unique()->values();
+                $tenderClass = 'tender-other';
+                $tenderLabel = '—';
+                if ($methods->count() > 1) {
+                    $tenderClass = 'tender-mixed';
+                    $tenderLabel = 'Split';
+                } elseif ($methods->count() === 1) {
+                    $m = $methods->first();
+                    if ($m === 'cash') { $tenderClass = 'tender-cash'; $tenderLabel = 'Cash'; }
+                    elseif ($m === 'card') { $tenderClass = 'tender-card'; $tenderLabel = 'Card'; }
+                    else { $tenderLabel = ucfirst(str_replace('_', ' ', $m)); }
+                }
             @endphp
             <div class="rf-card">
                 <div class="rf-head">
@@ -383,6 +409,7 @@
                         </span>
                         <span class="rf-time">{{ $when }}</span>
                         <span class="rf-store-badge">{{ $store }}</span>
+                        <span class="rf-tender {{ $tenderClass }}" title="Tender the cashier selected at checkout (cashiers usually pick Cash even for card sales — see Clover column for what actually ran)">{{ $tenderLabel }}</span>
                         <span class="rf-customer">· {{ $customer }}</span>
                         @if($cashier)<span class="rf-cashier" title="User who created this sale in the ERP (POS)">· ERP: <strong>{{ $cashier }}</strong></span>@endif
                     </div>

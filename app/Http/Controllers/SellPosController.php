@@ -449,6 +449,7 @@ class SellPosController extends Controller
                 'contact',
                 'location',
                 'sales_person',
+                'payment_lines',
             ])
             ->orderByDesc('transaction_date')
             ->limit($fetchLimit)
