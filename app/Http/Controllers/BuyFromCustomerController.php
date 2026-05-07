@@ -11,8 +11,10 @@ use App\Services\BuyOfferCalculatorService;
 use App\Transaction;
 use App\Utils\ProductUtil;
 use App\Variation;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 
 class BuyFromCustomerController extends Controller
@@ -441,6 +443,12 @@ class BuyFromCustomerController extends Controller
 
     protected function createPurchaseFromOffer(BuyCustomerOffer $offer, $payoutType)
     {
+        // Self-heal: add the FK columns the migration adds, in case the
+        // server hasn't run `php artisan migrate` yet (Sarah doesn't SSH —
+        // shipping ALTER TABLE behind a request avoids the manual step).
+        // Idempotent: hasColumn() guards every add.
+        $this->ensureOfferLineProductRefColumns();
+
         $business_id = $offer->business_id;
         $location_id = $offer->location_id ?: BusinessLocation::where('business_id', $business_id)->value('id');
 
@@ -596,6 +604,34 @@ class BuyFromCustomerController extends Controller
         }
 
         return $purchase;
+    }
+
+    // Adds product_id / variation_id / purchase_line_id to
+    // buy_customer_offer_lines if not already present. Mirrors the migration
+    // file 2026_05_07_120000_add_product_refs_to_buy_customer_offer_lines.php
+    // for environments where artisan migrate hasn't been run yet.
+    protected function ensureOfferLineProductRefColumns()
+    {
+        if (!Schema::hasTable('buy_customer_offer_lines')) {
+            return;
+        }
+        $needsProduct = !Schema::hasColumn('buy_customer_offer_lines', 'product_id');
+        $needsVariation = !Schema::hasColumn('buy_customer_offer_lines', 'variation_id');
+        $needsPurchaseLine = !Schema::hasColumn('buy_customer_offer_lines', 'purchase_line_id');
+        if (!$needsProduct && !$needsVariation && !$needsPurchaseLine) {
+            return;
+        }
+        Schema::table('buy_customer_offer_lines', function (Blueprint $table) use ($needsProduct, $needsVariation, $needsPurchaseLine) {
+            if ($needsProduct) {
+                $table->unsignedInteger('product_id')->nullable();
+            }
+            if ($needsVariation) {
+                $table->unsignedInteger('variation_id')->nullable();
+            }
+            if ($needsPurchaseLine) {
+                $table->unsignedBigInteger('purchase_line_id')->nullable();
+            }
+        });
     }
 }
 
