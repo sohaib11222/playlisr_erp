@@ -412,6 +412,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // the email/password -> token exchange Sling support recommends.
     Route::get('/admin/sling/login', 'SlingController@loginForm');
     Route::post('/admin/sling/login', 'SlingController@login');
+    Route::post('/admin/sling/save-token', 'SlingController@saveToken');
     Route::post('/admin/sling/disconnect', 'SlingController@disconnect');
     // The old "Clover vs ERP" rollup is superseded by the EOD reconciliation
     // page — same data, better structure (shift cards with drawer math).

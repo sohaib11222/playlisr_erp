@@ -112,6 +112,11 @@
      likely auth/cookie issues when the protected route is loaded inside an iframe.
      Button now opens the calculator in a new tab — simpler + more reliable. --}}
 
+{{-- Floating "Show Me How" tour launcher — opt-in, defensive: button just
+     loads a separate JS file on click. If the tour code errors, the page
+     itself is unaffected (everything is overlay-only, no DOM rewrites). --}}
+@include('help.partials.tour_button', ['tourSteps' => \App\Help\Catalog::tour('pos.create')])
+
 @stop
 @section('css')
 	<!-- POS: scrollable product table so totals/actions stay visible without page scroll -->
