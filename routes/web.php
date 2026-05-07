@@ -143,6 +143,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/preorders/customer/{contact_id}', 'PreorderController@getCustomerPreorders');
     Route::post('/preorders/{id}/fulfill', 'PreorderController@fulfill');
 
+    // Help / Handbook (catalog-based, no DB)
+    Route::get('/help', 'HelpController@index')->name('help.index');
+    Route::get('/help/{slug}', 'HelpController@show')->name('help.show')->where('slug', '[a-z0-9\\-]+');
+
     // Customer Pickups
     Route::resource('customer-pickups', 'CustomerPickupController');
     Route::get('/customer-pickups/customer/{contact_id}', 'CustomerPickupController@getCustomerPickups');
