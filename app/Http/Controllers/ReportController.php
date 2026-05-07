@@ -5234,21 +5234,55 @@ class ReportController extends Controller
             ->groupBy('user_id')
             ->pluck('hours', 'user_id');
 
-        $rows = $users->map(function ($u) use ($mass_add, $purchase_add, $labels_printed, $hours_raw) {
+        // Packages picked / shipped: each time a user changes a transaction's
+        // shipping_status to "packed" or "shipped" via /sells edit-shipping,
+        // an activity_log row is written with the old + new values. We count
+        // distinct transactions per user that transitioned INTO each state.
+        // (Nick is the one Sarah is tracking, but column applies to everyone.)
+        $picked_by_user = [];
+        $shipped_by_user = [];
+        $shipping_edits = DB::table('activity_log')
+            ->where('description', 'shipping_edited')
+            ->where('business_id', $business_id)
+            ->where('subject_type', 'App\\Transaction')
+            ->whereBetween('created_at', [$window_start, $window_end])
+            ->whereNotNull('causer_id')
+            ->select('causer_id', 'subject_id', 'properties')
+            ->get();
+        foreach ($shipping_edits as $edit) {
+            $props = json_decode($edit->properties, true) ?: [];
+            $new = $props['attributes']['shipping_status'] ?? null;
+            $old = $props['old']['shipping_status'] ?? null;
+            if (!$new || $new === $old) {
+                continue;
+            }
+            if ($new === 'packed') {
+                $picked_by_user[$edit->causer_id][$edit->subject_id] = true;
+            } elseif ($new === 'shipped') {
+                $shipped_by_user[$edit->causer_id][$edit->subject_id] = true;
+            }
+        }
+
+        $rows = $users->map(function ($u) use ($mass_add, $purchase_add, $labels_printed, $hours_raw, $picked_by_user, $shipped_by_user) {
             $m = (int) ($mass_add[$u->id] ?? 0);
             $p = (int) ($purchase_add[$u->id] ?? 0);
             $l = (int) ($labels_printed[$u->id] ?? 0);
             $h = (float) ($hours_raw[$u->id] ?? 0);
+            $picked = isset($picked_by_user[$u->id]) ? count($picked_by_user[$u->id]) : 0;
+            $shipped = isset($shipped_by_user[$u->id]) ? count($shipped_by_user[$u->id]) : 0;
             return (object) [
                 'user_id' => $u->id,
                 'employee' => trim((string) $u->full_name),
                 'mass_add_count' => $m,
                 'purchase_add_count' => $p,
                 'labels_printed_count' => $l,
+                'packages_picked_count' => $picked,
+                'packages_shipped_count' => $shipped,
                 'hours_worked' => $h,
-                'total_count' => $m + $p,
             ];
-        })->sortByDesc('total_count')->values();
+        })->sortByDesc(function ($r) {
+            return $r->mass_add_count + $r->purchase_add_count;
+        })->values();
 
         // Daily summary cards for current day.
         $today = \Carbon::today()->format('Y-m-d');
