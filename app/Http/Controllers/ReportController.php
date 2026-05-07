@@ -1123,6 +1123,13 @@ class ReportController extends Controller
                     $cls = abs($diff) < 0.01 ? 'text-success' : 'text-danger';
                     return '<span class="' . $cls . '" data-orig-value="' . $diff . '" >' . $this->transactionUtil->num_f($diff, true) . '</span>';
                 })
+                ->addColumn('safe_drop_amount', function ($row) {
+                    // Tolerate the column not yet existing (migration may
+                    // not have run on every environment) and old shifts
+                    // that closed before this feature shipped.
+                    $val = isset($row->safe_drop_amount) ? (float) $row->safe_drop_amount : 0;
+                    return '<span data-orig-value="' . $val . '" >' . $this->transactionUtil->num_f($val, true) . '</span>';
+                })
                 ->addColumn('total', function ($row) {
                     $total = $row->total_card_payment + $row->total_cheque_payment + $row->total_cash_payment + $row->total_bank_transfer_payment + $row->total_other_payment + $row->total_advance_payment + $row->total_custom_pay_1 + $row->total_custom_pay_2 + $row->total_custom_pay_3 + $row->total_custom_pay_4 + $row->total_custom_pay_5 + $row->total_custom_pay_6 + $row->total_custom_pay_7;
                     
@@ -1134,7 +1141,7 @@ class ReportController extends Controller
                 ->filterColumn('user_name', function ($query, $keyword) {
                     $query->whereRaw("CONCAT(COALESCE(surname, ''), ' ', COALESCE(first_name, ''), ' ', COALESCE(last_name, ''), '<br>', COALESCE(u.email, '')) like ?", ["%{$keyword}%"]);
                 })
-                ->rawColumns(['action', 'user_name', 'opening_balance', 'closing_amount', 'expected_closing', 'reconciliation_difference', 'total_card_payment', 'total_cheque_payment', 'total_cash_payment', 'total_bank_transfer_payment', 'total_other_payment', 'total_advance_payment', 'total_custom_pay_1', 'total_custom_pay_2', 'total_custom_pay_3', 'total_custom_pay_4', 'total_custom_pay_5', 'total_custom_pay_6', 'total_custom_pay_7', 'total'])
+                ->rawColumns(['action', 'user_name', 'opening_balance', 'closing_amount', 'expected_closing', 'reconciliation_difference', 'safe_drop_amount', 'total_card_payment', 'total_cheque_payment', 'total_cash_payment', 'total_bank_transfer_payment', 'total_other_payment', 'total_advance_payment', 'total_custom_pay_1', 'total_custom_pay_2', 'total_custom_pay_3', 'total_custom_pay_4', 'total_custom_pay_5', 'total_custom_pay_6', 'total_custom_pay_7', 'total'])
                 ->make(true);
         }
 

@@ -58,6 +58,10 @@
           <b>@lang('report.user'):</b> {{ $register_details->user_name}}<br>
           <b>@lang('business.email'):</b> {{ $register_details->email}}<br>
           <b>@lang('business.business_location'):</b> {{ $register_details->location_name}}<br>
+          @if(!empty($register_details->safe_drop_amount) && (float) $register_details->safe_drop_amount > 0)
+            <b>Moved to safe:</b> @format_currency($register_details->safe_drop_amount)
+            <small class="text-muted">(check the bundle has a post-it with the cashier's initials and amount)</small><br>
+          @endif
         </div>
         @if(!empty($register_details->closing_note))
           <div class="col-xs-6">

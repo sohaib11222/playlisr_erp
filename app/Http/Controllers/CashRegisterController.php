@@ -305,6 +305,18 @@ class CashRegisterController extends Controller
             $input['status'] = 'close';
             $input['denominations'] = !empty(request()->input('denominations')) ? json_encode(request()->input('denominations')) : null;
 
+            // Capture how much cash the cashier moved to the safe at close
+            // so the daily reconciliation report can sum it. Only write the
+            // column when it exists in the schema (the migration may not
+            // have run yet on every environment) — `Schema::hasColumn` is
+            // memoized so this is cheap on subsequent calls.
+            if (\Schema::hasColumn('cash_registers', 'safe_drop_amount')) {
+                $rawDrop = $request->input('safe_drop_amount');
+                $input['safe_drop_amount'] = $rawDrop === null || $rawDrop === ''
+                    ? 0
+                    : $this->cashRegisterUtil->num_uf($rawDrop);
+            }
+
             CashRegister::where('user_id', $user_id)
                                 ->where('status', 'open')
                                 ->update($input);

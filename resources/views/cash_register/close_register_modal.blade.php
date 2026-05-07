@@ -184,6 +184,28 @@
 	.cr-safe-alert-postit {
 		font-size: 14px; font-weight: 600; margin-top: 8px; color: #6B2A14;
 	}
+	.cr-safe-alert-confirm {
+		margin-top: 14px; padding-top: 12px; border-top: 1px dashed #E8A07A;
+		display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+	}
+	.cr-safe-alert-confirm label {
+		font-size: 12px; font-weight: 700; color: #6B2A14;
+		text-transform: uppercase; letter-spacing: .04em; margin: 0;
+	}
+	.cr-safe-alert-confirm-input {
+		display: inline-flex; align-items: center; gap: 4px;
+		background: #fff; border: 1px solid #E8A07A; border-radius: 8px;
+		padding: 4px 10px;
+	}
+	.cr-safe-alert-confirm-input span {
+		font-size: 16px; font-weight: 700; color: #6B2A14;
+	}
+	.cr-safe-alert-confirm-input input {
+		border: none; outline: none; background: transparent;
+		font-family: inherit; font-size: 18px; font-weight: 700;
+		color: #1F1B16; width: 100px; padding: 4px 0;
+		font-variant-numeric: tabular-nums;
+	}
 
 	/* Denominations — kept but tucked into the reference block */
 	.cr-denom {
@@ -242,6 +264,23 @@
 					<div class="cr-safe-alert-postit">
 						Stick a post-it on the bundle with <strong>your initials</strong>
 						and the <strong>amount you're dropping</strong>.
+					</div>
+
+					{{-- Capture the actual amount the cashier moved to the safe so
+					     daily reconciliation can sum it. Pre-filled with the
+					     suggested figure; the cashier can edit if they dropped
+					     a different amount. --}}
+					<div class="cr-safe-alert-confirm">
+						<label for="cr_safe_drop_amount">Amount you actually moved to the safe:</label>
+						<div class="cr-safe-alert-confirm-input">
+							<span>$</span>
+							{!! Form::text('safe_drop_amount', null, [
+								'id' => 'cr_safe_drop_amount',
+								'class' => 'input_number',
+								'placeholder' => '0',
+								'data-decimal' => '1',
+							]) !!}
+						</div>
 					</div>
 				</div>
 
@@ -323,7 +362,15 @@
 						var $input  = $('#cr_closing_amount');
 						var $alert  = $('#cr-safe-alert');
 						var $amount = $('#cr-safe-amount');
+						var $drop   = $('#cr_safe_drop_amount');
 						if (!$input.length || !$alert.length) return;
+
+						// Once the cashier has typed their own number into the
+						// "amount you actually moved" field, stop auto-syncing
+						// it with the suggestion. We still recompute the
+						// suggestion shown above, but don't overwrite their input.
+						var dropEdited = false;
+						$drop.on('input change keyup', function () { dropEdited = true; });
 
 						function recheck() {
 							var raw = ($input.val() || '').toString().replace(/,/g, '').trim();
@@ -333,8 +380,10 @@
 							if (toSafe >= 100) {
 								$amount.text('$' + toSafe.toLocaleString('en-US'));
 								$alert.addClass('cr-safe-alert-on');
+								if (!dropEdited) { $drop.val(toSafe.toLocaleString('en-US')); }
 							} else {
 								$alert.removeClass('cr-safe-alert-on');
+								if (!dropEdited) { $drop.val(''); }
 							}
 						}
 

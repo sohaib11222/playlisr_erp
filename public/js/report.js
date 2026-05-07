@@ -301,6 +301,7 @@ $(document).ready(function() {
             { data: 'closing_amount', name: 'closing_amount', searchable: false, orderable: false },
             { data: 'expected_closing', name: 'expected_closing', searchable: false, orderable: false },
             { data: 'reconciliation_difference', name: 'reconciliation_difference', searchable: false, orderable: false },
+            { data: 'safe_drop_amount', name: 'safe_drop_amount', searchable: false, orderable: false },
             { data: 'total_card_payment', name: 'total_card_payment', searchable: false },
             { data: 'total_cheque_payment', name: 'total_cheque_payment', searchable: false },
             { data: 'total_cash_payment', name: 'total_cash_payment', searchable: false },
@@ -331,9 +332,13 @@ $(document).ready(function() {
             var total_custom_pay_5 = 0;
             var total_custom_pay_6 = 0;
             var total_custom_pay_7 = 0;
+            var total_safe_drop = 0;
             var total = 0;
             for (var r in data){
-                total_card_payment += $(data[r].total_card_payment).data('orig-value') ? 
+                total_safe_drop += $(data[r].safe_drop_amount).data('orig-value') ?
+                parseFloat($(data[r].safe_drop_amount).data('orig-value')) : 0;
+
+                total_card_payment += $(data[r].total_card_payment).data('orig-value') ?
                 parseFloat($(data[r].total_card_payment).data('orig-value')) : 0;
 
                 total_cheque_payment += $(data[r].total_cheque_payment).data('orig-value') ? 
@@ -376,6 +381,7 @@ $(document).ready(function() {
                 parseFloat($(data[r].total).data('orig-value')) : 0;
             }
 
+            $('.footer_total_safe_drop').html(__currency_trans_from_en(total_safe_drop));
             $('.footer_total_card_payment').html(__currency_trans_from_en(total_card_payment));
             $('.footer_total_cheque_payment').html(__currency_trans_from_en(total_cheque_payment));
             $('.footer_total_cash_payment').html(__currency_trans_from_en(total_cash_payment));
