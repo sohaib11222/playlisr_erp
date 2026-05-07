@@ -148,8 +148,14 @@ class AdminActionHistoryController extends Controller
                 continue;
             }
 
+            // Only decrement VLD if accept actually bumped stock. New snapshots
+            // include 'stock_bumped' = false (purchase is created as draft, so
+            // qty_available stays 0 until staff finalize). Old snapshots from
+            // before this flag was added defaulted to bumping, so absence of
+            // the flag means "yes, decrement".
+            $stockBumped = array_key_exists('stock_bumped', $row) ? (bool) $row['stock_bumped'] : true;
             $qty = (float) ($row['quantity'] ?? 0);
-            if ($qty > 0 && !empty($row['variation_id']) && !empty($row['location_id'])) {
+            if ($stockBumped && $qty > 0 && !empty($row['variation_id']) && !empty($row['location_id'])) {
                 DB::table('variation_location_details')
                     ->where('variation_id', $row['variation_id'])
                     ->where('location_id', $row['location_id'])

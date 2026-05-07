@@ -115,15 +115,24 @@ class BuyFromCustomerController extends Controller
         $this->validateAcceptCompliance($request);
 
         $offerId = $id ?? ($request->input('offer_id') ?: null);
-        DB::transaction(function () use ($request, $offerId) {
+        $result = DB::transaction(function () use ($request, $offerId) {
             $offer = $this->saveOffer($request, 'accepted', $offerId);
-            $purchase = $this->createPurchaseFromOffer($offer, $offer->payout_type);
-            $offer->accepted_purchase_id = $purchase->id;
+            $created = $this->createPurchaseFromOffer($offer, $offer->payout_type);
+            $offer->accepted_purchase_id = $created['purchase']->id;
             $offer->save();
+            return $created;
         });
 
+        $msg = sprintf(
+            'Offer accepted. Created %d draft purchase line(s)%s. Price each item at /products before finalizing the purchase.',
+            $result['materialized'],
+            $result['skipped_no_title'] > 0
+                ? sprintf(' (skipped %d untitled line(s) — not added to inventory)', $result['skipped_no_title'])
+                : ''
+        );
+
         return redirect()->route('buy-from-customer.history')
-            ->with('status', ['success' => 1, 'msg' => 'Offer accepted and purchase record created.']);
+            ->with('status', ['success' => 1, 'msg' => $msg]);
     }
 
     public function reject(Request $request, $id = null)
@@ -459,47 +468,75 @@ class BuyFromCustomerController extends Controller
         $purchase->business_id = $business_id;
         $purchase->location_id = $location_id;
         $purchase->type = 'purchase';
-        // Received immediately so updateProductQuantity() runs on the lines
-        // we attach below. The BFC payout is recorded as cash already paid out.
-        $purchase->status = 'received';
-        $purchase->payment_status = 'paid';
+        // Draft (not received) so qty_available stays at 0 until staff finalize
+        // the purchase from /purchases — that's when they price each item and
+        // flip not_for_selling off. Status flip from draft → received in the
+        // standard PurchaseController flow runs ProductUtil::updateProductStock,
+        // which is the only place we want stock to actually move into POS.
+        // We do NOT call updateProductQuantity directly here for the same
+        // reason: it would double-count when staff later marks received.
+        $purchase->status = 'draft';
+        $purchase->payment_status = 'due';
         $purchase->contact_id = $offer->contact_id ?: Contact::where('business_id', $business_id)->whereIn('type', ['supplier', 'both'])->value('id');
         $purchase->transaction_date = now();
-        $purchase->total_before_tax = $finalAmount;
+        // Totals seeded to 0 — recomputed below from materialized lines so
+        // the purchase total matches its line items (some BFC lines may be
+        // skipped if they had no title and weren't inventoried).
+        $purchase->total_before_tax = 0;
         $purchase->tax_amount = 0;
         $purchase->discount_amount = 0;
         $purchase->shipping_charges = 0;
-        $purchase->final_total = $finalAmount;
+        $purchase->final_total = 0;
         $purchase->created_by = $offer->created_by;
         $pmLabel = $offer->payment_method ?: $payoutType;
         $purchase->additional_notes = sprintf(
-            'Buy from customer %s | payout: %s | payment: %s | record: %s',
+            'Buy from customer %s | payout: %s | payment: %s | record: %s | total payout: %.2f',
             $offer->id,
             $payoutType,
             $pmLabel,
-            $offer->buy_record_number
+            $offer->buy_record_number,
+            $finalAmount
         );
         $purchase->save();
 
-        // Materialize each offer line into a real Product + Variation and a
-        // PurchaseLine so inventory actually moves. Each line becomes its own
-        // SKU (used vinyl is one-of-one — no fuzzy matching to existing
-        // products to avoid wrong-SKU bugs in POS). New SKUs are flagged
-        // not_for_selling=1 so they cannot ring up at $0 before staff prices
-        // them in the normal grading/listing flow.
+        // Materialize each offer line into a real Product + Variation + PurchaseLine.
+        // Each line becomes its own SKU (used vinyl is one-of-one). SKUs are flagged
+        // not_for_selling=1 so they cannot ring up at $0 before staff prices them.
+        // We SKIP lines without a title — those are placeholders the cashier didn't
+        // bother to identify (and would just clutter inventory as "BFC … — type"
+        // ghosts). They still affect the offer payout but don't materialize.
+        // Cost basis = the proportional share of final_offer_cash/credit, so
+        // "Unit Cost" on the purchase reflects what Sarah actually paid out.
         $offer->load('lines');
         $snapshotLines = [];
+        $skippedNoTitle = 0;
+        $linesTotal = 0.0;
+
+        // Compute payout ratio so each line's cost mirrors its share of the
+        // negotiated final price (not the calculator's "fair value" total).
+        $isCredit = ($payoutType === 'store_credit');
+        $calculatedTotal = (float) ($isCredit ? $offer->calculated_credit_total : $offer->calculated_cash_total);
+        $finalTotal = (float) ($isCredit ? $offer->final_offer_credit : $offer->final_offer_cash);
+        $payoutRatio = $calculatedTotal > 0 ? ($finalTotal / $calculatedTotal) : 1.0;
+
         foreach ($offer->lines as $line) {
-            $unitRate = (float) ($line->unit_rate ?: 0);
             $qty = (float) ($line->quantity ?: 0);
             if ($qty <= 0) {
                 continue;
             }
+            $title = trim((string) ($line->title ?: ''));
+            if ($title === '') {
+                // No title = no inventoried SKU. Cashier didn't identify the
+                // item; the offer payout still includes it but we don't spawn
+                // a phantom product.
+                $skippedNoTitle++;
+                continue;
+            }
 
-            // 1. Product
-            $displayTitle = trim((string) ($line->title ?: '')) !== ''
-                ? $line->title
-                : sprintf('BFC %s — %s', $offer->buy_record_number, $line->item_type);
+            // Per-unit paid: line's calculated value × payout ratio ÷ qty.
+            $lineCalculated = (float) ($isCredit ? $line->line_credit_total : $line->line_cash_total);
+            $unitPaid = $qty > 0 ? round(($lineCalculated * $payoutRatio) / $qty, 4) : 0;
+
             $description = sprintf(
                 'Bought from customer | offer %s | type: %s | grade: %s',
                 $offer->buy_record_number,
@@ -508,7 +545,7 @@ class BuyFromCustomerController extends Controller
             );
 
             $product = Product::create([
-                'name' => $displayTitle,
+                'name' => $title,
                 'sku' => 111, // placeholder, replaced by generateProductSku() once we have an id
                 'tax' => null,
                 'tax_type' => 'exclusive',
@@ -525,7 +562,6 @@ class BuyFromCustomerController extends Controller
             $product->sku = $this->productUtil->generateProductSku($product->id);
             $product->save();
 
-            // 2. ProductVariation + Variation rows
             $product_variation = $product->product_variations()->create([
                 'name' => 'DUMMY',
                 'is_dummy' => 1,
@@ -534,38 +570,29 @@ class BuyFromCustomerController extends Controller
                 'name' => 'DUMMY',
                 'product_id' => $product->id,
                 'sub_sku' => $product->sku,
-                'default_purchase_price' => $unitRate,
-                'dpp_inc_tax' => $unitRate,
+                'default_purchase_price' => $unitPaid,
+                'dpp_inc_tax' => $unitPaid,
                 'profit_percent' => 0,
                 'default_sell_price' => 0,
                 'sell_price_inc_tax' => 0,
             ]);
-
-            // 3. Pin the product to the offer's location so VLD has a row.
             $product->product_locations()->sync([$location_id]);
 
-            // 4. PurchaseLine attached to the received transaction
             $purchase_line = new PurchaseLine();
             $purchase_line->product_id = $product->id;
             $purchase_line->variation_id = $variation->id;
             $purchase_line->item_tax = 0;
             $purchase_line->tax_id = null;
             $purchase_line->quantity = $qty;
-            $purchase_line->pp_without_discount = $unitRate;
-            $purchase_line->purchase_price = $unitRate;
-            $purchase_line->purchase_price_inc_tax = $unitRate;
+            $purchase_line->pp_without_discount = $unitPaid;
+            $purchase_line->purchase_price = $unitPaid;
+            $purchase_line->purchase_price_inc_tax = $unitPaid;
             $purchase->purchase_lines()->save($purchase_line);
+            $linesTotal += $unitPaid * $qty;
 
-            // 5. Bump stock at this location
-            $this->productUtil->updateProductQuantity(
-                $location_id,
-                $product->id,
-                $variation->id,
-                $qty,
-                0
-            );
+            // No updateProductQuantity here — purchase is draft. Stock will
+            // post when staff flips status to received from /purchases edit.
 
-            // 6. Backfill refs on the offer line so undo can reverse this
             $line->product_id = $product->id;
             $line->variation_id = $variation->id;
             $line->purchase_line_id = $purchase_line->id;
@@ -579,12 +606,21 @@ class BuyFromCustomerController extends Controller
                 'purchase_line_id' => $purchase_line->id,
                 'location_id' => $location_id,
                 'quantity' => $qty,
+                // Stock was NOT bumped on receive (purchase is draft). Undo
+                // honors this and skips the VLD decrement so it doesn't go
+                // negative.
+                'stock_bumped' => false,
             ];
         }
 
         // Snapshot for /admin/admin-action-history undo. Captures everything
         // we need to walk this back: which products/variations were created,
         // which VLD rows to decrement, which transaction to flip to draft.
+        // Recompute purchase totals from the lines we actually materialized.
+        $purchase->total_before_tax = round($linesTotal, 2);
+        $purchase->final_total = round($linesTotal, 2);
+        $purchase->save();
+
         if (!empty($snapshotLines)) {
             $timestamp = now()->format('Y-m-d_His');
             $snapshotKey = "bfc-receive-{$offer->id}-{$timestamp}";
@@ -603,7 +639,11 @@ class BuyFromCustomerController extends Controller
             );
         }
 
-        return $purchase;
+        return [
+            'purchase' => $purchase,
+            'materialized' => count($snapshotLines),
+            'skipped_no_title' => $skippedNoTitle,
+        ];
     }
 
     // Adds product_id / variation_id / purchase_line_id to
