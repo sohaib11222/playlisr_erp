@@ -5192,14 +5192,56 @@ class ReportController extends Controller
             ->groupBy('t.created_by')
             ->pluck('total', 't.created_by');
 
-        $rows = $users->map(function ($u) use ($mass_add, $purchase_add) {
+        // Labels printed from the Print Labels tab. Each row = one print run;
+        // qty = total stickers in that run. Sum gives stickers per employee.
+        $labels_printed = collect();
+        if (\Schema::hasTable('label_print_logs')) {
+            $labels_printed = DB::table('label_print_logs')
+                ->where('business_id', $business_id)
+                ->whereDate('created_at', '>=', $start_date)
+                ->whereDate('created_at', '<=', $end_date)
+                ->select('user_id', DB::raw('SUM(qty) as total'))
+                ->groupBy('user_id')
+                ->pluck('total', 'user_id');
+        }
+
+        // Hours worked from cash_registers (created_at -> closed_at), clipped
+        // to the selected window. Same formula used by the leaderboard report.
+        $window_start = $start_date . ' 00:00:00';
+        $window_end = $end_date . ' 23:59:59';
+        $hours_raw = DB::table('cash_registers')
+            ->where('business_id', $business_id)
+            ->whereNotNull('user_id')
+            ->where('created_at', '<=', $window_end)
+            ->where(function ($q) use ($window_start) {
+                $q->where('closed_at', '>=', $window_start)
+                  ->orWhereNull('closed_at');
+            })
+            ->selectRaw("user_id,
+                SUM(
+                    TIMESTAMPDIFF(
+                        SECOND,
+                        GREATEST(created_at, ?),
+                        LEAST(COALESCE(closed_at, NOW()), ?)
+                    )
+                ) / 3600.0 as hours")
+            ->addBinding($window_start, 'select')
+            ->addBinding($window_end, 'select')
+            ->groupBy('user_id')
+            ->pluck('hours', 'user_id');
+
+        $rows = $users->map(function ($u) use ($mass_add, $purchase_add, $labels_printed, $hours_raw) {
             $m = (int) ($mass_add[$u->id] ?? 0);
             $p = (int) ($purchase_add[$u->id] ?? 0);
+            $l = (int) ($labels_printed[$u->id] ?? 0);
+            $h = (float) ($hours_raw[$u->id] ?? 0);
             return (object) [
                 'user_id' => $u->id,
                 'employee' => trim((string) $u->full_name),
                 'mass_add_count' => $m,
                 'purchase_add_count' => $p,
+                'labels_printed_count' => $l,
+                'hours_worked' => $h,
                 'total_count' => $m + $p,
             ];
         })->sortByDesc('total_count')->values();
@@ -8552,6 +8594,9 @@ class ReportController extends Controller
             }
         }
 
+        // (no-location merge moved below — must run after details
+        //  populate so the lists fold in too)
+
         // Drop "ghost" cashier buckets — Sarah 2026-05-05: "when I go back
         // to previous day and back to today all new cashiers get added to
         // my screen from yesterday." Cause: a register opened yesterday
@@ -8680,6 +8725,48 @@ class ReportController extends Controller
                 'ts' => $r->ts,
                 'amount' => round((float) $r->amount, 2),
             ];
+        }
+
+        // Merge no-location (locKey=0) buckets into the same-cashier real-
+        // location bucket on the same day — Sarah 2026-05-07: "why is
+        // andy showing twice today?". A no-location bucket usually means
+        // Clover sync didn't stamp the swipe with a store, but the
+        // cashier definitely worked one specific store today (per their
+        // cash_register row), so we fold the no-location numbers AND
+        // the unmatched-list details into that real-location bucket
+        // rather than rendering a phantom second card. Only merges when
+        // there's exactly ONE real-location bucket for that cashier —
+        // if they genuinely worked at both stores today, both stay.
+        foreach ($buckets as $day => $locsM) {
+            if (!isset($locsM[0]['employees'])) continue;
+            foreach (array_keys($locsM[0]['employees']) as $emp) {
+                $targets = [];
+                foreach ($locsM as $lk => $loc) {
+                    if ($lk === 0) continue;
+                    if (isset($loc['employees'][$emp])) $targets[] = $lk;
+                }
+                if (count($targets) !== 1) continue;
+                $tgt = $targets[0];
+                $src = $buckets[$day][0]['employees'][$emp];
+                $dst = &$buckets[$day][$tgt]['employees'][$emp];
+                foreach (['total_sales','clover_total','clover_count','txn_count',
+                         'cash_buys','cash_refunds','cash_expenses',
+                         'cash_transfers_out','cash_transfers_in','cash_other_net',
+                         'collection_buys_all'] as $k) {
+                    $dst[$k] = ((float) ($dst[$k] ?? 0)) + ((float) ($src[$k] ?? 0));
+                }
+                foreach (['clover_unmatched','erp_unmatched','amount_mismatch','buys'] as $k) {
+                    $dst['details'][$k] = array_merge(
+                        $dst['details'][$k] ?? [],
+                        $src['details'][$k] ?? []
+                    );
+                }
+                unset($dst);
+                unset($buckets[$day][0]['employees'][$emp]);
+            }
+            if (empty($buckets[$day][0]['employees'])) {
+                unset($buckets[$day][0]);
+            }
         }
 
         // Order each list by time so the panel reads top-to-bottom.
