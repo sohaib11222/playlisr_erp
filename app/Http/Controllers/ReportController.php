@@ -7901,6 +7901,34 @@ class ReportController extends Controller
     }
 
     /**
+     * Read-only admin diagnostic — returns channel + is_whatnot + a few
+     * other fields for one transaction so we can spot why it bucketed
+     * the way it did. Sarah 2026-05-07: Zakary's #18242 looked Whatnot
+     * in the report but is actually a regular walk-in. We need to see
+     * the row to know whether it's a data tag bug or a code bug.
+     *
+     * Route: GET /reports/clover-eod/debug-transaction/{id}
+     */
+    public function cloverEodDebugTransaction(Request $request, $id)
+    {
+        if (!$this->businessUtil->is_admin(auth()->user())) {
+            return response()->json(['success' => false], 403);
+        }
+        $business_id = (int) $request->session()->get('user.business_id');
+        $row = \DB::table('transactions')
+            ->where('id', (int) $id)
+            ->where('business_id', $business_id)
+            ->first([
+                'id', 'type', 'status', 'channel', 'is_whatnot',
+                'location_id', 'created_by', 'final_total',
+                'transaction_date', 'additional_notes', 'staff_note',
+                'source', 'sub_type', 'is_direct_sale',
+            ]);
+        if (!$row) return response()->json(['success' => false, 'msg' => 'not found'], 404);
+        return response()->json(['success' => true, 'transaction' => $row]);
+    }
+
+    /**
      * Toggle the ✓ reconciled status for one (location, day). First click
      * stamps reconciled_by + reconciled_at; re-click clears them (undo).
      * Notes are preserved across the toggle.
