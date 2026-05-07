@@ -460,8 +460,13 @@
                                                 @php $ocSum = 0; @endphp
                                                 @foreach($details['other_channels'] as $row)
                                                     @php $ocSum += (float) $row->amount; @endphp
-                                                    <div style="display:flex; justify-content:space-between; padding:2px 0; border-bottom:1px dotted #f3f4f6;">
-                                                        <span style="color:#6b7280;">{{ $tFmt($row->ts) }} · <span style="text-transform:uppercase; font-size:10px; font-weight:700; color:#1d4ed8; letter-spacing:.04em;">{{ $row->channel }}</span></span>
+                                                    <div style="display:flex; justify-content:space-between; padding:2px 0; border-bottom:1px dotted #f3f4f6;" class="cc-recat-row" data-txn-id="{{ $row->transaction_id }}">
+                                                        <span style="color:#6b7280;">
+                                                            {{ $tFmt($row->ts) }} ·
+                                                            <span style="text-transform:uppercase; font-size:10px; font-weight:700; color:#1d4ed8; letter-spacing:.04em;">{{ $row->channel }}</span>
+                                                            <button type="button" class="cc-recat-btn" title="Mis-tagged? Click to flip this back to in-store"
+                                                                style="margin-left:6px; background:transparent; border:1px solid #93c5fd; color:#1d4ed8; font-size:10px; font-weight:700; padding:1px 6px; border-radius:999px; cursor:pointer;">→ in-store</button>
+                                                        </span>
                                                         <span><a href="{{ route('sell.printInvoice', $row->transaction_id) }}" target="_blank" style="color:#1f2937; font-weight:600; text-decoration:none;">${{ number_format($row->amount, 2) }}</a></span>
                                                     </div>
                                                 @endforeach
@@ -1562,6 +1567,42 @@ $(function () {
     // Clover-payments sync above. The full bidirectional sync still
     // exists at /business/clover/sync-now if it's needed elsewhere.
 
+
+    // "→ in-store" reclassify button on Other-channels rows. Sarah
+    // 2026-05-07: cashiers occasionally tap the Whatnot chip on POS
+    // form by accident and a regular walk-in lands as channel=whatnot.
+    // One-click flip back to in_store, page reload to refresh totals.
+    $('body').on('click', '.cc-recat-btn', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var $row = $(this).closest('.cc-recat-row');
+        var $btn = $(this);
+        var txnId = $row.data('txn-id');
+        if (!txnId) return;
+        if (!confirm('Move this sale back to in-store?\nIt will count toward the cashier\'s drawer math.')) return;
+        $btn.prop('disabled', true).text('saving…');
+        $.ajax({
+            url: '/reports/clover-eod/recategorize-channel',
+            method: 'POST',
+            dataType: 'json',
+            data: {
+                _token: $('meta[name="csrf-token"]').attr('content'),
+                transaction_id: txnId,
+                channel: 'in_store'
+            }
+        }).done(function (r) {
+            if (r.success) {
+                $btn.text('✓ moved');
+                setTimeout(function () { window.location.reload(); }, 600);
+            } else {
+                alert(r.msg || 'Could not save.');
+                $btn.prop('disabled', false).text('→ in-store');
+            }
+        }).fail(function () {
+            alert('Network error — try again.');
+            $btn.prop('disabled', false).text('→ in-store');
+        });
+    });
 
     // Per-store "Mark reconciled" checkbox — toggles the audit stamp on
     // the clover_reconciliations row for (day, location_id).

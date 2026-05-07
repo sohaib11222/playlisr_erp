@@ -7909,6 +7909,47 @@ class ReportController extends Controller
      *
      * Route: GET /reports/clover-eod/debug-transaction/{id}
      */
+    /**
+     * Recategorize one transaction's channel — used by the "→ in-store"
+     * button on the Other-channels rows. Sarah 2026-05-07: the POS
+     * Whatnot chip gets flipped accidentally and tags a regular walk-in
+     * as Whatnot, which then drops out of the cashier's drawer math
+     * downstream. This lets her flip a single sale back without
+     * round-tripping through Edit Sale UI. Admin-only, logs every flip.
+     *
+     * Route: POST /reports/clover-eod/recategorize-channel
+     */
+    public function cloverEodRecategorizeChannel(Request $request)
+    {
+        if (!$this->businessUtil->is_admin(auth()->user())) {
+            return response()->json(['success' => false], 403);
+        }
+        $business_id = (int) $request->session()->get('user.business_id');
+        $txnId = (int) $request->input('transaction_id');
+        $newChannel = $request->input('channel');
+        if (!$txnId || !in_array($newChannel, ['in_store','whatnot','discogs','ebay'], true)) {
+            return response()->json(['success' => false, 'msg' => 'invalid params'], 422);
+        }
+        $existing = \DB::table('transactions')
+            ->where('id', $txnId)
+            ->where('business_id', $business_id)
+            ->first(['id', 'channel', 'is_whatnot']);
+        if (!$existing) return response()->json(['success' => false, 'msg' => 'not found'], 404);
+        \DB::table('transactions')
+            ->where('id', $txnId)
+            ->where('business_id', $business_id)
+            ->update([
+                'channel'     => $newChannel,
+                'is_whatnot'  => $newChannel === 'whatnot' ? 1 : 0,
+                'updated_at'  => now(),
+            ]);
+        \Log::info(sprintf(
+            'EOD recategorize: txn=%d %s→%s by user=%d',
+            $txnId, $existing->channel, $newChannel, (int) auth()->id()
+        ));
+        return response()->json(['success' => true, 'from' => $existing->channel, 'to' => $newChannel]);
+    }
+
     public function cloverEodDebugTransaction(Request $request, $id)
     {
         if (!$this->businessUtil->is_admin(auth()->user())) {
