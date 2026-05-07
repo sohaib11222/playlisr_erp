@@ -38,64 +38,25 @@
     </div>
 
     <div class="box box-solid">
-        <div class="box-header with-border"><h3 class="box-title">Paste token directly</h3></div>
+        <div class="box-header with-border"><h3 class="box-title">{{ $connected ? 'Refresh token' : 'Connect' }}</h3></div>
         <div class="box-body">
-            <p>
-                Sling's automated login now requires a captcha, so the email/password form below won't work for most accounts.
-                Use this instead:
-            </p>
-            <ol>
-                <li>Open <a href="https://app.getsling.com" target="_blank">app.getsling.com</a> in another tab and sign in.</li>
-                <li>Press <strong>Cmd+Option+I</strong> to open Chrome DevTools, click the <strong>Network</strong> tab.</li>
-                <li>In the <strong>Filter</strong> box at the top, type <code>concise</code>.</li>
-                <li>Click any row that appears.</li>
-                <li>In the side panel, click <strong>Headers</strong>, scroll to <strong>Request Headers</strong>, and copy the value next to <code>Authorization:</code>.</li>
-                <li>Paste it below. The org id is the number in the URL after <code>/v1/</code> (likely <strong>901214</strong> for Nivessa).</li>
-            </ol>
-            <form method="POST" action="{{ url('/admin/sling/save-token') }}" class="form-horizontal" autocomplete="off">
-                @csrf
-                <div class="form-group">
-                    <label class="col-sm-3 control-label">Authorization token</label>
-                    <div class="col-sm-9">
-                        <textarea name="token" class="form-control" rows="3" required placeholder="paste the long Authorization header value here"></textarea>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label class="col-sm-3 control-label">Org id</label>
-                    <div class="col-sm-3">
-                        <input type="text" name="org_id" class="form-control" value="{{ $orgId ?: '901214' }}" required>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <div class="col-sm-offset-3 col-sm-6">
-                        <button type="submit" class="btn btn-primary"><i class="fa fa-key"></i> Save token</button>
-                    </div>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <div class="box box-default">
-        <div class="box-header with-border"><h3 class="box-title">Email + password (likely blocked by captcha)</h3></div>
-        <div class="box-body">
-            <p class="text-muted">Try this only if Sling has not yet enabled captcha on your account.</p>
             <form method="POST" action="{{ url('/admin/sling/login') }}" class="form-horizontal" autocomplete="off">
                 @csrf
                 <div class="form-group">
                     <label class="col-sm-3 control-label">Sling email</label>
                     <div class="col-sm-6">
-                        <input type="email" name="email" class="form-control" value="{{ $email ?? '' }}">
+                        <input type="email" name="email" class="form-control" required value="{{ $email ?? '' }}">
                     </div>
                 </div>
                 <div class="form-group">
                     <label class="col-sm-3 control-label">Sling password</label>
                     <div class="col-sm-6">
-                        <input type="password" name="password" class="form-control" autocomplete="new-password">
+                        <input type="password" name="password" class="form-control" required autocomplete="new-password">
                     </div>
                 </div>
                 <div class="form-group">
                     <div class="col-sm-offset-3 col-sm-6">
-                        <button type="submit" class="btn btn-default"><i class="fa fa-sign-in"></i> Try email + password</button>
+                        <button type="submit" class="btn btn-primary"><i class="fa fa-sign-in"></i> {{ $connected ? 'Refresh token' : 'Connect to Sling' }}</button>
                     </div>
                 </div>
             </form>

@@ -79,8 +79,6 @@
 
 <section id="receipt_section" class="print_section"></section>
 
-@include('help.partials.tour_button', ['tourSteps' => \App\Help\Catalog::tour('purchase.index')])
-
 <!-- /.content -->
 @stop
 @section('javascript')

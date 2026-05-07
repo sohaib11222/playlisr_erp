@@ -129,38 +129,6 @@ class SlingController extends Controller
         return back()->with('status_success', $msg);
     }
 
-    /**
-     * Manual token paste — Sling's /account/login now demands a captcha,
-     * so the email+password flow can't run server-side. Fallback: Sarah
-     * grabs the Authorization header from a logged-in Sling browser
-     * session and pastes it here.
-     */
-    public function saveToken(Request $request)
-    {
-        $token = trim((string) $request->input('token'));
-        $orgId = trim((string) $request->input('org_id'));
-
-        if ($token === '') {
-            return back()->with('status_error', 'Token is required.');
-        }
-        // Strip a "Bearer " prefix if the user copy/pasted that too.
-        if (stripos($token, 'bearer ') === 0) {
-            $token = trim(substr($token, 7));
-        }
-
-        System::addProperty(self::TOKEN_KEY, $token);
-        if ($orgId !== '') {
-            System::addProperty(self::ORG_KEY, $orgId);
-        }
-        System::addProperty(self::SAVED_AT_KEY, now()->toDateTimeString());
-
-        $msg = 'Token saved.';
-        if ($orgId === '') {
-            $msg .= ' Heads up: no org id provided — the report can\'t fetch shifts without it. Paste it (e.g. 901214) and resubmit.';
-        }
-        return back()->with('status_success', $msg);
-    }
-
     public function disconnect()
     {
         System::removeProperty(self::TOKEN_KEY);
