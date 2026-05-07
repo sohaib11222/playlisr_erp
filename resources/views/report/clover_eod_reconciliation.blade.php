@@ -456,7 +456,7 @@
                                                 <div style="display:flex; justify-content:space-between; padding:3px 0; font-weight:700;"><span>Subtotal</span><span>−${{ number_format($bSum, 2) }}</span></div>
                                             @endif
                                             @if(($ocCount ?? 0) > 0)
-                                                <div style="margin-top:8px;"><span style="font-size:10px; font-weight:700; color:#1d4ed8; text-transform:uppercase;">Other channels (not in drawer)</span></div>
+                                                <div style="margin-top:8px;"><span style="font-size:10px; font-weight:700; color:#1d4ed8; text-transform:uppercase;">Other channels</span></div>
                                                 @php $ocSum = 0; @endphp
                                                 @foreach($details['other_channels'] as $row)
                                                     @php $ocSum += (float) $row->amount; @endphp
