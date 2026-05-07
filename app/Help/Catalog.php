@@ -897,11 +897,6 @@ HTML,
                     'title' => 'Cash or Card',
                     'body' => 'Tax is automatic — both cash and card pay it. <strong>Always ring on the ERP</strong>, even when the card swipes on Clover. Skipping the ERP is what breaks inventory and reports.',
                 ],
-                [
-                    'selector' => null,
-                    'title' => 'Returns &amp; Discounts: Manager-Only',
-                    'body' => 'If a customer wants a refund or asks for a discount, get a manager. Cashiers never authorize either. Used products: no returns. <a href="/help/pos-ringing-up-a-customer" target="_blank">See full POS guide &rarr;</a>',
-                ],
             ],
             'purchase.index' => [
                 [
