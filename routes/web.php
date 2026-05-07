@@ -404,6 +404,13 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/ebay-seller/connect', 'EbaySellerAuthController@connect');
     Route::get('/admin/ebay-seller/callback', 'EbaySellerAuthController@callback');
     Route::post('/admin/ebay-seller/disconnect', 'EbaySellerAuthController@disconnect');
+
+    // Sling (getsling.com) connection — provides "Hours Worked" on the
+    // Employee Productivity report. Sling free has no API keys, so we use
+    // the email/password -> token exchange Sling support recommends.
+    Route::get('/admin/sling/login', 'SlingController@loginForm');
+    Route::post('/admin/sling/login', 'SlingController@login');
+    Route::post('/admin/sling/disconnect', 'SlingController@disconnect');
     // The old "Clover vs ERP" rollup is superseded by the EOD reconciliation
     // page — same data, better structure (shift cards with drawer math).
     // Redirect preserves any bookmarks pointing at the old URL.
