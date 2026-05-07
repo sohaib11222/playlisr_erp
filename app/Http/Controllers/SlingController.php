@@ -135,6 +135,31 @@ class SlingController extends Controller
         return back()->with('status_success', $msg);
     }
 
+    /**
+     * Manual paste — Sarah runs Sling's bash login script locally
+     * (residential IP, no captcha) and pastes the resulting token here.
+     */
+    public function saveToken(Request $request)
+    {
+        $token = trim((string) $request->input('token'));
+        $orgId = trim((string) $request->input('org_id'));
+
+        if ($token === '') {
+            return back()->with('status_error', 'Token is required.');
+        }
+        if (stripos($token, 'bearer ') === 0) {
+            $token = trim(substr($token, 7));
+        }
+
+        System::addProperty(self::TOKEN_KEY, $token);
+        if ($orgId !== '') {
+            System::addProperty(self::ORG_KEY, $orgId);
+        }
+        System::addProperty(self::SAVED_AT_KEY, now()->toDateTimeString());
+
+        return back()->with('status_success', 'Token saved.');
+    }
+
     public function disconnect()
     {
         System::removeProperty(self::TOKEN_KEY);
