@@ -86,8 +86,9 @@ class GamificationService
 
         foreach ($defs as $def) {
             $current = $this->measureCurrent($def['key'], $user->id, $businessId, $shift);
-            $peerPerHour = $this->peerPacePerHour($def['key'], $businessId, $shift);
-            $peerTopPerHour = $this->peerTopPerHour($def['key'], $businessId, $shift);
+            $stats = $this->peerStats($def['key'], $businessId, $shift);
+            $peerPerHour = $stats['avg'];
+            $peerTopPerHour = $stats['top'];
             $target = $this->computeTarget($def['key'], $peerPerHour, $shift);
             $myPerHour = $shift['hours'] >= 0.25 ? $current / $shift['hours'] : null;
             $percent = $target > 0 ? min(100, ($current / $target) * 100) : 0;
@@ -176,42 +177,45 @@ class GamificationService
     }
 
     /**
-     * Rolling 30-day peer pace at this store, restricted to the current
-     * hour-of-day bucket. Returns units-per-hour or null if no data.
+     * Rolling 30-day peer-pace stats for this task: average and top per-hour
+     * rate at this store, restricted to (a) the same hour-of-day as the
+     * shift start and (b) the same day-type (weekday vs weekend) as today.
+     *
+     * For sales the denominator is actual hours-worked from cash_registers
+     * (Jon 2026-05-07: COUNT(DISTINCT cashier, day) overcounted because
+     * registers cover only fractions of an hour and NULL-created_by rows
+     * inflated SUMs — Pico was reading $363/hr when reality was ~$95-175).
+     *
+     * For products_added and orders_shipped we keep the simpler
+     * (rows / distinct active-user-days) model because inventory/shipping
+     * staff may not open a cash_register, so cash_registers under-counts
+     * their actual hours.
+     *
+     * @return array{avg: ?float, top: ?float}
      */
-    public function peerPacePerHour(string $taskKey, int $businessId, array $shift): ?float
+    public function peerStats(string $taskKey, int $businessId, array $shift): array
     {
         $now = Carbon::now();
         $hour = (int) $shift['started_at']->format('G');
         $rangeStart = $now->copy()->subDays(self::PEER_LOOKBACK_DAYS)->startOfDay()->toDateTimeString();
         $rangeEnd = $now->copy()->subDay()->endOfDay()->toDateTimeString();
+        $dowBucket = $this->dowBucketForToday();
 
         if ($taskKey === 'sales_total') {
-            $q = DB::table('transactions')
-                ->where('business_id', $businessId)
-                ->where('type', 'sell')
-                ->where('status', 'final')
-                ->whereNull('import_source')
-                ->whereBetween('transaction_date', [$rangeStart, $rangeEnd])
-                ->whereRaw('HOUR(transaction_date) = ?', [$hour]);
-            if (!empty($shift['location_id'])) {
-                $q->where('location_id', $shift['location_id']);
-            }
-            $row = $q->selectRaw('SUM(final_total) as total, COUNT(DISTINCT created_by, DATE(transaction_date)) as cashier_hours')
-                ->first();
-            $hours = (float) ($row->cashier_hours ?? 0);
-            return $hours > 0 ? ((float) $row->total) / $hours : null;
+            return $this->salesPeerStats($businessId, $shift['location_id'] ?? null, $hour, $dowBucket, $rangeStart, $rangeEnd);
         }
 
         if ($taskKey === 'products_added') {
-            $q = DB::table('products')
-                ->where('business_id', $businessId)
-                ->whereBetween('created_at', [$rangeStart, $rangeEnd])
-                ->whereRaw('HOUR(created_at) = ?', [$hour]);
-            $row = $q->selectRaw('COUNT(*) as cnt, COUNT(DISTINCT created_by, DATE(created_at)) as user_hours')
-                ->first();
-            $hours = (float) ($row->user_hours ?? 0);
-            return $hours > 0 ? ((float) $row->cnt) / $hours : null;
+            return $this->countBasedPeerStats(
+                DB::table('products')
+                    ->where('business_id', $businessId)
+                    ->whereNotNull('created_by')
+                    ->whereBetween('created_at', [$rangeStart, $rangeEnd])
+                    ->whereRaw('HOUR(created_at) = ?', [$hour])
+                    ->whereRaw('DAYOFWEEK(created_at) IN ('.$this->dowList($dowBucket).')'),
+                'created_by',
+                'created_at'
+            );
         }
 
         if ($taskKey === 'orders_shipped') {
@@ -220,17 +224,187 @@ class GamificationService
                 ->where('type', 'sell')
                 ->whereIn('shipping_status', ['delivered', 'shipped'])
                 ->whereBetween('updated_at', [$rangeStart, $rangeEnd])
-                ->whereRaw('HOUR(updated_at) = ?', [$hour]);
+                ->whereRaw('HOUR(updated_at) = ?', [$hour])
+                ->whereRaw('DAYOFWEEK(updated_at) IN ('.$this->dowList($dowBucket).')');
             if (!empty($shift['location_id'])) {
                 $q->where('location_id', $shift['location_id']);
             }
-            $row = $q->selectRaw('COUNT(*) as cnt, COUNT(DISTINCT DATE(updated_at)) as days')
-                ->first();
-            $days = (float) ($row->days ?? 0);
-            return $days > 0 ? ((float) $row->cnt) / $days : null;
+            // Orders shipped: per-day rate (not per-cashier) since shipping
+            // is usually a single station; "top" is the busiest single day.
+            $rows = $q->selectRaw('DATE(updated_at) as d, COUNT(*) as cnt')
+                ->groupBy('d')
+                ->get();
+            if ($rows->isEmpty()) {
+                return ['avg' => null, 'top' => null];
+            }
+            $total = (int) $rows->sum('cnt');
+            $days = $rows->count();
+            return [
+                'avg' => $days > 0 ? $total / $days : null,
+                'top' => (float) $rows->max('cnt'),
+            ];
         }
 
-        return null;
+        return ['avg' => null, 'top' => null];
+    }
+
+    /**
+     * Sales peer stats using cash_registers for actual hours-worked. Each
+     * (cashier × day) pair contributes its share of hour H based on register
+     * overlap; SUM(rev)/SUM(hrs) is the peer avg, MAX(rev/hrs) the top.
+     *
+     * @return array{avg: ?float, top: ?float}
+     */
+    protected function salesPeerStats(int $businessId, ?int $locationId, int $hour, array $dowBucket, string $rangeStart, string $rangeEnd): array
+    {
+        $revQ = DB::table('transactions')
+            ->where('business_id', $businessId)
+            ->where('type', 'sell')
+            ->where('status', 'final')
+            ->whereNull('import_source')
+            ->whereNotNull('created_by')
+            ->whereBetween('transaction_date', [$rangeStart, $rangeEnd])
+            ->whereRaw('HOUR(transaction_date) = ?', [$hour])
+            ->whereRaw('DAYOFWEEK(transaction_date) IN ('.$this->dowList($dowBucket).')');
+        if (!empty($locationId)) {
+            $revQ->where('location_id', $locationId);
+        }
+        $revRows = $revQ->selectRaw('created_by as uid, DATE(transaction_date) as d, SUM(final_total) as rev')
+            ->groupBy('created_by', 'd')
+            ->get();
+
+        if ($revRows->isEmpty()) {
+            return ['avg' => null, 'top' => null];
+        }
+
+        $hoursPerKey = $this->cashRegisterHoursAtBucket($businessId, $locationId, $hour, $dowBucket, $rangeStart, $rangeEnd);
+
+        $totalRev = 0.0;
+        $totalHrs = 0.0;
+        $topRate = 0.0;
+        foreach ($revRows as $row) {
+            $secs = $hoursPerKey[$row->uid . '|' . $row->d] ?? 0;
+            if ($secs <= 0) {
+                continue;
+            }
+            $hrs = $secs / 3600.0;
+            $rev = (float) $row->rev;
+            $totalRev += $rev;
+            $totalHrs += $hrs;
+            if ($hrs >= 0.25) {
+                $rate = $rev / $hrs;
+                if ($rate > $topRate) {
+                    $topRate = $rate;
+                }
+            }
+        }
+
+        return [
+            'avg' => $totalHrs > 0 ? $totalRev / $totalHrs : null,
+            'top' => $topRate > 0 ? $topRate : null,
+        ];
+    }
+
+    /**
+     * Returns map of "user_id|YYYY-MM-DD" → seconds worked in hour H of
+     * that day, summed across all cash_register sessions belonging to that
+     * user that overlap [day H:00, day H+1:00). Restricted to the DOW
+     * bucket and (optionally) location.
+     *
+     * @return array<string, int>
+     */
+    protected function cashRegisterHoursAtBucket(int $businessId, ?int $locationId, int $hour, array $dowBucket, string $rangeStart, string $rangeEnd): array
+    {
+        $q = DB::table('cash_registers')
+            ->where('business_id', $businessId)
+            ->whereNotNull('user_id')
+            ->where('created_at', '<=', $rangeEnd)
+            ->where(function ($qq) use ($rangeStart) {
+                $qq->where('closed_at', '>=', $rangeStart)->orWhereNull('closed_at');
+            });
+        if (!empty($locationId)) {
+            $q->where('location_id', $locationId);
+        }
+        $sessions = $q->select(['user_id', 'created_at', 'closed_at'])->get();
+        if ($sessions->isEmpty()) {
+            return [];
+        }
+
+        $rangeStartTs = strtotime($rangeStart);
+        $rangeEndTs = strtotime($rangeEnd);
+        $now = time();
+        $hoursPerKey = [];
+
+        foreach ($sessions as $sess) {
+            $sStart = max(strtotime($sess->created_at), $rangeStartTs);
+            $sEnd = min($sess->closed_at ? strtotime($sess->closed_at) : $now, $rangeEndTs);
+            if ($sEnd <= $sStart) {
+                continue;
+            }
+
+            $cursor = Carbon::createFromTimestamp($sStart)->startOfDay();
+            $endCarbon = Carbon::createFromTimestamp($sEnd);
+
+            while ($cursor->lessThanOrEqualTo($endCarbon)) {
+                $dowMysql = ((int) $cursor->dayOfWeek) + 1; // Carbon: 0=Sun → MySQL: 1=Sun
+                if (in_array($dowMysql, $dowBucket, true)) {
+                    $hourStartTs = $cursor->copy()->setTime($hour, 0, 0)->timestamp;
+                    $hourEndTs = $hourStartTs + 3600;
+                    $oStart = max($sStart, $hourStartTs);
+                    $oEnd = min($sEnd, $hourEndTs);
+                    if ($oEnd > $oStart) {
+                        $key = $sess->user_id . '|' . $cursor->format('Y-m-d');
+                        $hoursPerKey[$key] = ($hoursPerKey[$key] ?? 0) + ($oEnd - $oStart);
+                    }
+                }
+                $cursor->addDay();
+            }
+        }
+
+        return $hoursPerKey;
+    }
+
+    /**
+     * Generic peer stats for count-based metrics (e.g. products added).
+     * Treats each (user × day) pair with at least one event as "1 hour of
+     * activity" — coarse but works when cash_registers don't cover the
+     * relevant role.
+     *
+     * @param  \Illuminate\Database\Query\Builder  $base  must already filter
+     *     business, time window, hour-of-day, DOW bucket, NOT NULL user.
+     * @return array{avg: ?float, top: ?float}
+     */
+    protected function countBasedPeerStats($base, string $userColumn, string $timeColumn): array
+    {
+        $rows = (clone $base)
+            ->selectRaw("$userColumn as uid, DATE($timeColumn) as d, COUNT(*) as cnt")
+            ->groupBy($userColumn, 'd')
+            ->get();
+        if ($rows->isEmpty()) {
+            return ['avg' => null, 'top' => null];
+        }
+        $total = (int) $rows->sum('cnt');
+        $pairs = $rows->count();
+        return [
+            'avg' => $pairs > 0 ? $total / $pairs : null,
+            'top' => (float) $rows->max('cnt'),
+        ];
+    }
+
+    /**
+     * MySQL DAYOFWEEK values matching today's day-type. Weekend = Sat/Sun
+     * (1, 7); weekday = Mon-Fri (2-6).
+     *
+     * @return array<int, int>
+     */
+    protected function dowBucketForToday(): array
+    {
+        return Carbon::now()->isWeekend() ? [1, 7] : [2, 3, 4, 5, 6];
+    }
+
+    protected function dowList(array $bucket): string
+    {
+        return implode(',', array_map('intval', $bucket));
     }
 
     /**
@@ -269,63 +443,6 @@ class GamificationService
             return 0.0;
         }
         return $peerPerHour * $hours;
-    }
-
-    /**
-     * Best individual per-hour rate at this store + hour-of-day over the last
-     * 30 days. Used so the dashboard can show "top performer pace" and the
-     * shop owner can see whether the auto-goal exceeds even the best.
-     */
-    public function peerTopPerHour(string $taskKey, int $businessId, array $shift): ?float
-    {
-        $now = Carbon::now();
-        $hour = (int) $shift['started_at']->format('G');
-        $rangeStart = $now->copy()->subDays(self::PEER_LOOKBACK_DAYS)->startOfDay()->toDateTimeString();
-        $rangeEnd = $now->copy()->subDay()->endOfDay()->toDateTimeString();
-
-        if ($taskKey === 'sales_total') {
-            $sub = DB::table('transactions')
-                ->where('business_id', $businessId)
-                ->where('type', 'sell')
-                ->where('status', 'final')
-                ->whereNull('import_source')
-                ->whereBetween('transaction_date', [$rangeStart, $rangeEnd])
-                ->whereRaw('HOUR(transaction_date) = ?', [$hour]);
-            if (!empty($shift['location_id'])) {
-                $sub->where('location_id', $shift['location_id']);
-            }
-            $rows = $sub->selectRaw('created_by, DATE(transaction_date) as d, SUM(final_total) as total')
-                ->groupBy('created_by', 'd')
-                ->get();
-        } elseif ($taskKey === 'products_added') {
-            $rows = DB::table('products')
-                ->where('business_id', $businessId)
-                ->whereBetween('created_at', [$rangeStart, $rangeEnd])
-                ->whereRaw('HOUR(created_at) = ?', [$hour])
-                ->selectRaw('created_by, DATE(created_at) as d, COUNT(*) as total')
-                ->groupBy('created_by', 'd')
-                ->get();
-        } elseif ($taskKey === 'orders_shipped') {
-            $sub = DB::table('transactions')
-                ->where('business_id', $businessId)
-                ->where('type', 'sell')
-                ->whereIn('shipping_status', ['delivered', 'shipped'])
-                ->whereBetween('updated_at', [$rangeStart, $rangeEnd])
-                ->whereRaw('HOUR(updated_at) = ?', [$hour]);
-            if (!empty($shift['location_id'])) {
-                $sub->where('location_id', $shift['location_id']);
-            }
-            $rows = $sub->selectRaw('DATE(updated_at) as d, COUNT(*) as total')
-                ->groupBy('d')
-                ->get();
-        } else {
-            return null;
-        }
-
-        if ($rows->isEmpty()) {
-            return null;
-        }
-        return (float) $rows->max('total');
     }
 
     public function locationName(?int $locationId): ?string
