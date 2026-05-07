@@ -413,6 +413,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/sling/login', 'SlingController@loginForm');
     Route::post('/admin/sling/login', 'SlingController@login');
     Route::post('/admin/sling/save-token', 'SlingController@saveToken');
+    Route::post('/admin/sling/save-curl', 'SlingController@saveFromCurl');
     Route::post('/admin/sling/test', 'SlingController@testConnection');
     Route::post('/admin/sling/disconnect', 'SlingController@disconnect');
     // The old "Clover vs ERP" rollup is superseded by the EOD reconciliation

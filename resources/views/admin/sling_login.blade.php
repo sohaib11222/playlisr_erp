@@ -41,8 +41,29 @@
         </div>
     </div>
 
+    <div class="box box-success">
+        <div class="box-header with-border"><h3 class="box-title">Recommended: paste a "Copy as cURL"</h3></div>
+        <div class="box-body">
+            <p>This is the most reliable path. The cURL Chrome generates contains the exact <code>Authorization</code> header Sling expects.</p>
+            <ol>
+                <li>Open <a href="https://app.getsling.com" target="_blank">app.getsling.com</a> and make sure you're logged in.</li>
+                <li>Press <strong>Cmd+Option+I</strong> → click the <strong>Network</strong> tab.</li>
+                <li>Press <strong>Cmd+R</strong> to reload Sling so the network log fills up.</li>
+                <li>In the Filter box at the top of the Network tab, type <code>api.getsling</code>.</li>
+                <li><strong>Right-click any row</strong> → hover <strong>Copy</strong> → click <strong>Copy as cURL</strong>.</li>
+                <li>Paste the entire thing in the box below and click Save. The ERP extracts the token automatically.</li>
+            </ol>
+            <form method="POST" action="{{ url('/admin/sling/save-curl') }}" autocomplete="off">
+                @csrf
+                <textarea name="curl" class="form-control" rows="6" placeholder='paste the full curl command starting with: curl "https://api.getsling.com/v1/..."' required></textarea>
+                <br>
+                <button type="submit" class="btn btn-primary"><i class="fa fa-magic"></i> Extract & save token</button>
+            </form>
+        </div>
+    </div>
+
     <div class="box box-solid">
-        <div class="box-header with-border"><h3 class="box-title">Get your token in 4 clicks</h3></div>
+        <div class="box-header with-border"><h3 class="box-title">Alternative: bookmarklet (sometimes works)</h3></div>
         <div class="box-body">
             <ol>
                 <li>

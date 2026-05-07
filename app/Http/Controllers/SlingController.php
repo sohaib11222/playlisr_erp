@@ -158,6 +158,36 @@ class SlingController extends Controller
         return back()->with('status_success', 'Token saved.');
     }
 
+    /**
+     * Accept a "Copy as cURL" paste from Chrome DevTools and pull the
+     * Authorization header out of it. Bullet-proof: the cURL command
+     * contains the EXACT header value Sling's app sends, scheme prefix
+     * and all. No bookmarklet needed.
+     */
+    public function saveFromCurl(Request $request)
+    {
+        $curl = (string) $request->input('curl');
+        if (trim($curl) === '') {
+            return back()->with('status_error', 'Paste the full cURL command first.');
+        }
+        // Match -H 'authorization: <value>' or -H "authorization: <value>"
+        // and the same with $'...' shell-escape format Chrome uses on Linux.
+        $token = null;
+        if (preg_match('/-H\s+\$?[\'"]\s*authorization:\s*([^\'"]+)[\'"]/i', $curl, $m)) {
+            $token = trim($m[1]);
+        }
+        if (!$token) {
+            return back()->with('status_error', 'No Authorization header found in that cURL command. Make sure you used "Copy as cURL" on a request to api.getsling.com.');
+        }
+        System::addProperty(self::TOKEN_KEY, $token);
+        // Also extract org id from the URL if present (e.g. /v1/901214/...).
+        if (preg_match('#/v1/(\d+)/#', $curl, $om)) {
+            System::addProperty(self::ORG_KEY, $om[1]);
+        }
+        System::addProperty(self::SAVED_AT_KEY, now()->toDateTimeString());
+        return back()->with('status_success', 'Token extracted from cURL and saved.');
+    }
+
     public function testConnection()
     {
         $client = new \App\Services\SlingClient();
