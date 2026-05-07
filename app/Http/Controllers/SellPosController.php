@@ -535,8 +535,12 @@ class SellPosController extends Controller
             // treated those as unmatched. Score = amount-cents-delta
             // ×1000 + time-seconds-delta so an exact match within
             // 10min still beats a 5¢-off match.
+            // Sarah 2026-05-07: window widened to 30min for slow typers
+            // (Luis would Clover at 9:33pm, type into ERP at 9:44pm).
+            // Score = amount-cents × 1000 + time-seconds so exact
+            // matches still beat off-by-cents at longer gaps.
             $matchAmountCents = 5;
-            $matchTimeWindow  = 600;
+            $matchTimeWindow  = 1800;
             foreach ($matchSales as $sale) {
                 $erTs    = strtotime((string) $sale->transaction_date);
                 $erCents = $toCents($sale->final_total);
@@ -961,8 +965,12 @@ class SellPosController extends Controller
             // treated those as unmatched. Score = amount-cents-delta
             // ×1000 + time-seconds-delta so an exact match within
             // 10min still beats a 5¢-off match.
+            // Sarah 2026-05-07: window widened to 30min for slow typers
+            // (Luis would Clover at 9:33pm, type into ERP at 9:44pm).
+            // Score = amount-cents × 1000 + time-seconds so exact
+            // matches still beat off-by-cents at longer gaps.
             $matchAmountCents = 5;
-            $matchTimeWindow  = 600;
+            $matchTimeWindow  = 1800;
             foreach ($matchSales as $sale) {
                 $erTs    = strtotime((string) $sale->transaction_date);
                 $erCents = $toCents($sale->final_total);

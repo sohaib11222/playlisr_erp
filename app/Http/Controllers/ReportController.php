@@ -8447,14 +8447,17 @@ class ReportController extends Controller
         // Henry's drilldowns: $6.59 Clover at 2:07 vs $6.71 ERP at
         // 2:08 is the same sale undercharged by 12¢ on Clover. Tax-
         // rounding gaps of up to ~25¢ are real here. Match within
-        // ±25¢ AND within 10 minutes, prefer the smallest amount gap
-        // then the smallest time gap. Pairs with >5¢ drift are
-        // surfaced as "amount mismatch" in the drilldown rather than
-        // hidden as clean matches.
+        // ±25¢ AND within 30 minutes (Sarah 2026-05-07: "luis is slow
+        // to type" — Luis's $41.71 Clover at 9:33pm paired to $41.71
+        // ERP at 9:44pm, 11min apart, was missing the cut).
+        // Score = amount-cents × 1000 + time-seconds so exact matches
+        // still beat off-by-cents matches even at longer time gaps.
+        // Pairs with >5¢ drift surface as "amount mismatch" rather
+        // than hidden as clean matches.
         $cpForMatch = $cpRaw->sortByDesc('ts')->values();
         $matchAmountCents     = 25;
         $cleanMatchCents      = 5;
-        $matchTimeWindow      = 600; // seconds
+        $matchTimeWindow      = 1800; // seconds (30 min)
         foreach ($cpForMatch as $r) {
             $cpTs    = strtotime((string) $r->ts);
             $cpCents = $toCents($r->amount);

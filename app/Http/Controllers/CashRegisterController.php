@@ -255,7 +255,7 @@ class CashRegisterController extends Controller
                 $abs = abs($cpC - $erpC);
                 if ($abs > 25) continue;
                 $td = abs(strtotime((string) $s->ts) - $cpTs);
-                if ($td > 600) continue;
+                if ($td > 1800) continue; // 30min window — slow typers
                 $score = $abs * 1000 + $td;
                 if ($score < $bestScore) {
                     $bestScore = $score; $bestId = $s->id; $bestAbs = $abs;
