@@ -514,6 +514,8 @@
         </div>
     @endif
 </section>
+
+@include('help.partials.tour_button', ['tourSteps' => \App\Help\Catalog::tour('buy_from_customer')])
 @endsection
 
 @section('javascript')
