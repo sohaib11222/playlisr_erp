@@ -8294,6 +8294,17 @@ class ReportController extends Controller
         if (!empty($location_id)) {
             $txnQ->where('t.location_id', $location_id);
         }
+        // Sarah 2026-05-07 looking at Zakary's $228.28 ERP-only at 3:19pm:
+        // "is it possible that was a Whatnot order?". Yes — Whatnot /
+        // Discogs / eBay sales live in transactions but never touch the
+        // drawer or Clover, so they were turning up as fake "missed
+        // swipes" in the drilldown. Limit the daily cash reconciliation
+        // to in-store sales; other channels are reconciled in the
+        // sales-by-channel report. Guarded so a fresh install without
+        // the channel column doesn't 500.
+        if (\Schema::hasColumn('transactions', 'channel')) {
+            $txnQ->where('t.channel', 'in_store');
+        }
         $txns = $txnQ->selectRaw("
                 t.id, t.location_id, t.final_total, t.transaction_date,
                 t.created_by as cashier_user_id,
