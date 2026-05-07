@@ -181,15 +181,10 @@ class GamificationService
      * rate at this store, restricted to (a) the same hour-of-day as the
      * shift start and (b) the same day-type (weekday vs weekend) as today.
      *
-     * For sales the denominator is actual hours-worked from cash_registers
-     * (Jon 2026-05-07: COUNT(DISTINCT cashier, day) overcounted because
-     * registers cover only fractions of an hour and NULL-created_by rows
-     * inflated SUMs — Pico was reading $363/hr when reality was ~$95-175).
-     *
-     * For products_added and orders_shipped we keep the simpler
-     * (rows / distinct active-user-days) model because inventory/shipping
-     * staff may not open a cash_register, so cash_registers under-counts
-     * their actual hours.
+     * Each (user × day) pair with at least one event in hour H counts as
+     * "1 hour of activity." Coarse but matches operator intuition — a
+     * cashier-registered session that stays open during inventory work
+     * shouldn't dilute their selling hourly rate.
      *
      * @return array{avg: ?float, top: ?float}
      */
@@ -257,7 +252,7 @@ class GamificationService
      */
     protected function salesPeerStats(int $businessId, ?int $locationId, int $hour, array $dowBucket, string $rangeStart, string $rangeEnd): array
     {
-        $revQ = DB::table('transactions')
+        $q = DB::table('transactions')
             ->where('business_id', $businessId)
             ->where('type', 'sell')
             ->where('status', 'final')
@@ -267,101 +262,22 @@ class GamificationService
             ->whereRaw('HOUR(transaction_date) = ?', [$hour])
             ->whereRaw('DAYOFWEEK(transaction_date) IN ('.$this->dowList($dowBucket).')');
         if (!empty($locationId)) {
-            $revQ->where('location_id', $locationId);
+            $q->where('location_id', $locationId);
         }
-        $revRows = $revQ->selectRaw('created_by as uid, DATE(transaction_date) as d, SUM(final_total) as rev')
+        $rows = $q->selectRaw('created_by as uid, DATE(transaction_date) as d, SUM(final_total) as rev')
             ->groupBy('created_by', 'd')
             ->get();
 
-        if ($revRows->isEmpty()) {
+        if ($rows->isEmpty()) {
             return ['avg' => null, 'top' => null];
         }
 
-        $hoursPerKey = $this->cashRegisterHoursAtBucket($businessId, $locationId, $hour, $dowBucket, $rangeStart, $rangeEnd);
-
-        $totalRev = 0.0;
-        $totalHrs = 0.0;
-        $topRate = 0.0;
-        foreach ($revRows as $row) {
-            $secs = $hoursPerKey[$row->uid . '|' . $row->d] ?? 0;
-            if ($secs <= 0) {
-                continue;
-            }
-            $hrs = $secs / 3600.0;
-            $rev = (float) $row->rev;
-            $totalRev += $rev;
-            $totalHrs += $hrs;
-            if ($hrs >= 0.25) {
-                $rate = $rev / $hrs;
-                if ($rate > $topRate) {
-                    $topRate = $rate;
-                }
-            }
-        }
-
+        $totalRev = (float) $rows->sum('rev');
+        $pairs = $rows->count();
         return [
-            'avg' => $totalHrs > 0 ? $totalRev / $totalHrs : null,
-            'top' => $topRate > 0 ? $topRate : null,
+            'avg' => $pairs > 0 ? $totalRev / $pairs : null,
+            'top' => (float) $rows->max('rev'),
         ];
-    }
-
-    /**
-     * Returns map of "user_id|YYYY-MM-DD" → seconds worked in hour H of
-     * that day, summed across all cash_register sessions belonging to that
-     * user that overlap [day H:00, day H+1:00). Restricted to the DOW
-     * bucket and (optionally) location.
-     *
-     * @return array<string, int>
-     */
-    protected function cashRegisterHoursAtBucket(int $businessId, ?int $locationId, int $hour, array $dowBucket, string $rangeStart, string $rangeEnd): array
-    {
-        $q = DB::table('cash_registers')
-            ->where('business_id', $businessId)
-            ->whereNotNull('user_id')
-            ->where('created_at', '<=', $rangeEnd)
-            ->where(function ($qq) use ($rangeStart) {
-                $qq->where('closed_at', '>=', $rangeStart)->orWhereNull('closed_at');
-            });
-        if (!empty($locationId)) {
-            $q->where('location_id', $locationId);
-        }
-        $sessions = $q->select(['user_id', 'created_at', 'closed_at'])->get();
-        if ($sessions->isEmpty()) {
-            return [];
-        }
-
-        $rangeStartTs = strtotime($rangeStart);
-        $rangeEndTs = strtotime($rangeEnd);
-        $now = time();
-        $hoursPerKey = [];
-
-        foreach ($sessions as $sess) {
-            $sStart = max(strtotime($sess->created_at), $rangeStartTs);
-            $sEnd = min($sess->closed_at ? strtotime($sess->closed_at) : $now, $rangeEndTs);
-            if ($sEnd <= $sStart) {
-                continue;
-            }
-
-            $cursor = Carbon::createFromTimestamp($sStart)->startOfDay();
-            $endCarbon = Carbon::createFromTimestamp($sEnd);
-
-            while ($cursor->lessThanOrEqualTo($endCarbon)) {
-                $dowMysql = ((int) $cursor->dayOfWeek) + 1; // Carbon: 0=Sun → MySQL: 1=Sun
-                if (in_array($dowMysql, $dowBucket, true)) {
-                    $hourStartTs = $cursor->copy()->setTime($hour, 0, 0)->timestamp;
-                    $hourEndTs = $hourStartTs + 3600;
-                    $oStart = max($sStart, $hourStartTs);
-                    $oEnd = min($sEnd, $hourEndTs);
-                    if ($oEnd > $oStart) {
-                        $key = $sess->user_id . '|' . $cursor->format('Y-m-d');
-                        $hoursPerKey[$key] = ($hoursPerKey[$key] ?? 0) + ($oEnd - $oStart);
-                    }
-                }
-                $cursor->addDay();
-            }
-        }
-
-        return $hoursPerKey;
     }
 
     /**
