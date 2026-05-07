@@ -59,10 +59,13 @@ class SlingController extends Controller
                 'email' => $email,
                 'password' => $password,
             ]));
+            // Headers EXACTLY as Sling's published bash example uses them.
+            // A custom User-Agent / Accept appears to flip them into the
+            // captcha-required code path; keeping it minimal mirrors the
+            // working script.
             curl_setopt($ch, CURLOPT_HTTPHEADER, [
                 'Content-Type: application/json',
-                'Accept: application/json',
-                'User-Agent: NivessaERP/1.0 +https://playlist.nivessa.com',
+                'accept: */*',
             ]);
             curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
             curl_setopt($ch, CURLOPT_TIMEOUT, 15);
