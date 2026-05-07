@@ -5214,7 +5214,9 @@ class ReportController extends Controller
         $labels_printed = collect($labels_by_user);
 
         // Hours worked from cash_registers (created_at -> closed_at), clipped
-        // to the selected window. Same formula used by the leaderboard report.
+        // to the selected window AND capped at 6h per shift — registers
+        // sometimes get left open all day/overnight and would otherwise
+        // inflate hours. 21600 seconds = 6 hours.
         $window_start = $start_date . ' 00:00:00';
         $window_end = $end_date . ' 23:59:59';
         $hours_raw = DB::table('cash_registers')
@@ -5227,10 +5229,13 @@ class ReportController extends Controller
             })
             ->selectRaw("user_id,
                 SUM(
-                    TIMESTAMPDIFF(
-                        SECOND,
-                        GREATEST(created_at, ?),
-                        LEAST(COALESCE(closed_at, NOW()), ?)
+                    LEAST(
+                        TIMESTAMPDIFF(
+                            SECOND,
+                            GREATEST(created_at, ?),
+                            LEAST(COALESCE(closed_at, NOW()), ?)
+                        ),
+                        21600
                     )
                 ) / 3600.0 as hours")
             ->addBinding($window_start, 'select')
