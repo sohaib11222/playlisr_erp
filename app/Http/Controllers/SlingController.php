@@ -48,7 +48,10 @@ class SlingController extends Controller
         $httpCode = 0;
         $curlError = '';
         try {
-            $ch = curl_init('https://api.getsling.com/v1/account/login');
+            // Use the no-/v1/ path: /v1/account/login is captcha-gated
+            // for human/UI logins, but /account/login (matching Sling's
+            // own bash example) accepts plain email + password POSTs.
+            $ch = curl_init('https://api.getsling.com/account/login');
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_HEADER, true);
             curl_setopt($ch, CURLOPT_POST, true);
