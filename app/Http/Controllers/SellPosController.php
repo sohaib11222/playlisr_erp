@@ -114,19 +114,19 @@ class SellPosController extends Controller
     }
 
     /**
-     * Format a CloverPayment->paid_at value as Hollywood-local time so the
-     * recent feed and unclaimed/orphan lists never show tomorrow's UTC
-     * timestamp on tonight's sales. paid_at is stored as UTC by
-     * SyncCloverPayments (from createdTime epoch ms). Falls back to the
-     * cast value if the raw attribute isn't accessible.
+     * Format a CloverPayment->paid_at as Hollywood-local time. paid_at is
+     * stored in app TZ (America/Los_Angeles) by SyncCloverPayments — the
+     * model's 'datetime' cast reads it back in that TZ, so use the cast
+     * value directly. setTimezone('LA') is defensive in case PHP default
+     * TZ on the box isn't LA. (Earlier this re-parsed as UTC and converted
+     * to LA, which subtracted 7 hours from every charge — Sarah 2026-05-07.)
      */
     public static function formatCloverPaidAt($cp): string
     {
-        $raw = is_array($cp->getAttributes()) ? ($cp->getAttributes()['paid_at'] ?? null) : null;
         try {
-            $dt = $raw
-                ? \Carbon\Carbon::parse((string) $raw, 'UTC')
-                : \Carbon\Carbon::parse((string) $cp->paid_at, 'UTC');
+            $dt = $cp->paid_at instanceof \Carbon\Carbon
+                ? $cp->paid_at->copy()
+                : \Carbon\Carbon::parse((string) $cp->paid_at);
             return $dt->setTimezone('America/Los_Angeles')->format('Y-m-d H:i:s');
         } catch (\Throwable $e) {
             return (string) $cp->paid_at;

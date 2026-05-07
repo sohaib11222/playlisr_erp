@@ -292,17 +292,16 @@
         @if($item['type'] === 'clover')
             @php
                 $cp = $item['cp'];
-                // paid_at is stored as a UTC moment by SyncCloverPayments
-                // (from Clover's createdTime epoch ms). Force-display in
-                // America/Los_Angeles so a 7:18 PM PDT charge doesn't
-                // render as "Apr 30 7:18 am" — the previous code displayed
-                // whatever TZ the model cast / PHP default produced, which
-                // was wrong on prod (Sarah, 2026-04-29: live cashiers were
-                // seeing tomorrow's timestamps on tonight's sales).
-                $rawPaidAt = $cp->getAttributes()['paid_at'] ?? null;
-                $cpDt = $rawPaidAt
-                    ? \Carbon\Carbon::parse((string) $rawPaidAt, 'UTC')->setTimezone('America/Los_Angeles')
-                    : \Carbon\Carbon::parse($cp->paid_at)->setTimezone('America/Los_Angeles');
+                // paid_at is stored in app TZ (America/Los_Angeles) by
+                // SyncCloverPayments — Carbon::createFromTimestampMs picks
+                // up the app default TZ, and Eloquent serializes Carbons in
+                // their current TZ. The model's 'datetime' cast then reads
+                // them back in app TZ, so use that directly. (Earlier code
+                // re-parsed the raw value as UTC and converted to LA, which
+                // subtracted 7 hours from every charge — Sarah, 2026-05-07.)
+                $cpDt = $cp->paid_at instanceof \Carbon\Carbon
+                    ? $cp->paid_at->copy()->setTimezone('America/Los_Angeles')
+                    : \Carbon\Carbon::parse((string) $cp->paid_at)->setTimezone('America/Los_Angeles');
                 $cpWhen = $cpDt->isToday() ? $cpDt->format('g:i a') : $cpDt->format('M j · g:i a');
                 $cpStore = $cp->location_id && isset($business_locations[$cp->location_id])
                     ? $business_locations[$cp->location_id]
