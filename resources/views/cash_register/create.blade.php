@@ -3,22 +3,49 @@
 
 @section('content')
 <style type="text/css">
-
-
-
+  /* Pill picker for Pico / Hollywood (Sarah 2026-05-07): replace the
+     select2 dropdown so the cashier picks a location with one big tap.
+     Layout: two side-by-side pills that grow to fill the row. */
+  .ocr-loc-pills {
+    display: flex; gap: 14px; flex-wrap: wrap;
+    margin-top: 6px;
+  }
+  .ocr-loc-pill {
+    flex: 1 1 220px;
+    min-height: 96px;
+    padding: 18px 22px;
+    border: 2px solid #DFD2B3;
+    background: #fff;
+    border-radius: 16px;
+    font-family: inherit;
+    font-size: 22px;
+    font-weight: 800;
+    color: #1F1B16;
+    letter-spacing: -.01em;
+    cursor: pointer;
+    transition: transform .06s ease, border-color .12s ease,
+                background .12s ease, box-shadow .12s ease;
+    text-align: center;
+    box-shadow: 0 1px 2px rgba(31,27,22,.06);
+  }
+  .ocr-loc-pill:hover {
+    border-color: #1F1B16;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(31,27,22,.10);
+  }
+  .ocr-loc-pill.is-selected {
+    background: #1F1B16; color: #FAF6EE; border-color: #1F1B16;
+    box-shadow: 0 4px 14px rgba(31,27,22,.20);
+  }
 </style>
 <!-- Content Header (Page header) -->
 <section class="content-header">
     <h1>@lang('cash_register.open_cash_register')</h1>
-    <!-- <ol class="breadcrumb">
-        <li><a href="#"><i class="fa fa-dashboard"></i> Level</a></li>
-        <li class="active">Here</li>
-    </ol> -->
 </section>
 
 <!-- Main content -->
 <section class="content">
-{!! Form::open(['url' => action('CashRegisterController@store'), 'method' => 'post', 
+{!! Form::open(['url' => action('CashRegisterController@store'), 'method' => 'post',
 'id' => 'add_cash_register_form' ]) !!}
   <div class="box box-solid">
     <div class="box-body">
@@ -38,9 +65,7 @@
                  reports more than $500 in the drawer at open, ask them
                  to move the excess (rounded down to the nearest $100)
                  into the safe and recount what's left. Soft warning,
-                 doesn't block the open-register submit. Big amount +
-                 post-it instruction because people frequently put the
-                 wrong amount in the safe. --}}
+                 doesn't block the open-register submit. --}}
             <div id="cr-safe-alert" style="display:none; margin-top:14px;
                 background:#FFE5DA; border:2px solid #E8A07A; border-radius:12px;
                 padding:18px 20px; color:#6B2A14;">
@@ -68,8 +93,19 @@
         <div class="col-sm-8 col-sm-offset-2">
           <div class="form-group">
             {!! Form::label('location_id', __('business.business_location') . ':') !!}
-              {!! Form::select('location_id', $business_locations, null, ['class' => 'form-control select2',
-              'placeholder' => __('lang_v1.select_location')]); !!}
+            {{-- Pill-button location picker. Renders one big tap-target per
+                 location (typically Pico + Hollywood). Selecting a pill
+                 writes the id into the hidden #location_id input that the
+                 form posts. --}}
+            <input type="hidden" name="location_id" id="location_id" value="">
+            <div class="ocr-loc-pills" id="ocr-loc-pills">
+              @foreach($business_locations as $loc_id => $loc_name)
+                <button type="button" class="ocr-loc-pill"
+                        data-loc-id="{{ $loc_id }}">
+                  {{ $loc_name }}
+                </button>
+              @endforeach
+            </div>
           </div>
         </div>
         @else
@@ -92,29 +128,75 @@
 <!-- /.content -->
 
 <script>
-  $(function () {
-    var $input = $('#cash_in_hand_amount');
-    var $alert = $('#cr-safe-alert');
-    var $amount = $('#cr-safe-amount');
+  /* Safe-drop alert + location pill picker — vanilla JS so we don't depend
+     on jQuery ready timing or the input_number plugin's event handling
+     (the previous jQuery `$('...').on('input', ...)` version didn't fire
+     on this page). Polling watch is a safety net for any plugin that
+     mutates the input value without dispatching events. */
+  (function () {
+    function go() {
+      var input = document.getElementById('cash_in_hand_amount');
+      var alertEl = document.getElementById('cr-safe-alert');
+      var amountEl = document.getElementById('cr-safe-amount');
+      if (!input || !alertEl || !amountEl) {
+        // DOM not ready yet — try again on the next tick.
+        return setTimeout(go, 50);
+      }
 
-    function recheck() {
-      var raw = ($input.val() || '').toString().replace(/,/g, '').trim();
-      var val = parseFloat(raw);
-      if (!isFinite(val)) { $alert.hide(); return; }
-      // Suggest moving the excess over $500 to the safe, rounded down
-      // to the nearest $100. So $1250 → $700 (drawer becomes $550).
-      // Only show when the suggested move is at least $100.
-      var toSafe = Math.floor((val - 500) / 100) * 100;
-      if (toSafe >= 100) {
-        $amount.text('$' + toSafe.toLocaleString('en-US'));
-        $alert.show();
-      } else {
-        $alert.hide();
+      var lastSeen = null;
+      function recheck() {
+        var raw = (input.value || '').toString().replace(/,/g, '').trim();
+        if (raw === lastSeen) return;
+        lastSeen = raw;
+        var val = parseFloat(raw);
+        if (!isFinite(val)) {
+          alertEl.style.display = 'none';
+          return;
+        }
+        // Excess above $500, rounded down to the nearest $100.
+        // $1250 → $700 (leaves $550 in the drawer).
+        var toSafe = Math.floor((val - 500) / 100) * 100;
+        if (toSafe >= 100) {
+          amountEl.textContent = '$' + toSafe.toLocaleString('en-US');
+          alertEl.style.display = 'block';
+        } else {
+          alertEl.style.display = 'none';
+        }
+      }
+
+      ['input', 'change', 'keyup', 'blur', 'paste'].forEach(function (ev) {
+        input.addEventListener(ev, recheck);
+      });
+      // Polling fallback in case the input_number plugin sets values
+      // programmatically without dispatching events.
+      setInterval(recheck, 250);
+      recheck();
+
+      // Location pills: clicking a pill marks it selected and copies the
+      // id into the hidden #location_id input the form posts. Clicking
+      // again on the same pill keeps it selected (no toggle-off — the
+      // form requires a location to submit).
+      var pillsHost = document.getElementById('ocr-loc-pills');
+      var locInput  = document.getElementById('location_id');
+      if (pillsHost && locInput) {
+        pillsHost.addEventListener('click', function (e) {
+          var btn = e.target.closest('.ocr-loc-pill');
+          if (!btn) return;
+          var pills = pillsHost.querySelectorAll('.ocr-loc-pill');
+          for (var i = 0; i < pills.length; i++) {
+            pills[i].classList.remove('is-selected');
+          }
+          btn.classList.add('is-selected');
+          locInput.value = btn.getAttribute('data-loc-id') || '';
+        });
       }
     }
 
-    $input.on('input change keyup blur', recheck);
-    recheck();
-  });
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', go);
+    } else {
+      go();
+    }
+  })();
 </script>
 @endsection

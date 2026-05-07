@@ -7064,6 +7064,34 @@ class ReportController extends Controller
             $batch_by_day_loc[$br->day][(int) $br->loc_key] = $br;
         }
 
+        // Safe drops per (day, location). Sums what cashiers reported moving
+        // to the safe at close, grouped by the close day so the EOD row
+        // shows what the safe should have received that day. Tolerant of
+        // the column not yet existing — falls back to an empty map so the
+        // page renders cleanly before the install-safe-drop-column step has
+        // been run.
+        $safe_drop_by_day_loc = [];
+        if (\Schema::hasColumn('cash_registers', 'safe_drop_amount')) {
+            $safeQuery = \DB::table('cash_registers')
+                ->where('business_id', $business_id)
+                ->where('status', 'close')
+                ->whereNotNull('closed_at')
+                ->whereDate('closed_at', '>=', $start)
+                ->whereDate('closed_at', '<=', $end);
+            if (!empty($location_id)) {
+                $safeQuery->where('location_id', $location_id);
+            }
+            $safe_rows_raw = $safeQuery
+                ->selectRaw("DATE(closed_at) as day, COALESCE(location_id, 0) as loc_key,
+                    COALESCE(SUM(safe_drop_amount), 0) as safe_drop_total,
+                    COUNT(*) as drop_count")
+                ->groupBy(DB::raw('DATE(closed_at)'), DB::raw('COALESCE(location_id, 0)'))
+                ->get();
+            foreach ($safe_rows_raw as $sr) {
+                $safe_drop_by_day_loc[$sr->day][(int) $sr->loc_key] = $sr;
+            }
+        }
+
         // Merge: one row per (day, location) with ERP data + the matching
         // per-location Clover bucket attached. Falls back to the NULL-
         // location bucket when a per-location match isn't available. Each
@@ -7077,6 +7105,7 @@ class ReportController extends Controller
             'deposit' => 0.0,
             'variance' => 0.0,
             'deposit_variance' => 0.0,
+            'safe_drop' => 0.0,
             'flagged_days' => 0,
             'deposit_flagged_days' => 0,
         ];

@@ -697,6 +697,13 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // CHOOSE-ROLE INSTALLER ROUTES TEMPORARILY REMOVED — caused outage 2026-04-29.
     // Controller files + view files preserved on disk for re-enable later.
 
+    // One-shot installer for cash_registers.safe_drop_amount. Lets Sarah add
+    // just this column without running every other pending migration —
+    // `php artisan migrate --force` is high-risk because one bad migration
+    // takes the site down. This installer is scope-limited and idempotent.
+    Route::get('/admin/install-safe-drop-column', 'InstallSafeDropColumnController@index');
+    Route::post('/admin/install-safe-drop-column/run', 'InstallSafeDropColumnController@run');
+
     // History of destructive admin backfills with one-click Undo. Every /admin/*
     // /run endpoint that mutates rows in bulk should write a snapshot here first.
     Route::get('/admin/admin-action-history', 'AdminActionHistoryController@index');
