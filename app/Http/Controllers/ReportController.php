@@ -5293,13 +5293,43 @@ class ReportController extends Controller
             }
         }
 
-        $rows = $users->map(function ($u) use ($mass_add, $purchase_add, $labels_printed, $hours_raw, $picked_by_user, $shipped_by_user) {
+        // Shipping happens on nivessa.com (not the ERP), so the activity_log
+        // rows above are always empty. Pull totals from the website backend
+        // and credit them to Nick's row — he owns shipping. Failures (network
+        // / missing API key) just leave the columns at 0.
+        $nivessa_picked = 0;
+        $nivessa_shipped = 0;
+        try {
+            $base = rtrim((string) config('nivessa.website_api_url', 'https://nivessa.com'), '/');
+            $key = trim((string) config('nivessa.website_api_key', ''));
+            if ($key !== '') {
+                $url = $base . '/api/v1/admin/fulfillment-counts'
+                    . '?start_date=' . urlencode($start_date)
+                    . '&end_date=' . urlencode($end_date);
+                $det = $this->httpGetJsonDetailed($url, $key, 10);
+                $body = $det['decoded'] ?? null;
+                if (!empty($body) && !empty($body['success'])) {
+                    $nivessa_picked = (int) ($body['picked_items'] ?? 0)
+                        + (int) ($body['packed_items'] ?? 0);
+                    $nivessa_shipped = (int) ($body['shipped_orders'] ?? 0);
+                }
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('fulfillment-counts fetch failed: ' . $e->getMessage());
+        }
+
+        $rows = $users->map(function ($u) use ($mass_add, $purchase_add, $labels_printed, $hours_raw, $picked_by_user, $shipped_by_user, $nivessa_picked, $nivessa_shipped) {
             $m = (int) ($mass_add[$u->id] ?? 0);
             $p = (int) ($purchase_add[$u->id] ?? 0);
             $l = (int) ($labels_printed[$u->id] ?? 0);
             $h = (float) ($hours_raw[$u->id] ?? 0);
             $picked = isset($picked_by_user[$u->id]) ? count($picked_by_user[$u->id]) : 0;
             $shipped = isset($shipped_by_user[$u->id]) ? count($shipped_by_user[$u->id]) : 0;
+            // Nick owns nivessa.com shipping — credit the website totals to him.
+            if (strtolower(trim(explode(' ', (string) $u->full_name)[0] ?? '')) === 'nick') {
+                $picked += $nivessa_picked;
+                $shipped += $nivessa_shipped;
+            }
             return (object) [
                 'user_id' => $u->id,
                 'employee' => trim((string) $u->full_name),
