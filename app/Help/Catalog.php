@@ -865,6 +865,259 @@ HTML,
 <p>The next person reads this first when they walk in. A 60-second note saves 10 minutes of "what's going on?" the next morning.</p>
 HTML,
             ],
+            [
+                'slug' => 'shifts-and-sling',
+                'title' => 'Shifts &amp; Sling',
+                'section' => 'Shifts & Schedule',
+                'sort' => 1,
+                'summary' => 'How to claim shifts, request time off, trade with coworkers, and the role list.',
+                'page_keys' => ['home'],
+                'body_html' => <<<'HTML'
+<p>Scheduling lives in <strong>Sling</strong>. The ERP doesn't manage shifts — but the choices you make in Sling affect everything that happens here, so this is the rulebook.</p>
+
+<h3>Claiming Shifts</h3>
+<ul>
+    <li>Open Sling and check available shifts. Claim as many as you want.</li>
+    <li>The manager approves each request — don't show up unless you've been approved.</li>
+</ul>
+
+<h3>Time Off</h3>
+<div class="help-must-do">
+    <strong>Give 2 weeks' notice for time off.</strong> Mark your shift as <strong>"available"</strong> in Sling so someone else can claim it. Tell the manager directly too.
+</div>
+<ul>
+    <li>We're flexible when we know in advance.</li>
+    <li>Emergencies happen — call the manager as soon as you know.</li>
+</ul>
+
+<h3>Trading Shifts</h3>
+<p>You can trade with another employee inside Sling. The manager has to approve the trade — initiate it in the app, don't just hand off informally.</p>
+
+<h3>Schedule Changes</h3>
+<p>Always give the manager a heads-up on anything that affects the schedule. Surprises break the day for everyone.</p>
+
+<h3>Hours &amp; Overtime</h3>
+<div class="help-warn">
+    <strong>40 hours/week is the cap.</strong> Overtime requires manager approval in advance. Don't run yourself into OT without it being signed off.
+</div>
+
+<h3>Reliability</h3>
+<div class="help-critical">
+    <strong>Two no-call-no-shows = you lose hours.</strong> If you're scheduled, show up on time and ready. We depend on each other.
+</div>
+
+<h3>Roles at Nivessa</h3>
+<ul>
+    <li><strong>Front Desk</strong> — runs the register, helps customers, lists products in the ERP.</li>
+    <li><strong>Shipping</strong> — packs and ships online orders.</li>
+    <li><strong>Product &amp; Floor Lead</strong> — prices, organizes, restocks the floor.</li>
+    <li><strong>Photo Upload</strong> — lists products on Discogs.</li>
+    <li><strong>Moving Shift</strong> — moves products between stores or storage areas.</li>
+    <li><strong>Inventory Check</strong> — counts and verifies stock levels.</li>
+</ul>
+HTML,
+            ],
+            [
+                'slug' => 'floor-lead-checklist',
+                'title' => 'Floor Lead Checklist',
+                'section' => 'Operations',
+                'sort' => 2,
+                'summary' => 'Daily routine for keeping the sales floor organized and presentable.',
+                'page_keys' => ['home'],
+                'body_html' => <<<'HTML'
+<p>The Floor Lead's job is the visible store — what every customer sees when they walk in. The list below is what gets done on every floor-lead shift.</p>
+
+<h3>Trash &amp; Recycling</h3>
+<ul>
+    <li>Throw out trash from downstairs.
+        <ul>
+            <li><strong>Hollywood:</strong> parking lot behind the store.</li>
+            <li><strong>Pico:</strong> behind our store — <strong>NOT behind the cafe</strong>.</li>
+        </ul>
+    </li>
+    <li>Flatten cardboard and recycle in the blue bins.</li>
+</ul>
+
+<h3>Floor &amp; Bins</h3>
+<ul>
+    <li>Walk the floor and check for misplaced products.</li>
+    <li>Records upright in bins — no leaning piles. Fix any messy bins.</li>
+    <li>Refill end caps, walls, and the new-CD section near the front desk with featured albums.</li>
+    <li>Refill window displays.</li>
+</ul>
+
+<h3>Clothing &amp; Merch</h3>
+<ul>
+    <li>Sort and display artist shirts properly.</li>
+    <li>Anything cracked / damaged / unsellable: ask Jon before tossing — even old-looking items can have value.</li>
+</ul>
+
+<h3>Signage &amp; Display</h3>
+<ul>
+    <li>Signage check — section signs lined up, in the right place.</li>
+    <li>Stage looks tidy.</li>
+    <li>Window displays look good. Wipe with Windex if dirty.</li>
+    <li><strong>No boxes or open stock in customer view.</strong></li>
+</ul>
+
+<h3>Sweep</h3>
+<p>Sweep the floor before the next shift comes in.</p>
+
+<h3>Report Back in #shift-notes</h3>
+<div class="help-must-do">
+    Note anything that needs attention next shift:
+    <ul style="margin-bottom:0;">
+        <li>Missing or damaged section signs that need to be reprinted.</li>
+        <li>Any area low on product or missing filler.</li>
+    </ul>
+</div>
+HTML,
+            ],
+            [
+                'slug' => 'earning-at-nivessa',
+                'title' => 'Earning at Nivessa (Hours, Raises, Bonuses)',
+                'section' => 'Pay & Growth',
+                'sort' => 1,
+                'summary' => 'How to get more hours, take on responsibility, and earn extra.',
+                'page_keys' => ['home'],
+                'body_html' => <<<'HTML'
+<p>Hard work doesn't go unnoticed. Productivity, efficiency, and a get-it-done attitude get rewarded with more hours, raises, and leadership opportunities.</p>
+
+<h3>More Hours</h3>
+<p>Sling shows what's available. Claim what you want — if you're efficient and reliable, more hours and a raise tend to follow.</p>
+
+<h3>Take on Responsibility</h3>
+<ul>
+    <li><strong>Take initiative.</strong> If you see something that needs doing — organizing, helping with inventory, a new idea — jump in. The more initiative, the more responsibility (and rewards) you'll earn.</li>
+    <li><strong>Leadership roles</strong> open up as Nivessa grows. They come with added responsibility and pay.</li>
+</ul>
+
+<h3>Bonuses</h3>
+<p>If the store hits sales targets, the team shares in the success. The exact structure is being worked out — Jon will share it as it firms up.</p>
+
+<h3>Host a Whatnot Show</h3>
+<p>You can host a Whatnot show anytime if you like being on camera and selling. These are paid jobs and with 200,000+ products there's plenty to sell. Check out Golden's daily Whatnot from Pico for what good looks like.</p>
+
+<h3>Expense Reimbursement</h3>
+<div class="help-warn">
+    <strong>Don't buy things for the store with your own money</strong> without prior approval from Jon. We can't reimburse all expenses — small business budgets are tight.
+</div>
+
+<div class="help-tip">
+    <strong>Buying a collection?</strong> Jon can Zelle or Venmo the seller directly — just hold onto the merchandise until it's settled. Don't front cash unless he's confirmed.
+</div>
+HTML,
+            ],
+            [
+                'slug' => 'sick-leave-and-benefits',
+                'title' => 'Sick Leave (California Compliance)',
+                'section' => 'Pay & Growth',
+                'sort' => 2,
+                'summary' => 'How sick leave accrues and when you can use it.',
+                'page_keys' => ['home'],
+                'body_html' => <<<'HTML'
+<p>California law sets the rules; here's how it works at Nivessa.</p>
+
+<h3>How It Accrues</h3>
+<ul>
+    <li><strong>1 hour of paid sick leave for every 30 hours worked</strong>, starting your first day.</li>
+    <li>Accrual is automatic — you don't need to request anything.</li>
+</ul>
+
+<h3>When You Can Use It</h3>
+<ul>
+    <li>You can start using accrued sick leave <strong>after 90 days</strong> of employment.</li>
+    <li><strong>Max 24 hours (3 days) usable per calendar year.</strong></li>
+    <li>Can be used for personal illness, medical appointments, or to care for a family member.</li>
+</ul>
+
+<h3>The Cap</h3>
+<ul>
+    <li><strong>Max accruable:</strong> 48 hours at any one time. Once you hit 48, you stop accruing until you use some.</li>
+    <li>Unused sick time carries over year to year, up to the 48-hour ceiling.</li>
+</ul>
+
+<div class="help-tip">
+    Calling out sick? Let your manager know as soon as you know. Even more so if you're scheduled to open or close.
+</div>
+HTML,
+            ],
+            [
+                'slug' => 'hosting-events',
+                'title' => 'Hosting Events at the Store',
+                'section' => 'Operations',
+                'sort' => 3,
+                'summary' => 'Setup, running the night, and keeping the storefront fresh.',
+                'page_keys' => ['home'],
+                'body_html' => <<<'HTML'
+<p>Events bring new people in and remind regulars why they love the store. The bar is: clean setup, friendly hosting, safe environment.</p>
+
+<h3>Before Doors</h3>
+<ul>
+    <li>Stage, equipment, and space prepared <strong>well before guests arrive</strong>.</li>
+    <li>Sound check — don't troubleshoot a mic for the first time when 40 people are watching.</li>
+    <li>Floor walked, no boxes or open stock in customer view.</li>
+</ul>
+
+<h3>During the Event</h3>
+<ul>
+    <li>Help guide guests as they come in.</li>
+    <li>Maintain a safe and enjoyable environment — same standards as a regular shop day.</li>
+    <li>Watch the bathroom (one customer at a time still applies).</li>
+</ul>
+
+<h3>The Outside Frame</h3>
+<p>The A-frame / outside display should feature <strong>interesting, eye-catching records</strong> that represent the store's personality. Change it periodically — anyone walking by who's seen the same record for two weeks stops noticing.</p>
+
+<h3>After</h3>
+<ul>
+    <li>Reset the floor before closing.</li>
+    <li>Trash out, sweep, lights off, lock up — same closing checklist as any night.</li>
+    <li>Drop a note in <code>#shift-notes</code> with how it went, headcount, and anything that broke.</li>
+</ul>
+HTML,
+            ],
+            [
+                'slug' => 'cataloging-older-inventory',
+                'title' => 'Cataloging Older Inventory (Barcoding)',
+                'section' => 'Listing',
+                'sort' => 3,
+                'summary' => 'Getting unbarcoded items into the ERP so checkout, reports, and stock counts work.',
+                'page_keys' => ['product.create', 'labels'],
+                'body_html' => <<<'HTML'
+<p>The goal is <strong>every item in the store has an ERP record and a barcode</strong>. The further we get from that, the more guesswork at the register and the less reliable our reports.</p>
+
+<h3>Why It Matters</h3>
+<ul>
+    <li>Smooth checkout — scan and ring, no manual entry.</li>
+    <li>Accurate inventory counts.</li>
+    <li>Real data on what's selling — so we can replicate the wins.</li>
+</ul>
+
+<h3>Where the Backlog Is</h3>
+<p>Used CDs are the biggest gap — most are unpriced and unbarcoded. Vinyl is mostly priced but plenty don't have barcodes either. Anything with a hand-written sticker but no barcode is a candidate.</p>
+
+<h3>How to Catalog an Item</h3>
+<ol>
+    <li>Pick up an unbarcoded item from the floor.</li>
+    <li>Open <strong>Products &rarr; Add Product</strong> in the ERP. Search by title first — a record may already exist.</li>
+    <li>If it doesn't exist: create it with title, artist, format, condition. Use Discogs to fill in the right pressing/release.</li>
+    <li>Set the price using the in-store pricing rules. (See <a href="/help/pricing-in-store" target="_blank">Pricing for the Store Floor</a>.)</li>
+    <li>Print a barcode label from <strong>Labels</strong>.</li>
+    <li>Sticker the item top-right of the cover. Put it back in the right bin.</li>
+</ol>
+
+<div class="help-tip">
+    <strong>Slow shift = catalog time.</strong> If the store is quiet, this is the work that pays off long after your shift ends.
+</div>
+
+<h3>What NOT to Throw Out</h3>
+
+<div class="help-warn">
+    Don't throw out items that look old, cracked, or "useless." They may still have collector value. If you're unsure, ask Jon before disposing.
+</div>
+HTML,
+            ],
         ];
     }
 
@@ -958,6 +1211,7 @@ HTML,
     private const SECTION_ORDER = [
         'Welcome',
         'Conduct',
+        'Shifts & Schedule',
         'POS',
         'Customer Experience',
         'Buying',
@@ -967,6 +1221,7 @@ HTML,
         'Shipping',
         'Listing',
         'Opening & Closing',
+        'Pay & Growth',
         'Safety',
     ];
 
