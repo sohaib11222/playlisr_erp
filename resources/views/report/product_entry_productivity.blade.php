@@ -57,6 +57,8 @@
                         <th>Employee</th>
                         <th>Mass Add Count</th>
                         <th>Add Purchase Count</th>
+                        <th>Labels Printed</th>
+                        <th>Hours Worked</th>
                         <th>Total</th>
                     </tr>
                 </thead>
@@ -66,10 +68,12 @@
                             <td>{{ $r->employee ?: ('User #' . $r->user_id) }}</td>
                             <td>{{ (int) $r->mass_add_count }}</td>
                             <td>{{ (int) $r->purchase_add_count }}</td>
+                            <td>{{ (int) ($r->labels_printed_count ?? 0) }}</td>
+                            <td>{{ ($r->hours_worked ?? 0) > 0 ? number_format($r->hours_worked, 1) . 'h' : '—' }}</td>
                             <td><b>{{ (int) $r->total_count }}</b></td>
                         </tr>
                     @empty
-                        <tr><td colspan="4" class="text-center text-muted">No data found for this range.</td></tr>
+                        <tr><td colspan="6" class="text-center text-muted">No data found for this range.</td></tr>
                     @endforelse
                 </tbody>
             </table>

@@ -268,6 +268,22 @@ class LabelsController extends Controller
                 $i++;
             }
 
+            // Log this print run so the Employee Productivity report can show
+            // labels printed per user. Guarded against the migration not yet
+            // having run.
+            try {
+                if ($total_qty > 0 && \Schema::hasTable('label_print_logs')) {
+                    DB::table('label_print_logs')->insert([
+                        'business_id' => $business_id,
+                        'user_id' => auth()->id(),
+                        'qty' => (int) $total_qty,
+                        'created_at' => now(),
+                    ]);
+                }
+            } catch (\Throwable $logErr) {
+                \Log::warning('label_print_logs insert failed: ' . $logErr->getMessage());
+            }
+
             print_r('<script>window.print()</script>');
             exit;
             //return $output;
