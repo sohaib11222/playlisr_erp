@@ -5161,7 +5161,7 @@ class ReportController extends Controller
         // Hides disabled / inactive / terminated accounts from the productivity report.
         // Sarah 2026-05-07: also hide admin / dev / owner accounts that don't
         // actually price products — they just clutter the ranking with zero rows.
-        $excluded_first_names = ['lashyn', 'sarah', 'sohaib', 'viper'];
+        $excluded_first_names = ['lashyn', 'sarah', 'sohaib', 'sohaibahmad', 'viper'];
         $users = User::where('business_id', $business_id)
             ->where('allow_login', 1)
             ->where('status', 'active')
@@ -5196,18 +5196,22 @@ class ReportController extends Controller
             ->groupBy('t.created_by')
             ->pluck('total', 't.created_by');
 
-        // Labels printed from the Print Labels tab. Each row = one print run;
-        // qty = total stickers in that run. Sum gives stickers per employee.
-        $labels_printed = collect();
-        if (\Schema::hasTable('label_print_logs')) {
-            $labels_printed = DB::table('label_print_logs')
-                ->where('business_id', $business_id)
-                ->whereDate('created_at', '>=', $start_date)
-                ->whereDate('created_at', '<=', $end_date)
-                ->select('user_id', DB::raw('SUM(qty) as total'))
-                ->groupBy('user_id')
-                ->pluck('total', 'user_id');
+        // Labels printed from the Print Labels tab. LabelsController@preview
+        // writes one activity_log row per print run with qty in properties.
+        $labels_by_user = [];
+        $label_rows = DB::table('activity_log')
+            ->where('description', 'labels_printed')
+            ->where('business_id', $business_id)
+            ->whereBetween('created_at', [$start_date . ' 00:00:00', $end_date . ' 23:59:59'])
+            ->whereNotNull('causer_id')
+            ->select('causer_id', 'properties')
+            ->get();
+        foreach ($label_rows as $row) {
+            $props = json_decode($row->properties, true) ?: [];
+            $qty = (int) ($props['qty'] ?? 0);
+            $labels_by_user[$row->causer_id] = ($labels_by_user[$row->causer_id] ?? 0) + $qty;
         }
+        $labels_printed = collect($labels_by_user);
 
         // Hours worked from cash_registers (created_at -> closed_at), clipped
         // to the selected window. Same formula used by the leaderboard report.

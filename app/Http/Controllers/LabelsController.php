@@ -269,19 +269,25 @@ class LabelsController extends Controller
             }
 
             // Log this print run so the Employee Productivity report can show
-            // labels printed per user. Guarded against the migration not yet
-            // having run.
+            // labels printed per user. Writes directly to the existing
+            // activity_log table (no migration / no extra table needed).
             try {
-                if ($total_qty > 0 && \Schema::hasTable('label_print_logs')) {
-                    DB::table('label_print_logs')->insert([
+                if ($total_qty > 0) {
+                    DB::table('activity_log')->insert([
+                        'log_name' => 'default',
+                        'description' => 'labels_printed',
+                        'subject_id' => null,
+                        'subject_type' => null,
+                        'causer_id' => auth()->id(),
+                        'causer_type' => auth()->id() ? 'App\\User' : null,
                         'business_id' => $business_id,
-                        'user_id' => auth()->id(),
-                        'qty' => (int) $total_qty,
+                        'properties' => json_encode(['qty' => (int) $total_qty]),
                         'created_at' => now(),
+                        'updated_at' => now(),
                     ]);
                 }
             } catch (\Throwable $logErr) {
-                \Log::warning('label_print_logs insert failed: ' . $logErr->getMessage());
+                \Log::warning('labels_printed activity_log insert failed: ' . $logErr->getMessage());
             }
 
             print_r('<script>window.print()</script>');
