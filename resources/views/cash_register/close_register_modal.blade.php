@@ -149,6 +149,35 @@
 	}
 	.cr-v2 .cr-cancel:hover { color: #1F1B16; border-color: #8E8273; }
 
+	/* Over-$500 safe alert (Sarah 2026-05-07): if the closing count is
+	   over $500, nudge the cashier to move the excess (rounded down to
+	   nearest $100) into the safe and recount the remainder carefully.
+	   Soft warning — does not block the form submit. */
+	.cr-safe-alert {
+		display: none;
+		margin-top: 14px;
+		background: #FFE5DA;
+		border: 1px solid #E8A07A;
+		border-radius: 10px;
+		padding: 12px 14px;
+		font-size: 13px;
+		font-weight: 600;
+		color: #6B2A14;
+		line-height: 1.45;
+	}
+	.cr-safe-alert.cr-safe-alert-on { display: block; }
+	.cr-safe-alert-tag {
+		display: inline-block;
+		font-size: 10px; font-weight: 800;
+		letter-spacing: .12em;
+		background: #6B2A14; color: #FFE5DA;
+		padding: 2px 8px; border-radius: 999px;
+		margin-right: 6px; vertical-align: 1px;
+	}
+	.cr-safe-alert strong {
+		font-variant-numeric: tabular-nums;
+	}
+
 	/* Denominations — kept but tucked into the reference block */
 	.cr-denom {
 		margin-top: 14px; padding: 12px;
@@ -192,7 +221,13 @@
 					<span class="cr-hero-currency">$</span>
 					{!! Form::text('closing_amount',
 						@num_format($register_details->cash_in_hand + $register_details->total_cash - $register_details->total_cash_refund - $register_details->total_cash_expense),
-						['class' => 'cr-hero-input input_number', 'required', 'placeholder' => '0.00', 'autofocus', 'data-decimal' => '1']) !!}
+						['class' => 'cr-hero-input input_number', 'id' => 'cr_closing_amount', 'required', 'placeholder' => '0.00', 'autofocus', 'data-decimal' => '1']) !!}
+				</div>
+
+				<div class="cr-safe-alert" id="cr-safe-alert">
+					<span class="cr-safe-alert-tag">HEADS UP</span>
+					Please put <strong><span id="cr-safe-amount">$0</span></strong> in the safe
+					and count what's left in the drawer very carefully.
 				</div>
 
 				<div class="cr-card-slips"
@@ -255,6 +290,41 @@
 						$input.on('input change', function () {
 							$sub.text(originalSub).css('color', '');
 						});
+					});
+				})();
+				</script>
+
+				<script>
+				/* Over-$500 safe alert: watch the closing-amount field and
+				   suggest moving the excess (rounded down to nearest $100)
+				   into the safe. So $1250 → put $700 in safe, recount $550.
+				   Soft warning — does not block submit. */
+				(function () {
+					function onReady(fn) {
+						if (typeof jQuery === 'undefined') { setTimeout(function () { onReady(fn); }, 50); return; }
+						jQuery(fn);
+					}
+					onReady(function ($) {
+						var $input  = $('#cr_closing_amount');
+						var $alert  = $('#cr-safe-alert');
+						var $amount = $('#cr-safe-amount');
+						if (!$input.length || !$alert.length) return;
+
+						function recheck() {
+							var raw = ($input.val() || '').toString().replace(/,/g, '').trim();
+							var val = parseFloat(raw);
+							if (!isFinite(val)) { $alert.removeClass('cr-safe-alert-on'); return; }
+							var toSafe = Math.floor((val - 500) / 100) * 100;
+							if (toSafe >= 100) {
+								$amount.text('$' + toSafe.toLocaleString('en-US'));
+								$alert.addClass('cr-safe-alert-on');
+							} else {
+								$alert.removeClass('cr-safe-alert-on');
+							}
+						}
+
+						$input.on('input change keyup blur', recheck);
+						recheck();
 					});
 				})();
 				</script>

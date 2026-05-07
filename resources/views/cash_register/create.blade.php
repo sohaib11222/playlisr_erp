@@ -30,8 +30,26 @@
           <div class="form-group">
             {!! Form::label('amount', __('cash_register.cash_in_hand') . ':*') !!}
             {!! Form::text('amount', null, ['class' => 'form-control input_number',
+              'id' => 'cash_in_hand_amount',
               'placeholder' => __('cash_register.enter_amount'), 'required']); !!}
             <p class="help-block text-muted"><small>@lang('cash_register.opening_balance_help')</small></p>
+
+            {{-- Over-$500 safe alert (Sarah 2026-05-07): if the cashier
+                 reports more than $500 in the drawer at open, ask them
+                 to move the excess (rounded down to the nearest $100)
+                 into the safe and recount what's left. Soft warning,
+                 doesn't block the open-register submit. --}}
+            <div id="cr-safe-alert" style="display:none; margin-top:10px;
+                background:#FFE5DA; border:1px solid #E8A07A; border-radius:10px;
+                padding:12px 14px; color:#6B2A14; font-weight:600; line-height:1.45;">
+              <span style="display:inline-block; font-size:10px; font-weight:800;
+                  letter-spacing:.12em; background:#6B2A14; color:#FFE5DA;
+                  padding:2px 8px; border-radius:999px; margin-right:6px; vertical-align:1px;">
+                HEADS UP
+              </span>
+              Please put <strong><span id="cr-safe-amount">$0</span></strong> in the safe
+              and count what's left in the drawer very carefully.
+            </div>
           </div>
         </div>
         @if(count($business_locations) > 1)
@@ -61,4 +79,31 @@
   {!! Form::close() !!}
 </section>
 <!-- /.content -->
+
+<script>
+  $(function () {
+    var $input = $('#cash_in_hand_amount');
+    var $alert = $('#cr-safe-alert');
+    var $amount = $('#cr-safe-amount');
+
+    function recheck() {
+      var raw = ($input.val() || '').toString().replace(/,/g, '').trim();
+      var val = parseFloat(raw);
+      if (!isFinite(val)) { $alert.hide(); return; }
+      // Suggest moving the excess over $500 to the safe, rounded down
+      // to the nearest $100. So $1250 → $700 (drawer becomes $550).
+      // Only show when the suggested move is at least $100.
+      var toSafe = Math.floor((val - 500) / 100) * 100;
+      if (toSafe >= 100) {
+        $amount.text('$' + toSafe.toLocaleString('en-US'));
+        $alert.show();
+      } else {
+        $alert.hide();
+      }
+    }
+
+    $input.on('input change keyup blur', recheck);
+    recheck();
+  });
+</script>
 @endsection
