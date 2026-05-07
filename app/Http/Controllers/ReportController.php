@@ -7915,17 +7915,23 @@ class ReportController extends Controller
             return response()->json(['success' => false], 403);
         }
         $business_id = (int) $request->session()->get('user.business_id');
-        $row = \DB::table('transactions')
-            ->where('id', (int) $id)
+        // The "#NNNN" in the UI is invoice_no, not transactions.id, so
+        // accept either: try as id first, then fall back to invoice_no.
+        $cols = [
+            'id', 'invoice_no', 'type', 'status', 'channel', 'is_whatnot',
+            'location_id', 'created_by', 'final_total',
+            'transaction_date', 'additional_notes', 'staff_note',
+            'source', 'sub_type', 'is_direct_sale',
+        ];
+        $rows = \DB::table('transactions')
             ->where('business_id', $business_id)
-            ->first([
-                'id', 'type', 'status', 'channel', 'is_whatnot',
-                'location_id', 'created_by', 'final_total',
-                'transaction_date', 'additional_notes', 'staff_note',
-                'source', 'sub_type', 'is_direct_sale',
-            ]);
-        if (!$row) return response()->json(['success' => false, 'msg' => 'not found'], 404);
-        return response()->json(['success' => true, 'transaction' => $row]);
+            ->where(function ($q) use ($id) {
+                $q->where('id', (int) $id)->orWhere('invoice_no', (string) $id);
+            })
+            ->limit(5)
+            ->get($cols);
+        if ($rows->isEmpty()) return response()->json(['success' => false, 'msg' => 'not found'], 404);
+        return response()->json(['success' => true, 'transactions' => $rows]);
     }
 
     /**
