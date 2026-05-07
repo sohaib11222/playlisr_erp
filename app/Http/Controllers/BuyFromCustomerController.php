@@ -5,10 +5,15 @@ namespace App\Http\Controllers;
 use App\BusinessLocation;
 use App\BuyCustomerOffer;
 use App\Contact;
+use App\Product;
+use App\PurchaseLine;
 use App\Services\BuyOfferCalculatorService;
 use App\Transaction;
+use App\Utils\ProductUtil;
+use App\Variation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class BuyFromCustomerController extends Controller
 {
@@ -17,9 +22,15 @@ class BuyFromCustomerController extends Controller
      */
     protected $calculator;
 
-    public function __construct(BuyOfferCalculatorService $calculator)
+    /**
+     * @var ProductUtil
+     */
+    protected $productUtil;
+
+    public function __construct(BuyOfferCalculatorService $calculator, ProductUtil $productUtil)
     {
         $this->calculator = $calculator;
+        $this->productUtil = $productUtil;
     }
 
     public function create()
@@ -440,8 +451,10 @@ class BuyFromCustomerController extends Controller
         $purchase->business_id = $business_id;
         $purchase->location_id = $location_id;
         $purchase->type = 'purchase';
-        $purchase->status = 'draft';
-        $purchase->payment_status = 'due';
+        // Received immediately so updateProductQuantity() runs on the lines
+        // we attach below. The BFC payout is recorded as cash already paid out.
+        $purchase->status = 'received';
+        $purchase->payment_status = 'paid';
         $purchase->contact_id = $offer->contact_id ?: Contact::where('business_id', $business_id)->whereIn('type', ['supplier', 'both'])->value('id');
         $purchase->transaction_date = now();
         $purchase->total_before_tax = $finalAmount;
@@ -459,6 +472,128 @@ class BuyFromCustomerController extends Controller
             $offer->buy_record_number
         );
         $purchase->save();
+
+        // Materialize each offer line into a real Product + Variation and a
+        // PurchaseLine so inventory actually moves. Each line becomes its own
+        // SKU (used vinyl is one-of-one — no fuzzy matching to existing
+        // products to avoid wrong-SKU bugs in POS). New SKUs are flagged
+        // not_for_selling=1 so they cannot ring up at $0 before staff prices
+        // them in the normal grading/listing flow.
+        $offer->load('lines');
+        $snapshotLines = [];
+        foreach ($offer->lines as $line) {
+            $unitRate = (float) ($line->unit_rate ?: 0);
+            $qty = (float) ($line->quantity ?: 0);
+            if ($qty <= 0) {
+                continue;
+            }
+
+            // 1. Product
+            $displayTitle = trim((string) ($line->title ?: '')) !== ''
+                ? $line->title
+                : sprintf('BFC %s — %s', $offer->buy_record_number, $line->item_type);
+            $description = sprintf(
+                'Bought from customer | offer %s | type: %s | grade: %s',
+                $offer->buy_record_number,
+                $line->item_type,
+                $line->condition_grade ?: '—'
+            );
+
+            $product = Product::create([
+                'name' => $displayTitle,
+                'sku' => 111, // placeholder, replaced by generateProductSku() once we have an id
+                'tax' => null,
+                'tax_type' => 'exclusive',
+                'alert_quantity' => 0,
+                'business_id' => $business_id,
+                'created_by' => $offer->created_by,
+                'added_via' => 'buy_from_customer',
+                'enable_stock' => 1,
+                'product_description' => $description,
+                'unit_id' => 1,
+                'type' => 'single',
+                'not_for_selling' => 1,
+            ]);
+            $product->sku = $this->productUtil->generateProductSku($product->id);
+            $product->save();
+
+            // 2. ProductVariation + Variation rows
+            $product_variation = $product->product_variations()->create([
+                'name' => 'DUMMY',
+                'is_dummy' => 1,
+            ]);
+            $variation = $product_variation->variations()->create([
+                'name' => 'DUMMY',
+                'product_id' => $product->id,
+                'sub_sku' => $product->sku,
+                'default_purchase_price' => $unitRate,
+                'dpp_inc_tax' => $unitRate,
+                'profit_percent' => 0,
+                'default_sell_price' => 0,
+                'sell_price_inc_tax' => 0,
+            ]);
+
+            // 3. Pin the product to the offer's location so VLD has a row.
+            $product->product_locations()->sync([$location_id]);
+
+            // 4. PurchaseLine attached to the received transaction
+            $purchase_line = new PurchaseLine();
+            $purchase_line->product_id = $product->id;
+            $purchase_line->variation_id = $variation->id;
+            $purchase_line->item_tax = 0;
+            $purchase_line->tax_id = null;
+            $purchase_line->quantity = $qty;
+            $purchase_line->pp_without_discount = $unitRate;
+            $purchase_line->purchase_price = $unitRate;
+            $purchase_line->purchase_price_inc_tax = $unitRate;
+            $purchase->purchase_lines()->save($purchase_line);
+
+            // 5. Bump stock at this location
+            $this->productUtil->updateProductQuantity(
+                $location_id,
+                $product->id,
+                $variation->id,
+                $qty,
+                0
+            );
+
+            // 6. Backfill refs on the offer line so undo can reverse this
+            $line->product_id = $product->id;
+            $line->variation_id = $variation->id;
+            $line->purchase_line_id = $purchase_line->id;
+            $line->save();
+
+            $snapshotLines[] = [
+                'offer_line_id' => $line->id,
+                'product_id' => $product->id,
+                'variation_id' => $variation->id,
+                'product_variation_id' => $variation->product_variation_id,
+                'purchase_line_id' => $purchase_line->id,
+                'location_id' => $location_id,
+                'quantity' => $qty,
+            ];
+        }
+
+        // Snapshot for /admin/admin-action-history undo. Captures everything
+        // we need to walk this back: which products/variations were created,
+        // which VLD rows to decrement, which transaction to flip to draft.
+        if (!empty($snapshotLines)) {
+            $timestamp = now()->format('Y-m-d_His');
+            $snapshotKey = "bfc-receive-{$offer->id}-{$timestamp}";
+            Storage::disk('local')->put(
+                "admin-snapshots/{$snapshotKey}.json",
+                json_encode([
+                    'timestamp' => now()->toDateTimeString(),
+                    'action' => 'bfc-receive',
+                    'business_id' => $business_id,
+                    'location_id' => $location_id,
+                    'offer_id' => $offer->id,
+                    'buy_record_number' => $offer->buy_record_number,
+                    'transaction_id' => $purchase->id,
+                    'rows' => $snapshotLines,
+                ], JSON_PRETTY_PRINT)
+            );
+        }
 
         return $purchase;
     }
