@@ -59,6 +59,16 @@ HTML,
   <li><strong>Finalize</strong> and send the receipt by phone or email if they want one.</li>
 </ol>
 
+<h3>Discounts</h3>
+
+<div class="help-critical">
+    <strong>Manager-only.</strong> Cashiers do not apply discounts. If a customer asks for one, get a manager.
+</div>
+
+<div class="help-tip">
+    <strong>For reference:</strong> a manager may approve <strong>10% off purchases of $300+</strong>. There are no cash discounts.
+</div>
+
 <h3>Returns</h3>
 
 <div class="help-critical">
@@ -411,7 +421,7 @@ HTML,
 
 <h3>Hollywood — Opening Steps</h3>
 <ol>
-    <li>If you don't have a key, the lockbox key is at the front of the gate. (You should already know the code — if not, ask a manager. We don't put it in writing.)</li>
+    <li>If you don't have a key, the lockbox key is at the front of the gate. The code is <code>1492</code>.</li>
     <li>Use the key to unlock the front door.</li>
     <li>Turn on all main-room lights and the computer. Music up loud — outside too.</li>
     <li>Plug in the neon signs:
@@ -533,6 +543,328 @@ HTML,
 </ul>
 HTML,
             ],
+            [
+                'slug' => 'code-of-conduct',
+                'title' => 'Code of Conduct (What We\'re Serious About)',
+                'section' => 'Conduct',
+                'sort' => 1,
+                'summary' => 'Behaviors that lead to disciplinary action up to termination — read this once.',
+                'page_keys' => ['home'],
+                'body_html' => <<<'HTML'
+<p>Trust and integrity are the cornerstone of how Nivessa runs. Most of the rules below are obvious, but they're written down because they've come up before.</p>
+
+<h3>Strictly Prohibited</h3>
+
+<div class="help-critical">
+    <strong>Theft</strong> — cash, merchandise, or self-pricing for personal gain. Grounds for immediate termination and possible legal action.
+</div>
+
+<div class="help-critical">
+    <strong>Pocketing cash.</strong> Don't.
+</div>
+
+<div class="help-critical">
+    <strong>Lying about purchased collections</strong> — what was bought, what was paid, what was traded.
+</div>
+
+<div class="help-critical">
+    <strong>Wage theft</strong> — manipulating hours, skipping clock-out for breaks, not getting paid overtime. This is illegal and we won't allow it on either side.
+</div>
+
+<div class="help-warn">
+    <strong>Buying from customers off-the-books.</strong> All collection purchases happen through the store's official channels — no private side deals with customers for inventory.
+</div>
+
+<div class="help-warn">
+    <strong>Clocking in for someone else.</strong> Each person clocks themselves in and out. No exceptions.
+</div>
+
+<div class="help-warn">
+    <strong>Failing to clock out for lunch breaks.</strong> Record your time accurately.
+</div>
+
+<div class="help-warn">
+    <strong>Lying about pricing</strong> to benefit yourself or someone else.
+</div>
+
+<div class="help-warn">
+    <strong>Bad-mouthing the company</strong> in person or online. If you have concerns, bring them directly to a manager — Jon will always make time, even if he's busy.
+</div>
+
+<h3>Reporting</h3>
+<p>If you witness or suspect any of the above, tell a manager. All reports are confidential. Retaliation against anyone who reports in good faith won't be tolerated.</p>
+
+<h3>Professional Conduct</h3>
+<ul>
+    <li>Respect customers, coworkers, and management. Zero tolerance for discrimination, harassment, or misconduct.</li>
+    <li>No politics at work. We want a neutral, inclusive space.</li>
+    <li>No gossip. If something's bothering you about a coworker or a process, take it directly to a manager.</li>
+    <li>Confidentiality — customer data, business strategies, internal pricing, anything you see in the ERP — stays inside Nivessa.</li>
+</ul>
+
+<h3>Show Up</h3>
+<p>If you're scheduled, show up on time and ready. Two no-call-no-shows lose hours. Emergencies happen — just give us a heads-up. We're flexible when we know in advance.</p>
+HTML,
+            ],
+            [
+                'slug' => 'computer-or-printer-issues',
+                'title' => 'When the Computer or Printer Breaks',
+                'section' => 'Operations',
+                'sort' => 1,
+                'summary' => 'Who to call when the front-desk computer or label printer stops working.',
+                'page_keys' => ['home', 'labels'],
+                'body_html' => <<<'HTML'
+<p>If the computer or label printer at the front desk isn't working, get in touch with Muhammad — he handles tech support for the stores via AnyDesk.</p>
+
+<div class="help-must-do">
+    <strong>Reach Muhammad on AnyDesk</strong> for any computer or printer issue. He can take remote control and fix most problems on the spot.
+</div>
+
+<h3>Before You Reach Out</h3>
+<ul>
+    <li><strong>Restart first.</strong> A fresh power cycle of the computer or printer fixes a surprising amount of stuff.</li>
+    <li><strong>Check paper + ribbon</strong> on the Zebra label printer. "It's broken" is often "out of labels."</li>
+    <li><strong>Check the cable.</strong> USB unplugged is the most common label-print issue.</li>
+</ul>
+
+<h3>If You're Still Stuck</h3>
+<p>Reach Muhammad with what you've already tried, what you saw on screen, and which device. The more specific you are, the faster he can fix it.</p>
+
+<h3>If the Whole System Is Down</h3>
+<p>If you can't ring sales because the ERP itself is down, get a manager <strong>immediately</strong> — don't keep ringing on Clover only. Lost ERP transactions break inventory and reporting.</p>
+HTML,
+            ],
+            [
+                'slug' => 'pricing-in-store',
+                'title' => 'Pricing Items for the Store Floor',
+                'section' => 'Pricing',
+                'sort' => 1,
+                'summary' => 'How to price vinyl, CDs, and other media for in-store sale.',
+                'page_keys' => ['product.create', 'home'],
+                'body_html' => <<<'HTML'
+<p>The goal is to price quickly and accurately so items move. Discogs is the main reference for vinyl/CD/cassette market prices. eBay sold listings cover everything else.</p>
+
+<h3>Vinyl, CDs, Cassettes — the Discogs Method</h3>
+<ol>
+    <li>Use the barcode scanner on the Discogs search bar to pull up the release ID. Sometimes you'll get multiple matches — judge by label, jacket art, country, and notes to pick the right pressing.</li>
+    <li><strong>Grade the item</strong> using the Goldmine standard: Mint (M), Near Mint (NM), Very Good Plus (VG+), Very Good (VG), Good Plus (G+), Good (G), Fair (F), Poor (P).</li>
+    <li><strong>Price it as: Discogs market price + half the lowest available shipping rate.</strong>
+        <ul>
+            <li>If lowest shipping is ~$5, add $2.50 to the price.</li>
+            <li>If lowest shipping is $25, add $12.50.</li>
+        </ul>
+    </li>
+</ol>
+
+<div class="help-tip">
+    <strong>Cover worse than the vinyl?</strong> Knock the price down 5–10% from the matching vinyl-grade price. Don't weight the cover heavily — the media is what matters most.
+</div>
+
+<h3>No Competing Sellers on Discogs?</h3>
+<ul>
+    <li>If wantlist &lt; 25 wants: price at <strong>$25</strong>, or match recent sales history (whichever is greater).</li>
+    <li>If never sold or wantlist &gt; 25 with no competition: <strong>$1 per want</strong>. (650 wants → $650.)</li>
+</ul>
+
+<h3>When to Send to Discogs Instead of the Floor</h3>
+<ul>
+    <li>If an item is over $70 AND not on our top-150-sold-artists list, list it on Discogs instead of putting it on the floor.</li>
+    <li>If it's better-suited online (rare/collector), drop it in the Discogs bin during your shift.</li>
+</ul>
+
+<h3>Other Media (eBay-Based)</h3>
+<p>For non-Discogs items, find comparable listings on eBay and switch to <strong>Sold</strong> filter for accurate prices. We're open to other marketplaces too — Depop for clothing, etc.</p>
+
+<h3>Quick Reference for Used Items</h3>
+<ul>
+    <li><strong>CDs:</strong> Common titles priced low to move. Box sets, early pressings, out-of-print → check Discogs/eBay.</li>
+    <li><strong>DVDs:</strong> Common titles low for quick turn. Box sets / collector editions → check eBay sold.</li>
+    <li><strong>Magazines:</strong> Music or pop culture may have collector value. eBay sold listings if unsure.</li>
+    <li><strong>Clothing:</strong> Vintage band shirts → check eBay. Basics → cheap to encourage impulse buys.</li>
+</ul>
+
+<h3>Sticker Format</h3>
+
+<div class="help-must-do">
+    <strong>Always write the genre AND the price on the sticker.</strong> Example: <code>$14 ROCK</code>. If something gets misplaced, the genre tells anyone where to put it back.
+</div>
+HTML,
+            ],
+            [
+                'slug' => 'list-on-discogs',
+                'title' => 'How to List an Item on Discogs',
+                'section' => 'Listing',
+                'sort' => 1,
+                'summary' => 'Find the release, grade it, set location, price competitively.',
+                'page_keys' => ['discogs', 'listing'],
+                'body_html' => <<<'HTML'
+<p>Listing on Discogs is straightforward — the only place to be careful is matching the exact edition. Wrong edition = either underselling a valuable record or selling something we have to refund.</p>
+
+<h3>Step 1: Find the Right Release</h3>
+<p>Scan the barcode if there is one. If not, type the catalog code from the back sleeve or the dead-wax matrix.</p>
+
+<div class="help-warn">
+    <strong>Edition matters.</strong> Different pressings of the same album can vary by hundreds of dollars. Confirm <em>all</em> of these match before listing:
+    <ul>
+        <li>Fonts on the cover</li>
+        <li>Stereo vs. mono</li>
+        <li>Record company / label</li>
+        <li>How artists are credited (e.g. "Miles Davis" vs. "M. Davis" vs. "Miles. D")</li>
+        <li>Cover art and the inner sleeve type</li>
+        <li>Vinyl color</li>
+    </ul>
+</div>
+
+<h3>Step 2: Grade It</h3>
+<p>Use the Goldmine standard for both <strong>Media Condition</strong> and <strong>Sleeve Condition</strong>. If unsure of grading, refer to the in-store grading videos or ask a coworker.</p>
+
+<h3>Step 3: Notes</h3>
+<p>Use <strong>Item condition comments</strong> for anything noteworthy — especially on more expensive records. If sealed, note it here.</p>
+
+<h3>Step 4: Location</h3>
+
+<div class="help-must-do">
+    <strong>Always set the location.</strong> We've lost hundreds of records due to wrong/missing locations. Pick the right Kallax for your store (Pico or Hollywood), match the folder number to the bin (FL 1 → location FL 1).
+</div>
+
+<h3>Step 5: Price</h3>
+<ul>
+    <li>Minimum listing price: <strong>$5</strong>.</li>
+    <li>Above $5: price competitively against current listings of the same condition and pressing. Don't be the absolute cheapest unless inventory is slow-moving.</li>
+    <li>If condition is borderline, price slightly under comparables to head off disputes.</li>
+</ul>
+
+<h3>Step 6: List + Place It</h3>
+<p>Click <strong>List Item for Sale</strong> and put the record physically into the Kallax location you chose. The two must match.</p>
+
+<div class="help-warn">
+    <strong>Don't overfill cardboard boxes</strong> in the warehouse. Over time the cardboard breaks down, and overfilled boxes break sooner.
+</div>
+HTML,
+            ],
+            [
+                'slug' => 'photo-upload-fl-bins',
+                'title' => 'Photo Upload (FL Bins) — Warehouse Process',
+                'section' => 'Listing',
+                'sort' => 2,
+                'summary' => 'How to photograph, fold, and shelve records for the listing team.',
+                'page_keys' => ['listing'],
+                'body_html' => <<<'HTML'
+<p>Photo Upload is for the warehouse team — the records get listed by someone else later, so the photos need to communicate everything that person needs to know.</p>
+
+<h3>How to Photograph</h3>
+<ul>
+    <li><strong>One photo per item.</strong></li>
+    <li>Pull the record halfway out of the sleeve so both the front cover and the vinyl are visible.</li>
+    <li><strong>Spine damage or split cover?</strong> Hold a written card in the photo that says <code>G+ cover</code> (or whatever grade applies).</li>
+    <li>Anything else important about the cover or record? Write a note and include it in the photo.</li>
+</ul>
+
+<h3>FL Bin Numbering</h3>
+<ol>
+    <li>Take all photos from one bin, then put them in a folder named <strong>FL [number]</strong> using the next sequential number, with the grade in parentheses. Example: <code>FL 308 (VG)</code>.</li>
+    <li>Mark the spreadsheet with the latest number used.</li>
+    <li><strong>Maximum 50 vinyls per folder.</strong></li>
+</ol>
+
+<h3>Shelving</h3>
+<ul>
+    <li>Put the records into a partition labeled with the matching FL number on a 4×6 white sticker. Example: <code>FL 308 (VG)</code>.</li>
+    <li>Place the new partition on the shelf <strong>sequentially after</strong> the previous one — never on the floor.</li>
+    <li>If there's room on the shelf for more records after this partition, add a white divider and label it on the supporting structure below.</li>
+</ul>
+
+<div class="help-must-do">
+    <strong>Sequential numbering is non-negotiable.</strong> When the listing team can't find FL 308 because it was filed between FL 290 and FL 295, hours get wasted.
+</div>
+HTML,
+            ],
+            [
+                'slug' => 'discogs-messages-and-returns',
+                'title' => 'Discogs Customer Messages & Returns',
+                'section' => 'Shipping',
+                'sort' => 3,
+                'summary' => 'Responding fast, partial refunds, condition disputes, and return labels.',
+                'page_keys' => ['shipping', 'discogs'],
+                'body_html' => <<<'HTML'
+<p>We get 30–50 messages a day on Discogs. Slow responses cost us sales and feedback. Most messages are about an existing order.</p>
+
+<h3>Common Scenarios</h3>
+
+<h4>"My order is missing an item."</h4>
+<ol>
+    <li>Check the order's message thread — did an employee already say it was missing?</li>
+    <li>If yes, confirm a refund went out and message the customer.</li>
+    <li>If no dialogue, check the bin / location. If still missing, send a refund for that item and message the customer.</li>
+</ol>
+
+<h4>"The condition / edition is wrong."</h4>
+<ol>
+    <li>Ask the customer to send pictures to <strong>orders@nivessa.com</strong>.</li>
+    <li>When pictures arrive, decide on a <strong>partial refund</strong> — usually 30–60% of the item price depending on severity.</li>
+    <li>If they refuse the partial, offer a full refund <strong>only if they return the item</strong>. Email them a domestic return label.</li>
+    <li>International returns: we reimburse up to <strong>$13.99</strong> for shipping. They send it on their own.</li>
+</ol>
+
+<div class="help-warn">
+    <strong>Refunds over $20 — ask Jon first.</strong> Always.
+</div>
+
+<h4>"Can I see photos of this record before I buy?"</h4>
+<p>Our seller terms: we don't provide pre-purchase photos for items under <strong>$40</strong>. For items at or above $40, take photos and send to the email they provide.</p>
+
+<h4>"Can you take less for it?"</h4>
+<p>Contact Jon — ask how much he'd go down. Don't negotiate on your own.</p>
+
+<h3>Discogs Returns</h3>
+<ol>
+    <li>For domestic returns: create a label with <strong>Pico's address as ship-to</strong> and the customer's address as ship-from.</li>
+    <li>Email the label as a PDF to the customer's email.</li>
+    <li>For international: customer creates their own label. We rebate up to $13.99 for shipping but not customs/tax fees.</li>
+</ol>
+
+<h3>Feedback</h3>
+<ul>
+    <li>If a customer had a good experience, ask for positive feedback.</li>
+    <li>For Brazil/Chile orders, get the CPF/RUT before processing — required for customs.</li>
+</ul>
+
+<h3>Disputing Negative Feedback</h3>
+<ol>
+    <li>Go to the buyer rating tab on our profile.</li>
+    <li>Find the feedback, click the dropdown to the right, dispute it. Be honest — Discogs reviews and usually removes within hours.</li>
+    <li>You can also offer the customer a partial refund or future credit in exchange for them removing the negative feedback.</li>
+</ol>
+HTML,
+            ],
+            [
+                'slug' => 'shift-notes',
+                'title' => 'After-Shift Notes (#shift-notes on Slack)',
+                'section' => 'Opening & Closing',
+                'sort' => 3,
+                'summary' => 'What to post in Slack at the end of every shift so the next person picks up smoothly.',
+                'page_keys' => ['home'],
+                'body_html' => <<<'HTML'
+<p>Every shift ends with an update in <code>#shift-notes</code> on Slack. The goal is to leave the next person with a clear picture: what got done, what's left, and anything they should know.</p>
+
+<div class="help-must-do">
+    <strong>Always post a shift note before you leave.</strong> Even on a quiet day. The pattern is what makes it useful.
+</div>
+
+<h3>What to Include</h3>
+<ul>
+    <li><strong>What you shipped, listed, or rang up.</strong> Example: "Shipped 5 packages, 20 more remaining — need help."</li>
+    <li><strong>What's still in progress.</strong> Half-pulled Discogs orders, collections waiting to be priced.</li>
+    <li><strong>Supplies low or out.</strong> "Need plastic bags." "Almost out of mighty mailers."</li>
+    <li><strong>Damaged signage, broken equipment, anything visibly off.</strong></li>
+    <li><strong>In-store sales total for the day</strong> — helps us track busy times.</li>
+    <li><strong>Highlights and lowlights.</strong> A great sale, a tricky customer, a process idea.</li>
+</ul>
+
+<h3>Why This Matters</h3>
+<p>The next person reads this first when they walk in. A 60-second note saves 10 minutes of "what's going on?" the next morning.</p>
+HTML,
+            ],
         ];
     }
 
@@ -552,10 +884,13 @@ HTML,
      */
     private const SECTION_ORDER = [
         'Welcome',
+        'Conduct',
         'POS',
         'Customer Experience',
         'Buying',
         'Purchases',
+        'Pricing',
+        'Operations',
         'Shipping',
         'Listing',
         'Opening & Closing',
