@@ -318,17 +318,25 @@
                                     @endif
                                 </div>
 
-                                {{-- CASH DRAWER — opening + cash collected − buys = expected vs counted --}}
+                                {{-- CASH DRAWER — opening + cash collected − buys = expected vs counted.
+                                     Sarah 2026-05-07: when the cashier never opened/closed the register
+                                     (no opening count, no close count), the Expected/Counted/Variance
+                                     rows are all "—" and read as a fault. Hide that block in that case
+                                     and surface a single "register not opened/closed" hint instead.
+                                     "+ Not on Clover (assumed cash)" still shows as the raw cash bucket. --}}
                                 @php
                                     $cashRefunds      = (float) ($e['cash_refunds']       ?? 0);
                                     $cashExpenses     = (float) ($e['cash_expenses']      ?? 0);
                                     $cashTransfersOut = (float) ($e['cash_transfers_out'] ?? 0);
                                     $cashTransfersIn  = (float) ($e['cash_transfers_in']  ?? 0);
                                     $cashOtherNet     = (float) ($e['cash_other_net']     ?? 0);
+                                    $noDrawerCounts   = is_null($opening) && is_null($expected) && is_null($reported) && is_null($cashVar);
                                 @endphp
                                 <div class="cc-section">
                                     <div class="cc-sec-h">Cash drawer <span class="cc-flag {{ $cashCls }}">{{ $cashLabel }}</span></div>
-                                    <div class="cc-line"><span class="cc-label minor">Opening cash</span><span class="cc-val {{ is_null($opening) ? 'muted' : '' }}">{{ is_null($opening) ? '—' : '$' . number_format($opening, 2) }}</span></div>
+                                    @if(!$noDrawerCounts)
+                                        <div class="cc-line"><span class="cc-label minor">Opening cash</span><span class="cc-val {{ is_null($opening) ? 'muted' : '' }}">{{ is_null($opening) ? '—' : '$' . number_format($opening, 2) }}</span></div>
+                                    @endif
                                     <div class="cc-line"><span class="cc-label minor">+ Not on Clover (assumed cash)</span><span class="cc-val">${{ number_format($impliedCash, 2) }}</span></div>
                                     @if($cashBuys > 0 || $hasShift)
                                         <div class="cc-line"><span class="cc-label minor">− Collection buys (cash)</span><span class="cc-val {{ $hasShift ? '' : 'muted' }}">{{ $hasShift ? '$' . number_format($cashBuys, 2) : '—' }}</span></div>
@@ -348,9 +356,15 @@
                                     @if(abs($cashOtherNet) >= 0.01)
                                         <div class="cc-line"><span class="cc-label minor">{{ $cashOtherNet >= 0 ? '+' : '−' }} Other movements</span><span class="cc-val">${{ number_format(abs($cashOtherNet), 2) }}</span></div>
                                     @endif
-                                    <div class="cc-line sum"><span class="cc-label">Expected in drawer</span><span class="cc-val {{ is_null($expected) ? 'muted' : '' }}">{{ is_null($expected) ? '—' : '$' . number_format($expected, 2) }}</span></div>
-                                    <div class="cc-line"><span class="cc-label">Counted at close</span><span class="cc-val {{ is_null($reported) ? 'muted' : '' }}">{{ is_null($reported) ? '—' : '$' . number_format($reported, 2) }}</span></div>
-                                    <div class="cc-line sum"><span class="cc-label">Variance</span><span class="cc-val {{ $cashCls }}">{{ is_null($cashVar) ? '—' : (($cashVar >= 0 ? '+' : '') . '$' . number_format($cashVar, 2)) }}</span></div>
+                                    @if($noDrawerCounts)
+                                        <div class="cc-line" style="margin-top:6px; color:#9ca3af; font-size:12px;">
+                                            <span class="cc-label minor">Register not opened/closed — no drawer to reconcile. Leave a note below if expected.</span>
+                                        </div>
+                                    @else
+                                        <div class="cc-line sum"><span class="cc-label">Expected in drawer</span><span class="cc-val {{ is_null($expected) ? 'muted' : '' }}">{{ is_null($expected) ? '—' : '$' . number_format($expected, 2) }}</span></div>
+                                        <div class="cc-line"><span class="cc-label">Counted at close</span><span class="cc-val {{ is_null($reported) ? 'muted' : '' }}">{{ is_null($reported) ? '—' : '$' . number_format($reported, 2) }}</span></div>
+                                        <div class="cc-line sum"><span class="cc-label">Variance</span><span class="cc-val {{ $cashCls }}">{{ is_null($cashVar) ? '—' : (($cashVar >= 0 ? '+' : '') . '$' . number_format($cashVar, 2)) }}</span></div>
+                                    @endif
                                 </div>
 
                                 {{-- Variance investigation drill-down — Sarah
