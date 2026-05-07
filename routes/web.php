@@ -66,6 +66,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/home/product-stock-alert', 'HomeController@getProductStockAlert');
     Route::get('/home/purchase-payment-dues', 'HomeController@getPurchasePaymentDues');
     Route::get('/home/sales-payment-dues', 'HomeController@getSalesPaymentDues');
+    Route::get('/home/shift-progress', 'HomeController@getShiftProgress')->name('home.shiftProgress');
     Route::post('/attach-medias-to-model', 'HomeController@attachMediasToGivenModel')->name('attach.medias.to.model');
     Route::get('/calendar', 'HomeController@getCalendar')->name('calendar');
     
