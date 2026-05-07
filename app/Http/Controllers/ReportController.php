@@ -5290,7 +5290,14 @@ class ReportController extends Controller
                 'hours_worked' => $h,
             ];
         })->sortByDesc(function ($r) {
-            return $r->mass_add_count + $r->purchase_add_count;
+            // Most productive = total activity across every column. Treats one
+            // priced item, one purchase line, one printed label, and one
+            // package handled as equal units of work.
+            return $r->mass_add_count
+                + $r->purchase_add_count
+                + $r->labels_printed_count
+                + $r->packages_picked_count
+                + $r->packages_shipped_count;
         })->values();
 
         // Daily summary cards for current day.
