@@ -31,6 +31,28 @@ class GamificationService
     public const PRODUCTS_ADDED_FLOOR_PER_HOUR = 20.0;
 
     /**
+     * Per-store opening hours, keyed by lowercase substring matched against
+     * business_locations.name (same style as ImportNivessaCustomerAsks). Each
+     * day maps to [open_hour, close_hour) — close is exclusive, so
+     * [12, 19] covers hour buckets 12, 13, 14, 15, 16, 17, 18.
+     *
+     * Jon 2026-05-07: Pico hours from operator. Locations without an entry
+     * fall back to auto-detect (any hour with sales in the last 30 days
+     * counts as a "store was open" hour).
+     */
+    public const STORE_HOURS = [
+        'pico' => [
+            'Monday'    => [12, 19],
+            'Tuesday'   => [12, 19],
+            'Wednesday' => [12, 19],
+            'Thursday'  => [12, 20],
+            'Friday'    => [12, 20],
+            'Saturday'  => [10, 20],
+            'Sunday'    => [10, 20],
+        ],
+    ];
+
+    /**
      * Returns the active shift for the user today, or null if none.
      *
      * @return array{started_at: Carbon, duty: string, location_id: ?int, hours: float}|null
@@ -181,10 +203,11 @@ class GamificationService
      * rate at this store, restricted to (a) the same hour-of-day as the
      * shift start and (b) the same day-type (weekday vs weekend) as today.
      *
-     * Each (user × day) pair with at least one event in hour H counts as
-     * "1 hour of activity." Coarse but matches operator intuition — a
-     * cashier-registered session that stays open during inventory work
-     * shouldn't dilute their selling hourly rate.
+     * For sales, denominator is store-open-hours (whole-store metric — what
+     * the operator would describe as "we do $X/hr at this location"). For
+     * count-based metrics (products added, orders shipped) we keep the
+     * (user × day) active-hour proxy because those tasks scale with staff
+     * count, not store-open hours.
      *
      * @return array{avg: ?float, top: ?float}
      */
@@ -252,6 +275,7 @@ class GamificationService
      */
     protected function salesPeerStats(int $businessId, ?int $locationId, int $hour, array $dowBucket, string $rangeStart, string $rangeEnd): array
     {
+        // Per-day store revenue at hour H (sum across all cashiers on that day).
         $q = DB::table('transactions')
             ->where('business_id', $businessId)
             ->where('type', 'sell')
@@ -264,20 +288,97 @@ class GamificationService
         if (!empty($locationId)) {
             $q->where('location_id', $locationId);
         }
-        $rows = $q->selectRaw('created_by as uid, DATE(transaction_date) as d, SUM(final_total) as rev')
-            ->groupBy('created_by', 'd')
+        $rows = $q->selectRaw('DATE(transaction_date) as d, SUM(final_total) as rev')
+            ->groupBy('d')
             ->get();
 
         if ($rows->isEmpty()) {
             return ['avg' => null, 'top' => null];
         }
 
+        // Denominator: how many store-open-hours at this hour-bucket exist
+        // in the matching DOW window. Avoids the dilution from counting
+        // "incidental cashiers" (Jon 2026-05-07: 2 cashiers each ringing 1
+        // sale halved the per-cashier rate when reality is 1 store, 1 hour).
+        $openHours = $this->storeOpenHoursAtBucket($locationId, $hour, $dowBucket, $rangeStart, $rangeEnd);
+        if ($openHours <= 0) {
+            return ['avg' => null, 'top' => null];
+        }
+
         $totalRev = (float) $rows->sum('rev');
-        $pairs = $rows->count();
         return [
-            'avg' => $pairs > 0 ? $totalRev / $pairs : null,
+            'avg' => $totalRev / $openHours,
             'top' => (float) $rows->max('rev'),
         ];
+    }
+
+    /**
+     * Number of store-open-hours at hour H matching the DOW bucket within
+     * [rangeStart, rangeEnd]. Uses STORE_HOURS config when the location
+     * matches; otherwise auto-detects from historical sales.
+     */
+    protected function storeOpenHoursAtBucket(?int $locationId, int $hour, array $dowBucket, string $rangeStart, string $rangeEnd): float
+    {
+        $hours = $this->getStoreHours($locationId);
+        if ($hours === null) {
+            return $this->autoDetectStoreOpenDays($locationId, $hour, $dowBucket, $rangeStart, $rangeEnd);
+        }
+
+        $cursor = Carbon::parse($rangeStart)->startOfDay();
+        $end = Carbon::parse($rangeEnd)->startOfDay();
+        $count = 0;
+        while ($cursor->lessThanOrEqualTo($end)) {
+            $dowMysql = ((int) $cursor->dayOfWeek) + 1;
+            if (in_array($dowMysql, $dowBucket, true)) {
+                $dayName = $cursor->format('l');
+                if (isset($hours[$dayName])) {
+                    [$openHour, $closeHour] = $hours[$dayName];
+                    if ($hour >= $openHour && $hour < $closeHour) {
+                        $count++;
+                    }
+                }
+            }
+            $cursor->addDay();
+        }
+        return (float) $count;
+    }
+
+    /**
+     * Lookup per-store opening hours by location name substring.
+     *
+     * @return array<string, array{0:int,1:int}>|null
+     */
+    protected function getStoreHours(?int $locationId): ?array
+    {
+        if (!$locationId) {
+            return null;
+        }
+        $name = strtolower((string) BusinessLocation::where('id', $locationId)->value('name'));
+        foreach (self::STORE_HOURS as $needle => $hours) {
+            if (str_contains($name, $needle)) {
+                return $hours;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Fallback when STORE_HOURS isn't configured for this location: count
+     * distinct dates in the DOW window where the store had at least one
+     * sale at hour H (proxy for "store was open in this hour bucket").
+     */
+    protected function autoDetectStoreOpenDays(?int $locationId, int $hour, array $dowBucket, string $rangeStart, string $rangeEnd): float
+    {
+        $q = DB::table('transactions')
+            ->where('type', 'sell')
+            ->whereNull('import_source')
+            ->whereBetween('transaction_date', [$rangeStart, $rangeEnd])
+            ->whereRaw('HOUR(transaction_date) = ?', [$hour])
+            ->whereRaw('DAYOFWEEK(transaction_date) IN ('.$this->dowList($dowBucket).')');
+        if (!empty($locationId)) {
+            $q->where('location_id', $locationId);
+        }
+        return (float) $q->distinct()->count(DB::raw('DATE(transaction_date)'));
     }
 
     /**
