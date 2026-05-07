@@ -193,11 +193,20 @@ class SellPosController extends Controller
         }
         $request->session()->put('pos_duty_location_label', $locLabel);
 
+        $openingCash = null;
+        if ($duty === 'cashier') {
+            $openingCash = round((float) $request->input('opening_cash', 0), 2);
+            $request->session()->put('pos_duty_opening_cash', $openingCash);
+            $request->session()->put('pos_duty_opening_cash_at', now()->toIso8601String());
+        } else {
+            $request->session()->forget(['pos_duty_opening_cash', 'pos_duty_opening_cash_at']);
+        }
+
         $this->businessUtil->activityLog(
             auth()->user(),
             'pos_duty',
             null,
-            ['duty' => $duty, 'location_id' => $locationId],
+            ['duty' => $duty, 'location_id' => $locationId, 'opening_cash' => $openingCash],
             false,
             $business_id
         );
