@@ -52,7 +52,6 @@
           @includeIf('repair::layouts.partials.header')
         @endif
 
-        @include('layouts.partials.help_launcher')
 
         <div class="m-8 pull-left mt-15 hidden-xs" style="color: #fff;"><strong>{{ @format_date('now') }}</strong></div>
 

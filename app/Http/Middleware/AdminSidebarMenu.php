@@ -488,20 +488,6 @@ class AdminSidebarMenu
                 ['icon' => 'fa fas fa-magic', 'active' => request()->segment(1) == 'reports' && request()->segment(2) == 'inventory-check-assistant']
             )->order(56);
 
-            $menu->url(
-                action('HelpController@index'),
-                'Help & Handbook',
-                ['icon' => 'fa fas fa-life-ring', 'active' => request()->segment(1) == 'help']
-            )->order(57);
-
-            if (auth()->user()->can('user.view')) {
-                $menu->url(
-                    action('HelpController@adminReport'),
-                    'Help Search Report',
-                    ['icon' => 'fa fas fa-chart-line', 'active' => request()->segment(1) == 'admin' && request()->segment(2) == 'help-search-report']
-                )->order(58);
-            }
-
 
             //Backup menu
             if (auth()->user()->can('backup')) {

@@ -1,7 +1,6 @@
 @extends('layouts.app')
 
 @section('title', __('sale.pos_sale'))
-@section('help_page_key', 'pos.create')
 
 {{-- POS checkout redesign v2 (2026-04-20): pulls in the scoped stylesheet
      that reskins this screen per nivessa_pos_redesign.html. Add the
