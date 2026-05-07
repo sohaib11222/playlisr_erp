@@ -25,7 +25,11 @@
                     <tr><th>Org id</th><td>{{ $orgId ?: '—' }}</td></tr>
                     <tr><th>Token saved at</th><td>{{ $savedAt ?: '—' }}</td></tr>
                 </table>
-                <form method="POST" action="{{ url('/admin/sling/disconnect') }}" onsubmit="return confirm('Disconnect — clear stored Sling token?');">
+                <form method="POST" action="{{ url('/admin/sling/test') }}" style="display:inline;">
+                    @csrf
+                    <button type="submit" class="btn btn-info"><i class="fa fa-bolt"></i> Test connection</button>
+                </form>
+                <form method="POST" action="{{ url('/admin/sling/disconnect') }}" style="display:inline;" onsubmit="return confirm('Disconnect — clear stored Sling token?');">
                     @csrf
                     <button type="submit" class="btn btn-default"><i class="fa fa-unlink"></i> Disconnect</button>
                 </form>

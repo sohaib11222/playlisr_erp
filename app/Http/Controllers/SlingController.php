@@ -160,6 +160,16 @@ class SlingController extends Controller
         return back()->with('status_success', 'Token saved.');
     }
 
+    public function testConnection()
+    {
+        $client = new \App\Services\SlingClient();
+        $result = $client->ping();
+        if ($result['ok']) {
+            return back()->with('status_success', 'Sling test: ' . $result['message']);
+        }
+        return back()->with('status_error', 'Sling test failed: ' . $result['message']);
+    }
+
     public function disconnect()
     {
         System::removeProperty(self::TOKEN_KEY);

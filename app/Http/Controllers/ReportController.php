@@ -5215,29 +5215,54 @@ class ReportController extends Controller
         // inflate hours. 21600 seconds = 6 hours.
         $window_start = $start_date . ' 00:00:00';
         $window_end = $end_date . ' 23:59:59';
-        $hours_raw = DB::table('cash_registers')
-            ->where('business_id', $business_id)
-            ->whereNotNull('user_id')
-            ->where('created_at', '<=', $window_end)
-            ->where(function ($q) use ($window_start) {
-                $q->where('closed_at', '>=', $window_start)
-                  ->orWhereNull('closed_at');
-            })
-            ->selectRaw("user_id,
-                SUM(
-                    LEAST(
-                        TIMESTAMPDIFF(
-                            SECOND,
-                            GREATEST(created_at, ?),
-                            LEAST(COALESCE(closed_at, NOW()), ?)
-                        ),
-                        21600
-                    )
-                ) / 3600.0 as hours")
-            ->addBinding($window_start, 'select')
-            ->addBinding($window_end, 'select')
-            ->groupBy('user_id')
-            ->pluck('hours', 'user_id');
+        $hours_raw = collect();
+
+        // Try Sling first — if Sarah has connected the org's Sling account
+        // (via /admin/sling/login), use scheduled shifts as the source of
+        // truth for hours, since that covers staff (Nick) who never open a
+        // register. Match by email; anyone unmatched silently falls back to
+        // the cash_registers calculation below.
+        try {
+            $sling = new \App\Services\SlingClient();
+            if ($sling->isConfigured()) {
+                $erpUserIdByEmail = $users->mapWithKeys(function ($u) {
+                    $email = strtolower(trim((string) (\App\User::find($u->id)->email ?? '')));
+                    return $email !== '' ? [$email => $u->id] : [];
+                })->all();
+                $slingHours = $sling->hoursByErpUser($start_date, $end_date, $erpUserIdByEmail);
+                if (!empty($slingHours)) {
+                    $hours_raw = collect($slingHours);
+                }
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('Sling hours fetch failed, falling back to cash_registers: ' . $e->getMessage());
+        }
+
+        if ($hours_raw->isEmpty()) {
+            $hours_raw = DB::table('cash_registers')
+                ->where('business_id', $business_id)
+                ->whereNotNull('user_id')
+                ->where('created_at', '<=', $window_end)
+                ->where(function ($q) use ($window_start) {
+                    $q->where('closed_at', '>=', $window_start)
+                      ->orWhereNull('closed_at');
+                })
+                ->selectRaw("user_id,
+                    SUM(
+                        LEAST(
+                            TIMESTAMPDIFF(
+                                SECOND,
+                                GREATEST(created_at, ?),
+                                LEAST(COALESCE(closed_at, NOW()), ?)
+                            ),
+                            21600
+                        )
+                    ) / 3600.0 as hours")
+                ->addBinding($window_start, 'select')
+                ->addBinding($window_end, 'select')
+                ->groupBy('user_id')
+                ->pluck('hours', 'user_id');
+        }
 
         // Packages picked / shipped: each time a user changes a transaction's
         // shipping_status to "packed" or "shipped" via /sells edit-shipping,
