@@ -3,7 +3,13 @@
 
 @section('content')
 <section class="content-header">
-    <h1>Sling Connection <small>used for "Hours Worked" on the productivity report</small></h1>
+    <h1>
+        Sling Connection
+        <small>used for "Hours Worked" on the productivity report</small>
+        <a href="{{ url('/admin/sling/shifts') }}" class="btn btn-default btn-sm pull-right" style="margin-top:6px;">
+            <i class="fa fa-calendar"></i> View synced shifts
+        </a>
+    </h1>
 </section>
 
 <section class="content">
@@ -50,7 +56,7 @@
                 <li>Press <strong>Cmd+Option+I</strong> → click the <strong>Network</strong> tab.</li>
                 <li>Press <strong>Cmd+R</strong> to reload Sling so the network log fills up.</li>
                 <li>In the Filter box at the top of the Network tab, type <code>api.getsling</code>.</li>
-                <li><strong>Right-click any row</strong> → hover <strong>Copy</strong> → click <strong>Copy as cURL</strong>.</li>
+                <li><strong>Right-click any row</strong> → hover <strong>Copy</strong> → click any one of: <strong>Copy as cURL</strong>, <strong>Copy as fetch</strong>, or <strong>Copy as PowerShell</strong> (whichever your Chrome shows).</li>
                 <li>Paste the entire thing in the box below and click Save. The ERP extracts the token automatically.</li>
             </ol>
             <form method="POST" action="{{ url('/admin/sling/save-curl') }}" autocomplete="off">

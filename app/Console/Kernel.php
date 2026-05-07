@@ -108,6 +108,15 @@ class Kernel extends ConsoleKernel
             ->timezone('America/Los_Angeles')
             ->withoutOverlapping(90);
 
+        // Sling → ERP shift sync. Pulls last week + next month of scheduled
+        // shifts into sling_shifts so the ERP has its own roster of who
+        // worked when, independent of Sling availability. Daily at 03:30
+        // PST (after Clover overnight reconciliation has settled).
+        $schedule->command('sling:sync-shifts')
+            ->dailyAt('03:30')
+            ->timezone('America/Los_Angeles')
+            ->withoutOverlapping(60);
+
         // Customer wants — scan recently-added products against open wants
         // and notify the customer when we find a match. Runs at 4 PM PST so
         // the team's morning pricing push gets a same-day check-in, and the

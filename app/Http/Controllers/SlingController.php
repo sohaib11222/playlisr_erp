@@ -2,8 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\SlingShift;
 use App\System;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
 
 /**
  * Sling (getsling.com) connection — single source of truth for the auth
@@ -168,16 +171,28 @@ class SlingController extends Controller
     {
         $curl = (string) $request->input('curl');
         if (trim($curl) === '') {
-            return back()->with('status_error', 'Paste the full cURL command first.');
+            return back()->with('status_error', 'Paste something first.');
         }
-        // Match -H 'authorization: <value>' or -H "authorization: <value>"
-        // and the same with $'...' shell-escape format Chrome uses on Linux.
+        // Find an Authorization header in any common copy-paste format
+        // Chrome DevTools produces: cURL (-H 'authorization: ...'),
+        // fetch ("authorization": "..."), PowerShell, raw HAR JSON, etc.
         $token = null;
-        if (preg_match('/-H\s+\$?[\'"]\s*authorization:\s*([^\'"]+)[\'"]/i', $curl, $m)) {
-            $token = trim($m[1]);
+        $patterns = [
+            // -H 'authorization: VALUE'  /  -H "authorization: VALUE"  / -H $'authorization: VALUE'
+            '/-H\s+\$?[\'"]?\s*authorization\s*:\s*([^\'"\r\n]+?)\s*[\'"]/i',
+            // "authorization": "VALUE"  (fetch / HAR)
+            '/[\'"]\s*authorization\s*[\'"]\s*:\s*[\'"]([^\'"\r\n]+)[\'"]/i',
+            // bare "authorization: VALUE" line
+            '/^\s*authorization\s*:\s*(.+?)\s*$/im',
+        ];
+        foreach ($patterns as $pat) {
+            if (preg_match($pat, $curl, $m)) {
+                $token = trim($m[1]);
+                break;
+            }
         }
         if (!$token) {
-            return back()->with('status_error', 'No Authorization header found in that cURL command. Make sure you used "Copy as cURL" on a request to api.getsling.com.');
+            return back()->with('status_error', 'No Authorization header found. Make sure the request you copied was to api.getsling.com (not app.getsling.com). Any of these Chrome menu options work: Copy as cURL, Copy as fetch, Copy as PowerShell.');
         }
         System::addProperty(self::TOKEN_KEY, $token);
         // Also extract org id from the URL if present (e.g. /v1/901214/...).
@@ -196,6 +211,63 @@ class SlingController extends Controller
             return back()->with('status_success', 'Sling test: ' . $result['message']);
         }
         return back()->with('status_error', 'Sling test failed: ' . $result['message']);
+    }
+
+    /**
+     * Synced shifts page — shows the table that the daily cron fills, with
+     * a "Sync now" button that triggers an ad-hoc pull. Default window is
+     * the next 14 days (what's coming up); the controls let Sarah scan
+     * back to any prior month.
+     */
+    public function shiftsIndex(Request $request)
+    {
+        $tz = 'America/Los_Angeles';
+        $start = $request->input('start')
+            ? Carbon::parse($request->input('start'), $tz)->startOfDay()
+            : Carbon::today($tz)->subDays(7);
+        $end = $request->input('end')
+            ? Carbon::parse($request->input('end'), $tz)->endOfDay()
+            : Carbon::today($tz)->addDays(30);
+
+        $shifts = SlingShift::query()
+            ->whereBetween('dtstart', [$start, $end])
+            ->orderBy('dtstart', 'asc')
+            ->limit(1000)
+            ->get();
+
+        $lastSyncedAt = SlingShift::max('last_synced_at');
+        $totalCount = SlingShift::count();
+        $connected = (new \App\Services\SlingClient())->isConfigured();
+
+        return view('admin.sling_shifts', compact(
+            'shifts', 'start', 'end', 'lastSyncedAt', 'totalCount', 'connected'
+        ));
+    }
+
+    /**
+     * "Sync now" button. Runs the artisan command synchronously so Sarah
+     * can refresh the page and immediately see whether the pull worked.
+     */
+    public function syncShifts(Request $request)
+    {
+        $client = new \App\Services\SlingClient();
+        if (!$client->isConfigured()) {
+            return back()->with('status_error', 'Connect Sling first (Status box above).');
+        }
+        try {
+            Artisan::call('sling:sync-shifts');
+            $output = trim((string) Artisan::output());
+            $lastLine = '';
+            foreach (preg_split("/\r\n|\n|\r/", $output) as $line) {
+                $line = trim($line);
+                if ($line !== '') $lastLine = $line;
+            }
+            $msg = 'Sync complete.' . ($lastLine !== '' ? ' ' . $lastLine : '');
+            return back()->with('status_success', $msg);
+        } catch (\Throwable $e) {
+            \Log::warning('Sling Sync now failed: ' . $e->getMessage());
+            return back()->with('status_error', 'Sync failed: ' . $e->getMessage());
+        }
     }
 
     public function disconnect()

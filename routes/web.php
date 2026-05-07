@@ -416,6 +416,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/admin/sling/save-curl', 'SlingController@saveFromCurl');
     Route::post('/admin/sling/test', 'SlingController@testConnection');
     Route::post('/admin/sling/disconnect', 'SlingController@disconnect');
+    Route::get('/admin/sling/shifts', 'SlingController@shiftsIndex');
+    Route::post('/admin/sling/shifts/sync', 'SlingController@syncShifts');
     // The old "Clover vs ERP" rollup is superseded by the EOD reconciliation
     // page — same data, better structure (shift cards with drawer math).
     // Redirect preserves any bookmarks pointing at the old URL.
