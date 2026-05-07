@@ -62,7 +62,7 @@ HTML,
 <h3>Returns</h3>
 
 <div class="help-critical">
-    <strong>Manager-only.</strong> Only a manager can authorize a refund. If the manager is out, tell the customer it can be processed when they're back, or call Jon. Receipts are required. <strong>Used products: no returns</strong> — direct them to sell it back as a collection.
+    <strong>Manager-only.</strong> Only a manager can authorize a refund. If the manager is out, tell the customer it can be processed when they're back, or call Jon. Receipts are required. <strong>Used products: no returns.</strong>
 </div>
 
 <h3>Critical Don'ts</h3>
