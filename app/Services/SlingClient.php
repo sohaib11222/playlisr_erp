@@ -142,11 +142,34 @@ class SlingClient
 
     private function getDetailed(string $url): array
     {
+        // Sling's bash login example returns the FULL Authorization header
+        // value (with scheme prefix). But if Sarah pasted a bare JWT from
+        // localStorage, the prefix is missing and Sling rejects with
+        // "Unsupported authorization token type". Try the saved token as-is
+        // first, then transparently retry with a "Bearer " prefix on 401.
+        $det = $this->doGet($url, $this->token);
+        if ($det['http_code'] === 401 && stripos($this->token, 'bearer ') !== 0) {
+            $retry = $this->doGet($url, 'Bearer ' . $this->token);
+            if ($retry['http_code'] >= 200 && $retry['http_code'] < 300) {
+                // Persist the working format so the report doesn't pay the
+                // retry cost on every request.
+                $this->token = 'Bearer ' . $this->token;
+                System::addProperty('sling_auth_token', $this->token);
+                return $retry;
+            }
+            // Surface whichever response is more informative.
+            return $retry['body'] !== '' ? $retry : $det;
+        }
+        return $det;
+    }
+
+    private function doGet(string $url, string $authHeader): array
+    {
         try {
             $ch = curl_init($url);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                'Authorization: ' . $this->token,
+                'Authorization: ' . $authHeader,
                 'Accept: application/json',
             ]);
             curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);

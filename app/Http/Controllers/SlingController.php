@@ -147,10 +147,8 @@ class SlingController extends Controller
         if ($token === '') {
             return back()->with('status_error', 'Token is required.');
         }
-        if (stripos($token, 'bearer ') === 0) {
-            $token = trim(substr($token, 7));
-        }
-
+        // Save the FULL Authorization header value as captured (e.g. "Bearer eyJ...").
+        // Sling's API rejects a bare JWT — the scheme prefix is required.
         System::addProperty(self::TOKEN_KEY, $token);
         if ($orgId !== '') {
             System::addProperty(self::ORG_KEY, $orgId);
