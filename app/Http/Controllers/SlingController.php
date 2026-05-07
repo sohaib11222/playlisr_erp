@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\System;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
 
 /**
  * Sling (getsling.com) connection — single source of truth for the auth
@@ -44,34 +43,63 @@ class SlingController extends Controller
             return back()->with('status_error', 'Email and password are both required.');
         }
 
+        $headers = [];
+        $body = null;
+        $httpCode = 0;
+        $curlError = '';
         try {
-            $response = Http::timeout(15)
-                ->acceptJson()
-                ->asJson()
-                ->post('https://api.getsling.com/v1/account/login', [
-                    'email' => $email,
-                    'password' => $password,
-                ]);
+            $ch = curl_init('https://api.getsling.com/v1/account/login');
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_HEADER, true);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
+                'email' => $email,
+                'password' => $password,
+            ]));
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'Content-Type: application/json',
+                'Accept: application/json',
+                'User-Agent: NivessaERP/1.0 +https://playlist.nivessa.com',
+            ]);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+            $raw = curl_exec($ch);
+            $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $headerSize = (int) curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+            $curlError = (string) curl_error($ch);
+            curl_close($ch);
+
+            if ($curlError !== '' || !is_string($raw)) {
+                throw new \RuntimeException($curlError !== '' ? $curlError : 'Empty response');
+            }
+
+            $rawHeaders = substr($raw, 0, $headerSize);
+            $bodyStr = substr($raw, $headerSize);
+            foreach (preg_split("/\r\n|\n|\r/", $rawHeaders) as $line) {
+                if (strpos($line, ':') === false) continue;
+                [$k, $v] = explode(':', $line, 2);
+                $headers[strtolower(trim($k))] = trim($v);
+            }
+            $body = $bodyStr !== '' ? json_decode($bodyStr, true) : null;
         } catch (\Throwable $e) {
             \Log::warning('Sling login failed: ' . $e->getMessage());
             return back()->with('status_error', 'Could not reach Sling: ' . $e->getMessage());
         }
 
-        if (!$response->successful()) {
-            $msg = 'Sling rejected the login (HTTP ' . $response->status() . ').';
-            $body = $response->json();
+        if ($httpCode < 200 || $httpCode >= 300) {
+            $msg = 'Sling rejected the login (HTTP ' . $httpCode . ').';
             if (is_array($body) && !empty($body['message'])) {
                 $msg .= ' ' . $body['message'];
             }
             return back()->with('status_error', $msg);
         }
 
-        $token = $response->header('Authorization');
+        $token = $headers['authorization'] ?? null;
         if (!$token) {
             return back()->with('status_error', 'Sling did not return an Authorization token. Check the email/password.');
         }
 
-        $body = $response->json() ?: [];
+        $body = is_array($body) ? $body : [];
         $userId = $body['user']['id'] ?? null;
         $orgId = null;
         if (!empty($body['user']['orgs']) && is_array($body['user']['orgs'])) {
