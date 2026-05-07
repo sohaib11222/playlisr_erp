@@ -1,5 +1,6 @@
 @extends('layouts.app')
 @section('title', __('purchase.add_purchase'))
+@section('help_page_key', 'purchase.create')
 
 @section('content')
 

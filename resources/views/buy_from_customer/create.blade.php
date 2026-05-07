@@ -1,5 +1,6 @@
 @extends('layouts.app')
 @section('title', 'Buy from Customer Form')
+@section('help_page_key', 'buy_from_customer')
 
 @php
     $is_embed = request()->get('embed') == '1';

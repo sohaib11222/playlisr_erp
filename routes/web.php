@@ -143,6 +143,14 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/preorders/customer/{contact_id}', 'PreorderController@getCustomerPreorders');
     Route::post('/preorders/{id}/fulfill', 'PreorderController@fulfill');
 
+    // Help / Handbook
+    Route::get('/help', 'HelpController@index')->name('help.index');
+    Route::get('/help/search', 'HelpController@searchAjax')->name('help.searchAjax');
+    Route::get('/help/drawer', 'HelpController@drawer')->name('help.drawer');
+    Route::post('/help/log-click', 'HelpController@logClick')->name('help.logClick');
+    Route::get('/admin/help-search-report', 'HelpController@adminReport')->name('help.adminReport');
+    Route::get('/help/{slug}', 'HelpController@show')->name('help.show');
+
     // Customer Pickups
     Route::resource('customer-pickups', 'CustomerPickupController');
     Route::get('/customer-pickups/customer/{contact_id}', 'CustomerPickupController@getCustomerPickups');

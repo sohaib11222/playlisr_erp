@@ -1,5 +1,6 @@
 @extends('layouts.app')
 @section('title', __('purchase.purchases'))
+@section('help_page_key', 'purchase.index')
 
 @section('content')
 
