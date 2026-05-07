@@ -5159,13 +5159,9 @@ class ReportController extends Controller
 
         // Only include users who are allowed to log in and whose status is active.
         // Hides disabled / inactive / terminated accounts from the productivity report.
-        // Sarah 2026-05-07: also hide admin / dev / owner accounts that don't
-        // actually price products — they just clutter the ranking with zero rows.
-        $excluded_first_names = ['lashyn', 'sarah', 'sohaib', 'sohaibahmad', 'viper'];
         $users = User::where('business_id', $business_id)
             ->where('allow_login', 1)
             ->where('status', 'active')
-            ->whereNotIn(DB::raw('LOWER(TRIM(first_name))'), $excluded_first_names)
             ->select('id', DB::raw("CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')) as full_name"))
             ->orderBy('first_name')
             ->get();
@@ -5289,6 +5285,15 @@ class ReportController extends Controller
                 'packages_shipped_count' => $shipped,
                 'hours_worked' => $h,
             ];
+        })->filter(function ($r) {
+            // Hide users with zero activity in the window so admins / inactive
+            // accounts don't clutter the ranking. Admins who DO pick/ship/print
+            // still show up because they have non-zero counts.
+            return ($r->mass_add_count
+                + $r->purchase_add_count
+                + $r->labels_printed_count
+                + $r->packages_picked_count
+                + $r->packages_shipped_count) > 0;
         })->sortByDesc(function ($r) {
             // Most productive = total activity across every column. Treats one
             // priced item, one purchase line, one printed label, and one
