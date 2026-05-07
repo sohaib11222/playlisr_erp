@@ -59,12 +59,6 @@ HTML,
   <li><strong>Finalize</strong> and send the receipt by phone or email if they want one.</li>
 </ol>
 
-<h3>Discounts</h3>
-
-<div class="help-critical">
-    <strong>Manager-only.</strong> Cashiers do NOT apply discounts. If a customer asks for one, get a manager — they're the only ones who can authorize it.
-</div>
-
 <h3>Returns</h3>
 
 <div class="help-critical">
