@@ -60,17 +60,30 @@ HTML,
 </ol>
 
 <h3>Discounts</h3>
-<div class="help-warn"><strong>Manager-only.</strong> Cashiers don't apply discounts. If a customer asks for one, get a manager — they're the only ones who can authorize it.</div>
+
+<div class="help-critical">
+    <strong>Manager-only.</strong> Cashiers do NOT apply discounts. If a customer asks for one, get a manager — they're the only ones who can authorize it.
+</div>
 
 <h3>Returns</h3>
-<div class="help-warn"><strong>Manager-only.</strong> Only a manager can authorize refunds. If the manager is out, tell the customer it can be processed when they're back, or call Jon. Receipts are required. Used products: no returns — direct them to sell it back as a collection.</div>
 
-<h3>Don't</h3>
-<ul>
-  <li>Don't ring items only on Clover and skip the ERP — that's the gap that makes inventory and reports go wrong.</li>
-  <li>Don't apply tax-free unless it's a store-credit transaction.</li>
-  <li>Don't ring up Kallax records the customer pulled from under the bins without confirming with a manager (and if it sells, delete it from Discogs so it doesn't double-sell).</li>
-</ul>
+<div class="help-critical">
+    <strong>Manager-only.</strong> Only a manager can authorize a refund. If the manager is out, tell the customer it can be processed when they're back, or call Jon. Receipts are required. <strong>Used products: no returns</strong> — direct them to sell it back as a collection.
+</div>
+
+<h3>Critical Don'ts</h3>
+
+<div class="help-critical">
+    <strong>Always ring the sale in the ERP.</strong> Never ring on Clover only and skip /pos/create — that's the gap that breaks inventory, reports, and reconciliation.
+</div>
+
+<div class="help-warn">
+    <strong>Never zero the tax</strong> unless the entire transaction is store credit. Cash and card both pay tax.
+</div>
+
+<div class="help-warn">
+    <strong>Kallax pulls.</strong> If a customer pulls a record from a Kallax under the bins, don't ring it without checking with a manager. If it does sell, immediately delete the listing from Discogs so it doesn't get double-sold.
+</div>
 HTML,
             ],
             [
@@ -106,7 +119,9 @@ HTML,
   <li>If the genre on the sticker looks wrong, check Discogs and use your judgment.</li>
 </ul>
 
-<div class="help-tip"><strong>Sealed buys from customers</strong> (e.g. Randy's weekly drop at Pico) follow the same flow: <strong>Purchases &rarr; Add Purchase</strong>, search the title, set supplier to the customer's name (use the "+" button to add a new supplier), pick the location, and mark received.</div>
+<div class="help-tip">
+    <strong>Sealed buys from customers</strong> (e.g. Randy's weekly drop at Pico) follow the same flow: <strong>Purchases &rarr; Add Purchase</strong>, search the title, set supplier to the customer's name (use the "+" button to add a new supplier), pick the location, and mark received.
+</div>
 HTML,
             ],
             [
@@ -117,7 +132,11 @@ HTML,
                 'summary' => 'The negotiation flow plus what to pay for what.',
                 'page_keys' => ['buy_from_customer', 'purchase.create'],
                 'body_html' => <<<'HTML'
-<p>Buying collections fuels the business. The #1 priority when someone walks in with records: <strong>get their phone or email before anything else</strong>.</p>
+<p>Buying collections fuels the business. The #1 priority when someone walks in with records:</p>
+
+<div class="help-must-do">
+    <strong>Get their phone or email before anything else.</strong> Even if you can't make the deal today, the contact info is the first asset.
+</div>
 
 <h3>Negotiate first, type second</h3>
 <ol>
@@ -148,13 +167,18 @@ HTML,
   </tbody>
 </table>
 
-<h3>Don't buy</h3>
+<h3>Don't Buy</h3>
+
+<div class="help-critical">
+    <strong>No stolen goods.</strong> Sealed items with Target / B&amp;N / Walmart stickers from a seller who looks unhoused or evasive — kindly pass with "We aren't interested today." Get contact info and call Jon if you're unsure. Your safety comes first.
+</div>
+
+<div class="help-critical">
+    <strong>No firearms or weapons.</strong> Ever.
+</div>
+
 <div class="help-warn">
-  <ul style="margin-bottom: 0;">
-    <li><strong>Stolen goods.</strong> If something looks sealed with a Target/B&amp;N/Walmart sticker and the seller seems sketchy, kindly pass: "We aren't interested today." Get contact info and call Jon if unsure.</li>
-    <li><strong>Firearms or weapons.</strong> No.</li>
-    <li><strong>Items in Poor / Fair / Good condition</strong> at any meaningful price — they'll sit and lose money.</li>
-  </ul>
+    <strong>Avoid Poor / Fair / Good condition</strong> at any meaningful price — they sit and lose us money.
 </div>
 
 <h3>After you buy</h3>
