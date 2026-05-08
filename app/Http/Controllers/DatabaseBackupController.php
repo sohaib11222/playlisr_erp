@@ -89,6 +89,9 @@ class DatabaseBackupController extends Controller
             'filename' => $result['filename'],
             'size' => $result['size'] ?? 0,
             'download_url' => $downloadUrl,
+            'uploaded_to_drive' => !empty($result['uploaded_to_drive']),
+            'drive_url' => $result['drive_url'] ?? null,
+            'upload_message' => $result['upload_message'] ?? null,
         ]);
     }
 

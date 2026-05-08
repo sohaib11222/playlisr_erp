@@ -52,6 +52,13 @@ class Kernel extends ConsoleKernel
             ->timezone('America/Los_Angeles')
             ->withoutOverlapping(180);
 
+        // Daily DB backup for each business. Saves locally; optionally uploads
+        // to Google Drive when nivessa.backup_google_drive is configured.
+        $schedule->command('db:backup-daily')
+            ->dailyAt('03:20')
+            ->timezone('America/Los_Angeles')
+            ->withoutOverlapping(180);
+
         // StreetPulse daily upload (runs at 2:00 AM to upload yesterday's data)
         $schedule->command('streetpulse:upload-daily')->dailyAt('02:00');
 

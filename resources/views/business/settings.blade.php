@@ -404,9 +404,15 @@
                     $btn.prop('disabled', false);
                     if (res.success) {
                         toastr.success(res.msg || 'Backup ready.');
+                        if (res.upload_message) {
+                            toastr.info(res.upload_message);
+                        }
                         loadDatabaseBackupList();
                         if (res.download_url) {
                             window.location.href = res.download_url;
+                        }
+                        if (res.drive_url) {
+                            window.open(res.drive_url, '_blank');
                         }
                     } else {
                         toastr.error(res.msg || 'Backup failed.');

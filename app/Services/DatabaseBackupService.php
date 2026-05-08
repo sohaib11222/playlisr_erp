@@ -4,6 +4,7 @@ namespace App\Services;
 
 use Carbon\Carbon;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\Process\Process;
 
 class DatabaseBackupService
@@ -70,7 +71,16 @@ class DatabaseBackupService
 
     /**
      * @param int $businessId
-     * @return array{success:bool, message?:string, filename?:string, size?:int, path?:string}
+     * @return array{
+     *   success:bool,
+     *   message?:string,
+     *   filename?:string,
+     *   size?:int,
+     *   path?:string,
+     *   uploaded_to_drive?:bool,
+     *   drive_url?:string,
+     *   upload_message?:string
+     * }
      */
     public function createBackup($businessId)
     {
@@ -152,12 +162,26 @@ class DatabaseBackupService
 
         $this->pruneOldBackups($businessId);
 
+        $upload = $this->uploadToGoogleDriveIfConfigured($businessId, $fullPath, $filename);
+
         return [
             'success' => true,
             'filename' => $filename,
             'size' => (int) filesize($fullPath),
             'path' => $fullPath,
+            'uploaded_to_drive' => !empty($upload['success']),
+            'drive_url' => $upload['url'] ?? null,
+            'upload_message' => $upload['message'] ?? null,
         ];
+    }
+
+    /**
+     * @return bool
+     */
+    public function isGoogleDriveUploadConfigured()
+    {
+        return !empty(config('nivessa.backup_google_drive.enabled'))
+            && trim((string) config('nivessa.backup_google_drive.webhook_url', '')) !== '';
     }
 
     /**
@@ -203,6 +227,101 @@ class DatabaseBackupService
     public function isAllowedBackupFilename($name)
     {
         return (bool) preg_match('/^backup_\d{8}_\d{6}_[a-f0-9]{8}\.sql$/', $name);
+    }
+
+    /**
+     * Upload backup to Google Drive via a webhook endpoint (optional).
+     * Safe-by-default: local backup remains primary even if upload fails.
+     *
+     * @param int $businessId
+     * @param string $localPath
+     * @param string $filename
+     * @return array{success:bool,message?:string,url?:string}
+     */
+    protected function uploadToGoogleDriveIfConfigured($businessId, $localPath, $filename)
+    {
+        if (!$this->isGoogleDriveUploadConfigured()) {
+            return ['success' => false, 'message' => 'Google Drive upload is not configured.'];
+        }
+
+        if (!is_file($localPath)) {
+            return ['success' => false, 'message' => 'Backup file not found for upload.'];
+        }
+
+        $webhookUrl = trim((string) config('nivessa.backup_google_drive.webhook_url', ''));
+        $token = trim((string) config('nivessa.backup_google_drive.token', ''));
+        $folderId = trim((string) config('nivessa.backup_google_drive.folder_id', ''));
+        $timeout = (int) config('nivessa.backup_google_drive.timeout_seconds', 90);
+        $timeout = max(10, min(300, $timeout));
+
+        try {
+            $ch = curl_init();
+            $payload = [
+                'business_id' => (string) $businessId,
+                'filename' => $filename,
+                'token' => $token,
+                'folder_id' => $folderId,
+                'file' => new \CURLFile($localPath, 'application/sql', $filename),
+            ];
+
+            curl_setopt_array($ch, [
+                CURLOPT_URL => $webhookUrl,
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => $payload,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_CONNECTTIMEOUT => min(10, $timeout),
+                CURLOPT_TIMEOUT => $timeout,
+                CURLOPT_HTTPHEADER => ['Accept: application/json'],
+                CURLOPT_USERAGENT => 'NivessaERP-Backup/1.0',
+            ]);
+
+            $body = curl_exec($ch);
+            $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlError = (string) curl_error($ch);
+            curl_close($ch);
+
+            if ($curlError !== '') {
+                return ['success' => false, 'message' => 'Drive upload cURL error: ' . $this->truncateMessage($curlError, 220)];
+            }
+
+            $decoded = null;
+            if (is_string($body) && $body !== '') {
+                $decoded = json_decode($body, true);
+            }
+
+            if ($httpCode < 200 || $httpCode >= 300) {
+                $detail = '';
+                if (is_array($decoded) && !empty($decoded['message'])) {
+                    $detail = (string) $decoded['message'];
+                } elseif (is_string($body) && $body !== '') {
+                    $detail = $this->truncateMessage($body, 220);
+                }
+
+                return ['success' => false, 'message' => 'Drive upload failed (HTTP ' . $httpCode . ')' . ($detail !== '' ? ': ' . $detail : '')];
+            }
+
+            if (is_array($decoded) && (isset($decoded['success']) && !$decoded['success'])) {
+                return ['success' => false, 'message' => 'Drive upload rejected: ' . (string) ($decoded['message'] ?? 'Unknown error')];
+            }
+
+            $url = null;
+            if (is_array($decoded)) {
+                $url = $decoded['url'] ?? $decoded['webViewLink'] ?? $decoded['file_url'] ?? null;
+            }
+
+            return [
+                'success' => true,
+                'message' => $url ? 'Backup uploaded to Google Drive.' : 'Backup uploaded (Google Drive webhook).',
+                'url' => $url,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Database backup drive upload failed', [
+                'business_id' => $businessId,
+                'message' => $e->getMessage(),
+            ]);
+
+            return ['success' => false, 'message' => 'Drive upload exception: ' . $this->truncateMessage($e->getMessage(), 220)];
+        }
     }
 
     /**

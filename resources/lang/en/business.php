@@ -119,4 +119,7 @@ return [
     'database_backup_col_size' => 'Size',
     'database_backup_col_actions' => 'Actions',
     'database_backup_please_wait' => 'Please wait',
+    'database_backup_daily_schedule' => 'Automatic backup runs daily around :time (:tz).',
+    'database_backup_drive_enabled' => 'Google Drive upload is enabled.',
+    'database_backup_drive_disabled' => 'Google Drive upload is not configured (local backups still work).',
 ];

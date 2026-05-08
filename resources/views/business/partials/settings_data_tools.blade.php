@@ -6,6 +6,14 @@
             <p class="text-muted">
                 @lang('business.database_backup_intro', ['count' => 15])
             </p>
+            <p class="text-muted" style="margin-top:-5px;">
+                @lang('business.database_backup_daily_schedule', ['time' => '03:20', 'tz' => 'America/Los_Angeles'])
+                @if(!empty(config('nivessa.backup_google_drive.enabled')) && trim((string) config('nivessa.backup_google_drive.webhook_url', '')) !== '')
+                    <br><i class="fa fa-cloud"></i> @lang('business.database_backup_drive_enabled')
+                @else
+                    <br><i class="fa fa-hdd-o"></i> @lang('business.database_backup_drive_disabled')
+                @endif
+            </p>
             <p>
                 <button type="button" class="btn btn-primary" id="btn_database_backup_create">
                     <i class="fa fa-database"></i> @lang('business.database_backup_create')
