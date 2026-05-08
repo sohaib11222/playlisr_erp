@@ -349,6 +349,16 @@
         var backupListUrl = '{{ action("DatabaseBackupController@index") }}';
         var backupCreateUrl = '{{ action("DatabaseBackupController@store") }}';
         var backupDownloadBase = '{{ url("business/database-backup/download") }}/';
+        var $backupStatus = $('#database_backup_status');
+
+        function setBackupStatus(type, html) {
+            if (!$backupStatus.length) return;
+            $backupStatus
+                .removeClass('alert-info alert-success alert-warning alert-danger')
+                .addClass('alert-' + type)
+                .html(html)
+                .show();
+        }
 
         function formatBytes(bytes) {
             if (bytes < 1024) return bytes + ' B';
@@ -382,6 +392,7 @@
                 },
                 error: function() {
                     $tbody.html('<tr><td colspan="3" class="text-danger">Could not load backup list.</td></tr>');
+                    setBackupStatus('warning', 'Could not load backup list. Please try refresh.');
                 }
             });
         }
@@ -404,18 +415,27 @@
                     $btn.prop('disabled', false);
                     if (res.success) {
                         toastr.success(res.msg || 'Backup ready.');
-                        if (res.upload_message) {
-                            toastr.info(res.upload_message);
+                        var driveNote = '';
+                        if (res.uploaded_to_drive) {
+                            driveNote = '<br><strong>Google Drive:</strong> Uploaded successfully.';
+                            if (res.drive_url) {
+                                driveNote += ' <a href="' + res.drive_url + '" target="_blank" rel="noopener">Open file</a>';
+                            }
+                        } else if (res.upload_message) {
+                            driveNote = '<br><strong>Google Drive:</strong> ' + $('<span>').text(res.upload_message).html();
                         }
+                        setBackupStatus('success',
+                            '<strong>Backup created:</strong> ' + $('<span>').text(res.filename || '').html()
+                            + (res.size ? ' (' + formatBytes(res.size) + ')' : '')
+                            + driveNote
+                        );
                         loadDatabaseBackupList();
                         if (res.download_url) {
                             window.location.href = res.download_url;
                         }
-                        if (res.drive_url) {
-                            window.open(res.drive_url, '_blank');
-                        }
                     } else {
                         toastr.error(res.msg || 'Backup failed.');
+                        setBackupStatus('danger', '<strong>Backup failed:</strong> ' + $('<span>').text(res.msg || 'Unknown error').html());
                     }
                 },
                 error: function(xhr) {
@@ -423,6 +443,7 @@
                     $btn.prop('disabled', false);
                     var msg = (xhr.responseJSON && xhr.responseJSON.msg) ? xhr.responseJSON.msg : 'Backup failed.';
                     toastr.error(msg);
+                    setBackupStatus('danger', '<strong>Backup failed:</strong> ' + $('<span>').text(msg).html());
                 }
             });
         });

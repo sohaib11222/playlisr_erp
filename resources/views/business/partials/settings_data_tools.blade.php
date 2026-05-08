@@ -25,6 +25,7 @@
                     <i class="fa fa-spinner fa-spin fa-lg"></i> @lang('business.database_backup_please_wait')…
                 </span>
             </p>
+            <div id="database_backup_status" class="alert alert-info" style="display:none;"></div>
             <div class="table-responsive">
                 <table class="table table-bordered table-condensed" id="database-backup-list">
                     <thead>

@@ -284,6 +284,12 @@ class DatabaseBackupService
             curl_close($ch);
 
             if ($curlError !== '') {
+                Log::warning('Database backup drive upload failed', [
+                    'business_id' => $businessId,
+                    'filename' => $filename,
+                    'reason' => 'curl_error',
+                    'error' => $curlError,
+                ]);
                 return ['success' => false, 'message' => 'Drive upload cURL error: ' . $this->truncateMessage($curlError, 220)];
             }
 
@@ -300,10 +306,23 @@ class DatabaseBackupService
                     $detail = $this->truncateMessage($body, 220);
                 }
 
+                Log::warning('Database backup drive upload failed', [
+                    'business_id' => $businessId,
+                    'filename' => $filename,
+                    'reason' => 'http_error',
+                    'http_code' => $httpCode,
+                    'detail' => $detail,
+                ]);
                 return ['success' => false, 'message' => 'Drive upload failed (HTTP ' . $httpCode . ')' . ($detail !== '' ? ': ' . $detail : '')];
             }
 
             if (is_array($decoded) && (isset($decoded['success']) && !$decoded['success'])) {
+                Log::warning('Database backup drive upload failed', [
+                    'business_id' => $businessId,
+                    'filename' => $filename,
+                    'reason' => 'webhook_rejected',
+                    'detail' => (string) ($decoded['message'] ?? 'Unknown error'),
+                ]);
                 return ['success' => false, 'message' => 'Drive upload rejected: ' . (string) ($decoded['message'] ?? 'Unknown error')];
             }
 
@@ -312,6 +331,11 @@ class DatabaseBackupService
                 $url = $decoded['url'] ?? $decoded['webViewLink'] ?? $decoded['file_url'] ?? null;
             }
 
+            Log::info('Database backup drive upload succeeded', [
+                'business_id' => $businessId,
+                'filename' => $filename,
+                'drive_url' => $url,
+            ]);
             return [
                 'success' => true,
                 'message' => $url ? 'Backup uploaded to Google Drive.' : 'Backup uploaded (Google Drive webhook).',
