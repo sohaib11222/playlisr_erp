@@ -21,8 +21,10 @@
     .st-bar > .st-fill { height:100%; transition:width .6s ease; background:#534ab7; border-radius:3px; }
     .st-bar > .st-fill.complete { background:#16a34a; }
     .st-row-foot { font-size:10px; color:#6b7280; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .st-row-foot .st-vs-peer.ahead { color:#3b6d11; font-weight:600; }
-    .st-row-foot .st-vs-peer.behind { color:#9a3412; font-weight:600; }
+    .st-pace { font-weight:600; }
+    .st-pace.ahead { color:#3b6d11; }
+    .st-pace.behind { color:#9a3412; }
+    .st-pace.on { color:#1d4ed8; }
     .st-celebrate { background: linear-gradient(135deg, #fde68a, #fbbf24); color:#78350f; padding:6px 12px; border-radius:8px; margin-top:8px; font-weight:600; font-size:12px; text-align:center; }
     .st-empty { font-size:12px; color:#6b7280; }
 </style>
@@ -40,7 +42,8 @@
                 <span class="st-duty-pill {{ $shift_panel['duty'] }}">{{ $shift_panel['duty_label'] }}</span>
             </div>
             <div class="st-strip-meta">
-                Started {{ $shift_panel['started_at'] }} · {{ $shift_panel['location_name'] ?? 'store' }} · {{ number_format($shift_panel['hours'], 1) }}h
+                Started {{ $shift_panel['started_at'] }} · {{ $shift_panel['location_name'] ?? 'store' }} ·
+                {{ number_format($shift_panel['hours'], 1) }}h of ~{{ number_format($shift_panel['expected_hours'], 1) }}h shift
             </div>
         </div>
 
@@ -65,7 +68,6 @@
                         @php
                             $pp = $task['peer_per_hour'];
                             $tp = $task['peer_top_per_hour'] ?? null;
-                            $mp = $task['my_per_hour'];
                             $is_money = $task['unit'] === '$';
                             $fmt = function ($v) use ($is_money) {
                                 if ($v === null) return '—';
@@ -73,19 +75,29 @@
                                     ? '$' . number_format($v, 0)
                                     : number_format($v, $v < 10 ? 1 : 0);
                             };
+                            $paceLabel = [
+                                'ahead'  => 'Ahead of pace',
+                                'on'     => 'On pace',
+                                'behind' => 'Behind pace',
+                            ][$task['pace_status'] ?? ''] ?? null;
+                            $tooltip = '';
+                            if (!is_null($pp)) {
+                                $tooltip = 'Peers at this hour avg ' . $fmt($pp) . '/hr'
+                                    . ($tp ? ' · top ' . $fmt($tp) . '/hr' : '');
+                            }
                         @endphp
                         <span class="st-pct">{{ number_format($task['percent'], 0) }}%</span>
-                        @if(!is_null($pp) && !is_null($mp))
-                            @php
-                                $delta_pct = $pp > 0 ? (($mp - $pp) / $pp) * 100 : 0;
-                                $cls = $delta_pct >= 0 ? 'ahead' : 'behind';
-                                $sign = $delta_pct >= 0 ? '+' : '';
-                            @endphp
-                            · You {{ $fmt($mp) }}/hr · Peer {{ $fmt($pp) }}/hr <span class="st-vs-peer {{ $cls }}">({{ $sign }}{{ number_format($delta_pct, 0) }}%)</span>{{ $tp ? ' · Top '.$fmt($tp).'/hr' : '' }}
+                        @if($task['complete'])
+                            · <span class="st-pace ahead">Goal hit 🎉</span>
+                        @elseif($paceLabel)
+                            · <span class="st-pace {{ $task['pace_status'] }}" @if($tooltip) title="{{ $tooltip }}" @endif>{{ $paceLabel }}</span>
+                            @if(!is_null($pp))
+                                · <span title="{{ $tooltip }}">Peer {{ $fmt($pp) }}/hr</span>
+                            @endif
                         @elseif(!is_null($pp))
-                            · Peer {{ $fmt($pp) }}/hr{{ $tp ? ' · Top '.$fmt($tp).'/hr' : '' }}
+                            · Peer {{ $fmt($pp) }}/hr
                         @else
-                            · No peer history yet
+                            · Just getting started
                         @endif
                     </div>
                 </div>
@@ -150,6 +162,37 @@
             setTimeout(function () { $c.remove(); }, 2800);
         }
 
+        function fmt(v, isMoney) {
+            if (v === null || v === undefined) return '—';
+            if (isMoney) return '$' + Math.round(v).toLocaleString();
+            return v < 10 ? Number(v).toFixed(1) : String(Math.round(v));
+        }
+        var paceLabels = { ahead: 'Ahead of pace', on: 'On pace', behind: 'Behind pace' };
+
+        function buildFootHtml(t) {
+            var pp = t.peer_per_hour, tp = t.peer_top_per_hour;
+            var tooltip = pp != null
+                ? 'Peers at this hour avg ' + fmt(pp, t.unit === '$') + '/hr' + (tp ? ' · top ' + fmt(tp, t.unit === '$') + '/hr' : '')
+                : '';
+            var html = '<span class="st-pct">' + Math.round(t.percent) + '%</span>';
+            if (t.complete) {
+                return html + ' · <span class="st-pace ahead">Goal hit 🎉</span>';
+            }
+            var label = paceLabels[t.pace_status];
+            if (label) {
+                html += ' · <span class="st-pace ' + t.pace_status + '"'
+                    + (tooltip ? ' title="' + tooltip + '"' : '') + '>' + label + '</span>';
+                if (pp != null) {
+                    html += ' · <span title="' + tooltip + '">Peer ' + fmt(pp, t.unit === '$') + '/hr</span>';
+                }
+            } else if (pp != null) {
+                html += ' · Peer ' + fmt(pp, t.unit === '$') + '/hr';
+            } else {
+                html += ' · Just getting started';
+            }
+            return html;
+        }
+
         function refresh() {
             $.getJSON('{{ route('home.shiftProgress') }}', function (data) {
                 if (!data || !data.active) return;
@@ -168,7 +211,7 @@
                             '<span class="st-target"> / ' + Math.round(t.target).toLocaleString() + ' ' + t.unit + '</span>';
                     }
                     $task.find('.st-task-numbers').html(nums);
-                    $task.find('.st-pct').text(Math.round(t.percent) + '%');
+                    $task.find('.st-row-foot').html(buildFootHtml(t));
 
                     if (t.complete && !celebratedKeys[t.key]) {
                         celebratedKeys[t.key] = true;
