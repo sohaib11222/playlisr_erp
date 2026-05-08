@@ -180,6 +180,26 @@ class CloverController extends Controller
         }
     }
 
+    public function testAppSetup(Request $request)
+    {
+        try {
+            if (!auth()->user()->can('business_settings.access')) {
+                abort(403, 'Unauthorized action.');
+            }
+
+            $businessId = $request->session()->get('user.business_id');
+            $service = new CloverService($businessId);
+            $result = $service->testOAuthAppSetup(route('business.clover.connect'));
+
+            return response()->json($result);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'msg' => 'Error: ' . $e->getMessage(),
+            ]);
+        }
+    }
+
     /**
      * Preview customers from Clover before import
      *

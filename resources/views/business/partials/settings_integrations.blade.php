@@ -295,6 +295,9 @@
                         <a href="{{ route('business.clover.connect') }}" class="btn btn-success">
                             <i class="fa fa-plug"></i> {{ $cloverConnected ? 'Reconnect Clover OAuth' : 'Connect Clover OAuth' }}
                         </a>
+                        <button type="button" class="btn btn-primary" id="test_clover_app_setup_btn" style="margin-left: 8px;">
+                            <i class="fa fa-check-circle"></i> Test Clover App Setup
+                        </button>
                         @if($cloverConnected)
                             <span class="text-success" style="margin-left:10px;">
                                 <i class="fa fa-check"></i>
@@ -304,6 +307,7 @@
                             <span class="text-muted" style="margin-left:10px;">Save App ID/App Secret first, then connect.</span>
                         @endif
                     </p>
+                    <div id="clover_app_setup_status"></div>
                 </div>
             </div>
             
@@ -855,6 +859,60 @@
                     btn.prop('disabled', false).html('<i class="fa fa-plug"></i> Test Connection');
                     $('#clover_connection_status').html(
                         '<div class="alert alert-danger"><i class="fa fa-times"></i> Error testing connection</div>'
+                    );
+                }
+            });
+        });
+
+        // Test Clover OAuth / Cloud Pay Display app setup
+        $('#test_clover_app_setup_btn').on('click', function() {
+            var btn = $(this);
+            btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Testing...');
+            $('#clover_app_setup_status').html('');
+
+            $.ajax({
+                url: '{{ route("business.clover.test-app-setup") }}',
+                method: 'POST',
+                data: { _token: '{{ csrf_token() }}' },
+                dataType: 'json',
+                success: function(response) {
+                    btn.prop('disabled', false).html('<i class="fa fa-check-circle"></i> Test Clover App Setup');
+
+                    var cssClass = response.success ? 'alert-success' : 'alert-warning';
+                    var icon = response.success ? 'fa-check' : 'fa-exclamation-triangle';
+                    var html = '<div class="alert ' + cssClass + '"><i class="fa ' + icon + '"></i> ' + (response.msg || 'Test complete.');
+
+                    if (response.needs_oauth && response.connect_url) {
+                        html += ' <a href="' + response.connect_url + '" class="btn btn-xs btn-success" style="margin-left:8px;">Connect Clover OAuth</a>';
+                    }
+
+                    if (response.success && typeof response.device_count !== 'undefined') {
+                        html += '<br>Devices visible from Clover: <strong>' + response.device_count + '</strong>';
+                    }
+
+                    if (response.devices && response.devices.length) {
+                        html += '<ul style="margin-top:8px;">';
+                        response.devices.forEach(function(device) {
+                            html += '<li><code>' + (device.id || 'no-id') + '</code> — ' + (device.serial || 'no-serial') + (device.name ? ' (' + device.name + ')' : '') + '</li>';
+                        });
+                        html += '</ul>';
+                    }
+
+                    if (response.warnings && response.warnings.length) {
+                        html += '<ul style="margin-top:8px;">';
+                        response.warnings.forEach(function(warning) {
+                            html += '<li>' + warning + '</li>';
+                        });
+                        html += '</ul>';
+                    }
+
+                    html += '</div>';
+                    $('#clover_app_setup_status').html(html);
+                },
+                error: function() {
+                    btn.prop('disabled', false).html('<i class="fa fa-check-circle"></i> Test Clover App Setup');
+                    $('#clover_app_setup_status').html(
+                        '<div class="alert alert-danger"><i class="fa fa-times"></i> Error testing Clover app setup</div>'
                     );
                 }
             });

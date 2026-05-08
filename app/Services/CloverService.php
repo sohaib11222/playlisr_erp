@@ -269,6 +269,88 @@ class CloverService
     }
 
     /**
+     * Test the OAuth app setup used by Cloud Pay Display.
+     *
+     * This intentionally avoids Customers permissions. It checks only the
+     * pieces needed for the semi-integrated Flex flow: app creds, OAuth token,
+     * merchant read, RAID, and available devices.
+     */
+    public function testOAuthAppSetup($connectUrl = null)
+    {
+        $clover = $this->getClover();
+        $missing = [];
+
+        foreach (['app_id' => 'App ID', 'app_secret' => 'App Secret'] as $key => $label) {
+            if (empty($clover[$key])) {
+                $missing[] = $label;
+            }
+        }
+
+        if (!empty($missing)) {
+            return [
+                'success' => false,
+                'msg' => 'Missing Clover OAuth setup: ' . implode(', ', $missing) . '. Save these fields first.',
+            ];
+        }
+
+        if (empty($clover['access_token'])) {
+            return [
+                'success' => false,
+                'needs_oauth' => true,
+                'connect_url' => $connectUrl,
+                'msg' => 'Clover app credentials are saved. OAuth is not connected yet; click Connect Clover OAuth.',
+            ];
+        }
+
+        if (empty($clover['merchant_id'])) {
+            return [
+                'success' => false,
+                'msg' => 'OAuth token is saved, but Merchant ID is missing. Save the Clover merchant ID from the Clover dashboard URL.',
+            ];
+        }
+
+        $merchantId = $clover['merchant_id'];
+        $merchant = $this->curl($this->getBaseUrl() . '/v3/merchants/' . $merchantId);
+        if (empty($merchant['success'])) {
+            return [
+                'success' => false,
+                'msg' => 'Clover Merchant READ test failed: ' . ($merchant['msg'] ?? 'unknown error'),
+            ];
+        }
+
+        $devices = $this->curl($this->getBaseUrl() . '/v3/merchants/' . $merchantId . '/devices');
+        $deviceList = [];
+        if (!empty($devices['success'])) {
+            foreach (($devices['data']['elements'] ?? []) as $device) {
+                $deviceList[] = [
+                    'id' => $device['id'] ?? '',
+                    'serial' => $device['serial'] ?? '',
+                    'name' => $device['name'] ?? '',
+                    'model' => $device['model'] ?? '',
+                ];
+            }
+        }
+
+        $warnings = [];
+        if (empty($clover['remote_app_id'])) {
+            $warnings[] = 'RAID / Remote App ID is not saved yet.';
+        }
+        if (empty($clover['device_id']) && empty($deviceList)) {
+            $warnings[] = 'No default Flex Device ID is saved and the devices endpoint returned no devices.';
+        }
+
+        return [
+            'success' => true,
+            'msg' => 'Clover OAuth app test passed. Merchant READ works' .
+                (!empty($devices['success']) ? ', and devices were reachable.' : '. Device lookup failed or is unavailable.'),
+            'merchant' => $merchant['data'] ?? [],
+            'devices' => $deviceList,
+            'device_count' => count($deviceList),
+            'warnings' => $warnings,
+        ];
+    }
+
+    /**
      * Send payment to Clover device
      *
      * @param float $amount

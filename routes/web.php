@@ -84,6 +84,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     
     // Clover Customer Import
     Route::post('/business/test-clover-connection', 'CloverController@testConnection');
+    Route::post('/business/clover/test-app-setup', 'CloverController@testAppSetup')->name('business.clover.test-app-setup');
     Route::get('/business/preview-clover-customers', 'CloverController@previewCustomers');
     Route::post('/business/import-clover-customers', 'CloverController@importCustomers');
     Route::get('/business/clover/connect', 'CloverController@connect')->name('business.clover.connect');
