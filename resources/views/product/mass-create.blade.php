@@ -2245,12 +2245,20 @@
                         $row.find('input[name*="[single_dsp_inc_tax]"]').val(price);
                     }
                     // Pre-select category combo if Discogs gave us a match.
+                    // Side effect: when the matched category is "Used Vinyl"
+                    // (parent name contains that phrase, case-insensitive),
+                    // pre-fill Purchase Price with 0.35 — every used LP starts
+                    // at the same baseline cost and the operator can override.
                     if (discogsData.category_id) {
                         const sub = discogsData.sub_category_id || 0;
                         const comboVal = discogsData.category_id + '_' + sub;
                         const $combo = $row.find('.category-combo-select');
-                        if ($combo.find('option[value="' + comboVal + '"]').length) {
+                        const $opt = $combo.find('option[value="' + comboVal + '"]');
+                        if ($opt.length) {
                             $combo.val(comboVal).trigger('change');
+                            if (/used vinyl/i.test($opt.text())) {
+                                $row.find('input[name*="[single_dpp_inc_tax]"]').val('0.35');
+                            }
                         }
                     }
                     $row.find('.select2').select2();
