@@ -152,6 +152,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // Help / Handbook (catalog-based, no DB)
     Route::get('/help', 'HelpController@index')->name('help.index');
     Route::get('/help/{slug}', 'HelpController@show')->name('help.show')->where('slug', '[a-z0-9\\-]+');
+    Route::get('/reports/help-searches', 'HelpReportController@index')->name('reports.help-searches');
 
     // Customer Pickups
     Route::resource('customer-pickups', 'CustomerPickupController');
