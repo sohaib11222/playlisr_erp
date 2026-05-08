@@ -1382,18 +1382,16 @@
                             '<span class="st-target"> / ' + Math.round(task.target).toLocaleString() + ' ' + task.unit + '</span>';
                     }
                     $task.find('.st-task-numbers').html(numbersHtml);
-                    $task.find('.st-task-foot > span').first()
-                        .text(Math.round(task.percent) + '% of shift goal');
+                    $task.find('.st-pct').text(Math.round(task.percent) + '%');
 
                     if (task.complete && !celebratedKeys[task.key]) {
                         celebratedKeys[task.key] = true;
                         fireConfetti();
                         if (!$panel.find('[data-celebrate-banner]').length) {
                             var firstName = @json(Session::get('user.first_name') ?? '');
-                            $panel.find('.st-head').after(
+                            $panel.find('.st-strip-grid').after(
                                 '<div class="st-celebrate" data-celebrate-banner>' +
-                                'Goal hit — nice work ' + (firstName || 'there') +
-                                '! Keep the momentum going.</div>'
+                                'Goal hit — nice work ' + (firstName || 'there') + '!</div>'
                             );
                         }
                     }
