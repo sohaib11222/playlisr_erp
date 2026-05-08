@@ -257,14 +257,34 @@ class DatabaseBackupService
         $timeout = (int) config('nivessa.backup_google_drive.timeout_seconds', 90);
         $timeout = max(10, min(300, $timeout));
 
+        // Web app uploads (Apps Script, etc.) have payload limits; send gzipped dump.
+        $uploadPath = $localPath;
+        $uploadFilename = $filename;
+        $cleanupUploadPath = null;
+        if (preg_match('/\.sql$/i', $filename)) {
+            $gzFilename = preg_replace('/\.sql$/i', '.sql.gz', $filename);
+            $gzPath = dirname($localPath) . DIRECTORY_SEPARATOR . $gzFilename;
+            $gzOk = $this->createGzipCopy($localPath, $gzPath);
+            if ($gzOk && is_file($gzPath)) {
+                $uploadPath = $gzPath;
+                $uploadFilename = $gzFilename;
+                $cleanupUploadPath = $gzPath;
+            } else {
+                Log::warning('Database backup gzip compression failed before drive upload', [
+                    'business_id' => $businessId,
+                    'filename' => $filename,
+                ]);
+            }
+        }
+
         try {
             $ch = curl_init();
             $payload = [
                 'business_id' => (string) $businessId,
-                'filename' => $filename,
+                'filename' => $uploadFilename,
                 'token' => $token,
                 'folder_id' => $folderId,
-                'file' => new \CURLFile($localPath, 'application/sql', $filename),
+                'file' => new \CURLFile($uploadPath, 'application/gzip', $uploadFilename),
             ];
 
             curl_setopt_array($ch, [
@@ -286,10 +306,13 @@ class DatabaseBackupService
             if ($curlError !== '') {
                 Log::warning('Database backup drive upload failed', [
                     'business_id' => $businessId,
-                    'filename' => $filename,
+                    'filename' => $uploadFilename,
                     'reason' => 'curl_error',
                     'error' => $curlError,
                 ]);
+                if (!empty($cleanupUploadPath) && is_file($cleanupUploadPath)) {
+                    @unlink($cleanupUploadPath);
+                }
                 return ['success' => false, 'message' => 'Drive upload cURL error: ' . $this->truncateMessage($curlError, 220)];
             }
 
@@ -308,21 +331,27 @@ class DatabaseBackupService
 
                 Log::warning('Database backup drive upload failed', [
                     'business_id' => $businessId,
-                    'filename' => $filename,
+                    'filename' => $uploadFilename,
                     'reason' => 'http_error',
                     'http_code' => $httpCode,
                     'detail' => $detail,
                 ]);
+                if (!empty($cleanupUploadPath) && is_file($cleanupUploadPath)) {
+                    @unlink($cleanupUploadPath);
+                }
                 return ['success' => false, 'message' => 'Drive upload failed (HTTP ' . $httpCode . ')' . ($detail !== '' ? ': ' . $detail : '')];
             }
 
             if (is_array($decoded) && (isset($decoded['success']) && !$decoded['success'])) {
                 Log::warning('Database backup drive upload failed', [
                     'business_id' => $businessId,
-                    'filename' => $filename,
+                    'filename' => $uploadFilename,
                     'reason' => 'webhook_rejected',
                     'detail' => (string) ($decoded['message'] ?? 'Unknown error'),
                 ]);
+                if (!empty($cleanupUploadPath) && is_file($cleanupUploadPath)) {
+                    @unlink($cleanupUploadPath);
+                }
                 return ['success' => false, 'message' => 'Drive upload rejected: ' . (string) ($decoded['message'] ?? 'Unknown error')];
             }
 
@@ -333,12 +362,15 @@ class DatabaseBackupService
 
             Log::info('Database backup drive upload succeeded', [
                 'business_id' => $businessId,
-                'filename' => $filename,
+                'filename' => $uploadFilename,
                 'drive_url' => $url,
             ]);
+            if (!empty($cleanupUploadPath) && is_file($cleanupUploadPath)) {
+                @unlink($cleanupUploadPath);
+            }
             return [
                 'success' => true,
-                'message' => $url ? 'Backup uploaded to Google Drive.' : 'Backup uploaded (Google Drive webhook).',
+                'message' => $url ? 'Backup uploaded to Google Drive (compressed .sql.gz).' : 'Backup uploaded (compressed .sql.gz via webhook).',
                 'url' => $url,
             ];
         } catch (\Throwable $e) {
@@ -346,9 +378,56 @@ class DatabaseBackupService
                 'business_id' => $businessId,
                 'message' => $e->getMessage(),
             ]);
+            if (!empty($cleanupUploadPath) && is_file($cleanupUploadPath)) {
+                @unlink($cleanupUploadPath);
+            }
 
             return ['success' => false, 'message' => 'Drive upload exception: ' . $this->truncateMessage($e->getMessage(), 220)];
         }
+    }
+
+    /**
+     * Stream-compress SQL dump to gzip without loading full file in memory.
+     *
+     * @param string $sourcePath
+     * @param string $targetGzPath
+     * @return bool
+     */
+    protected function createGzipCopy($sourcePath, $targetGzPath)
+    {
+        $in = @fopen($sourcePath, 'rb');
+        if ($in === false) {
+            return false;
+        }
+
+        $out = @gzopen($targetGzPath, 'wb6');
+        if ($out === false) {
+            @fclose($in);
+            return false;
+        }
+
+        $ok = true;
+        while (!feof($in)) {
+            $chunk = fread($in, 1024 * 1024);
+            if ($chunk === false) {
+                $ok = false;
+                break;
+            }
+            if ($chunk !== '' && gzwrite($out, $chunk) === false) {
+                $ok = false;
+                break;
+            }
+        }
+
+        @fclose($in);
+        @gzclose($out);
+
+        if (!$ok) {
+            @unlink($targetGzPath);
+            return false;
+        }
+
+        return is_file($targetGzPath) && filesize($targetGzPath) > 0;
     }
 
     /**
