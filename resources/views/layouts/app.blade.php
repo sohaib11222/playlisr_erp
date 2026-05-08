@@ -75,6 +75,9 @@
                 @if (session('status'))
                     <input type="hidden" id="status_span" data-status="{{ session('status.success') }}" data-msg="{{ session('status.msg') }}">
                 @endif
+                @if(!$pos_layout && auth()->check() && auth()->user()->can('dashboard.data'))
+                    @include('layouts.partials.shift-strip')
+                @endif
                 @yield('content')
 
                 <div class='scrolltop no-print'>

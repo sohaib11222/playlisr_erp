@@ -105,6 +105,10 @@ class GamificationService
         $duty = $shift['duty'];
         $defs = $this->taskDefinitions($duty);
         $tasks = [];
+        // Goal scales to the whole expected shift (start → today's store
+        // close), not just hours elapsed so far. Avoids the "0/15 then
+        // creeping up" UX where the target slid up over the day.
+        $shift['expected_hours'] = $this->expectedShiftHours($shift);
 
         foreach ($defs as $def) {
             $current = $this->measureCurrent($def['key'], $user->id, $businessId, $shift);
@@ -432,11 +436,7 @@ class GamificationService
      */
     protected function computeTarget(string $taskKey, ?float $peerPerHour, array $shift): float
     {
-        if ($shift['hours'] < 0.25) {
-            return 0.0;
-        }
-
-        $hours = max(0.5, $shift['hours']);
+        $hours = max(1.0, $shift['expected_hours'] ?? $shift['hours']);
 
         if ($taskKey === 'sales_total') {
             if ($peerPerHour === null) {
@@ -468,5 +468,73 @@ class GamificationService
             return null;
         }
         return BusinessLocation::where('id', $locationId)->value('name');
+    }
+
+    /**
+     * Hours from shift start to today's store close — i.e. how long the
+     * employee is expected to be on shift. Used as the goal denominator so
+     * targets are stable across the whole shift (Jon 2026-05-08: prior
+     * behavior scaled goals to elapsed hours, which made "0/15" creep up
+     * to "0/176" over the day).
+     *
+     * Falls back to 6 hours when the location has no configured hours,
+     * the shift started after close, or the time-to-close is too short
+     * to be a meaningful shift (< 3h).
+     */
+    public function expectedShiftHours(array $shift): float
+    {
+        $defaultHours = 6.0;
+        $hours = $this->getStoreHours($shift['location_id'] ?? null);
+        if (!$hours) {
+            return $defaultHours;
+        }
+        $startedAt = $shift['started_at'];
+        $dayName = $startedAt->format('l');
+        if (!isset($hours[$dayName])) {
+            return $defaultHours;
+        }
+        [, $closeHour] = $hours[$dayName];
+        $todayClose = $startedAt->copy()->setTime($closeHour, 0, 0);
+        $hoursToClose = $startedAt->diffInMinutes($todayClose, false) / 60.0;
+        if ($hoursToClose < 3.0) {
+            return $defaultHours;
+        }
+        return min((float) self::SHIFT_MAX_HOURS, $hoursToClose);
+    }
+
+    /**
+     * Convenience: bundle current shift + tasks into the shape consumed by
+     * the shift-strip partial. Used by the dashboard controller and by the
+     * view composer that injects the strip into the global layout.
+     *
+     * @return array{
+     *   active: bool, duty: ?string, duty_label: ?string,
+     *   location_name: ?string, started_at: ?string, hours: float,
+     *   tasks: array
+     * }
+     */
+    public function buildPanel(User $user, int $businessId): array
+    {
+        $shift = $this->currentShift($user, $businessId);
+        if (!$shift) {
+            return [
+                'active' => false,
+                'duty' => null,
+                'duty_label' => null,
+                'location_name' => null,
+                'started_at' => null,
+                'hours' => 0.0,
+                'tasks' => [],
+            ];
+        }
+        return [
+            'active' => true,
+            'duty' => $shift['duty'],
+            'duty_label' => ucfirst($shift['duty']),
+            'location_name' => $this->locationName($shift['location_id']),
+            'started_at' => $shift['started_at']->format('g:i a'),
+            'hours' => $shift['hours'],
+            'tasks' => $this->shiftTasks($user, $shift, $businessId),
+        ];
     }
 }

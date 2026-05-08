@@ -2910,6 +2910,14 @@ class ProductController extends Controller
             ->orderBy('id')
             ->get(['label', 'keywords', 'price', 'category_id', 'sub_category_id', 'artist']);
 
+        // Surface the cashier's currently-open register location so the
+        // bulk-Discogs flow can pre-select Hollywood/Pico in Business
+        // Locations without making the operator pick it on every row.
+        $current_register = \App\CashRegister::where('user_id', auth()->id())
+            ->where('status', 'open')
+            ->first();
+        $current_pos_location_id = $current_register->location_id ?? null;
+
         return view('product.mass-create')->with(compact(
             'categories',
             'category_combos',
@@ -2917,7 +2925,8 @@ class ProductController extends Controller
             'taxes',
             'business_locations',
             'units',
-            'manual_item_price_rules'
+            'manual_item_price_rules',
+            'current_pos_location_id'
         ));
     }
 

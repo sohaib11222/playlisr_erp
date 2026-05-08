@@ -501,10 +501,10 @@
                     id="bulk_discogs_ids"
                     class="form-control"
                     rows="8"
-                    placeholder="Examples (mix and match):&#10;1873085&#10;https://www.discogs.com/release/249504-Pink-Floyd-The-Dark-Side-Of-The-Moon&#10;discogs.com/release/366070"
+                    placeholder="Examples (mix and match):&#10;1873085&#10;1873085 19.99&#10;https://www.discogs.com/release/249504-Pink-Floyd-The-Dark-Side-Of-The-Moon&#10;https://www.discogs.com/release/249504 25&#10;discogs.com/release/366070 $12.50"
                     style="font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.6;"></textarea>
                 <small class="text-muted">
-                    <i class="fa fa-info-circle"></i> Either the bare ID number, or a full Discogs URL like <code>discogs.com/release/<strong>1873085</strong>-...</code> &mdash; we'll pull the ID out.
+                    <i class="fa fa-info-circle"></i> Either the bare ID number, or a full Discogs URL like <code>discogs.com/release/<strong>1873085</strong>-...</code> &mdash; we'll pull the ID out. Add a space and a price at the end of any line (e.g. <code>1873085 19.99</code>) to pre-fill that row's <strong>Selling Price</strong>.
                 </small>
             </div>
             <div class="form-group">
@@ -665,6 +665,7 @@
 @php $asset_v = env('APP_VERSION'); @endphp
 <script>
     window.manualItemPriceRules = @json($manual_item_price_rules ?? []);
+    window.currentPosLocationId = @json($current_pos_location_id ?? null);
 </script>
 <script src="{{ asset('js/product.js?v=' . $asset_v) }}"></script>
 
@@ -2217,7 +2218,7 @@
         return max + 1;
     }
 
-    function addRowFromDiscogsData(discogsData, rowIdx) {
+    function addRowFromDiscogsData(discogsData, rowIdx, price) {
         return new Promise(function(resolve) {
             $.ajax({
                 url: "{{ route('product.getMassProductRow') }}",
@@ -2241,13 +2242,35 @@
                     if (discogsData.sku) {
                         $row.find('input[name*="[sku]"]').val(discogsData.sku);
                     }
+                    if (price) {
+                        $row.find('input[name*="[single_dsp_inc_tax]"]').val(price);
+                    }
+                    // Pre-select Business Locations to the cashier's
+                    // currently-open register (Hollywood / Pico / etc.) so
+                    // bulk Discogs adds land in the store the operator is
+                    // physically at without manual selection per row.
+                    if (window.currentPosLocationId) {
+                        const $locations = $row.find('.select2_business_locations');
+                        const locId = String(window.currentPosLocationId);
+                        if ($locations.find('option[value="' + locId + '"]').length) {
+                            $locations.val([locId]).trigger('change');
+                        }
+                    }
                     // Pre-select category combo if Discogs gave us a match.
+                    // Side effect: when the matched category is "Used Vinyl"
+                    // (parent name contains that phrase, case-insensitive),
+                    // pre-fill Purchase Price with 0.35 — every used LP starts
+                    // at the same baseline cost and the operator can override.
                     if (discogsData.category_id) {
                         const sub = discogsData.sub_category_id || 0;
                         const comboVal = discogsData.category_id + '_' + sub;
                         const $combo = $row.find('.category-combo-select');
-                        if ($combo.find('option[value="' + comboVal + '"]').length) {
+                        const $opt = $combo.find('option[value="' + comboVal + '"]');
+                        if ($opt.length) {
                             $combo.val(comboVal).trigger('change');
+                            if (/used vinyl/i.test($opt.text())) {
+                                $row.find('input[name*="[single_dpp_inc_tax]"]').val('0.35');
+                            }
                         }
                     }
                     $row.find('.select2').select2();
@@ -2261,34 +2284,50 @@
         });
     }
 
-    // Sarah 2026-05-06: accept either a bare numeric ID or a full Discogs URL
+    // Accept either a bare numeric ID or a full Discogs URL
     // like https://www.discogs.com/release/1873085-Pink-Floyd-Atom-Heart-Mother
     // Extracts the digits after `/release/` when a URL is pasted.
-    function extractDiscogsReleaseId(line) {
+    // Optionally accepts a trailing price after a space, e.g.
+    //   "1873085 19.99"  or  "https://www.discogs.com/release/249504 $25"
+    // The price (if present) is written into the row's selling-price field.
+    function parseDiscogsBulkLine(line) {
         const trimmed = (line || '').trim();
         if (!trimmed) return null;
-        if (/^\d+$/.test(trimmed)) return trimmed;
-        const m = trimmed.match(/\/release\/(\d+)/i);
-        return m ? m[1] : null;
+        let head = trimmed;
+        let price = null;
+        const priceMatch = trimmed.match(/\s+\$?(\d+(?:\.\d+)?)\s*$/);
+        if (priceMatch) {
+            price = priceMatch[1];
+            head = trimmed.slice(0, priceMatch.index).trim();
+        }
+        let id = null;
+        if (/^\d+$/.test(head)) {
+            id = head;
+        } else {
+            const m = head.match(/\/release\/(\d+)/i);
+            if (m) id = m[1];
+        }
+        if (!id) return null;
+        return { id: id, price: price };
     }
 
     $('#fetch_discogs_ids').on('click', function() {
         const raw = $('#bulk_discogs_ids').val() || '';
-        const ids = raw.split(/\r?\n/)
-                       .map(extractDiscogsReleaseId)
-                       .filter(Boolean);
-        if (!ids.length) {
+        const entries = raw.split(/\r?\n/)
+                           .map(parseDiscogsBulkLine)
+                           .filter(Boolean);
+        if (!entries.length) {
             toastr.warning('Paste at least one Discogs release ID or release URL.');
             return;
         }
-        if (!confirm(`Fetch ${ids.length} releases from Discogs and add them to the table?`)) {
+        if (!confirm(`Fetch ${entries.length} releases from Discogs and add them to the table?`)) {
             return;
         }
 
         // Reverse so prepends preserve typed order (first ID → top).
-        const queue = ids.slice().reverse();
+        const queue = entries.slice().reverse();
         const $btn = $(this).prop('disabled', true);
-        const total = ids.length;
+        const total = entries.length;
         let added = 0, failed = 0;
         const failures = [];
 
@@ -2321,14 +2360,16 @@
                 }
                 return;
             }
-            const id = queue.shift();
+            const entry = queue.shift();
+            const id = entry.id;
+            const price = entry.price;
             $('#discogs_fetch_status').html(`<i class="fa fa-spinner fa-spin"></i> Fetching ${id} (${added + failed + 1}/${total})...`);
             $.ajax({
                 url: "{{ url('product/mass-create/fetch-discogs-release') }}/" + encodeURIComponent(id),
                 type: 'GET',
                 success: function(resp) {
                     if (resp && resp.success) {
-                        addRowFromDiscogsData(resp.data, nextMassRowIndex())
+                        addRowFromDiscogsData(resp.data, nextMassRowIndex(), price)
                             .then(() => { added++; setTimeout(next, 250); });
                     } else {
                         failed++;

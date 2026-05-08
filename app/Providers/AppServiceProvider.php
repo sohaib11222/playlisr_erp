@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Services\GamificationService;
 use App\System;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\Auth;
@@ -63,6 +64,26 @@ class AppServiceProvider extends ServiceProvider
 
                 $view->with('enabled_modules', $enabled_modules);
                 $view->with('__is_pusher_enabled', $__is_pusher_enabled);
+            }
+        );
+
+        // Inject per-shift gamification panel into the global shift strip
+        // (rendered on every authenticated, non-POS page so cashiers don't
+        // have to open /home to see their progress).
+        View::composer(
+            'layouts.partials.shift-strip',
+            function ($view) {
+                if (!Auth::check()) {
+                    return;
+                }
+                $businessId = (int) session('user.business_id');
+                if (!$businessId) {
+                    return;
+                }
+                $view->with(
+                    'shift_panel',
+                    app(GamificationService::class)->buildPanel(Auth::user(), $businessId)
+                );
             }
         );
 
