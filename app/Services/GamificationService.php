@@ -469,4 +469,40 @@ class GamificationService
         }
         return BusinessLocation::where('id', $locationId)->value('name');
     }
+
+    /**
+     * Convenience: bundle current shift + tasks into the shape consumed by
+     * the shift-strip partial. Used by the dashboard controller and by the
+     * view composer that injects the strip into the global layout.
+     *
+     * @return array{
+     *   active: bool, duty: ?string, duty_label: ?string,
+     *   location_name: ?string, started_at: ?string, hours: float,
+     *   tasks: array
+     * }
+     */
+    public function buildPanel(User $user, int $businessId): array
+    {
+        $shift = $this->currentShift($user, $businessId);
+        if (!$shift) {
+            return [
+                'active' => false,
+                'duty' => null,
+                'duty_label' => null,
+                'location_name' => null,
+                'started_at' => null,
+                'hours' => 0.0,
+                'tasks' => [],
+            ];
+        }
+        return [
+            'active' => true,
+            'duty' => $shift['duty'],
+            'duty_label' => ucfirst($shift['duty']),
+            'location_name' => $this->locationName($shift['location_id']),
+            'started_at' => $shift['started_at']->format('g:i a'),
+            'hours' => $shift['hours'],
+            'tasks' => $this->shiftTasks($user, $shift, $businessId),
+        ];
+    }
 }

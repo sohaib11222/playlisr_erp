@@ -930,11 +930,7 @@ class HomeController extends Controller
             ->limit(10)
             ->get();
 
-        // Per-shift gamification panel (role-aware tasks + peer pace).
-        $shift_panel = $this->buildShiftPanel($business_id);
-
         return view('home.index', compact(
-            'shift_panel',
             'sells_chart_1', 'sells_chart_2', 'widgets', 'all_locations', 'common_settings', 'is_admin',
             'top_categories_by_location', 'top_formats', 'recent_purchases',
             'last_sold_items', 'top_expensive_items',
@@ -963,39 +959,10 @@ class HomeController extends Controller
         ));
     }
 
-    protected function buildShiftPanel(int $businessId): array
-    {
-        $service = app(GamificationService::class);
-        $user = auth()->user();
-        $shift = $service->currentShift($user, $businessId);
-
-        if (!$shift) {
-            return [
-                'active' => false,
-                'duty' => null,
-                'duty_label' => null,
-                'location_name' => null,
-                'started_at' => null,
-                'hours' => 0.0,
-                'tasks' => [],
-            ];
-        }
-
-        return [
-            'active' => true,
-            'duty' => $shift['duty'],
-            'duty_label' => ucfirst($shift['duty']),
-            'location_name' => $service->locationName($shift['location_id']),
-            'started_at' => $shift['started_at']->format('g:i a'),
-            'hours' => $shift['hours'],
-            'tasks' => $service->shiftTasks($user, $shift, $businessId),
-        ];
-    }
-
     public function getShiftProgress()
     {
         $businessId = (int) request()->session()->get('user.business_id');
-        return response()->json($this->buildShiftPanel($businessId));
+        return response()->json(app(GamificationService::class)->buildPanel(auth()->user(), $businessId));
     }
 
     /**

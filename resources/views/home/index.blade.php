@@ -66,8 +66,6 @@
         .pp-rank { width:28px; height:28px; border-radius:4px; display:inline-flex; align-items:center; justify-content:center; color:#fff; font-size:13px; font-weight:600; flex:0 0 auto; }
     </style>
 
-    @includeIf('home._shift_tasks')
-
     <div class="pp-card" style="padding:22px 26px;">
         <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:18px;">
             <div>
@@ -1312,100 +1310,6 @@
         }
 
     });
-    </script>
-
-    {{-- Shift-tasks panel: poll progress every 60s and celebrate when a task
-         crosses into "complete". Celebration fires once per task per page load. --}}
-    <script type="text/javascript">
-    (function () {
-        var $panel = $('#shift-tasks-panel');
-        if (!$panel.length) return;
-
-        var celebratedKeys = {};
-        $panel.find('[data-task-key]').each(function () {
-            if ($(this).data('task-complete') === 1 || $(this).data('task-complete') === '1') {
-                celebratedKeys[$(this).data('task-key')] = true;
-            }
-        });
-
-        function fireConfetti() {
-            var $c = $('<div>', {
-                'class': 'st-confetti-burst',
-                css: {
-                    position: 'fixed', left: 0, top: 0, right: 0, bottom: 0,
-                    pointerEvents: 'none', zIndex: 9999, overflow: 'hidden'
-                }
-            });
-            var colors = ['#fbbf24','#16a34a','#534ab7','#ef4444','#0ea5e9'];
-            for (var i = 0; i < 60; i++) {
-                var $piece = $('<div>', {
-                    css: {
-                        position: 'absolute',
-                        left: Math.random() * 100 + 'vw',
-                        top: '-10px',
-                        width: '8px', height: '14px',
-                        background: colors[i % colors.length],
-                        opacity: 0.9,
-                        transform: 'rotate(' + (Math.random() * 360) + 'deg)',
-                        transition: 'transform 2.4s ease-out, top 2.4s ease-out, opacity 2.4s ease-out'
-                    }
-                });
-                $c.append($piece);
-                setTimeout((function ($p) { return function () {
-                    $p.css({
-                        top: (80 + Math.random() * 20) + 'vh',
-                        transform: 'rotate(' + (Math.random() * 720) + 'deg)',
-                        opacity: 0
-                    });
-                }; })($piece), 30);
-            }
-            $('body').append($c);
-            setTimeout(function () { $c.remove(); }, 2800);
-        }
-
-        function refreshShiftPanel() {
-            $.getJSON('{{ route('home.shiftProgress') }}', function (data) {
-                if (!data || !data.active) return;
-                (data.tasks || []).forEach(function (task) {
-                    var $task = $panel.find('[data-task-key="' + task.key + '"]');
-                    if (!$task.length) return;
-                    $task.find('.st-fill')
-                        .css('width', task.percent + '%')
-                        .toggleClass('complete', !!task.complete);
-
-                    var numbersHtml;
-                    if (task.unit === '$') {
-                        numbersHtml = '$' + Math.round(task.current).toLocaleString() +
-                            '<span class="st-target"> / $' + Math.round(task.target).toLocaleString() + '</span>';
-                    } else {
-                        numbersHtml = Math.round(task.current).toLocaleString() +
-                            '<span class="st-target"> / ' + Math.round(task.target).toLocaleString() + ' ' + task.unit + '</span>';
-                    }
-                    $task.find('.st-task-numbers').html(numbersHtml);
-                    $task.find('.st-pct').text(Math.round(task.percent) + '%');
-
-                    if (task.complete && !celebratedKeys[task.key]) {
-                        celebratedKeys[task.key] = true;
-                        fireConfetti();
-                        if (!$panel.find('[data-celebrate-banner]').length) {
-                            var firstName = @json(Session::get('user.first_name') ?? '');
-                            $panel.find('.st-strip-grid').after(
-                                '<div class="st-celebrate" data-celebrate-banner>' +
-                                'Goal hit — nice work ' + (firstName || 'there') + '!</div>'
-                            );
-                        }
-                    }
-                });
-            });
-        }
-
-        // Initial refresh in case data drifted between server render and now,
-        // then poll every 60s. Pause when tab is hidden.
-        setTimeout(refreshShiftPanel, 5000);
-        var pollId = setInterval(function () {
-            if (!document.hidden) refreshShiftPanel();
-        }, 60000);
-    })();
     </script>
 @endsection
 
