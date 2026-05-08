@@ -665,6 +665,7 @@
 @php $asset_v = env('APP_VERSION'); @endphp
 <script>
     window.manualItemPriceRules = @json($manual_item_price_rules ?? []);
+    window.currentPosLocationId = @json($current_pos_location_id ?? null);
 </script>
 <script src="{{ asset('js/product.js?v=' . $asset_v) }}"></script>
 
@@ -2243,6 +2244,17 @@
                     }
                     if (price) {
                         $row.find('input[name*="[single_dsp_inc_tax]"]').val(price);
+                    }
+                    // Pre-select Business Locations to the cashier's
+                    // currently-open register (Hollywood / Pico / etc.) so
+                    // bulk Discogs adds land in the store the operator is
+                    // physically at without manual selection per row.
+                    if (window.currentPosLocationId) {
+                        const $locations = $row.find('.select2_business_locations');
+                        const locId = String(window.currentPosLocationId);
+                        if ($locations.find('option[value="' + locId + '"]').length) {
+                            $locations.val([locId]).trigger('change');
+                        }
                     }
                     // Pre-select category combo if Discogs gave us a match.
                     // Side effect: when the matched category is "Used Vinyl"
