@@ -57,6 +57,7 @@
                             <th>Closing Balance</th>
                             <th>Expected (Cash)</th>
                             <th>Difference</th>
+                            <th>Safe drop</th>
                             <th>@lang('cash_register.total_card_slips')</th>
                             <th>@lang('cash_register.total_cheques')</th>
                             <th>@lang('cash_register.total_cash')</th>
@@ -81,6 +82,7 @@
                             <td></td>
                             <td></td>
                             <td></td>
+                            <td class="footer_total_safe_drop"></td>
                             <td class="footer_total_card_payment"></td>
                             <td class="footer_total_cheque_payment"></td>
                             <td class="footer_total_cash_payment"></td>

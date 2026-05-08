@@ -4,7 +4,11 @@
 		@if(!empty($shortcuts["pos"]["express_checkout"]) && ($pos_settings['disable_express_checkout'] == 0))
 			Mousetrap.bind('{{$shortcuts["pos"]["express_checkout"]}}', function(e) {
 				e.preventDefault();
-				$('button.pos-express-finalize[data-pay_method="cash"]').trigger('click');
+				// Native click so the cashier-confirm intercept in
+				// pos_form_totals.blade.php fires (jQuery .trigger only
+				// fires jQuery handlers, bypassing the native capture).
+				var cashBtn = document.querySelector('button.pos-express-finalize[data-pay_method="cash"]');
+				if (cashBtn) cashBtn.click();
 			});
 		@endif
 

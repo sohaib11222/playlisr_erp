@@ -1123,6 +1123,13 @@ class ReportController extends Controller
                     $cls = abs($diff) < 0.01 ? 'text-success' : 'text-danger';
                     return '<span class="' . $cls . '" data-orig-value="' . $diff . '" >' . $this->transactionUtil->num_f($diff, true) . '</span>';
                 })
+                ->addColumn('safe_drop_amount', function ($row) {
+                    // Tolerate the column not yet existing (migration may
+                    // not have run on every environment) and old shifts
+                    // that closed before this feature shipped.
+                    $val = isset($row->safe_drop_amount) ? (float) $row->safe_drop_amount : 0;
+                    return '<span data-orig-value="' . $val . '" >' . $this->transactionUtil->num_f($val, true) . '</span>';
+                })
                 ->addColumn('total', function ($row) {
                     $total = $row->total_card_payment + $row->total_cheque_payment + $row->total_cash_payment + $row->total_bank_transfer_payment + $row->total_other_payment + $row->total_advance_payment + $row->total_custom_pay_1 + $row->total_custom_pay_2 + $row->total_custom_pay_3 + $row->total_custom_pay_4 + $row->total_custom_pay_5 + $row->total_custom_pay_6 + $row->total_custom_pay_7;
                     
@@ -1134,7 +1141,7 @@ class ReportController extends Controller
                 ->filterColumn('user_name', function ($query, $keyword) {
                     $query->whereRaw("CONCAT(COALESCE(surname, ''), ' ', COALESCE(first_name, ''), ' ', COALESCE(last_name, ''), '<br>', COALESCE(u.email, '')) like ?", ["%{$keyword}%"]);
                 })
-                ->rawColumns(['action', 'user_name', 'opening_balance', 'closing_amount', 'expected_closing', 'reconciliation_difference', 'total_card_payment', 'total_cheque_payment', 'total_cash_payment', 'total_bank_transfer_payment', 'total_other_payment', 'total_advance_payment', 'total_custom_pay_1', 'total_custom_pay_2', 'total_custom_pay_3', 'total_custom_pay_4', 'total_custom_pay_5', 'total_custom_pay_6', 'total_custom_pay_7', 'total'])
+                ->rawColumns(['action', 'user_name', 'opening_balance', 'closing_amount', 'expected_closing', 'reconciliation_difference', 'safe_drop_amount', 'total_card_payment', 'total_cheque_payment', 'total_cash_payment', 'total_bank_transfer_payment', 'total_other_payment', 'total_advance_payment', 'total_custom_pay_1', 'total_custom_pay_2', 'total_custom_pay_3', 'total_custom_pay_4', 'total_custom_pay_5', 'total_custom_pay_6', 'total_custom_pay_7', 'total'])
                 ->make(true);
         }
 
@@ -5192,17 +5199,173 @@ class ReportController extends Controller
             ->groupBy('t.created_by')
             ->pluck('total', 't.created_by');
 
-        $rows = $users->map(function ($u) use ($mass_add, $purchase_add) {
+        // Labels printed from the Print Labels tab. LabelsController@preview
+        // writes one activity_log row per print run with qty in properties.
+        $labels_by_user = [];
+        $label_rows = DB::table('activity_log')
+            ->where('description', 'labels_printed')
+            ->where('business_id', $business_id)
+            ->whereBetween('created_at', [$start_date . ' 00:00:00', $end_date . ' 23:59:59'])
+            ->whereNotNull('causer_id')
+            ->select('causer_id', 'properties')
+            ->get();
+        foreach ($label_rows as $row) {
+            $props = json_decode($row->properties, true) ?: [];
+            $qty = (int) ($props['qty'] ?? 0);
+            $labels_by_user[$row->causer_id] = ($labels_by_user[$row->causer_id] ?? 0) + $qty;
+        }
+        $labels_printed = collect($labels_by_user);
+
+        // Hours worked from cash_registers (created_at -> closed_at), clipped
+        // to the selected window AND capped at 6h per shift — registers
+        // sometimes get left open all day/overnight and would otherwise
+        // inflate hours. 21600 seconds = 6 hours.
+        $window_start = $start_date . ' 00:00:00';
+        $window_end = $end_date . ' 23:59:59';
+        $hours_raw = collect();
+
+        // Try Sling first — if Sarah has connected the org's Sling account
+        // (via /admin/sling/login), use scheduled shifts as the source of
+        // truth for hours, since that covers staff (Nick) who never open a
+        // register. Match by email; anyone unmatched silently falls back to
+        // the cash_registers calculation below.
+        try {
+            $sling = new \App\Services\SlingClient();
+            if ($sling->isConfigured()) {
+                $erpUserIdByEmail = $users->mapWithKeys(function ($u) {
+                    $email = strtolower(trim((string) (\App\User::find($u->id)->email ?? '')));
+                    return $email !== '' ? [$email => $u->id] : [];
+                })->all();
+                $slingHours = $sling->hoursByErpUser($start_date, $end_date, $erpUserIdByEmail);
+                if (!empty($slingHours)) {
+                    $hours_raw = collect($slingHours);
+                }
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('Sling hours fetch failed, falling back to cash_registers: ' . $e->getMessage());
+        }
+
+        if ($hours_raw->isEmpty()) {
+            $hours_raw = DB::table('cash_registers')
+                ->where('business_id', $business_id)
+                ->whereNotNull('user_id')
+                ->where('created_at', '<=', $window_end)
+                ->where(function ($q) use ($window_start) {
+                    $q->where('closed_at', '>=', $window_start)
+                      ->orWhereNull('closed_at');
+                })
+                ->selectRaw("user_id,
+                    SUM(
+                        LEAST(
+                            TIMESTAMPDIFF(
+                                SECOND,
+                                GREATEST(created_at, ?),
+                                LEAST(COALESCE(closed_at, NOW()), ?)
+                            ),
+                            21600
+                        )
+                    ) / 3600.0 as hours")
+                ->addBinding($window_start, 'select')
+                ->addBinding($window_end, 'select')
+                ->groupBy('user_id')
+                ->pluck('hours', 'user_id');
+        }
+
+        // Packages picked / shipped: each time a user changes a transaction's
+        // shipping_status to "packed" or "shipped" via /sells edit-shipping,
+        // an activity_log row is written with the old + new values. We count
+        // distinct transactions per user that transitioned INTO each state.
+        // (Nick is the one Sarah is tracking, but column applies to everyone.)
+        $picked_by_user = [];
+        $shipped_by_user = [];
+        $shipping_edits = DB::table('activity_log')
+            ->where('description', 'shipping_edited')
+            ->where('business_id', $business_id)
+            ->where('subject_type', 'App\\Transaction')
+            ->whereBetween('created_at', [$window_start, $window_end])
+            ->whereNotNull('causer_id')
+            ->select('causer_id', 'subject_id', 'properties')
+            ->get();
+        foreach ($shipping_edits as $edit) {
+            $props = json_decode($edit->properties, true) ?: [];
+            $new = $props['attributes']['shipping_status'] ?? null;
+            $old = $props['old']['shipping_status'] ?? null;
+            if (!$new || $new === $old) {
+                continue;
+            }
+            if ($new === 'packed') {
+                $picked_by_user[$edit->causer_id][$edit->subject_id] = true;
+            } elseif ($new === 'shipped') {
+                $shipped_by_user[$edit->causer_id][$edit->subject_id] = true;
+            }
+        }
+
+        // Shipping happens on nivessa.com (not the ERP), so the activity_log
+        // rows above are always empty. Pull totals from the website backend
+        // and credit them to Nick's row — he owns shipping. Failures (network
+        // / missing API key) just leave the columns at 0.
+        $nivessa_picked = 0;
+        $nivessa_shipped = 0;
+        try {
+            $base = rtrim((string) config('nivessa.website_api_url', 'https://nivessa.com'), '/');
+            $key = trim((string) config('nivessa.website_api_key', ''));
+            if ($key !== '') {
+                $url = $base . '/api/v1/admin/fulfillment-counts'
+                    . '?start_date=' . urlencode($start_date)
+                    . '&end_date=' . urlencode($end_date);
+                $det = $this->httpGetJsonDetailed($url, $key, 10);
+                $body = $det['decoded'] ?? null;
+                if (!empty($body) && !empty($body['success'])) {
+                    $nivessa_picked = (int) ($body['picked_items'] ?? 0)
+                        + (int) ($body['packed_items'] ?? 0);
+                    $nivessa_shipped = (int) ($body['shipped_orders'] ?? 0);
+                }
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('fulfillment-counts fetch failed: ' . $e->getMessage());
+        }
+
+        $rows = $users->map(function ($u) use ($mass_add, $purchase_add, $labels_printed, $hours_raw, $picked_by_user, $shipped_by_user, $nivessa_picked, $nivessa_shipped) {
             $m = (int) ($mass_add[$u->id] ?? 0);
             $p = (int) ($purchase_add[$u->id] ?? 0);
+            $l = (int) ($labels_printed[$u->id] ?? 0);
+            $h = (float) ($hours_raw[$u->id] ?? 0);
+            $picked = isset($picked_by_user[$u->id]) ? count($picked_by_user[$u->id]) : 0;
+            $shipped = isset($shipped_by_user[$u->id]) ? count($shipped_by_user[$u->id]) : 0;
+            // Nick owns nivessa.com shipping — credit the website totals to him.
+            if (strtolower(trim(explode(' ', (string) $u->full_name)[0] ?? '')) === 'nick') {
+                $picked += $nivessa_picked;
+                $shipped += $nivessa_shipped;
+            }
             return (object) [
                 'user_id' => $u->id,
                 'employee' => trim((string) $u->full_name),
                 'mass_add_count' => $m,
                 'purchase_add_count' => $p,
-                'total_count' => $m + $p,
+                'labels_printed_count' => $l,
+                'packages_picked_count' => $picked,
+                'packages_shipped_count' => $shipped,
+                'hours_worked' => $h,
             ];
-        })->sortByDesc('total_count')->values();
+        })->filter(function ($r) {
+            // Hide users with zero activity in the window so admins / inactive
+            // accounts don't clutter the ranking. Admins who DO pick/ship/print
+            // still show up because they have non-zero counts.
+            return ($r->mass_add_count
+                + $r->purchase_add_count
+                + $r->labels_printed_count
+                + $r->packages_picked_count
+                + $r->packages_shipped_count) > 0;
+        })->sortByDesc(function ($r) {
+            // Most productive = total activity across every column. Treats one
+            // priced item, one purchase line, one printed label, and one
+            // package handled as equal units of work.
+            return $r->mass_add_count
+                + $r->purchase_add_count
+                + $r->labels_printed_count
+                + $r->packages_picked_count
+                + $r->packages_shipped_count;
+        })->values();
 
         // Daily summary cards for current day.
         $today = \Carbon::today()->format('Y-m-d');
@@ -5663,7 +5826,21 @@ class ReportController extends Controller
                 ? ($row['gross_profit'] / $row['revenue']) * 100 : 0;
             return $row;
         }, $rows);
-        usort($rows, function ($a, $b) { return $b['revenue'] <=> $a['revenue']; });
+        // Group rows by channel family so the two Whatnot rows always sit
+        // adjacent (Sarah 2026-05-05 — was getting separated by Discogs /
+        // web rows when sorted purely by revenue). Within each group, sort
+        // by revenue desc so the dominant location/channel still bubbles up.
+        $family = function ($channel) {
+            if ($channel === 'in_store') return 1;
+            if ($channel === 'whatnot')  return 2;
+            return 3; // discogs, ebay, web_ship, web_pickup, space_rental
+        };
+        usort($rows, function ($a, $b) use ($family) {
+            $fa = $family($a['channel']);
+            $fb = $family($b['channel']);
+            if ($fa !== $fb) return $fa <=> $fb;
+            return $b['revenue'] <=> $a['revenue'];
+        });
 
         // Totals exclude rows with unknown cost from the gross-profit roll
         // (would otherwise pull the consolidated margin down to zero).
@@ -6024,8 +6201,8 @@ class ReportController extends Controller
         if (!isset($rows['web|web_ship'])) {
             $rows['web|web_ship'] = [
                 'label'           => $webKey === ''
-                    ? 'nivessa.com — Shipping (set NIVESSA_WEBSITE_API_KEY on the ERP server)'
-                    : 'nivessa.com — Shipping (API failed — see Channel fetch status)',
+                    ? 'Website Shipping Orders (set NIVESSA_WEBSITE_API_KEY on the ERP server)'
+                    : 'Website Shipping Orders (API failed — see Channel fetch status)',
                 'channel'         => 'web_ship',
                 'location_id'     => null,
                 'revenue'         => 0.0,
@@ -6039,8 +6216,8 @@ class ReportController extends Controller
         if (!isset($rows['web|web_pickup'])) {
             $rows['web|web_pickup'] = [
                 'label'           => $webKey === ''
-                    ? 'nivessa.com — Pickup (set NIVESSA_WEBSITE_API_KEY on the ERP server)'
-                    : 'nivessa.com — Pickup (API failed — see Channel fetch status)',
+                    ? 'Website Pickup Orders (set NIVESSA_WEBSITE_API_KEY on the ERP server)'
+                    : 'Website Pickup Orders (API failed — see Channel fetch status)',
                 'channel'         => 'web_pickup',
                 'location_id'     => null,
                 'revenue'         => 0.0,
@@ -6155,7 +6332,7 @@ class ReportController extends Controller
             $rows[] = [
                 'key' => 'web|web_ship',
                 'row' => [
-                    'label'           => 'nivessa.com — Shipping',
+                    'label'           => 'Website Shipping Orders',
                     'channel'         => 'web_ship',
                     'location_id'     => null,
                     'revenue'         => (float)$shipping['totalRevenue'],
@@ -6170,7 +6347,7 @@ class ReportController extends Controller
             $rows[] = [
                 'key' => 'web|web_pickup',
                 'row' => [
-                    'label'           => 'nivessa.com — Pickup',
+                    'label'           => 'Website Pickup Orders',
                     'channel'         => 'web_pickup',
                     'location_id'     => null,
                     'revenue'         => (float)$pickup['totalRevenue'],
@@ -6766,11 +6943,16 @@ class ReportController extends Controller
         // reconciliation flow wants one day at a time, with a prev/next
         // nav. A historical range is still available via the date-range
         // picker; when start != end we fall back to the multi-day render.
+        // Force single-day mode (Sarah 2026-05-05: this is a daily-cash
+        // reconciliation flow; multi-day rollups blur the picture). The
+        // prev/next/today nav handles moving between days. URL is still
+        // honored — a deep link with explicit start/end gets coerced to
+        // a single day rather than rejected.
         $start = $request->input('start_date') ?: \Carbon::today()->format('Y-m-d');
-        $end   = $request->input('end_date')   ?: \Carbon::today()->format('Y-m-d');
+        $end   = $start;
         $location_id = $request->input('location_id');
 
-        $is_single_day = ($start === $end);
+        $is_single_day = true;
         $prev_day = \Carbon::parse($start)->subDay()->format('Y-m-d');
         $next_day = \Carbon::parse($start)->addDay()->format('Y-m-d');
         $today_str = \Carbon::today()->format('Y-m-d');
@@ -6882,6 +7064,34 @@ class ReportController extends Controller
             $batch_by_day_loc[$br->day][(int) $br->loc_key] = $br;
         }
 
+        // Safe drops per (day, location). Sums what cashiers reported moving
+        // to the safe at close, grouped by the close day so the EOD row
+        // shows what the safe should have received that day. Tolerant of
+        // the column not yet existing — falls back to an empty map so the
+        // page renders cleanly before the install-safe-drop-column step has
+        // been run.
+        $safe_drop_by_day_loc = [];
+        if (\Schema::hasColumn('cash_registers', 'safe_drop_amount')) {
+            $safeQuery = \DB::table('cash_registers')
+                ->where('business_id', $business_id)
+                ->where('status', 'close')
+                ->whereNotNull('closed_at')
+                ->whereDate('closed_at', '>=', $start)
+                ->whereDate('closed_at', '<=', $end);
+            if (!empty($location_id)) {
+                $safeQuery->where('location_id', $location_id);
+            }
+            $safe_rows_raw = $safeQuery
+                ->selectRaw("DATE(closed_at) as day, COALESCE(location_id, 0) as loc_key,
+                    COALESCE(SUM(safe_drop_amount), 0) as safe_drop_total,
+                    COUNT(*) as drop_count")
+                ->groupBy(DB::raw('DATE(closed_at)'), DB::raw('COALESCE(location_id, 0)'))
+                ->get();
+            foreach ($safe_rows_raw as $sr) {
+                $safe_drop_by_day_loc[$sr->day][(int) $sr->loc_key] = $sr;
+            }
+        }
+
         // Merge: one row per (day, location) with ERP data + the matching
         // per-location Clover bucket attached. Falls back to the NULL-
         // location bucket when a per-location match isn't available. Each
@@ -6895,6 +7105,7 @@ class ReportController extends Controller
             'deposit' => 0.0,
             'variance' => 0.0,
             'deposit_variance' => 0.0,
+            'safe_drop' => 0.0,
             'flagged_days' => 0,
             'deposit_flagged_days' => 0,
         ];
@@ -7020,12 +7231,18 @@ class ReportController extends Controller
         // can see at a glance which days are already signed off on.
         $reconciliations = $this->loadReconciliations($business_id, $start, $end);
 
-        // Per-shift theft-prevention audit — the PRIMARY view Sarah wants
-        // for daily reconciliation. One card per cash_registers row, with
-        // SALES CHECK (Clover ↔ ERP during shift) and CASH CHECK (drawer
-        // math). Replaces the previous xlsx / match / shift-breakdown
-        // experiments which we were told made the page worse.
+        // Per-shift theft-prevention audit — kept around in case Sarah
+        // wants it back later, but the blade currently hides it.
         $shift_audit = $this->cloverEodShiftAudit(
+            $business_id, $start, $end, $location_id, $card_methods, $used_all_methods
+        );
+
+        // Sarah 2026-05-05: shift-audit cards are unusable for daily cash
+        // reconciliation. She does it from a spreadsheet with one
+        // per-employee summary at top and a side-by-side Clover↔ERP
+        // payment list per store. cloverEodXlsxLayout produces exactly
+        // that — wire it through and the blade renders her layout.
+        $xlsx_layout = $this->cloverEodXlsxLayout(
             $business_id, $start, $end, $location_id, $card_methods, $used_all_methods
         );
 
@@ -7033,7 +7250,7 @@ class ReportController extends Controller
             'rows', 'grand', 'start', 'end', 'location_id', 'business_locations',
             'employee_breakdown_by_day', 'unknown_rows',
             'is_single_day', 'prev_day', 'next_day', 'today_str',
-            'reconciliations', 'shift_audit'
+            'reconciliations', 'shift_audit', 'xlsx_layout'
         ));
     }
 
@@ -7768,10 +7985,90 @@ class ReportController extends Controller
         $out = [];
         foreach ($rows as $r) {
             $loc = $r->location_id === null ? 0 : (int) $r->location_id;
-            $key = $r->day->format('Y-m-d') . '|' . $loc;
+            $emp = $r->employee_key === null || $r->employee_key === ''
+                ? '' : strtolower($r->employee_key);
+            // Legacy store-level rows still index under "day|loc" (empty
+            // employee suffix); per-cashier rows append "|<empKey>" so the
+            // blade can look up either granularity in O(1).
+            $key = $r->day->format('Y-m-d') . '|' . $loc . '|' . $emp;
             $out[$key] = $r;
         }
         return $out;
+    }
+
+    /**
+     * Read-only admin diagnostic — returns channel + is_whatnot + a few
+     * other fields for one transaction so we can spot why it bucketed
+     * the way it did. Sarah 2026-05-07: Zakary's #18242 looked Whatnot
+     * in the report but is actually a regular walk-in. We need to see
+     * the row to know whether it's a data tag bug or a code bug.
+     *
+     * Route: GET /reports/clover-eod/debug-transaction/{id}
+     */
+    /**
+     * Recategorize one transaction's channel — used by the "→ in-store"
+     * button on the Other-channels rows. Sarah 2026-05-07: the POS
+     * Whatnot chip gets flipped accidentally and tags a regular walk-in
+     * as Whatnot, which then drops out of the cashier's drawer math
+     * downstream. This lets her flip a single sale back without
+     * round-tripping through Edit Sale UI. Admin-only, logs every flip.
+     *
+     * Route: POST /reports/clover-eod/recategorize-channel
+     */
+    public function cloverEodRecategorizeChannel(Request $request)
+    {
+        if (!$this->businessUtil->is_admin(auth()->user())) {
+            return response()->json(['success' => false], 403);
+        }
+        $business_id = (int) $request->session()->get('user.business_id');
+        $txnId = (int) $request->input('transaction_id');
+        $newChannel = $request->input('channel');
+        if (!$txnId || !in_array($newChannel, ['in_store','whatnot','discogs','ebay'], true)) {
+            return response()->json(['success' => false, 'msg' => 'invalid params'], 422);
+        }
+        $existing = \DB::table('transactions')
+            ->where('id', $txnId)
+            ->where('business_id', $business_id)
+            ->first(['id', 'channel', 'is_whatnot']);
+        if (!$existing) return response()->json(['success' => false, 'msg' => 'not found'], 404);
+        \DB::table('transactions')
+            ->where('id', $txnId)
+            ->where('business_id', $business_id)
+            ->update([
+                'channel'     => $newChannel,
+                'is_whatnot'  => $newChannel === 'whatnot' ? 1 : 0,
+                'updated_at'  => now(),
+            ]);
+        \Log::info(sprintf(
+            'EOD recategorize: txn=%d %s→%s by user=%d',
+            $txnId, $existing->channel, $newChannel, (int) auth()->id()
+        ));
+        return response()->json(['success' => true, 'from' => $existing->channel, 'to' => $newChannel]);
+    }
+
+    public function cloverEodDebugTransaction(Request $request, $id)
+    {
+        if (!$this->businessUtil->is_admin(auth()->user())) {
+            return response()->json(['success' => false], 403);
+        }
+        $business_id = (int) $request->session()->get('user.business_id');
+        // The "#NNNN" in the UI is invoice_no, not transactions.id, so
+        // accept either: try as id first, then fall back to invoice_no.
+        $cols = [
+            'id', 'invoice_no', 'type', 'status', 'channel', 'is_whatnot',
+            'location_id', 'created_by', 'final_total',
+            'transaction_date', 'additional_notes', 'staff_note',
+            'source', 'sub_type', 'is_direct_sale',
+        ];
+        $rows = \DB::table('transactions')
+            ->where('business_id', $business_id)
+            ->where(function ($q) use ($id) {
+                $q->where('id', (int) $id)->orWhere('invoice_no', (string) $id);
+            })
+            ->limit(5)
+            ->get($cols);
+        if ($rows->isEmpty()) return response()->json(['success' => false, 'msg' => 'not found'], 404);
+        return response()->json(['success' => true, 'transactions' => $rows]);
     }
 
     /**
@@ -7789,9 +8086,10 @@ class ReportController extends Controller
         $business_id = (int) $request->session()->get('user.business_id');
         $day = $request->input('day');
         $locationId = $request->input('location_id'); // may be '' / '0' for no-location bucket
+        $employeeKey = $request->input('employee_key'); // null/empty = store-level
         if (!$day) return response()->json(['success' => false, 'msg' => 'day required'], 422);
 
-        $row = \App\CloverReconciliation::findOrCreateFor($business_id, $locationId, $day);
+        $row = \App\CloverReconciliation::findOrCreateFor($business_id, $locationId, $day, $employeeKey);
         if ($row->reconciled_at) {
             $row->reconciled_by_user_id = null;
             $row->reconciled_at = null;
@@ -7826,10 +8124,11 @@ class ReportController extends Controller
         $business_id = (int) $request->session()->get('user.business_id');
         $day = $request->input('day');
         $locationId = $request->input('location_id');
+        $employeeKey = $request->input('employee_key');
         $notes = (string) $request->input('notes', '');
         if (!$day) return response()->json(['success' => false, 'msg' => 'day required'], 422);
 
-        $row = \App\CloverReconciliation::findOrCreateFor($business_id, $locationId, $day);
+        $row = \App\CloverReconciliation::findOrCreateFor($business_id, $locationId, $day, $employeeKey);
         $row->notes = $notes !== '' ? $notes : null;
         $row->save();
 
@@ -8005,6 +8304,13 @@ class ReportController extends Controller
                 SUM(CASE WHEN crt.transaction_type='purchase' AND crt.type='debit' THEN crt.amount ELSE 0 END) as collection_buys_all,
                 SUM(CASE WHEN crt.pay_method='cash' AND crt.transaction_type='purchase' AND crt.type='debit' THEN crt.amount ELSE 0 END) as cash_buys,
                 SUM(CASE WHEN crt.pay_method='cash' AND crt.transaction_type='refund' AND crt.type='debit' THEN crt.amount ELSE 0 END) as cash_refunds,
+                SUM(CASE WHEN crt.pay_method='cash' AND crt.transaction_type='expense' AND crt.type='debit' THEN crt.amount ELSE 0 END) as cash_expenses,
+                SUM(CASE WHEN crt.pay_method='cash' AND crt.transaction_type='transfer' AND crt.type='debit' THEN crt.amount ELSE 0 END) as cash_transfers_out,
+                SUM(CASE WHEN crt.pay_method='cash' AND crt.transaction_type='transfer' AND crt.type='credit' THEN crt.amount ELSE 0 END) as cash_transfers_in,
+                SUM(CASE WHEN crt.pay_method='cash'
+                         AND crt.transaction_type NOT IN ('initial','sell','purchase','refund','expense','transfer')
+                    THEN CASE WHEN crt.type='credit' THEN crt.amount ELSE -crt.amount END
+                    ELSE 0 END) as cash_other_net,
                 SUM(CASE WHEN crt.pay_method='cash' THEN CASE WHEN crt.type='credit' THEN crt.amount ELSE -crt.amount END ELSE 0 END) as cash_net
             ")
             ->groupBy('cr.id', DB::raw('DATE(cr.created_at)'), 'cr.location_id',
@@ -8029,6 +8335,9 @@ class ReportController extends Controller
                     'shift_status' => 'closed',
                     'opening_cash' => 0.0, 'cash_sales' => 0.0,
                     'cash_buys' => 0.0, 'cash_refunds' => 0.0,
+                    'cash_expenses' => 0.0,
+                    'cash_transfers_out' => 0.0, 'cash_transfers_in' => 0.0,
+                    'cash_other_net' => 0.0,
                     'collection_buys_all' => 0.0,
                     'expected_ending_cash' => 0.0, 'reported_ending_cash' => 0.0,
                 ];
@@ -8041,6 +8350,10 @@ class ReportController extends Controller
             $row['cash_sales'] += (float) $s->cash_sales;
             $row['cash_buys'] += (float) $s->cash_buys;
             $row['cash_refunds'] += (float) $s->cash_refunds;
+            $row['cash_expenses'] += (float) $s->cash_expenses;
+            $row['cash_transfers_out'] += (float) $s->cash_transfers_out;
+            $row['cash_transfers_in'] += (float) $s->cash_transfers_in;
+            $row['cash_other_net'] += (float) $s->cash_other_net;
             $row['collection_buys_all'] += (float) $s->collection_buys_all;
             $row['expected_ending_cash'] += (float) $s->cash_net;
             $row['reported_ending_cash'] += (float) $s->reported_ending_cash;
@@ -8083,7 +8396,20 @@ class ReportController extends Controller
             ->groupBy(DB::raw('DATE(t.transaction_date)'), 't.location_id', 'bl.name', 'employee_name')
             ->get();
 
-        $cloverQ = \DB::table('clover_payments as cp')
+        // total_sales aggregation now happens in PHP from $txns below
+        // (so we can re-attribute admin-rung sales to the on-shift
+        // cashier). $totalQ used to do the SUM in SQL but lost that
+        // ability when we needed per-row admin awareness.
+
+        // Pull RAW Clover payments (one row each) so we can do shift-window
+        // attribution before aggregating. Sarah 2026-05-05: at Nivessa most
+        // Clover swipes don't carry an employee pin, so a naive GROUP BY
+        // employee_name dumps every swipe into "Unknown" and the per-cashier
+        // breakdown shows $0 paid-by-card for everyone. We fix that here by
+        // looking up which cashier's register was open at (paid_at, location)
+        // for each pin-less swipe and attributing it to them — same logic
+        // already used in cloverEodXlsxLayout.
+        $cpQ = \DB::table('clover_payments as cp')
             ->leftJoin('business_locations as bl', 'cp.location_id', '=', 'bl.id')
             ->where('cp.business_id', $business_id)
             ->where(function ($q) {
@@ -8092,17 +8418,222 @@ class ReportController extends Controller
             ->whereDate('cp.paid_on', '>=', $start)
             ->whereDate('cp.paid_on', '<=', $end);
         if (!empty($location_id)) {
-            $cloverQ->where(function ($q) use ($location_id) {
+            $cpQ->where(function ($q) use ($location_id) {
                 $q->where('cp.location_id', $location_id)->orWhereNull('cp.location_id');
             });
         }
-        $cloverRows = $cloverQ->selectRaw("DATE(cp.paid_on) as day,
+        $cpRaw = $cpQ->selectRaw("DATE(cp.paid_on) as day,
                 cp.location_id, bl.name as location_name,
-                COALESCE(NULLIF(TRIM(cp.employee_name), ''), 'Unknown') as employee_name,
-                COUNT(*) as clover_count,
-                COALESCE(SUM(cp.amount), 0) as clover_total")
-            ->groupBy(DB::raw('DATE(cp.paid_on)'), 'cp.location_id', 'bl.name', 'employee_name')
+                cp.paid_at as ts,
+                cp.amount as amount,
+                COALESCE(NULLIF(TRIM(cp.employee_name), ''), '') as employee_name")
+            ->orderBy('cp.paid_at')
             ->get();
+
+        // Pull cash_registers (with a 1-day buffer on each side) so we can
+        // resolve "whose register was open at the moment of this swipe?".
+        $regQ = \DB::table('cash_registers as cr')
+            ->leftJoin('users as u', 'cr.user_id', '=', 'u.id')
+            ->where('cr.business_id', $business_id)
+            ->whereDate('cr.created_at', '>=', \Carbon::parse($start)->subDay())
+            ->whereDate('cr.created_at', '<=', \Carbon::parse($end)->addDay());
+        if (!empty($location_id)) {
+            $regQ->where('cr.location_id', $location_id);
+        }
+        $registers = $regQ->selectRaw("
+                cr.location_id,
+                cr.created_at as opened_at,
+                cr.closed_at,
+                COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, '') as user_name
+            ")
+            ->orderBy('cr.created_at')
+            ->get();
+
+        // Pull raw ERP transactions for amount-based matching (same logic
+        // as recentSalesFeed). Each Clover swipe is paired to the ERP
+        // transaction with matching final_total at the same location,
+        // closest in time. The ERP txn's created_by is the source of truth
+        // for who rang the sale — beats shift-window attribution because
+        // it doesn't depend on slack at the edges of two cashiers' shifts.
+        $txnQ = \DB::table('transactions as t')
+            ->leftJoin('users as u', 't.created_by', '=', 'u.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereDate('t.transaction_date', '>=', \Carbon::parse($start)->subDay())
+            ->whereDate('t.transaction_date', '<=', \Carbon::parse($end)->addDay());
+        if (!empty($location_id)) {
+            $txnQ->where('t.location_id', $location_id);
+        }
+        // Sarah 2026-05-07 looking at Zakary's $228.28 ERP-only at 3:19pm:
+        // "is it possible that was a Whatnot order?". Yes — Whatnot /
+        // Discogs / eBay sales live in transactions but never touch the
+        // drawer or Clover, so they were turning up as fake "missed
+        // swipes" in the drilldown. Limit the daily cash reconciliation
+        // to in-store sales; other channels are reconciled in the
+        // sales-by-channel report. Guarded so a fresh install without
+        // the channel column doesn't 500.
+        if (\Schema::hasColumn('transactions', 'channel')) {
+            $txnQ->where('t.channel', 'in_store');
+        }
+        $txns = $txnQ->selectRaw("
+                t.id, t.location_id, t.final_total, t.transaction_date,
+                t.created_by as cashier_user_id,
+                COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, '') as cashier_name
+            ")
+            ->get();
+
+        // Admin/owner detection — Sarah 2026-05-05: "Jonathan rings up
+        // customers sometimes but the sale should attribute to the
+        // cashier on shift, not him." We pull the admin-permission
+        // first-name set once and use it on both sides:
+        //   - Clover amount-match: if the matched ERP txn was rung by
+        //     an admin, fall back to shift-window attribution.
+        //   - ERP aggregation: admin-rung sales get re-attributed to
+        //     whoever's register was open at the time, before bucketing.
+        // Sarah 2026-05-06: "what is total sales for jon? he wasn't the
+        // cashier." The previous raw permissions-table query missed
+        // role-derived admins (Jonathan held Admin via a role, not a
+        // direct permission). Use Spatie's HasRoles scope which walks
+        // both paths.
+        try {
+            $adminFirstNames = \App\User::permission('Admin#' . $business_id)
+                ->where('users.business_id', $business_id)
+                ->pluck('first_name')
+                ->map(function ($n) { $n = trim((string) $n); $parts = $n === '' ? [] : preg_split('/\s+/', $n); return strtolower($parts[0] ?? ''); })
+                ->filter()->unique()->values()->all();
+        } catch (\Throwable $ex) {
+            // Permission name may not exist on a fresh install — fall
+            // back to no admins rather than crash the whole report.
+            $adminFirstNames = [];
+        }
+        $adminSet = array_flip($adminFirstNames);
+
+        // Helper: which non-admin cashier had a register open at (ts, loc)?
+        // Returns full user_name string or null. Excludes admins so an
+        // admin-rung sale doesn't re-attribute to another admin who
+        // happened to also have a register open. Also caps how stale a
+        // still-"open" register can be — 18h — so yesterday's register
+        // that was never closed doesn't absorb today's swipes.
+        $findShiftCashier = function ($ts, $locId) use ($registers, $adminSet) {
+            $cpTs = strtotime((string) $ts);
+            foreach ($registers as $reg) {
+                if ((int) ($reg->location_id ?? 0) !== (int) ($locId ?? 0)) continue;
+                if ($reg->user_name === '') continue;
+                $rfn = strtolower(preg_split('/\s+/', trim($reg->user_name))[0] ?? '');
+                if (isset($adminSet[$rfn])) continue;
+                $openTs  = strtotime((string) $reg->opened_at);
+                $open    = $openTs - 60;
+                $close   = $reg->closed_at ? (strtotime((string) $reg->closed_at) + 60) : PHP_INT_MAX;
+                $stale   = !$reg->closed_at && ($cpTs - $openTs > 18 * 3600);
+                if (!$stale && $cpTs >= $open && $cpTs <= $close) {
+                    return $reg->user_name;
+                }
+            }
+            return null;
+        };
+
+        $toCents = function ($x) { return (int) round(((float) $x) * 100); };
+        $claimedTxns = [];
+
+        // Attribution pass: for each Clover swipe (newest-first to keep
+        // the latest sales paired first), try to find an unclaimed ERP
+        // sale at the same location with a near-matching amount and
+        // close-in-time. Sarah 2026-05-06 looking at Manolo's then
+        // Henry's drilldowns: $6.59 Clover at 2:07 vs $6.71 ERP at
+        // 2:08 is the same sale undercharged by 12¢ on Clover. Tax-
+        // rounding gaps of up to ~25¢ are real here. Match within
+        // ±25¢ AND within 30 minutes (Sarah 2026-05-07: "luis is slow
+        // to type" — Luis's $41.71 Clover at 9:33pm paired to $41.71
+        // ERP at 9:44pm, 11min apart, was missing the cut).
+        // Score = amount-cents × 1000 + time-seconds so exact matches
+        // still beat off-by-cents matches even at longer time gaps.
+        // Pairs with >5¢ drift surface as "amount mismatch" rather
+        // than hidden as clean matches.
+        $cpForMatch = $cpRaw->sortByDesc('ts')->values();
+        $matchAmountCents     = 25;
+        $cleanMatchCents      = 5;
+        $matchTimeWindow      = 1800; // seconds (30 min)
+        foreach ($cpForMatch as $r) {
+            $cpTs    = strtotime((string) $r->ts);
+            $cpCents = $toCents($r->amount);
+            $cpLoc   = $r->location_id;
+
+            $bestId = null;
+            $bestScore = PHP_INT_MAX;
+            $bestAmtDelta = 0;
+            $bestSignedDelta = 0;
+            foreach ($txns as $t) {
+                if (isset($claimedTxns[$t->id])) continue;
+                $signedDelta = $cpCents - $toCents($t->final_total); // + means Clover > ERP
+                $amtDelta = abs($signedDelta);
+                if ($amtDelta > $matchAmountCents) continue;
+                if ($cpLoc !== null && $t->location_id !== null
+                    && (int) $cpLoc !== (int) $t->location_id) continue;
+                $timeDelta = abs(strtotime((string) $t->transaction_date) - $cpTs);
+                if ($timeDelta > $matchTimeWindow) continue;
+                // Score: amount gap weighted heavier than time gap so an
+                // exact-cent match within 10min beats a 5¢-off match in
+                // the same minute. amount-cents × 1000 + time-seconds.
+                $score = $amtDelta * 1000 + $timeDelta;
+                if ($score < $bestScore) {
+                    $bestScore = $score;
+                    $bestId = $t->id;
+                    $bestAmtDelta = $amtDelta;
+                    $bestSignedDelta = $signedDelta;
+                }
+            }
+            if ($bestId !== null) {
+                $claimedTxns[$bestId] = true;
+                $r->matched_txn_id = $bestId;
+                $r->matched_diff_cents = $bestSignedDelta; // signed: + = Clover over, − = under
+                $matchedCashier = '';
+                foreach ($txns as $t) {
+                    if ($t->id === $bestId) { $matchedCashier = $t->cashier_name; break; }
+                }
+                $matchedFirst = strtolower(preg_split('/\s+/', trim($matchedCashier))[0] ?? '');
+                if ($matchedCashier !== '' && !isset($adminSet[$matchedFirst])) {
+                    $r->employee_name = $matchedCashier;
+                    continue;
+                }
+                // Matched ERP txn was rung by an admin (Jon) — fall through
+                // to shift-window attribution so the swipe credits to the
+                // actual cashier on shift, not the owner.
+            }
+
+            // Fallback: shift-window attribution for swipes that don't
+            // have a matching ERP sale OR matched to an admin-rung sale.
+            // Only override pin-less rows here so a Clover-pinned swipe
+            // with no ERP match still keeps Clover's pin.
+            if ($r->employee_name !== '') continue;
+            $sw = $findShiftCashier($r->ts, $r->location_id);
+            if ($sw) {
+                $r->employee_name = $sw;
+            }
+        }
+
+        // Aggregate post-attribution. Pin-less swipes that still have no
+        // matching open shift fall through to 'Unknown' and get skipped by
+        // the card render — usually means a register was closed when a
+        // card-on-file / online charge ran.
+        $cloverAgg = [];
+        foreach ($cpRaw as $r) {
+            $emp = $r->employee_name !== '' ? $r->employee_name : 'Unknown';
+            $key = $r->day . '|' . ($r->location_id ?: 0) . '|' . strtolower($emp);
+            if (!isset($cloverAgg[$key])) {
+                $cloverAgg[$key] = (object) [
+                    'day' => $r->day,
+                    'location_id' => $r->location_id,
+                    'location_name' => $r->location_name,
+                    'employee_name' => $emp,
+                    'clover_count' => 0,
+                    'clover_total' => 0.0,
+                ];
+            }
+            $cloverAgg[$key]->clover_count += 1;
+            $cloverAgg[$key]->clover_total += (float) $r->amount;
+        }
+        $cloverRows = collect(array_values($cloverAgg));
 
         $firstName = function ($full) {
             $full = trim((string) $full);
@@ -8113,25 +8644,104 @@ class ReportController extends Controller
 
         // Bucket into [day][locKey][empKey] => running totals.
         $buckets = [];
+        $emptyEmployee = [
+            'display_name' => '',
+            'erp_total' => 0.0, 'erp_count' => 0,
+            'clover_total' => 0.0, 'clover_count' => 0,
+            'total_sales' => 0.0, 'txn_count' => 0,
+            'shift_start' => null, 'shift_end' => null, 'shift_status' => null,
+            'opening_cash' => null, 'cash_sales' => 0.0,
+            'cash_buys' => 0.0, 'collection_buys_all' => 0.0,
+            'expected_ending_cash' => null, 'reported_ending_cash' => null,
+            'cash_variance' => null, 'has_shift' => false,
+        ];
         foreach ($erpRows as $r) {
             $day = $r->day;
             $locKey = $r->location_id ?: 0;
             $empKey = $firstName($r->employee_name);
             $buckets[$day][$locKey]['location_name'] = $r->location_name ?: '(no location)';
             if (!isset($buckets[$day][$locKey]['employees'][$empKey])) {
-                $buckets[$day][$locKey]['employees'][$empKey] = [
-                    'display_name' => ucfirst($empKey),
-                    'erp_total' => 0.0, 'erp_count' => 0,
-                    'clover_total' => 0.0, 'clover_count' => 0,
-                    'shift_start' => null, 'shift_end' => null, 'shift_status' => null,
-                    'opening_cash' => null, 'cash_sales' => 0.0,
-                    'cash_buys' => 0.0, 'collection_buys_all' => 0.0,
-                    'expected_ending_cash' => null, 'reported_ending_cash' => null,
-                    'cash_variance' => null, 'has_shift' => false,
-                ];
+                $buckets[$day][$locKey]['employees'][$empKey] = ['display_name' => ucfirst($empKey)] + $emptyEmployee;
             }
             $buckets[$day][$locKey]['employees'][$empKey]['erp_total'] += (float) $r->erp_total;
             $buckets[$day][$locKey]['employees'][$empKey]['erp_count'] += (int) $r->erp_count;
+        }
+        // total_sales aggregation runs over the raw $txns rather than the
+        // pre-aggregated $totalRows so we can re-attribute admin-rung
+        // sales to the on-shift cashier (Sarah 2026-05-05: "Jon rings up
+        // people sometimes, those sales should attribute to the cashier
+        // assigned"). Admin-rung sales with no on-shift non-admin cashier
+        // at the moment fall through and get dropped — the staff list
+        // shouldn't include "owner did one sale" cards.
+        $userIdByFirstName = [];
+        foreach ($txns as $t) {
+            $day = substr((string) $t->transaction_date, 0, 10);
+            if ($day < $start || $day > $end) continue; // matching pool only
+            $rangBy = $t->cashier_name;
+            $rangFn = $firstName($rangBy);
+            if (isset($adminSet[$rangFn])) {
+                $reassigned = $findShiftCashier($t->transaction_date, $t->location_id);
+                if ($reassigned === null) continue;
+                $rangBy = $reassigned;
+                $rangFn = $firstName($rangBy);
+            }
+            $locKey = $t->location_id ?: 0;
+            if (!isset($buckets[$day][$locKey]['employees'][$rangFn])) {
+                $buckets[$day][$locKey]['employees'][$rangFn] = ['display_name' => ucfirst($rangFn)] + $emptyEmployee;
+                $buckets[$day][$locKey]['location_name'] = $buckets[$day][$locKey]['location_name'] ?? '(no location)';
+            }
+            $buckets[$day][$locKey]['employees'][$rangFn]['total_sales'] += (float) $t->final_total;
+            $buckets[$day][$locKey]['employees'][$rangFn]['txn_count']   += 1;
+            // Capture the first non-admin user_id we see for each first
+            // name. Used by the "View {cashier}'s sales" deep link so
+            // the recent-sells feed opens already filtered to that user.
+            if (!isset($userIdByFirstName[$rangFn]) && $t->cashier_user_id && !isset($adminSet[$firstName($t->cashier_name)])) {
+                $userIdByFirstName[$rangFn] = (int) $t->cashier_user_id;
+            }
+        }
+
+        // Sarah 2026-05-07: "I want to show the whatnot entries we put
+        // in the pos". These are sales the cashier rang into the ERP
+        // but that don't touch the drawer or Clover (Whatnot stream
+        // sales, Discogs, eBay). Pulled separately so they stay out of
+        // the drawer-math totals (in_store filter on $txns above) but
+        // are visible per cashier so Sarah can verify each cashier
+        // entered their channel orders correctly.
+        $otherChannelByEmp = [];
+        if (\Schema::hasColumn('transactions', 'channel')) {
+            $ocQ = \DB::table('transactions as t')
+                ->leftJoin('users as u', 't.created_by', '=', 'u.id')
+                ->where('t.business_id', $business_id)
+                ->where('t.type', 'sell')
+                ->where('t.status', 'final')
+                ->where('t.channel', '!=', 'in_store')
+                ->whereDate('t.transaction_date', '>=', $start)
+                ->whereDate('t.transaction_date', '<=', $end);
+            if (!empty($location_id)) {
+                $ocQ->where('t.location_id', $location_id);
+            }
+            $ocRows = $ocQ->selectRaw("
+                    DATE(t.transaction_date) as day,
+                    t.id, t.location_id, t.final_total, t.transaction_date,
+                    t.channel,
+                    COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, '') as cashier_name
+                ")->get();
+            foreach ($ocRows as $r) {
+                $rangFn = $firstName($r->cashier_name);
+                if (isset($adminSet[$rangFn])) {
+                    $reassigned = $findShiftCashier($r->transaction_date, $r->location_id);
+                    if ($reassigned === null) continue;
+                    $rangFn = $firstName($reassigned);
+                }
+                $key = $r->day . '|' . $rangFn;
+                if (!isset($otherChannelByEmp[$key])) $otherChannelByEmp[$key] = [];
+                $otherChannelByEmp[$key][] = (object) [
+                    'ts' => $r->transaction_date,
+                    'amount' => round((float) $r->final_total, 2),
+                    'channel' => (string) $r->channel,
+                    'transaction_id' => (int) $r->id,
+                ];
+            }
         }
         foreach ($cloverRows as $r) {
             $day = $r->day;
@@ -8140,16 +8750,7 @@ class ReportController extends Controller
             $buckets[$day][$locKey]['location_name'] = $buckets[$day][$locKey]['location_name']
                 ?? ($r->location_name ?: '(unlinked Clover MID)');
             if (!isset($buckets[$day][$locKey]['employees'][$empKey])) {
-                $buckets[$day][$locKey]['employees'][$empKey] = [
-                    'display_name' => ucfirst($empKey),
-                    'erp_total' => 0.0, 'erp_count' => 0,
-                    'clover_total' => 0.0, 'clover_count' => 0,
-                    'shift_start' => null, 'shift_end' => null, 'shift_status' => null,
-                    'opening_cash' => null, 'cash_sales' => 0.0,
-                    'cash_buys' => 0.0, 'collection_buys_all' => 0.0,
-                    'expected_ending_cash' => null, 'reported_ending_cash' => null,
-                    'cash_variance' => null, 'has_shift' => false,
-                ];
+                $buckets[$day][$locKey]['employees'][$empKey] = ['display_name' => ucfirst($empKey)] + $emptyEmployee;
             }
             $buckets[$day][$locKey]['employees'][$empKey]['clover_total'] += (float) $r->clover_total;
             $buckets[$day][$locKey]['employees'][$empKey]['clover_count'] += (int) $r->clover_count;
@@ -8166,16 +8767,7 @@ class ReportController extends Controller
             foreach ($locs as $locKey => $emps) {
                 foreach ($emps as $empKey => $shift) {
                     if (!isset($buckets[$day][$locKey]['employees'][$empKey])) {
-                        $buckets[$day][$locKey]['employees'][$empKey] = [
-                            'display_name' => ucfirst($empKey),
-                            'erp_total' => 0.0, 'erp_count' => 0,
-                            'clover_total' => 0.0, 'clover_count' => 0,
-                            'shift_start' => null, 'shift_end' => null, 'shift_status' => null,
-                            'opening_cash' => null, 'cash_sales' => 0.0,
-                            'cash_buys' => 0.0, 'collection_buys_all' => 0.0,
-                            'expected_ending_cash' => null, 'reported_ending_cash' => null,
-                            'cash_variance' => null, 'has_shift' => false,
-                        ];
+                        $buckets[$day][$locKey]['employees'][$empKey] = ['display_name' => ucfirst($empKey)] + $emptyEmployee;
                         $buckets[$day][$locKey]['location_name'] = $buckets[$day][$locKey]['location_name']
                             ?? '(no location)';
                     }
@@ -8185,23 +8777,342 @@ class ReportController extends Controller
                     $e['shift_end'] = $shift['shift_end'];
                     $e['shift_status'] = $shift['shift_status'];
                     $e['opening_cash'] = (float) $shift['opening_cash'];
-                    $e['cash_sales'] = (float) $shift['cash_sales'];
                     $e['cash_buys'] = (float) $shift['cash_buys'];
+                    $e['cash_refunds'] = (float) ($shift['cash_refunds'] ?? 0);
+                    $e['cash_expenses'] = (float) ($shift['cash_expenses'] ?? 0);
+                    $e['cash_transfers_out'] = (float) ($shift['cash_transfers_out'] ?? 0);
+                    $e['cash_transfers_in']  = (float) ($shift['cash_transfers_in'] ?? 0);
+                    $e['cash_other_net'] = (float) ($shift['cash_other_net'] ?? 0);
                     $e['collection_buys_all'] = (float) $shift['collection_buys_all'];
-                    $e['expected_ending_cash'] = (float) $shift['expected_ending_cash'];
                     $e['reported_ending_cash'] = (float) $shift['reported_ending_cash'];
-                    // Variance only meaningful for CLOSED shifts — open shifts
-                    // haven't had a reported count yet so the diff is noise.
-                    if ($shift['shift_status'] === 'closed') {
-                        $e['cash_variance'] = round(
-                            (float) $shift['reported_ending_cash'] - (float) $shift['expected_ending_cash'],
-                            2
-                        );
-                    }
+                    // cash_sales is intentionally derived from total_sales −
+                    // clover_total below, NOT from crt.cash_sales: cashiers
+                    // ring every sale as 'cash' regardless of how the
+                    // customer paid, so crt.cash_sales overstates real cash
+                    // by the Clover-paid portion. Same reason expected_
+                    // ending_cash is recomputed downstream.
                     unset($e);
                 }
             }
         }
+
+        // Customer collection buys — Sarah 2026-05-06: "why are there 0
+        // buys for yesterday, we had buys?". Buy-from-customer offers
+        // create a transactions row with type='purchase' but never write
+        // a cash_register_transactions row, so the CRT-based cash_buys
+        // we'd been pulling was always $0. Pull the cash-paid offers
+        // directly from buy_customer_offers, re-attribute admin-rung
+        // ones to the on-shift cashier, and use them to OVERRIDE
+        // cash_buys / collection_buys_all for each bucket.
+        $buyQ = \DB::table('transactions as t')
+            ->join('buy_customer_offers as o', 'o.accepted_purchase_id', '=', 't.id')
+            ->leftJoin('users as u', 't.created_by', '=', 'u.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'purchase')
+            ->where('o.payment_method', 'cash_in_store')
+            ->whereDate('t.transaction_date', '>=', $start)
+            ->whereDate('t.transaction_date', '<=', $end);
+        if (!empty($location_id)) {
+            $buyQ->where('t.location_id', $location_id);
+        }
+        $buyRows = $buyQ->selectRaw("
+                DATE(t.transaction_date) as day,
+                t.location_id,
+                t.transaction_date as ts,
+                t.final_total as amount,
+                COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, '') as cashier_name
+            ")->get();
+
+        // Reset CRT-derived cash_buys before applying the real offer-based
+        // numbers. collection_buys_all also gets rebuilt because it was
+        // previously the "all-method" purchase total from CRT (i.e. zero
+        // for these offers).
+        foreach ($buckets as $day => &$locsR) {
+            foreach ($locsR as $locKey => &$locR) {
+                if (empty($locR['employees'])) continue;
+                foreach ($locR['employees'] as &$eR) {
+                    $eR['cash_buys'] = 0.0;
+                    $eR['collection_buys_all'] = 0.0;
+                }
+                unset($eR);
+            }
+            unset($locR);
+        }
+        unset($locsR);
+
+        foreach ($buyRows as $r) {
+            $day = substr((string) $r->ts, 0, 10);
+            if ($day < $start || $day > $end) continue;
+            $cn = $r->cashier_name;
+            $cFn = $firstName($cn);
+            if (isset($adminSet[$cFn])) {
+                $reassigned = $findShiftCashier($r->ts, $r->location_id);
+                if ($reassigned === null) continue; // can't attribute
+                $cn = $reassigned;
+                $cFn = $firstName($reassigned);
+            }
+            $locKey = $r->location_id ?: 0;
+            if (!isset($buckets[$day][$locKey]['employees'][$cFn])) {
+                $buckets[$day][$locKey]['employees'][$cFn] = ['display_name' => ucfirst($cFn)] + $emptyEmployee;
+                $buckets[$day][$locKey]['location_name'] = $buckets[$day][$locKey]['location_name'] ?? '(no location)';
+            }
+            $buckets[$day][$locKey]['employees'][$cFn]['cash_buys']           += (float) $r->amount;
+            $buckets[$day][$locKey]['employees'][$cFn]['collection_buys_all'] += (float) $r->amount;
+        }
+
+        // Drop admin buckets — admin-rung sales were re-attributed to the
+        // on-shift cashier above, so any admin first-name still in the
+        // bucket got there via Clover-side attribution (a swipe whose
+        // employee_name on Clover happened to be an admin) and isn't a
+        // real cashier card.
+        if (!empty($adminSet)) {
+            foreach ($buckets as $day => $locs2) {
+                foreach ($locs2 as $locKey => $loc2) {
+                    foreach (array_keys($loc2['employees'] ?? []) as $k) {
+                        if (isset($adminSet[strtolower($k)])) {
+                            unset($buckets[$day][$locKey]['employees'][$k]);
+                        }
+                    }
+                }
+            }
+        }
+
+        // (no-location merge moved below — must run after details
+        //  populate so the lists fold in too)
+
+        // Drop "ghost" cashier buckets — Sarah 2026-05-05: "when I go back
+        // to previous day and back to today all new cashiers get added to
+        // my screen from yesterday." Cause: a register opened yesterday
+        // and never closed will look "open" today, and shift-window
+        // attribution credits today's pin-less swipes to that yesterday
+        // cashier. They show up here without a real shift today (no float
+        // opened, no sales rung) so the card reads as $0/$0. We drop any
+        // bucket that has no real activity today.
+        foreach ($buckets as $day => $locs2) {
+            foreach ($locs2 as $locKey => $loc2) {
+                foreach (array_keys($loc2['employees'] ?? []) as $k) {
+                    $e = $loc2['employees'][$k];
+                    $hasFloat   = !is_null($e['opening_cash']) && (float) $e['opening_cash'] > 0;
+                    $rangSales  = ((float) ($e['total_sales']  ?? 0)) > 0;
+                    $hasCounted = !is_null($e['reported_ending_cash']) && (float) $e['reported_ending_cash'] > 0;
+                    // Also keep buckets that exist only because the cashier
+                    // entered Whatnot/Discogs/eBay orders today — Sarah
+                    // wants to verify those entries even if the same
+                    // cashier didn't open a drawer.
+                    $hasOther   = !empty($otherChannelByEmp[$day . '|' . $k] ?? []);
+                    if (!$hasFloat && !$rangSales && !$hasCounted && !$hasOther) {
+                        unset($buckets[$day][$locKey]['employees'][$k]);
+                    }
+                }
+            }
+        }
+
+        // Attach user_id to surviving buckets so the blade can deep-link
+        // "View {cashier}'s sales" to the recent-feed page filtered to
+        // that user + that day.
+        foreach ($buckets as $day => &$locs2) {
+            foreach ($locs2 as $locKey => &$loc2) {
+                foreach ($loc2['employees'] as $k => &$e) {
+                    if (!isset($e['user_id']) && isset($userIdByFirstName[$k])) {
+                        $e['user_id'] = $userIdByFirstName[$k];
+                    }
+                    // Initialize the variance-investigation drill-down
+                    // lists. Sarah 2026-05-06: "I need to figure out all
+                    // these variances daily." Each card gets a "Show
+                    // breakdown" panel listing the unmatched Clover
+                    // (over-swipe), unmatched ERP (likely cash), and
+                    // cash-paid customer buys, in chronological order.
+                    $e['details'] = [
+                        'clover_unmatched' => [],
+                        'erp_unmatched'    => [],
+                        'amount_mismatch'  => [],
+                        'buys'             => [],
+                        'other_channels'   => $otherChannelByEmp[$day . '|' . $k] ?? [],
+                    ];
+                }
+                unset($e);
+            }
+            unset($loc2);
+        }
+        unset($locs2);
+
+        // Populate the drill-down: unmatched Clover swipes attributed to
+        // this cashier. These are the over-swipe / theft tells — Clover
+        // collected the money but no ERP sale of that exact amount
+        // exists for this day at this store. Also surface MATCHED pairs
+        // whose amounts drift > 5¢ — same sale, but the cashier typed
+        // the wrong amount on Clover, so this is the "we charged too
+        // little / too much on Clover" tell (Sarah 2026-05-06).
+        foreach ($cpRaw as $r) {
+            if ($r->employee_name === '') continue;
+            $emp = $firstName($r->employee_name);
+            if (isset($adminSet[$emp])) continue;
+            $day = $r->day instanceof \DateTimeInterface ? $r->day->format('Y-m-d') : (string) $r->day;
+            $locKey = $r->location_id ?: 0;
+            if (!isset($buckets[$day][$locKey]['employees'][$emp])) continue;
+            if (empty($r->matched_txn_id)) {
+                $buckets[$day][$locKey]['employees'][$emp]['details']['clover_unmatched'][] = (object) [
+                    'ts' => $r->ts,
+                    'amount' => round((float) $r->amount, 2),
+                ];
+            } elseif (abs((int) ($r->matched_diff_cents ?? 0)) > $cleanMatchCents) {
+                // Look up the matched ERP txn's amount + id for display.
+                $erpAmount = null;
+                $erpTxnId = (int) $r->matched_txn_id;
+                foreach ($txns as $t) {
+                    if ($t->id === $r->matched_txn_id) { $erpAmount = (float) $t->final_total; break; }
+                }
+                if ($erpAmount !== null) {
+                    $buckets[$day][$locKey]['employees'][$emp]['details']['amount_mismatch'][] = (object) [
+                        'ts' => $r->ts,
+                        'clover_amount' => round((float) $r->amount, 2),
+                        'erp_amount'    => round($erpAmount, 2),
+                        'diff'          => round(((float) $r->amount) - $erpAmount, 2), // + = Clover over, − = under
+                        'transaction_id' => $erpTxnId,
+                    ];
+                }
+            }
+        }
+
+        // Unmatched ERP sales — sales rung but no Clover swipe found.
+        // Could be true cash (legitimate) or a missed swipe (suspect).
+        // Sarah eyeballs these against her gut feel for which sales
+        // were actually card-paid vs cash.
+        foreach ($txns as $t) {
+            if (isset($claimedTxns[$t->id])) continue;
+            $day = substr((string) $t->transaction_date, 0, 10);
+            if ($day < $start || $day > $end) continue;
+            $emp = $firstName($t->cashier_name);
+            if (isset($adminSet[$emp])) {
+                $sw = $findShiftCashier($t->transaction_date, $t->location_id);
+                if ($sw === null) continue;
+                $emp = $firstName($sw);
+            }
+            $locKey = $t->location_id ?: 0;
+            if (!isset($buckets[$day][$locKey]['employees'][$emp])) continue;
+            $buckets[$day][$locKey]['employees'][$emp]['details']['erp_unmatched'][] = (object) [
+                'ts' => $t->transaction_date,
+                'amount' => round((float) $t->final_total, 2),
+                'transaction_id' => (int) $t->id,
+            ];
+        }
+
+        // Cash-paid customer buys — attributed to the on-shift cashier
+        // when an admin keyed them.
+        foreach ($buyRows as $r) {
+            $day = substr((string) $r->ts, 0, 10);
+            if ($day < $start || $day > $end) continue;
+            $emp = $firstName($r->cashier_name);
+            if (isset($adminSet[$emp])) {
+                $sw = $findShiftCashier($r->ts, $r->location_id);
+                if ($sw === null) continue;
+                $emp = $firstName($sw);
+            }
+            $locKey = $r->location_id ?: 0;
+            if (!isset($buckets[$day][$locKey]['employees'][$emp])) continue;
+            $buckets[$day][$locKey]['employees'][$emp]['details']['buys'][] = (object) [
+                'ts' => $r->ts,
+                'amount' => round((float) $r->amount, 2),
+            ];
+        }
+
+        // Merge no-location (locKey=0) buckets into the same-cashier real-
+        // location bucket on the same day — Sarah 2026-05-07: "why is
+        // andy showing twice today?". A no-location bucket usually means
+        // Clover sync didn't stamp the swipe with a store, but the
+        // cashier definitely worked one specific store today (per their
+        // cash_register row), so we fold the no-location numbers AND
+        // the unmatched-list details into that real-location bucket
+        // rather than rendering a phantom second card. Only merges when
+        // there's exactly ONE real-location bucket for that cashier —
+        // if they genuinely worked at both stores today, both stay.
+        foreach ($buckets as $day => $locsM) {
+            if (!isset($locsM[0]['employees'])) continue;
+            foreach (array_keys($locsM[0]['employees']) as $emp) {
+                $targets = [];
+                foreach ($locsM as $lk => $loc) {
+                    if ($lk === 0) continue;
+                    if (isset($loc['employees'][$emp])) $targets[] = $lk;
+                }
+                if (count($targets) !== 1) continue;
+                $tgt = $targets[0];
+                $src = $buckets[$day][0]['employees'][$emp];
+                $dst = &$buckets[$day][$tgt]['employees'][$emp];
+                foreach (['total_sales','clover_total','clover_count','txn_count',
+                         'cash_buys','cash_refunds','cash_expenses',
+                         'cash_transfers_out','cash_transfers_in','cash_other_net',
+                         'collection_buys_all'] as $k) {
+                    $dst[$k] = ((float) ($dst[$k] ?? 0)) + ((float) ($src[$k] ?? 0));
+                }
+                foreach (['clover_unmatched','erp_unmatched','amount_mismatch','buys','other_channels'] as $k) {
+                    $dst['details'][$k] = array_merge(
+                        $dst['details'][$k] ?? [],
+                        $src['details'][$k] ?? []
+                    );
+                }
+                unset($dst);
+                unset($buckets[$day][0]['employees'][$emp]);
+            }
+            if (empty($buckets[$day][0]['employees'])) {
+                unset($buckets[$day][0]);
+            }
+        }
+
+        // Order each list by time so the panel reads top-to-bottom.
+        foreach ($buckets as $day => &$locsD) {
+            foreach ($locsD as $locKey => &$locD) {
+                foreach ($locD['employees'] as &$eD) {
+                    foreach (['clover_unmatched', 'erp_unmatched', 'amount_mismatch', 'buys', 'other_channels'] as $key) {
+                        $list = $eD['details'][$key] ?? [];
+                        usort($list, function ($a, $b) {
+                            return strcmp((string) $a->ts, (string) $b->ts);
+                        });
+                        $eD['details'][$key] = $list;
+                    }
+                }
+                unset($eD);
+            }
+            unset($locD);
+        }
+        unset($locsD);
+
+        // Derived numbers — total_sales is the only trustworthy "what they
+        // sold" number, clover_total is what was paid by card. Implied cash
+        // = total_sales − clover_total, and the drawer should hold opening
+        // + that cash − cash buys at close. Variance only meaningful when
+        // the shift is closed (open shifts have no reported count yet).
+        foreach ($buckets as $day => &$locs) {
+            foreach ($locs as $locKey => &$loc) {
+                if (!isset($loc['employees'])) continue;
+                foreach ($loc['employees'] as &$e) {
+                    $impliedCash = max(0.0, round(((float) $e['total_sales']) - ((float) $e['clover_total']), 2));
+                    $e['cash_sales'] = $impliedCash;
+                    if ($e['has_shift'] && !is_null($e['opening_cash'])) {
+                        $cashOut = ((float) ($e['cash_buys']           ?? 0))
+                                 + ((float) ($e['cash_refunds']        ?? 0))
+                                 + ((float) ($e['cash_expenses']       ?? 0))
+                                 + ((float) ($e['cash_transfers_out']  ?? 0));
+                        $cashIn  = ((float) ($e['cash_transfers_in']   ?? 0))
+                                 + ((float) ($e['cash_other_net']      ?? 0));
+                        $e['expected_ending_cash'] = round(
+                            ((float) $e['opening_cash']) + $impliedCash - $cashOut + $cashIn,
+                            2
+                        );
+                        if ($e['shift_status'] === 'closed' && !is_null($e['reported_ending_cash'])) {
+                            $e['cash_variance'] = round(
+                                ((float) $e['reported_ending_cash']) - ((float) $e['expected_ending_cash']),
+                                2
+                            );
+                        } else {
+                            $e['cash_variance'] = null;
+                        }
+                    }
+                }
+                unset($e);
+            }
+            unset($loc);
+        }
+        unset($locs);
 
         // Finalize: compute differences, sort employees by abs-diff desc,
         // sort locations alphabetically, sort days most-recent first.

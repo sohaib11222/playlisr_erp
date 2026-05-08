@@ -3,11 +3,14 @@
 
 @section('content')
 <section class="content-header no-print">
-    <h1>Clover EOD Reconciliation <small>ERP card sales vs Clover settlements, day by day</small></h1>
+    <h1>Daily Cash Reconciliation <small>per-cashier sales + drawer check, one day at a time</small></h1>
 </section>
 
 <section class="content no-print">
-    {{-- Filters: date range + location --}}
+    {{-- Filters retired 2026-05-05 — page is now strictly single-day,
+         use the prev/next/today nav. Location stays "All" by default;
+         deep-link via ?location_id=N if needed. --}}
+    @if(false)
     @component('components.filters', ['title' => __('report.filters')])
         <div class="col-md-4">
             <div class="form-group">
@@ -34,6 +37,7 @@
             </div>
         </div>
     @endcomponent
+    @endif
 
     {{-- Sync-now button — Sarah 2026-04-22: Clover column was $0 across
          every day because the scheduled clover:sync-payments wasn't
@@ -42,23 +46,17 @@
          API call / missing creds / zero-payment day are all visible
          instead of buried in a log file. Admin-only on the backend. --}}
     <div style="margin-bottom:12px; text-align:right;">
-        <select id="eod_sync_days" class="form-control" style="display:inline-block; width:auto; vertical-align:middle; margin-right:4px;">
-            <option value="2" selected>Last 2 days</option>
-            <option value="7">Last 7 days</option>
-            <option value="30">Last 30 days (backfill)</option>
-            <option value="90">Last 90 days (backfill)</option>
-        </select>
+        {{-- Sarah 2026-05-06: removed the days-back dropdown and the
+             "Sync everything" button — both confusing. This page only
+             needs the Clover-payments sync (the swipes). "Sync
+             everything" was the broader items+orders+customers sync,
+             which is irrelevant to the daily cash reconciliation flow
+             and lives elsewhere if she ever needs it. Hidden input
+             keeps the existing JS handler working with a fixed 2-day
+             pull window. --}}
+        <input type="hidden" id="eod_sync_days" value="2">
         <button type="button" class="btn btn-default" id="eod_sync_now_btn">
-            <i class="fa fa-sync"></i> Sync Clover now
-        </button>
-        {{-- Sync Everything — full bidirectional sync (items, orders,
-             customers + push dirty products/contacts). Lives next to the
-             payments-only button because that's the first place Sarah
-             looks when numbers feel off, and "resync all" is usually the
-             shotgun answer. Reuses /business/clover/sync-now wired in
-             CloverController. --}}
-        <button type="button" class="btn btn-info" id="eod_sync_all_btn" style="margin-left:6px;">
-            <i class="fa fa-exchange"></i> Sync everything
+            <i class="fa fa-sync"></i> Refresh Clover swipes
         </button>
         <span id="eod_sync_status" style="margin-left:8px; font-size:12px; color:#6b7280;"></span>
     </div>
@@ -66,34 +64,39 @@
         <div style="background:#111827; color:#e5e7eb; padding:12px 14px; border-radius:8px; font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace; font-size:12px; white-space:pre-wrap; max-height:260px; overflow:auto;" id="eod_sync_output_pre"></div>
     </div>
 
-    {{-- Grand totals banner --}}
+    {{-- Day summary — tallied from the per-cashier card data so it
+         reflects the same source of truth Sarah's reading below.
+         Sarah 2026-05-06: previous red banner with aggregate over-swipe
+         and "drawer off" alerts was confusing because per-cashier cards
+         already flag those issues themselves. Calmer neutral summary
+         now: just the totals and reconcile progress. --}}
     @php
-        $variance = round($grand['erp'] - $grand['clover'], 2);
-        $deposit_variance = round($grand['erp'] - $grand['deposit'], 2);
-        $variance_abs = abs($variance);
-        $banner_class = $variance_abs < 1.00 ? 'success' : ($variance_abs < 10.00 ? 'warning' : 'danger');
-        $banner_msg = $variance_abs < 1.00
-            ? 'Reconciled — ERP and Clover match for this range.'
-            : ($variance_abs < 10.00 ? 'Minor variance (< $10).' : 'Material variance — review flagged days below.');
+        $sumTotal = 0.0; $sumCard = 0.0; $sumCashiers = 0; $sumReconciled = 0;
+        foreach ($employee_breakdown_by_day as $_dayBlock) {
+            foreach ($_dayBlock['locations'] as $_loc) {
+                foreach ($_loc['employees'] as $_e) {
+                    $_emp = strtolower(trim($_e['display_name'] ?? ''));
+                    if ($_emp === 'unknown' || $_emp === 'unattributed') continue;
+                    $sumCashiers++;
+                    $sumTotal += (float) ($_e['total_sales'] ?? 0);
+                    $sumCard  += (float) ($_e['clover_total'] ?? 0);
+                    $_rKey = $_dayBlock['day'] . '|' . ($_loc['location_id'] ?: 0) . '|' . $_emp;
+                    if (!empty($reconciliations[$_rKey]) && optional($reconciliations[$_rKey])->reconciled_at) $sumReconciled++;
+                }
+            }
+        }
+        // Clamp implied cash at zero — a negative number here means the
+        // amount-match attribution credited Clover swipes from outside
+        // this day to a today cashier. Showing a negative "Paid in cash"
+        // is more confusing than helpful; the per-card warnings flag the
+        // specific cashier where it happened.
+        $sumCash = max(0, round($sumTotal - $sumCard, 2));
     @endphp
-    <div class="alert alert-{{ $banner_class }}" style="margin-bottom:16px;">
-        <strong>{{ $banner_msg }}</strong>
-        &nbsp;
-        ERP card sales: <strong>${{ number_format($grand['erp'], 2) }}</strong>
-        &nbsp;·&nbsp;
-        Clover settlements: <strong>${{ number_format($grand['clover'], 2) }}</strong>
-        &nbsp;·&nbsp;
-        Variance: <strong>${{ number_format($variance, 2) }}</strong>
-        &nbsp;·&nbsp;
-        Clover batch deposits: <strong>${{ number_format($grand['deposit'], 2) }}</strong>
-        &nbsp;·&nbsp;
-        Deposit variance: <strong>${{ number_format($deposit_variance, 2) }}</strong>
-        @if($grand['flagged_days'] > 0)
-            &nbsp;·&nbsp; <span>{{ $grand['flagged_days'] }} day(s) flagged</span>
-        @endif
-        @if(($grand['deposit_flagged_days'] ?? 0) > 0)
-            &nbsp;·&nbsp; <span>{{ $grand['deposit_flagged_days'] }} day(s) deposit-flagged</span>
-        @endif
+    <div style="background:#f3f4f6; border:1px solid #e5e7eb; border-radius:8px; padding:10px 14px; margin-bottom:16px; font-size:14px; color:#1f2937; font-variant-numeric: tabular-nums;">
+        Total sold: <strong>${{ number_format($sumTotal, 2) }}</strong>
+        &nbsp;·&nbsp; Paid by card: <strong>${{ number_format($sumCard, 2) }}</strong>
+        &nbsp;·&nbsp; Paid in cash: <strong>${{ number_format($sumCash, 2) }}</strong>
+        &nbsp;·&nbsp; Reconciled: <strong>{{ $sumReconciled }} of {{ $sumCashiers }}</strong>
     </div>
 
     {{-- Daily-nav bar — shown in single-day mode so Fatteen can step
@@ -127,6 +130,392 @@
         </div>
     @endif
 
+    {{-- Per-cashier daily reconciliation — the primary view (Sarah,
+         2026-05-05). One card per (cashier, day, location). Three plain
+         sections answer her three questions:
+           · WHAT THEY SOLD — cash + card, with the totals broken out
+           · CARD CHECK — Clover settled vs ERP card sales for that
+             cashier (the theft signal: a card swiped on Clover but
+             never rung into the POS = pocketed)
+           · CASH DRAWER — opening + cash sales − cash buys = expected,
+             vs what the cashier counted at close (the wrong-change /
+             skim signal)
+         Each card has its own ✓ Reconciled toggle + notes so she can
+         sign each cashier off independently. --}}
+    @if(!empty($employee_breakdown_by_day))
+        <style>
+            .cc-day-block { margin-bottom: 22px; }
+            .cc-day-head { font-size:13px; color:#6b7280; font-weight:700; letter-spacing:.04em; text-transform:uppercase; margin:6px 0 10px; }
+            .cc-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap:14px; }
+            .cc-card { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:14px 16px; }
+            .cc-card.flag { border-color:#fecaca; background:#fff5f5; }
+            .cc-card.warn { border-color:#fde68a; background:#fffbeb; }
+            .cc-card.ok   { border-color:#bbf7d0; }
+            .cc-head { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid #e5e7eb; }
+            .cc-title { font-size:16px; font-weight:800; color:#111827; }
+            .cc-sub { font-size:11px; color:#6b7280; margin-top:2px; text-transform:uppercase; letter-spacing:.04em; }
+            .cc-section { margin:10px 0 6px; }
+            .cc-sec-h { font-size:10px; font-weight:800; color:#374151; text-transform:uppercase; letter-spacing:.06em; margin-bottom:4px; }
+            .cc-line { display:flex; justify-content:space-between; align-items:baseline; font-size:13px; padding:2px 0; font-variant-numeric: tabular-nums; }
+            .cc-line.sum { border-top:1px solid #d1d5db; padding-top:5px; margin-top:4px; font-weight:700; }
+            .cc-label { color:#374151; }
+            .cc-label.minor { color:#6b7280; font-size:12px; }
+            .cc-val { font-weight:600; color:#111827; }
+            .cc-val.muted { color:#9ca3af; font-weight:500; }
+            .cc-val.ok { color:#166534; }
+            .cc-val.warn { color:#b45309; }
+            .cc-val.bad  { color:#b91c1c; }
+            .cc-flag { display:inline-block; margin-left:6px; padding:1px 6px; border-radius:10px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
+            .cc-flag.ok { background:#dcfce7; color:#166534; }
+            .cc-flag.warn { background:#fef3c7; color:#92400e; }
+            .cc-flag.bad { background:#fee2e2; color:#991b1b; }
+            .cc-flag.muted { background:#f3f4f6; color:#6b7280; }
+            .cc-foot { margin-top:10px; padding-top:10px; border-top:1px solid #e5e7eb; }
+
+            /* Collapsed cards — once Sarah ticks "Mark reconciled" we
+               shrink the card to just its header + total so signed-off
+               cashiers fall out of her field of view but stay clickable
+               to re-expand if she needs to revisit. Click the title to
+               un-collapse, click the checkbox to toggle reconciled. */
+            .cc-card.cc-collapsed { padding:10px 14px; cursor:pointer; opacity:.65; background:#f9fafb; }
+            .cc-card.cc-collapsed.flag,
+            .cc-card.cc-collapsed.warn { background:#f9fafb; border-color:#e5e7eb; }
+            .cc-card.cc-collapsed .cc-head { margin-bottom:0; padding-bottom:0; border-bottom:none; }
+            .cc-card.cc-collapsed .cc-section,
+            .cc-card.cc-collapsed .cc-foot { display:none; }
+            .cc-card.cc-collapsed .cc-collapsed-summary { display:block; }
+            .cc-collapsed-summary { display:none; font-size:12px; color:#6b7280; margin-top:4px; font-variant-numeric: tabular-nums; }
+        </style>
+
+        @foreach($employee_breakdown_by_day as $dayBlock)
+            @php
+                $dayDate = \Carbon\Carbon::parse($dayBlock['day']);
+                $dayHeader = $dayDate->isToday() ? 'Today'
+                    : ($dayDate->isYesterday() ? 'Yesterday'
+                    : $dayDate->format('l, F j'));
+            @endphp
+            <div class="cc-day-block">
+                <div class="cc-day-head">{{ $dayHeader }} <span style="color:#9ca3af; font-weight:500; margin-left:6px;">{{ $dayDate->format('Y-m-d') }}</span></div>
+                <div class="cc-grid">
+                    @foreach($dayBlock['locations'] as $loc)
+                        @php
+                            $locNameRaw = $loc['location_name'];
+                            $isNoLoc = (strtolower($locNameRaw) === '(no location)' || stripos($locNameRaw, 'no location') !== false);
+                            $locNameDisplay = $isNoLoc ? 'No location' : $locNameRaw;
+                        @endphp
+                        @foreach($loc['employees'] as $e)
+                            @php
+                                // Skip the synthetic "Unknown" / "Unattributed" cashier
+                                // buckets — those rows are walk-in, online, or no-pin
+                                // sales and don't have a physical drawer to reconcile.
+                                $empKey = strtolower(trim($e['display_name']));
+                                if ($empKey === 'unknown' || $empKey === 'unattributed') continue;
+
+                                // Source of truth: total_sales = sum of t.final_total for
+                                // this cashier's transactions, IGNORING payment method.
+                                // Cashiers ring everything as 'cash' regardless of how
+                                // the customer actually paid, so the only trustworthy
+                                // "what they sold" number is the transaction total.
+                                $totalSold  = (float) ($e['total_sales'] ?? 0);
+                                $cardClover = (float) ($e['clover_total'] ?? 0);
+                                // Implied cash = what was sold minus what Clover settled.
+                                // If Clover > sold (mis-keyed amount), don't go negative;
+                                // surface as a flag instead.
+                                $impliedCash = max(0.0, round($totalSold - $cardClover, 2));
+                                $overSwipe   = round($cardClover - $totalSold, 2);
+
+                                $opening     = $e['opening_cash'];
+                                $cashBuys    = (float) ($e['cash_buys'] ?? 0);
+                                $expected    = $e['expected_ending_cash'];
+                                $reported    = $e['reported_ending_cash'];
+                                $cashVar     = $e['cash_variance']; // null until shift closes
+                                $hasShift    = !empty($e['has_shift']);
+                                $shiftStatus = $e['shift_status'] ?? null;
+
+                                // Sales-vs-Clover signal. If Clover collected more than
+                                // ERP recorded as sold for this cashier, that's the theft
+                                // tell — a card was swiped but no sale was rung.
+                                if ($overSwipe < 1) { $swipeCls = 'ok'; $swipeLabel = 'OK'; }
+                                elseif ($overSwipe < 10) { $swipeCls = 'warn'; $swipeLabel = 'Over swipe'; }
+                                else { $swipeCls = 'bad'; $swipeLabel = 'Over swipe'; }
+
+                                // Cash-check signal — drawer short / over.
+                                if ($cashVar === null) {
+                                    $cashCls = 'muted';
+                                    $cashLabel = $hasShift && $shiftStatus === 'open' ? 'Shift open' : 'No close yet';
+                                } else {
+                                    $cashAbs = abs($cashVar);
+                                    if ($cashAbs < 1) { $cashCls = 'ok'; $cashLabel = 'Even'; }
+                                    elseif ($cashAbs < 5) { $cashCls = 'warn'; $cashLabel = $cashVar < 0 ? 'Short' : 'Over'; }
+                                    else { $cashCls = 'bad'; $cashLabel = $cashVar < 0 ? 'Short' : 'Over'; }
+                                }
+
+                                $cardKind = ($swipeCls === 'bad' || $cashCls === 'bad') ? 'flag'
+                                          : (($swipeCls === 'warn' || $cashCls === 'warn') ? 'warn' : 'ok');
+
+                                // Reconciliation lookup — per-cashier key.
+                                $rKey = $dayBlock['day'] . '|' . ($loc['location_id'] ?: 0) . '|' . $empKey;
+                                $rec = $reconciliations[$rKey] ?? null;
+                                $isReconciled = (bool) optional($rec)->reconciled_at;
+                                $recNotes = $rec ? (string) $rec->notes : '';
+                                $recStampLabel = null;
+                                if ($rec && $rec->reconciled_at) {
+                                    $u = $rec->user;
+                                    $who = $u ? (trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: $u->username) : null;
+                                    $recStampLabel = 'Reconciled' . ($who ? ' by ' . $who : '') . ' · '
+                                        . \Carbon\Carbon::parse($rec->reconciled_at)->format('M j, g:i a');
+                                }
+
+                                $fmt = function ($t) {
+                                    if (!$t) return null;
+                                    try { return \Carbon\Carbon::parse($t)->setTimezone(config('app.timezone'))->format('g:i a'); }
+                                    catch (\Exception $ex) { return null; }
+                                };
+                                $shiftLabel = null;
+                                if (!empty($e['shift_start'])) {
+                                    $a = $fmt($e['shift_start']);
+                                    $b = $shiftStatus === 'open' ? 'open' : $fmt($e['shift_end']);
+                                    if ($a) $shiftLabel = $a . ' → ' . ($b ?: '—');
+                                }
+                                $txnCount = (int) ($e['txn_count'] ?? 0);
+                            @endphp
+                            <div class="cc-card {{ $cardKind }} {{ $isReconciled ? 'cc-collapsed' : '' }} eod-loc-card"
+                                 data-day="{{ $dayBlock['day'] }}"
+                                 data-location-id="{{ $loc['location_id'] ?: 0 }}"
+                                 data-employee-key="{{ $empKey }}">
+                                <div class="cc-head">
+                                    <div style="flex:1; min-width:0;">
+                                        <div class="cc-title">{{ $e['display_name'] }}</div>
+                                        <div class="cc-sub">{{ $locNameDisplay }}@if($shiftLabel) · {{ $shiftLabel }}@endif</div>
+                                        <div class="cc-collapsed-summary">${{ number_format($totalSold, 2) }} sold @if($txnCount) · {{ $txnCount }} sale{{ $txnCount === 1 ? '' : 's' }}@endif @if(!is_null($cashVar)) · drawer {{ $cashVar >= 0 ? '+' : '' }}${{ number_format($cashVar, 2) }}@endif</div>
+                                    </div>
+                                    <label class="eod-recon-toggle" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; cursor:pointer; color:{{ $isReconciled ? '#166534' : '#374151' }}; white-space:nowrap;" onclick="event.stopPropagation();">
+                                        <input type="checkbox" class="eod-recon-checkbox" {{ $isReconciled ? 'checked' : '' }}>
+                                        <span class="eod-recon-label">{{ $isReconciled ? '✓ Reconciled' : 'Mark reconciled' }}</span>
+                                    </label>
+                                </div>
+
+                                {{-- WHAT THEY SOLD — total + payment split.
+                                     Sarah 2026-05-06: "we don't necessarily
+                                     know if cash or credit was collected" —
+                                     so the non-Clover bucket is labeled
+                                     "Not on Clover" rather than asserted as
+                                     cash. The cashier could've taken cash,
+                                     or Clover sync might be lagging. --}}
+                                @php
+                                    $missingClover = $totalSold > 0 && $cardClover == 0;
+                                @endphp
+                                <div class="cc-section">
+                                    <div class="cc-sec-h">What they sold @if($txnCount)<span style="font-weight:500; color:#9ca3af;">· {{ $txnCount }} sale{{ $txnCount === 1 ? '' : 's' }}</span>@endif</div>
+                                    <div class="cc-line sum"><span class="cc-label">Total sales</span><span class="cc-val">${{ number_format($totalSold, 2) }}</span></div>
+                                    <div class="cc-line"><span class="cc-label minor">— matched on Clover</span><span class="cc-val">${{ number_format($cardClover, 2) }}</span></div>
+                                    <div class="cc-line"><span class="cc-label minor">— not on Clover (cash or unsynced)</span><span class="cc-val">${{ number_format($impliedCash, 2) }}</span></div>
+                                    @if($missingClover)
+                                        <div class="cc-line"><span class="cc-label" style="color:#92400e;">⚠ No Clover swipes matched — sync may be stale</span><span class="cc-val"></span></div>
+                                    @endif
+                                    @if($overSwipe >= 1)
+                                        <div class="cc-line"><span class="cc-label" style="color:#b91c1c;">⚠ Clover collected more than rung</span><span class="cc-val bad">+${{ number_format($overSwipe, 2) }}</span></div>
+                                    @endif
+                                </div>
+
+                                {{-- CASH DRAWER — opening + cash collected − buys = expected vs counted.
+                                     Sarah 2026-05-07: when the cashier never opened/closed the register
+                                     (no opening count, no close count), the Expected/Counted/Variance
+                                     rows are all "—" and read as a fault. Hide that block in that case
+                                     and surface a single "register not opened/closed" hint instead.
+                                     "+ Not on Clover (assumed cash)" still shows as the raw cash bucket. --}}
+                                @php
+                                    $cashRefunds      = (float) ($e['cash_refunds']       ?? 0);
+                                    $cashExpenses     = (float) ($e['cash_expenses']      ?? 0);
+                                    $cashTransfersOut = (float) ($e['cash_transfers_out'] ?? 0);
+                                    $cashTransfersIn  = (float) ($e['cash_transfers_in']  ?? 0);
+                                    $cashOtherNet     = (float) ($e['cash_other_net']     ?? 0);
+                                    $noDrawerCounts   = is_null($opening) && is_null($expected) && is_null($reported) && is_null($cashVar);
+                                @endphp
+                                <div class="cc-section">
+                                    <div class="cc-sec-h">Cash drawer <span class="cc-flag {{ $cashCls }}">{{ $cashLabel }}</span></div>
+                                    @if(!$noDrawerCounts)
+                                        <div class="cc-line"><span class="cc-label minor">Opening cash</span><span class="cc-val {{ is_null($opening) ? 'muted' : '' }}">{{ is_null($opening) ? '—' : '$' . number_format($opening, 2) }}</span></div>
+                                    @endif
+                                    <div class="cc-line"><span class="cc-label minor">+ Not on Clover (assumed cash)</span><span class="cc-val">${{ number_format($impliedCash, 2) }}</span></div>
+                                    @if($cashBuys > 0 || $hasShift)
+                                        <div class="cc-line"><span class="cc-label minor">− Collection buys (cash)</span><span class="cc-val {{ $hasShift ? '' : 'muted' }}">{{ $hasShift ? '$' . number_format($cashBuys, 2) : '—' }}</span></div>
+                                    @endif
+                                    @if($cashRefunds > 0)
+                                        <div class="cc-line"><span class="cc-label minor">− Cash refunds</span><span class="cc-val">$ {{ number_format($cashRefunds, 2) }}</span></div>
+                                    @endif
+                                    @if($cashExpenses > 0)
+                                        <div class="cc-line"><span class="cc-label minor">− Expenses</span><span class="cc-val">$ {{ number_format($cashExpenses, 2) }}</span></div>
+                                    @endif
+                                    @if($cashTransfersOut > 0)
+                                        <div class="cc-line"><span class="cc-label minor">− Transferred out</span><span class="cc-val">$ {{ number_format($cashTransfersOut, 2) }}</span></div>
+                                    @endif
+                                    @if($cashTransfersIn > 0)
+                                        <div class="cc-line"><span class="cc-label minor">+ Transferred in</span><span class="cc-val">$ {{ number_format($cashTransfersIn, 2) }}</span></div>
+                                    @endif
+                                    @if(abs($cashOtherNet) >= 0.01)
+                                        <div class="cc-line"><span class="cc-label minor">{{ $cashOtherNet >= 0 ? '+' : '−' }} Other movements</span><span class="cc-val">${{ number_format(abs($cashOtherNet), 2) }}</span></div>
+                                    @endif
+                                    @if($noDrawerCounts)
+                                        <div class="cc-line" style="margin-top:6px; color:#9ca3af; font-size:12px;">
+                                            <span class="cc-label minor">Register not opened/closed — no drawer to reconcile. Leave a note below if expected.</span>
+                                        </div>
+                                    @else
+                                        <div class="cc-line sum"><span class="cc-label">Expected in drawer</span><span class="cc-val {{ is_null($expected) ? 'muted' : '' }}">{{ is_null($expected) ? '—' : '$' . number_format($expected, 2) }}</span></div>
+                                        <div class="cc-line"><span class="cc-label">Counted at close</span><span class="cc-val {{ is_null($reported) ? 'muted' : '' }}">{{ is_null($reported) ? '—' : '$' . number_format($reported, 2) }}</span></div>
+                                        <div class="cc-line sum"><span class="cc-label">Variance</span><span class="cc-val {{ $cashCls }}">{{ is_null($cashVar) ? '—' : (($cashVar >= 0 ? '+' : '') . '$' . number_format($cashVar, 2)) }}</span></div>
+                                    @endif
+                                </div>
+
+                                {{-- Variance investigation drill-down — Sarah
+                                     2026-05-06: "I need to figure out all
+                                     these variances daily." Each list is the
+                                     transactions that explain (or fail to
+                                     explain) the variance:
+                                       · Clover-only = over-swipe (theft tell)
+                                       · ERP-only = likely cash, but a missed
+                                         swipe shows up here too
+                                       · Cash buys = real money out of drawer
+                                     Collapsed by default to keep the card
+                                     compact. Click to expand. --}}
+                                @php
+                                    $details = $e['details'] ?? ['clover_unmatched'=>[], 'erp_unmatched'=>[], 'amount_mismatch'=>[], 'buys'=>[], 'other_channels'=>[]];
+                                    $cuCount = count($details['clover_unmatched'] ?? []);
+                                    $euCount = count($details['erp_unmatched'] ?? []);
+                                    $amCount = count($details['amount_mismatch'] ?? []);
+                                    $bCount  = count($details['buys'] ?? []);
+                                    $ocCount = count($details['other_channels'] ?? []);
+                                    $detailsTotal = $cuCount + $euCount + $amCount + $bCount + $ocCount;
+                                    $tFmt = function ($t) {
+                                        if (!$t) return '—';
+                                        try { return \Carbon\Carbon::parse($t)->setTimezone(config('app.timezone'))->format('g:i a'); }
+                                        catch (\Exception $ex) { return '—'; }
+                                    };
+                                    // Bag-fee hint: Nivessa charges $0.12 per bag in
+                                    // the POS but cashiers sometimes don't add it on
+                                    // Clover. A keying-error diff that's an exact
+                                    // multiple of 12¢ (1-12 bags) is almost always
+                                    // bag fees, not actual mis-keying.
+                                    $isBagFee = function ($diffDollars) {
+                                        $cents = (int) round(abs((float) $diffDollars) * 100);
+                                        return $cents > 0 && $cents <= 144 && $cents % 12 === 0;
+                                    };
+                                @endphp
+                                @if($detailsTotal > 0)
+                                    <details class="cc-details" style="margin-top:8px; border-top:1px solid #e5e7eb; padding-top:8px;" onclick="event.stopPropagation();">
+                                        <summary style="cursor:pointer; font-size:11px; font-weight:700; color:#374151; text-transform:uppercase; letter-spacing:.04em; padding:2px 0; user-select:none;">
+                                            Show breakdown
+                                            @if($cuCount > 0)<span style="color:#b91c1c; font-weight:600; text-transform:none; margin-left:6px;">· {{ $cuCount }} over-swipe</span>@endif
+                                            @if($amCount > 0)<span style="color:#b45309; font-weight:600; text-transform:none; margin-left:6px;">· {{ $amCount }} keying error{{ $amCount === 1 ? '' : 's' }}</span>@endif
+                                            @if($euCount > 0)<span style="color:#374151; font-weight:500; text-transform:none; margin-left:6px;">· {{ $euCount }} cash sale{{ $euCount === 1 ? '' : 's' }}</span>@endif
+                                            @if($bCount > 0)<span style="color:#374151; font-weight:500; text-transform:none; margin-left:6px;">· {{ $bCount }} buy{{ $bCount === 1 ? '' : 's' }}</span>@endif
+                                            @if($ocCount > 0)<span style="color:#1d4ed8; font-weight:500; text-transform:none; margin-left:6px;">· {{ $ocCount }} other-channel</span>@endif
+                                        </summary>
+                                        <div style="margin-top:8px; font-size:12px; font-variant-numeric: tabular-nums;">
+                                            @if($cuCount > 0)
+                                                <div style="margin-top:4px;"><span style="font-size:10px; font-weight:700; color:#b91c1c; text-transform:uppercase;">Clover-only (over-swipe)</span></div>
+                                                @php $cuSum = 0; @endphp
+                                                @foreach($details['clover_unmatched'] as $row)
+                                                    @php $cuSum += (float) $row->amount; @endphp
+                                                    <div style="display:flex; justify-content:space-between; padding:2px 0; border-bottom:1px dotted #f3f4f6;">
+                                                        <span style="color:#6b7280;">{{ $tFmt($row->ts) }}</span>
+                                                        <span style="color:#b91c1c; font-weight:600;">${{ number_format($row->amount, 2) }}</span>
+                                                    </div>
+                                                @endforeach
+                                                <div style="display:flex; justify-content:space-between; padding:3px 0; font-weight:700;"><span>Subtotal</span><span style="color:#b91c1c;">${{ number_format($cuSum, 2) }}</span></div>
+                                            @endif
+                                            @if($amCount > 0)
+                                                <div style="margin-top:8px;"><span style="font-size:10px; font-weight:700; color:#b45309; text-transform:uppercase;">Keying errors (Clover amount ≠ ERP amount)</span></div>
+                                                @php $amSum = 0; @endphp
+                                                @foreach($details['amount_mismatch'] as $row)
+                                                    @php $amSum += (float) $row->diff; @endphp
+                                                    @php $bagHint = $isBagFee($row->diff); @endphp
+                                                    <div style="display:flex; justify-content:space-between; padding:2px 0; border-bottom:1px dotted #f3f4f6;">
+                                                        <span style="color:#6b7280;">
+                                                            {{ $tFmt($row->ts) }}
+                                                            @if($bagHint)<span style="color:#1d4ed8; font-size:10px; font-weight:700; margin-left:4px;" title="Diff is an exact multiple of $0.12 — likely bag fee not added on Clover">· likely bag fee</span>@endif
+                                                        </span>
+                                                        <span style="text-align:right;">
+                                                            <a href="{{ route('sell.printInvoice', $row->transaction_id) }}" target="_blank" style="color:#1f2937; font-weight:600; text-decoration:none;">
+                                                                Clover ${{ number_format($row->clover_amount, 2) }} vs ERP ${{ number_format($row->erp_amount, 2) }}
+                                                            </a>
+                                                            <span style="color:{{ $row->diff < 0 ? '#b91c1c' : '#92400e' }}; font-weight:700; margin-left:6px;">{{ $row->diff < 0 ? 'under' : 'over' }} ${{ number_format(abs($row->diff), 2) }}</span>
+                                                        </span>
+                                                    </div>
+                                                @endforeach
+                                                <div style="display:flex; justify-content:space-between; padding:3px 0; font-weight:700;"><span>Net keying drift</span><span style="color:{{ $amSum < 0 ? '#b91c1c' : '#92400e' }};">{{ $amSum >= 0 ? '+' : '' }}${{ number_format($amSum, 2) }}</span></div>
+                                            @endif
+                                            @if($euCount > 0)
+                                                <div style="margin-top:8px;"><span style="font-size:10px; font-weight:700; color:#374151; text-transform:uppercase;">ERP-only (likely cash, or missed swipe)</span></div>
+                                                @php $euSum = 0; @endphp
+                                                @foreach($details['erp_unmatched'] as $row)
+                                                    @php $euSum += (float) $row->amount; @endphp
+                                                    <div style="display:flex; justify-content:space-between; padding:2px 0; border-bottom:1px dotted #f3f4f6;">
+                                                        <span style="color:#6b7280;">{{ $tFmt($row->ts) }}</span>
+                                                        <span><a href="{{ route('sell.printInvoice', $row->transaction_id) }}" target="_blank" style="color:#1f2937; font-weight:600; text-decoration:none;">${{ number_format($row->amount, 2) }}</a></span>
+                                                    </div>
+                                                @endforeach
+                                                <div style="display:flex; justify-content:space-between; padding:3px 0; font-weight:700;"><span>Subtotal</span><span>${{ number_format($euSum, 2) }}</span></div>
+                                            @endif
+                                            @if($bCount > 0)
+                                                <div style="margin-top:8px;"><span style="font-size:10px; font-weight:700; color:#374151; text-transform:uppercase;">Cash buys (collection purchases)</span></div>
+                                                @php $bSum = 0; @endphp
+                                                @foreach($details['buys'] as $row)
+                                                    @php $bSum += (float) $row->amount; @endphp
+                                                    <div style="display:flex; justify-content:space-between; padding:2px 0; border-bottom:1px dotted #f3f4f6;">
+                                                        <span style="color:#6b7280;">{{ $tFmt($row->ts) }}</span>
+                                                        <span style="color:#1f2937; font-weight:600;">−${{ number_format($row->amount, 2) }}</span>
+                                                    </div>
+                                                @endforeach
+                                                <div style="display:flex; justify-content:space-between; padding:3px 0; font-weight:700;"><span>Subtotal</span><span>−${{ number_format($bSum, 2) }}</span></div>
+                                            @endif
+                                            @if(($ocCount ?? 0) > 0)
+                                                <div style="margin-top:8px;"><span style="font-size:10px; font-weight:700; color:#1d4ed8; text-transform:uppercase;">Other channels</span></div>
+                                                @php $ocSum = 0; @endphp
+                                                @foreach($details['other_channels'] as $row)
+                                                    @php $ocSum += (float) $row->amount; @endphp
+                                                    <div style="display:flex; justify-content:space-between; padding:2px 0; border-bottom:1px dotted #f3f4f6;" class="cc-recat-row" data-txn-id="{{ $row->transaction_id }}">
+                                                        <span style="color:#6b7280;">
+                                                            {{ $tFmt($row->ts) }} ·
+                                                            <span style="text-transform:uppercase; font-size:10px; font-weight:700; color:#1d4ed8; letter-spacing:.04em;">{{ $row->channel }}</span>
+                                                            <button type="button" class="cc-recat-btn" title="Mis-tagged? Click to flip this back to in-store"
+                                                                style="margin-left:6px; background:transparent; border:1px solid #93c5fd; color:#1d4ed8; font-size:10px; font-weight:700; padding:1px 6px; border-radius:999px; cursor:pointer;">→ in-store</button>
+                                                        </span>
+                                                        <span><a href="{{ route('sell.printInvoice', $row->transaction_id) }}" target="_blank" style="color:#1f2937; font-weight:600; text-decoration:none;">${{ number_format($row->amount, 2) }}</a></span>
+                                                    </div>
+                                                @endforeach
+                                                <div style="display:flex; justify-content:space-between; padding:3px 0; font-weight:700;"><span>Subtotal</span><span>${{ number_format($ocSum, 2) }}</span></div>
+                                            @endif
+                                        </div>
+                                    </details>
+                                @endif
+
+                                <div class="cc-foot">
+                                    @php
+                                        $viewQs = ['location_id' => $loc['location_id'] ?: '', 'start_date' => $dayBlock['day'], 'end_date' => $dayBlock['day'], 'limit' => 200, 'hide_orphans' => 1];
+                                        if (!empty($e['user_id'])) $viewQs['created_by'] = (int) $e['user_id'];
+                                    @endphp
+                                    <a href="/pos/recent-feed?{{ http_build_query($viewQs) }}" target="_blank"
+                                       style="font-size:11px; color:#4f46e5; text-decoration:none; font-weight:600;">
+                                        View {{ $e['display_name'] }}'s sales (today) →
+                                    </a>
+                                    <textarea class="eod-recon-notes form-control" rows="2"
+                                        placeholder="Notes for {{ $e['display_name'] }} (auto-saves)"
+                                        style="font-size:12px; resize:vertical; margin-top:6px;">{{ $recNotes }}</textarea>
+                                    <div class="eod-recon-notes-status" style="font-size:11px; color:#9ca3af; margin-top:2px; min-height:14px;">{{ $recStampLabel }}</div>
+                                </div>
+                            </div>
+                        @endforeach
+                    @endforeach
+                </div>
+            </div>
+        @endforeach
+        <p class="help-block" style="margin-top:-6px; margin-bottom:18px;">
+            <strong>Total sales</strong> is the sum of every sale this cashier rang up, regardless of how the cashier punched the payment method (Sarah 2026-05-05: cashiers ring all sales as cash even when the customer pays by card). <strong>Paid by card</strong> = matched against Clover settlements; <strong>paid in cash</strong> = the rest. <strong>Over swipe</strong> means Clover collected more than the cashier rang up — the theft tell.
+            <strong>Cash drawer</strong>: opening + cash collected − cash buys should equal what the cashier counted at close. <em>Short</em> = drawer low (skim or wrong change), <em>Over</em> = drawer high (mis-rung sale).
+        </p>
+    @endif
+
     {{-- Per-shift theft audit — the view Sarah actually wants. One card
          per cashier shift, two plain-language checks:
          SALES CHECK (Clover card ↔ ERP card during shift) catches keying
@@ -134,8 +523,12 @@
          = expected vs reported) catches drawer shortages.
          Drill-in on the SALES CHECK shows the raw Clover + ERP payment
          lists side-by-side, so Fatteen can find the specific sale with
-         a typo when the totals disagree. --}}
-    @if(!empty($shift_audit))
+         a typo when the totals disagree.
+
+         Sarah 2026-05-05: hidden — daily cash reconciliation now uses the
+         xlsx-style per-store side-by-side panel below. Block is kept so
+         it can be re-enabled later by removing the `false &&` guard. --}}
+    @if(false && !empty($shift_audit))
         <style>
             .sa-card { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:16px 18px; margin-bottom:14px; }
             .sa-card.flag { border-color:#fecaca; background:#fef2f2; }
@@ -352,10 +745,15 @@
         <div class="alert alert-info" style="margin-bottom:20px;">No shifts in this window. Pick a different day or open a register.</div>
     @endif
 
-    {{-- Old panels (xlsx layout, old per-cashier breakdown) retired
-         2026-04-23 in favor of the cashier shift audit above. Gated
-         behind @if(false) so their referenced variables don't break
-         renders. --}}
+    {{-- Daily cash reconciliation — mirrors Sarah's xlsx workflow
+         (one per-employee summary at top, then per-store side-by-side
+         Clover/ERP raw payment lists with totals at the bottom).
+         Re-enabled 2026-05-05 after the shift-audit cards above were
+         judged unusable for the daily flow. --}}
+    {{-- xlsx side-by-side raw payment lists hidden 2026-05-05 — Sarah
+         finds them confusing now that the per-cashier cards above show
+         the matched view. The "View {cashier}'s sales" link inside each
+         card opens /pos/recent-feed for transaction-level drill-in. --}}
     @if(false && (!empty($xlsx_layout['employee_summary']) || !empty($xlsx_layout['by_day'])))
         <style>
             .rx-summary-wrap { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:12px 14px; margin-bottom:20px; }
@@ -389,8 +787,13 @@
 
         {{-- Employee summary (top of Sarah's xlsx) — one row per first
              name, aggregated across both stores. Sorted by |diff| desc so
-             biggest mismatches float to the top. --}}
-        @if(!empty($xlsx_layout['employee_summary']))
+             biggest mismatches float to the top.
+
+             Sarah 2026-05-05: hidden because the per-cashier cards above
+             already show the same Clover↔ERP card-check per employee in
+             plainer language. Kept in code so it's a one-line flip if
+             she wants the dense summary back. --}}
+        @if(false && !empty($xlsx_layout['employee_summary']))
             @php
                 $sumClover = array_sum(array_column($xlsx_layout['employee_summary'], 'clover'));
                 $sumErp    = array_sum(array_column($xlsx_layout['employee_summary'], 'erp'));
@@ -490,9 +893,9 @@
                                 <table class="rx-list">
                                     <thead>
                                         <tr>
-                                            <th>Time</th>
+                                            <th>Payment Date</th>
                                             <th class="num">Amount</th>
-                                            <th>Employee</th>
+                                            <th>Employee Name</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -920,6 +1323,12 @@
     @endif
     @endif {{-- /@if(false) wrapper for the retired breakdown block --}}
 
+    {{-- Daily reconciliation rollup table hidden 2026-05-05 — its
+         "ERP card $" / "Variance" columns rely on payment-method
+         filtering, which is meaningless given the workflow where
+         cashiers ring everything as cash. The per-cashier cards above
+         are the source of truth now. --}}
+    @if(false)
     @component('components.widget', ['class' => 'box-primary', 'title' => 'Daily reconciliation'])
         <div class="table-responsive">
             <table class="table table-bordered table-striped">
@@ -976,6 +1385,7 @@
             if it hasn't run recently the Clover column will lag behind.
         </p>
     @endcomponent
+    @endif {{-- /retired Daily reconciliation rollup table --}}
 
     {{-- Why Unknown? drill-down — Sarah 2026-04-22: "why is employee
          unknown sometimes?". Lists the raw rows that bucketed as Unknown
@@ -983,7 +1393,7 @@
          walk-in / online-checkout from actual data problems (deleted
          users, broken imports). Collapsed by default so the panel stays
          small unless she cares. --}}
-    @if(!empty($unknown_rows) && (count($unknown_rows['erp'] ?? []) > 0 || count($unknown_rows['clover'] ?? []) > 0 || count($unknown_rows['clover_fields'] ?? []) > 0))
+    @if(false && !empty($unknown_rows) && (count($unknown_rows['erp'] ?? []) > 0 || count($unknown_rows['clover'] ?? []) > 0 || count($unknown_rows['clover_fields'] ?? []) > 0))
         @component('components.widget', ['class' => 'box-warning', 'title' => 'Why Unknown / Manual Clover Fields? &mdash; ' . (count($unknown_rows['erp']) + count($unknown_rows['clover']) + count($unknown_rows['clover_fields'] ?? [])) . ' row(s)'])
             <p class="help-block" style="margin-top:-6px;">
                 Each row below is a payment that bucketed as <em>Unknown</em> in the per-cashier breakdown.
@@ -1098,7 +1508,16 @@
 @section('javascript')
 <script>
 $(function () {
-    $('#eod_date_range').daterangepicker(dateRangeSettings, function (start, end) {
+    // Force the picker to default to today/today, not the inherited
+    // dateRangeSettings (which is "last 30 days" most places). Sarah
+    // 2026-05-05: this report is a daily-cash flow, multi-day blurs it.
+    var eodPickerOpts = $.extend({}, dateRangeSettings || {}, {
+        startDate: moment(),
+        endDate: moment(),
+        singleDatePicker: false,
+        autoApply: true
+    });
+    $('#eod_date_range').daterangepicker(eodPickerOpts, function (start, end) {
         $('#eod_date_range').val(start.format(moment_date_format) + ' ~ ' + end.format(moment_date_format));
     });
     $('#eod_apply_btn').on('click', function () {
@@ -1157,77 +1576,54 @@ $(function () {
         });
     });
 
-    // Sync-everything handler — kicks off the umbrella clover:sync
-    // command as a background process (nginx times out at 60s, and full
-    // syncs can run minutes) and then polls /sync-status to pipe the log
-    // tail into the same console block. Defaults to --days=30 so the
-    // reconciliation report lights up for the last month of history.
-    $('#eod_sync_all_btn').on('click', function () {
-        var $btn = $(this);
-        var $status = $('#eod_sync_status');
-        var $out = $('#eod_sync_output');
-        var $pre = $('#eod_sync_output_pre');
-        var original = $btn.html();
-        $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Syncing everything…');
-        $status.text('Starting background sync (last 30 days)…').css('color', '#6b7280');
-        $out.hide();
+    // Sync-everything handler retired 2026-05-06 — Sarah found two
+    // sync buttons confusing. Daily reconciliation only needs the
+    // Clover-payments sync above. The full bidirectional sync still
+    // exists at /business/clover/sync-now if it's needed elsewhere.
 
+
+    // "→ in-store" reclassify button on Other-channels rows. Sarah
+    // 2026-05-07: cashiers occasionally tap the Whatnot chip on POS
+    // form by accident and a regular walk-in lands as channel=whatnot.
+    // One-click flip back to in_store, page reload to refresh totals.
+    $('body').on('click', '.cc-recat-btn', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var $row = $(this).closest('.cc-recat-row');
+        var $btn = $(this);
+        var txnId = $row.data('txn-id');
+        if (!txnId) return;
+        if (!confirm('Move this sale back to in-store?\nIt will count toward the cashier\'s drawer math.')) return;
+        $btn.prop('disabled', true).text('saving…');
         $.ajax({
-            url: '/business/clover/sync-now',
+            url: '/reports/clover-eod/recategorize-channel',
             method: 'POST',
             dataType: 'json',
-            timeout: 20000,
-            data: { _token: $('meta[name="csrf-token"]').attr('content'), days: 30 }
-        }).done(function (r) {
-            if (!r.success || !r.run_id) {
-                $status.text('Could not start sync: ' + (r.msg || 'unknown')).css('color', '#b91c1c');
-                $btn.prop('disabled', false).html(original);
-                return;
+            data: {
+                _token: $('meta[name="csrf-token"]').attr('content'),
+                transaction_id: txnId,
+                channel: 'in_store'
             }
-            $status.text('Sync running in background — tailing log…').css('color', '#6b7280');
-            $out.show();
-            $pre.text('(starting…)');
-
-            var runId = r.run_id;
-            var elapsed = 0;
-            var interval = setInterval(function () {
-                elapsed += 3;
-                $.ajax({
-                    url: '/business/clover/sync-status',
-                    method: 'GET',
-                    dataType: 'json',
-                    data: { run_id: runId }
-                }).done(function (s) {
-                    if (s.output) $pre.text(s.output);
-                    if (s.finished) {
-                        clearInterval(interval);
-                        $status.text('Sync complete (' + elapsed + 's) — refresh to see updated numbers.').css('color', '#166534');
-                        $btn.prop('disabled', false).html(original);
-                    } else {
-                        $status.text('Sync running… ' + elapsed + 's').css('color', '#6b7280');
-                    }
-                });
-                // Give up polling after 10 min; the sync may still be
-                // running server-side but we stop spamming the status
-                // endpoint.
-                if (elapsed > 600) {
-                    clearInterval(interval);
-                    $status.text('Still running after 10 min — check logs on server.').css('color', '#b45309');
-                    $btn.prop('disabled', false).html(original);
-                }
-            }, 3000);
-        }).fail(function (xhr) {
-            $status.text('Failed to start sync — ' + xhr.status).css('color', '#b91c1c');
-            $btn.prop('disabled', false).html(original);
+        }).done(function (r) {
+            if (r.success) {
+                $btn.text('✓ moved');
+                setTimeout(function () { window.location.reload(); }, 600);
+            } else {
+                alert(r.msg || 'Could not save.');
+                $btn.prop('disabled', false).text('→ in-store');
+            }
+        }).fail(function () {
+            alert('Network error — try again.');
+            $btn.prop('disabled', false).text('→ in-store');
         });
     });
 
     // Per-store "Mark reconciled" checkbox — toggles the audit stamp on
     // the clover_reconciliations row for (day, location_id).
-    $('.eod-loc-card').on('change', '.eod-recon-checkbox', function () {
+    $('body').on('change', '.eod-loc-card .eod-recon-checkbox', function () {
         var $card = $(this).closest('.eod-loc-card');
         var $lbl = $card.find('.eod-recon-label');
-        var $stamp = $card.find('.eod-recon-stamp');
+        var $stamp = $card.find('.eod-recon-stamp, .eod-recon-notes-status').first();
         var $toggle = $card.find('.eod-recon-toggle');
         $lbl.text('Saving…');
         $.ajax({
@@ -1237,7 +1633,8 @@ $(function () {
             data: {
                 _token: $('meta[name="csrf-token"]').attr('content'),
                 day: $card.data('day'),
-                location_id: $card.data('location-id')
+                location_id: $card.data('location-id'),
+                employee_key: $card.data('employee-key') || ''
             }
         }).done(function (r) {
             if (!r.success) {
@@ -1249,10 +1646,15 @@ $(function () {
                 $lbl.text('✓ Reconciled');
                 $toggle.css('color', '#166534');
                 $stamp.text('Reconciled' + (r.reconciled_by ? ' by ' + r.reconciled_by : '') + ' · ' + (r.reconciled_at || ''));
+                // Collapse the card to a single-line summary so signed-off
+                // cashiers fall out of Sarah's field of view. Card stays
+                // clickable to expand again.
+                $card.addClass('cc-collapsed');
             } else {
                 $lbl.text('Mark reconciled');
                 $toggle.css('color', '#374151');
                 $stamp.text('');
+                $card.removeClass('cc-collapsed');
             }
         }).fail(function () {
             $lbl.text('Mark reconciled');
@@ -1260,17 +1662,23 @@ $(function () {
         });
     });
 
+    // Click a collapsed card (anywhere except the checkbox label which
+    // stops-propagation) to re-expand it for review.
+    $('body').on('click', '.eod-loc-card.cc-collapsed', function () {
+        $(this).removeClass('cc-collapsed');
+    });
+
     // Per-store notes — debounced autosave on input + immediate save on blur.
     (function () {
         var timers = new WeakMap();
-        $('.eod-loc-card').on('input', '.eod-recon-notes', function () {
+        $('body').on('input', '.eod-loc-card .eod-recon-notes', function () {
             var el = this;
             var $status = $(el).siblings('.eod-recon-notes-status');
             $status.text('Typing…').css('color', '#9ca3af');
             if (timers.get(el)) clearTimeout(timers.get(el));
             timers.set(el, setTimeout(function () { saveNotes(el); }, 900));
         });
-        $('.eod-loc-card').on('blur', '.eod-recon-notes', function () {
+        $('body').on('blur', '.eod-loc-card .eod-recon-notes', function () {
             if (timers.get(this)) clearTimeout(timers.get(this));
             saveNotes(this);
         });
@@ -1288,6 +1696,7 @@ $(function () {
                     _token: $('meta[name="csrf-token"]').attr('content'),
                     day: $card.data('day'),
                     location_id: $card.data('location-id'),
+                    employee_key: $card.data('employee-key') || '',
                     notes: $el.val()
                 }
             }).done(function (r) {

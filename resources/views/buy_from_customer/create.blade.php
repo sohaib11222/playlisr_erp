@@ -1,5 +1,5 @@
 @extends('layouts.app')
-@section('title', 'Buy from Customer Calculator')
+@section('title', 'Buy from Customer Form')
 
 @php
     $is_embed = request()->get('embed') == '1';
@@ -57,6 +57,38 @@
         .bfc-create details.bfc-advanced[open] summary { color: #555; margin-bottom: 6px; }
         .bfc-create .pos-action-row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
         .bfc-create .well { background: #fafafa; border: 1px solid #eee; border-radius: 8px; padding: 14px; }
+        /* Readonly offer-amount displays — look like read-outs, not inputs. */
+        .bfc-create .bfc-offer-display { background: #f5f5f5; border-color: #e6e6e6; color: #333; font-weight: 600; cursor: default; }
+        .bfc-create .bfc-offer-display:focus { outline: none; box-shadow: none; }
+        /* Three-row offer table: Starting / 2nd / Final × Cash / Credit. */
+        .bfc-create .bfc-offer-table { max-width: 560px; margin-bottom: 12px; }
+        .bfc-create .bfc-offer-table th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; color: #666; background: #f7f7f7; padding: 8px 10px; border-bottom: 1px solid #ddd; }
+        .bfc-create .bfc-offer-table td { padding: 6px; vertical-align: middle; }
+        .bfc-create .bfc-offer-table .bfc-offer-rowlabel { width: 160px; font-weight: 600; color: #333; text-transform: none; letter-spacing: 0; background: #fafafa; }
+        /* Make per-row remove "X" subtle — just a muted glyph, no big red block. */
+        .bfc-create #offer_lines_table .remove-line {
+            background: transparent;
+            border: 0;
+            color: #c8c0b8;
+            padding: 4px 6px;
+            line-height: 1;
+            box-shadow: none;
+            opacity: 0.7;
+            transition: color 0.15s ease, opacity 0.15s ease;
+        }
+        .bfc-create #offer_lines_table .remove-line:hover,
+        .bfc-create #offer_lines_table .remove-line:focus {
+            background: transparent;
+            color: #c0392b;
+            opacity: 1;
+            outline: none;
+        }
+        .bfc-create #offer_lines_table .remove-line .fa { font-size: 11px; }
+        /* Compliance + signature — visually obvious so the cashier doesn't skip them. */
+        .bfc-create .bfc-compliance-row { padding: 6px 10px; margin-bottom: 4px; border-left: 3px solid #d9534f; background: #fff7f6; border-radius: 3px; }
+        .bfc-create .bfc-compliance-row label { font-size: 13px; color: #333; text-transform: none; letter-spacing: 0; font-weight: 500; margin-bottom: 0; cursor: pointer; }
+        .bfc-create .bfc-compliance-row .bfc-compliance-cb { margin-right: 6px; transform: scale(1.1); }
+        .bfc-create #buy_signature_box { border: 2px dashed #c0392b !important; }
     </style>
     @if($is_embed)
         {{-- When opened inside the POS modal iframe, hide the admin chrome so only the calculator shows. --}}
@@ -73,7 +105,7 @@
 
 @section('content')
 <section class="content-header">
-    <h1>Buy from Customer <small>Offer calculator</small></h1>
+    <h1>Buy from Customer Form</h1>
 </section>
 
 <section class="content bfc-create">
@@ -86,6 +118,21 @@
         </div>
     @endif
 
+    {{-- Sarah 2026-05-06: surface validation failures. Without this the Accept
+         button silently rejects (e.g. compliance boxes unchecked, signature
+         missing) and the offer stays at its prior auto-saved Draft, which
+         looks like the form just did nothing. --}}
+    @if ($errors->any())
+        <div class="alert alert-danger">
+            <strong>The form couldn't be submitted:</strong>
+            <ul style="margin-top:6px; margin-bottom:0;">
+                @foreach ($errors->all() as $error)
+                    <li>{{ $error }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
+
     @php
         $input = $input_data ?? old();
         $input = is_array($input) ? $input : [];
@@ -93,6 +140,17 @@
         $pmVal = $input['payment_method'] ?? ($input['payout_type'] ?? 'cash');
         if ($pmVal === 'cash') {
             $pmVal = 'cash_in_store';
+        }
+        // Sarah 2026-05-06: starting / 2nd / final offers are no longer typed by the
+        // cashier — they're whatever the calculator returned (50% / 75% / 95% of the
+        // calculated total). Mirror $calc back into $input so the Save / Accept /
+        // Reject foreach loops below still emit them as hidden inputs (and the
+        // override-reason validation in BuyFromCustomerController still sees a
+        // matching final amount).
+        if ($calc) {
+            foreach (['starting_offer_cash', 'starting_offer_credit', 'second_offer_cash', 'second_offer_credit', 'final_offer_cash', 'final_offer_credit'] as $offerKey) {
+                $input[$offerKey] = data_get($calc, $offerKey);
+            }
         }
     @endphp
 
@@ -187,20 +245,26 @@
                             </div>
                         </details>
                     </div>
-                    <div class="row">
-                        <div class="col-md-3">
-                            <div class="form-group">
-                                <label>ID type <span class="text-muted">(optional)</span></label>
-                                {!! Form::select('seller_id_type', $idTypes, $input['seller_id_type'] ?? null, ['class' => 'form-control']) !!}
+                    {{-- ID capture is hidden behind "more" — only fill if you suspect the seller may
+                         be sketchy. Auto-opens if either field already has a value (e.g. on re-render
+                         after Calculate) so the cashier doesn't lose what they typed. --}}
+                    <details class="bfc-advanced bfc-id-block" @if(!empty($input['seller_id_type']) || !empty($input['seller_id_last_four'])) open @endif>
+                        <summary>more</summary>
+                        <div class="row">
+                            <div class="col-md-3">
+                                <div class="form-group">
+                                    <label>ID type <span class="text-muted">(optional)</span></label>
+                                    {!! Form::select('seller_id_type', $idTypes, $input['seller_id_type'] ?? null, ['class' => 'form-control']) !!}
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-group">
+                                    <label>Last 4 of ID # <span class="text-muted">(optional)</span></label>
+                                    {!! Form::text('seller_id_last_four', $input['seller_id_last_four'] ?? null, ['class' => 'form-control', 'maxlength' => 4, 'pattern' => '[0-9]*', 'inputmode' => 'numeric', 'placeholder' => '1234']) !!}
+                                </div>
                             </div>
                         </div>
-                        <div class="col-md-3">
-                            <div class="form-group">
-                                <label>Last 4 of ID # <span class="text-muted">(optional)</span></label>
-                                {!! Form::text('seller_id_last_four', $input['seller_id_last_four'] ?? null, ['class' => 'form-control', 'maxlength' => 4, 'pattern' => '[0-9]*', 'inputmode' => 'numeric', 'placeholder' => '1234']) !!}
-                            </div>
-                        </div>
-                    </div>
+                    </details>
 
                     <hr>
                     <h4>Items brought in</h4>
@@ -220,7 +284,10 @@
                             </thead>
                             <tbody>
                                 @php
-                                    $lines = $input['lines'] ?? [['item_type' => 'individual_vinyl', 'quantity' => 1, 'condition_grade' => 'VG+', 'standard_multiplier' => 0.10]];
+                                    // Sarah 2026-05-06: render 7 blank rows on first load so the cashier can
+                                    // type a typical haul without having to click "Add line" each time.
+                                    $defaultRow = ['item_type' => 'individual_vinyl', 'quantity' => 1, 'condition_grade' => 'VG+', 'standard_multiplier' => 0.10];
+                                    $lines = $input['lines'] ?? array_fill(0, 7, $defaultRow);
                                 @endphp
                                 @foreach($lines as $i => $line)
                                     <tr>
@@ -240,17 +307,54 @@
                     <button type="button" class="btn btn-default btn-sm" id="add_line_btn"><i class="fa fa-plus"></i> Add line</button>
 
                     <hr>
-                    <h4>Negotiation offers <small class="text-muted">defaults: 50% / 75% / 95% of calculated total</small></h4>
-                    <div class="negotiation-row">
-                        <div class="form-group"><label>Starting cash</label>{!! Form::number('starting_offer_cash', $input['starting_offer_cash'] ?? null, ['class' => 'form-control', 'step' => '0.01']) !!}</div>
-                        <div class="form-group"><label>Starting credit</label>{!! Form::number('starting_offer_credit', $input['starting_offer_credit'] ?? null, ['class' => 'form-control', 'step' => '0.01']) !!}</div>
-                        <div class="form-group"><label>2nd cash</label>{!! Form::number('second_offer_cash', $input['second_offer_cash'] ?? null, ['class' => 'form-control', 'step' => '0.01']) !!}</div>
-                        <div class="form-group"><label>2nd credit</label>{!! Form::number('second_offer_credit', $input['second_offer_credit'] ?? null, ['class' => 'form-control', 'step' => '0.01']) !!}</div>
-                    </div>
-                    <div class="negotiation-row">
-                        <div class="form-group"><label>Final cash</label>{!! Form::number('final_offer_cash', $input['final_offer_cash'] ?? null, ['class' => 'form-control', 'step' => '0.01']) !!}</div>
-                        <div class="form-group"><label>Final credit</label>{!! Form::number('final_offer_credit', $input['final_offer_credit'] ?? null, ['class' => 'form-control', 'step' => '0.01']) !!}</div>
-                        <div class="form-group" style="grid-column: 3 / span 3;"><label>Notes <span class="text-muted">(sealed items, rare finds, condition concerns)</span></label>{!! Form::textarea('notes', $input['notes'] ?? null, ['class' => 'form-control', 'rows' => 2]) !!}</div>
+                    {{-- Sarah 2026-05-06: Starting / 2nd / Final cash + credit are no longer
+                         editable — they ARE the offer the calculator computed (50% / 75% / 95%
+                         of the calculated total). Cashier just reads them off. The calculate
+                         form does NOT POST the offer fields — calculator always recomputes
+                         from lines so re-Calculate after editing items always reflects the
+                         new total. Save / Accept / Reject forms below DO emit the calc values
+                         as hidden inputs so the saveOffer / override-reason logic still works. --}}
+                    <h4>Offer to customer <small class="text-muted">auto-calculated from items above</small></h4>
+                    @php
+                        $offerStartingCash = data_get($calc, 'starting_offer_cash');
+                        $offerStartingCredit = data_get($calc, 'starting_offer_credit');
+                        $offerSecondCash = data_get($calc, 'second_offer_cash');
+                        $offerSecondCredit = data_get($calc, 'second_offer_credit');
+                        $offerFinalCash = data_get($calc, 'final_offer_cash');
+                        $offerFinalCredit = data_get($calc, 'final_offer_credit');
+                        $fmtOffer = function ($v) {
+                            return $v === null || $v === '' ? '—' : '$' . number_format((float) $v, 2);
+                        };
+                    @endphp
+                    <table class="table table-bordered bfc-offer-table">
+                        <thead>
+                            <tr>
+                                <th class="bfc-offer-rowlabel"></th>
+                                <th>Cash</th>
+                                <th>Credit</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <th class="bfc-offer-rowlabel">1. Starting offer</th>
+                                <td><input type="text" class="form-control bfc-offer-display" value="{{ $fmtOffer($offerStartingCash) }}" readonly tabindex="-1"></td>
+                                <td><input type="text" class="form-control bfc-offer-display" value="{{ $fmtOffer($offerStartingCredit) }}" readonly tabindex="-1"></td>
+                            </tr>
+                            <tr>
+                                <th class="bfc-offer-rowlabel">2. 2nd offer</th>
+                                <td><input type="text" class="form-control bfc-offer-display" value="{{ $fmtOffer($offerSecondCash) }}" readonly tabindex="-1"></td>
+                                <td><input type="text" class="form-control bfc-offer-display" value="{{ $fmtOffer($offerSecondCredit) }}" readonly tabindex="-1"></td>
+                            </tr>
+                            <tr>
+                                <th class="bfc-offer-rowlabel">3. Final offer</th>
+                                <td><input type="text" class="form-control bfc-offer-display" value="{{ $fmtOffer($offerFinalCash) }}" readonly tabindex="-1"></td>
+                                <td><input type="text" class="form-control bfc-offer-display" value="{{ $fmtOffer($offerFinalCredit) }}" readonly tabindex="-1"></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div class="form-group">
+                        <label>Notes <span class="text-muted">(sealed items, rare finds, condition concerns)</span></label>
+                        {!! Form::textarea('notes', $input['notes'] ?? null, ['class' => 'form-control', 'rows' => 2]) !!}
                     </div>
 
                     <div class="pos-action-row">
@@ -351,7 +455,7 @@
                                     @endif
                                 @endforeach
 
-                                <div class="well" style="margin-top:15px; max-width:920px;">
+                                <div class="well bfc-accept-well" style="margin-top:15px; max-width:920px;">
                                     <h4>Final price &amp; override</h4>
                                     <p class="text-muted small">If final paid differs from calculator suggested total for the selected payment method, explain briefly.</p>
                                     <div class="form-group">
@@ -359,21 +463,21 @@
                                         <textarea name="price_override_reason" class="form-control" rows="2" placeholder="e.g. Manager approved bump for sealed box set">{{ $input['price_override_reason'] ?? '' }}</textarea>
                                     </div>
 
-                                    <h4>Compliance <small class="text-danger">required to accept</small></h4>
-                                    <div class="checkbox">
+                                    <h4>Compliance <small class="text-danger">both required to accept</small></h4>
+                                    <div class="bfc-compliance-row">
                                         <label>
-                                            <input type="checkbox" name="compliance_items_owned" value="1"> Seller confirms the items are legally theirs and not stolen.
+                                            <input type="checkbox" name="compliance_items_owned" value="1" class="bfc-compliance-cb"> Seller confirms the items are legally theirs and not stolen.
                                         </label>
                                     </div>
-                                    <div class="checkbox">
+                                    <div class="bfc-compliance-row">
                                         <label>
-                                            <input type="checkbox" name="compliance_sales_final" value="1"> Seller acknowledges all sales are final.
+                                            <input type="checkbox" name="compliance_sales_final" value="1" class="bfc-compliance-cb"> Seller acknowledges all sales are final.
                                         </label>
                                     </div>
-                                    <p class="help-block">Seller signs below to acknowledge the statements above.</p>
+                                    <p class="help-block">Seller signs below to acknowledge the statements above. <strong class="text-danger">Signature is required.</strong></p>
                                     <div class="form-group">
-                                        <label>Signature</label>
-                                        <div style="border:1px solid #ccc; background:#fafafa; display:inline-block;">
+                                        <label>Signature <span class="text-danger">*</span></label>
+                                        <div id="buy_signature_box" style="border:1px solid #ccc; background:#fafafa; display:inline-block;">
                                             <canvas id="buy_signature_canvas" width="700" height="180" style="max-width:100%; height:auto; touch-action:none;"></canvas>
                                         </div>
                                         <div style="margin-top:6px;">
@@ -381,6 +485,7 @@
                                         </div>
                                         <input type="hidden" name="seller_signature_data" id="buy_signature_input" value="">
                                     </div>
+                                    <div id="bfc_accept_error" class="alert alert-danger" style="display:none;"></div>
                                 </div>
 
                                 <button type="submit" class="btn btn-success" id="accept_buy_offer_btn"><i class="fa fa-check"></i> Accept offer (create purchase)</button>
@@ -409,6 +514,8 @@
         </div>
     @endif
 </section>
+
+@include('help.partials.tour_button', ['tourSteps' => \App\Help\Catalog::tour('buy_from_customer')])
 @endsection
 
 @section('javascript')
@@ -422,6 +529,43 @@
 
         $(document).on('change', '#seller_mode', toggleSellerMode);
         toggleSellerMode();
+
+        // Sarah 2026-05-06: auto-fill the per-row "Standard Multiplier" from the
+        // Discogs median price (the value tier from Sarah's sheet). Condition is
+        // already factored in separately by the calculator's gradeMultiplier, so
+        // we don't double-apply it here. Cashier can type over the value and the
+        // override sticks (we mark the cell as touched on input).
+        function computeStdMult(price) {
+            var p = parseFloat(price);
+            if (!isFinite(p) || p <= 0) {
+                return 0.10;
+            }
+            if (p < 5)    return 0.10;
+            if (p < 10)   return 0.20;
+            if (p < 15)   return 0.22;
+            if (p < 20)   return 0.25;
+            if (p < 30)   return 0.26;
+            if (p < 375)  return 0.27;
+            return 0.31;
+        }
+
+        function refreshStdMultForRow($row) {
+            var $stdMult = $row.find('input[name$="[standard_multiplier]"]');
+            if (!$stdMult.length) return;
+            if ($stdMult.data('manual')) return;
+            var price = $row.find('input[name$="[discogs_median_price]"]').val();
+            $stdMult.val(computeStdMult(price).toFixed(2));
+        }
+
+        $(document).on('input change', '#offer_lines_table input[name$="[discogs_median_price]"]', function () {
+            refreshStdMultForRow($(this).closest('tr'));
+        });
+
+        // If the cashier types directly into the multiplier, treat it as a
+        // manual override and stop auto-recomputing for that row.
+        $(document).on('input', '#offer_lines_table input[name$="[standard_multiplier]"]', function () {
+            $(this).data('manual', true);
+        });
 
         $(document).on('click', '#add_line_btn', function () {
             var $tbody = $('#offer_lines_table tbody');
@@ -461,19 +605,11 @@
             if (!canvas || !canvas.getContext) return;
             var ctx = canvas.getContext('2d');
             var drawing = false;
-            var pm = @json($pmVal);
-            var suggestedCash = {{ (float) data_get($calc, 'calculated_cash_total', 0) }};
-            var suggestedCredit = {{ (float) data_get($calc, 'calculated_credit_total', 0) }};
-            var finalCash = {{ (float) data_get($calc, 'final_offer_cash', 0) }};
-            var finalCredit = {{ (float) data_get($calc, 'final_offer_credit', 0) }};
-
-            function refreshOverrideHint() {
-                var sug = pm === 'store_credit' ? suggestedCredit : suggestedCash;
-                var fin = pm === 'store_credit' ? finalCredit : finalCash;
-                var diff = Math.abs(fin - sug) > 0.009;
-                $('#override_required_label').toggle(diff);
-            }
-            refreshOverrideHint();
+            var hasSignature = false; // tracks whether the user actually drew anything
+            // Override-reason hint: kept for parity with the controller validation,
+            // but with read-only offer fields the submitted final always matches the
+            // calculator's auto-final, so this stays hidden in the normal flow.
+            $('#override_required_label').hide();
 
             function pos(e) {
                 var r = canvas.getBoundingClientRect();
@@ -485,6 +621,7 @@
             }
             function start(e) {
                 drawing = true;
+                hasSignature = true;
                 ctx.beginPath();
                 var p = pos(e);
                 ctx.moveTo(p.x, p.y);
@@ -492,6 +629,7 @@
             }
             function move(e) {
                 if (!drawing) return;
+                hasSignature = true;
                 var p = pos(e);
                 ctx.lineTo(p.x, p.y);
                 ctx.strokeStyle = '#111';
@@ -515,14 +653,40 @@
             $('#buy_signature_clear').on('click', function () {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 $('#buy_signature_input').val('');
+                hasSignature = false;
             });
 
-            $('#accept_buy_offer_form').on('submit', function () {
+            // Pre-flight check on Accept submit. Catches the silent-fail cases
+            // (compliance unchecked, signature blank) on the client so the
+            // cashier sees an inline error instead of a server redirect that
+            // looks like nothing happened. Sarah 2026-05-06: BFC offers were
+            // staying as Drafts because Accept was failing validation server-
+            // side with no UI feedback. We still show server errors at the top
+            // (see $errors block) — this is the first line of defense.
+            $('#accept_buy_offer_form').on('submit', function (e) {
+                var problems = [];
+                if (!$('input[name="compliance_items_owned"]').is(':checked')) {
+                    problems.push('Tick "Seller confirms the items are legally theirs and not stolen."');
+                }
+                if (!$('input[name="compliance_sales_final"]').is(':checked')) {
+                    problems.push('Tick "Seller acknowledges all sales are final."');
+                }
+                if (!hasSignature) {
+                    problems.push('Seller must sign in the signature box.');
+                }
+                if (problems.length) {
+                    e.preventDefault();
+                    var $err = $('#bfc_accept_error');
+                    $err.html('<strong>Can\'t accept yet:</strong><ul style="margin-top:6px; margin-bottom:0;"><li>' + problems.join('</li><li>') + '</li></ul>').show();
+                    $('html, body').animate({ scrollTop: $err.offset().top - 80 }, 200);
+                    return false;
+                }
                 try {
                     $('#buy_signature_input').val(canvas.toDataURL('image/png'));
                 } catch (err) {
                     $('#buy_signature_input').val('');
                 }
+                $('#bfc_accept_error').hide();
             });
         })();
         @endif

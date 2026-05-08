@@ -9,6 +9,19 @@
             @if(session('pos_duty_location_label'))
                 · {{ session('pos_duty_location_label') }}
             @endif
+            @if($pd === 'cashier' && session('pos_duty_opening_cash') !== null)
+                @php
+                    $openCash = (float) session('pos_duty_opening_cash');
+                    $openAt = session('pos_duty_opening_cash_at');
+                    $openAtLabel = '';
+                    if ($openAt) {
+                        try { $openAtLabel = \Carbon\Carbon::parse($openAt)->setTimezone(config('app.timezone'))->format('g:i A'); }
+                        catch (\Throwable $e) {}
+                    }
+                @endphp
+                · <strong>Opening cash:</strong> ${{ number_format($openCash, 2) }}
+                @if($openAtLabel) <span class="text-muted">(logged {{ $openAtLabel }})</span> @endif
+            @endif
         </span>
         <a href="{{ action('SellPosController@selectPosDuty', ['intended' => request()->fullUrl()]) }}" class="btn btn-default btn-sm">Change</a>
     </div>

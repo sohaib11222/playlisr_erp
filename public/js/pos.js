@@ -2382,6 +2382,14 @@ $(document).ready(function() {
         initManualProductNameAutocomplete($('#manual_products_container tr:last'));
     });
 
+    // Add 5 manual product rows at once
+    $(document).on('click', '#add_5_manual_products', function() {
+        for (var i = 0; i < 5; i++) {
+            addManualProductRow();
+            initManualProductNameAutocomplete($('#manual_products_container tr:last'));
+        }
+    });
+
     // Remove product row
     $(document).on('click', '.remove_product_row', function() {
         $(this).closest('.manual_product_row').remove();

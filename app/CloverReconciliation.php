@@ -29,12 +29,13 @@ class CloverReconciliation extends Model
     }
 
     /**
-     * Find-or-create the row for a given (business, location, day). Used
-     * by both the render path (so we can tell if it's already reconciled)
-     * and the save endpoints (so the first click creates the row).
-     * location_id = null is a valid key (the "(no location)" bucket).
+     * Find-or-create the row for a given (business, location, day,
+     * employee_key). employee_key = null is the legacy "store-level"
+     * row; a non-empty string scopes the row to a single cashier so
+     * Sarah can sign off "Henry's drawer for today is reconciled"
+     * independently from the rest of the store.
      */
-    public static function findOrCreateFor(int $businessId, $locationId, string $day)
+    public static function findOrCreateFor(int $businessId, $locationId, string $day, $employeeKey = null)
     {
         // Normalize location_id: HTTP sends strings, so '0' / '' / null all
         // mean "(no location)" bucket. Without this, the strict === checks
@@ -43,10 +44,16 @@ class CloverReconciliation extends Model
         $hasLocation = !($locationId === null || $locationId === '' || (int) $locationId === 0);
         $normalizedLocationId = $hasLocation ? (int) $locationId : null;
 
+        $hasEmployee = !($employeeKey === null || $employeeKey === '');
+        $normalizedEmployeeKey = $hasEmployee ? strtolower(trim((string) $employeeKey)) : null;
+
         $q = static::where('business_id', $businessId)->where('day', $day);
         $q = $hasLocation
             ? $q->where('location_id', $normalizedLocationId)
             : $q->whereNull('location_id');
+        $q = $hasEmployee
+            ? $q->where('employee_key', $normalizedEmployeeKey)
+            : $q->whereNull('employee_key');
         $row = $q->first();
         if ($row) return $row;
 
@@ -54,6 +61,7 @@ class CloverReconciliation extends Model
             'business_id' => $businessId,
             'location_id' => $normalizedLocationId,
             'day' => $day,
+            'employee_key' => $normalizedEmployeeKey,
         ]);
     }
 }

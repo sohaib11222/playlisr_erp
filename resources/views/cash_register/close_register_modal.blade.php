@@ -149,6 +149,64 @@
 	}
 	.cr-v2 .cr-cancel:hover { color: #1F1B16; border-color: #8E8273; }
 
+	/* Over-$500 safe alert (Sarah 2026-05-07): if the closing count is
+	   over $500, nudge the cashier to move the excess (rounded down to
+	   nearest $100) into the safe. Big amount + explicit "count what
+	   you're putting in" + post-it instruction, because people often
+	   drop the wrong amount in the safe. Soft warning — does not block
+	   submit. */
+	.cr-safe-alert {
+		display: none;
+		margin-top: 16px;
+		background: #FFE5DA;
+		border: 2px solid #E8A07A;
+		border-radius: 12px;
+		padding: 18px 20px;
+		color: #6B2A14;
+	}
+	.cr-safe-alert.cr-safe-alert-on { display: block; }
+	.cr-safe-alert-tag {
+		display: block;
+		font-size: 11px; font-weight: 800;
+		letter-spacing: .14em; text-transform: uppercase;
+		color: #6B2A14; margin-bottom: 6px;
+	}
+	.cr-safe-alert-amount {
+		font-size: 28px; font-weight: 800; line-height: 1.15;
+		letter-spacing: -.01em; color: #6B2A14;
+	}
+	.cr-safe-alert-amount #cr-safe-amount {
+		font-variant-numeric: tabular-nums;
+	}
+	.cr-safe-alert-count {
+		font-size: 15px; font-weight: 700; margin-top: 10px; color: #6B2A14;
+	}
+	.cr-safe-alert-postit {
+		font-size: 14px; font-weight: 600; margin-top: 8px; color: #6B2A14;
+	}
+	.cr-safe-alert-confirm {
+		margin-top: 14px; padding-top: 12px; border-top: 1px dashed #E8A07A;
+		display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+	}
+	.cr-safe-alert-confirm label {
+		font-size: 12px; font-weight: 700; color: #6B2A14;
+		text-transform: uppercase; letter-spacing: .04em; margin: 0;
+	}
+	.cr-safe-alert-confirm-input {
+		display: inline-flex; align-items: center; gap: 4px;
+		background: #fff; border: 1px solid #E8A07A; border-radius: 8px;
+		padding: 4px 10px;
+	}
+	.cr-safe-alert-confirm-input span {
+		font-size: 16px; font-weight: 700; color: #6B2A14;
+	}
+	.cr-safe-alert-confirm-input input {
+		border: none; outline: none; background: transparent;
+		font-family: inherit; font-size: 18px; font-weight: 700;
+		color: #1F1B16; width: 100px; padding: 4px 0;
+		font-variant-numeric: tabular-nums;
+	}
+
 	/* Denominations — kept but tucked into the reference block */
 	.cr-denom {
 		margin-top: 14px; padding: 12px;
@@ -192,7 +250,38 @@
 					<span class="cr-hero-currency">$</span>
 					{!! Form::text('closing_amount',
 						@num_format($register_details->cash_in_hand + $register_details->total_cash - $register_details->total_cash_refund - $register_details->total_cash_expense),
-						['class' => 'cr-hero-input input_number', 'required', 'placeholder' => '0.00', 'autofocus', 'data-decimal' => '1']) !!}
+						['class' => 'cr-hero-input input_number', 'id' => 'cr_closing_amount', 'required', 'placeholder' => '0.00', 'autofocus', 'data-decimal' => '1']) !!}
+				</div>
+
+				<div class="cr-safe-alert" id="cr-safe-alert">
+					<span class="cr-safe-alert-tag">⚠ Heads up — safe drop</span>
+					<div class="cr-safe-alert-amount">
+						Put <span id="cr-safe-amount">$0</span> in the safe.
+					</div>
+					<div class="cr-safe-alert-count">
+						Count what you're putting in the safe <u>very</u> carefully.
+					</div>
+					<div class="cr-safe-alert-postit">
+						Stick a post-it on the bundle with <strong>your initials</strong>
+						and the <strong>amount you're dropping</strong>.
+					</div>
+
+					{{-- Capture the actual amount the cashier moved to the safe so
+					     daily reconciliation can sum it. Pre-filled with the
+					     suggested figure; the cashier can edit if they dropped
+					     a different amount. --}}
+					<div class="cr-safe-alert-confirm">
+						<label for="cr_safe_drop_amount">Amount you actually moved to the safe:</label>
+						<div class="cr-safe-alert-confirm-input">
+							<span>$</span>
+							{!! Form::text('safe_drop_amount', null, [
+								'id' => 'cr_safe_drop_amount',
+								'class' => 'input_number',
+								'placeholder' => '0',
+								'data-decimal' => '1',
+							]) !!}
+						</div>
+					</div>
 				</div>
 
 				<div class="cr-card-slips"
@@ -258,6 +347,51 @@
 					});
 				})();
 				</script>
+
+				<script>
+				/* Over-$500 safe alert: watch the closing-amount field and
+				   suggest moving the excess (rounded down to nearest $100)
+				   into the safe. So $1250 → put $700 in safe, recount $550.
+				   Soft warning — does not block submit. */
+				(function () {
+					function onReady(fn) {
+						if (typeof jQuery === 'undefined') { setTimeout(function () { onReady(fn); }, 50); return; }
+						jQuery(fn);
+					}
+					onReady(function ($) {
+						var $input  = $('#cr_closing_amount');
+						var $alert  = $('#cr-safe-alert');
+						var $amount = $('#cr-safe-amount');
+						var $drop   = $('#cr_safe_drop_amount');
+						if (!$input.length || !$alert.length) return;
+
+						// Once the cashier has typed their own number into the
+						// "amount you actually moved" field, stop auto-syncing
+						// it with the suggestion. We still recompute the
+						// suggestion shown above, but don't overwrite their input.
+						var dropEdited = false;
+						$drop.on('input change keyup', function () { dropEdited = true; });
+
+						function recheck() {
+							var raw = ($input.val() || '').toString().replace(/,/g, '').trim();
+							var val = parseFloat(raw);
+							if (!isFinite(val)) { $alert.removeClass('cr-safe-alert-on'); return; }
+							var toSafe = Math.floor((val - 500) / 100) * 100;
+							if (toSafe >= 100) {
+								$amount.text('$' + toSafe.toLocaleString('en-US'));
+								$alert.addClass('cr-safe-alert-on');
+								if (!dropEdited) { $drop.val(toSafe.toLocaleString('en-US')); }
+							} else {
+								$alert.removeClass('cr-safe-alert-on');
+								if (!dropEdited) { $drop.val(''); }
+							}
+						}
+
+						$input.on('input change keyup blur', recheck);
+						recheck();
+					});
+				})();
+				</script>
 			</div>
 
 			{{-- Optional closing note --}}
@@ -265,6 +399,44 @@
 				{!! Form::label('closing_note', 'Closing note (optional)') !!}
 				{!! Form::textarea('closing_note', null, ['class' => '', 'placeholder' => 'Anything unusual about today?', 'rows' => 2 ]); !!}
 			</div>
+
+			{{-- Clover keying-error feedback (Sarah 2026-05-06): show
+			     during close so the cashier sees their typos before
+			     leaving the shift and can self-correct next time.
+			     Server-side $keying_errors is an array of pairs where
+			     this cashier's Clover swipe drifted >5¢ from the
+			     matching ERP sale; empty array = no feedback. --}}
+			@if(!empty($keying_errors))
+				<div style="background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:14px 16px; margin-top:14px;">
+					<div style="font-size:12px; font-weight:800; color:#92400e; text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px;">
+						⚠ {{ count($keying_errors) }} Clover amount{{ count($keying_errors) === 1 ? '' : 's' }} didn't match the ERP sale
+					</div>
+					<div style="font-size:12px; color:#78350f; margin-bottom:8px;">
+						Type the same amount on Clover that the POS shows. Mismatches by even a few cents add up to drawer variance at end of shift.
+					</div>
+					<div style="font-size:12px; font-variant-numeric: tabular-nums;">
+						@foreach($keying_errors as $err)
+							@php
+								$_diffCents = (int) round(abs((float) $err['diff']) * 100);
+								$_isBagFee  = $_diffCents > 0 && $_diffCents <= 144 && $_diffCents % 12 === 0;
+							@endphp
+							<div style="display:flex; justify-content:space-between; padding:3px 0; border-top:1px solid #fef3c7;">
+								<span style="color:#92400e;">
+									{{ \Carbon\Carbon::parse($err['ts'])->setTimezone(config('app.timezone'))->format('g:i a') }}
+									@if($_isBagFee)<span style="color:#1d4ed8; font-size:10px; font-weight:700; margin-left:4px;" title="Diff is an exact multiple of $0.12 — likely a bag fee you forgot to add on Clover">· likely bag fee</span>@endif
+								</span>
+								<span>
+									Clover <strong>${{ number_format($err['clover_amount'], 2) }}</strong>
+									vs POS <strong>${{ number_format($err['erp_amount'], 2) }}</strong>
+									<span style="color:{{ $err['diff'] < 0 ? '#b91c1c' : '#92400e' }}; font-weight:700; margin-left:6px;">
+										{{ $err['diff'] < 0 ? 'under' : 'over' }} ${{ number_format(abs($err['diff']), 2) }}
+									</span>
+								</span>
+							</div>
+						@endforeach
+					</div>
+				</div>
+			@endif
 
 			{{-- Reference breakdown (collapsed) --}}
 			<div class="cr-ref" id="cr-ref">

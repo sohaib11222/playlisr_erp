@@ -7,6 +7,7 @@ use App\BusinessLocation;
 use App\Charts\CommonChart;
 use App\Currency;
 use App\Transaction;
+use App\Services\GamificationService;
 use App\Utils\BusinessUtil;
 
 use App\Utils\ModuleUtil;
@@ -709,8 +710,11 @@ class HomeController extends Controller
         }
         $my_beat_gap = !is_null($my_today_rph) ? max(0, $my_7day_best_rph - $my_today_rph) : $my_7day_best_rph;
 
-        // Daily goals (hardcoded for MVP — could become configurable later)
-        $goal_priced_today = 10;
+        // Daily goals (hardcoded for MVP — could become configurable later).
+        // Jon 2026-05-07: bumped priced-today from 10 → 75 to match the new
+        // shift-panel floor (20/hr × ~4hr shift = 80). The shift panel is the
+        // primary signal; this card stays as a day-level reinforcement.
+        $goal_priced_today = 75;
         $goal_rewards_today = 3;
         $rewards_me_today = (int) \DB::table('contacts')
             ->where('business_id', $business_id)
@@ -926,7 +930,11 @@ class HomeController extends Controller
             ->limit(10)
             ->get();
 
+        // Per-shift gamification panel (role-aware tasks + peer pace).
+        $shift_panel = $this->buildShiftPanel($business_id);
+
         return view('home.index', compact(
+            'shift_panel',
             'sells_chart_1', 'sells_chart_2', 'widgets', 'all_locations', 'common_settings', 'is_admin',
             'top_categories_by_location', 'top_formats', 'recent_purchases',
             'last_sold_items', 'top_expensive_items',
@@ -953,6 +961,41 @@ class HomeController extends Controller
             // Fastest selling genres module
             'fsg_scope', 'fsg_scope_keys'
         ));
+    }
+
+    protected function buildShiftPanel(int $businessId): array
+    {
+        $service = app(GamificationService::class);
+        $user = auth()->user();
+        $shift = $service->currentShift($user, $businessId);
+
+        if (!$shift) {
+            return [
+                'active' => false,
+                'duty' => null,
+                'duty_label' => null,
+                'location_name' => null,
+                'started_at' => null,
+                'hours' => 0.0,
+                'tasks' => [],
+            ];
+        }
+
+        return [
+            'active' => true,
+            'duty' => $shift['duty'],
+            'duty_label' => ucfirst($shift['duty']),
+            'location_name' => $service->locationName($shift['location_id']),
+            'started_at' => $shift['started_at']->format('g:i a'),
+            'hours' => $shift['hours'],
+            'tasks' => $service->shiftTasks($user, $shift, $businessId),
+        ];
+    }
+
+    public function getShiftProgress()
+    {
+        $businessId = (int) request()->session()->get('user.business_id');
+        return response()->json($this->buildShiftPanel($businessId));
     }
 
     /**

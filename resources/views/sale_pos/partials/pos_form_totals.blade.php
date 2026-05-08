@@ -277,6 +277,142 @@
         cursor: pointer;
     }
     .pos-cancel-wrap .pos-cancel-link:hover { color: #8A3A2E; text-decoration: underline; }
+
+    /* Cashier confirm modals — Sarah 2026-05-06 ask: cash button must
+       prompt for amount received and show change owed in big type;
+       card button must show the amount to key into Clover. Layered
+       BEFORE pos.js's express-finalize via native capture-phase intercept;
+       the original submit path is unchanged. */
+    .pos-cashier-modal .modal-content {
+        border: 0; border-radius: 12px;
+        box-shadow: 0 16px 40px rgba(0,0,0,.18);
+    }
+    .pos-cashier-modal .modal-header {
+        background: #1F1B16; color: #FAF6EE;
+        border-radius: 12px 12px 0 0;
+        padding: 14px 20px; border: 0;
+    }
+    .pos-cashier-modal .modal-header .modal-title {
+        font-weight: 700; letter-spacing: .02em;
+    }
+    .pos-cashier-modal .modal-header .close {
+        color: #FAF6EE; opacity: .8; text-shadow: none;
+    }
+    .pos-cashier-modal .modal-body { padding: 22px 24px 18px; }
+    .pos-cashier-modal .modal-footer {
+        border-top: 1px solid #ECE3CF;
+        padding: 12px 20px;
+    }
+    .pos-cashier-modal .btn-primary {
+        background: #2F6B3E; border-color: #2F6B3E;
+        font-weight: 600; padding: 10px 18px;
+    }
+    .pos-cashier-modal .btn-primary:hover,
+    .pos-cashier-modal .btn-primary:focus {
+        background: #235530; border-color: #235530;
+    }
+    .pos-cashier-modal .btn-primary:disabled,
+    .pos-cashier-modal .btn-primary[disabled] {
+        background: #B7B2A8; border-color: #B7B2A8; opacity: 1;
+    }
+
+    /* Cash modal */
+    .cash-prompt-body .cash-row {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 8px 14px; background: #FAF6EE;
+        border-radius: 8px; margin-bottom: 14px;
+    }
+    .cash-prompt-body .cash-label {
+        font-size: 13px; font-weight: 600; color: #5A5045;
+        text-transform: uppercase; letter-spacing: .05em;
+    }
+    .cash-prompt-body .cash-amt {
+        font-size: 22px; font-weight: 800; color: #1F1B16;
+        font-variant-numeric: tabular-nums;
+    }
+    .cash-prompt-body .cash-input-label {
+        display: block; font-size: 13px; font-weight: 600;
+        color: #1F1B16; margin: 4px 0 6px;
+    }
+    .cash-prompt-body .cash-input-wrap {
+        position: relative; margin-bottom: 10px;
+    }
+    .cash-prompt-body .cash-currency {
+        position: absolute; left: 14px; top: 50%;
+        transform: translateY(-50%); font-size: 22px;
+        font-weight: 700; color: #5A5045;
+    }
+    .cash-prompt-body #cash_prompt_received {
+        width: 100%; padding: 12px 14px 12px 32px;
+        font-size: 26px; font-weight: 700;
+        border: 1px solid #DFD2B3; border-radius: 8px;
+        background: #fff; color: #1F1B16;
+        font-variant-numeric: tabular-nums;
+    }
+    .cash-prompt-body #cash_prompt_received:focus {
+        outline: 0; border-color: #2F6B3E;
+        box-shadow: 0 0 0 3px rgba(47,107,62,.18);
+    }
+    .cash-prompt-body .cash-quick-row {
+        display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px;
+    }
+    .cash-prompt-body .cash-quick-row button {
+        flex: 1 1 auto; padding: 8px 10px;
+        background: #fff; border: 1px solid #DFD2B3;
+        border-radius: 6px; font-size: 13px; font-weight: 600;
+        color: #1F1B16; cursor: pointer;
+        font-variant-numeric: tabular-nums;
+    }
+    .cash-prompt-body .cash-quick-row button:hover,
+    .cash-prompt-body .cash-quick-row button:focus {
+        background: #F7F1E3; border-color: #2F6B3E; color: #2F6B3E;
+    }
+    .cash-prompt-body .cash-change {
+        margin: 8px 0 6px; padding: 14px 18px;
+        background: #F7F1E3; border-radius: 10px;
+        text-align: center;
+    }
+    .cash-prompt-body .cash-change.ready { background: #E5F2EA; }
+    .cash-prompt-body .cash-change.owed  { background: #FBE9E5; }
+    .cash-prompt-body .cash-change-label {
+        display: block; font-size: 12px; font-weight: 600;
+        text-transform: uppercase; letter-spacing: .06em;
+        color: #5A5045; margin-bottom: 4px;
+    }
+    .cash-prompt-body .cash-change.ready .cash-change-label { color: #235530; }
+    .cash-prompt-body .cash-change.owed  .cash-change-label { color: #8A3A2E; }
+    .cash-prompt-body .cash-change-amt {
+        display: block; font-size: 44px; font-weight: 800;
+        letter-spacing: -.02em; color: #1F1B16;
+        font-variant-numeric: tabular-nums; line-height: 1.05;
+    }
+    .cash-prompt-body .cash-change.ready .cash-change-amt { color: #235530; }
+    .cash-prompt-body .cash-change.owed  .cash-change-amt { color: #8A3A2E; font-size: 22px; }
+    .cash-prompt-body .cash-reminder {
+        margin-top: 10px; padding: 10px 14px;
+        background: #FFF8E1; border: 1px solid #F5E2A5;
+        border-radius: 8px; font-size: 13px; color: #6B5417;
+        text-align: center; font-weight: 600;
+    }
+
+    /* Card modal */
+    .card-prompt-body { text-align: center; }
+    .card-prompt-body .card-instr {
+        font-size: 14px; font-weight: 600; color: #5A5045;
+        text-transform: uppercase; letter-spacing: .05em;
+        margin-bottom: 10px;
+    }
+    .card-prompt-body .card-amt {
+        font-size: 56px; font-weight: 800; color: #1F1B16;
+        letter-spacing: -.02em; font-variant-numeric: tabular-nums;
+        line-height: 1.05; margin-bottom: 14px;
+    }
+    .card-prompt-body .card-reminder {
+        padding: 10px 14px;
+        background: #FFF8E1; border: 1px solid #F5E2A5;
+        border-radius: 8px; font-size: 13px; color: #6B5417;
+        font-weight: 600;
+    }
 </style>
 
 <div class="pos_form_totals">
@@ -682,8 +818,219 @@
                     '.pos_add_quick_product, #pos_cancel_btn',
                     pingDing
                 );
+
+                /* Sarah 2026-05-06: cash + card cashier-confirm prompts.
+                   Native capture-phase intercept fires BEFORE pos.js's
+                   bubble-phase handler at pos.js:1239. On confirm we
+                   call .click() on the original button with a bypass
+                   flag so the second pass falls through to pos.js
+                   untouched — submit path is identical to today.
+                   Also covers the express-checkout keyboard shortcut
+                   (keyboard_shortcuts.blade.php), which now dispatches
+                   a native click event instead of a jQuery .trigger. */
+                function readTotalDue() {
+                    var raw = ($('#total_payable').text() || '0');
+                    var n = parseFloat(String(raw).replace(/[^0-9.\-]/g, ''));
+                    return isNaN(n) ? 0 : n;
+                }
+                function fmtMoney(n) {
+                    if (isNaN(n) || n === null) n = 0;
+                    return '$' + Number(n).toFixed(2);
+                }
+                function hasItemsInCart() {
+                    return $('table#pos_table tbody').find('.product_row:not([data-plastic-bag="true"])').length > 0;
+                }
+                function buildQuickBills(total) {
+                    var out = [];
+                    out.push({ label: 'Exact', value: total });
+                    var ladder = [5, 10, 20, 50, 100];
+                    ladder.forEach(function (step) {
+                        var rounded = Math.ceil(total / step) * step;
+                        if (rounded > total && !out.some(function (s) { return Math.abs(s.value - rounded) < 0.005; })) {
+                            out.push({ label: fmtMoney(rounded), value: rounded });
+                        }
+                    });
+                    [20, 40, 60, 80, 100].forEach(function (b) {
+                        if (b > total && !out.some(function (s) { return Math.abs(s.value - b) < 0.005; })) {
+                            out.push({ label: '$' + b, value: b });
+                        }
+                    });
+                    out = out.slice(0, 6);
+                    var html = out.map(function (s) {
+                        return '<button type="button" data-amount="' + s.value.toFixed(2) + '">' + s.label + '</button>';
+                    }).join('');
+                    $('#cash_quick_buttons').html(html);
+                }
+                function recalcChange() {
+                    var total = readTotalDue();
+                    var raw = $('#cash_prompt_received').val();
+                    var received = parseFloat(raw);
+                    var $block = $('#cash_change_block');
+                    var $amt = $('#cash_change_amt');
+                    var $label = $('#cash_change_label');
+                    var $confirm = $('#cash_prompt_confirm');
+                    if (raw === '' || isNaN(received) || received <= 0) {
+                        $amt.text(fmtMoney(0));
+                        $label.text('Change to give');
+                        $block.removeClass('ready owed');
+                        $confirm.prop('disabled', true);
+                        return;
+                    }
+                    var change = Math.round((received - total) * 100) / 100;
+                    if (change >= 0) {
+                        $amt.text(fmtMoney(change));
+                        $label.text('Change to give');
+                        $block.addClass('ready').removeClass('owed');
+                        $confirm.prop('disabled', false);
+                    } else {
+                        $amt.text(fmtMoney(Math.abs(change)));
+                        $label.text('Still owed');
+                        $block.addClass('owed').removeClass('ready');
+                        $confirm.prop('disabled', true);
+                    }
+                }
+                function openCashPrompt(btn) {
+                    var total = readTotalDue();
+                    $('#cash_prompt_total').text(fmtMoney(total));
+                    $('#cash_prompt_received').val('');
+                    $('#cash_change_amt').text(fmtMoney(0));
+                    $('#cash_change_label').text('Change to give');
+                    $('#cash_change_block').removeClass('ready owed');
+                    $('#cash_prompt_confirm').prop('disabled', true);
+                    buildQuickBills(total);
+                    $('#cash_prompt_confirm').off('click.cashier').on('click.cashier', function () {
+                        btn._cashierBypass = true;
+                        $('#cash_prompt_modal').modal('hide');
+                        setTimeout(function () { btn.click(); }, 60);
+                    });
+                    $('#cash_prompt_modal').modal('show');
+                    setTimeout(function () { $('#cash_prompt_received').trigger('focus'); }, 250);
+                }
+                function openCardPrompt(btn) {
+                    var total = readTotalDue();
+                    $('#card_prompt_total').text(fmtMoney(total));
+                    $('#card_prompt_confirm').off('click.cashier').on('click.cashier', function () {
+                        // Tell the show.bs.modal hook to suppress
+                        // pos.js's #card_details_modal and submit directly
+                        // (Clover already approved — no card details needed
+                        // from the cashier).
+                        window._cashier_card_auto_finish = true;
+                        btn._cashierBypass = true;
+                        $('#card_prompt_modal').modal('hide');
+                        setTimeout(function () { btn.click(); }, 60);
+                        // Safety: clear the flag if pos.js validation
+                        // bailed and the modal never tried to show.
+                        setTimeout(function () {
+                            window._cashier_card_auto_finish = false;
+                        }, 2000);
+                    });
+                    $('#card_prompt_modal').modal('show');
+                }
+                // Suppress pos.js's #card_details_modal once when the
+                // cashier already confirmed via our card prompt; click
+                // pos-save-card directly to copy (empty) card fields and
+                // submit, matching the existing finalize flow.
+                $(document).on('show.bs.modal', '#card_details_modal', function (e) {
+                    if (window._cashier_card_auto_finish) {
+                        window._cashier_card_auto_finish = false;
+                        e.preventDefault();
+                        setTimeout(function () { $('#pos-save-card').click(); }, 30);
+                    }
+                });
+                $(document).on('input change', '#cash_prompt_received', recalcChange);
+                $(document).on('click', '#cash_quick_buttons button', function () {
+                    var amt = parseFloat($(this).data('amount'));
+                    if (!isNaN(amt)) {
+                        $('#cash_prompt_received').val(amt.toFixed(2)).trigger('input');
+                    }
+                });
+                $(document).on('keydown', '#cash_prompt_received', function (e) {
+                    if (e.which === 13 && !$('#cash_prompt_confirm').prop('disabled')) {
+                        e.preventDefault();
+                        $('#cash_prompt_confirm').click();
+                    }
+                });
+
+                function bindCashierIntercept() {
+                    var els = document.querySelectorAll(
+                        '.pos-pay-btn.pos-express-finalize[data-pay_method="cash"],' +
+                        '.pos-pay-btn.pos-express-finalize[data-pay_method="card"]'
+                    );
+                    Array.prototype.forEach.call(els, function (btn) {
+                        if (btn._cashierBound) return;
+                        btn._cashierBound = true;
+                        btn.addEventListener('click', function (e) {
+                            if (btn._cashierBypass) {
+                                btn._cashierBypass = false;
+                                return;
+                            }
+                            if (!hasItemsInCart()) return;
+                            e.stopImmediatePropagation();
+                            e.preventDefault();
+                            var pm = btn.getAttribute('data-pay_method');
+                            if (pm === 'cash') openCashPrompt(btn);
+                            else if (pm === 'card') openCardPrompt(btn);
+                        }, true);
+                    });
+                }
+                bindCashierIntercept();
+                $(document).on('invoice_total_calculated', bindCashierIntercept);
             });
         })(0);
         </script>
+
+        {{-- Cash confirm modal (Sarah 2026-05-06) --}}
+        <div class="modal fade pos-cashier-modal" id="cash_prompt_modal" tabindex="-1" role="dialog" aria-labelledby="cash_prompt_title" aria-hidden="true">
+            <div class="modal-dialog" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                        <h4 class="modal-title" id="cash_prompt_title"><i class="fas fa-money-bill-alt"></i> Cash payment</h4>
+                    </div>
+                    <div class="modal-body cash-prompt-body">
+                        <div class="cash-row">
+                            <span class="cash-label">Total due</span>
+                            <span class="cash-amt" id="cash_prompt_total">$0.00</span>
+                        </div>
+                        <label for="cash_prompt_received" class="cash-input-label">Cash received from customer</label>
+                        <div class="cash-input-wrap">
+                            <span class="cash-currency">$</span>
+                            <input type="number" inputmode="decimal" step="0.01" min="0" id="cash_prompt_received" autocomplete="off" />
+                        </div>
+                        <div class="cash-quick-row" id="cash_quick_buttons"></div>
+                        <div class="cash-change" id="cash_change_block">
+                            <span class="cash-change-label" id="cash_change_label">Change to give</span>
+                            <span class="cash-change-amt" id="cash_change_amt">$0.00</span>
+                        </div>
+                        <div class="cash-reminder">Count the change out loud as you hand it back.</div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-link" data-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="cash_prompt_confirm" disabled>Confirm sale</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {{-- Card confirm modal (Sarah 2026-05-06) --}}
+        <div class="modal fade pos-cashier-modal" id="card_prompt_modal" tabindex="-1" role="dialog" aria-labelledby="card_prompt_title" aria-hidden="true">
+            <div class="modal-dialog" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                        <h4 class="modal-title" id="card_prompt_title"><i class="fas fa-credit-card"></i> Card payment</h4>
+                    </div>
+                    <div class="modal-body card-prompt-body">
+                        <div class="card-instr">Key this amount into Clover</div>
+                        <div class="card-amt" id="card_prompt_total">$0.00</div>
+                        <div class="card-reminder">Wait for Clover approval before tapping <strong>Approved</strong>.</div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-link" data-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="card_prompt_confirm">Approved &mdash; finish sale</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>

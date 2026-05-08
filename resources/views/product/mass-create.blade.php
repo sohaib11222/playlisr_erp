@@ -2,6 +2,10 @@
 @section('title', __('product.mass_add_new_products'))
 
 @section('content')
+    {{-- Sarah 2026-05-06: visual reskin to match /pos/create. Pure CSS,
+         scoped under body.mass-add-v2 — leaves all IDs / handlers alone. --}}
+    @include('product.partials._mass_create_redesign')
+    <script>document.body.classList.add('mass-add-v2');</script>
 
     <!-- Content Header (Page header) -->
     <section class="content-header">
@@ -467,15 +471,132 @@
         </div>
     </div>
 
+    {{-- Sarah 2026-05-06: Bulk Discogs Release IDs entry. Paste a list of
+         Discogs release IDs, the frontend fetches each one via the new
+         /product/mass-create/fetch-discogs-release endpoint and prepends
+         a row pre-filled with name / artist / category from Discogs. --}}
+    <div class="box box-primary collapsed-box" style="margin-bottom: 20px;">
+        <div class="box-header with-border" style="cursor: pointer;" data-widget="collapse">
+            <h3 class="box-title">
+                <i class="fa fa-music"></i> Bulk Discogs Release IDs
+            </h3>
+            <div class="box-tools pull-right">
+                <button type="button" class="btn btn-sm btn-primary" data-widget="collapse">
+                    <i class="fa fa-plus"></i> Open Discogs Bulk
+                </button>
+            </div>
+        </div>
+        <div class="box-body" style="display: none;">
+            <div class="form-group">
+                <label for="bulk_discogs_ids">
+                    <strong>Paste Discogs release IDs <em>or</em> URLs (one per line).</strong>
+                </label>
+                <div class="alert alert-info" style="margin-bottom: 10px; padding: 10px;">
+                    Each entry is looked up against the Discogs API. We auto-fill
+                    Product Name (title), Artist, SKU (catalog number), and
+                    best-guess Category/Subcategory. You finish price / location /
+                    bin inline.
+                </div>
+                <textarea
+                    id="bulk_discogs_ids"
+                    class="form-control"
+                    rows="8"
+                    placeholder="Examples (mix and match):&#10;1873085&#10;https://www.discogs.com/release/249504-Pink-Floyd-The-Dark-Side-Of-The-Moon&#10;discogs.com/release/366070"
+                    style="font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.6;"></textarea>
+                <small class="text-muted">
+                    <i class="fa fa-info-circle"></i> Either the bare ID number, or a full Discogs URL like <code>discogs.com/release/<strong>1873085</strong>-...</code> &mdash; we'll pull the ID out.
+                </small>
+            </div>
+            <div class="form-group">
+                <button type="button" class="btn btn-success" id="fetch_discogs_ids">
+                    <i class="fa fa-cloud-download"></i> Fetch from Discogs &amp; Add
+                </button>
+                <button type="button" class="btn btn-default" id="clear_discogs_ids">
+                    <i class="fa fa-eraser"></i> Clear
+                </button>
+                <span class="text-muted" id="discogs_fetch_status" style="margin-left: 15px;"></span>
+            </div>
+        </div>
+    </div>
+
+    {{-- Sarah 2026-05-06: Preset Category bulk entry. Pick a category +
+         subcategory once, then paste product names — every row created
+         gets that fixed category. Saves clicking the dropdown for each row
+         when adding a batch of the same kind (e.g. 30 Used Vinyl > Pop). --}}
+    <div class="box box-primary collapsed-box" style="margin-bottom: 20px;">
+        <div class="box-header with-border" style="cursor: pointer;" data-widget="collapse">
+            <h3 class="box-title">
+                <i class="fa fa-tag"></i> Preset Category Bulk Entry
+            </h3>
+            <div class="box-tools pull-right">
+                <button type="button" class="btn btn-sm btn-primary" data-widget="collapse">
+                    <i class="fa fa-plus"></i> Open Preset Bulk
+                </button>
+            </div>
+        </div>
+        <div class="box-body" style="display: none;">
+            <div class="form-group">
+                <label for="preset_bulk_category">
+                    <strong>1. Pick the category for every row in this batch:</strong>
+                </label>
+                <select id="preset_bulk_category" class="form-control select2" style="width: 100%;">
+                    <option value="">Please select a category &gt; subcategory</option>
+                    @if(!empty($category_combos))
+                        @foreach($category_combos as $combo)
+                            <option value="{{ $combo['id'] }}"
+                                    data-category-id="{{ $combo['category_id'] }}"
+                                    data-sub-category-id="{{ $combo['sub_category_id'] }}">
+                                {{ $combo['label'] }}
+                            </option>
+                        @endforeach
+                    @endif
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="preset_bulk_text">
+                    <strong>2. Paste product lines (one per line).</strong>
+                    Each row gets pre-filled with <em>Product Name, Artist, SKU</em> and your preset Category — same set of columns the Bulk Discogs IDs flow fills. You finish price / location / bin inline.
+                </label>
+                <div class="alert alert-info" style="margin-bottom: 10px; padding: 10px;">
+                    <strong>Supported per-line formats:</strong>
+                    <ul style="margin-bottom: 0; padding-left: 20px;">
+                        <li><code>Product Name</code> (just the title)</li>
+                        <li><code>Product Name - Artist</code></li>
+                        <li><code>Product Name | Artist | SKU</code> (pipe / comma / tab)</li>
+                    </ul>
+                </div>
+                <textarea
+                    id="preset_bulk_text"
+                    class="form-control"
+                    rows="10"
+                    placeholder="Example:&#10;Thriller - Michael Jackson&#10;Greatest Hits - Dionne Warwick&#10;Rumours | Fleetwood Mac | BSK 3010"
+                    style="font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.6;"></textarea>
+            </div>
+            <div class="form-group">
+                <button type="button" class="btn btn-success" id="add_preset_bulk">
+                    <i class="fa fa-plus-circle"></i> Add Rows with this Category
+                </button>
+                <button type="button" class="btn btn-default" id="clear_preset_bulk">
+                    <i class="fa fa-eraser"></i> Clear
+                </button>
+                <span class="text-muted" id="preset_bulk_status" style="margin-left: 15px;"></span>
+            </div>
+        </div>
+    </div>
+
     <div class="responsive-table">
         <table class="table-wrapper" id="mass_create_table">
             <!-- Шапка таблицы с восстановленными колонками -->
             <thead class="thead">
+                {{-- Sarah 2026-05-06 (rev 2): Artist must sit at col 2 to match the
+                     row partial (mass_product_row.blade.php). Touching this comment
+                     to bust any stale Blade compiled-view / OPcache holding the
+                     pre-move column order. --}}
                 <tr class="tr">
                     <th class="th col-name">@lang('product.product_name')*</th>
+                    <th class="th col-artist">Artist</th>
                     <th class="th col-sku">@lang('product.sku')</th>
                     <th class="th col-select">@lang('product.category') / @lang('product.sub_category')</th>
-                    <th class="th col-artist">Artist</th>
                     <th class="th col-locations">@lang('business.business_locations')</th>
                     <th class="th price-col">Purchase Price</th>
                     <th class="th price-col">Selling Price</th>
@@ -499,32 +620,35 @@
                 <!-- Добавляйте новые .tr для каждой новой строки продукта -->
             </tbody>
 
-            <!-- Подвал таблицы -->
-            <tfoot class="tfoot">
-                <tr class="tr">
-                    <td class="td" colspan="1">
-                        <button type="button" class="btn btn-primary" id="add_row">
-                            Add New Product Row
-                        </button>
-                    </td>
-                </tr>
-                <tr class="tr">
-                    <td class="td" colspan="1">
-                        <div id="mass_add_action_buttons" style="display: flex; flex-direction: column; gap: 10px; width: 100%; box-sizing: border-box; padding: 0; overflow: visible;">
-                            <button type="button" class="btn btn-info btn-block" id="verify_all_categories" style="box-sizing: border-box; margin: 0; padding-left: 10px; padding-right: 10px; white-space: normal; word-break: break-word;">
-                                <i class="fa fa-check-circle"></i> Verify All Categories
-                            </button>
-                            <button type="button" class="btn btn-success btn-block" id="save_all_products" style="box-sizing: border-box; margin: 0; padding-left: 10px; padding-right: 10px; white-space: normal; word-break: break-word;">Save All Products</button>
-                            <button type="button" class="btn btn-warning btn-block" id="save_and_send_to_purchase" style="font-weight: bold; box-sizing: border-box; margin: 0; padding-left: 10px; padding-right: 10px; white-space: normal; word-break: break-word;">
-                                <i class="fa fa-save"></i> Save &amp; send to add purchase
-                            </button>
-                        </div>
-                    </td>
-                </tr>
-            </tfoot>
-
-
         </table>
+    </div>
+
+    {{-- Sarah 2026-05-06: action buttons moved OUT of <tfoot><td colspan=1>
+         (which clamped them to a single column width and squished labels).
+         Now they're a sibling block under the table and free to size to the
+         viewport. --}}
+    <div class="mass-add-footer-actions">
+        <div class="mass-add-row-actions">
+            <button type="button" class="btn btn-primary" id="add_row">
+                Add New Product Row
+            </button>
+            <button type="button" class="btn btn-info" id="add_5_rows">
+                Add 5 Product Rows
+            </button>
+            <button type="button" class="btn btn-info" id="verify_all_categories">
+                <i class="fa fa-check-circle"></i> Verify All Categories
+            </button>
+        </div>
+        <div id="mass_add_action_buttons">
+            {{-- Sarah 2026-05-06: Save & send to add purchase is the primary
+                 (green); Save All Products is the secondary (yellow). --}}
+            <button type="button" class="btn btn-warning" id="save_all_products">
+                <i class="fa fa-check"></i> Save All Products
+            </button>
+            <button type="button" class="btn btn-success" id="save_and_send_to_purchase">
+                <i class="fa fa-save"></i> Save &amp; send to add purchase
+            </button>
+        </div>
     </div>
 
     {!! Form::close() !!}
@@ -669,51 +793,110 @@
         })(jQuery);
 
         let rowIndex = 1;
+
+        // Resolve the next data-row-index to use. Reading the last row's
+        // attribute is robust to rows added via bulk paste, which would
+        // otherwise collide with the local rowIndex counter.
+        function nextRowIndex() {
+            const $last = $('#product_rows_container .product-row').last();
+            const lastAttr = parseInt($last.attr('data-row-index'), 10);
+            const fromDom = isNaN(lastAttr) ? 0 : lastAttr + 1;
+            const next = Math.max(rowIndex, fromDom);
+            rowIndex = next + 1;
+            return next;
+        }
+
+        // Append one fresh product row. Returns a Promise that resolves
+        // once the row is in the DOM and its select2 widgets are ready.
+        function appendOneProductRow() {
+            return new Promise(function(resolve, reject) {
+                const idx = nextRowIndex();
+                $.ajax({
+                    url: "{{ route('product.getMassProductRow') }}",
+                    type: 'GET',
+                    data: { index: idx },
+                    success: function (row) {
+                        $('#product_rows_container').append(row);
+                        const $newRow = $('#product_rows_container .product-row').last();
+                        $newRow.find('.select2').select2();
+                        applyCategoryComboSelect2Matcher($newRow);
+                        window.setupProductNameSelect2();
+                        resolve($newRow);
+                    },
+                    error: function () {
+                        reject();
+                    },
+                });
+            });
+        }
+
         // Add a new row
-        // Add new row
         $('#add_row').on('click', function () {
             if (window.isAddingNewRow) {
                 return;
             }
-
             window.isAddingNewRow = true;
             $(this).html('Adding row...');
-            $.ajax({
-                url: "{{ route('product.getMassProductRow') }}",
-                type: 'GET',
-                data: { index: rowIndex },
-                success: function (row) {
-                    $('#product_rows_container').append(row);
-                    rowIndex++;
-
-                    // Reinitialize Select2 for new elements
-                    $('#product_rows_container .product-row').last().find('.select2').select2();
-                    applyCategoryComboSelect2Matcher($('#product_rows_container .product-row').last());
-                    window.setupProductNameSelect2();
+            appendOneProductRow()
+                .then(function() {
                     window.isAddingNewRow = false;
                     $('#add_row').html('Add New Product Row');
-                },
-                error: function () {
+                })
+                .catch(function() {
                     toastr.error('Failed to add a new row.');
                     window.isAddingNewRow = false;
                     $('#add_row').html('Add New Product Row');
-                },
-            });
+                });
         });
 
-        // Copy down feature
+        // Add 5 rows at once
+        $('#add_5_rows').on('click', function () {
+            if (window.isAddingNewRow) {
+                return;
+            }
+            window.isAddingNewRow = true;
+            const $btn = $(this);
+            const originalLabel = $btn.html();
+            const total = 5;
+            let added = 0;
+            let failed = 0;
+
+            function addNext() {
+                if (added + failed >= total) {
+                    window.isAddingNewRow = false;
+                    $btn.html(originalLabel);
+                    if (failed > 0) {
+                        toastr.warning('Added ' + added + ' of ' + total + ' rows.');
+                    }
+                    return;
+                }
+                $btn.html('Adding row ' + (added + failed + 1) + ' of ' + total + '...');
+                appendOneProductRow()
+                    .then(function() { added++; addNext(); })
+                    .catch(function() { failed++; addNext(); });
+            }
+
+            addNext();
+        });
+
+        // Copy down feature.
+        // Use closest()+nextAll() instead of .eq()/.slice() so this works
+        // regardless of how rows were added (manual, bulk-paste) or whether
+        // earlier rows were removed — DOM order is the source of truth, not
+        // the data-row-index attribute (which can drift after bulk-add or delete).
         $(document).on('click', '.copy-down', function() {
-            const rowIndex = parseInt($(this).attr('data-row-index'));
-            const inputClass = $(this).attr('data-class');
-            const row = $('#product_rows_container .product-row').eq(rowIndex);
+            const $btn = $(this);
+            const inputClass = $btn.attr('data-class');
+            if (!inputClass) return;
+            const $sourceRow = $btn.closest('.product-row');
+            if (!$sourceRow.length) return;
 
-            const value = row.find(`.${inputClass}`).val();
+            const $sourceField = $sourceRow.find(`.${inputClass}`).first();
+            const value = $sourceField.val();
 
-            $('#product_rows_container .product-row')
-                .slice(rowIndex + 1) // Ambil semua baris setelah rowIndex
-                .each(function() {
-                    $(this).find(`.${inputClass}`).val(value).trigger('change');
-                });
+            $sourceRow.nextAll('.product-row').each(function() {
+                $(this).find(`.${inputClass}`).val(value).trigger('change');
+            });
         });
 
         // Remove row
@@ -1712,13 +1895,45 @@
             return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
         }
 
+        function tokenize(s) {
+            const norm = normalizeForMatch(s);
+            if (!norm) return [];
+            // Drop short stop-words; keep useful tokens like "lp", "cd", "7", "12"
+            return norm.split(/\s+/).filter(function(t) {
+                return t.length > 0 && t !== 'and' && t !== 'the';
+            });
+        }
+
+        // Score a single option label against a set of hint tokens.
+        // Higher score = better match. Bidirectional: counts hint tokens
+        // present in label AND label tokens present in hint.
+        function scoreOptionForHint(labelTokens, hintTokens, weight) {
+            if (!hintTokens.length || !labelTokens.length) return 0;
+            const labelSet = {};
+            labelTokens.forEach(function(t) { labelSet[t] = true; });
+            const hintSet = {};
+            hintTokens.forEach(function(t) { hintSet[t] = true; });
+
+            let matches = 0;
+            Object.keys(hintSet).forEach(function(t) {
+                if (labelSet[t]) matches++;
+            });
+            if (!matches) return 0;
+            // Reward higher coverage of hint tokens in label.
+            const coverage = matches / Object.keys(hintSet).length;
+            return weight * (matches + coverage);
+        }
+
         function findBestCategoryComboValue($combo, product) {
             if (!$combo || !$combo.length) {
                 return '';
             }
-            const categoryHint = normalizeForMatch(product.category);
-            const subHint = normalizeForMatch(product.subcategory);
-            const raw = normalizeForMatch(product.raw_line);
+            const categoryTokens = tokenize(product.category);
+            const subTokens = tokenize(product.subcategory);
+            const nameTokens = tokenize(product.name);
+            const artistTokens = tokenize(product.artist);
+            const rawTokens = tokenize(product.raw_line);
+
             let bestVal = '';
             let bestScore = 0;
 
@@ -1726,18 +1941,35 @@
                 const $opt = $(this);
                 const val = String($opt.val() || '');
                 if (!val) return;
-                const label = normalizeForMatch($opt.text());
+                const labelTokens = tokenize($opt.text());
+                if (!labelTokens.length) return;
+
                 let score = 0;
-                if (categoryHint && label.indexOf(categoryHint) !== -1) score += 3;
-                if (subHint && label.indexOf(subHint) !== -1) score += 4;
-                if (raw && label && raw.indexOf(label) !== -1) score += 2;
+                // Subcategory hints are most reliable (e.g. "Vinyl LP", "7 Inch")
+                score += scoreOptionForHint(labelTokens, subTokens, 5);
+                // Category hints (e.g. "Records", "Cassettes")
+                score += scoreOptionForHint(labelTokens, categoryTokens, 4);
+                // Direct substring match of full hint within label as a tiebreaker
+                const labelStr = labelTokens.join(' ');
+                const catStr = categoryTokens.join(' ');
+                const subStr = subTokens.join(' ');
+                if (catStr && labelStr.indexOf(catStr) !== -1) score += 2;
+                if (subStr && labelStr.indexOf(subStr) !== -1) score += 3;
+                // Fall back to product name / artist hints when no category was provided
+                if (!categoryTokens.length && !subTokens.length) {
+                    score += scoreOptionForHint(labelTokens, nameTokens, 1);
+                    score += scoreOptionForHint(labelTokens, rawTokens, 1);
+                    score += scoreOptionForHint(labelTokens, artistTokens, 0.5);
+                }
                 if (score > bestScore) {
                     bestScore = score;
                     bestVal = val;
                 }
             });
 
-            return bestScore > 0 ? bestVal : '';
+            // Require a meaningful score before auto-selecting; very weak matches
+            // (e.g. a single common word) shouldn't auto-pick a wrong combo.
+            return bestScore >= 2 ? bestVal : '';
         }
 
         function findLocationIdsByText($locations, hintText) {
@@ -1761,7 +1993,10 @@
                 data: { index: rowIndex },
                 success: function (row) {
                     const $row = $(row);
-                    $('#product_rows_container').append($row);
+                    // Sarah 2026-05-06: bulk-paste rows go to the TOP, not the bottom.
+                    // Caller reverses the parsed array so iterating + prepending preserves
+                    // the user's typed order (first-typed row ends up at the very top).
+                    $('#product_rows_container').prepend($row);
                     
                     // Fill in the data
                     const rowSelector = `.product-row[data-row-index="${rowIndex}"]`;
@@ -1908,7 +2143,12 @@
         $('#bulk_parse_status').html(`<i class="fa fa-spinner fa-spin"></i> Adding ${products.length} products...`);
         $(this).prop('disabled', true);
         $('#preview_bulk_text').prop('disabled', true);
-        
+
+        // Sarah 2026-05-06: rows are PREPENDED to the table now (see addProductFromParsedData).
+        // Reverse the parsed list so each subsequent prepend pushes the previous one down,
+        // ending with the first-typed product at the very top.
+        products.reverse();
+
         let currentRowIndex = parseInt($('#product_rows_container .product-row').last().attr('data-row-index') || '0');
         let addedCount = 0;
         let errorCount = 0;
@@ -1959,6 +2199,278 @@
             $('#bulk_parse_status').html('');
             $('#bulk_preview_container').hide();
         }
+    });
+
+    // ============================================================
+    //  Sarah 2026-05-06: Bulk Discogs Release IDs
+    //  Paste IDs → server fetches each from Discogs → prepend a row.
+    // ============================================================
+    // Returns the next safe data-row-index across the WHOLE container.
+    // Bug fix: previous version read .last() which after prepending always
+    // returned the original tail row → every new index collided.
+    function nextMassRowIndex() {
+        let max = -1;
+        $('#product_rows_container .product-row').each(function() {
+            const v = parseInt($(this).attr('data-row-index'), 10);
+            if (!isNaN(v) && v > max) max = v;
+        });
+        return max + 1;
+    }
+
+    function addRowFromDiscogsData(discogsData, rowIdx) {
+        return new Promise(function(resolve) {
+            $.ajax({
+                url: "{{ route('product.getMassProductRow') }}",
+                type: 'GET',
+                data: { index: rowIdx },
+                success: function(rowHtml) {
+                    const $row = $(rowHtml);
+                    $('#product_rows_container').prepend($row);
+
+                    // Sarah 2026-05-06: ONLY the title goes into Product Name
+                    // and ONLY the artist goes into Artist — don't combine them
+                    // into "Artist — Title" for the name input. Falls back to
+                    // .name if title is missing for some reason.
+                    const productTitle = discogsData.title || discogsData.name;
+                    if (productTitle) {
+                        $row.find('.product-name-autocomplete').val(productTitle);
+                    }
+                    if (discogsData.artist) {
+                        $row.find('input[name*="[artist]"]').val(discogsData.artist);
+                    }
+                    if (discogsData.sku) {
+                        $row.find('input[name*="[sku]"]').val(discogsData.sku);
+                    }
+                    // Pre-select category combo if Discogs gave us a match.
+                    if (discogsData.category_id) {
+                        const sub = discogsData.sub_category_id || 0;
+                        const comboVal = discogsData.category_id + '_' + sub;
+                        const $combo = $row.find('.category-combo-select');
+                        if ($combo.find('option[value="' + comboVal + '"]').length) {
+                            $combo.val(comboVal).trigger('change');
+                        }
+                    }
+                    $row.find('.select2').select2();
+                    if (typeof window.setupProductNameSelect2 === 'function') {
+                        window.setupProductNameSelect2();
+                    }
+                    resolve($row);
+                },
+                error: function() { resolve(null); }
+            });
+        });
+    }
+
+    // Sarah 2026-05-06: accept either a bare numeric ID or a full Discogs URL
+    // like https://www.discogs.com/release/1873085-Pink-Floyd-Atom-Heart-Mother
+    // Extracts the digits after `/release/` when a URL is pasted.
+    function extractDiscogsReleaseId(line) {
+        const trimmed = (line || '').trim();
+        if (!trimmed) return null;
+        if (/^\d+$/.test(trimmed)) return trimmed;
+        const m = trimmed.match(/\/release\/(\d+)/i);
+        return m ? m[1] : null;
+    }
+
+    $('#fetch_discogs_ids').on('click', function() {
+        const raw = $('#bulk_discogs_ids').val() || '';
+        const ids = raw.split(/\r?\n/)
+                       .map(extractDiscogsReleaseId)
+                       .filter(Boolean);
+        if (!ids.length) {
+            toastr.warning('Paste at least one Discogs release ID or release URL.');
+            return;
+        }
+        if (!confirm(`Fetch ${ids.length} releases from Discogs and add them to the table?`)) {
+            return;
+        }
+
+        // Reverse so prepends preserve typed order (first ID → top).
+        const queue = ids.slice().reverse();
+        const $btn = $(this).prop('disabled', true);
+        const total = ids.length;
+        let added = 0, failed = 0;
+        const failures = [];
+
+        function renderFailures() {
+            if (!failures.length) return '';
+            const items = failures.map(f =>
+                `<li><code>${f.id}</code> &mdash; ${$('<div>').text(f.msg).html()}</li>`
+            ).join('');
+            return `<div class="alert alert-warning" style="margin-top:10px;">
+                <strong>Failed (${failures.length}):</strong>
+                <ul style="margin:6px 0 0 18px;">${items}</ul>
+            </div>`;
+        }
+
+        function next() {
+            if (!queue.length) {
+                $btn.prop('disabled', false);
+                const summary = failed
+                    ? `Added ${added}/${total} &mdash; ${failed} failed (see below).`
+                    : `Added ${added}/${total} from Discogs.`;
+                $('#discogs_fetch_status').html(
+                    `<span class="${failed ? 'text-warning' : 'text-success'}"><i class="fa fa-${failed ? 'exclamation-triangle' : 'check'}"></i> ${summary}</span>` +
+                    renderFailures()
+                );
+                if (!failed) {
+                    toastr.success(`Added ${added} from Discogs.`);
+                    $('#bulk_discogs_ids').val('');
+                } else {
+                    toastr.warning(`${failed} of ${total} Discogs lookups failed. See details on the page.`);
+                }
+                return;
+            }
+            const id = queue.shift();
+            $('#discogs_fetch_status').html(`<i class="fa fa-spinner fa-spin"></i> Fetching ${id} (${added + failed + 1}/${total})...`);
+            $.ajax({
+                url: "{{ url('product/mass-create/fetch-discogs-release') }}/" + encodeURIComponent(id),
+                type: 'GET',
+                success: function(resp) {
+                    if (resp && resp.success) {
+                        addRowFromDiscogsData(resp.data, nextMassRowIndex())
+                            .then(() => { added++; setTimeout(next, 250); });
+                    } else {
+                        failed++;
+                        const msg = (resp && resp.message) ? resp.message : 'Unknown error from server.';
+                        failures.push({ id: id, msg: msg });
+                        console.warn('Discogs fetch failed for ' + id + ':', msg);
+                        setTimeout(next, 250);
+                    }
+                },
+                error: function(xhr) {
+                    failed++;
+                    let msg = 'HTTP ' + (xhr && xhr.status ? xhr.status : '?');
+                    if (xhr && xhr.responseJSON && xhr.responseJSON.message) {
+                        msg += ' &mdash; ' + xhr.responseJSON.message;
+                    } else if (xhr && xhr.responseText) {
+                        // Show first 200 chars of HTML/error body so we can see Laravel's message.
+                        msg += ' &mdash; ' + xhr.responseText.substring(0, 200).replace(/<[^>]+>/g, ' ').trim();
+                    }
+                    failures.push({ id: id, msg: msg });
+                    console.warn('Discogs fetch HTTP error for ' + id, xhr);
+                    setTimeout(next, 250);
+                }
+            });
+        }
+        next();
+    });
+
+    $('#clear_discogs_ids').on('click', function() {
+        $('#bulk_discogs_ids').val('');
+        $('#discogs_fetch_status').html('');
+    });
+
+    // ============================================================
+    //  Sarah 2026-05-06: Preset Category bulk entry
+    //  Pick a category once, paste names, every new row uses that category.
+    // ============================================================
+    // Sarah 2026-05-06: parsed columns intentionally narrowed to match the
+    // Bulk Discogs IDs flow — Name, Artist, SKU, plus the preset category.
+    // Price/Bin/Location are filled by hand in the row, same as Discogs.
+    function parsePresetBulkLine(line) {
+        const trimmed = line.trim();
+        if (!trimmed) return null;
+
+        let parts = null;
+        if (trimmed.indexOf('|') !== -1) {
+            parts = trimmed.split('|').map(s => s.trim());
+        } else if (trimmed.indexOf('\t') !== -1) {
+            parts = trimmed.split('\t').map(s => s.trim());
+        } else if (trimmed.indexOf(',') !== -1) {
+            parts = trimmed.split(',').map(s => s.trim());
+        }
+        if (parts && parts.length > 1) {
+            return {
+                name: parts[0] || '',
+                artist: parts[1] || '',
+                sku: parts[2] || '',
+            };
+        }
+        const dashIdx = trimmed.indexOf(' - ');
+        if (dashIdx !== -1) {
+            return {
+                name: trimmed.slice(0, dashIdx).trim(),
+                artist: trimmed.slice(dashIdx + 3).trim(),
+            };
+        }
+        return { name: trimmed };
+    }
+
+    function addRowFromPresetData(productData, rowIdx, comboVal) {
+        return new Promise(function(resolve) {
+            $.ajax({
+                url: "{{ route('product.getMassProductRow') }}",
+                type: 'GET',
+                data: { index: rowIdx },
+                success: function(rowHtml) {
+                    const $row = $(rowHtml);
+                    $('#product_rows_container').prepend($row);
+                    // Same column set as the Bulk Discogs flow: Name, Artist, SKU.
+                    if (productData.name)   $row.find('.product-name-autocomplete').val(productData.name);
+                    if (productData.artist) $row.find('input[name*="[artist]"]').val(productData.artist);
+                    if (productData.sku)    $row.find('input[name*="[sku]"]').val(productData.sku);
+
+                    // Apply the preset category combo.
+                    if (comboVal) {
+                        const $combo = $row.find('.category-combo-select');
+                        if ($combo.find('option[value="' + comboVal + '"]').length) {
+                            $combo.val(comboVal).trigger('change');
+                        }
+                    }
+                    $row.find('.select2').select2();
+                    if (typeof window.setupProductNameSelect2 === 'function') {
+                        window.setupProductNameSelect2();
+                    }
+                    resolve($row);
+                },
+                error: function() { resolve(null); }
+            });
+        });
+    }
+
+    $('#add_preset_bulk').on('click', function() {
+        const comboVal = $('#preset_bulk_category').val();
+        if (!comboVal) {
+            toastr.warning('Pick a category first.');
+            return;
+        }
+        const raw = $('#preset_bulk_text').val() || '';
+        const products = raw.split(/\r?\n/).map(parsePresetBulkLine).filter(Boolean);
+        if (!products.length) {
+            toastr.warning('Paste at least one product line.');
+            return;
+        }
+        if (!confirm(`Add ${products.length} rows with the selected category?`)) {
+            return;
+        }
+
+        // Reverse so first-typed product ends up at the top after prepending.
+        const queue = products.slice().reverse();
+        const $btn = $(this).prop('disabled', true);
+        const total = products.length;
+        let added = 0;
+
+        function next() {
+            if (!queue.length) {
+                $btn.prop('disabled', false);
+                const msg = `Added ${added}/${total} preset-category rows.`;
+                $('#preset_bulk_status').html(`<span class="text-success"><i class="fa fa-check"></i> ${msg}</span>`);
+                toastr.success(msg);
+                $('#preset_bulk_text').val('');
+                return;
+            }
+            const p = queue.shift();
+            $('#preset_bulk_status').html(`<i class="fa fa-spinner fa-spin"></i> Adding ${added + 1}/${total}...`);
+            addRowFromPresetData(p, nextMassRowIndex(), comboVal)
+                .then(() => { added++; setTimeout(next, 150); });
+        }
+        next();
+    });
+
+    $('#clear_preset_bulk').on('click', function() {
+        $('#preset_bulk_text').val('');
+        $('#preset_bulk_status').html('');
     });
     
     // Enhanced autocomplete for bulk text area (suggestions from existing products)

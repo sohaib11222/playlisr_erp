@@ -794,9 +794,10 @@ function append_purchase_lines(data, row_count, trigger_change = false, options 
     $(data)
         .find('.purchase_quantity')
         .each(function() {
-            row = $(this).closest('tr');
+            var $qtyInput = $(this);
+            row = $qtyInput.closest('tr');
             if (defaultQtyOne) {
-                __write_number($(this), 1, true);
+                __write_number($qtyInput, 1, true);
             }
 
             $('#purchase_entry_table tbody').append(
@@ -818,6 +819,17 @@ function append_purchase_lines(data, row_count, trigger_change = false, options 
             if (trigger_change && row.find('.purchase_unit_cost_without_discount').length) {
                 row.find('.purchase_unit_cost_without_discount').trigger('change');
             }
+
+            // Re-apply default qty AFTER trigger_change so any side effects of
+            // the cost-change handler can't leave the field at 0/empty. Then
+            // fire a change event so subtotal/grand-total recompute with qty=1.
+            if (defaultQtyOne) {
+                var currentQty = Math.floor(__read_number($qtyInput, true) || 0);
+                if (currentQty < 1) {
+                    __write_number($qtyInput, 1, true);
+                    $qtyInput.trigger('change');
+                }
+            }
         });
     var added_rows = $(data).find('.purchase_quantity').length;
     if (added_rows) {
@@ -837,6 +849,25 @@ function add_mass_products_sequentially(product_ids) {
 
     function process_next() {
         if (index >= product_ids.length) {
+            // Final pass: bypass any number-formatter quirks and brute-force
+            // qty=1 on every row that ended up at 0 or empty, then trigger
+            // change so subtotals/grand total recompute. Also covers the
+            // secondary "Quantity in Pc(s)" input rendered when the product
+            // has a second unit — it ships with value="" which leaves the
+            // pieces field blank for the cashier.
+            $('#purchase_entry_table tbody tr').each(function() {
+                var $row = $(this);
+                ['input.purchase_quantity', 'input[name$="[secondary_unit_quantity]"]'].forEach(function(sel) {
+                    var $el = $row.find(sel).first();
+                    if (!$el.length) return;
+                    var raw = String($el.val() || '').trim();
+                    var n = parseFloat(raw.replace(/,/g, '')) || 0;
+                    if (n < 1) {
+                        $el.val('1');
+                        $el.trigger('change');
+                    }
+                });
+            });
             return;
         }
 

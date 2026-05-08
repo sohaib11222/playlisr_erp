@@ -131,11 +131,6 @@
                         <tr @if(!empty($r['integration_placeholder'])) class="warning" style="background:#fffbeb;" @endif>
                             <td>
                                 <strong>{{ $r['label'] }}</strong>
-                                @if(!empty($r['integration_placeholder']))
-                                    <span class="label label-warning" style="font-weight:500;">setup</span>
-                                @elseif($r['channel'] !== 'in_store')
-                                    <span class="label label-default" style="font-weight:500;">{{ $r['channel'] }}</span>
-                                @endif
                             </td>
                             <td class="text-right">${{ number_format($r['revenue'], 2) }}</td>
                             <td class="text-right">{{ number_format($r['share_pct'], 1) }}%</td>
@@ -172,7 +167,7 @@
             <p class="text-muted" style="font-size:12px; margin-top:8px;">
                 Operating profit and net profit per channel require expense-allocation rules (rent, payroll, etc.) that are not yet defined.
                 See the <a href="{{ action('ReportController@getProfitLoss') }}">Profit / Loss report</a> for the consolidated view.<br>
-                <em>nivessa.com</em> shipping &amp; pickup rows show revenue only — cost basis lives on the website backend and isn't pulled into the ERP yet.
+                Website Shipping &amp; Pickup rows show revenue only — cost basis lives on the website backend and isn't pulled into the ERP yet.
                 Space Rentals are pure revenue (no COGS).
             </p>
         </div>

@@ -14,7 +14,10 @@ class BuyOfferCalculatorService
         return [
             'credit_bonus_multiplier' => 1.20,
             'individual_vinyl_standard_multiplier' => 0.10,
+            // Condition multipliers — kept in worst→best order so the dropdown
+            // sorts naturally bottom-up. Sarah 2026-05-06: 'Poor' added (0.10).
             'grade_multipliers' => [
+                'Poor' => 0.10,
                 'Fair' => 0.20,
                 'Good' => 0.22,
                 'Good+' => 0.25,

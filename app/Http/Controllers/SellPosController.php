@@ -114,19 +114,19 @@ class SellPosController extends Controller
     }
 
     /**
-     * Format a CloverPayment->paid_at value as Hollywood-local time so the
-     * recent feed and unclaimed/orphan lists never show tomorrow's UTC
-     * timestamp on tonight's sales. paid_at is stored as UTC by
-     * SyncCloverPayments (from createdTime epoch ms). Falls back to the
-     * cast value if the raw attribute isn't accessible.
+     * Format a CloverPayment->paid_at as Hollywood-local time. paid_at is
+     * stored in app TZ (America/Los_Angeles) by SyncCloverPayments — the
+     * model's 'datetime' cast reads it back in that TZ, so use the cast
+     * value directly. setTimezone('LA') is defensive in case PHP default
+     * TZ on the box isn't LA. (Earlier this re-parsed as UTC and converted
+     * to LA, which subtracted 7 hours from every charge — Sarah 2026-05-07.)
      */
     public static function formatCloverPaidAt($cp): string
     {
-        $raw = is_array($cp->getAttributes()) ? ($cp->getAttributes()['paid_at'] ?? null) : null;
         try {
-            $dt = $raw
-                ? \Carbon\Carbon::parse((string) $raw, 'UTC')
-                : \Carbon\Carbon::parse((string) $cp->paid_at, 'UTC');
+            $dt = $cp->paid_at instanceof \Carbon\Carbon
+                ? $cp->paid_at->copy()
+                : \Carbon\Carbon::parse((string) $cp->paid_at);
             return $dt->setTimezone('America/Los_Angeles')->format('Y-m-d H:i:s');
         } catch (\Throwable $e) {
             return (string) $cp->paid_at;
@@ -193,11 +193,20 @@ class SellPosController extends Controller
         }
         $request->session()->put('pos_duty_location_label', $locLabel);
 
+        $openingCash = null;
+        if ($duty === 'cashier') {
+            $openingCash = round((float) $request->input('opening_cash', 0), 2);
+            $request->session()->put('pos_duty_opening_cash', $openingCash);
+            $request->session()->put('pos_duty_opening_cash_at', now()->toIso8601String());
+        } else {
+            $request->session()->forget(['pos_duty_opening_cash', 'pos_duty_opening_cash_at']);
+        }
+
         $this->businessUtil->activityLog(
             auth()->user(),
             'pos_duty',
             null,
-            ['duty' => $duty, 'location_id' => $locationId],
+            ['duty' => $duty, 'location_id' => $locationId, 'opening_cash' => $openingCash],
             false,
             $business_id
         );
@@ -393,6 +402,14 @@ class SellPosController extends Controller
         $limit = (int) $request->get('limit', 30);
         $location_id = $request->get('location_id');
         $created_by = $request->get('created_by');
+        // Sarah 2026-05-05: when the EOD reconciliation page deep-links
+        // here for a single cashier-day ("View Manolo's sales"), pass
+        // start_date / end_date / hide_orphans so the feed scopes to that
+        // window and suppresses the global Clover-orphan rows that have
+        // nothing to do with the filtered cashier.
+        $start_date = $request->get('start_date');
+        $end_date   = $request->get('end_date');
+        $hide_orphans = (bool) $request->get('hide_orphans');
         // Discrepancy filter — '', 'mismatch', 'no_clover', 'no_erp', 'any'.
         // Applied *after* the Clover match runs (since both sides need to be
         // paired before we can know which sales are discrepant), so when a
@@ -420,6 +437,8 @@ class SellPosController extends Controller
             ->whereNull('transactions.import_source')
             ->when($location_id, fn($q) => $q->where('transactions.location_id', $location_id))
             ->when($created_by, fn($q) => $q->where('transactions.created_by', $created_by))
+            ->when($start_date, fn($q) => $q->whereDate('transactions.transaction_date', '>=', $start_date))
+            ->when($end_date,   fn($q) => $q->whereDate('transactions.transaction_date', '<=', $end_date))
             ->with([
                 'sell_lines' => fn($q) => $q->whereNull('parent_sell_line_id'),
                 'sell_lines.product',
@@ -430,6 +449,7 @@ class SellPosController extends Controller
                 'contact',
                 'location',
                 'sales_person',
+                'payment_lines',
             ])
             ->orderByDesc('transaction_date')
             ->limit($fetchLimit)
@@ -518,20 +538,36 @@ class SellPosController extends Controller
                 ->orderByDesc('transaction_date')
                 ->get(['id', 'final_total', 'transaction_date', 'location_id']);
 
+            // Match window: ±5¢ amount + ±10min time. Sarah 2026-05-06
+            // looking at Manolo's drilldown — a $33.06 Clover swipe vs
+            // a $32.92 ERP sale at the same minute is the same sale
+            // with 14¢ of tax-rounding drift. The previous 1¢ rule
+            // treated those as unmatched. Score = amount-cents-delta
+            // ×1000 + time-seconds-delta so an exact match within
+            // 10min still beats a 5¢-off match.
+            // Sarah 2026-05-07: window widened to 30min for slow typers
+            // (Luis would Clover at 9:33pm, type into ERP at 9:44pm).
+            // Score = amount-cents × 1000 + time-seconds so exact
+            // matches still beat off-by-cents at longer gaps.
+            $matchAmountCents = 5;
+            $matchTimeWindow  = 1800;
             foreach ($matchSales as $sale) {
                 $erTs    = strtotime((string) $sale->transaction_date);
                 $erCents = $toCents($sale->final_total);
                 $erLoc   = $sale->location_id;
 
                 $bestKey = null;
-                $bestDelta = PHP_INT_MAX;
+                $bestScore = PHP_INT_MAX;
                 foreach ($cpRows as $key => $cp) {
                     if (isset($claimedCpKeys[$key])) continue;
-                    if (abs($toCents($cp->amount) - $erCents) > 1) continue;
+                    $amtDelta = abs($toCents($cp->amount) - $erCents);
+                    if ($amtDelta > $matchAmountCents) continue;
                     if ($cp->location_id !== null && (int) $cp->location_id !== (int) $erLoc) continue;
-                    $delta = abs(strtotime((string) $cp->paid_at) - $erTs);
-                    if ($delta < $bestDelta) {
-                        $bestDelta = $delta;
+                    $timeDelta = abs(strtotime((string) $cp->paid_at) - $erTs);
+                    if ($timeDelta > $matchTimeWindow) continue;
+                    $score = $amtDelta * 1000 + $timeDelta;
+                    if ($score < $bestScore) {
+                        $bestScore = $score;
                         $bestKey = $key;
                     }
                 }
@@ -573,6 +609,13 @@ class SellPosController extends Controller
             $unclaimed_clover_payments = $cpRows->reject(function ($cp, $key) use ($claimedCpKeys) {
                 return isset($claimedCpKeys[$key]);
             })->values();
+        }
+        // Suppress the orphan list when this is a per-cashier deep-link
+        // (Sarah 2026-05-05): the orphans aren't tied to any cashier, so
+        // showing them inside a Manolo-filtered view leaks Henry's swipes
+        // into Manolo's feed.
+        if ($hide_orphans) {
+            $unclaimed_clover_payments = collect();
         }
 
         // Orphan Clover → ERP user: prefer activity_log pos_duty=cashier at
@@ -672,6 +715,9 @@ class SellPosController extends Controller
         // so the UI can show a "5 mismatches · 12 ERP-only · 3 Clover-only"
         // summary regardless of which filter the user has on. Always computed
         // in cents.
+        // Mismatch threshold raised to >5¢ to align with the 5¢ pair
+        // tolerance — tax-rounding drift up to 5¢ is now treated as a
+        // legit match, not a mismatch.
         $toCentsSummary = function ($x) { return (int) round(((float) $x) * 100); };
         $mismatch_count = 0;
         $no_clover_count = 0;
@@ -679,7 +725,7 @@ class SellPosController extends Controller
             $info = $clover_by_transaction[$sale->id] ?? null;
             if ($info === null) {
                 $no_clover_count++;
-            } elseif (abs($info['amount_cents'] - $toCentsSummary($sale->final_total)) > 1) {
+            } elseif (abs($info['amount_cents'] - $toCentsSummary($sale->final_total)) > 5) {
                 $mismatch_count++;
             }
         }
@@ -694,7 +740,7 @@ class SellPosController extends Controller
             $sales = $sales->filter(function ($sale) use ($clover_by_transaction, $discrepancy, $toCentsSummary) {
                 $info = $clover_by_transaction[$sale->id] ?? null;
                 $isNoClover = $info === null;
-                $isMismatch = $info !== null && abs($info['amount_cents'] - $toCentsSummary($sale->final_total)) > 1;
+                $isMismatch = $info !== null && abs($info['amount_cents'] - $toCentsSummary($sale->final_total)) > 5;
                 if ($discrepancy === 'mismatch')   return $isMismatch;
                 if ($discrepancy === 'no_clover')  return $isNoClover;
                 if ($discrepancy === 'any')        return $isMismatch || $isNoClover;
@@ -871,6 +917,8 @@ class SellPosController extends Controller
             ->whereNull('transactions.import_source')
             ->when($location_id, fn($q) => $q->where('transactions.location_id', $location_id))
             ->when($created_by, fn($q) => $q->where('transactions.created_by', $created_by))
+            ->when($start_date, fn($q) => $q->whereDate('transactions.transaction_date', '>=', $start_date))
+            ->when($end_date,   fn($q) => $q->whereDate('transactions.transaction_date', '<=', $end_date))
             ->with([
                 'sell_lines' => fn($q) => $q->whereNull('parent_sell_line_id'),
                 'sell_lines.product',
@@ -920,20 +968,36 @@ class SellPosController extends Controller
 
             $claimedCpKeys = [];
             $matchedCpByTx = [];
+            // Match window: ±5¢ amount + ±10min time. Sarah 2026-05-06
+            // looking at Manolo's drilldown — a $33.06 Clover swipe vs
+            // a $32.92 ERP sale at the same minute is the same sale
+            // with 14¢ of tax-rounding drift. The previous 1¢ rule
+            // treated those as unmatched. Score = amount-cents-delta
+            // ×1000 + time-seconds-delta so an exact match within
+            // 10min still beats a 5¢-off match.
+            // Sarah 2026-05-07: window widened to 30min for slow typers
+            // (Luis would Clover at 9:33pm, type into ERP at 9:44pm).
+            // Score = amount-cents × 1000 + time-seconds so exact
+            // matches still beat off-by-cents at longer gaps.
+            $matchAmountCents = 5;
+            $matchTimeWindow  = 1800;
             foreach ($matchSales as $sale) {
                 $erTs    = strtotime((string) $sale->transaction_date);
                 $erCents = $toCents($sale->final_total);
                 $erLoc   = $sale->location_id;
 
                 $bestKey = null;
-                $bestDelta = PHP_INT_MAX;
+                $bestScore = PHP_INT_MAX;
                 foreach ($cpRows as $key => $cp) {
                     if (isset($claimedCpKeys[$key])) continue;
-                    if (abs($toCents($cp->amount) - $erCents) > 1) continue;
+                    $amtDelta = abs($toCents($cp->amount) - $erCents);
+                    if ($amtDelta > $matchAmountCents) continue;
                     if ($cp->location_id !== null && (int) $cp->location_id !== (int) $erLoc) continue;
-                    $delta = abs(strtotime((string) $cp->paid_at) - $erTs);
-                    if ($delta < $bestDelta) {
-                        $bestDelta = $delta;
+                    $timeDelta = abs(strtotime((string) $cp->paid_at) - $erTs);
+                    if ($timeDelta > $matchTimeWindow) continue;
+                    $score = $amtDelta * 1000 + $timeDelta;
+                    if ($score < $bestScore) {
+                        $bestScore = $score;
                         $bestKey = $key;
                     }
                 }

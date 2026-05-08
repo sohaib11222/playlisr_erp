@@ -33,6 +33,12 @@
     .rf-invoice a:hover { color: #8B6A1A; border-bottom-color: #8B6A1A; }
     .rf-time, .rf-store, .rf-customer, .rf-cashier { color: #5A5045; font-size: 13px; }
     .rf-cashier strong { color: #1F1B16; font-weight: 700; }
+    .rf-tender { display: inline-block; padding: 1px 7px; border-radius: 999px;
+        font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+    .rf-tender.tender-cash { background: #E6F2E0; border: 1px solid #B8D9A8; color: #2E6F40; }
+    .rf-tender.tender-card { background: #E0EAF7; border: 1px solid #A8C0DD; color: #2E4A8A; }
+    .rf-tender.tender-other { background: #F2EAE0; border: 1px solid #DDC8A8; color: #8B6A1A; }
+    .rf-tender.tender-mixed { background: #F0E0F2; border: 1px solid #D5A8DD; color: #5E2E80; }
     .rf-store-badge { display: inline-block; padding: 1px 7px; border-radius: 999px;
         background: #F7F1E3; border: 1px solid #DFD2B3; color: #5A5045;
         font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
@@ -292,17 +298,16 @@
         @if($item['type'] === 'clover')
             @php
                 $cp = $item['cp'];
-                // paid_at is stored as a UTC moment by SyncCloverPayments
-                // (from Clover's createdTime epoch ms). Force-display in
-                // America/Los_Angeles so a 7:18 PM PDT charge doesn't
-                // render as "Apr 30 7:18 am" — the previous code displayed
-                // whatever TZ the model cast / PHP default produced, which
-                // was wrong on prod (Sarah, 2026-04-29: live cashiers were
-                // seeing tomorrow's timestamps on tonight's sales).
-                $rawPaidAt = $cp->getAttributes()['paid_at'] ?? null;
-                $cpDt = $rawPaidAt
-                    ? \Carbon\Carbon::parse((string) $rawPaidAt, 'UTC')->setTimezone('America/Los_Angeles')
-                    : \Carbon\Carbon::parse($cp->paid_at)->setTimezone('America/Los_Angeles');
+                // paid_at is stored in app TZ (America/Los_Angeles) by
+                // SyncCloverPayments — Carbon::createFromTimestampMs picks
+                // up the app default TZ, and Eloquent serializes Carbons in
+                // their current TZ. The model's 'datetime' cast then reads
+                // them back in app TZ, so use that directly. (Earlier code
+                // re-parsed the raw value as UTC and converted to LA, which
+                // subtracted 7 hours from every charge — Sarah, 2026-05-07.)
+                $cpDt = $cp->paid_at instanceof \Carbon\Carbon
+                    ? $cp->paid_at->copy()->setTimezone('America/Los_Angeles')
+                    : \Carbon\Carbon::parse((string) $cp->paid_at)->setTimezone('America/Los_Angeles');
                 $cpWhen = $cpDt->isToday() ? $cpDt->format('g:i a') : $cpDt->format('M j · g:i a');
                 $cpStore = $cp->location_id && isset($business_locations[$cp->location_id])
                     ? $business_locations[$cp->location_id]
@@ -375,6 +380,26 @@
                 }
                 $total = (float) $sale->final_total;
                 $discount = (float) ($sale->discount_amount ?? 0);
+
+                // Tender the cashier picked at checkout. Per-payment-row method
+                // ('cash' / 'card' / 'bank_transfer' / 'cheque' / 'custom_pay_*' /
+                // 'other'). Note (memory, 2026-04-28): Nivessa cashiers ring nearly
+                // every sale as 'cash' even when the customer paid by card —
+                // they manually re-enter on Clover. So this shows what the
+                // cashier *chose*, which is mostly 'Cash'; the Clover column
+                // tells you what actually ran.
+                $methods = $sale->payment_lines->pluck('method')->filter()->unique()->values();
+                $tenderClass = 'tender-other';
+                $tenderLabel = '—';
+                if ($methods->count() > 1) {
+                    $tenderClass = 'tender-mixed';
+                    $tenderLabel = 'Split';
+                } elseif ($methods->count() === 1) {
+                    $m = $methods->first();
+                    if ($m === 'cash') { $tenderClass = 'tender-cash'; $tenderLabel = 'Cash'; }
+                    elseif ($m === 'card') { $tenderClass = 'tender-card'; $tenderLabel = 'Card'; }
+                    else { $tenderLabel = ucfirst(str_replace('_', ' ', $m)); }
+                }
             @endphp
             <div class="rf-card">
                 <div class="rf-head">
@@ -384,6 +409,7 @@
                         </span>
                         <span class="rf-time">{{ $when }}</span>
                         <span class="rf-store-badge">{{ $store }}</span>
+                        <span class="rf-tender {{ $tenderClass }}" title="Tender the cashier selected at checkout (cashiers usually pick Cash even for card sales — see Clover column for what actually ran)">{{ $tenderLabel }}</span>
                         <span class="rf-customer">· {{ $customer }}</span>
                         @if($cashier)<span class="rf-cashier" title="User who created this sale in the ERP (POS)">· ERP: <strong>{{ $cashier }}</strong></span>@endif
                     </div>

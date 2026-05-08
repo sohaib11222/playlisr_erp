@@ -66,6 +66,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/home/product-stock-alert', 'HomeController@getProductStockAlert');
     Route::get('/home/purchase-payment-dues', 'HomeController@getPurchasePaymentDues');
     Route::get('/home/sales-payment-dues', 'HomeController@getSalesPaymentDues');
+    Route::get('/home/shift-progress', 'HomeController@getShiftProgress')->name('home.shiftProgress');
     Route::post('/attach-medias-to-model', 'HomeController@attachMediasToGivenModel')->name('attach.medias.to.model');
     Route::get('/calendar', 'HomeController@getCalendar')->name('calendar');
     
@@ -87,6 +88,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/business/sync-clover-rewards', 'CloverController@syncRewards')->name('clover.sync-rewards');
     Route::post('/business/clover/sync-now', 'CloverController@syncNow')->name('clover.sync-now');
     Route::get('/business/clover/sync-status', 'CloverController@syncStatus')->name('clover.sync-status');
+    Route::get('/reports/clover-eod/debug-transaction/{id}', 'ReportController@cloverEodDebugTransaction')->name('reports.clover-eod.debug');
+    Route::post('/reports/clover-eod/recategorize-channel', 'ReportController@cloverEodRecategorizeChannel')->name('reports.clover-eod.recategorize');
     Route::post('/reports/clover-eod/mark-reconciled', 'ReportController@cloverEodMarkReconciled')->name('reports.clover-eod.reconciled');
     Route::post('/reports/clover-eod/save-notes', 'ReportController@cloverEodSaveNotes')->name('reports.clover-eod.notes');
     Route::get('/clover/shift-summary', 'CloverController@shiftSummary')->name('clover.shift-summary');
@@ -143,6 +146,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/preorders/customer/{contact_id}', 'PreorderController@getCustomerPreorders');
     Route::post('/preorders/{id}/fulfill', 'PreorderController@fulfill');
 
+    // Help / Handbook (catalog-based, no DB)
+    Route::get('/help', 'HelpController@index')->name('help.index');
+    Route::get('/help/{slug}', 'HelpController@show')->name('help.show')->where('slug', '[a-z0-9\\-]+');
+
     // Customer Pickups
     Route::resource('customer-pickups', 'CustomerPickupController');
     Route::get('/customer-pickups/customer/{contact_id}', 'CustomerPickupController@getCustomerPickups');
@@ -197,6 +204,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/product/mass-create/get-products', [ProductController::class, 'massProductGetProducts'])->name('product.massCreate.getProduct');
     Route::get('/product/mass-create/get-product-price-recommendation', [ProductController::class, 'getProductPriceRecommendation']);
     Route::get('/product/mass-create/get-discogs-prices', [ProductController::class, 'getDiscogsPrices']);
+    Route::get('/product/mass-create/fetch-discogs-release/{releaseId}', [ProductController::class, 'fetchDiscogsReleaseForMassCreate'])
+        ->name('product.massCreate.fetchDiscogsRelease');
     Route::post('/product/mass-store', [ProductController::class, 'massStore'])->name('product.massStore');
     Route::post('/products/bulk-send-to-purchase', [ProductController::class, 'bulkSendToPurchase'])->name('products.bulkSendToPurchase');
     Route::get('/products/get-combo-product-entry-row', 'ProductController@getComboProductEntryRow');
@@ -397,6 +406,18 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/ebay-seller/connect', 'EbaySellerAuthController@connect');
     Route::get('/admin/ebay-seller/callback', 'EbaySellerAuthController@callback');
     Route::post('/admin/ebay-seller/disconnect', 'EbaySellerAuthController@disconnect');
+
+    // Sling (getsling.com) connection — provides "Hours Worked" on the
+    // Employee Productivity report. Sling free has no API keys, so we use
+    // the email/password -> token exchange Sling support recommends.
+    Route::get('/admin/sling/login', 'SlingController@loginForm');
+    Route::post('/admin/sling/login', 'SlingController@login');
+    Route::post('/admin/sling/save-token', 'SlingController@saveToken');
+    Route::post('/admin/sling/save-curl', 'SlingController@saveFromCurl');
+    Route::post('/admin/sling/test', 'SlingController@testConnection');
+    Route::post('/admin/sling/disconnect', 'SlingController@disconnect');
+    Route::get('/admin/sling/shifts', 'SlingController@shiftsIndex');
+    Route::post('/admin/sling/shifts/sync', 'SlingController@syncShifts');
     // The old "Clover vs ERP" rollup is superseded by the EOD reconciliation
     // page — same data, better structure (shift cards with drawer math).
     // Redirect preserves any bookmarks pointing at the old URL.
@@ -677,6 +698,13 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
 
     // CHOOSE-ROLE INSTALLER ROUTES TEMPORARILY REMOVED — caused outage 2026-04-29.
     // Controller files + view files preserved on disk for re-enable later.
+
+    // One-shot installer for cash_registers.safe_drop_amount. Lets Sarah add
+    // just this column without running every other pending migration —
+    // `php artisan migrate --force` is high-risk because one bad migration
+    // takes the site down. This installer is scope-limited and idempotent.
+    Route::get('/admin/install-safe-drop-column', 'InstallSafeDropColumnController@index');
+    Route::post('/admin/install-safe-drop-column/run', 'InstallSafeDropColumnController@run');
 
     // History of destructive admin backfills with one-click Undo. Every /admin/*
     // /run endpoint that mutates rows in bulk should write a snapshot here first.
