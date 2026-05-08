@@ -538,6 +538,7 @@ class CloverController extends Controller
         }
         if ($handshake !== null) {
             // Clover's one-time handshake — echo the code so the URL is accepted.
+            Log::info('Clover webhook verification code: ' . $handshake);
             return response($handshake, 200);
         }
 
