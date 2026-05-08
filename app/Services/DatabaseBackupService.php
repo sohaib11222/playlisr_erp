@@ -116,6 +116,9 @@ class DatabaseBackupService
 
         $args = [
             $binary,
+            // Ignore my.cnf / .my.cnf options that can break dumps
+            // (e.g. unknown variable 'database=...').
+            '--no-defaults',
             '--single-transaction',
             '--quick',
             '--routines',
