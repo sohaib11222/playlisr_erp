@@ -53,6 +53,21 @@ class GamificationService
     ];
 
     /**
+     * Shifts per open day, keyed by lowercase substring matched against
+     * business_locations.name. Used as the divisor when sizing the per-
+     * shift goal: a Pico Friday is 12-8 = 8 hours / 2 shifts = 4 hours
+     * of expected shift length per cashier.
+     *
+     * Locations not listed default to DEFAULT_SHIFTS_PER_DAY.
+     */
+    public const STORE_SHIFTS_PER_DAY = [
+        'pico'      => 2,
+        'hollywood' => 3,
+    ];
+
+    public const DEFAULT_SHIFTS_PER_DAY = 2;
+
+    /**
      * Returns the active shift for the user today, or null if none.
      *
      * @return array{started_at: Carbon, duty: string, location_id: ?int, hours: float}|null
@@ -130,6 +145,7 @@ class GamificationService
                 'peer_top_per_hour' => $peerTopPerHour !== null ? round($peerTopPerHour, $def['decimals']) : null,
                 'my_per_hour' => $myPerHour !== null ? round($myPerHour, $def['decimals']) : null,
                 'complete' => $current >= $target && $target > 0,
+                'pace_status' => $this->paceStatus($current, $target, $shift),
             ];
         }
 
@@ -471,19 +487,43 @@ class GamificationService
     }
 
     /**
-     * Hours from shift start to today's store close — i.e. how long the
-     * employee is expected to be on shift. Used as the goal denominator so
-     * targets are stable across the whole shift (Jon 2026-05-08: prior
-     * behavior scaled goals to elapsed hours, which made "0/15" creep up
-     * to "0/176" over the day).
+     * Length of a single shift at this store today, in hours. Computed as
+     * (today's store-open span) / (shifts per day). Used as the goal
+     * denominator so targets are stable across the whole shift instead of
+     * creeping up with elapsed time.
      *
-     * Falls back to 6 hours when the location has no configured hours,
-     * the shift started after close, or the time-to-close is too short
-     * to be a meaningful shift (< 3h).
+     * Pico Friday 12-8pm / 2 shifts = 4h; Sat-Sun 10-8 / 2 = 5h.
+     * Hollywood splits its day into 3 shifts.
+     *
+     * Falls back to 4h when the location has no configured hours or the
+     * shift started outside open hours.
      */
+    /**
+     * Compares fraction-of-goal-done vs fraction-of-shift-elapsed and
+     * returns one of: 'ahead', 'on', 'behind', or null when there isn't
+     * enough info (no target, or shift just started so the comparison is
+     * meaningless). Tolerance ±5% so small wiggle reads as "on pace".
+     */
+    protected function paceStatus(float $current, float $target, array $shift): ?string
+    {
+        if ($target <= 0 || $shift['hours'] < 0.25) {
+            return null;
+        }
+        $expected = max(1.0, $shift['expected_hours'] ?? $shift['hours']);
+        $progressFrac = $current / $target;
+        $elapsedFrac = min(1.0, $shift['hours'] / $expected);
+        if ($progressFrac >= $elapsedFrac + 0.05) {
+            return 'ahead';
+        }
+        if ($progressFrac <= $elapsedFrac - 0.05) {
+            return 'behind';
+        }
+        return 'on';
+    }
+
     public function expectedShiftHours(array $shift): float
     {
-        $defaultHours = 6.0;
+        $defaultHours = 4.0;
         $hours = $this->getStoreHours($shift['location_id'] ?? null);
         if (!$hours) {
             return $defaultHours;
@@ -493,13 +533,28 @@ class GamificationService
         if (!isset($hours[$dayName])) {
             return $defaultHours;
         }
-        [, $closeHour] = $hours[$dayName];
-        $todayClose = $startedAt->copy()->setTime($closeHour, 0, 0);
-        $hoursToClose = $startedAt->diffInMinutes($todayClose, false) / 60.0;
-        if ($hoursToClose < 3.0) {
+        [$openHour, $closeHour] = $hours[$dayName];
+        $openSpan = max(0, $closeHour - $openHour);
+        if ($openSpan < 1) {
             return $defaultHours;
         }
-        return min((float) self::SHIFT_MAX_HOURS, $hoursToClose);
+        $shifts = $this->getShiftsPerDay($shift['location_id'] ?? null);
+        $perShift = $openSpan / max(1, $shifts);
+        return min((float) self::SHIFT_MAX_HOURS, max(1.0, $perShift));
+    }
+
+    protected function getShiftsPerDay(?int $locationId): int
+    {
+        if (!$locationId) {
+            return self::DEFAULT_SHIFTS_PER_DAY;
+        }
+        $name = strtolower((string) BusinessLocation::where('id', $locationId)->value('name'));
+        foreach (self::STORE_SHIFTS_PER_DAY as $needle => $count) {
+            if (str_contains($name, $needle)) {
+                return $count;
+            }
+        }
+        return self::DEFAULT_SHIFTS_PER_DAY;
     }
 
     /**
@@ -524,6 +579,7 @@ class GamificationService
                 'location_name' => null,
                 'started_at' => null,
                 'hours' => 0.0,
+                'expected_hours' => 0.0,
                 'tasks' => [],
             ];
         }
@@ -534,6 +590,7 @@ class GamificationService
             'location_name' => $this->locationName($shift['location_id']),
             'started_at' => $shift['started_at']->format('g:i a'),
             'hours' => $shift['hours'],
+            'expected_hours' => round($this->expectedShiftHours($shift), 1),
             'tasks' => $this->shiftTasks($user, $shift, $businessId),
         ];
     }
