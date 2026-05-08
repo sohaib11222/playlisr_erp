@@ -185,6 +185,90 @@ class CloverService
     }
 
     /**
+     * Build the Clover OAuth URL used from Business Settings > Integrations.
+     *
+     * Clover's production authorize host is www.clover.com, while API/token calls
+     * use api.clover.com. Sandbox uses sandbox.dev.clover.com for the browser hop.
+     */
+    public function getAuthorizationUrl($state, $redirectUri)
+    {
+        $clover = $this->getClover();
+        $baseUrl = ($clover['environment'] ?? 'sandbox') === 'production'
+            ? 'https://www.clover.com'
+            : 'https://sandbox.dev.clover.com';
+
+        return $baseUrl . '/oauth/v2/authorize?' . http_build_query([
+            'client_id' => $clover['app_id'] ?? '',
+            'redirect_uri' => $redirectUri,
+            'response_type' => 'code',
+            'state' => $state,
+        ]);
+    }
+
+    /**
+     * Exchange Clover's OAuth authorization code for access/refresh tokens.
+     */
+    public function exchangeAuthorizationCode($code)
+    {
+        $clover = $this->getClover();
+        if (empty($clover['app_id']) || empty($clover['app_secret'])) {
+            return [
+                'success' => false,
+                'msg' => 'Clover App ID and App Secret are required before connecting OAuth.',
+            ];
+        }
+
+        $baseUrl = ($clover['environment'] ?? 'sandbox') === 'production'
+            ? 'https://api.clover.com'
+            : 'https://apisandbox.dev.clover.com';
+
+        try {
+            $ch = curl_init($baseUrl . '/oauth/v2/token');
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => http_build_query([
+                    'client_id' => $clover['app_id'],
+                    'client_secret' => $clover['app_secret'],
+                    'code' => $code,
+                ]),
+                CURLOPT_HTTPHEADER => [
+                    'Content-Type: application/x-www-form-urlencoded',
+                    'Accept: application/json',
+                ],
+            ]);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $error = curl_error($ch);
+            curl_close($ch);
+
+            if ($error) {
+                throw new \Exception('cURL Error: ' . $error);
+            }
+
+            $data = json_decode($response, true);
+            if ($httpCode >= 200 && $httpCode < 300 && !empty($data['access_token'])) {
+                return [
+                    'success' => true,
+                    'data' => $data,
+                ];
+            }
+
+            return [
+                'success' => false,
+                'msg' => 'Clover OAuth token exchange failed. HTTP ' . $httpCode . ' Response: ' . $response,
+            ];
+        } catch (\Exception $e) {
+            Log::error('Clover OAuth Token Exchange Error: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'msg' => 'Clover OAuth token exchange error: ' . $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
      * Send payment to Clover device
      *
      * @param float $amount

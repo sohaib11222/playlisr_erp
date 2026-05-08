@@ -2,15 +2,164 @@
 
 namespace App\Http\Controllers;
 
+use App\Business;
 use App\Contact;
 use App\BusinessLocation;
 use App\Services\CloverService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class CloverController extends Controller
 {
+    /**
+     * HMAC-signed OAuth state so Clover can redirect back without relying on session.
+     */
+    protected function getAppKeyForSigning()
+    {
+        $key = config('app.key');
+        if (strpos($key, 'base64:') === 0) {
+            return base64_decode(substr($key, 7));
+        }
+
+        return $key;
+    }
+
+    protected function buildCloverOAuthState($businessId)
+    {
+        $payload = json_encode([
+            'bid' => (int) $businessId,
+            'exp' => time() + 900,
+            'nonce' => Str::random(32),
+        ]);
+        $payloadB64 = base64_encode($payload);
+        $sig = hash_hmac('sha256', $payloadB64, $this->getAppKeyForSigning());
+
+        return $payloadB64 . '.' . $sig;
+    }
+
+    protected function parseCloverOAuthState($state)
+    {
+        if (empty($state) || strpos($state, '.') === false) {
+            return null;
+        }
+
+        list($payloadB64, $sig) = explode('.', $state, 2);
+        $expected = hash_hmac('sha256', $payloadB64, $this->getAppKeyForSigning());
+        if (!hash_equals($expected, $sig)) {
+            return null;
+        }
+
+        $payload = json_decode(base64_decode($payloadB64), true);
+        if (!is_array($payload) || empty($payload['bid']) || empty($payload['exp'])) {
+            return null;
+        }
+
+        if (time() > (int) $payload['exp']) {
+            return null;
+        }
+
+        return $payload;
+    }
+
+    protected function cloverCallbackRedirect(Request $request, array $status)
+    {
+        if (auth()->check()) {
+            return redirect()->route('business.getBusinessSettings')->with('status', $status);
+        }
+
+        return redirect()->route('login')->with('status', $status);
+    }
+
+    public function connect(Request $request)
+    {
+        if (!auth()->user()->can('business_settings.access')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $businessId = $request->session()->get('user.business_id');
+        $business = Business::find($businessId);
+        $apiSettings = is_array($business->api_settings ?? null) ? $business->api_settings : [];
+        $clover = $apiSettings['clover'] ?? [];
+
+        if (empty($clover['app_id']) || empty($clover['app_secret'])) {
+            return redirect()->route('business.getBusinessSettings')->with('status', [
+                'success' => 0,
+                'msg' => 'Please save Clover App ID and App Secret before connecting OAuth.',
+            ]);
+        }
+
+        $service = new CloverService($businessId);
+        $state = $this->buildCloverOAuthState($businessId);
+        $redirectUri = route('business.clover.callback');
+
+        return redirect()->away($service->getAuthorizationUrl($state, $redirectUri));
+    }
+
+    public function callback(Request $request)
+    {
+        $parsed = $this->parseCloverOAuthState($request->input('state'));
+        if (empty($parsed)) {
+            return $this->cloverCallbackRedirect($request, [
+                'success' => 0,
+                'msg' => 'Clover authorization failed due to invalid or expired state. Please try again.',
+            ]);
+        }
+
+        $businessId = (int) $parsed['bid'];
+        $code = $request->input('code');
+        if (empty($code)) {
+            return $this->cloverCallbackRedirect($request, [
+                'success' => 0,
+                'msg' => 'Clover callback is missing the authorization code.',
+            ]);
+        }
+
+        $service = new CloverService($businessId);
+        $tokenResult = $service->exchangeAuthorizationCode($code);
+        if (empty($tokenResult['success'])) {
+            return $this->cloverCallbackRedirect($request, [
+                'success' => 0,
+                'msg' => !empty($tokenResult['msg']) ? $tokenResult['msg'] : 'Clover connection failed.',
+            ]);
+        }
+
+        $business = Business::find($businessId);
+        if (empty($business)) {
+            return $this->cloverCallbackRedirect($request, [
+                'success' => 0,
+                'msg' => 'Clover connection failed because the ERP business was not found.',
+            ]);
+        }
+
+        $apiSettings = is_array($business->api_settings) ? $business->api_settings : [];
+        if (empty($apiSettings['clover']) || !is_array($apiSettings['clover'])) {
+            $apiSettings['clover'] = [];
+        }
+
+        $data = $tokenResult['data'];
+        $apiSettings['clover']['access_token'] = $data['access_token'] ?? '';
+        $apiSettings['clover']['refresh_token'] = $data['refresh_token'] ?? '';
+        $apiSettings['clover']['access_token_expiration'] = $data['access_token_expiration'] ?? '';
+        $apiSettings['clover']['refresh_token_expiration'] = $data['refresh_token_expiration'] ?? '';
+        $apiSettings['clover']['connected_at'] = Carbon::now()->toDateTimeString();
+
+        $merchantId = $request->input('merchant_id') ?: $request->input('merchantId') ?: $request->input('mId');
+        if (!empty($merchantId)) {
+            $apiSettings['clover']['merchant_id'] = $merchantId;
+        }
+
+        $business->api_settings = $apiSettings;
+        $business->save();
+
+        return $this->cloverCallbackRedirect($request, [
+            'success' => 1,
+            'msg' => 'Clover OAuth connected successfully. Save the Merchant ID manually if Clover did not include it in the callback.',
+        ]);
+    }
+
     /**
      * Test Clover API connection
      *
@@ -389,7 +538,6 @@ class CloverController extends Controller
         }
         if ($handshake !== null) {
             // Clover's one-time handshake — echo the code so the URL is accepted.
-            Log::info('Clover webhook verification code: ' . $handshake);
             return response($handshake, 200);
         }
 

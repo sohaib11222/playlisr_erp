@@ -472,6 +472,12 @@ class BusinessUtil extends Util
                 'app_secret' => '',
                 'merchant_id' => '',
                 'access_token' => '',
+                'refresh_token' => '',
+                'access_token_expiration' => '',
+                'refresh_token_expiration' => '',
+                'connected_at' => '',
+                'remote_app_id' => '',
+                'device_id' => '',
                 'environment' => 'sandbox' // sandbox or production
             ],
             'ebay' => [

@@ -237,8 +237,14 @@
             </div>
 
             <hr>
-            <h5>Alternative: OAuth Method (Advanced)</h5>
-            <p class="help-block">Only use if you need OAuth-based authentication instead of Ecommerce API Tokens</p>
+            <h5>Clover OAuth / Cloud Pay Display</h5>
+            <p class="help-block">
+                Required for the Clover Flex Cloud Pay Display checkout flow. In Clover REST Configuration use:
+                <br>Site URL: <code>{{ url('/') }}</code>
+                <br>Alternate Launch Path: <code>{{ route('business.getBusinessSettings') }}</code>
+                <br>OAuth Callback URL for ERP: <code>{{ route('business.clover.callback') }}</code>
+                <br>CORS Domain: leave blank unless browser JavaScript calls Clover directly.
+            </p>
             
             <div class="row">
                 <div class="col-sm-6">
@@ -256,6 +262,48 @@
                             !empty($api_settings['clover']['app_secret']) ? $api_settings['clover']['app_secret'] : null, 
                             ['class' => 'form-control', 'placeholder' => 'Enter Clover App Secret (OAuth)']) !!}
                     </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-sm-6">
+                    <div class="form-group">
+                        {!! Form::label('api_settings[clover][remote_app_id]', 'Remote App ID / RAID:') !!}
+                        {!! Form::text('api_settings[clover][remote_app_id]',
+                            !empty($api_settings['clover']['remote_app_id']) ? $api_settings['clover']['remote_app_id'] : null,
+                            ['class' => 'form-control', 'placeholder' => 'Example: DEVELOPER.APPID']) !!}
+                        <p class="help-block">Shown in Clover App Settings after selecting Flex + REST Clients Web + existing POS = Yes.</p>
+                    </div>
+                </div>
+                <div class="col-sm-6">
+                    <div class="form-group">
+                        {!! Form::label('api_settings[clover][device_id]', 'Default Clover Flex Device ID:') !!}
+                        {!! Form::text('api_settings[clover][device_id]',
+                            !empty($api_settings['clover']['device_id']) ? $api_settings['clover']['device_id'] : null,
+                            ['class' => 'form-control', 'placeholder' => 'Clover device id, not just serial number']) !!}
+                        <p class="help-block">Used as fallback until each location has its own Flex device id.</p>
+                    </div>
+                </div>
+            </div>
+
+            @php
+                $cloverConnected = !empty($api_settings['clover']['access_token']);
+            @endphp
+            <div class="row">
+                <div class="col-sm-12">
+                    <p>
+                        <a href="{{ route('business.clover.connect') }}" class="btn btn-success">
+                            <i class="fa fa-plug"></i> {{ $cloverConnected ? 'Reconnect Clover OAuth' : 'Connect Clover OAuth' }}
+                        </a>
+                        @if($cloverConnected)
+                            <span class="text-success" style="margin-left:10px;">
+                                <i class="fa fa-check"></i>
+                                Connected{{ !empty($api_settings['clover']['connected_at']) ? ' at ' . $api_settings['clover']['connected_at'] : '' }}
+                            </span>
+                        @else
+                            <span class="text-muted" style="margin-left:10px;">Save App ID/App Secret first, then connect.</span>
+                        @endif
+                    </p>
                 </div>
             </div>
             
@@ -287,7 +335,7 @@
                             <strong><i class="fa fa-map-marker-alt"></i> {{ $loc->name }}</strong>
                             <small class="text-muted">· location id {{ $loc->id }}</small>
                         </div>
-                        <div class="col-sm-4">
+                        <div class="col-sm-3">
                             <div class="form-group">
                                 {!! Form::label("api_settings[clover][locations][{$loc->id}][merchant_id]", 'Merchant ID:') !!}
                                 {!! Form::text("api_settings[clover][locations][{$loc->id}][merchant_id]",
@@ -295,7 +343,7 @@
                                     ['class' => 'form-control', 'placeholder' => 'Clover merchant ID']) !!}
                             </div>
                         </div>
-                        <div class="col-sm-4">
+                        <div class="col-sm-3">
                             <div class="form-group">
                                 {!! Form::label("api_settings[clover][locations][{$loc->id}][private_token]", 'Private Token:') !!}
                                 {!! Form::text("api_settings[clover][locations][{$loc->id}][private_token]",
@@ -303,7 +351,15 @@
                                     ['class' => 'form-control', 'placeholder' => 'Ecommerce Private Token', 'type' => 'password']) !!}
                             </div>
                         </div>
-                        <div class="col-sm-4">
+                        <div class="col-sm-3">
+                            <div class="form-group">
+                                {!! Form::label("api_settings[clover][locations][{$loc->id}][device_id]", 'Flex Device ID:') !!}
+                                {!! Form::text("api_settings[clover][locations][{$loc->id}][device_id]",
+                                    $locCreds['device_id'] ?? null,
+                                    ['class' => 'form-control', 'placeholder' => 'Clover device id']) !!}
+                            </div>
+                        </div>
+                        <div class="col-sm-3">
                             <div class="form-group">
                                 {!! Form::label("api_settings[clover][locations][{$loc->id}][environment]", 'Environment:') !!}
                                 {!! Form::select("api_settings[clover][locations][{$loc->id}][environment]",
