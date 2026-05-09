@@ -23,7 +23,7 @@
             <div>
                 <div style="font-size:11px; color:#5A5045; text-transform:uppercase; letter-spacing:.08em; font-weight:600;">Day totals</div>
                 <div style="font-size:13px; color:#8A7C6A; margin-top:2px;">{{ $eodLabel }}{{ $location_id && isset($business_locations[$location_id]) ? ' · ' . $business_locations[$location_id] : '' }}</div>
-                <div style="font-size:11px; color:#8A7C6A; margin-top:6px; max-width:160px; line-height:1.4;">Card vs Clover should match. Cash never hits Clover.</div>
+                <div style="font-size:11px; color:#8A7C6A; margin-top:6px; max-width:180px; line-height:1.4;">Net Sales (pre-tax). Card vs Clover should match. Cash never hits Clover.</div>
             </div>
             <div style="flex:1; min-width:140px;">
                 <div style="font-size:12px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">ERP — Card</div>

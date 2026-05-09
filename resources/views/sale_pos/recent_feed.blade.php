@@ -189,7 +189,7 @@
                     <div style="font-size:11px; color:#5A5045; text-transform:uppercase; letter-spacing:.08em; font-weight:600;">Today's sales</div>
                     <div style="font-size:13px; color:#8A7C6A; margin-top:2px;">{{ \Carbon\Carbon::now()->format('l, M j') }}</div>
                 </div>
-                <div style="font-size:11px; color:#8A7C6A; max-width:280px; line-height:1.4; text-align:right;">Card vs Clover should match per store. Cash and other tenders never hit Clover.</div>
+                <div style="font-size:11px; color:#8A7C6A; max-width:280px; line-height:1.4; text-align:right;">Net Sales (pre-tax). Card vs Clover should match per store. Cash and other tenders never hit Clover.</div>
             </div>
             @if(empty($byStore))
                 <div style="padding:14px 0; color:#8A7C6A; font-style:italic;">No sales yet today.</div>

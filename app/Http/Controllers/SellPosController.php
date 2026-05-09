@@ -816,6 +816,11 @@ class SellPosController extends Controller
         // other tenders are informational because they don't hit Clover.
         $todayStr = \Carbon\Carbon::now()->format('Y-m-d');
 
+        // ERP rows: pull final_total + tax_amount + total_before_tax so we
+        // can compute "net" (pre-tax) per payment, which is what Clover's
+        // dashboard reports as "Net Sales". For each tp we allocate the
+        // transaction's net proportionally: tp_net = tp.amount × (net /
+        // final_total). That handles split-tender correctly.
         $erpRowsToday = \DB::table('transactions as t')
             ->leftJoin('transaction_payments as tp', 'tp.transaction_id', '=', 't.id')
             ->where('t.business_id', $business_id)
@@ -824,7 +829,11 @@ class SellPosController extends Controller
             ->whereNull('t.import_source')
             ->whereDate('t.transaction_date', $todayStr)
             ->when(!empty($location_id), fn($q) => $q->where('t.location_id', $location_id))
-            ->selectRaw("t.id, t.location_id, COALESCE(tp.method, 'cash') as method, COALESCE(tp.amount, t.final_total) as paid_amount")
+            ->selectRaw("
+                t.id, t.location_id, t.final_total, t.total_before_tax,
+                COALESCE(tp.method, 'cash') as method,
+                COALESCE(tp.amount, t.final_total) as paid_amount
+            ")
             ->get();
 
         $cloverRowsToday = \DB::table('clover_payments')
@@ -834,7 +843,7 @@ class SellPosController extends Controller
                 $q->whereNull('result')->orWhere('result', 'SUCCESS')->orWhere('result', 'APPROVED');
             })
             ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id))
-            ->select('location_id', 'amount')
+            ->select('location_id', 'amount', 'tax_cents')
             ->get();
 
         // Bucket per location_id (0 = unattributed). For each store we
@@ -856,27 +865,40 @@ class SellPosController extends Controller
                 ];
             }
         };
+        // ERP nets: per-payment net = tp.amount × (total_before_tax /
+        // final_total). Matches Clover's "Net Sales" dashboard semantics
+        // (pre-tax). Sarah 2026-05-09: no tips, barely any refunds — so
+        // (gross - tax) on both sides is what should match.
         foreach ($erpRowsToday as $r) {
             $k = $locKey($r->location_id);
             $name = $k && isset($business_locations[$k]) ? $business_locations[$k] : '(no location)';
             $ensure($today_by_store, $k, $name);
             $today_by_store[$k]['erp_tx_ids'][$r->id] = true;
-            $amt = (float) $r->paid_amount;
-            if ($r->method === 'card') $today_by_store[$k]['erp_card'] += $amt;
-            elseif ($r->method === 'cash') $today_by_store[$k]['erp_cash'] += $amt;
-            else $today_by_store[$k]['erp_other'] += $amt;
+            $gross = (float) $r->paid_amount;
+            $finalTotal = (float) $r->final_total;
+            $net = $finalTotal > 0
+                ? $gross * ((float) $r->total_before_tax / $finalTotal)
+                : $gross;
+            if ($r->method === 'card') $today_by_store[$k]['erp_card'] += $net;
+            elseif ($r->method === 'cash') $today_by_store[$k]['erp_cash'] += $net;
+            else $today_by_store[$k]['erp_other'] += $net;
         }
         foreach ($cloverRowsToday as $r) {
             $k = $locKey($r->location_id);
             $name = $k && isset($business_locations[$k]) ? $business_locations[$k] : '(no location)';
             $ensure($today_by_store, $k, $name);
-            $today_by_store[$k]['clover'] += (float) $r->amount;
+            $cloverNet = (float) $r->amount - ((float) ($r->tax_cents ?? 0)) / 100.0;
+            $today_by_store[$k]['clover'] += $cloverNet;
             $today_by_store[$k]['clover_count']++;
         }
         // Finalize: convert tx_ids to count, compute card↔clover diff.
         foreach ($today_by_store as &$s) {
             $s['erp_tx_count'] = count($s['erp_tx_ids']);
             unset($s['erp_tx_ids']);
+            $s['erp_card']  = round($s['erp_card'], 2);
+            $s['erp_cash']  = round($s['erp_cash'], 2);
+            $s['erp_other'] = round($s['erp_other'], 2);
+            $s['clover']    = round($s['clover'], 2);
             $s['card_diff'] = round($s['clover'] - $s['erp_card'], 2);
         }
         unset($s);
