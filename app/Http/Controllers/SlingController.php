@@ -348,13 +348,25 @@ class SlingController extends Controller
         $start = Carbon::today($tz)->subDays(7)->toDateString();
         $end = Carbon::today($tz)->addDays(30)->toDateString();
 
-        $base = 'https://api.getsling.com/v1';
+        // First fetch a real user id so the per-user calendar probe is
+        // meaningful. Per Sling's docs, calendar is keyed per user.
+        $client = new \App\Services\SlingClient();
+        $users = $client->users();
+        $firstUserId = null;
+        foreach ($users as $u) {
+            if (!empty($u['id'])) { $firstUserId = $u['id']; break; }
+        }
+
+        $apiRoot = 'https://api.getsling.com';
+        $dates = $start . '/' . $end;
         $candidates = [
-            'calendar (current)' => "{$base}/{$orgId}/calendar/{$start}/{$end}",
-            'calendar/users' => "{$base}/{$orgId}/calendar/{$start}/{$end}/users",
-            'calendar?dates=' => "{$base}/{$orgId}/calendar?dates={$start}/{$end}",
-            'shifts?dates=' => "{$base}/{$orgId}/shifts?dates={$start}/{$end}",
-            'reports/timesheets' => "{$base}/{$orgId}/reports/timesheets/{$start}/{$end}",
+            'users (no /v1, control)' => "{$apiRoot}/users",
+            'calendar/{org}/users/{userId}?dates= (DOCS FORMAT)' => $firstUserId
+                ? "{$apiRoot}/calendar/{$orgId}/users/{$firstUserId}?dates=" . rawurlencode($dates)
+                : "{$apiRoot}/calendar/{$orgId}/users/?dates=" . rawurlencode($dates),
+            'reports/timesheets?dates=' => "{$apiRoot}/reports/timesheets?dates=" . rawurlencode($dates),
+            'groups (no /v1)' => "{$apiRoot}/groups",
+            'concise (no /v1)' => "{$apiRoot}/concise",
         ];
 
         $results = [];

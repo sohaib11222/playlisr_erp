@@ -54,21 +54,47 @@ class SlingClient
     }
 
     /**
-     * Calendar shifts in a date range. Sling exposes /v1/{orgId}/calendar/
-     * {YYYY-MM-DD}/{YYYY-MM-DD} as the canonical "what happened in this
-     * window" endpoint, returning every published shift.
+     * Calendar shifts in a date range. Per Sling's published bash examples
+     * (getsling/getsling-api-docs), the canonical endpoint is per-user:
+     *   GET https://api.getsling.com/calendar/{orgId}/users/{userId}?dates={start}/{end}
+     * with no /v1/ prefix. We iterate the user roster and aggregate.
+     *
+     * Returns a flat array of shift records, each tagged with `user.id` so
+     * downstream code can pivot on it (matches the field hoursByErpUser
+     * already reads).
      */
     public function shifts(string $startDate, string $endDate)
     {
         if (!$this->isConfigured()) return [];
-        $url = $this->base . '/' . $this->orgId . '/calendar/' . $startDate . '/' . $endDate;
-        $body = $this->get($url);
-        if (!is_array($body)) return [];
-        // Endpoint is sometimes a bare list, sometimes wrapped.
-        if (isset($body[0])) return $body;
-        if (isset($body['shifts']) && is_array($body['shifts'])) return $body['shifts'];
-        if (isset($body['data']) && is_array($body['data'])) return $body['data'];
-        return [];
+
+        $users = $this->users();
+        if (empty($users)) return [];
+
+        $shifts = [];
+        $dates = $startDate . '/' . $endDate;
+        $calendarBase = 'https://api.getsling.com/calendar/' . $this->orgId . '/users/';
+        foreach ($users as $u) {
+            $uid = $u['id'] ?? null;
+            if (!$uid) continue;
+            $url = $calendarBase . $uid . '?dates=' . rawurlencode($dates);
+            $body = $this->get($url);
+            $entries = [];
+            if (is_array($body)) {
+                if (isset($body[0])) $entries = $body;
+                elseif (isset($body['shifts']) && is_array($body['shifts'])) $entries = $body['shifts'];
+                elseif (isset($body['data']) && is_array($body['data'])) $entries = $body['data'];
+                elseif (isset($body['events']) && is_array($body['events'])) $entries = $body['events'];
+            }
+            foreach ($entries as $entry) {
+                if (!is_array($entry)) continue;
+                // Make sure user.id is set so consumers can group by user.
+                if (empty($entry['user']['id']) && empty($entry['userId'])) {
+                    $entry['user'] = ['id' => $uid];
+                }
+                $shifts[] = $entry;
+            }
+        }
+        return $shifts;
     }
 
     /**
