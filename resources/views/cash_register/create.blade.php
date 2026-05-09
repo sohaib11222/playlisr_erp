@@ -86,6 +86,35 @@
                 and the <strong>amount you're dropping</strong>.
               </div>
             </div>
+
+            {{-- Capture the actual amount the cashier moved at open. Left
+                 BLANK by design (Sarah 2026-05-08: "if they actually put
+                 the money in the safe!") so cashiers must deliberately
+                 type what they dropped — pre-filling risks recording a
+                 phantom drop when nothing was moved. The suggestion is
+                 shown in the placeholder. Opening balance = (cash counted
+                 - safe drop). --}}
+            <div style="margin-top:14px;">
+              <label for="cash_in_hand_safe_drop" style="font-size:12px; font-weight:700;
+                  text-transform:uppercase; letter-spacing:.04em; color:#5A4410; margin-bottom:6px; display:block;">
+                Amount you ACTUALLY put in the safe
+                <span style="font-weight:500; text-transform:none; color:#8E8273; letter-spacing:0;">
+                  — leave blank if nothing
+                </span>
+              </label>
+              <div style="display:inline-flex; align-items:center; gap:6px;
+                  background:#fff; border:1px solid #DFD2B3; border-radius:8px;
+                  padding:6px 12px;">
+                <span style="font-size:18px; font-weight:700; color:#5A4410;">$</span>
+                <input type="text" name="safe_drop_amount" id="cash_in_hand_safe_drop"
+                       class="input_number" placeholder="0" data-decimal="1"
+                       style="border:none; outline:none; font-size:18px; font-weight:700;
+                              width:120px; font-variant-numeric:tabular-nums;
+                              background:transparent; color:#1F1B16;">
+              </div>
+              <span id="cr-safe-drop-hint" style="margin-left:10px; font-size:13px;
+                  color:#8E8273; font-weight:600;"></span>
+            </div>
           </div>
         </div>
         @if(count($business_locations) > 1)
@@ -143,6 +172,7 @@
         return setTimeout(go, 50);
       }
 
+      var hintEl = document.getElementById('cr-safe-drop-hint');
       var lastSeen = null;
       function recheck() {
         var raw = (input.value || '').toString().replace(/,/g, '').trim();
@@ -151,16 +181,20 @@
         var val = parseFloat(raw);
         if (!isFinite(val)) {
           alertEl.style.display = 'none';
+          if (hintEl) hintEl.textContent = '';
           return;
         }
         // Excess above $500, rounded down to the nearest $100.
         // $1250 → $700 (leaves $550 in the drawer).
         var toSafe = Math.floor((val - 500) / 100) * 100;
         if (toSafe >= 100) {
-          amountEl.textContent = '$' + toSafe.toLocaleString('en-US');
+          var label = '$' + toSafe.toLocaleString('en-US');
+          amountEl.textContent = label;
           alertEl.style.display = 'block';
+          if (hintEl) hintEl.textContent = 'Suggested: ' + label;
         } else {
           alertEl.style.display = 'none';
+          if (hintEl) hintEl.textContent = '';
         }
       }
 

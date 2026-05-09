@@ -71,20 +71,45 @@ class CashRegisterController extends Controller
         $sub_type = request()->get('sub_type');
             
         try {
-            $initial_amount = 0;
-            if (!empty($request->input('amount'))) {
-                $initial_amount = $this->cashRegisterUtil->num_uf($request->input('amount'));
-            }
+            // What the cashier counted in the drawer.
+            $counted_amount = !empty($request->input('amount'))
+                ? (float) $this->cashRegisterUtil->num_uf($request->input('amount'))
+                : 0.0;
+
+            // What they ACTUALLY moved to the safe at open (Sarah 2026-05-08).
+            // Empty / blank = nothing was moved. Trusted as-is — never auto-
+            // filled from the suggestion, because pre-fill risks recording
+            // a phantom drop when the cashier didn't actually move anything.
+            $rawOpenDrop = $request->input('safe_drop_amount');
+            $open_safe_drop = ($rawOpenDrop === null || $rawOpenDrop === '')
+                ? 0.0
+                : (float) $this->cashRegisterUtil->num_uf($rawOpenDrop);
+
+            // Opening balance recorded for reconciliation = what's left in
+            // the drawer after the safe drop. Clamp to 0 if the cashier
+            // somehow typed a drop > count (data-entry mistake).
+            $initial_amount = max(0.0, $counted_amount - $open_safe_drop);
+
             $user_id = $request->session()->get('user.id');
             $business_id = $request->session()->get('user.business_id');
 
-            $register = CashRegister::create([
-                        'business_id' => $business_id,
-                        'user_id' => $user_id,
-                        'status' => 'open',
-                        'location_id' => $request->input('location_id'),
-                        'created_at' => \Carbon::now()->format('Y-m-d H:i:00')
-                    ]);
+            $registerData = [
+                'business_id' => $business_id,
+                'user_id' => $user_id,
+                'status' => 'open',
+                'location_id' => $request->input('location_id'),
+                'created_at' => \Carbon::now()->format('Y-m-d H:i:00'),
+            ];
+            // Only set safe_drop_amount when the column exists (the
+            // /admin/install-safe-drop-column installer might not have run
+            // on every environment) AND when the cashier actually dropped
+            // something — leaving NULL/0 untouched on no-drop opens.
+            if ($open_safe_drop > 0 && \Schema::hasColumn('cash_registers', 'safe_drop_amount')) {
+                $registerData['safe_drop_amount'] = $open_safe_drop;
+            }
+
+            $register = CashRegister::create($registerData);
+
             if (!empty($initial_amount)) {
                 $register->cash_register_transactions()->create([
                             'amount' => $initial_amount,
@@ -93,7 +118,7 @@ class CashRegisterController extends Controller
                             'transaction_type' => 'initial'
                         ]);
             }
-            
+
         } catch (\Exception $e) {
             \Log::emergency("File:" . $e->getFile(). "Line:" . $e->getLine(). "Message:" . $e->getMessage());
         }
@@ -305,16 +330,24 @@ class CashRegisterController extends Controller
             $input['status'] = 'close';
             $input['denominations'] = !empty(request()->input('denominations')) ? json_encode(request()->input('denominations')) : null;
 
-            // Capture how much cash the cashier moved to the safe at close
-            // so the daily reconciliation report can sum it. Only write the
-            // column when it exists in the schema (the migration may not
-            // have run yet on every environment) — `Schema::hasColumn` is
-            // memoized so this is cheap on subsequent calls.
+            // Capture how much cash the cashier moved to the safe at close.
+            // Additive against whatever was already dropped at open
+            // (Sarah 2026-05-08) so the column tracks total drops for the
+            // shift — important when the cashier drops both at open
+            // (drawer started heavy) and again at close. A blank/zero
+            // close drop preserves the open drop instead of clobbering it.
             if (\Schema::hasColumn('cash_registers', 'safe_drop_amount')) {
                 $rawDrop = $request->input('safe_drop_amount');
-                $input['safe_drop_amount'] = $rawDrop === null || $rawDrop === ''
-                    ? 0
-                    : $this->cashRegisterUtil->num_uf($rawDrop);
+                $closeDrop = ($rawDrop === null || $rawDrop === '')
+                    ? 0.0
+                    : (float) $this->cashRegisterUtil->num_uf($rawDrop);
+                if ($closeDrop > 0) {
+                    $input['safe_drop_amount'] = \DB::raw(
+                        'COALESCE(safe_drop_amount, 0) + ' . (float) $closeDrop
+                    );
+                }
+                // closeDrop == 0 → no change; leave whatever the open
+                // drop wrote (or NULL/0 if there was no open drop).
             }
 
             CashRegister::where('user_id', $user_id)
