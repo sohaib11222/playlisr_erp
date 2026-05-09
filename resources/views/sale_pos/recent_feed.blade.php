@@ -182,72 +182,42 @@
     <div class="rf-wrap">
         @php
             $byStore = $today_by_store ?? [];
+            $totErp = 0; $totClover = 0;
+            foreach ($byStore as $s) {
+                $totErp    += $s['erp_card'] + $s['erp_cash'] + $s['erp_other'];
+                $totClover += $s['clover'];
+            }
+            $totDiff = round($totClover - $totErp, 2);
         @endphp
-        <div style="background:#FFFFFF; border:1px solid #ECE3CF; border-radius:12px; padding:18px 24px; margin-bottom:16px; box-shadow:0 1px 3px rgba(31,27,22,.08);">
-            <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:12px;">
-                <div>
-                    <div style="font-size:11px; color:#5A5045; text-transform:uppercase; letter-spacing:.08em; font-weight:600;">Today's sales</div>
-                    <div style="font-size:13px; color:#8A7C6A; margin-top:2px;">{{ \Carbon\Carbon::now()->format('l, M j') }}</div>
-                </div>
-                <div style="font-size:11px; color:#8A7C6A; max-width:300px; line-height:1.4; text-align:right;">Net Sales (pre-tax). ERP includes cash + card + other tenders; Clover is what hit the merchant account. Diff = cash & non-card tenders.</div>
-            </div>
-            @if(empty($byStore))
-                <div style="padding:14px 0; color:#8A7C6A; font-style:italic;">No sales yet today.</div>
-            @else
-                <table style="width:100%; border-collapse:collapse; font-variant-numeric: tabular-nums;">
-                    <thead>
-                        <tr style="border-bottom:1px solid #ECE3CF;">
-                            <th style="text-align:left; font-size:11px; color:#5A5045; padding:6px 8px; text-transform:uppercase; letter-spacing:.06em;">Store</th>
-                            <th style="text-align:right; font-size:11px; color:#5A5045; padding:6px 8px; text-transform:uppercase; letter-spacing:.06em;">ERP Net Sales</th>
-                            <th style="text-align:right; font-size:11px; color:#5A5045; padding:6px 8px; text-transform:uppercase; letter-spacing:.06em;">Clover Net Sales</th>
-                            <th style="text-align:right; font-size:11px; color:#5A5045; padding:6px 8px; text-transform:uppercase; letter-spacing:.06em;">Diff</th>
-                        </tr>
-                    </thead>
-                    <tbody>
+        @if(!empty($byStore))
+            <details style="margin-bottom:12px;">
+                <summary style="list-style:none; cursor:pointer; padding:10px 14px; background:#FFFFFF; border:1px solid #ECE3CF; border-radius:8px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; font-size:13px; color:#1F1B16;">
+                    <span style="font-weight:600; color:#5A5045; font-size:11px; text-transform:uppercase; letter-spacing:.06em;">Today</span>
+                    @foreach($byStore as $s)
                         @php
-                            $totErp = 0; $totClover = 0; $totDiff = 0;
+                            $sErp = $s['erp_card'] + $s['erp_cash'] + $s['erp_other'];
+                            $sDiff = round($s['clover'] - $sErp, 2);
+                            $sMatched = abs($sDiff) < 0.01;
                         @endphp
-                        @foreach($byStore as $s)
-                            @php
-                                $erpTotal = $s['erp_card'] + $s['erp_cash'] + $s['erp_other'];
-                                $diff     = round($s['clover'] - $erpTotal, 2);
-                                $matched  = abs($diff) < 0.01;
-                                $diffColor = $matched ? '#2E6F40' : '#8B2C2C';
-                                $totErp    += $erpTotal;
-                                $totClover += $s['clover'];
-                                $totDiff   += $diff;
-                            @endphp
-                            <tr style="border-bottom:1px solid #F5EDD9;">
-                                <td style="padding:10px 8px; font-weight:600; color:#1F1B16; font-size:14px;">
-                                    {{ $s['name'] }}
-                                    <span style="font-weight:400; color:#8A7C6A; font-size:11px;">· {{ $s['erp_tx_count'] }} sales · {{ $s['clover_count'] }} charges</span>
-                                </td>
-                                <td style="padding:10px 8px; text-align:right; font-size:20px; font-weight:600; color:#1F1B16;">${{ number_format($erpTotal, 2) }}</td>
-                                <td style="padding:10px 8px; text-align:right; font-size:20px; font-weight:600; color:#1F1B16;">${{ number_format($s['clover'], 2) }}</td>
-                                <td style="padding:10px 8px; text-align:right; font-size:20px; font-weight:700; color:{{ $diffColor }};">
-                                    @if($matched)
-                                        $0.00
-                                    @else
-                                        {{ $diff > 0 ? '+' : '' }}${{ number_format($diff, 2) }}
-                                    @endif
-                                </td>
-                            </tr>
-                        @endforeach
-                        @if(count($byStore) > 1)
-                            @php $totMatched = abs($totDiff) < 0.01; @endphp
-                            <tr style="background:#FAF6EE; font-weight:700;">
-                                <td style="padding:10px 8px; color:#1F1B16; font-size:13px; text-transform:uppercase; letter-spacing:.06em;">All stores</td>
-                                <td style="padding:10px 8px; text-align:right; font-size:20px;">${{ number_format($totErp, 2) }}</td>
-                                <td style="padding:10px 8px; text-align:right; font-size:20px;">${{ number_format($totClover, 2) }}</td>
-                                <td style="padding:10px 8px; text-align:right; font-size:20px; color:{{ $totMatched ? '#2E6F40' : '#8B2C2C' }};">
-                                    @if($totMatched) $0.00 @else {{ $totDiff > 0 ? '+' : '' }}${{ number_format($totDiff, 2) }} @endif
-                                </td>
-                            </tr>
-                        @endif
-                    </tbody>
-                </table>
-            @endif
-        </div>
+                        <span style="display:inline-flex; gap:6px; align-items:baseline;">
+                            <span style="color:#5A5045;">{{ $s['name'] }}</span>
+                            <span style="font-variant-numeric:tabular-nums; font-weight:600;">${{ number_format($sErp, 0) }}</span>
+                            <span style="color:#BFB096;">/</span>
+                            <span style="font-variant-numeric:tabular-nums; font-weight:600;">${{ number_format($s['clover'], 0) }}</span>
+                            <span style="font-variant-numeric:tabular-nums; font-weight:700; color:{{ $sMatched ? '#2E6F40' : '#8B2C2C' }};">
+                                ({{ $sDiff > 0 ? '+' : '' }}${{ number_format($sDiff, 0) }})
+                            </span>
+                        </span>
+                    @endforeach
+                    <span style="margin-left:auto; color:#8A7C6A; font-size:11px;">ERP / Clover · click to expand</span>
+                </summary>
+                <div style="background:#FFFFFF; border:1px solid #ECE3CF; border-top:none; border-radius:0 0 8px 8px; padding:10px 14px; font-size:12px; color:#5A5045; line-height:1.5;">
+                    Net Sales (pre-tax). ERP totals include cash + card + other tenders;
+                    Clover is what hit the merchant account, so the diff is mostly cash
+                    and non-card tenders that never touch Clover.
+                </div>
+            </details>
+        @endif
     </div>
 </section>
 
