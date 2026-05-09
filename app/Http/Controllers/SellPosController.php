@@ -536,7 +536,7 @@ class SellPosController extends Controller
                 ->where('transaction_date', '<=', \Carbon\Carbon::parse($maxDate)->addDay())
                 ->when($location_id, fn($q) => $q->where('location_id', $location_id))
                 ->orderByDesc('transaction_date')
-                ->get(['id', 'final_total', 'transaction_date', 'location_id']);
+                ->get(['id', 'invoice_no', 'final_total', 'transaction_date', 'location_id']);
 
             // Match tolerance: ±5¢ amount + ±12hr time. Sarah 2026-05-08:
             // the 30-min cap was the dominant source of false orphans —
@@ -622,6 +622,50 @@ class SellPosController extends Controller
             $unclaimed_clover_payments = $cpRows->reject(function ($cp, $key) use ($claimedCpKeys) {
                 return isset($claimedCpKeys[$key]);
             })->values();
+        }
+
+        // Per-orphan diagnostic: for each unclaimed Clover charge, find the
+        // 3 closest ERP sales by amount (within ±$5) and explain why each
+        // wasn't picked — so Sarah can tell at a glance whether an orphan
+        // is a true gap (no ERP entry exists for that amount nearby) or a
+        // false orphan that the matcher is rejecting (and why).
+        $orphan_near_matches = [];
+        if (isset($matchSales) && $unclaimed_clover_payments->isNotEmpty()) {
+            $toCentsDiag = function ($x) { return (int) round(((float) $x) * 100); };
+            foreach ($unclaimed_clover_payments as $cp) {
+                $cpCents = $toCentsDiag($cp->amount);
+                $cpTs    = strtotime((string) $cp->paid_at);
+                $cpLoc   = $cp->location_id !== null ? (int) $cp->location_id : null;
+                $rows = [];
+                foreach ($matchSales as $sale) {
+                    $erCents = $toCentsDiag($sale->final_total);
+                    $amtDelta = abs($erCents - $cpCents);
+                    if ($amtDelta > 500) continue; // ±$5 — wide enough to reveal near-misses
+                    $erTs = strtotime((string) $sale->transaction_date);
+                    $erLoc = $sale->location_id !== null ? (int) $sale->location_id : null;
+                    $timeDelta = abs($erTs - $cpTs);
+                    $why = [];
+                    if ($amtDelta > 5) $why[] = '$' . number_format($amtDelta / 100, 2) . ' off';
+                    if ($cpLoc !== null && $erLoc !== null && $cpLoc !== $erLoc) $why[] = 'wrong store';
+                    if ($timeDelta > 43200) $why[] = floor($timeDelta / 3600) . 'h apart';
+                    if (isset($claimedSaleIds[$sale->id])) $why[] = 'paired w/ another Clover';
+                    $rows[] = [
+                        'tx_id'       => $sale->id,
+                        'invoice_no'  => $sale->invoice_no,
+                        'amount'      => round((float) $sale->final_total, 2),
+                        'ts'          => (string) $sale->transaction_date,
+                        'loc_id'      => $erLoc,
+                        'amt_delta'   => $amtDelta,
+                        'time_delta'  => $timeDelta,
+                        'why'         => $why ? implode(' · ', $why) : 'WOULD MATCH',
+                    ];
+                }
+                usort($rows, function ($a, $b) {
+                    return $a['amt_delta'] <=> $b['amt_delta']
+                        ?: $a['time_delta'] <=> $b['time_delta'];
+                });
+                $orphan_near_matches[$cp->clover_payment_id] = array_slice($rows, 0, 3);
+            }
         }
         // Suppress the orphan list when this is a per-cashier deep-link
         // (Sarah 2026-05-05): the orphans aren't tied to any cashier, so
@@ -766,7 +810,37 @@ class SellPosController extends Controller
         // are explicitly ERP-side filters, so suppress orphan Clover there.
         $show_clover_only = in_array($discrepancy, ['', 'any', 'no_erp'], true);
 
-        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug'));
+        // Today's totals — Sarah 2026-05-08: she wants a big "today" tally
+        // at the top, and ERP and Clover should match exactly. Computed
+        // server-side using the same filters as the recon (final sells,
+        // not xlsx-imported); Clover side filters to result in (NULL,
+        // SUCCESS, APPROVED) to match the matcher's pool.
+        $todayStr = \Carbon\Carbon::now()->format('Y-m-d');
+        $erpTodayQ = \DB::table('transactions')
+            ->where('business_id', $business_id)
+            ->where('type', 'sell')
+            ->where('status', 'final')
+            ->whereNull('import_source')
+            ->whereDate('transaction_date', $todayStr);
+        if (!empty($location_id)) {
+            $erpTodayQ->where('location_id', $location_id);
+        }
+        $erp_today_total = (float) $erpTodayQ->sum('final_total');
+        $erp_today_count = (int) $erpTodayQ->count();
+
+        $cloverTodayQ = \DB::table('clover_payments')
+            ->where('business_id', $business_id)
+            ->whereDate('paid_on', $todayStr)
+            ->where(function ($q) {
+                $q->whereNull('result')->orWhere('result', 'SUCCESS')->orWhere('result', 'APPROVED');
+            });
+        if (!empty($location_id)) {
+            $cloverTodayQ->where('location_id', $location_id);
+        }
+        $clover_today_total = (float) $cloverTodayQ->sum('amount');
+        $clover_today_count = (int) $cloverTodayQ->count();
+
+        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'clover_today_total', 'clover_today_count'));
     }
 
     /**
