@@ -538,43 +538,56 @@ class SellPosController extends Controller
                 ->orderByDesc('transaction_date')
                 ->get(['id', 'final_total', 'transaction_date', 'location_id']);
 
-            // Match window: ±5¢ amount + ±10min time. Sarah 2026-05-06
-            // looking at Manolo's drilldown — a $33.06 Clover swipe vs
-            // a $32.92 ERP sale at the same minute is the same sale
-            // with 14¢ of tax-rounding drift. The previous 1¢ rule
-            // treated those as unmatched. Score = amount-cents-delta
-            // ×1000 + time-seconds-delta so an exact match within
-            // 10min still beats a 5¢-off match.
-            // Sarah 2026-05-07: window widened to 30min for slow typers
-            // (Luis would Clover at 9:33pm, type into ERP at 9:44pm).
-            // Score = amount-cents × 1000 + time-seconds so exact
-            // matches still beat off-by-cents at longer gaps.
+            // Match tolerance: ±5¢ amount + ±12hr time. Sarah 2026-05-08:
+            // the 30-min cap was the dominant source of false orphans —
+            // Clover batch-settles overnight, so a sale rung at 11:50pm
+            // gets a paid_at of 4-5am the next morning. The cpRows query
+            // is already bounded to ±1 day around the ERP window, so the
+            // 12hr cap is the right outer envelope.
+            //
+            // Matching strategy: enumerate ALL viable (sale, clover) pairs,
+            // sort by score (amount-cents × 1000 + time-seconds), then claim
+            // in score order. This is globally optimal — avoids the false
+            // orphan case where the previous greedy newest-first ERP loop
+            // had ERP B claim its best Clover early, blocking ERP A from
+            // its only viable pair.
             $matchAmountCents = 5;
-            $matchTimeWindow  = 1800;
+            $matchTimeWindow  = 43200;
+
+            // Index Clover rows by amount-cents so the candidate scan
+            // visits only the ±5¢ neighborhood, not every Clover row.
+            $cpByCents = [];
+            foreach ($cpRows as $key => $cp) {
+                $cpByCents[$toCents($cp->amount)][] = $key;
+            }
+
+            $candidates = [];
             foreach ($matchSales as $sale) {
                 $erTs    = strtotime((string) $sale->transaction_date);
                 $erCents = $toCents($sale->final_total);
-                $erLoc   = $sale->location_id;
-
-                $bestKey = null;
-                $bestScore = PHP_INT_MAX;
-                foreach ($cpRows as $key => $cp) {
-                    if (isset($claimedCpKeys[$key])) continue;
-                    $amtDelta = abs($toCents($cp->amount) - $erCents);
-                    if ($amtDelta > $matchAmountCents) continue;
-                    if ($cp->location_id !== null && (int) $cp->location_id !== (int) $erLoc) continue;
-                    $timeDelta = abs(strtotime((string) $cp->paid_at) - $erTs);
-                    if ($timeDelta > $matchTimeWindow) continue;
-                    $score = $amtDelta * 1000 + $timeDelta;
-                    if ($score < $bestScore) {
-                        $bestScore = $score;
-                        $bestKey = $key;
+                $erLoc   = (int) $sale->location_id;
+                for ($d = -$matchAmountCents; $d <= $matchAmountCents; $d++) {
+                    foreach (($cpByCents[$erCents + $d] ?? []) as $key) {
+                        $cp = $cpRows[$key];
+                        if ($cp->location_id !== null && (int) $cp->location_id !== $erLoc) continue;
+                        $timeDelta = abs(strtotime((string) $cp->paid_at) - $erTs);
+                        if ($timeDelta > $matchTimeWindow) continue;
+                        $candidates[] = [
+                            'sale_id' => $sale->id,
+                            'cp_key'  => $key,
+                            'score'   => abs($d) * 1000 + $timeDelta,
+                        ];
                     }
                 }
-                if ($bestKey !== null) {
-                    $claimedCpKeys[$bestKey] = true;
-                    $matchedCpByTx[$sale->id][] = $cpRows[$bestKey];
-                }
+            }
+            usort($candidates, fn($a, $b) => $a['score'] <=> $b['score']);
+            $claimedSaleIds = [];
+            foreach ($candidates as $c) {
+                if (isset($claimedCpKeys[$c['cp_key']])) continue;
+                if (isset($claimedSaleIds[$c['sale_id']])) continue;
+                $claimedCpKeys[$c['cp_key']]    = true;
+                $claimedSaleIds[$c['sale_id']]  = true;
+                $matchedCpByTx[$c['sale_id']][] = $cpRows[$c['cp_key']];
             }
 
             // Aggregate Clover data per matched transaction. Clover's
@@ -968,43 +981,56 @@ class SellPosController extends Controller
 
             $claimedCpKeys = [];
             $matchedCpByTx = [];
-            // Match window: ±5¢ amount + ±10min time. Sarah 2026-05-06
-            // looking at Manolo's drilldown — a $33.06 Clover swipe vs
-            // a $32.92 ERP sale at the same minute is the same sale
-            // with 14¢ of tax-rounding drift. The previous 1¢ rule
-            // treated those as unmatched. Score = amount-cents-delta
-            // ×1000 + time-seconds-delta so an exact match within
-            // 10min still beats a 5¢-off match.
-            // Sarah 2026-05-07: window widened to 30min for slow typers
-            // (Luis would Clover at 9:33pm, type into ERP at 9:44pm).
-            // Score = amount-cents × 1000 + time-seconds so exact
-            // matches still beat off-by-cents at longer gaps.
+            // Match tolerance: ±5¢ amount + ±12hr time. Sarah 2026-05-08:
+            // the 30-min cap was the dominant source of false orphans —
+            // Clover batch-settles overnight, so a sale rung at 11:50pm
+            // gets a paid_at of 4-5am the next morning. The cpRows query
+            // is already bounded to ±1 day around the ERP window, so the
+            // 12hr cap is the right outer envelope.
+            //
+            // Matching strategy: enumerate ALL viable (sale, clover) pairs,
+            // sort by score (amount-cents × 1000 + time-seconds), then claim
+            // in score order. This is globally optimal — avoids the false
+            // orphan case where the previous greedy newest-first ERP loop
+            // had ERP B claim its best Clover early, blocking ERP A from
+            // its only viable pair.
             $matchAmountCents = 5;
-            $matchTimeWindow  = 1800;
+            $matchTimeWindow  = 43200;
+
+            // Index Clover rows by amount-cents so the candidate scan
+            // visits only the ±5¢ neighborhood, not every Clover row.
+            $cpByCents = [];
+            foreach ($cpRows as $key => $cp) {
+                $cpByCents[$toCents($cp->amount)][] = $key;
+            }
+
+            $candidates = [];
             foreach ($matchSales as $sale) {
                 $erTs    = strtotime((string) $sale->transaction_date);
                 $erCents = $toCents($sale->final_total);
-                $erLoc   = $sale->location_id;
-
-                $bestKey = null;
-                $bestScore = PHP_INT_MAX;
-                foreach ($cpRows as $key => $cp) {
-                    if (isset($claimedCpKeys[$key])) continue;
-                    $amtDelta = abs($toCents($cp->amount) - $erCents);
-                    if ($amtDelta > $matchAmountCents) continue;
-                    if ($cp->location_id !== null && (int) $cp->location_id !== (int) $erLoc) continue;
-                    $timeDelta = abs(strtotime((string) $cp->paid_at) - $erTs);
-                    if ($timeDelta > $matchTimeWindow) continue;
-                    $score = $amtDelta * 1000 + $timeDelta;
-                    if ($score < $bestScore) {
-                        $bestScore = $score;
-                        $bestKey = $key;
+                $erLoc   = (int) $sale->location_id;
+                for ($d = -$matchAmountCents; $d <= $matchAmountCents; $d++) {
+                    foreach (($cpByCents[$erCents + $d] ?? []) as $key) {
+                        $cp = $cpRows[$key];
+                        if ($cp->location_id !== null && (int) $cp->location_id !== $erLoc) continue;
+                        $timeDelta = abs(strtotime((string) $cp->paid_at) - $erTs);
+                        if ($timeDelta > $matchTimeWindow) continue;
+                        $candidates[] = [
+                            'sale_id' => $sale->id,
+                            'cp_key'  => $key,
+                            'score'   => abs($d) * 1000 + $timeDelta,
+                        ];
                     }
                 }
-                if ($bestKey !== null) {
-                    $claimedCpKeys[$bestKey] = true;
-                    $matchedCpByTx[$sale->id][] = $cpRows[$bestKey];
-                }
+            }
+            usort($candidates, fn($a, $b) => $a['score'] <=> $b['score']);
+            $claimedSaleIds = [];
+            foreach ($candidates as $c) {
+                if (isset($claimedCpKeys[$c['cp_key']])) continue;
+                if (isset($claimedSaleIds[$c['sale_id']])) continue;
+                $claimedCpKeys[$c['cp_key']]    = true;
+                $claimedSaleIds[$c['sale_id']]  = true;
+                $matchedCpByTx[$c['sale_id']][] = $cpRows[$c['cp_key']];
             }
 
             foreach ($matchedCpByTx as $txId => $payments) {
