@@ -225,22 +225,25 @@ class SlingController extends Controller
     {
         $connected = (new \App\Services\SlingClient())->isConfigured();
 
-        // First-run state: the table doesn't exist yet because the migration
-        // hasn't been dispatched via the GH workflow. Show a setup banner
-        // with a button that creates the table directly via Schema (same
-        // structure as the migration file). Avoids forcing a CI dance for
-        // a one-table change.
-        if (!Schema::hasTable('sling_shifts')) {
+        // First-run / schema-evolution state: either the table doesn't exist
+        // yet OR an existing install is missing a newer column. Show the
+        // setup banner so Sarah can fix it from the UI without dispatching
+        // the GH migration workflow. setupTable() handles both cases
+        // idempotently.
+        $hasTable = Schema::hasTable('sling_shifts');
+        $hasEventTypeCol = $hasTable && Schema::hasColumn('sling_shifts', 'event_type');
+        if (!$hasTable || !$hasEventTypeCol) {
             return view('admin.sling_shifts', [
                 'shifts' => collect(),
                 'start' => Carbon::today('America/Los_Angeles')->subDays(7),
                 'end' => Carbon::today('America/Los_Angeles')->addDays(30),
-                'lastSyncedAt' => null,
-                'totalCount' => 0,
+                'lastSyncedAt' => $hasTable ? SlingShift::max('last_synced_at') : null,
+                'totalCount' => $hasTable ? SlingShift::count() : 0,
                 'connected' => $connected,
                 'tableExists' => false,
                 'typeFilter' => 'all',
                 'hasEventType' => false,
+                'schemaNeedsUpgrade' => $hasTable && !$hasEventTypeCol,
             ]);
         }
 
@@ -267,7 +270,7 @@ class SlingController extends Controller
 
         return view('admin.sling_shifts', compact(
             'shifts', 'start', 'end', 'lastSyncedAt', 'totalCount', 'connected', 'typeFilter', 'hasEventType'
-        ) + ['tableExists' => true]);
+        ) + ['tableExists' => true, 'schemaNeedsUpgrade' => false]);
     }
 
     /**

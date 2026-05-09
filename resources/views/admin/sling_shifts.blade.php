@@ -27,13 +27,17 @@
     @if(!$tableExists)
         <div class="box box-warning">
             <div class="box-header with-border">
-                <h3 class="box-title">One-time setup</h3>
+                <h3 class="box-title">{{ ($schemaNeedsUpgrade ?? false) ? 'Schema upgrade needed' : 'One-time setup' }}</h3>
             </div>
             <div class="box-body">
-                <p>The <code>sling_shifts</code> table doesn't exist yet. Click below to create it — this is a brand-new empty table, doesn't touch anything else, and is safe to re-click (it'll just say "already set up").</p>
+                @if($schemaNeedsUpgrade ?? false)
+                    <p>The <code>sling_shifts</code> table is missing a newer column (<code>event_type</code>) that distinguishes time off from shifts. Click below — your existing {{ number_format($totalCount) }} rows are NOT touched; only the column is added. Then click <strong>Sync now</strong> to backfill the type on existing rows.</p>
+                @else
+                    <p>The <code>sling_shifts</code> table doesn't exist yet. Click below to create it — this is a brand-new empty table, doesn't touch anything else, and is safe to re-click.</p>
+                @endif
                 <form method="POST" action="{{ url('/admin/sling/shifts/setup') }}" style="display:inline;">
                     @csrf
-                    <button type="submit" class="btn btn-warning"><i class="fa fa-database"></i> Create the sling_shifts table</button>
+                    <button type="submit" class="btn btn-warning"><i class="fa fa-database"></i> {{ ($schemaNeedsUpgrade ?? false) ? 'Add the missing column' : 'Create the sling_shifts table' }}</button>
                 </form>
             </div>
         </div>
