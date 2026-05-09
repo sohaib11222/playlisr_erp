@@ -181,55 +181,77 @@
 <section class="content">
     <div class="rf-wrap">
         @php
-            $rfErpCard   = (float) ($erp_today_card_total ?? 0);
-            $rfErpCash   = (float) ($erp_today_cash_total ?? 0);
-            $rfErpOther  = (float) ($erp_today_other_total ?? 0);
-            $rfErpTotal  = $rfErpCard + $rfErpCash + $rfErpOther;
-            $rfClover    = (float) ($clover_today_total ?? 0);
-            // Card-to-card is the apples-to-apples reconciliation. Cash
-            // sales never touch Clover by design, so they're shown
-            // separately and don't count against the match status.
-            $rfDiff = round($rfClover - $rfErpCard, 2);
-            $rfDiffPct = $rfClover > 0 ? abs($rfDiff) / $rfClover : 0;
-            $rfMatched = abs($rfDiff) < 0.01;
+            $byStore = $today_by_store ?? [];
         @endphp
         <div style="background:#FFFFFF; border:1px solid #ECE3CF; border-radius:12px; padding:18px 24px; margin-bottom:16px; box-shadow:0 1px 3px rgba(31,27,22,.08);">
-            <div style="display:flex; gap:24px; align-items:baseline; flex-wrap:wrap;">
+            <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:12px;">
                 <div>
                     <div style="font-size:11px; color:#5A5045; text-transform:uppercase; letter-spacing:.08em; font-weight:600;">Today's sales</div>
-                    <div style="font-size:13px; color:#8A7C6A; margin-top:2px;">{{ \Carbon\Carbon::now()->format('l, M j') }}{{ $location_id && isset($business_locations[$location_id]) ? ' · ' . $business_locations[$location_id] : '' }}</div>
-                    <div style="font-size:11px; color:#8A7C6A; margin-top:6px; max-width:160px; line-height:1.4;">Card vs Clover should match. Cash never hits Clover.</div>
+                    <div style="font-size:13px; color:#8A7C6A; margin-top:2px;">{{ \Carbon\Carbon::now()->format('l, M j') }}</div>
                 </div>
-                <div style="flex:1; min-width:140px;">
-                    <div style="font-size:12px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">ERP — Card</div>
-                    <div style="font-size:30px; font-weight:700; color:#1F1B16; font-variant-numeric: tabular-nums;">${{ number_format($rfErpCard, 2) }}</div>
-                    <div style="font-size:11px; color:#8A7C6A;">card portion of {{ $erp_today_count ?? 0 }} sales</div>
-                </div>
-                <div style="flex:1; min-width:140px;">
-                    <div style="font-size:12px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Clover</div>
-                    <div style="font-size:30px; font-weight:700; color:#1F1B16; font-variant-numeric: tabular-nums;">${{ number_format($rfClover, 2) }}</div>
-                    <div style="font-size:11px; color:#8A7C6A;">{{ $clover_today_count ?? 0 }} charges</div>
-                </div>
-                <div style="flex:1; min-width:160px;">
-                    <div style="font-size:12px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Card ↔ Clover</div>
-                    @if($rfMatched)
-                        <div style="font-size:30px; font-weight:700; color:#2E6F40; font-variant-numeric: tabular-nums;">$0.00</div>
-                        <div style="font-size:11px; color:#2E6F40; font-weight:600;">✓ Matched</div>
-                    @else
-                        <div style="font-size:30px; font-weight:700; color:#8B2C2C; font-variant-numeric: tabular-nums;">{{ $rfDiff > 0 ? '+' : '' }}${{ number_format($rfDiff, 2) }}</div>
-                        <div style="font-size:11px; color:#8B2C2C;">{{ $rfDiff > 0 ? 'Clover ahead' : 'ERP ahead' }} · {{ number_format($rfDiffPct * 100, 1) }}%</div>
-                    @endif
-                </div>
-                <div style="flex:1; min-width:140px; border-left:1px dashed #DFD2B3; padding-left:24px;">
-                    <div style="font-size:12px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">ERP — Cash</div>
-                    <div style="font-size:24px; font-weight:600; color:#5A5045; font-variant-numeric: tabular-nums;">${{ number_format($rfErpCash, 2) }}</div>
-                    <div style="font-size:11px; color:#8A7C6A;">won't appear on Clover</div>
-                </div>
+                <div style="font-size:11px; color:#8A7C6A; max-width:280px; line-height:1.4; text-align:right;">Card vs Clover should match per store. Cash and other tenders never hit Clover.</div>
             </div>
-            @if($rfErpOther > 0)
-                <div style="font-size:12px; color:#8A7C6A; margin-top:10px; padding-top:10px; border-top:1px dashed #DFD2B3;">
-                    Other tenders (bank transfer / cheque / store credit / etc.): <strong>${{ number_format($rfErpOther, 2) }}</strong> — also won't appear on Clover.
-                </div>
+            @if(empty($byStore))
+                <div style="padding:14px 0; color:#8A7C6A; font-style:italic;">No sales yet today.</div>
+            @else
+                <table style="width:100%; border-collapse:collapse; font-variant-numeric: tabular-nums;">
+                    <thead>
+                        <tr style="border-bottom:1px solid #ECE3CF;">
+                            <th style="text-align:left; font-size:11px; color:#5A5045; padding:6px 8px; text-transform:uppercase; letter-spacing:.06em;">Store</th>
+                            <th style="text-align:right; font-size:11px; color:#5A5045; padding:6px 8px; text-transform:uppercase; letter-spacing:.06em;">ERP Card</th>
+                            <th style="text-align:right; font-size:11px; color:#5A5045; padding:6px 8px; text-transform:uppercase; letter-spacing:.06em;">Clover</th>
+                            <th style="text-align:right; font-size:11px; color:#5A5045; padding:6px 8px; text-transform:uppercase; letter-spacing:.06em;">Diff</th>
+                            <th style="text-align:right; font-size:11px; color:#5A5045; padding:6px 8px; text-transform:uppercase; letter-spacing:.06em; border-left:1px dashed #DFD2B3;">ERP Cash</th>
+                            <th style="text-align:right; font-size:11px; color:#5A5045; padding:6px 8px; text-transform:uppercase; letter-spacing:.06em;">ERP Other</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @php
+                            $totErpCard = 0; $totClover = 0; $totDiff = 0; $totCash = 0; $totOther = 0;
+                        @endphp
+                        @foreach($byStore as $s)
+                            @php
+                                $matched = abs($s['card_diff']) < 0.01;
+                                $diffColor = $matched ? '#2E6F40' : '#8B2C2C';
+                                $totErpCard += $s['erp_card'];
+                                $totClover  += $s['clover'];
+                                $totDiff    += $s['card_diff'];
+                                $totCash    += $s['erp_cash'];
+                                $totOther   += $s['erp_other'];
+                            @endphp
+                            <tr style="border-bottom:1px solid #F5EDD9;">
+                                <td style="padding:10px 8px; font-weight:600; color:#1F1B16; font-size:14px;">
+                                    {{ $s['name'] }}
+                                    <span style="font-weight:400; color:#8A7C6A; font-size:11px;">· {{ $s['erp_tx_count'] }} sales · {{ $s['clover_count'] }} charges</span>
+                                </td>
+                                <td style="padding:10px 8px; text-align:right; font-size:18px; font-weight:600; color:#1F1B16;">${{ number_format($s['erp_card'], 2) }}</td>
+                                <td style="padding:10px 8px; text-align:right; font-size:18px; font-weight:600; color:#1F1B16;">${{ number_format($s['clover'], 2) }}</td>
+                                <td style="padding:10px 8px; text-align:right; font-size:18px; font-weight:700; color:{{ $diffColor }};">
+                                    @if($matched)
+                                        $0.00
+                                    @else
+                                        {{ $s['card_diff'] > 0 ? '+' : '' }}${{ number_format($s['card_diff'], 2) }}
+                                    @endif
+                                </td>
+                                <td style="padding:10px 8px; text-align:right; font-size:14px; color:#5A5045; border-left:1px dashed #DFD2B3;">${{ number_format($s['erp_cash'], 2) }}</td>
+                                <td style="padding:10px 8px; text-align:right; font-size:14px; color:#5A5045;">{{ $s['erp_other'] > 0 ? '$' . number_format($s['erp_other'], 2) : '—' }}</td>
+                            </tr>
+                        @endforeach
+                        @if(count($byStore) > 1)
+                            @php $totMatched = abs($totDiff) < 0.01; @endphp
+                            <tr style="background:#FAF6EE; font-weight:700;">
+                                <td style="padding:10px 8px; color:#1F1B16; font-size:13px; text-transform:uppercase; letter-spacing:.06em;">All stores</td>
+                                <td style="padding:10px 8px; text-align:right; font-size:18px;">${{ number_format($totErpCard, 2) }}</td>
+                                <td style="padding:10px 8px; text-align:right; font-size:18px;">${{ number_format($totClover, 2) }}</td>
+                                <td style="padding:10px 8px; text-align:right; font-size:18px; color:{{ $totMatched ? '#2E6F40' : '#8B2C2C' }};">
+                                    @if($totMatched) $0.00 @else {{ $totDiff > 0 ? '+' : '' }}${{ number_format($totDiff, 2) }} @endif
+                                </td>
+                                <td style="padding:10px 8px; text-align:right; font-size:14px; color:#5A5045; border-left:1px dashed #DFD2B3;">${{ number_format($totCash, 2) }}</td>
+                                <td style="padding:10px 8px; text-align:right; font-size:14px; color:#5A5045;">{{ $totOther > 0 ? '$' . number_format($totOther, 2) : '—' }}</td>
+                            </tr>
+                        @endif
+                    </tbody>
+                </table>
             @endif
         </div>
     </div>

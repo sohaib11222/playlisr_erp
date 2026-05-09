@@ -810,12 +810,12 @@ class SellPosController extends Controller
         // are explicitly ERP-side filters, so suppress orphan Clover there.
         $show_clover_only = in_array($discrepancy, ['', 'any', 'no_erp'], true);
 
-        // Today's totals — Sarah 2026-05-08: a big "today" tally at the top.
-        // ERP includes both cash and card sales; Clover only has card
-        // charges. So the card-to-card comparison is what should match.
-        // Cash sales are shown separately as informational, since they
-        // won't appear on Clover at all by design.
+        // Today's totals — Sarah 2026-05-09: split by store (Pico vs
+        // Hollywood) since aggregating across them hides per-store gaps.
+        // Card-to-Clover is the apples-to-apples comparison; cash and
+        // other tenders are informational because they don't hit Clover.
         $todayStr = \Carbon\Carbon::now()->format('Y-m-d');
+
         $erpRowsToday = \DB::table('transactions as t')
             ->leftJoin('transaction_payments as tp', 'tp.transaction_id', '=', 't.id')
             ->where('t.business_id', $business_id)
@@ -824,40 +824,81 @@ class SellPosController extends Controller
             ->whereNull('t.import_source')
             ->whereDate('t.transaction_date', $todayStr)
             ->when(!empty($location_id), fn($q) => $q->where('t.location_id', $location_id))
-            ->selectRaw("t.id, t.final_total, COALESCE(tp.method, 'cash') as method, COALESCE(tp.amount, t.final_total) as paid_amount")
+            ->selectRaw("t.id, t.location_id, COALESCE(tp.method, 'cash') as method, COALESCE(tp.amount, t.final_total) as paid_amount")
             ->get();
 
-        // Per-method totals: a transaction with split tender contributes
-        // its respective method amounts. Transactions with no payment row
-        // fall back to 'cash' (cashier didn't pick a method) and the
-        // full final_total.
-        $erp_today_card_total = 0.0;
-        $erp_today_cash_total = 0.0;
-        $erp_today_other_total = 0.0;
-        $erp_today_tx_ids = [];
-        foreach ($erpRowsToday as $r) {
-            $erp_today_tx_ids[$r->id] = true;
-            $amt = (float) $r->paid_amount;
-            if ($r->method === 'card') $erp_today_card_total += $amt;
-            elseif ($r->method === 'cash') $erp_today_cash_total += $amt;
-            else $erp_today_other_total += $amt;
-        }
-        $erp_today_total = $erp_today_card_total + $erp_today_cash_total + $erp_today_other_total;
-        $erp_today_count = count($erp_today_tx_ids);
-
-        $cloverTodayQ = \DB::table('clover_payments')
+        $cloverRowsToday = \DB::table('clover_payments')
             ->where('business_id', $business_id)
             ->whereDate('paid_on', $todayStr)
             ->where(function ($q) {
                 $q->whereNull('result')->orWhere('result', 'SUCCESS')->orWhere('result', 'APPROVED');
-            });
-        if (!empty($location_id)) {
-            $cloverTodayQ->where('location_id', $location_id);
-        }
-        $clover_today_total = (float) $cloverTodayQ->sum('amount');
-        $clover_today_count = (int) $cloverTodayQ->count();
+            })
+            ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id))
+            ->select('location_id', 'amount')
+            ->get();
 
-        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count'));
+        // Bucket per location_id (0 = unattributed). For each store we
+        // track card / cash / other ERP totals + ERP tx-ids (for sale
+        // count), plus Clover total + Clover count.
+        $locKey = function ($id) { return (int) ($id ?? 0); };
+        $today_by_store = [];
+        $ensure = function (&$store, $key, $name) {
+            if (!isset($store[$key])) {
+                $store[$key] = [
+                    'location_id'  => $key ?: null,
+                    'name'         => $name,
+                    'erp_card'     => 0.0,
+                    'erp_cash'     => 0.0,
+                    'erp_other'    => 0.0,
+                    'erp_tx_ids'   => [],
+                    'clover'       => 0.0,
+                    'clover_count' => 0,
+                ];
+            }
+        };
+        foreach ($erpRowsToday as $r) {
+            $k = $locKey($r->location_id);
+            $name = $k && isset($business_locations[$k]) ? $business_locations[$k] : '(no location)';
+            $ensure($today_by_store, $k, $name);
+            $today_by_store[$k]['erp_tx_ids'][$r->id] = true;
+            $amt = (float) $r->paid_amount;
+            if ($r->method === 'card') $today_by_store[$k]['erp_card'] += $amt;
+            elseif ($r->method === 'cash') $today_by_store[$k]['erp_cash'] += $amt;
+            else $today_by_store[$k]['erp_other'] += $amt;
+        }
+        foreach ($cloverRowsToday as $r) {
+            $k = $locKey($r->location_id);
+            $name = $k && isset($business_locations[$k]) ? $business_locations[$k] : '(no location)';
+            $ensure($today_by_store, $k, $name);
+            $today_by_store[$k]['clover'] += (float) $r->amount;
+            $today_by_store[$k]['clover_count']++;
+        }
+        // Finalize: convert tx_ids to count, compute card↔clover diff.
+        foreach ($today_by_store as &$s) {
+            $s['erp_tx_count'] = count($s['erp_tx_ids']);
+            unset($s['erp_tx_ids']);
+            $s['card_diff'] = round($s['clover'] - $s['erp_card'], 2);
+        }
+        unset($s);
+        // Sort by store name (alphabetical: Hollywood, Pico, then unattributed).
+        uasort($today_by_store, function ($a, $b) {
+            // Push location_id=null (no location) to the bottom.
+            if (($a['location_id'] === null) !== ($b['location_id'] === null)) {
+                return ($a['location_id'] === null) ? 1 : -1;
+            }
+            return strcasecmp($a['name'], $b['name']);
+        });
+
+        // Backwards-compat aggregates (still passed for any other consumers).
+        $erp_today_card_total  = array_sum(array_column($today_by_store, 'erp_card'));
+        $erp_today_cash_total  = array_sum(array_column($today_by_store, 'erp_cash'));
+        $erp_today_other_total = array_sum(array_column($today_by_store, 'erp_other'));
+        $erp_today_total = $erp_today_card_total + $erp_today_cash_total + $erp_today_other_total;
+        $erp_today_count = array_sum(array_column($today_by_store, 'erp_tx_count'));
+        $clover_today_total = array_sum(array_column($today_by_store, 'clover'));
+        $clover_today_count = array_sum(array_column($today_by_store, 'clover_count'));
+
+        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store'));
     }
 
     /**
