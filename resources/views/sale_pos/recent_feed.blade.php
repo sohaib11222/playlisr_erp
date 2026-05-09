@@ -418,12 +418,16 @@
                 @if($sale->sell_lines->isEmpty())
                     <div class="rf-line"><span class="rf-line-name" style="color:#8A7C6A;">(no items)</span></div>
                 @else
-                    <ul class="rf-lines">
-                    @foreach($sale->sell_lines as $line)
-                        @php
+                    @php
+                        // Aggregate identical sell_lines so 5 chips quick-add
+                        // clicks render as "5× Chips $7.50" instead of five
+                        // copies of "Chips $1.50" — each preset click adds a
+                        // new line at qty=1, which made it look like Mariah's
+                        // $8 ring was a single $1.50 sale. Group by
+                        // (product_id|name, variation_id, unit price, discount).
+                        $rfGroups = [];
+                        foreach ($sale->sell_lines as $line) {
                             $product = $line->product;
-                            // Prefer product relation (real inventory item); fall back to
-                            // per-line product_name/product_artist captured for manual items.
                             $baseName = $product->name ?? ($line->product_name ?? 'Manual item');
                             $baseArtist = null;
                             if ($product && !empty($product->artist) && is_string($product->artist)) {
@@ -431,24 +435,50 @@
                             } elseif (!empty($line->product_artist)) {
                                 $baseArtist = $line->product_artist;
                             }
-                            $name = $baseArtist ? ($baseArtist . ' — ' . $baseName) : $baseName;
-                            $isManual = empty($product);
-                            $catName = optional($product)->category->name ?? null;
-                            $subCatName = optional($product)->sub_category->name ?? null;
-                            $qty = (float) $line->quantity;
                             $unit = (float) ($line->unit_price_inc_tax ?: $line->unit_price);
-                            $lineDisc = 0;
+                            $disc = 0;
                             if (!empty($line->line_discount_amount)) {
-                                $lineDisc = $line->line_discount_type === 'percentage'
+                                $disc = $line->line_discount_type === 'percentage'
                                     ? ($unit * $line->line_discount_amount / 100)
                                     : (float) $line->line_discount_amount;
                             }
-                            $lineTotal = ($unit - $lineDisc) * $qty;
+                            $key = ($product->id ?? ('m:' . $baseName))
+                                . '|' . ($line->variation_id ?? '')
+                                . '|' . round($unit, 2)
+                                . '|' . round($disc, 2);
+                            if (!isset($rfGroups[$key])) {
+                                $rfGroups[$key] = [
+                                    'product'    => $product,
+                                    'name'       => $baseArtist ? ($baseArtist . ' — ' . $baseName) : $baseName,
+                                    'isManual'   => empty($product),
+                                    'catName'    => optional($product)->category->name ?? null,
+                                    'subCatName' => optional($product)->sub_category->name ?? null,
+                                    'qty'        => 0.0,
+                                    'unit'       => $unit,
+                                    'lineDisc'   => $disc,
+                                    'lineTotal'  => 0.0,
+                                ];
+                            }
+                            $rfGroups[$key]['qty']       += (float) $line->quantity;
+                            $rfGroups[$key]['lineTotal'] += ($unit - $disc) * (float) $line->quantity;
+                        }
+                    @endphp
+                    <ul class="rf-lines">
+                    @foreach($rfGroups as $g)
+                        @php
+                            $qty       = $g['qty'];
+                            $name      = $g['name'];
+                            $isManual  = $g['isManual'];
+                            $catName   = $g['catName'];
+                            $subCatName= $g['subCatName'];
+                            $unit      = $g['unit'];
+                            $lineTotal = $g['lineTotal'];
                         @endphp
                         <li class="rf-line">
                             <span class="rf-line-name">
                                 @if($qty > 1)<span class="qty">{{ rtrim(rtrim(number_format($qty, 2, '.', ''), '0'), '.') }}×</span>@endif
                                 {{ $name }}
+                                @if($qty > 1)<span class="qty" style="color:#8A7C6A; font-weight:400; margin-left:6px;">@ ${{ number_format($unit, 2) }}</span>@endif
                                 @if($isManual)<span class="rf-manual-tag" title="Manual item (not from inventory)">manual</span>@endif
                                 @if($catName)
                                     <span class="rf-line-cat {{ $rfCatClass($catName) }}">{{ $catName }}@if($subCatName)<span class="sub">› {{ $subCatName }}</span>@endif</span>
