@@ -26,6 +26,8 @@ class CreateSlingShiftsTable extends Migration
             // (or with a different email on file).
             $table->unsignedInteger('erp_user_id')->nullable()->index();
 
+            $table->string('event_type', 32)->default('shift')->index();
+
             $table->string('location_name', 191)->nullable();
             $table->string('position_name', 191)->nullable();
 

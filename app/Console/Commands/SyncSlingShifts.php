@@ -68,14 +68,25 @@ class SyncSlingShifts extends Command
             }
         }
 
-        // ERP user roster — map lowercased email → user_id so we can join.
-        $erpUserIdByEmail = User::query()
-            ->whereNotNull('email')
-            ->pluck('id', 'email')
-            ->mapWithKeys(function ($id, $email) {
-                return [strtolower(trim($email)) => $id];
-            })
-            ->toArray();
+        // ERP user roster — map lowercased email→user_id, with username
+        // as a fallback because the users table allows email to be NULL
+        // and many staff get registered with email-as-username only
+        // (e.g. Luis: username=inthesink1999@gmail.com, email=NULL).
+        $erpUserIdByEmail = [];
+        User::query()
+            ->select('id', 'email', 'username')
+            ->get()
+            ->each(function ($u) use (&$erpUserIdByEmail) {
+                if (!empty($u->email)) {
+                    $erpUserIdByEmail[strtolower(trim($u->email))] = $u->id;
+                }
+                if (!empty($u->username) && filter_var($u->username, FILTER_VALIDATE_EMAIL)) {
+                    $key = strtolower(trim($u->username));
+                    if (!isset($erpUserIdByEmail[$key])) {
+                        $erpUserIdByEmail[$key] = $u->id;
+                    }
+                }
+            });
 
         $shifts = $client->shifts($start->toDateString(), $end->toDateString());
         $count = is_array($shifts) ? count($shifts) : 0;
@@ -125,6 +136,8 @@ class SyncSlingShifts extends Command
                 $positionName = $shift['position']['name']
                     ?? ($shift['positionName'] ?? null);
 
+                $eventType = $this->detectEventType($shift);
+
                 SlingShift::updateOrCreate(
                     ['sling_shift_id' => $shiftId],
                     [
@@ -132,6 +145,7 @@ class SyncSlingShifts extends Command
                         'user_email' => $email,
                         'user_name' => $name,
                         'erp_user_id' => $erpUid,
+                        'event_type' => $eventType,
                         'location_name' => $locationName,
                         'position_name' => $positionName,
                         'dtstart' => Carbon::parse($startAt),
@@ -154,6 +168,39 @@ class SyncSlingShifts extends Command
 
         $this->info("Upserted {$upserted}, skipped {$skipped}.");
         return 0;
+    }
+
+    /**
+     * Sling's calendar API mixes shifts and time-off into one stream. We
+     * tag each row so the report side can filter. Probe the most common
+     * field names — Sling's payload shape varies — and fall back to
+     * 'shift' (the dominant type) when nothing matches.
+     */
+    private function detectEventType(array $shift): string
+    {
+        $candidates = [];
+        foreach (['type', 'eventType', 'kind', 'category'] as $k) {
+            if (!empty($shift[$k]) && is_string($shift[$k])) {
+                $candidates[] = strtolower($shift[$k]);
+            }
+        }
+        $blob = strtolower(json_encode($shift));
+        $hay = implode('|', $candidates) . '|' . $blob;
+
+        if (preg_match('/\btime[\-_ ]?off\b|"timeoff"|"pto"|"vacation"|"sick"/', $hay)) {
+            return SlingShift::TYPE_TIME_OFF;
+        }
+        if (preg_match('/\bavailab/', $hay)) {
+            return SlingShift::TYPE_AVAILABILITY;
+        }
+        // "All-day" markers without a discrete time range are almost
+        // always time-off in Sling. Heuristic: dtstart present but no
+        // dtend, or both stamped at midnight with the day-end equaling
+        // the day-start + 24h exactly.
+        if (!empty($shift['allDay']) || !empty($shift['all_day'])) {
+            return SlingShift::TYPE_TIME_OFF;
+        }
+        return SlingShift::TYPE_SHIFT;
     }
 
     /**

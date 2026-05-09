@@ -16,6 +16,11 @@ class SlingShift extends Model
         'last_synced_at' => 'datetime',
     ];
 
+    public const TYPE_SHIFT = 'shift';
+    public const TYPE_TIME_OFF = 'time_off';
+    public const TYPE_AVAILABILITY = 'availability';
+    public const TYPE_UNKNOWN = 'unknown';
+
     public function user()
     {
         return $this->belongsTo(\App\User::class, 'erp_user_id');

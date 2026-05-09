@@ -81,6 +81,17 @@
                     <label>To</label>
                     <input type="date" name="end" class="form-control" value="{{ $end->toDateString() }}">
                 </div>
+                @if($hasEventType)
+                <div class="form-group" style="margin-left:8px;">
+                    <label>Type</label>
+                    <select name="type" class="form-control">
+                        <option value="all" {{ $typeFilter === 'all' ? 'selected' : '' }}>All</option>
+                        <option value="shift" {{ $typeFilter === 'shift' ? 'selected' : '' }}>Shifts only</option>
+                        <option value="time_off" {{ $typeFilter === 'time_off' ? 'selected' : '' }}>Time off only</option>
+                        <option value="availability" {{ $typeFilter === 'availability' ? 'selected' : '' }}>Availability only</option>
+                    </select>
+                </div>
+                @endif
                 <button type="submit" class="btn btn-default" style="margin-left:8px;">
                     <i class="fa fa-search"></i> Apply
                 </button>
@@ -100,6 +111,7 @@
                 <thead>
                     <tr>
                         <th>Date</th>
+                        @if($hasEventType)<th>Type</th>@endif
                         <th>Start</th>
                         <th>End</th>
                         <th>Hours</th>
@@ -112,8 +124,16 @@
                 </thead>
                 <tbody>
                 @forelse($shifts as $s)
-                    <tr class="{{ $s->published ? '' : 'text-muted' }}">
+                    @php
+                        $type = $hasEventType ? ($s->event_type ?? 'shift') : 'shift';
+                        $rowClass = !$s->published ? 'text-muted' : '';
+                        $typeLabel = ['shift' => ['Shift','primary'], 'time_off' => ['Time off','warning'], 'availability' => ['Availability','default']][$type] ?? [$type, 'default'];
+                    @endphp
+                    <tr class="{{ $rowClass }}" style="{{ $type === 'time_off' ? 'background:#fff8e1;' : '' }}">
                         <td>{{ optional($s->dtstart)->format('Y-m-d (D)') }}</td>
+                        @if($hasEventType)
+                            <td><span class="label label-{{ $typeLabel[1] }}">{{ $typeLabel[0] }}</span></td>
+                        @endif
                         <td>{{ optional($s->dtstart)->format('H:i') }}</td>
                         <td>{{ optional($s->dtend)->format('H:i') }}</td>
                         <td>{{ number_format((float) $s->hours, 2) }}</td>
@@ -130,7 +150,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="9" class="text-center text-muted">No shifts in this window. Click <strong>Sync now</strong> above to pull from Sling.</td></tr>
+                    <tr><td colspan="{{ $hasEventType ? 10 : 9 }}" class="text-center text-muted">No shifts in this window. Click <strong>Sync now</strong> above to pull from Sling.</td></tr>
                 @endforelse
                 </tbody>
             </table>

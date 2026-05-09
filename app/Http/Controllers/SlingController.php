@@ -239,6 +239,8 @@ class SlingController extends Controller
                 'totalCount' => 0,
                 'connected' => $connected,
                 'tableExists' => false,
+                'typeFilter' => 'all',
+                'hasEventType' => false,
             ]);
         }
 
@@ -249,18 +251,22 @@ class SlingController extends Controller
         $end = $request->input('end')
             ? Carbon::parse($request->input('end'), $tz)->endOfDay()
             : Carbon::today($tz)->addDays(30);
+        $typeFilter = $request->input('type', 'all');
 
-        $shifts = SlingShift::query()
+        $query = SlingShift::query()
             ->whereBetween('dtstart', [$start, $end])
-            ->orderBy('dtstart', 'asc')
-            ->limit(1000)
-            ->get();
+            ->orderBy('dtstart', 'asc');
+        if (Schema::hasColumn('sling_shifts', 'event_type') && in_array($typeFilter, ['shift', 'time_off', 'availability'], true)) {
+            $query->where('event_type', $typeFilter);
+        }
+        $shifts = $query->limit(1000)->get();
 
         $lastSyncedAt = SlingShift::max('last_synced_at');
         $totalCount = SlingShift::count();
+        $hasEventType = Schema::hasColumn('sling_shifts', 'event_type');
 
         return view('admin.sling_shifts', compact(
-            'shifts', 'start', 'end', 'lastSyncedAt', 'totalCount', 'connected'
+            'shifts', 'start', 'end', 'lastSyncedAt', 'totalCount', 'connected', 'typeFilter', 'hasEventType'
         ) + ['tableExists' => true]);
     }
 
@@ -273,31 +279,46 @@ class SlingController extends Controller
      */
     public function setupTable(Request $request)
     {
-        if (Schema::hasTable('sling_shifts')) {
-            return back()->with('status_success', 'Already set up — nothing to do.');
-        }
         try {
-            Schema::create('sling_shifts', function (Blueprint $table) {
-                $table->bigIncrements('id');
-                $table->string('sling_shift_id', 64)->unique();
-                $table->string('sling_user_id', 64)->nullable()->index();
-                $table->string('user_email', 191)->nullable()->index();
-                $table->string('user_name', 191)->nullable();
-                $table->unsignedInteger('erp_user_id')->nullable()->index();
-                $table->string('location_name', 191)->nullable();
-                $table->string('position_name', 191)->nullable();
-                $table->dateTime('dtstart')->index();
-                $table->dateTime('dtend')->nullable();
-                $table->decimal('hours', 8, 2)->default(0);
-                $table->boolean('published')->default(true);
-                $table->longText('raw_payload')->nullable();
-                $table->timestamp('last_synced_at')->nullable();
-                $table->timestamps();
-                $table->index(['dtstart', 'dtend']);
-                $table->index(['erp_user_id', 'dtstart']);
-                $table->foreign('erp_user_id')->references('id')->on('users')->onDelete('set null');
-            });
-            return back()->with('status_success', 'sling_shifts table created. You can click Sync now.');
+            if (!Schema::hasTable('sling_shifts')) {
+                Schema::create('sling_shifts', function (Blueprint $table) {
+                    $table->bigIncrements('id');
+                    $table->string('sling_shift_id', 64)->unique();
+                    $table->string('sling_user_id', 64)->nullable()->index();
+                    $table->string('user_email', 191)->nullable()->index();
+                    $table->string('user_name', 191)->nullable();
+                    $table->unsignedInteger('erp_user_id')->nullable()->index();
+                    $table->string('event_type', 32)->default('shift')->index();
+                    $table->string('location_name', 191)->nullable();
+                    $table->string('position_name', 191)->nullable();
+                    $table->dateTime('dtstart')->index();
+                    $table->dateTime('dtend')->nullable();
+                    $table->decimal('hours', 8, 2)->default(0);
+                    $table->boolean('published')->default(true);
+                    $table->longText('raw_payload')->nullable();
+                    $table->timestamp('last_synced_at')->nullable();
+                    $table->timestamps();
+                    $table->index(['dtstart', 'dtend']);
+                    $table->index(['erp_user_id', 'dtstart']);
+                    $table->foreign('erp_user_id')->references('id')->on('users')->onDelete('set null');
+                });
+                return back()->with('status_success', 'sling_shifts table created. You can click Sync now.');
+            }
+
+            // Table exists — add missing columns idempotently. Lets us evolve
+            // the schema (e.g. event_type for time-off vs shift) without
+            // forcing the GH migration workflow.
+            $changes = [];
+            if (!Schema::hasColumn('sling_shifts', 'event_type')) {
+                Schema::table('sling_shifts', function (Blueprint $table) {
+                    $table->string('event_type', 32)->default('shift')->index()->after('erp_user_id');
+                });
+                $changes[] = 'event_type column';
+            }
+            if (empty($changes)) {
+                return back()->with('status_success', 'Already set up — nothing to do.');
+            }
+            return back()->with('status_success', 'Schema updated: added ' . implode(', ', $changes) . '. Click Sync now to backfill.');
         } catch (\Throwable $e) {
             \Log::warning('Sling setupTable failed: ' . $e->getMessage());
             return back()->with('status_error', 'Setup failed: ' . $e->getMessage());
