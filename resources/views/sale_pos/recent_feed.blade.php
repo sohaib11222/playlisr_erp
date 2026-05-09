@@ -3,7 +3,23 @@
 
 @section('content')
 @include('sale_pos.partials._redesign_v2')
-<script>document.body.classList.add('pos-v2','pos-list-v2');</script>
+<script>
+    document.body.classList.add('pos-v2','pos-list-v2');
+    // Auto-refresh every 30 seconds so the feed stays live without
+    // a manual reload. Pauses while the user has a focused select/input
+    // (changing filters), and skips refresh when the tab is hidden so
+    // background tabs don't keep hammering the server.
+    (function () {
+        var REFRESH_MS = 30000;
+        function tick() {
+            if (document.hidden) return;
+            var ae = document.activeElement;
+            if (ae && (ae.tagName === 'SELECT' || ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) return;
+            window.location.reload();
+        }
+        setInterval(tick, REFRESH_MS);
+    })();
+</script>
 
 <style>
     body.pos-list-v2 section.content { background: #FAF6EE; }
@@ -187,7 +203,7 @@
             <div style="min-width: 120px;">
                 <label for="rf-limit">Show</label>
                 <select name="limit" id="rf-limit" class="form-control" onchange="this.form.submit()">
-                    @foreach([15, 30, 50, 100] as $n)
+                    @foreach([15, 30, 50, 100, 250, 500] as $n)
                         <option value="{{ $n }}" {{ (int)$limit === $n ? 'selected' : '' }}>{{ $n }} sales</option>
                     @endforeach
                 </select>
