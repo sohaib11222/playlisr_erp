@@ -424,6 +424,76 @@ class SlingController extends Controller
         ]);
     }
 
+    private const OVERRIDES_KEY = 'sling_user_overrides';
+
+    /**
+     * Manual Sling-email → ERP user_id overrides for cases where the
+     * email/username heuristic fails (e.g. staff who use a personal
+     * email in Sling and a different email in their ERP profile).
+     * Stored as a JSON map { "sling_email_lower": erp_user_id }.
+     */
+    private function loadOverrides(): array
+    {
+        $raw = (string) (System::getProperty(self::OVERRIDES_KEY) ?? '');
+        if ($raw === '') return [];
+        $arr = json_decode($raw, true);
+        return is_array($arr) ? $arr : [];
+    }
+
+    private function saveOverrides(array $map): void
+    {
+        System::addProperty(self::OVERRIDES_KEY, json_encode($map));
+    }
+
+    /**
+     * Save a manual mapping for a Sling email and immediately backfill
+     * any existing sling_shifts rows that match. Re-sync isn't needed —
+     * the override is applied to past data right here.
+     */
+    public function mapShiftUser(Request $request, $id)
+    {
+        $shift = SlingShift::find($id);
+        if (!$shift) {
+            return back()->with('status_error', 'Shift not found.');
+        }
+        $email = strtolower(trim((string) $shift->user_email));
+        if ($email === '') {
+            return back()->with('status_error', 'This shift has no Sling email; cannot map.');
+        }
+        $erpUserId = (int) $request->input('erp_user_id');
+        if ($erpUserId <= 0) {
+            return back()->with('status_error', 'Pick a valid ERP user.');
+        }
+        $user = \App\User::withTrashed()->find($erpUserId);
+        if (!$user) {
+            return back()->with('status_error', "ERP user #{$erpUserId} not found.");
+        }
+
+        $map = $this->loadOverrides();
+        $map[$email] = $erpUserId;
+        $this->saveOverrides($map);
+
+        $touched = SlingShift::where('user_email', $email)->update(['erp_user_id' => $erpUserId]);
+        return redirect(url('/admin/sling/shifts/' . $shift->id . '/debug'))
+            ->with('status_success', "Mapped {$email} → ERP user #{$erpUserId} ({$user->first_name} {$user->last_name}). {$touched} existing row(s) updated.");
+    }
+
+    public function clearShiftUserMapping(Request $request, $id)
+    {
+        $shift = SlingShift::find($id);
+        if (!$shift) return back()->with('status_error', 'Shift not found.');
+        $email = strtolower(trim((string) $shift->user_email));
+        if ($email === '') return back()->with('status_error', 'No email on this shift.');
+        $map = $this->loadOverrides();
+        if (isset($map[$email])) {
+            unset($map[$email]);
+            $this->saveOverrides($map);
+            SlingShift::where('user_email', $email)->update(['erp_user_id' => null]);
+            return back()->with('status_success', "Cleared override for {$email}.");
+        }
+        return back()->with('status_success', 'No override existed for that email.');
+    }
+
     /**
      * Inspect a single shift's raw Sling payload + the ERP-user lookup
      * for the same email, so we can see exactly why a row is unmatched
@@ -463,7 +533,16 @@ class SlingController extends Controller
                 ->get();
         }
 
-        return view('admin.sling_shift_debug', compact('shift', 'payload', 'erpUsers', 'erpByName', 'email'));
+        $overrides = $this->loadOverrides();
+        $currentOverride = $email !== '' ? ($overrides[$email] ?? null) : null;
+        $overrideUser = $currentOverride
+            ? \App\User::withTrashed()->find($currentOverride)
+            : null;
+
+        return view('admin.sling_shift_debug', compact(
+            'shift', 'payload', 'erpUsers', 'erpByName', 'email',
+            'currentOverride', 'overrideUser'
+        ));
     }
 
     private function rawGet(string $url, string $token): array

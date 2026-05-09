@@ -70,8 +70,7 @@ class SyncSlingShifts extends Command
 
         // ERP user roster — map lowercased email→user_id, with username
         // as a fallback because the users table allows email to be NULL
-        // and many staff get registered with email-as-username only
-        // (e.g. Luis: username=inthesink1999@gmail.com, email=NULL).
+        // and many staff get registered with email-as-username only.
         $erpUserIdByEmail = [];
         User::query()
             ->select('id', 'email', 'username')
@@ -87,6 +86,16 @@ class SyncSlingShifts extends Command
                     }
                 }
             });
+
+        // Manual overrides (set from the per-row debug page) win over the
+        // automatic email/username match. Lets Sarah link Sling staff
+        // whose Sling email differs from their ERP profile email.
+        $overridesRaw = (string) (\App\System::getProperty('sling_user_overrides') ?? '');
+        $overrides = $overridesRaw !== '' ? json_decode($overridesRaw, true) : [];
+        if (!is_array($overrides)) $overrides = [];
+        foreach ($overrides as $oEmail => $oUid) {
+            $erpUserIdByEmail[strtolower(trim((string) $oEmail))] = (int) $oUid;
+        }
 
         $shifts = $client->shifts($start->toDateString(), $end->toDateString());
         $count = is_array($shifts) ? count($shifts) : 0;

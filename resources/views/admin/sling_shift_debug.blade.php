@@ -9,6 +9,28 @@
 </section>
 
 <section class="content">
+
+    @if(session('status_success'))
+        <div class="alert alert-success">{{ session('status_success') }}</div>
+    @endif
+    @if(session('status_error'))
+        <div class="alert alert-danger">{{ session('status_error') }}</div>
+    @endif
+
+    @if($currentOverride)
+        <div class="alert alert-info">
+            <strong>Manual mapping active:</strong>
+            <code>{{ $email }}</code> →
+            ERP user #{{ $currentOverride }}
+            @if($overrideUser)
+                ({{ $overrideUser->first_name }} {{ $overrideUser->last_name }} — {{ $overrideUser->username }})
+            @endif
+            <form method="POST" action="{{ url('/admin/sling/shifts/' . $shift->id . '/clear-mapping') }}" style="display:inline;margin-left:12px;">
+                @csrf
+                <button type="submit" class="btn btn-xs btn-default">Clear mapping</button>
+            </form>
+        </div>
+    @endif
     <div class="box">
         <div class="box-header with-border"><h3 class="box-title">Stored row</h3></div>
         <div class="box-body table-responsive">
@@ -56,7 +78,7 @@
                 <p class="text-danger"><strong>No ERP user found</strong> by exact email or username match (lowercased) — including soft-deleted.</p>
             @else
                 <table class="table table-bordered">
-                    <thead><tr><th>id</th><th>first_name</th><th>last_name</th><th>username</th><th>email</th><th>deleted_at</th></tr></thead>
+                    <thead><tr><th>id</th><th>first_name</th><th>last_name</th><th>username</th><th>email</th><th>deleted_at</th><th>Map</th></tr></thead>
                     @foreach($erpUsers as $u)
                         <tr>
                             <td>{{ $u->id }}</td>
@@ -65,6 +87,13 @@
                             <td>{{ $u->username }}</td>
                             <td>{{ $u->email ?: '(null)' }}</td>
                             <td>{{ $u->deleted_at ?: '—' }}</td>
+                            <td>
+                                <form method="POST" action="{{ url('/admin/sling/shifts/' . $shift->id . '/map-user') }}">
+                                    @csrf
+                                    <input type="hidden" name="erp_user_id" value="{{ $u->id }}">
+                                    <button type="submit" class="btn btn-xs btn-success">Map to #{{ $u->id }}</button>
+                                </form>
+                            </td>
                         </tr>
                     @endforeach
                 </table>
@@ -79,7 +108,7 @@
                 <p class="text-muted">No name match either.</p>
             @else
                 <table class="table table-bordered">
-                    <thead><tr><th>id</th><th>first_name</th><th>last_name</th><th>surname</th><th>username</th><th>email</th><th>deleted_at</th></tr></thead>
+                    <thead><tr><th>id</th><th>first_name</th><th>last_name</th><th>surname</th><th>username</th><th>email</th><th>deleted_at</th><th>Map</th></tr></thead>
                     @foreach($erpByName as $u)
                         <tr>
                             <td>{{ $u->id }}</td>
@@ -89,10 +118,29 @@
                             <td>{{ $u->username }}</td>
                             <td>{{ $u->email ?: '(null)' }}</td>
                             <td>{{ $u->deleted_at ?: '—' }}</td>
+                            <td>
+                                <form method="POST" action="{{ url('/admin/sling/shifts/' . $shift->id . '/map-user') }}">
+                                    @csrf
+                                    <input type="hidden" name="erp_user_id" value="{{ $u->id }}">
+                                    <button type="submit" class="btn btn-xs btn-success">Map to #{{ $u->id }}</button>
+                                </form>
+                            </td>
                         </tr>
                     @endforeach
                 </table>
             @endif
+        </div>
+    </div>
+
+    <div class="box box-default">
+        <div class="box-header with-border"><h3 class="box-title">Manual map by ERP user id</h3></div>
+        <div class="box-body">
+            <p class="text-muted">If the right user isn't in the lists above, paste their ERP user id here.</p>
+            <form method="POST" action="{{ url('/admin/sling/shifts/' . $shift->id . '/map-user') }}" class="form-inline">
+                @csrf
+                <input type="number" name="erp_user_id" class="form-control" placeholder="ERP user id" required style="width:180px;">
+                <button type="submit" class="btn btn-primary">Map {{ $email }} → that user</button>
+            </form>
         </div>
     </div>
 </section>

@@ -424,6 +424,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/admin/sling/shifts/setup', 'SlingController@setupTable');
     Route::get('/admin/sling/shifts/diagnose', 'SlingController@diagnoseShifts');
     Route::get('/admin/sling/shifts/{id}/debug', 'SlingController@debugShift');
+    Route::post('/admin/sling/shifts/{id}/map-user', 'SlingController@mapShiftUser');
+    Route::post('/admin/sling/shifts/{id}/clear-mapping', 'SlingController@clearShiftUserMapping');
     // The old "Clover vs ERP" rollup is superseded by the EOD reconciliation
     // page — same data, better structure (shift cards with drawer math).
     // Redirect preserves any bookmarks pointing at the old URL.
@@ -711,6 +713,14 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // takes the site down. This installer is scope-limited and idempotent.
     Route::get('/admin/install-safe-drop-column', 'InstallSafeDropColumnController@index');
     Route::post('/admin/install-safe-drop-column/run', 'InstallSafeDropColumnController@run');
+
+    // Same pattern, different column. Adds clover_reconciliations.employee_key
+    // + index cr_bdek so the per-cashier "Mark reconciled" + notes textarea
+    // on the EOD reconciliation page can save. Sarah 2026-05-08: notes save
+    // was failing because the run-migrations workflow couldn't SSH from
+    // GitHub-runner IPs the server's firewall doesn't whitelist.
+    Route::get('/admin/install-employee-key-column', 'InstallEmployeeKeyColumnController@index');
+    Route::post('/admin/install-employee-key-column/run', 'InstallEmployeeKeyColumnController@run');
 
     // History of destructive admin backfills with one-click Undo. Every /admin/*
     // /run endpoint that mutates rows in bulk should write a snapshot here first.
