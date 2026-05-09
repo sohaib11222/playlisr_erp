@@ -9,40 +9,52 @@
 <section class="content no-print">
     @php
         $dt = $day_totals ?? null;
-        $eodErp    = $dt ? (float) ($dt['erp_card'] + $dt['erp_cash'] + $dt['erp_other']) : 0;
+        $eodCard   = $dt ? (float) $dt['erp_card']  : 0;
+        $eodCash   = $dt ? (float) $dt['erp_cash']  : 0;
+        $eodOther  = $dt ? (float) $dt['erp_other'] : 0;
         $eodClover = $dt ? (float) $dt['clover']    : 0;
-        $eodDiff   = round($eodClover - $eodErp, 2);
+        $eodDiff   = $dt ? (float) $dt['card_diff'] : 0;
         $eodMatched = abs($eodDiff) < 0.01;
         $eodPct = $eodClover > 0 ? abs($eodDiff) / $eodClover : 0;
         $eodLabel = $is_single_day ? \Carbon\Carbon::parse($start)->format('l, M j') : (\Carbon\Carbon::parse($start)->format('M j') . ' – ' . \Carbon\Carbon::parse($end)->format('M j'));
     @endphp
-    <div style="background:#FFFFFF; border:1px solid #ECE3CF; border-radius:10px; padding:14px 18px; margin-bottom:14px; box-shadow:0 1px 2px rgba(31,27,22,.06);">
+    <div style="background:#FFFFFF; border:1px solid #ECE3CF; border-radius:12px; padding:18px 24px; margin-bottom:16px; box-shadow:0 1px 3px rgba(31,27,22,.08);">
         <div style="display:flex; gap:24px; align-items:baseline; flex-wrap:wrap;">
-            <div style="min-width:140px;">
+            <div>
                 <div style="font-size:11px; color:#5A5045; text-transform:uppercase; letter-spacing:.08em; font-weight:600;">Day totals</div>
                 <div style="font-size:13px; color:#8A7C6A; margin-top:2px;">{{ $eodLabel }}{{ $location_id && isset($business_locations[$location_id]) ? ' · ' . $business_locations[$location_id] : '' }}</div>
+                <div style="font-size:11px; color:#8A7C6A; margin-top:6px; max-width:180px; line-height:1.4;">Net Sales (pre-tax). Card vs Clover should match. Cash never hits Clover.</div>
             </div>
             <div style="flex:1; min-width:140px;">
-                <div style="font-size:11px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">ERP Net Sales</div>
-                <div style="font-size:24px; font-weight:700; color:#1F1B16; font-variant-numeric: tabular-nums;">${{ number_format($eodErp, 2) }}</div>
+                <div style="font-size:12px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">ERP — Card</div>
+                <div style="font-size:30px; font-weight:700; color:#1F1B16; font-variant-numeric: tabular-nums;">${{ number_format($eodCard, 2) }}</div>
             </div>
             <div style="flex:1; min-width:140px;">
-                <div style="font-size:11px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Clover Net Sales</div>
-                <div style="font-size:24px; font-weight:700; color:#1F1B16; font-variant-numeric: tabular-nums;">${{ number_format($eodClover, 2) }}</div>
+                <div style="font-size:12px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Clover</div>
+                <div style="font-size:30px; font-weight:700; color:#1F1B16; font-variant-numeric: tabular-nums;">${{ number_format($eodClover, 2) }}</div>
                 <div style="font-size:11px; color:#8A7C6A;">{{ $dt['clover_count'] ?? 0 }} charges</div>
             </div>
-            <div style="flex:1; min-width:140px;">
-                <div style="font-size:11px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Diff</div>
+            <div style="flex:1; min-width:160px;">
+                <div style="font-size:12px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Card ↔ Clover</div>
                 @if($eodMatched)
-                    <div style="font-size:24px; font-weight:700; color:#2E6F40; font-variant-numeric: tabular-nums;">$0.00</div>
+                    <div style="font-size:30px; font-weight:700; color:#2E6F40; font-variant-numeric: tabular-nums;">$0.00</div>
                     <div style="font-size:11px; color:#2E6F40; font-weight:600;">✓ Matched</div>
                 @else
-                    <div style="font-size:24px; font-weight:700; color:#8B2C2C; font-variant-numeric: tabular-nums;">{{ $eodDiff > 0 ? '+' : '' }}${{ number_format($eodDiff, 2) }}</div>
+                    <div style="font-size:30px; font-weight:700; color:#8B2C2C; font-variant-numeric: tabular-nums;">{{ $eodDiff > 0 ? '+' : '' }}${{ number_format($eodDiff, 2) }}</div>
                     <div style="font-size:11px; color:#8B2C2C;">{{ $eodDiff > 0 ? 'Clover ahead' : 'ERP ahead' }} · {{ number_format($eodPct * 100, 1) }}%</div>
                 @endif
             </div>
+            <div style="flex:1; min-width:140px; border-left:1px dashed #DFD2B3; padding-left:24px;">
+                <div style="font-size:12px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">ERP — Cash</div>
+                <div style="font-size:24px; font-weight:600; color:#5A5045; font-variant-numeric: tabular-nums;">${{ number_format($eodCash, 2) }}</div>
+                <div style="font-size:11px; color:#8A7C6A;">won't appear on Clover</div>
+            </div>
         </div>
-        <div style="font-size:11px; color:#8A7C6A; margin-top:8px;">Net Sales (pre-tax). ERP includes cash + card + other tenders; Clover is what hit the merchant account. Diff = cash & non-card tenders that don't touch Clover.</div>
+        @if($eodOther > 0)
+            <div style="font-size:12px; color:#8A7C6A; margin-top:10px; padding-top:10px; border-top:1px dashed #DFD2B3;">
+                Other tenders (bank transfer / cheque / store credit / etc.): <strong>${{ number_format($eodOther, 2) }}</strong> — also won't appear on Clover.
+            </div>
+        @endif
     </div>
 </section>
 

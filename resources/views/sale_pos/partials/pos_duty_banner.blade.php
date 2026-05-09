@@ -3,9 +3,9 @@
     $dutyLabels = ['cashier' => 'Cashier', 'shipping' => 'Shipping', 'inventory' => 'Inventory'];
 @endphp
 @if(in_array($pd, ['cashier', 'shipping', 'inventory'], true))
-    <div class="alert alert-info" style="margin-bottom:12px;padding:8px 14px;border-radius:8px;display:flex;flex-wrap:wrap;align-items:center;gap:10px;justify-content:space-between;">
+    <div style="margin-bottom:12px;padding:6px 12px;border-radius:6px;display:flex;flex-wrap:wrap;align-items:center;gap:10px;justify-content:space-between;background:#FAF6EE;border:1px solid #ECE3CF;color:#5A5045;font-size:12px;">
         <span>
-            <strong>POS today:</strong> {{ $dutyLabels[$pd] ?? $pd }}
+            <strong style="color:#1F1B16;">POS today:</strong> {{ $dutyLabels[$pd] ?? $pd }}
             @if(session('pos_duty_location_label'))
                 · {{ session('pos_duty_location_label') }}
             @endif
@@ -23,6 +23,6 @@
                 @if($openAtLabel) <span class="text-muted">(logged {{ $openAtLabel }})</span> @endif
             @endif
         </span>
-        <a href="{{ action('SellPosController@selectPosDuty', ['intended' => request()->fullUrl()]) }}" class="btn btn-default btn-sm">Change</a>
+        <a href="{{ action('SellPosController@selectPosDuty', ['intended' => request()->fullUrl()]) }}" style="font-size:11px;color:#5A5045;text-decoration:underline;">Change</a>
     </div>
 @endif
