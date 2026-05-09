@@ -424,6 +424,48 @@ class SlingController extends Controller
         ]);
     }
 
+    /**
+     * Inspect a single shift's raw Sling payload + the ERP-user lookup
+     * for the same email, so we can see exactly why a row is unmatched
+     * or mis-classified. Read-only.
+     */
+    public function debugShift(Request $request, $id)
+    {
+        $shift = SlingShift::find($id);
+        if (!$shift) {
+            return back()->with('status_error', 'Shift #' . $id . ' not found.');
+        }
+        $payload = $shift->raw_payload ? json_decode($shift->raw_payload, true) : null;
+
+        $email = strtolower(trim((string) $shift->user_email));
+        $erpUsers = collect();
+        if ($email !== '') {
+            $erpUsers = \App\User::withTrashed()
+                ->where(function ($q) use ($email) {
+                    $q->whereRaw('LOWER(email) = ?', [$email])
+                      ->orWhereRaw('LOWER(username) = ?', [$email]);
+                })
+                ->select('id', 'first_name', 'last_name', 'username', 'email', 'deleted_at')
+                ->get();
+        }
+        // Also try a name-based search if no email match.
+        $erpByName = collect();
+        $name = trim((string) $shift->user_name);
+        if ($name !== '') {
+            $first = explode(' ', $name)[0];
+            $erpByName = \App\User::withTrashed()
+                ->where(function ($q) use ($first) {
+                    $q->where('first_name', 'like', $first . '%')
+                      ->orWhere('surname', 'like', $first . '%');
+                })
+                ->select('id', 'first_name', 'last_name', 'surname', 'username', 'email', 'deleted_at')
+                ->limit(10)
+                ->get();
+        }
+
+        return view('admin.sling_shift_debug', compact('shift', 'payload', 'erpUsers', 'erpByName', 'email'));
+    }
+
     private function rawGet(string $url, string $token): array
     {
         try {

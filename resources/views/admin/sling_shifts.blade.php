@@ -151,6 +151,7 @@
                             @else
                                 <span class="text-muted">unmatched</span>
                             @endif
+                            <a href="{{ url('/admin/sling/shifts/' . $s->id . '/debug') }}" class="text-muted" style="margin-left:6px;font-size:11px;" title="Inspect raw payload">[?]</a>
                         </td>
                     </tr>
                 @empty

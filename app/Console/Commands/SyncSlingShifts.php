@@ -171,35 +171,54 @@ class SyncSlingShifts extends Command
     }
 
     /**
-     * Sling's calendar API mixes shifts and time-off into one stream. We
-     * tag each row so the report side can filter. Probe the most common
-     * field names — Sling's payload shape varies — and fall back to
-     * 'shift' (the dominant type) when nothing matches.
+     * Sling's calendar API mixes shifts, time-off and availability into
+     * one stream. Strict classifier: only look at explicit `type` (or
+     * synonyms) field values, never blob-match the whole payload — that
+     * was producing false "Availability" hits because most shift records
+     * embed an `available`/`availabilities` field as routine metadata.
+     *
+     * Falls back to a duration heuristic for the "all-day" case: a row
+     * starting at midnight and ending at 23:59 of the same date (or with
+     * hours >= 20) is almost always time-off in Sling.
      */
     private function detectEventType(array $shift): string
     {
-        $candidates = [];
+        $type = null;
         foreach (['type', 'eventType', 'kind', 'category'] as $k) {
             if (!empty($shift[$k]) && is_string($shift[$k])) {
-                $candidates[] = strtolower($shift[$k]);
+                $type = strtolower(trim($shift[$k]));
+                break;
             }
         }
-        $blob = strtolower(json_encode($shift));
-        $hay = implode('|', $candidates) . '|' . $blob;
 
-        if (preg_match('/\btime[\-_ ]?off\b|"timeoff"|"pto"|"vacation"|"sick"/', $hay)) {
-            return SlingShift::TYPE_TIME_OFF;
+        if ($type !== null) {
+            if (preg_match('/^(timeoff|time[\-_ ]?off|pto|vacation|sick|leave|absence)$/', $type)) {
+                return SlingShift::TYPE_TIME_OFF;
+            }
+            if (preg_match('/^(availab|free)/', $type)) {
+                return SlingShift::TYPE_AVAILABILITY;
+            }
+            if (preg_match('/^(shift|event)$/', $type)) {
+                return SlingShift::TYPE_SHIFT;
+            }
         }
-        if (preg_match('/\bavailab/', $hay)) {
-            return SlingShift::TYPE_AVAILABILITY;
-        }
-        // "All-day" markers without a discrete time range are almost
-        // always time-off in Sling. Heuristic: dtstart present but no
-        // dtend, or both stamped at midnight with the day-end equaling
-        // the day-start + 24h exactly.
+
         if (!empty($shift['allDay']) || !empty($shift['all_day'])) {
             return SlingShift::TYPE_TIME_OFF;
         }
+
+        $start = $shift['dtstart'] ?? ($shift['startDate'] ?? null);
+        $end = $shift['dtend'] ?? ($shift['endDate'] ?? null);
+        if ($start && $end) {
+            $sec = max(0, strtotime($end) - strtotime($start));
+            $hours = $sec / 3600.0;
+            $startsMidnight = preg_match('/[T ]00:00(:00)?$/', (string) $start);
+            $endsLateDay = preg_match('/[T ]23:59(:\d{2})?$/', (string) $end);
+            if (($startsMidnight && $endsLateDay) || $hours >= 20) {
+                return SlingShift::TYPE_TIME_OFF;
+            }
+        }
+
         return SlingShift::TYPE_SHIFT;
     }
 
