@@ -97,7 +97,7 @@
             <div style="margin-top:14px;">
               <label for="cash_in_hand_safe_drop" style="font-size:12px; font-weight:700;
                   text-transform:uppercase; letter-spacing:.04em; color:#5A4410; margin-bottom:6px; display:block;">
-                Amount you ACTUALLY put in the safe
+                Amount you put in the safe
                 <span style="font-weight:500; text-transform:none; color:#8E8273; letter-spacing:0;">
                   — leave blank if nothing
                 </span>
