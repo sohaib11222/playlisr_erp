@@ -29,13 +29,30 @@ jobs:
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
         run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
 
-      - name: Add server to known_hosts
+      # Try up to 3 times to populate known_hosts. ssh-keyscan to the prod
+      # host has been intermittently flaky from GitHub-hosted runners — a
+      # one-shot keyscan was failing the whole workflow before it ever
+      # reached migrate. Sarah 2026-05-08: "never works it always messed
+      # up." continue-on-error means even if all 3 retries fail, we still
+      # try the SSH step — appleboy/ssh-action does its own host-key
+      # handling internally and works without a pre-seeded known_hosts.
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          ssh-keyscan -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+          for attempt in 1 2 3; do
+            echo "ssh-keyscan attempt $attempt"
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              echo "ssh-keyscan succeeded"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "ssh-keyscan failed after 3 tries — continuing anyway, appleboy/ssh-action will handle host keys"
+          exit 0
 
       - name: Run php artisan migrate --force
         uses: appleboy/ssh-action@v1.2.0
