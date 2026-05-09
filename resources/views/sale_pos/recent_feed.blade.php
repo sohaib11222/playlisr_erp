@@ -181,39 +181,56 @@
 <section class="content">
     <div class="rf-wrap">
         @php
-            $rfErpToday   = (float) ($erp_today_total ?? 0);
-            $rfCloverToday = (float) ($clover_today_total ?? 0);
-            $rfDiff = round($rfCloverToday - $rfErpToday, 2);
-            $rfDiffPct = $rfCloverToday > 0 ? abs($rfDiff) / $rfCloverToday : 0;
+            $rfErpCard   = (float) ($erp_today_card_total ?? 0);
+            $rfErpCash   = (float) ($erp_today_cash_total ?? 0);
+            $rfErpOther  = (float) ($erp_today_other_total ?? 0);
+            $rfErpTotal  = $rfErpCard + $rfErpCash + $rfErpOther;
+            $rfClover    = (float) ($clover_today_total ?? 0);
+            // Card-to-card is the apples-to-apples reconciliation. Cash
+            // sales never touch Clover by design, so they're shown
+            // separately and don't count against the match status.
+            $rfDiff = round($rfClover - $rfErpCard, 2);
+            $rfDiffPct = $rfClover > 0 ? abs($rfDiff) / $rfClover : 0;
             $rfMatched = abs($rfDiff) < 0.01;
         @endphp
         <div style="background:#FFFFFF; border:1px solid #ECE3CF; border-radius:12px; padding:18px 24px; margin-bottom:16px; box-shadow:0 1px 3px rgba(31,27,22,.08);">
-            <div style="display:flex; gap:30px; align-items:baseline; flex-wrap:wrap;">
+            <div style="display:flex; gap:24px; align-items:baseline; flex-wrap:wrap;">
                 <div>
                     <div style="font-size:11px; color:#5A5045; text-transform:uppercase; letter-spacing:.08em; font-weight:600;">Today's sales</div>
                     <div style="font-size:13px; color:#8A7C6A; margin-top:2px;">{{ \Carbon\Carbon::now()->format('l, M j') }}{{ $location_id && isset($business_locations[$location_id]) ? ' · ' . $business_locations[$location_id] : '' }}</div>
+                    <div style="font-size:11px; color:#8A7C6A; margin-top:6px; max-width:160px; line-height:1.4;">Card vs Clover should match. Cash never hits Clover.</div>
                 </div>
                 <div style="flex:1; min-width:140px;">
-                    <div style="font-size:12px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">ERP</div>
-                    <div style="font-size:32px; font-weight:700; color:#1F1B16; font-variant-numeric: tabular-nums;">${{ number_format($rfErpToday, 2) }}</div>
-                    <div style="font-size:12px; color:#8A7C6A;">{{ $erp_today_count ?? 0 }} sales</div>
+                    <div style="font-size:12px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">ERP — Card</div>
+                    <div style="font-size:30px; font-weight:700; color:#1F1B16; font-variant-numeric: tabular-nums;">${{ number_format($rfErpCard, 2) }}</div>
+                    <div style="font-size:11px; color:#8A7C6A;">card portion of {{ $erp_today_count ?? 0 }} sales</div>
                 </div>
                 <div style="flex:1; min-width:140px;">
                     <div style="font-size:12px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Clover</div>
-                    <div style="font-size:32px; font-weight:700; color:#1F1B16; font-variant-numeric: tabular-nums;">${{ number_format($rfCloverToday, 2) }}</div>
-                    <div style="font-size:12px; color:#8A7C6A;">{{ $clover_today_count ?? 0 }} charges</div>
+                    <div style="font-size:30px; font-weight:700; color:#1F1B16; font-variant-numeric: tabular-nums;">${{ number_format($rfClover, 2) }}</div>
+                    <div style="font-size:11px; color:#8A7C6A;">{{ $clover_today_count ?? 0 }} charges</div>
                 </div>
                 <div style="flex:1; min-width:160px;">
-                    <div style="font-size:12px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Difference</div>
+                    <div style="font-size:12px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Card ↔ Clover</div>
                     @if($rfMatched)
-                        <div style="font-size:32px; font-weight:700; color:#2E6F40; font-variant-numeric: tabular-nums;">$0.00</div>
-                        <div style="font-size:12px; color:#2E6F40; font-weight:600;">✓ Matched</div>
+                        <div style="font-size:30px; font-weight:700; color:#2E6F40; font-variant-numeric: tabular-nums;">$0.00</div>
+                        <div style="font-size:11px; color:#2E6F40; font-weight:600;">✓ Matched</div>
                     @else
-                        <div style="font-size:32px; font-weight:700; color:#8B2C2C; font-variant-numeric: tabular-nums;">{{ $rfDiff > 0 ? '+' : '' }}${{ number_format($rfDiff, 2) }}</div>
-                        <div style="font-size:12px; color:#8B2C2C;">{{ $rfDiff > 0 ? 'Clover ahead' : 'ERP ahead' }} · {{ number_format($rfDiffPct * 100, 1) }}%</div>
+                        <div style="font-size:30px; font-weight:700; color:#8B2C2C; font-variant-numeric: tabular-nums;">{{ $rfDiff > 0 ? '+' : '' }}${{ number_format($rfDiff, 2) }}</div>
+                        <div style="font-size:11px; color:#8B2C2C;">{{ $rfDiff > 0 ? 'Clover ahead' : 'ERP ahead' }} · {{ number_format($rfDiffPct * 100, 1) }}%</div>
                     @endif
                 </div>
+                <div style="flex:1; min-width:140px; border-left:1px dashed #DFD2B3; padding-left:24px;">
+                    <div style="font-size:12px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">ERP — Cash</div>
+                    <div style="font-size:24px; font-weight:600; color:#5A5045; font-variant-numeric: tabular-nums;">${{ number_format($rfErpCash, 2) }}</div>
+                    <div style="font-size:11px; color:#8A7C6A;">won't appear on Clover</div>
+                </div>
             </div>
+            @if($rfErpOther > 0)
+                <div style="font-size:12px; color:#8A7C6A; margin-top:10px; padding-top:10px; border-top:1px dashed #DFD2B3;">
+                    Other tenders (bank transfer / cheque / store credit / etc.): <strong>${{ number_format($rfErpOther, 2) }}</strong> — also won't appear on Clover.
+                </div>
+            @endif
         </div>
     </div>
 </section>
@@ -395,19 +412,21 @@
                     Clover charged <strong>${{ number_format($cpAmount, 2) }}</strong> but no matching ERP sale was found for this store + amount in the scanned window. Investigate: missing ring-up, voided sale, or a charge from outside the scanned date range.
                 </div>
                 @php $nearMatches = $orphan_near_matches[$cp->clover_payment_id] ?? []; @endphp
-                @if(!empty($nearMatches))
-                    <div style="margin: 6px 16px 8px 16px; padding: 8px 10px; background:#FAF6EE; border:1px dashed #DFD2B3; border-radius:6px; font-size: 12px;">
-                        <div style="color:#5A5045; font-weight:600; margin-bottom:4px;">Closest ERP sales by amount:</div>
+                <div style="margin: 6px 16px 8px 16px; padding: 8px 10px; background:#FAF6EE; border:1px dashed #DFD2B3; border-radius:6px; font-size: 12px;">
+                    @if(!empty($nearMatches))
+                        <div style="color:#5A5045; font-weight:600; margin-bottom:4px;">Unmatched ERP sales within 1h:</div>
                         @foreach($nearMatches as $nm)
                             <div style="display:flex; gap:10px; padding:2px 0; color:#3A3128;">
                                 <a href="{{ url('sells/' . $nm['tx_id']) }}" style="color:#1F1B16; text-decoration:underline;">#{{ $nm['invoice_no'] }}</a>
-                                <span style="color:#5A5045;">{{ \Carbon\Carbon::parse($nm['ts'])->format('M j g:i a') }}</span>
+                                <span style="color:#5A5045;">{{ \Carbon\Carbon::parse($nm['ts'])->format('g:i a') }}</span>
                                 <span style="font-variant-numeric: tabular-nums;">${{ number_format($nm['amount'], 2) }}</span>
                                 <span style="color:{{ $nm['why'] === 'WOULD MATCH' ? '#8B2C2C' : '#5A5045' }}; margin-left:auto; font-style:italic;">{{ $nm['why'] }}</span>
                             </div>
                         @endforeach
-                    </div>
-                @endif
+                    @else
+                        <div style="color:#8B2C2C; font-weight:600;">⚠ No unmatched ERP sale within 1 hour — this is a real missing ring-up.</div>
+                    @endif
+                </div>
                 <div class="rf-foot">
                     <div class="rf-foot-meta">
                         @if(!empty($cp->clover_payment_id))

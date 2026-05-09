@@ -1,0 +1,82 @@
+# Deep diagnostic — tests every layer of the request path so we know
+# WHERE the site is broken: nginx, php-fpm, Laravel, or the public network.
+
+name: Deep diagnose
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: production-restart
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+      - name: Add server to known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Test from GitHub runner (outside)
+        run: |
+          echo "=== from outside (GitHub Actions runner) ==="
+          for url in https://playlist.nivessa.com/ https://playlist.nivessa.com/login; do
+            echo "--- $url ---"
+            curl -v -s -o /tmp/body.html -w "HTTP %{http_code} · time %{time_total}s · size %{size_download}\n" -m 15 "$url" 2>&1 | tail -20
+          done
+
+      - name: Test from inside the server
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 60s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+
+            echo "=== nginx listening sockets ==="
+            ss -ltn 2>/dev/null | head -20
+            echo
+
+            echo "=== test localhost:80 (plain) ==="
+            curl -v -s -o /tmp/b.html -w "HTTP %{http_code} · time %{time_total}s\n" -m 10 http://localhost/ 2>&1 | tail -15
+            echo
+
+            echo "=== test localhost:443 (TLS, allow self-signed) ==="
+            curl -kv -s -o /tmp/b.html -w "HTTP %{http_code} · time %{time_total}s\n" -m 10 https://localhost/ 2>&1 | tail -15
+            echo
+
+            echo "=== test playlist.nivessa.com/login from inside ==="
+            curl -v -s -o /tmp/b.html -w "HTTP %{http_code} · time %{time_total}s\n" -m 10 https://playlist.nivessa.com/login 2>&1 | tail -20
+            echo
+
+            echo "=== php-fpm pool status ==="
+            systemctl status php7.4-fpm --no-pager -n 5 2>&1 | head -20
+            echo
+
+            echo "=== nginx status ==="
+            systemctl status nginx --no-pager -n 5 2>&1 | head -20
+            echo
+
+            echo "=== laravel.log tail (try with cat) ==="
+            ls -la storage/logs/ 2>&1 | tail -5
+            cat storage/logs/laravel.log 2>&1 | tail -50
+            echo
+
+            echo "=== Laravel boot test ==="
+            php artisan --version 2>&1 | head -5
+            php artisan route:list 2>&1 | head -3

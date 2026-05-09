@@ -624,11 +624,12 @@ class SellPosController extends Controller
             })->values();
         }
 
-        // Per-orphan diagnostic: for each unclaimed Clover charge, find the
-        // 3 closest ERP sales by amount (within ±$5) and explain why each
-        // wasn't picked — so Sarah can tell at a glance whether an orphan
-        // is a true gap (no ERP entry exists for that amount nearby) or a
-        // false orphan that the matcher is rejecting (and why).
+        // Per-orphan diagnostic: for each unclaimed Clover charge, find ERP
+        // sales within ±1 hour at any amount (Sarah 2026-05-09: anything
+        // beyond an hour is just a different sale that happens to share an
+        // amount — useless noise). Within that 1-hour window, sort by
+        // closest amount delta, then time. If nothing within the window,
+        // the orphan is a genuine missing ring-up.
         $orphan_near_matches = [];
         if (isset($matchSales) && $unclaimed_clover_payments->isNotEmpty()) {
             $toCentsDiag = function ($x) { return (int) round(((float) $x) * 100); };
@@ -638,17 +639,16 @@ class SellPosController extends Controller
                 $cpLoc   = $cp->location_id !== null ? (int) $cp->location_id : null;
                 $rows = [];
                 foreach ($matchSales as $sale) {
+                    if (isset($claimedSaleIds[$sale->id])) continue; // unmatched only
+                    $erTs = strtotime((string) $sale->transaction_date);
+                    $timeDelta = abs($erTs - $cpTs);
+                    if ($timeDelta > 3600) continue; // ±1 hour hard cap
                     $erCents = $toCentsDiag($sale->final_total);
                     $amtDelta = abs($erCents - $cpCents);
-                    if ($amtDelta > 500) continue; // ±$5 — wide enough to reveal near-misses
-                    $erTs = strtotime((string) $sale->transaction_date);
                     $erLoc = $sale->location_id !== null ? (int) $sale->location_id : null;
-                    $timeDelta = abs($erTs - $cpTs);
                     $why = [];
                     if ($amtDelta > 5) $why[] = '$' . number_format($amtDelta / 100, 2) . ' off';
                     if ($cpLoc !== null && $erLoc !== null && $cpLoc !== $erLoc) $why[] = 'wrong store';
-                    if ($timeDelta > 43200) $why[] = floor($timeDelta / 3600) . 'h apart';
-                    if (isset($claimedSaleIds[$sale->id])) $why[] = 'paired w/ another Clover';
                     $rows[] = [
                         'tx_id'       => $sale->id,
                         'invoice_no'  => $sale->invoice_no,
@@ -810,23 +810,40 @@ class SellPosController extends Controller
         // are explicitly ERP-side filters, so suppress orphan Clover there.
         $show_clover_only = in_array($discrepancy, ['', 'any', 'no_erp'], true);
 
-        // Today's totals — Sarah 2026-05-08: she wants a big "today" tally
-        // at the top, and ERP and Clover should match exactly. Computed
-        // server-side using the same filters as the recon (final sells,
-        // not xlsx-imported); Clover side filters to result in (NULL,
-        // SUCCESS, APPROVED) to match the matcher's pool.
+        // Today's totals — Sarah 2026-05-08: a big "today" tally at the top.
+        // ERP includes both cash and card sales; Clover only has card
+        // charges. So the card-to-card comparison is what should match.
+        // Cash sales are shown separately as informational, since they
+        // won't appear on Clover at all by design.
         $todayStr = \Carbon\Carbon::now()->format('Y-m-d');
-        $erpTodayQ = \DB::table('transactions')
-            ->where('business_id', $business_id)
-            ->where('type', 'sell')
-            ->where('status', 'final')
-            ->whereNull('import_source')
-            ->whereDate('transaction_date', $todayStr);
-        if (!empty($location_id)) {
-            $erpTodayQ->where('location_id', $location_id);
+        $erpRowsToday = \DB::table('transactions as t')
+            ->leftJoin('transaction_payments as tp', 'tp.transaction_id', '=', 't.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereNull('t.import_source')
+            ->whereDate('t.transaction_date', $todayStr)
+            ->when(!empty($location_id), fn($q) => $q->where('t.location_id', $location_id))
+            ->selectRaw("t.id, t.final_total, COALESCE(tp.method, 'cash') as method, COALESCE(tp.amount, t.final_total) as paid_amount")
+            ->get();
+
+        // Per-method totals: a transaction with split tender contributes
+        // its respective method amounts. Transactions with no payment row
+        // fall back to 'cash' (cashier didn't pick a method) and the
+        // full final_total.
+        $erp_today_card_total = 0.0;
+        $erp_today_cash_total = 0.0;
+        $erp_today_other_total = 0.0;
+        $erp_today_tx_ids = [];
+        foreach ($erpRowsToday as $r) {
+            $erp_today_tx_ids[$r->id] = true;
+            $amt = (float) $r->paid_amount;
+            if ($r->method === 'card') $erp_today_card_total += $amt;
+            elseif ($r->method === 'cash') $erp_today_cash_total += $amt;
+            else $erp_today_other_total += $amt;
         }
-        $erp_today_total = (float) $erpTodayQ->sum('final_total');
-        $erp_today_count = (int) $erpTodayQ->count();
+        $erp_today_total = $erp_today_card_total + $erp_today_cash_total + $erp_today_other_total;
+        $erp_today_count = count($erp_today_tx_ids);
 
         $cloverTodayQ = \DB::table('clover_payments')
             ->where('business_id', $business_id)
@@ -840,7 +857,7 @@ class SellPosController extends Controller
         $clover_today_total = (float) $cloverTodayQ->sum('amount');
         $clover_today_count = (int) $cloverTodayQ->count();
 
-        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'clover_today_total', 'clover_today_count'));
+        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count'));
     }
 
     /**

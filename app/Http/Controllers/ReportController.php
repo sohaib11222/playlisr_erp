@@ -7266,11 +7266,87 @@ class ReportController extends Controller
             $business_id, $start, $end, $location_id, $card_methods, $used_all_methods
         );
 
+        // Day totals banner — Sarah 2026-05-08: she wants the recon page
+        // to lead with the card-to-card comparison (apples-to-apples)
+        // plus cash and other tenders broken out separately. Mirrors the
+        // banner on /pos/recent-feed.
+        $erpCardQ = \DB::table('transaction_payments as tp')
+            ->join('transactions as t', 'tp.transaction_id', '=', 't.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereNull('t.import_source')
+            ->whereDate('t.transaction_date', '>=', $start)
+            ->whereDate('t.transaction_date', '<=', $end);
+        if (!$used_all_methods) {
+            $erpCardQ->whereIn('tp.method', $card_methods);
+        }
+        if (!empty($location_id)) {
+            $erpCardQ->where('t.location_id', $location_id);
+        }
+        $erp_card_total = (float) $erpCardQ->sum('tp.amount');
+
+        $erpCashQ = \DB::table('transaction_payments as tp')
+            ->join('transactions as t', 'tp.transaction_id', '=', 't.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereNull('t.import_source')
+            ->whereDate('t.transaction_date', '>=', $start)
+            ->whereDate('t.transaction_date', '<=', $end)
+            ->where('tp.method', 'cash');
+        if (!empty($location_id)) {
+            $erpCashQ->where('t.location_id', $location_id);
+        }
+        $erp_cash_total = (float) $erpCashQ->sum('tp.amount');
+
+        // Other = anything that's not card and not cash (bank transfer,
+        // cheque, store credit, etc.). Computed as ERP total minus cash
+        // and card so we don't have to enumerate every method name.
+        $erpAllQ = \DB::table('transaction_payments as tp')
+            ->join('transactions as t', 'tp.transaction_id', '=', 't.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereNull('t.import_source')
+            ->whereDate('t.transaction_date', '>=', $start)
+            ->whereDate('t.transaction_date', '<=', $end);
+        if (!empty($location_id)) {
+            $erpAllQ->where('t.location_id', $location_id);
+        }
+        $erp_all_total = (float) $erpAllQ->sum('tp.amount');
+        $erp_other_total = round($erp_all_total - $erp_card_total - $erp_cash_total, 2);
+        if ($erp_other_total < 0) $erp_other_total = 0; // float drift guard
+
+        $cloverDayQ = \DB::table('clover_payments')
+            ->where('business_id', $business_id)
+            ->where(function ($q) {
+                $q->whereNull('result')->orWhere('result', 'SUCCESS')->orWhere('result', 'APPROVED');
+            })
+            ->whereDate('paid_on', '>=', $start)
+            ->whereDate('paid_on', '<=', $end);
+        if (!empty($location_id)) {
+            $cloverDayQ->where(function ($q) use ($location_id) {
+                $q->where('location_id', $location_id)->orWhereNull('location_id');
+            });
+        }
+        $clover_day_total = (float) $cloverDayQ->sum('amount');
+        $clover_day_count = (int) $cloverDayQ->count();
+
+        $day_totals = [
+            'erp_card'      => $erp_card_total,
+            'erp_cash'      => $erp_cash_total,
+            'erp_other'     => $erp_other_total,
+            'clover'        => $clover_day_total,
+            'clover_count'  => $clover_day_count,
+            'card_diff'     => round($clover_day_total - $erp_card_total, 2),
+        ];
+
         return view('report.clover_eod_reconciliation')->with(compact(
             'rows', 'grand', 'start', 'end', 'location_id', 'business_locations',
             'employee_breakdown_by_day', 'unknown_rows',
             'is_single_day', 'prev_day', 'next_day', 'today_str',
-            'reconciliations', 'shift_audit', 'xlsx_layout'
+            'reconciliations', 'shift_audit', 'xlsx_layout', 'day_totals'
         ));
     }
 
