@@ -7139,6 +7139,21 @@ class ReportController extends Controller
             $depositVariance = round($erpTotal - $depositTotal, 2);
             $status = $this->reconciliationStatus($variance);
             $depositStatus = $this->reconciliationStatus($depositVariance);
+
+            // Pull the matching cash-register safe-drop total. Same NULL-
+            // location fallback the Clover/Batch sides use, claimed at most
+            // once per day so multi-location days don't double-count.
+            $safeDrop = null;
+            if (isset($safe_drop_by_day_loc[$day][$locId]) && empty($claimed[$day]['s' . $locId])) {
+                $safeDrop = $safe_drop_by_day_loc[$day][$locId];
+                $claimed[$day]['s' . $locId] = true;
+            } elseif (isset($safe_drop_by_day_loc[$day][0]) && empty($claimed[$day]['s0'])) {
+                $safeDrop = $safe_drop_by_day_loc[$day][0];
+                $claimed[$day]['s0'] = true;
+            }
+            $safeDropTotal = (float) ($safeDrop->safe_drop_total ?? 0);
+            $safeDropCount = (int) ($safeDrop->drop_count ?? 0);
+
             $rows[] = (object) [
                 'day' => $day,
                 'location_name' => $r->location_name ?: '(no location)',
@@ -7153,6 +7168,8 @@ class ReportController extends Controller
                 'deposit_variance' => $depositVariance,
                 'status' => $status,
                 'deposit_status' => $depositStatus,
+                'safe_drop_total' => $safeDropTotal,
+                'safe_drop_count' => $safeDropCount,
             ];
             $grand['erp'] += $erpTotal;
             $grand['clover'] += $cloverTotal;
@@ -7160,6 +7177,7 @@ class ReportController extends Controller
             $grand['deposit'] += $depositTotal;
             $grand['variance'] += $variance;
             $grand['deposit_variance'] += $depositVariance;
+            $grand['safe_drop'] += $safeDropTotal;
             if ($status !== 'reconciled') $grand['flagged_days']++;
             if ($depositStatus !== 'reconciled') $grand['deposit_flagged_days']++;
         }
@@ -7194,6 +7212,8 @@ class ReportController extends Controller
                     'deposit_variance' => $depositVariance,
                     'status' => $this->reconciliationStatus($variance),
                     'deposit_status' => $this->reconciliationStatus($depositVariance),
+                    'safe_drop_total' => 0.0,
+                    'safe_drop_count' => 0,
                 ];
                 $grand['clover'] += $cloverTotal;
                 $grand['batch'] += $batchTotal;
@@ -7692,12 +7712,41 @@ class ReportController extends Controller
                 = ($by_day[$day][$loc]['clover_total'] ?? 0) + (float) $r->amount;
         }
 
+        // Safe drops per (day, location) — sums what cashiers reported
+        // moving to the safe at close. Tolerant of the column not existing
+        // yet (the install-safe-drop-column installer might not have run).
+        $safe_drops = [];
+        if (\Schema::hasColumn('cash_registers', 'safe_drop_amount')) {
+            $sdQ = \DB::table('cash_registers')
+                ->where('business_id', $business_id)
+                ->where('status', 'close')
+                ->whereNotNull('closed_at')
+                ->whereDate('closed_at', '>=', $start)
+                ->whereDate('closed_at', '<=', $end);
+            if (!empty($location_id)) {
+                $sdQ->where('location_id', $location_id);
+            }
+            $sdRows = $sdQ
+                ->selectRaw("DATE(closed_at) as day, COALESCE(location_id, 0) as loc_key,
+                    COALESCE(SUM(safe_drop_amount), 0) as safe_drop_total,
+                    COUNT(*) as drop_count")
+                ->groupBy(DB::raw('DATE(closed_at)'), DB::raw('COALESCE(location_id, 0)'))
+                ->get();
+            foreach ($sdRows as $sd) {
+                $safe_drops[(string) $sd->day][(int) $sd->loc_key] = $sd;
+            }
+        }
+
         // Normalize → ordered array, most recent day first, locations alpha.
         $by_day_list = [];
         krsort($by_day);
         foreach ($by_day as $day => $locs) {
             $block = ['day' => $day, 'locations' => []];
             foreach ($locs as $loc) {
+                $loc_id_for_safe = (int) ($loc['location_id'] ?? 0);
+                $sd = $safe_drops[$day][$loc_id_for_safe]
+                    ?? $safe_drops[$day][0]
+                    ?? null;
                 $block['locations'][] = [
                     'location_id'     => $loc['location_id'] ?? null,
                     'location_name'   => $loc['location_name'] ?? '(no location)',
@@ -7705,6 +7754,8 @@ class ReportController extends Controller
                     'erp_payments'    => $loc['erp_payments'] ?? [],
                     'clover_total'    => round($loc['clover_total'] ?? 0, 2),
                     'erp_total'       => round($loc['erp_total'] ?? 0, 2),
+                    'safe_drop_total' => round((float) ($sd->safe_drop_total ?? 0), 2),
+                    'safe_drop_count' => (int) ($sd->drop_count ?? 0),
                 ];
             }
             usort($block['locations'], fn($a, $b) => strcmp($a['location_name'], $b['location_name']));

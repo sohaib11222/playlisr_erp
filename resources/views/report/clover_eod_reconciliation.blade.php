@@ -876,6 +876,14 @@
                                     &nbsp;·&nbsp;
                                     diff <span class="{{ $lcls }}">{{ $ldiff >= 0 ? '+' : '' }}${{ number_format($ldiff, 2) }}</span>
                                 </div>
+                                @if(!empty($loc['safe_drop_total']) && $loc['safe_drop_total'] > 0)
+                                    <div style="font-size:13px; color:#6B2A14; margin-top:4px;">
+                                        🔒 Safe drops <strong>${{ number_format($loc['safe_drop_total'], 2) }}</strong>
+                                        @if(!empty($loc['safe_drop_count']))
+                                            <span style="font-size:11px; color:#8E8273;">across {{ $loc['safe_drop_count'] }} shift{{ $loc['safe_drop_count'] === 1 ? '' : 's' }} · check post-its on bundles</span>
+                                        @endif
+                                    </div>
+                                @endif
                             </div>
                             <div style="text-align:right; min-width:220px;">
                                 <label class="eod-recon-toggle" style="display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:600; cursor:pointer; color:{{ $isReconciled ? '#166534' : '#374151' }};">
