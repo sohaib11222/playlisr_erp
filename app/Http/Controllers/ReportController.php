@@ -7266,63 +7266,30 @@ class ReportController extends Controller
             $business_id, $start, $end, $location_id, $card_methods, $used_all_methods
         );
 
-        // Day totals banner — Sarah 2026-05-08/09: card-to-card NET
-        // (pre-tax) comparison so it matches Clover's "Net Sales"
-        // dashboard. ERP per-payment net = tp.amount × (total_before_tax
-        // / final_total) — proportional split-tender. No tips at this
-        // store and refunds are rare, so amount−tax is sufficient.
-        $erpRowsRange = \DB::table('transaction_payments as tp')
-            ->join('transactions as t', 'tp.transaction_id', '=', 't.id')
-            ->where('t.business_id', $business_id)
-            ->where('t.type', 'sell')
-            ->where('t.status', 'final')
-            ->whereNull('t.import_source')
-            ->whereDate('t.transaction_date', '>=', $start)
-            ->whereDate('t.transaction_date', '<=', $end)
-            ->when(!empty($location_id), fn($q) => $q->where('t.location_id', $location_id))
-            ->selectRaw("tp.method, tp.amount as paid_amount, t.final_total, t.total_before_tax")
-            ->get();
-
-        $erp_card_total  = 0.0;
-        $erp_cash_total  = 0.0;
-        $erp_other_total = 0.0;
-        foreach ($erpRowsRange as $r) {
-            $finalTotal = (float) $r->final_total;
-            $gross = (float) $r->paid_amount;
-            $net = $finalTotal > 0
-                ? $gross * ((float) $r->total_before_tax / $finalTotal)
-                : $gross;
-            $isCard = $used_all_methods ? false : in_array($r->method, $card_methods, true);
-            if ($isCard) {
-                $erp_card_total += $net;
-            } elseif ($r->method === 'cash') {
-                $erp_cash_total += $net;
-            } else {
-                $erp_other_total += $net;
-            }
-        }
-        // When the install stores Clover under a non-card method (the
-        // used_all_methods path), card-vs-cash split isn't reliable —
-        // bucket all paid amounts as "card" so the totals at least add
-        // up to ERP gross net. (Edge case for an unconfigured tenant.)
-        if ($used_all_methods) {
-            $erp_card_total  = $erp_cash_total + $erp_other_total + $erp_card_total - $erp_cash_total;
-            // Better: reset and accumulate everything as card.
-            $erp_card_total = 0.0;
-            $erp_cash_total = 0.0;
-            $erp_other_total = 0.0;
-            foreach ($erpRowsRange as $r) {
-                $finalTotal = (float) $r->final_total;
-                $gross = (float) $r->paid_amount;
-                $net = $finalTotal > 0
-                    ? $gross * ((float) $r->total_before_tax / $finalTotal)
-                    : $gross;
-                $erp_card_total += $net;
-            }
-        }
-        $erp_card_total  = round($erp_card_total, 2);
-        $erp_cash_total  = round($erp_cash_total, 2);
-        $erp_other_total = round($erp_other_total, 2);
+        // Day totals banner — Sarah 2026-05-09: combine cash + card into a
+        // single ERP Net Sales total and compare against Clover Net Sales.
+        // ERP net = SUM(total_before_tax) at the transaction level; Clover
+        // net = SUM(amount − tax_cents/100). Both are pre-tax, matching
+        // Clover dashboard's "Net Sales" definition. No tender split —
+        // the prior proportional allocation broke on discounted lines.
+        $erp_net_total = (float) \DB::table('transactions')
+            ->where('business_id', $business_id)
+            ->where('type', 'sell')
+            ->where('status', 'final')
+            ->whereNull('import_source')
+            ->whereDate('transaction_date', '>=', $start)
+            ->whereDate('transaction_date', '<=', $end)
+            ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id))
+            ->sum('total_before_tax');
+        $erp_count = (int) \DB::table('transactions')
+            ->where('business_id', $business_id)
+            ->where('type', 'sell')
+            ->where('status', 'final')
+            ->whereNull('import_source')
+            ->whereDate('transaction_date', '>=', $start)
+            ->whereDate('transaction_date', '<=', $end)
+            ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id))
+            ->count();
 
         $cloverDayQ = \DB::table('clover_payments')
             ->where('business_id', $business_id)
@@ -7340,12 +7307,11 @@ class ReportController extends Controller
         $clover_day_count = (int) $cloverDayQ->count();
 
         $day_totals = [
-            'erp_card'      => $erp_card_total,
-            'erp_cash'      => $erp_cash_total,
-            'erp_other'     => $erp_other_total,
+            'erp_net'       => round($erp_net_total, 2),
+            'erp_count'     => $erp_count,
             'clover'        => round($clover_day_total, 2),
             'clover_count'  => $clover_day_count,
-            'card_diff'     => round($clover_day_total - $erp_card_total, 2),
+            'diff'          => round($clover_day_total - $erp_net_total, 2),
         ];
 
         return view('report.clover_eod_reconciliation')->with(compact(

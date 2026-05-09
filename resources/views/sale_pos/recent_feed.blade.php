@@ -184,7 +184,7 @@
             $byStore = $today_by_store ?? [];
             $totErp = 0; $totClover = 0;
             foreach ($byStore as $s) {
-                $totErp    += $s['erp_card'] + $s['erp_cash'] + $s['erp_other'];
+                $totErp    += $s['erp_net'];
                 $totClover += $s['clover'];
             }
             $totDiff = round($totClover - $totErp, 2);
@@ -195,13 +195,12 @@
                     <span style="font-weight:600; color:#5A5045; font-size:11px; text-transform:uppercase; letter-spacing:.06em;">Today</span>
                     @foreach($byStore as $s)
                         @php
-                            $sErp = $s['erp_card'] + $s['erp_cash'] + $s['erp_other'];
-                            $sDiff = round($s['clover'] - $sErp, 2);
+                            $sDiff = round($s['clover'] - $s['erp_net'], 2);
                             $sMatched = abs($sDiff) < 0.01;
                         @endphp
                         <span style="display:inline-flex; gap:6px; align-items:baseline;">
                             <span style="color:#5A5045;">{{ $s['name'] }}</span>
-                            <span style="font-variant-numeric:tabular-nums; font-weight:600;">${{ number_format($sErp, 0) }}</span>
+                            <span style="font-variant-numeric:tabular-nums; font-weight:600;">${{ number_format($s['erp_net'], 0) }}</span>
                             <span style="color:#BFB096;">/</span>
                             <span style="font-variant-numeric:tabular-nums; font-weight:600;">${{ number_format($s['clover'], 0) }}</span>
                             <span style="font-variant-numeric:tabular-nums; font-weight:700; color:{{ $sMatched ? '#2E6F40' : '#8B2C2C' }};">
@@ -212,9 +211,8 @@
                     <span style="margin-left:auto; color:#8A7C6A; font-size:11px;">ERP / Clover · click to expand</span>
                 </summary>
                 <div style="background:#FFFFFF; border:1px solid #ECE3CF; border-top:none; border-radius:0 0 8px 8px; padding:10px 14px; font-size:12px; color:#5A5045; line-height:1.5;">
-                    Net Sales (pre-tax). ERP totals include cash + card + other tenders;
-                    Clover is what hit the merchant account, so the diff is mostly cash
-                    and non-card tenders that never touch Clover.
+                    Net Sales (pre-tax). ERP totals include all tenders (cash + card + other);
+                    Clover is what hit the merchant account.
                 </div>
             </details>
         @endif
