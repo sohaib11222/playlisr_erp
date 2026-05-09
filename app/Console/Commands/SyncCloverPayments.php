@@ -146,11 +146,19 @@ class SyncCloverPayments extends Command
                 continue;
             }
 
+            // createdTime is unix-ms (UTC). Build the Carbon explicitly in
+            // UTC, then convert to the app TZ before storing, so the
+            // serialized DATETIME string in MySQL is unambiguously LA
+            // local time. Sarah 2026-05-08: orphans were rendering with
+            // future-day timestamps (e.g. "May 9 7:46 AM" while it was
+            // still May 8 evening) because the blade assumed paid_at was
+            // already in LA but Carbon::createFromTimestampMs without an
+            // explicit tz arg was returning UTC.
             $createdMs = $p['createdTime'] ?? 0;
             $paidAt = $createdMs
-                ? Carbon::createFromTimestampMs($createdMs)
-                : Carbon::now();
-            $paidOn = $paidAt->copy()->setTimezone(config('app.timezone'))->toDateString();
+                ? Carbon::createFromTimestampMs($createdMs, 'UTC')->setTimezone(config('app.timezone'))
+                : Carbon::now(config('app.timezone'));
+            $paidOn = $paidAt->toDateString();
 
             $employee = $p['employee'] ?? null;
             $employeeName = null;
