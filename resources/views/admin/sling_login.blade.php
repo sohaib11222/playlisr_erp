@@ -48,7 +48,35 @@
     </div>
 
     <div class="box box-success">
-        <div class="box-header with-border"><h3 class="box-title">Recommended: paste a "Copy as cURL"</h3></div>
+        <div class="box-header with-border"><h3 class="box-title">Easiest: log in with your Sling email + password</h3></div>
+        <div class="box-body">
+            <p>The ERP will call Sling's <code>/account/login</code> for you, take the token Sling returns, and save it. <strong>Your password is not stored</strong> — only the token. Use this whenever the connection above shows expired/401.</p>
+            <form method="POST" action="{{ url('/admin/sling/login') }}" class="form-horizontal" autocomplete="off">
+                @csrf
+                <div class="form-group">
+                    <label class="col-sm-3 control-label">Sling email</label>
+                    <div class="col-sm-6">
+                        <input type="email" name="email" class="form-control" required value="{{ $email ?: '' }}" placeholder="you@example.com">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="col-sm-3 control-label">Sling password</label>
+                    <div class="col-sm-6">
+                        <input type="password" name="password" class="form-control" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <div class="col-sm-offset-3 col-sm-6">
+                        <button type="submit" class="btn btn-success"><i class="fa fa-sign-in"></i> Log in &amp; save token</button>
+                        <small class="text-muted" style="margin-left:8px;">If Sling rejects this with "captcha required", use one of the paste options below.</small>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="box box-default">
+        <div class="box-header with-border"><h3 class="box-title">Backup option: paste a "Copy as cURL"</h3></div>
         <div class="box-body">
             <p>This is the most reliable path. The cURL Chrome generates contains the exact <code>Authorization</code> header Sling expects.</p>
             <ol>
