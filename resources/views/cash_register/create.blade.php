@@ -3,9 +3,80 @@
 
 @section('content')
 <style type="text/css">
+  /* Hero "Cash in hand" input — Sarah 2026-05-08: this is the primary
+     action on the page; make it the visual anchor. Same input shape as
+     the safe-drop box below but larger font, thicker border, accent
+     stripe so the eye lands here first. */
+  .ocr-hero-label {
+    display: block;
+    font-size: 13px; font-weight: 800;
+    text-transform: uppercase; letter-spacing: .08em;
+    color: #5A4410;
+    margin-bottom: 8px;
+  }
+  .ocr-hero-wrap {
+    display: flex; align-items: center; gap: 10px;
+    background: #fff;
+    border: 3px solid #E8CF68;
+    border-radius: 14px;
+    padding: 14px 20px;
+    box-shadow: 0 0 0 4px rgba(232, 207, 104, .25),
+                0 4px 12px rgba(0, 0, 0, .06);
+    max-width: 520px;
+  }
+  .ocr-hero-currency {
+    font-size: 32px; font-weight: 800; color: #5A4410; line-height: 1;
+  }
+  .ocr-hero-input {
+    flex: 1;
+    border: none; outline: none; background: transparent;
+    font-family: inherit; font-size: 36px; font-weight: 800;
+    color: #1F1B16; padding: 0; letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums;
+    width: 100%;
+  }
+  .ocr-hero-input::placeholder { color: #c9b670; }
+  .ocr-hero-help {
+    margin-top: 8px; max-width: 520px;
+    font-size: 12px; color: #8E8273;
+  }
+
+  /* Safe-drop input — sub-hero. Same shape as the hero but smaller and
+     unaccented so the visual hierarchy reads "count first, drop second". */
+  .ocr-drop-label {
+    display: block;
+    font-size: 12px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .04em;
+    color: #5A4410;
+    margin-bottom: 6px;
+  }
+  .ocr-drop-label .ocr-drop-sub {
+    font-weight: 500; text-transform: none; letter-spacing: 0;
+    color: #8E8273;
+  }
+  .ocr-drop-wrap {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: #fff;
+    border: 1.5px solid #DFD2B3;
+    border-radius: 10px;
+    padding: 10px 16px;
+  }
+  .ocr-drop-currency {
+    font-size: 22px; font-weight: 700; color: #5A4410; line-height: 1;
+  }
+  .ocr-drop-input {
+    border: none; outline: none; background: transparent;
+    font-family: inherit; font-size: 22px; font-weight: 700;
+    color: #1F1B16; width: 140px; padding: 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .ocr-drop-hint {
+    margin-left: 12px; font-size: 13px; color: #8E8273; font-weight: 600;
+    vertical-align: middle;
+  }
+
   /* Pill picker for Pico / Hollywood (Sarah 2026-05-07): replace the
-     select2 dropdown so the cashier picks a location with one big tap.
-     Layout: two side-by-side pills that grow to fill the row. */
+     select2 dropdown so the cashier picks a location with one big tap. */
   .ocr-loc-pills {
     display: flex; gap: 14px; flex-wrap: wrap;
     margin-top: 6px;
@@ -55,11 +126,23 @@
         @if($business_locations->count() > 0)
         <div class="col-sm-8 col-sm-offset-2">
           <div class="form-group">
-            {!! Form::label('amount', __('cash_register.cash_in_hand') . ':*') !!}
-            {!! Form::text('amount', null, ['class' => 'form-control input_number',
-              'id' => 'cash_in_hand_amount',
-              'placeholder' => __('cash_register.enter_amount'), 'required']); !!}
-            <p class="help-block text-muted"><small>@lang('cash_register.opening_balance_help')</small></p>
+            <label for="cash_in_hand_amount" class="ocr-hero-label">
+              Cash in hand <span style="color:#b91c1c;">*</span>
+            </label>
+            <div class="ocr-hero-wrap">
+              <span class="ocr-hero-currency">$</span>
+              {!! Form::text('amount', null, [
+                'class' => 'ocr-hero-input input_number',
+                'id' => 'cash_in_hand_amount',
+                'placeholder' => '0.00',
+                'required',
+                'autofocus',
+                'data-decimal' => '1',
+              ]); !!}
+            </div>
+            <p class="ocr-hero-help">
+              Count the drawer right now. After your safe drop below, the rest is your opening balance for the shift.
+            </p>
 
             {{-- Over-$500 safe alert (Sarah 2026-05-07): if the cashier
                  reports more than $500 in the drawer at open, ask them
@@ -88,32 +171,22 @@
             </div>
 
             {{-- Capture the actual amount the cashier moved at open. Left
-                 BLANK by design (Sarah 2026-05-08: "if they actually put
-                 the money in the safe!") so cashiers must deliberately
-                 type what they dropped — pre-filling risks recording a
-                 phantom drop when nothing was moved. The suggestion is
-                 shown in the placeholder. Opening balance = (cash counted
-                 - safe drop). --}}
+                 BLANK by design (Sarah 2026-05-08) so cashiers must
+                 deliberately type what they dropped — pre-filling risks
+                 recording a phantom drop when nothing was moved. The
+                 suggestion is shown next to the input as a hint. Opening
+                 balance = (cash counted - safe drop). --}}
             <div style="margin-top:14px;">
-              <label for="cash_in_hand_safe_drop" style="font-size:12px; font-weight:700;
-                  text-transform:uppercase; letter-spacing:.04em; color:#5A4410; margin-bottom:6px; display:block;">
+              <label for="cash_in_hand_safe_drop" class="ocr-drop-label">
                 Amount you put in the safe
-                <span style="font-weight:500; text-transform:none; color:#8E8273; letter-spacing:0;">
-                  — leave blank if nothing
-                </span>
+                <span class="ocr-drop-sub">— leave blank if nothing</span>
               </label>
-              <div style="display:inline-flex; align-items:center; gap:6px;
-                  background:#fff; border:1px solid #DFD2B3; border-radius:8px;
-                  padding:6px 12px;">
-                <span style="font-size:18px; font-weight:700; color:#5A4410;">$</span>
+              <div class="ocr-drop-wrap">
+                <span class="ocr-drop-currency">$</span>
                 <input type="text" name="safe_drop_amount" id="cash_in_hand_safe_drop"
-                       class="input_number" placeholder="0" data-decimal="1"
-                       style="border:none; outline:none; font-size:18px; font-weight:700;
-                              width:120px; font-variant-numeric:tabular-nums;
-                              background:transparent; color:#1F1B16;">
+                       class="ocr-drop-input input_number" placeholder="0" data-decimal="1">
               </div>
-              <span id="cr-safe-drop-hint" style="margin-left:10px; font-size:13px;
-                  color:#8E8273; font-weight:600;"></span>
+              <span id="cr-safe-drop-hint" class="ocr-drop-hint"></span>
             </div>
           </div>
         </div>
@@ -131,7 +204,10 @@
               @foreach($business_locations as $loc_id => $loc_name)
                 <button type="button" class="ocr-loc-pill"
                         data-loc-id="{{ $loc_id }}">
-                  {{ $loc_name }}
+                  {{-- Title-case the label so DB values stored as "pico"
+                       render as "Pico" without forcing Sarah to fix the
+                       location name in settings. --}}
+                  {{ ucwords(strtolower(trim($loc_name))) }}
                 </button>
               @endforeach
             </div>
