@@ -35,7 +35,13 @@ class BusinessLocation extends Model
      *
      * @return array
      */
-    public static function forDropdown($business_id, $show_all = false, $receipt_printer_type_attribute = false, $append_id = true, $check_permission = true)
+    // Sarah 2026-05-08: $append_id defaulted to true and added the
+    // " (BL0001)" / " (Hollywood)" suffix to every location dropdown
+    // across the app — Sarah wants clean "Pico" / "Hollywood" labels
+    // everywhere. Flipped the default to false. No caller passes this
+    // argument explicitly, so behaviour changes everywhere at once;
+    // anyone who needs the code suffix back can pass true.
+    public static function forDropdown($business_id, $show_all = false, $receipt_printer_type_attribute = false, $append_id = false, $check_permission = true)
     {
         $query = BusinessLocation::where('business_id', $business_id)->Active();
 
