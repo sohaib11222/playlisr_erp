@@ -24,6 +24,21 @@
         </div>
     @endif
 
+    @if(!$tableExists)
+        <div class="box box-warning">
+            <div class="box-header with-border">
+                <h3 class="box-title">One-time setup</h3>
+            </div>
+            <div class="box-body">
+                <p>The <code>sling_shifts</code> table doesn't exist yet. Click below to create it — this is a brand-new empty table, doesn't touch anything else, and is safe to re-click (it'll just say "already set up").</p>
+                <form method="POST" action="{{ url('/admin/sling/shifts/setup') }}" style="display:inline;">
+                    @csrf
+                    <button type="submit" class="btn btn-warning"><i class="fa fa-database"></i> Create the sling_shifts table</button>
+                </form>
+            </div>
+        </div>
+    @endif
+
     <div class="box box-primary">
         <div class="box-header with-border">
             <h3 class="box-title">Status</h3>
@@ -41,7 +56,7 @@
             </table>
             <form method="POST" action="{{ url('/admin/sling/shifts/sync') }}" style="display:inline;">
                 @csrf
-                <button type="submit" class="btn btn-primary" {{ $connected ? '' : 'disabled' }}>
+                <button type="submit" class="btn btn-primary" {{ ($connected && $tableExists) ? '' : 'disabled' }}>
                     <i class="fa fa-refresh"></i> Sync now
                 </button>
             </form>

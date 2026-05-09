@@ -5,8 +5,10 @@ namespace App\Http\Controllers;
 use App\SlingShift;
 use App\System;
 use Carbon\Carbon;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Sling (getsling.com) connection — single source of truth for the auth
@@ -221,6 +223,25 @@ class SlingController extends Controller
      */
     public function shiftsIndex(Request $request)
     {
+        $connected = (new \App\Services\SlingClient())->isConfigured();
+
+        // First-run state: the table doesn't exist yet because the migration
+        // hasn't been dispatched via the GH workflow. Show a setup banner
+        // with a button that creates the table directly via Schema (same
+        // structure as the migration file). Avoids forcing a CI dance for
+        // a one-table change.
+        if (!Schema::hasTable('sling_shifts')) {
+            return view('admin.sling_shifts', [
+                'shifts' => collect(),
+                'start' => Carbon::today('America/Los_Angeles')->subDays(7),
+                'end' => Carbon::today('America/Los_Angeles')->addDays(30),
+                'lastSyncedAt' => null,
+                'totalCount' => 0,
+                'connected' => $connected,
+                'tableExists' => false,
+            ]);
+        }
+
         $tz = 'America/Los_Angeles';
         $start = $request->input('start')
             ? Carbon::parse($request->input('start'), $tz)->startOfDay()
@@ -237,11 +258,50 @@ class SlingController extends Controller
 
         $lastSyncedAt = SlingShift::max('last_synced_at');
         $totalCount = SlingShift::count();
-        $connected = (new \App\Services\SlingClient())->isConfigured();
 
         return view('admin.sling_shifts', compact(
             'shifts', 'start', 'end', 'lastSyncedAt', 'totalCount', 'connected'
-        ));
+        ) + ['tableExists' => true]);
+    }
+
+    /**
+     * One-click setup for the sling_shifts table — creates it inline using
+     * the same structure as the migration file. Idempotent: if the table
+     * already exists this is a no-op. Exists so Sarah doesn't have to
+     * dispatch the GH "Run migrations" workflow for what is, structurally,
+     * just one new empty table.
+     */
+    public function setupTable(Request $request)
+    {
+        if (Schema::hasTable('sling_shifts')) {
+            return back()->with('status_success', 'Already set up — nothing to do.');
+        }
+        try {
+            Schema::create('sling_shifts', function (Blueprint $table) {
+                $table->bigIncrements('id');
+                $table->string('sling_shift_id', 64)->unique();
+                $table->string('sling_user_id', 64)->nullable()->index();
+                $table->string('user_email', 191)->nullable()->index();
+                $table->string('user_name', 191)->nullable();
+                $table->unsignedInteger('erp_user_id')->nullable()->index();
+                $table->string('location_name', 191)->nullable();
+                $table->string('position_name', 191)->nullable();
+                $table->dateTime('dtstart')->index();
+                $table->dateTime('dtend')->nullable();
+                $table->decimal('hours', 8, 2)->default(0);
+                $table->boolean('published')->default(true);
+                $table->longText('raw_payload')->nullable();
+                $table->timestamp('last_synced_at')->nullable();
+                $table->timestamps();
+                $table->index(['dtstart', 'dtend']);
+                $table->index(['erp_user_id', 'dtstart']);
+                $table->foreign('erp_user_id')->references('id')->on('users')->onDelete('set null');
+            });
+            return back()->with('status_success', 'sling_shifts table created. You can click Sync now.');
+        } catch (\Throwable $e) {
+            \Log::warning('Sling setupTable failed: ' . $e->getMessage());
+            return back()->with('status_error', 'Setup failed: ' . $e->getMessage());
+        }
     }
 
     /**
