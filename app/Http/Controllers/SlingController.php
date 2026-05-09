@@ -330,6 +330,84 @@ class SlingController extends Controller
         }
     }
 
+    /**
+     * Probe a handful of candidate Sling endpoints for shifts and dump the
+     * HTTP code + first chunk of body for each. Used when the sync returns
+     * 0 records and we need to see which URL Sling actually accepts on
+     * this org / plan tier. Read-only.
+     */
+    public function diagnoseShifts(Request $request)
+    {
+        $token = (string) (System::getProperty(self::TOKEN_KEY) ?? '');
+        $orgId = (string) (System::getProperty(self::ORG_KEY) ?? '');
+        if ($token === '' || $orgId === '') {
+            return back()->with('status_error', 'Connect Sling first.');
+        }
+
+        $tz = 'America/Los_Angeles';
+        $start = Carbon::today($tz)->subDays(7)->toDateString();
+        $end = Carbon::today($tz)->addDays(30)->toDateString();
+
+        $base = 'https://api.getsling.com/v1';
+        $candidates = [
+            'calendar (current)' => "{$base}/{$orgId}/calendar/{$start}/{$end}",
+            'calendar/users' => "{$base}/{$orgId}/calendar/{$start}/{$end}/users",
+            'calendar?dates=' => "{$base}/{$orgId}/calendar?dates={$start}/{$end}",
+            'shifts?dates=' => "{$base}/{$orgId}/shifts?dates={$start}/{$end}",
+            'reports/timesheets' => "{$base}/{$orgId}/reports/timesheets/{$start}/{$end}",
+        ];
+
+        $results = [];
+        foreach ($candidates as $label => $url) {
+            $det = $this->rawGet($url, $token);
+            $bodySnippet = mb_substr((string) $det['body'], 0, 800);
+            $count = null;
+            if ($det['http_code'] >= 200 && $det['http_code'] < 300) {
+                $decoded = json_decode($det['body'], true);
+                if (is_array($decoded)) {
+                    if (isset($decoded[0])) $count = count($decoded);
+                    elseif (isset($decoded['shifts']) && is_array($decoded['shifts'])) $count = count($decoded['shifts']);
+                    elseif (isset($decoded['data']) && is_array($decoded['data'])) $count = count($decoded['data']);
+                    elseif (isset($decoded['events']) && is_array($decoded['events'])) $count = count($decoded['events']);
+                    else $count = 0;
+                }
+            }
+            $results[] = [
+                'label' => $label,
+                'url' => $url,
+                'http_code' => $det['http_code'],
+                'count' => $count,
+                'body' => $bodySnippet,
+            ];
+        }
+
+        return view('admin.sling_diagnose', [
+            'results' => $results,
+            'start' => $start,
+            'end' => $end,
+        ]);
+    }
+
+    private function rawGet(string $url, string $token): array
+    {
+        try {
+            $ch = curl_init($url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'Authorization: ' . $token,
+                'Accept: application/json',
+            ]);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+            $body = curl_exec($ch);
+            $http = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            return ['http_code' => $http, 'body' => is_string($body) ? $body : ''];
+        } catch (\Throwable $e) {
+            return ['http_code' => 0, 'body' => $e->getMessage()];
+        }
+    }
+
     public function disconnect()
     {
         System::removeProperty(self::TOKEN_KEY);

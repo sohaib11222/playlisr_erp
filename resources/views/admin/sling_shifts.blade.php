@@ -60,6 +60,11 @@
                     <i class="fa fa-refresh"></i> Sync now
                 </button>
             </form>
+            @if($connected)
+                <a href="{{ url('/admin/sling/shifts/diagnose') }}" class="btn btn-default" style="margin-left:8px;">
+                    <i class="fa fa-stethoscope"></i> Diagnose
+                </a>
+            @endif
             <small class="text-muted" style="margin-left:12px;">Pulls last 7 days + next 30 days from Sling.</small>
         </div>
     </div>
