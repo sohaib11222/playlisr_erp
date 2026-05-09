@@ -181,14 +181,9 @@ class SyncSlingShifts extends Command
 
     /**
      * Sling's calendar API mixes shifts, time-off and availability into
-     * one stream. Strict classifier: only look at explicit `type` (or
-     * synonyms) field values, never blob-match the whole payload — that
-     * was producing false "Availability" hits because most shift records
-     * embed an `available`/`availabilities` field as routine metadata.
-     *
-     * Falls back to a duration heuristic for the "all-day" case: a row
-     * starting at midnight and ending at 23:59 of the same date (or with
-     * hours >= 20) is almost always time-off in Sling.
+     * one stream. Tag each row so the report side can filter. Time-off
+     * detection lives in SlingClient::isTimeOff so this command and the
+     * live productivity report agree on what counts as worked.
      */
     private function detectEventType(array $shift): string
     {
@@ -199,35 +194,12 @@ class SyncSlingShifts extends Command
                 break;
             }
         }
-
-        if ($type !== null) {
-            if (preg_match('/^(timeoff|time[\-_ ]?off|pto|vacation|sick|leave|absence)$/', $type)) {
-                return SlingShift::TYPE_TIME_OFF;
-            }
-            if (preg_match('/^(availab|free)/', $type)) {
-                return SlingShift::TYPE_AVAILABILITY;
-            }
-            if (preg_match('/^(shift|event)$/', $type)) {
-                return SlingShift::TYPE_SHIFT;
-            }
+        if ($type !== null && preg_match('/^(availab|free)/', $type)) {
+            return SlingShift::TYPE_AVAILABILITY;
         }
-
-        if (!empty($shift['allDay']) || !empty($shift['all_day'])) {
+        if (\App\Services\SlingClient::isTimeOff($shift)) {
             return SlingShift::TYPE_TIME_OFF;
         }
-
-        $start = $shift['dtstart'] ?? ($shift['startDate'] ?? null);
-        $end = $shift['dtend'] ?? ($shift['endDate'] ?? null);
-        if ($start && $end) {
-            $sec = max(0, strtotime($end) - strtotime($start));
-            $hours = $sec / 3600.0;
-            $startsMidnight = preg_match('/[T ]00:00(:00)?$/', (string) $start);
-            $endsLateDay = preg_match('/[T ]23:59(:\d{2})?$/', (string) $end);
-            if (($startsMidnight && $endsLateDay) || $hours >= 20) {
-                return SlingShift::TYPE_TIME_OFF;
-            }
-        }
-
         return SlingShift::TYPE_SHIFT;
     }
 

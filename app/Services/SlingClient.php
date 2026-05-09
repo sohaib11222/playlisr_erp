@@ -100,11 +100,30 @@ class SlingClient
     /**
      * Sum hours per ERP user_id for the date range, matching Sling users
      * to ERP users by lowercased email. Returns [user_id => hours].
+     *
+     * Skips time-off entries (Sling's calendar mixes them with shifts) so
+     * a PTO day doesn't inflate worked hours, and applies the manual
+     * Sling-email → ERP user overrides set from the shift debug page so
+     * staff whose Sling email differs from their ERP profile email still
+     * count correctly.
+     *
      * Each shift is capped at 12h to defend against bogus data.
      */
     public function hoursByErpUser(string $startDate, string $endDate, array $erpUserIdByEmail): array
     {
         if (!$this->isConfigured()) return [];
+
+        // Layer manual overrides on top of the email map the caller built
+        // from `users.email` / `users.username`.
+        $overridesRaw = (string) (System::getProperty('sling_user_overrides') ?? '');
+        if ($overridesRaw !== '') {
+            $overrides = json_decode($overridesRaw, true);
+            if (is_array($overrides)) {
+                foreach ($overrides as $oEmail => $oUid) {
+                    $erpUserIdByEmail[strtolower(trim((string) $oEmail))] = (int) $oUid;
+                }
+            }
+        }
 
         $slingEmailById = [];
         foreach ($this->users() as $u) {
@@ -118,6 +137,8 @@ class SlingClient
         $shifts = $this->shifts($startDate, $endDate);
         $hours = [];
         foreach ($shifts as $shift) {
+            if (self::isTimeOff($shift)) continue;
+
             $sid = $shift['user']['id'] ?? ($shift['userId'] ?? null);
             $start = $shift['dtstart'] ?? ($shift['startDate'] ?? null);
             $end = $shift['dtend'] ?? ($shift['endDate'] ?? null);
@@ -129,12 +150,52 @@ class SlingClient
             if (!$erpUid) continue;
 
             $sec = max(0, strtotime($end) - strtotime($start));
-            // Same per-shift cap principle as the cash_registers fallback,
-            // but a bit looser since Sling shifts are scheduled, not "open".
             $sec = min($sec, 12 * 3600);
             $hours[$erpUid] = ($hours[$erpUid] ?? 0) + ($sec / 3600.0);
         }
         return $hours;
+    }
+
+    /**
+     * Heuristic: is this Sling calendar entry a time-off / PTO record
+     * rather than a worked shift? Used to keep PTO out of "hours worked"
+     * totals on the productivity report. Mirrors the SyncSlingShifts
+     * detector so persisted rows and live report numbers agree.
+     */
+    public static function isTimeOff(array $shift): bool
+    {
+        $type = null;
+        foreach (['type', 'eventType', 'kind', 'category'] as $k) {
+            if (!empty($shift[$k]) && is_string($shift[$k])) {
+                $type = strtolower(trim($shift[$k]));
+                break;
+            }
+        }
+        if ($type !== null) {
+            if (preg_match('/^(timeoff|time[\-_ ]?off|pto|vacation|sick|leave|absence)$/', $type)) {
+                return true;
+            }
+            if (preg_match('/^(shift|event|availab|free)/', $type)) {
+                // Explicitly something else; don't fall through to the
+                // duration heuristic which would over-tag long shifts.
+                return false;
+            }
+        }
+        if (!empty($shift['allDay']) || !empty($shift['all_day'])) {
+            return true;
+        }
+        $start = $shift['dtstart'] ?? ($shift['startDate'] ?? null);
+        $end = $shift['dtend'] ?? ($shift['endDate'] ?? null);
+        if ($start && $end) {
+            $sec = max(0, strtotime($end) - strtotime($start));
+            $hours = $sec / 3600.0;
+            $startsMidnight = preg_match('/[T ]00:00(:00)?$/', (string) $start);
+            $endsLateDay = preg_match('/[T ]23:59(:\d{2})?$/', (string) $end);
+            if (($startsMidnight && $endsLateDay) || $hours >= 20) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
