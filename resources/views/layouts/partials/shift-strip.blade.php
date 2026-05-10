@@ -27,6 +27,8 @@
     .st-pace.on { color:#1d4ed8; }
     .st-celebrate { background: linear-gradient(135deg, #fde68a, #fbbf24); color:#78350f; padding:6px 12px; border-radius:8px; margin-top:8px; font-weight:600; font-size:12px; text-align:center; }
     .st-empty { font-size:12px; color:#6b7280; }
+    .st-live { display:inline-block; width:6px; height:6px; border-radius:50%; background:#9ca3af; vertical-align:middle; margin-left:6px; transition:background .3s, transform .3s; }
+    .st-live.pulse { background:#16a34a; transform:scale(1.6); }
 </style>
 
 <div class="st-strip no-print" id="shift-tasks-panel">
@@ -44,6 +46,7 @@
             <div class="st-strip-meta">
                 Started {{ $shift_panel['started_at'] }} · {{ $shift_panel['location_name'] ?? 'store' }} ·
                 {{ number_format($shift_panel['hours'], 1) }}h of ~{{ number_format($shift_panel['expected_hours'], 1) }}h shift
+                <span class="st-live" id="st-live-dot" title="Live — pulses on each refresh"></span>
             </div>
         </div>
 
@@ -193,8 +196,21 @@
             return html;
         }
 
+        function pulseLive() {
+            var $dot = $('#st-live-dot');
+            if (!$dot.length) return;
+            $dot.addClass('pulse');
+            setTimeout(function () { $dot.removeClass('pulse'); }, 350);
+        }
+
         function refresh() {
-            $.getJSON('{{ route('home.shiftProgress') }}', function (data) {
+            $.ajax({
+                url: '{{ route('home.shiftProgress') }}',
+                dataType: 'json',
+                cache: false
+            }).done(function (data) {
+                pulseLive();
+                if (window.console) console.log('[shift-strip] poll', data);
                 if (!data || !data.active) return;
                 (data.tasks || []).forEach(function (t) {
                     var $task = $panel.find('[data-task-key="' + t.key + '"]');
@@ -225,11 +241,15 @@
                         }
                     }
                 });
+            }).fail(function (xhr, status, err) {
+                if (window.console) console.error('[shift-strip] poll failed', status, err, xhr && xhr.status);
             });
         }
 
-        setTimeout(refresh, 5000);
-        setInterval(function () { if (!document.hidden) refresh(); }, 60000);
+        // Initial refresh ~1s after page settle, then every 15s. Pause if
+        // tab is hidden so we don't spam the endpoint.
+        setTimeout(refresh, 1000);
+        setInterval(function () { if (!document.hidden) refresh(); }, 15000);
     });
 })();
 </script>

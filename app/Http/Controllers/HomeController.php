@@ -962,7 +962,11 @@ class HomeController extends Controller
     public function getShiftProgress()
     {
         $businessId = (int) request()->session()->get('user.business_id');
-        return response()->json(app(GamificationService::class)->buildPanel(auth()->user(), $businessId));
+        $panel = app(GamificationService::class)->buildPanel(auth()->user(), $businessId);
+        return response()->json($panel)
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
     }
 
     /**
