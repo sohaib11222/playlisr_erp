@@ -5216,60 +5216,7 @@ class ReportController extends Controller
         }
         $labels_printed = collect($labels_by_user);
 
-        // Hours worked from cash_registers (created_at -> closed_at), clipped
-        // to the selected window AND capped at 6h per shift — registers
-        // sometimes get left open all day/overnight and would otherwise
-        // inflate hours. 21600 seconds = 6 hours.
-        $window_start = $start_date . ' 00:00:00';
-        $window_end = $end_date . ' 23:59:59';
-        $hours_raw = collect();
-
-        // Try Sling first — if Sarah has connected the org's Sling account
-        // (via /admin/sling/login), use scheduled shifts as the source of
-        // truth for hours, since that covers staff (Nick) who never open a
-        // register. Match by email; anyone unmatched silently falls back to
-        // the cash_registers calculation below.
-        try {
-            $sling = new \App\Services\SlingClient();
-            if ($sling->isConfigured()) {
-                $erpUserIdByEmail = $users->mapWithKeys(function ($u) {
-                    $email = strtolower(trim((string) (\App\User::find($u->id)->email ?? '')));
-                    return $email !== '' ? [$email => $u->id] : [];
-                })->all();
-                $slingHours = $sling->hoursByErpUser($start_date, $end_date, $erpUserIdByEmail);
-                if (!empty($slingHours)) {
-                    $hours_raw = collect($slingHours);
-                }
-            }
-        } catch (\Throwable $e) {
-            \Log::warning('Sling hours fetch failed, falling back to cash_registers: ' . $e->getMessage());
-        }
-
-        if ($hours_raw->isEmpty()) {
-            $hours_raw = DB::table('cash_registers')
-                ->where('business_id', $business_id)
-                ->whereNotNull('user_id')
-                ->where('created_at', '<=', $window_end)
-                ->where(function ($q) use ($window_start) {
-                    $q->where('closed_at', '>=', $window_start)
-                      ->orWhereNull('closed_at');
-                })
-                ->selectRaw("user_id,
-                    SUM(
-                        LEAST(
-                            TIMESTAMPDIFF(
-                                SECOND,
-                                GREATEST(created_at, ?),
-                                LEAST(COALESCE(closed_at, NOW()), ?)
-                            ),
-                            21600
-                        )
-                    ) / 3600.0 as hours")
-                ->addBinding($window_start, 'select')
-                ->addBinding($window_end, 'select')
-                ->groupBy('user_id')
-                ->pluck('hours', 'user_id');
-        }
+        $hours_raw = $this->getHoursWorkedByUser($users, $start_date, $end_date, $business_id);
 
         // Packages picked / shipped: each time a user changes a transaction's
         // shipping_status to "packed" or "shipped" via /sells edit-shipping,
@@ -5471,12 +5418,17 @@ class ReportController extends Controller
             ->groupBy('p.created_by')
             ->pluck('items_sold_lifetime', 'p.created_by');
 
-        $rows = $users->map(function ($u) use ($barcoded_total, $sales, $lifetime_sold) {
+        // Hours worked in window (Sling first, cash_registers fallback) so
+        // the report can show $-per-hour-equivalent context next to revenue.
+        $hours_raw = $this->getHoursWorkedByUser($users, $start_date, $end_date, $business_id);
+
+        $rows = $users->map(function ($u) use ($barcoded_total, $sales, $lifetime_sold, $hours_raw) {
             $barcoded = (int) ($barcoded_total[$u->id] ?? 0);
             $row = $sales[$u->id] ?? null;
             $items_sold = $row ? (int) $row->items_sold : 0;
             $revenue = $row ? (float) $row->revenue : 0.0;
             $sold_lifetime = (int) ($lifetime_sold[$u->id] ?? 0);
+            $hours = (float) ($hours_raw[$u->id] ?? 0);
             return (object) [
                 'user_id' => $u->id,
                 'employee' => trim((string) $u->full_name),
@@ -5487,6 +5439,7 @@ class ReportController extends Controller
                 'total_revenue' => $revenue,
                 'lifetime_items_sold' => $sold_lifetime,
                 'sell_through_pct' => $barcoded > 0 ? ($sold_lifetime / $barcoded) * 100 : 0.0,
+                'hours_worked' => $hours,
             ];
         })->filter(function ($r) {
             return $r->barcoded_count > 0 || $r->items_sold > 0;
@@ -10110,5 +10063,64 @@ class ReportController extends Controller
         if (!$this->businessUtil->is_admin(auth()->user())) {
             abort(403, 'This report is admin-only.');
         }
+    }
+
+    /**
+     * Hours worked per user in the given window. Tries Sling (scheduled
+     * shifts via SlingClient, matched by email) first since it covers
+     * staff (e.g. Nick) who never open a cash register; falls back to
+     * cash_registers (open/close times clipped to the window AND capped
+     * at 6h per shift to absorb registers left open overnight). Returns
+     * a Collection keyed by user_id with hours as float.
+     */
+    private function getHoursWorkedByUser($users, $start_date, $end_date, $business_id)
+    {
+        $window_start = $start_date . ' 00:00:00';
+        $window_end = $end_date . ' 23:59:59';
+        $hours_raw = collect();
+
+        try {
+            $sling = new \App\Services\SlingClient();
+            if ($sling->isConfigured()) {
+                $erpUserIdByEmail = $users->mapWithKeys(function ($u) {
+                    $email = strtolower(trim((string) (\App\User::find($u->id)->email ?? '')));
+                    return $email !== '' ? [$email => $u->id] : [];
+                })->all();
+                $slingHours = $sling->hoursByErpUser($start_date, $end_date, $erpUserIdByEmail);
+                if (!empty($slingHours)) {
+                    $hours_raw = collect($slingHours);
+                }
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('Sling hours fetch failed, falling back to cash_registers: ' . $e->getMessage());
+        }
+
+        if ($hours_raw->isEmpty()) {
+            $hours_raw = DB::table('cash_registers')
+                ->where('business_id', $business_id)
+                ->whereNotNull('user_id')
+                ->where('created_at', '<=', $window_end)
+                ->where(function ($q) use ($window_start) {
+                    $q->where('closed_at', '>=', $window_start)
+                      ->orWhereNull('closed_at');
+                })
+                ->selectRaw("user_id,
+                    SUM(
+                        LEAST(
+                            TIMESTAMPDIFF(
+                                SECOND,
+                                GREATEST(created_at, ?),
+                                LEAST(COALESCE(closed_at, NOW()), ?)
+                            ),
+                            21600
+                        )
+                    ) / 3600.0 as hours")
+                ->addBinding($window_start, 'select')
+                ->addBinding($window_end, 'select')
+                ->groupBy('user_id')
+                ->pluck('hours', 'user_id');
+        }
+
+        return $hours_raw;
     }
 }

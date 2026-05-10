@@ -47,6 +47,7 @@
                         <th class="text-right" title="Total revenue ÷ items sold">Revenue / Item Sold</th>
                         <th class="text-right" title="Total revenue ÷ items barcoded (lifetime)">Revenue / Item Listed</th>
                         <th class="text-right">Total Revenue</th>
+                        <th class="text-right" title="Hours worked in selected window — Sling if connected, otherwise cash-register open/close times capped at 6h/shift">Hours Worked</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -63,9 +64,10 @@
                             <td class="text-right">${{ number_format($r->revenue_per_item, 2) }}</td>
                             <td class="text-right">${{ number_format($r->revenue_per_listed_item, 2) }}</td>
                             <td class="text-right"><strong>${{ number_format($r->total_revenue, 2) }}</strong></td>
+                            <td class="text-right">{{ ($r->hours_worked ?? 0) > 0 ? number_format($r->hours_worked, 1) . 'h' : '—' }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="7" class="text-center text-muted">No data found for this range.</td></tr>
+                        <tr><td colspan="8" class="text-center text-muted">No data found for this range.</td></tr>
                     @endforelse
                 </tbody>
                 @if($rows->isNotEmpty())
@@ -83,6 +85,7 @@
                         <th></th>
                         <th></th>
                         <th class="text-right">${{ number_format($rows->sum('total_revenue'), 2) }}</th>
+                        <th class="text-right">{{ number_format($rows->sum('hours_worked'), 1) }}h</th>
                     </tr>
                 </tfoot>
                 @endif
