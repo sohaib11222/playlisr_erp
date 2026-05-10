@@ -270,6 +270,31 @@ class SellController extends Controller
                 $sells->where('transactions.res_waiter_id', request()->input('service_staffs'));
             }
 
+            // Filter to transactions containing at least one sell-line whose
+            // product is in the selected category / subcategory. Used to
+            // cross-check Category Sales report numbers against the actual
+            // POS sales list.
+            if (!empty(request()->input('category_id'))) {
+                $cat = request()->input('category_id');
+                $sells->whereExists(function ($q) use ($cat) {
+                    $q->select(\DB::raw(1))
+                        ->from('transaction_sell_lines as tsl_cat')
+                        ->join('products as p_cat', 'tsl_cat.product_id', '=', 'p_cat.id')
+                        ->whereColumn('tsl_cat.transaction_id', 'transactions.id')
+                        ->where('p_cat.category_id', $cat);
+                });
+            }
+            if (!empty(request()->input('sub_category_id'))) {
+                $sub = request()->input('sub_category_id');
+                $sells->whereExists(function ($q) use ($sub) {
+                    $q->select(\DB::raw(1))
+                        ->from('transaction_sell_lines as tsl_sub')
+                        ->join('products as p_sub', 'tsl_sub.product_id', '=', 'p_sub.id')
+                        ->whereColumn('tsl_sub.transaction_id', 'transactions.id')
+                        ->where('p_sub.sub_category_id', $sub);
+                });
+            }
+
             if (request()->has('is_whatnot') && request()->input('is_whatnot') == '1') {
                 $sells->where('transactions.is_whatnot', 1);
             }

@@ -385,7 +385,21 @@ class SellPosController extends Controller
 
         $shipping_statuses = $this->transactionUtil->shipping_statuses();
 
-        return view('sale_pos.index')->with(compact('business_locations', 'customers', 'sales_representative', 'is_cmsn_agent_enabled', 'commission_agents', 'service_staffs', 'is_tables_enabled', 'is_service_staff_enabled', 'is_types_service_enabled', 'shipping_statuses'));
+        // Category + subcategory dropdowns for filtering the POS sales list.
+        // Subcategories are formatted "Parent > Child" since names alone can
+        // collide across parents (e.g. "Sealed Vinyl" under multiple genres).
+        $categories = Category::forDropdown($business_id, 'product');
+        $sub_categories = \DB::table('categories')
+            ->where('categories.business_id', $business_id)
+            ->where('categories.category_type', 'product')
+            ->where('categories.parent_id', '>', 0)
+            ->leftJoin('categories as parents', 'categories.parent_id', '=', 'parents.id')
+            ->orderBy('parents.name', 'asc')
+            ->orderBy('categories.name', 'asc')
+            ->select('categories.id', \DB::raw("CONCAT(COALESCE(parents.name, '?'), ' > ', categories.name) as display_name"))
+            ->pluck('display_name', 'categories.id');
+
+        return view('sale_pos.index')->with(compact('business_locations', 'customers', 'sales_representative', 'is_cmsn_agent_enabled', 'commission_agents', 'service_staffs', 'is_tables_enabled', 'is_service_staff_enabled', 'is_types_service_enabled', 'shipping_statuses', 'categories', 'sub_categories'));
     }
 
     /**

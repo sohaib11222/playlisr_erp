@@ -148,6 +148,8 @@
             'sell_list_filter_customer_id',
             'sell_list_filter_date_range',
             'created_by',
+            'sell_list_filter_category_id',
+            'sell_list_filter_sub_category_id',
         ]])
         <div class="row">
             <div class="col-md-4">

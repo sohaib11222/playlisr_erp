@@ -14,7 +14,7 @@ $('#sell_list_filter_date_range').on('cancel.daterangepicker', function(ev, pick
     sell_table.ajax.reload();
 });
 
-$(document).on('change', '#sell_list_filter_location_id, #sell_list_filter_customer_id, #sell_list_filter_payment_status, #created_by, #sales_cmsn_agnt, #service_staffs, #shipping_status',  function() {
+$(document).on('change', '#sell_list_filter_location_id, #sell_list_filter_customer_id, #sell_list_filter_payment_status, #created_by, #sales_cmsn_agnt, #service_staffs, #shipping_status, #sell_list_filter_category_id, #sell_list_filter_sub_category_id',  function() {
     sell_table.ajax.reload();
 });
 
@@ -84,6 +84,12 @@ sell_table = $('#sell_table').DataTable({
 
                 if($('#shipping_status').length) {
                     d.shipping_status = $('#shipping_status').val();
+                }
+                if($('#sell_list_filter_category_id').length) {
+                    d.category_id = $('#sell_list_filter_category_id').val();
+                }
+                if($('#sell_list_filter_sub_category_id').length) {
+                    d.sub_category_id = $('#sell_list_filter_sub_category_id').val();
                 }
                 if ($('#pos_text_search').length) {
                     d.pos_text_search = $('#pos_text_search').val();

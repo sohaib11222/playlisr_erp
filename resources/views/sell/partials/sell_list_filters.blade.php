@@ -75,6 +75,22 @@
         </div>
     </div>
 @endif
+@if((empty($only) || in_array('sell_list_filter_category_id', $only)) && !empty($categories ?? null))
+<div class="col-md-3">
+    <div class="form-group">
+        {!! Form::label('sell_list_filter_category_id', __('product.category') . ':') !!}
+        {!! Form::select('sell_list_filter_category_id', $categories, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'placeholder' => __('lang_v1.all')]); !!}
+    </div>
+</div>
+@endif
+@if((empty($only) || in_array('sell_list_filter_sub_category_id', $only)) && !empty($sub_categories ?? null))
+<div class="col-md-3">
+    <div class="form-group">
+        {!! Form::label('sell_list_filter_sub_category_id', __('product.sub_category') . ':') !!}
+        {!! Form::select('sell_list_filter_sub_category_id', $sub_categories, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'placeholder' => __('lang_v1.all')]); !!}
+    </div>
+</div>
+@endif
 @if(empty($only) || in_array('only_subscriptions', $only))
 <div class="col-md-3">
     <div class="form-group">
