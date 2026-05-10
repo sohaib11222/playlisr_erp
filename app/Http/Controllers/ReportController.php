@@ -5396,11 +5396,14 @@ class ReportController extends Controller
     /**
      * Revenue by Employee — Barcoded Items
      *
-     * Per-employee rollup tying products an employee added (added_via='mass_add',
-     * matching the Employee Productivity report's definition of "barcoded") to
-     * the revenue those items produced. Date range filters the SALES window;
-     * the barcoded count is lifetime so employees see the full denominator
-     * behind the conversion.
+     * Per-employee rollup tying every product an employee created
+     * (products.created_by) to the revenue those items produced. Date range
+     * filters the SALES window; the barcoded count is lifetime so employees
+     * see the full denominator behind the conversion. No filter on
+     * added_via — counts items added through any flow (Mass Add, Add
+     * Product, quick-add, CSV import, buy-from-customer, etc.) since most
+     * creation paths don't tag added_via and "anything I added" is the
+     * natural employee-facing definition of "items I barcoded".
      */
     public function revenueByEmployeeBarcoding(Request $request)
     {
@@ -5428,24 +5431,13 @@ class ReportController extends Controller
             ->orderBy('first_name')
             ->get();
 
-        // Backward-compat: if the added_via migration hasn't been run we can't
-        // distinguish barcoded items, so return an empty rollup rather than
-        // erroring (mirrors productEntryProductivity).
-        $productsTableHasAddedVia = \Schema::hasColumn('products', 'added_via');
-
-        $barcodedCountQuery = Product::where('business_id', $business_id)
-            ->whereNotNull('created_by');
-        if ($productsTableHasAddedVia) {
-            $barcodedCountQuery->where('added_via', 'mass_add');
-        } else {
-            $barcodedCountQuery->whereRaw('1 = 0');
-        }
-        $barcoded_total = $barcodedCountQuery
+        $barcoded_total = Product::where('business_id', $business_id)
+            ->whereNotNull('created_by')
             ->select('created_by', DB::raw('COUNT(*) as total'))
             ->groupBy('created_by')
             ->pluck('total', 'created_by');
 
-        $salesQuery = DB::table('transaction_sell_lines as tsl')
+        $sales = DB::table('transaction_sell_lines as tsl')
             ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
             ->join('products as p', 'tsl.product_id', '=', 'p.id')
             ->where('t.business_id', $business_id)
@@ -5454,13 +5446,7 @@ class ReportController extends Controller
             ->where('t.status', 'final')
             ->whereDate('t.transaction_date', '>=', $start_date)
             ->whereDate('t.transaction_date', '<=', $end_date)
-            ->whereNotNull('p.created_by');
-        if ($productsTableHasAddedVia) {
-            $salesQuery->where('p.added_via', 'mass_add');
-        } else {
-            $salesQuery->whereRaw('1 = 0');
-        }
-        $sales = $salesQuery
+            ->whereNotNull('p.created_by')
             ->select(
                 'p.created_by',
                 DB::raw('COUNT(DISTINCT p.id) as items_sold'),
@@ -5473,20 +5459,14 @@ class ReportController extends Controller
         // Lifetime sold count per employee — used for sell-through % which is
         // a window-independent quality metric ("of everything I ever barcoded,
         // what fraction has eventually sold?").
-        $lifetimeSalesQuery = DB::table('transaction_sell_lines as tsl')
+        $lifetime_sold = DB::table('transaction_sell_lines as tsl')
             ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
             ->join('products as p', 'tsl.product_id', '=', 'p.id')
             ->where('t.business_id', $business_id)
             ->where('p.business_id', $business_id)
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
-            ->whereNotNull('p.created_by');
-        if ($productsTableHasAddedVia) {
-            $lifetimeSalesQuery->where('p.added_via', 'mass_add');
-        } else {
-            $lifetimeSalesQuery->whereRaw('1 = 0');
-        }
-        $lifetime_sold = $lifetimeSalesQuery
+            ->whereNotNull('p.created_by')
             ->select('p.created_by', DB::raw('COUNT(DISTINCT p.id) as items_sold_lifetime'))
             ->groupBy('p.created_by')
             ->pluck('items_sold_lifetime', 'p.created_by');
@@ -5543,9 +5523,7 @@ class ReportController extends Controller
         $user = User::where('business_id', $business_id)->findOrFail($user_id);
         $employee = trim((string) ($user->first_name . ' ' . $user->last_name));
 
-        $productsTableHasAddedVia = \Schema::hasColumn('products', 'added_via');
-
-        $itemsQuery = DB::table('products as p')
+        $items = DB::table('products as p')
             ->join('transaction_sell_lines as tsl', 'tsl.product_id', '=', 'p.id')
             ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
             ->where('p.business_id', $business_id)
@@ -5554,13 +5532,7 @@ class ReportController extends Controller
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
             ->whereDate('t.transaction_date', '>=', $start_date)
-            ->whereDate('t.transaction_date', '<=', $end_date);
-        if ($productsTableHasAddedVia) {
-            $itemsQuery->where('p.added_via', 'mass_add');
-        } else {
-            $itemsQuery->whereRaw('1 = 0');
-        }
-        $items = $itemsQuery
+            ->whereDate('t.transaction_date', '<=', $end_date)
             ->select(
                 'p.id',
                 'p.name',
@@ -5573,29 +5545,18 @@ class ReportController extends Controller
             ->orderByDesc('revenue')
             ->get();
 
-        $barcodedLifetimeQuery = Product::where('business_id', $business_id)
-            ->where('created_by', $user_id);
-        if ($productsTableHasAddedVia) {
-            $barcodedLifetimeQuery->where('added_via', 'mass_add');
-        } else {
-            $barcodedLifetimeQuery->whereRaw('1 = 0');
-        }
-        $barcoded_lifetime = (int) $barcodedLifetimeQuery->count();
+        $barcoded_lifetime = (int) Product::where('business_id', $business_id)
+            ->where('created_by', $user_id)
+            ->count();
 
         // Per-category breakdown: lifetime barcoded counts joined with
         // sales-in-window, grouped by (category, subcategory). LEFT JOINs to
         // categories so uncategorized rows still show up as "—".
-        $barcodedByCatQuery = DB::table('products as p')
+        $barcoded_by_cat = DB::table('products as p')
             ->leftJoin('categories as cat', 'p.category_id', '=', 'cat.id')
             ->leftJoin('categories as subcat', 'p.sub_category_id', '=', 'subcat.id')
             ->where('p.business_id', $business_id)
-            ->where('p.created_by', $user_id);
-        if ($productsTableHasAddedVia) {
-            $barcodedByCatQuery->where('p.added_via', 'mass_add');
-        } else {
-            $barcodedByCatQuery->whereRaw('1 = 0');
-        }
-        $barcoded_by_cat = $barcodedByCatQuery
+            ->where('p.created_by', $user_id)
             ->select(
                 DB::raw('COALESCE(p.category_id, 0) as category_id'),
                 DB::raw('COALESCE(p.sub_category_id, 0) as sub_category_id'),
@@ -5607,7 +5568,7 @@ class ReportController extends Controller
             ->get()
             ->keyBy(function ($r) { return $r->category_id . ':' . $r->sub_category_id; });
 
-        $salesByCatQuery = DB::table('products as p')
+        $sales_by_cat = DB::table('products as p')
             ->join('transaction_sell_lines as tsl', 'tsl.product_id', '=', 'p.id')
             ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
             ->where('p.business_id', $business_id)
@@ -5616,13 +5577,7 @@ class ReportController extends Controller
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
             ->whereDate('t.transaction_date', '>=', $start_date)
-            ->whereDate('t.transaction_date', '<=', $end_date);
-        if ($productsTableHasAddedVia) {
-            $salesByCatQuery->where('p.added_via', 'mass_add');
-        } else {
-            $salesByCatQuery->whereRaw('1 = 0');
-        }
-        $sales_by_cat = $salesByCatQuery
+            ->whereDate('t.transaction_date', '<=', $end_date)
             ->select(
                 DB::raw('COALESCE(p.category_id, 0) as category_id'),
                 DB::raw('COALESCE(p.sub_category_id, 0) as sub_category_id'),
@@ -5636,20 +5591,14 @@ class ReportController extends Controller
         // Lifetime sold counts per (category, subcategory) — same purpose as
         // $lifetime_sold on the summary view: gives a window-independent
         // sell-through %.
-        $lifetimeSalesByCatQuery = DB::table('products as p')
+        $lifetime_sold_by_cat = DB::table('products as p')
             ->join('transaction_sell_lines as tsl', 'tsl.product_id', '=', 'p.id')
             ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
             ->where('p.business_id', $business_id)
             ->where('p.created_by', $user_id)
             ->where('t.business_id', $business_id)
             ->where('t.type', 'sell')
-            ->where('t.status', 'final');
-        if ($productsTableHasAddedVia) {
-            $lifetimeSalesByCatQuery->where('p.added_via', 'mass_add');
-        } else {
-            $lifetimeSalesByCatQuery->whereRaw('1 = 0');
-        }
-        $lifetime_sold_by_cat = $lifetimeSalesByCatQuery
+            ->where('t.status', 'final')
             ->select(
                 DB::raw('COALESCE(p.category_id, 0) as category_id'),
                 DB::raw('COALESCE(p.sub_category_id, 0) as sub_category_id'),
