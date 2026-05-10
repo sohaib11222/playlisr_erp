@@ -3,34 +3,35 @@
      $shift_panel injected by view composer registered in AppServiceProvider. --}}
 @if(isset($shift_panel))
 <style>
-    .st-strip { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:6px 12px; margin:8px 15px; box-shadow:0 1px 2px rgba(0,0,0,0.03); }
-    .st-strip-head { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:4px; }
-    .st-strip-title { font-size:11px; font-weight:600; color:#374151; letter-spacing:.3px; text-transform:uppercase; }
-    .st-strip-title .st-duty-pill { display:inline-block; padding:1px 8px; border-radius:999px; font-size:10px; font-weight:600; letter-spacing:.4px; vertical-align:middle; margin-left:6px; text-transform:uppercase; }
+    .st-strip { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:10px 14px; margin:8px 15px; box-shadow:0 1px 2px rgba(0,0,0,0.03); }
+    .st-strip-head { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:8px; }
+    .st-strip-title { font-size:12px; font-weight:600; color:#374151; letter-spacing:.3px; text-transform:uppercase; }
+    .st-strip-title .st-duty-pill { display:inline-block; padding:2px 9px; border-radius:999px; font-size:11px; font-weight:600; letter-spacing:.4px; vertical-align:middle; margin-left:6px; text-transform:uppercase; }
     .st-strip-title .st-duty-pill.cashier { background:#e0f2fe; color:#075985; }
     .st-strip-title .st-duty-pill.shipping { background:#fef3c7; color:#92400e; }
     .st-strip-title .st-duty-pill.inventory { background:#ede9fe; color:#5b21b6; }
-    .st-strip-meta { font-size:11px; color:#6b7280; }
-    .st-strip-grid { display:flex; flex-direction:column; gap:3px; }
-    .st-strip-grid + .st-strip-grid { margin-top:3px; }
-    .st-row { display:flex; align-items:center; gap:10px; min-width:0; padding:2px 0; }
-    .st-row.scope-day_store { background:#f0f9ff; padding:3px 8px; border-radius:6px; margin-top:1px; }
+    .st-strip-meta { font-size:12px; color:#6b7280; }
+    .st-strip-grid { display:flex; flex-direction:column; gap:8px; }
+    .st-strip-grid + .st-strip-grid { margin-top:8px; padding-top:8px; border-top:1px solid #f1f2f4; }
+    .st-row { min-width:0; }
+    .st-row.scope-day_store { background:#f0f9ff; padding:6px 10px; border-radius:8px; }
     .st-row.scope-day_store .st-bar > .st-fill { background:#0ea5e9; }
     .st-row.scope-day_store .st-row-label { color:#075985; }
-    .st-row-label { flex:0 0 auto; min-width:155px; max-width:200px; font-size:12px; font-weight:600; color:#111827; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .st-row-numbers { flex:0 0 auto; font-size:11px; font-weight:600; color:#111827; white-space:nowrap; }
+    .st-row-top { display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin-bottom:4px; }
+    .st-row-label { flex:1 1 auto; min-width:0; font-size:14px; font-weight:600; color:#111827; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .st-row-numbers { flex:0 0 auto; font-size:14px; font-weight:600; color:#111827; white-space:nowrap; }
     .st-row-numbers .st-target { color:#6b7280; font-weight:400; }
-    .st-bar { flex:1 1 auto; height:6px; background:#eef2f7; border-radius:3px; overflow:hidden; min-width:60px; }
-    .st-bar > .st-fill { height:100%; transition:width .6s ease; background:#534ab7; border-radius:3px; }
+    .st-row-status { flex:0 0 auto; font-size:12px; color:#6b7280; white-space:nowrap; }
+    .st-bar { height:9px; background:#eef2f7; border-radius:5px; overflow:hidden; }
+    .st-bar > .st-fill { height:100%; transition:width .6s ease; background:#534ab7; border-radius:5px; }
     .st-bar > .st-fill.complete { background:#16a34a; }
-    .st-row-status { flex:0 0 auto; font-size:11px; color:#6b7280; white-space:nowrap; min-width:135px; text-align:right; }
     .st-pace { font-weight:600; }
     .st-pace.ahead { color:#3b6d11; }
     .st-pace.behind { color:#9a3412; }
     .st-pace.on { color:#1d4ed8; }
-    .st-celebrate { background: linear-gradient(135deg, #fde68a, #fbbf24); color:#78350f; padding:4px 10px; border-radius:6px; margin-top:4px; font-weight:600; font-size:11px; text-align:center; }
-    .st-empty { font-size:12px; color:#6b7280; }
-    .st-live { display:inline-block; width:6px; height:6px; border-radius:50%; background:#9ca3af; vertical-align:middle; margin-left:6px; transition:background .3s, transform .3s; }
+    .st-celebrate { background: linear-gradient(135deg, #fde68a, #fbbf24); color:#78350f; padding:6px 12px; border-radius:8px; margin-top:8px; font-weight:600; font-size:13px; text-align:center; }
+    .st-empty { font-size:13px; color:#6b7280; }
+    .st-live { display:inline-block; width:7px; height:7px; border-radius:50%; background:#9ca3af; vertical-align:middle; margin-left:6px; transition:background .3s, transform .3s; }
     .st-live.pulse { background:#16a34a; transform:scale(1.6); }
 </style>
 
@@ -81,24 +82,26 @@
                 ob_start();
                 ?>
                 <div class="st-row scope-<?= e($task['scope'] ?? 'shift') ?>" data-task-key="<?= e($task['key']) ?>" data-task-complete="<?= $task['complete'] ? '1' : '0' ?>" data-task-scope="<?= e($task['scope'] ?? 'shift') ?>">
-                    <div class="st-row-label" title="<?= e($task['label']) ?>"><?= e($task['label']) ?></div>
-                    <div class="st-row-numbers">
-                        <?php if ($is_money): ?>
-                            $<?= number_format($task['current'], 0) ?><span class="st-target"> / $<?= number_format($task['target'], 0) ?></span>
-                        <?php else: ?>
-                            <?= number_format($task['current'], 0) ?><span class="st-target"> / <?= number_format($task['target'], 0) ?> <?= e($task['unit']) ?></span>
-                        <?php endif; ?>
+                    <div class="st-row-top">
+                        <div class="st-row-label" title="<?= e($task['label']) ?>"><?= e($task['label']) ?></div>
+                        <div class="st-row-numbers">
+                            <?php if ($is_money): ?>
+                                $<?= number_format($task['current'], 0) ?><span class="st-target"> / $<?= number_format($task['target'], 0) ?></span>
+                            <?php else: ?>
+                                <?= number_format($task['current'], 0) ?><span class="st-target"> / <?= number_format($task['target'], 0) ?> <?= e($task['unit']) ?></span>
+                            <?php endif; ?>
+                        </div>
+                        <div class="st-row-status" title="<?= e($tooltip) ?>">
+                            <span class="st-pct"><?= number_format($task['percent'], 0) ?>%</span>
+                            <?php if ($task['complete']): ?>
+                                · <span class="st-pace ahead">Goal hit 🎉</span>
+                            <?php elseif ($paceLabel): ?>
+                                · <span class="st-pace <?= e($task['pace_status']) ?>"><?= $paceLabel ?></span>
+                            <?php endif; ?>
+                        </div>
                     </div>
                     <div class="st-bar" title="<?= e($tooltip) ?>">
                         <div class="st-fill <?= $task['complete'] ? 'complete' : '' ?>" style="width: <?= $task['percent'] ?>%;"></div>
-                    </div>
-                    <div class="st-row-status" title="<?= e($tooltip) ?>">
-                        <span class="st-pct"><?= number_format($task['percent'], 0) ?>%</span>
-                        <?php if ($task['complete']): ?>
-                            · <span class="st-pace ahead">Goal hit 🎉</span>
-                        <?php elseif ($paceLabel): ?>
-                            · <span class="st-pace <?= e($task['pace_status']) ?>"><?= $paceLabel ?></span>
-                        <?php endif; ?>
                     </div>
                 </div>
                 <?php
