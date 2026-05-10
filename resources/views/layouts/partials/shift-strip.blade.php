@@ -14,7 +14,11 @@
     .st-strip-grid { display:grid; gap:10px 18px; }
     .st-strip-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
     .st-strip-grid.cols-1 { grid-template-columns: 1fr; }
+    .st-strip-grid + .st-strip-grid { margin-top:10px; padding-top:10px; border-top:1px solid #f1f2f4; }
     .st-row { min-width:0; }
+    .st-row.scope-day_store { background:#f0f9ff; padding:8px 10px; border-radius:8px; }
+    .st-row.scope-day_store .st-bar > .st-fill { background:#0ea5e9; }
+    .st-row.scope-day_store .st-row-label { color:#075985; }
     .st-row-label { display:flex; justify-content:space-between; align-items:baseline; font-size:12px; font-weight:600; color:#111827; margin-bottom:4px; gap:8px; }
     .st-row-label .st-target { color:#6b7280; font-weight:400; font-size:11px; }
     .st-bar { height:6px; background:#eef2f7; border-radius:3px; overflow:hidden; }
@@ -50,64 +54,87 @@
             </div>
         </div>
 
-        @php $count = count($shift_panel['tasks']); @endphp
-        <div class="st-strip-grid {{ $count >= 2 ? 'cols-2' : 'cols-1' }}">
-            @forelse($shift_panel['tasks'] as $task)
-                <div class="st-row" data-task-key="{{ $task['key'] }}" data-task-complete="{{ $task['complete'] ? '1' : '0' }}">
+        @php
+            $personal_tasks = collect($shift_panel['tasks'])->filter(function ($t) { return ($t['scope'] ?? 'shift') !== 'day_store'; })->values();
+            $store_tasks    = collect($shift_panel['tasks'])->filter(function ($t) { return ($t['scope'] ?? 'shift') === 'day_store'; })->values();
+
+            $renderTask = function ($task) {
+                $pp = $task['peer_per_hour'];
+                $tp = $task['peer_top_per_hour'] ?? null;
+                $is_money = $task['unit'] === '$';
+                $is_per_day = ($task['scope'] ?? 'shift') === 'day_store';
+                $fmt = function ($v) use ($is_money) {
+                    if ($v === null) return '—';
+                    return $is_money
+                        ? '$' . number_format($v, 0)
+                        : number_format($v, $v < 10 ? 1 : 0);
+                };
+                $paceLabel = [
+                    'ahead'  => 'Ahead of pace',
+                    'on'     => 'On pace',
+                    'behind' => 'Behind pace',
+                ][$task['pace_status'] ?? ''] ?? null;
+                $peer_unit = $is_per_day ? '/day avg' : '/hr';
+                $tooltip = !is_null($pp)
+                    ? ($is_per_day ? 'Typical day at this store: ' : 'Peers at this hour avg ') . $fmt($pp) . $peer_unit
+                        . ($tp ? ' · best ' . $fmt($tp) . ($is_per_day ? '/day' : '/hr') : '')
+                    : '';
+                ob_start();
+                ?>
+                <div class="st-row scope-<?= e($task['scope'] ?? 'shift') ?>" data-task-key="<?= e($task['key']) ?>" data-task-complete="<?= $task['complete'] ? '1' : '0' ?>" data-task-scope="<?= e($task['scope'] ?? 'shift') ?>">
                     <div class="st-row-label">
-                        <span>{{ $task['label'] }}</span>
+                        <span><?= e($task['label']) ?></span>
                         <span class="st-task-numbers">
-                            @if($task['unit'] === '$')
-                                ${{ number_format($task['current'], 0) }}<span class="st-target"> / ${{ number_format($task['target'], 0) }}</span>
-                            @else
-                                {{ number_format($task['current'], 0) }}<span class="st-target"> / {{ number_format($task['target'], 0) }} {{ $task['unit'] }}</span>
-                            @endif
+                            <?php if ($is_money): ?>
+                                $<?= number_format($task['current'], 0) ?><span class="st-target"> / $<?= number_format($task['target'], 0) ?></span>
+                            <?php else: ?>
+                                <?= number_format($task['current'], 0) ?><span class="st-target"> / <?= number_format($task['target'], 0) ?> <?= e($task['unit']) ?></span>
+                            <?php endif; ?>
                         </span>
                     </div>
                     <div class="st-bar">
-                        <div class="st-fill {{ $task['complete'] ? 'complete' : '' }}" style="width: {{ $task['percent'] }}%;"></div>
+                        <div class="st-fill <?= $task['complete'] ? 'complete' : '' ?>" style="width: <?= $task['percent'] ?>%;"></div>
                     </div>
                     <div class="st-row-foot">
-                        @php
-                            $pp = $task['peer_per_hour'];
-                            $tp = $task['peer_top_per_hour'] ?? null;
-                            $is_money = $task['unit'] === '$';
-                            $fmt = function ($v) use ($is_money) {
-                                if ($v === null) return '—';
-                                return $is_money
-                                    ? '$' . number_format($v, 0)
-                                    : number_format($v, $v < 10 ? 1 : 0);
-                            };
-                            $paceLabel = [
-                                'ahead'  => 'Ahead of pace',
-                                'on'     => 'On pace',
-                                'behind' => 'Behind pace',
-                            ][$task['pace_status'] ?? ''] ?? null;
-                            $tooltip = '';
-                            if (!is_null($pp)) {
-                                $tooltip = 'Peers at this hour avg ' . $fmt($pp) . '/hr'
-                                    . ($tp ? ' · top ' . $fmt($tp) . '/hr' : '');
-                            }
-                        @endphp
-                        <span class="st-pct">{{ number_format($task['percent'], 0) }}%</span>
-                        @if($task['complete'])
+                        <span class="st-pct"><?= number_format($task['percent'], 0) ?>%</span>
+                        <?php if ($task['complete']): ?>
                             · <span class="st-pace ahead">Goal hit 🎉</span>
-                        @elseif($paceLabel)
-                            · <span class="st-pace {{ $task['pace_status'] }}" @if($tooltip) title="{{ $tooltip }}" @endif>{{ $paceLabel }}</span>
-                            @if(!is_null($pp))
-                                · <span title="{{ $tooltip }}">Peer {{ $fmt($pp) }}/hr</span>
-                            @endif
-                        @elseif(!is_null($pp))
-                            · Peer {{ $fmt($pp) }}/hr
-                        @else
+                        <?php elseif ($paceLabel): ?>
+                            · <span class="st-pace <?= e($task['pace_status']) ?>"<?= $tooltip ? ' title="'.e($tooltip).'"' : '' ?>><?= $paceLabel ?></span>
+                            <?php if (!is_null($pp)): ?>
+                                · <span title="<?= e($tooltip) ?>"><?= $is_per_day ? 'Avg ' : 'Peer ' ?><?= $fmt($pp) ?><?= $peer_unit ?></span>
+                            <?php endif; ?>
+                        <?php elseif (!is_null($pp)): ?>
+                            · <?= $is_per_day ? 'Avg ' : 'Peer ' ?><?= $fmt($pp) ?><?= $peer_unit ?>
+                        <?php else: ?>
                             · Just getting started
-                        @endif
+                        <?php endif; ?>
                     </div>
                 </div>
-            @empty
-                <div class="st-empty">No tasks configured for this duty yet.</div>
-            @endforelse
-        </div>
+                <?php
+                return ob_get_clean();
+            };
+        @endphp
+
+        @if($personal_tasks->count())
+            <div class="st-strip-grid {{ $personal_tasks->count() >= 2 ? 'cols-2' : 'cols-1' }}">
+                @foreach($personal_tasks as $task)
+                    {!! $renderTask($task) !!}
+                @endforeach
+            </div>
+        @endif
+
+        @if($store_tasks->count())
+            <div class="st-strip-grid cols-1">
+                @foreach($store_tasks as $task)
+                    {!! $renderTask($task) !!}
+                @endforeach
+            </div>
+        @endif
+
+        @if(!$personal_tasks->count() && !$store_tasks->count())
+            <div class="st-empty">No tasks configured for this duty yet.</div>
+        @endif
 
         @php $any_complete = collect($shift_panel['tasks'])->contains('complete', true); @endphp
         @if($any_complete)
@@ -174,8 +201,14 @@
 
         function buildFootHtml(t) {
             var pp = t.peer_per_hour, tp = t.peer_top_per_hour;
+            var isPerDay = t.scope === 'day_store';
+            var unit = isPerDay ? '/day avg' : '/hr';
+            var leadIn = isPerDay ? 'Typical day at this store: ' : 'Peers at this hour avg ';
+            var bestLabel = isPerDay ? '/day' : '/hr';
+            var peerLabel = isPerDay ? 'Avg ' : 'Peer ';
             var tooltip = pp != null
-                ? 'Peers at this hour avg ' + fmt(pp, t.unit === '$') + '/hr' + (tp ? ' · top ' + fmt(tp, t.unit === '$') + '/hr' : '')
+                ? leadIn + fmt(pp, t.unit === '$') + unit
+                    + (tp ? ' · best ' + fmt(tp, t.unit === '$') + bestLabel : '')
                 : '';
             var html = '<span class="st-pct">' + Math.round(t.percent) + '%</span>';
             if (t.complete) {
@@ -186,10 +219,10 @@
                 html += ' · <span class="st-pace ' + t.pace_status + '"'
                     + (tooltip ? ' title="' + tooltip + '"' : '') + '>' + label + '</span>';
                 if (pp != null) {
-                    html += ' · <span title="' + tooltip + '">Peer ' + fmt(pp, t.unit === '$') + '/hr</span>';
+                    html += ' · <span title="' + tooltip + '">' + peerLabel + fmt(pp, t.unit === '$') + unit + '</span>';
                 }
             } else if (pp != null) {
-                html += ' · Peer ' + fmt(pp, t.unit === '$') + '/hr';
+                html += ' · ' + peerLabel + fmt(pp, t.unit === '$') + unit;
             } else {
                 html += ' · Just getting started';
             }

@@ -138,6 +138,7 @@ class GamificationService
                 'key' => $def['key'],
                 'label' => $def['label'],
                 'unit' => $def['unit'],
+                'scope' => $def['scope'] ?? 'shift',
                 'current' => round($current, $def['decimals']),
                 'target' => round($target, $def['decimals']),
                 'percent' => round($percent, 1),
@@ -145,7 +146,7 @@ class GamificationService
                 'peer_top_per_hour' => $peerTopPerHour !== null ? round($peerTopPerHour, $def['decimals']) : null,
                 'my_per_hour' => $myPerHour !== null ? round($myPerHour, $def['decimals']) : null,
                 'complete' => $current >= $target && $target > 0,
-                'pace_status' => $this->paceStatus($current, $target, $shift),
+                'pace_status' => $this->paceStatus($current, $target, $shift, $def['scope'] ?? 'shift'),
             ];
         }
 
@@ -159,18 +160,21 @@ class GamificationService
     {
         if ($duty === 'cashier') {
             return [
-                ['key' => 'sales_total', 'label' => 'Shift sales', 'unit' => '$', 'decimals' => 0],
-                ['key' => 'products_added', 'label' => 'Products added & priced', 'unit' => 'items', 'decimals' => 0],
+                ['key' => 'sales_total', 'label' => 'Your shift sales', 'unit' => '$', 'decimals' => 0, 'scope' => 'shift'],
+                ['key' => 'products_added', 'label' => 'Products added & priced', 'unit' => 'items', 'decimals' => 0, 'scope' => 'shift'],
+                ['key' => 'store_sales_today', 'label' => 'Store today (all cashiers)', 'unit' => '$', 'decimals' => 0, 'scope' => 'day_store'],
             ];
         }
         if ($duty === 'shipping') {
             return [
-                ['key' => 'orders_shipped', 'label' => 'Orders shipped', 'unit' => 'orders', 'decimals' => 0],
+                ['key' => 'orders_shipped', 'label' => 'Orders shipped', 'unit' => 'orders', 'decimals' => 0, 'scope' => 'shift'],
+                ['key' => 'store_sales_today', 'label' => 'Store today (all cashiers)', 'unit' => '$', 'decimals' => 0, 'scope' => 'day_store'],
             ];
         }
         if ($duty === 'inventory') {
             return [
-                ['key' => 'products_added', 'label' => 'Products added & priced', 'unit' => 'items', 'decimals' => 0],
+                ['key' => 'products_added', 'label' => 'Products added & priced', 'unit' => 'items', 'decimals' => 0, 'scope' => 'shift'],
+                ['key' => 'store_sales_today', 'label' => 'Store today (all cashiers)', 'unit' => '$', 'decimals' => 0, 'scope' => 'day_store'],
             ];
         }
         return [];
@@ -215,6 +219,22 @@ class GamificationService
             return (float) $q->count();
         }
 
+        if ($taskKey === 'store_sales_today') {
+            // Whole-store revenue today, all cashiers — not user-scoped.
+            $todayStart = Carbon::today()->toDateTimeString();
+            $q = DB::table('transactions')
+                ->where('business_id', $businessId)
+                ->where('type', 'sell')
+                ->where('status', 'final')
+                ->whereNull('import_source')
+                ->whereNotNull('created_by')
+                ->whereBetween('transaction_date', [$todayStart, $now]);
+            if (!empty($shift['location_id'])) {
+                $q->where('location_id', $shift['location_id']);
+            }
+            return (float) $q->sum('final_total');
+        }
+
         return 0.0;
     }
 
@@ -241,6 +261,13 @@ class GamificationService
 
         if ($taskKey === 'sales_total') {
             return $this->salesPeerStats($businessId, $shift['location_id'] ?? null, $hour, $dowBucket, $rangeStart, $rangeEnd);
+        }
+
+        if ($taskKey === 'store_sales_today') {
+            // Daily store totals on matching DOW. Returns avg/top in
+            // dollars-per-day (semantics differ from per-hour above; the
+            // computeTarget branch knows not to multiply by hours again).
+            return $this->storeDailyPeerStats($businessId, $shift['location_id'] ?? null, $dowBucket, $rangeStart, $rangeEnd);
         }
 
         if ($taskKey === 'products_added') {
@@ -328,6 +355,38 @@ class GamificationService
         $totalRev = (float) $rows->sum('rev');
         return [
             'avg' => $totalRev / $openHours,
+            'top' => (float) $rows->max('rev'),
+        ];
+    }
+
+    /**
+     * Whole-day store revenue stats: avg and best single-day total at this
+     * location across the matching DOW bucket over the lookback window.
+     *
+     * @return array{avg: ?float, top: ?float}
+     */
+    protected function storeDailyPeerStats(int $businessId, ?int $locationId, array $dowBucket, string $rangeStart, string $rangeEnd): array
+    {
+        $q = DB::table('transactions')
+            ->where('business_id', $businessId)
+            ->where('type', 'sell')
+            ->where('status', 'final')
+            ->whereNull('import_source')
+            ->whereNotNull('created_by')
+            ->whereBetween('transaction_date', [$rangeStart, $rangeEnd])
+            ->whereRaw('DAYOFWEEK(transaction_date) IN ('.$this->dowList($dowBucket).')');
+        if (!empty($locationId)) {
+            $q->where('location_id', $locationId);
+        }
+        $rows = $q->selectRaw('DATE(transaction_date) as d, SUM(final_total) as rev')
+            ->groupBy('d')
+            ->get();
+
+        if ($rows->isEmpty()) {
+            return ['avg' => null, 'top' => null];
+        }
+        return [
+            'avg' => (float) $rows->avg('rev'),
             'top' => (float) $rows->max('rev'),
         ];
     }
@@ -454,6 +513,15 @@ class GamificationService
     {
         $hours = max(1.0, $shift['expected_hours'] ?? $shift['hours']);
 
+        if ($taskKey === 'store_sales_today') {
+            // peerPerHour here is actually peer-per-day from
+            // storeDailyPeerStats, so don't multiply by hours.
+            if ($peerPerHour === null) {
+                return 0.0;
+            }
+            return $peerPerHour * self::SALES_GOAL_MULTIPLIER;
+        }
+
         if ($taskKey === 'sales_total') {
             if ($peerPerHour === null) {
                 return 0.0;
@@ -504,14 +572,26 @@ class GamificationService
      * enough info (no target, or shift just started so the comparison is
      * meaningless). Tolerance ±5% so small wiggle reads as "on pace".
      */
-    protected function paceStatus(float $current, float $target, array $shift): ?string
+    protected function paceStatus(float $current, float $target, array $shift, string $scope = 'shift'): ?string
     {
-        if ($target <= 0 || $shift['hours'] < 0.25) {
+        if ($target <= 0) {
             return null;
         }
-        $expected = max(1.0, $shift['expected_hours'] ?? $shift['hours']);
         $progressFrac = $current / $target;
-        $elapsedFrac = min(1.0, $shift['hours'] / $expected);
+
+        if ($scope === 'day_store') {
+            $elapsedFrac = $this->storeDayElapsedFraction($shift);
+            if ($elapsedFrac === null) {
+                return null;
+            }
+        } else {
+            if ($shift['hours'] < 0.25) {
+                return null;
+            }
+            $expected = max(1.0, $shift['expected_hours'] ?? $shift['hours']);
+            $elapsedFrac = min(1.0, $shift['hours'] / $expected);
+        }
+
         if ($progressFrac >= $elapsedFrac + 0.05) {
             return 'ahead';
         }
@@ -519,6 +599,29 @@ class GamificationService
             return 'behind';
         }
         return 'on';
+    }
+
+    /**
+     * How far through today's open hours we are at this moment, 0–1. Uses
+     * STORE_HOURS for the location; null when we don't know the schedule.
+     */
+    protected function storeDayElapsedFraction(array $shift): ?float
+    {
+        $hours = $this->getStoreHours($shift['location_id'] ?? null);
+        if (!$hours) {
+            return null;
+        }
+        $now = Carbon::now();
+        $dayName = $now->format('l');
+        if (!isset($hours[$dayName])) {
+            return null;
+        }
+        [$openHour, $closeHour] = $hours[$dayName];
+        $todayOpen = $now->copy()->setTime($openHour, 0, 0);
+        $todayClose = $now->copy()->setTime($closeHour, 0, 0);
+        $totalSeconds = max(1, $todayClose->timestamp - $todayOpen->timestamp);
+        $elapsedSeconds = max(0, min($totalSeconds, $now->timestamp - $todayOpen->timestamp));
+        return $elapsedSeconds / $totalSeconds;
     }
 
     public function expectedShiftHours(array $shift): float
