@@ -5481,6 +5481,7 @@ class ReportController extends Controller
                 'barcoded_count' => $barcoded,
                 'items_sold' => $items_sold,
                 'revenue_per_item' => $items_sold > 0 ? $revenue / $items_sold : 0.0,
+                'revenue_per_listed_item' => $barcoded > 0 ? $revenue / $barcoded : 0.0,
                 'total_revenue' => $revenue,
             ];
         })->filter(function ($r) {

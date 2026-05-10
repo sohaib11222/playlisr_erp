@@ -43,7 +43,8 @@
                         <th>Employee</th>
                         <th class="text-right">Items Barcoded (lifetime)</th>
                         <th class="text-right">Items Sold (in period)</th>
-                        <th class="text-right">Revenue / Item</th>
+                        <th class="text-right" title="Total revenue ÷ items sold">Revenue / Item Sold</th>
+                        <th class="text-right" title="Total revenue ÷ items barcoded (lifetime)">Revenue / Item Listed</th>
                         <th class="text-right">Total Revenue</th>
                     </tr>
                 </thead>
@@ -58,10 +59,11 @@
                             <td class="text-right">{{ number_format($r->barcoded_count) }}</td>
                             <td class="text-right">{{ number_format($r->items_sold) }}</td>
                             <td class="text-right">${{ number_format($r->revenue_per_item, 2) }}</td>
+                            <td class="text-right">${{ number_format($r->revenue_per_listed_item, 2) }}</td>
                             <td class="text-right"><strong>${{ number_format($r->total_revenue, 2) }}</strong></td>
                         </tr>
                     @empty
-                        <tr><td colspan="5" class="text-center text-muted">No data found for this range.</td></tr>
+                        <tr><td colspan="6" class="text-center text-muted">No data found for this range.</td></tr>
                     @endforelse
                 </tbody>
                 @if($rows->isNotEmpty())
@@ -70,6 +72,7 @@
                         <th>Total</th>
                         <th class="text-right">{{ number_format($rows->sum('barcoded_count')) }}</th>
                         <th class="text-right">{{ number_format($rows->sum('items_sold')) }}</th>
+                        <th></th>
                         <th></th>
                         <th class="text-right">${{ number_format($rows->sum('total_revenue'), 2) }}</th>
                     </tr>
