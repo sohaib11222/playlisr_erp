@@ -5558,6 +5558,69 @@ class ReportController extends Controller
         }
         $barcoded_lifetime = (int) $barcodedLifetimeQuery->count();
 
+        // Per-category breakdown: lifetime barcoded counts joined with
+        // sales-in-window, grouped by (category, subcategory). LEFT JOINs to
+        // categories so uncategorized rows still show up as "—".
+        $barcodedByCatQuery = DB::table('products as p')
+            ->leftJoin('categories as cat', 'p.category_id', '=', 'cat.id')
+            ->leftJoin('categories as subcat', 'p.sub_category_id', '=', 'subcat.id')
+            ->where('p.business_id', $business_id)
+            ->where('p.created_by', $user_id);
+        if ($productsTableHasAddedVia) {
+            $barcodedByCatQuery->where('p.added_via', 'mass_add');
+        } else {
+            $barcodedByCatQuery->whereRaw('1 = 0');
+        }
+        $barcoded_by_cat = $barcodedByCatQuery
+            ->select(
+                DB::raw('COALESCE(p.category_id, 0) as category_id'),
+                DB::raw('COALESCE(p.sub_category_id, 0) as sub_category_id'),
+                'cat.name as category_name',
+                'subcat.name as subcategory_name',
+                DB::raw('COUNT(*) as barcoded_count')
+            )
+            ->groupBy('p.category_id', 'p.sub_category_id', 'cat.name', 'subcat.name')
+            ->get()
+            ->keyBy(function ($r) { return $r->category_id . ':' . $r->sub_category_id; });
+
+        $salesByCatQuery = DB::table('products as p')
+            ->join('transaction_sell_lines as tsl', 'tsl.product_id', '=', 'p.id')
+            ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+            ->where('p.business_id', $business_id)
+            ->where('p.created_by', $user_id)
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereDate('t.transaction_date', '>=', $start_date)
+            ->whereDate('t.transaction_date', '<=', $end_date);
+        if ($productsTableHasAddedVia) {
+            $salesByCatQuery->where('p.added_via', 'mass_add');
+        } else {
+            $salesByCatQuery->whereRaw('1 = 0');
+        }
+        $sales_by_cat = $salesByCatQuery
+            ->select(
+                DB::raw('COALESCE(p.category_id, 0) as category_id'),
+                DB::raw('COALESCE(p.sub_category_id, 0) as sub_category_id'),
+                DB::raw('COUNT(DISTINCT p.id) as items_sold'),
+                DB::raw('SUM((tsl.quantity - tsl.quantity_returned) * tsl.unit_price_inc_tax) as revenue')
+            )
+            ->groupBy('p.category_id', 'p.sub_category_id')
+            ->get()
+            ->keyBy(function ($r) { return $r->category_id . ':' . $r->sub_category_id; });
+
+        $by_category = $barcoded_by_cat->map(function ($b) use ($sales_by_cat) {
+            $key = $b->category_id . ':' . $b->sub_category_id;
+            $s = $sales_by_cat[$key] ?? null;
+            return (object) [
+                'category_name' => $b->category_name ?: '— Uncategorized —',
+                'subcategory_name' => $b->subcategory_name ?: '',
+                'barcoded_count' => (int) $b->barcoded_count,
+                'items_sold' => $s ? (int) $s->items_sold : 0,
+                'total_revenue' => $s ? (float) $s->revenue : 0.0,
+            ];
+        })->sortByDesc('total_revenue')->values();
+
         $total_revenue = (float) $items->sum('revenue');
         $items_sold = $items->count();
         $totals = (object) [
@@ -5568,7 +5631,7 @@ class ReportController extends Controller
         ];
 
         return view('report.revenue_by_employee_barcoding_detail')->with(compact(
-            'items', 'totals', 'employee', 'user', 'start_date', 'end_date'
+            'items', 'totals', 'employee', 'user', 'start_date', 'end_date', 'by_category'
         ));
     }
 

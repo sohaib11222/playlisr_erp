@@ -75,6 +75,49 @@
 
     <div class="box box-solid">
         <div class="box-header with-border">
+            <h3 class="box-title">By Category</h3>
+            <small class="text-muted">Items barcoded lifetime per category, paired with sales in the selected window.</small>
+        </div>
+        <div class="box-body table-responsive">
+            <table class="table table-bordered table-striped">
+                <thead>
+                    <tr>
+                        <th>Category</th>
+                        <th>Subcategory</th>
+                        <th class="text-right">Items Barcoded</th>
+                        <th class="text-right">Items Sold</th>
+                        <th class="text-right">Total Revenue</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse($by_category as $c)
+                        <tr>
+                            <td>{{ $c->category_name }}</td>
+                            <td>{{ $c->subcategory_name ?: '—' }}</td>
+                            <td class="text-right">{{ number_format($c->barcoded_count) }}</td>
+                            <td class="text-right">{{ number_format($c->items_sold) }}</td>
+                            <td class="text-right">${{ number_format($c->total_revenue, 2) }}</td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="5" class="text-center text-muted">No barcoded items found.</td></tr>
+                    @endforelse
+                </tbody>
+                @if($by_category->isNotEmpty())
+                <tfoot>
+                    <tr>
+                        <th colspan="2" class="text-right">Total</th>
+                        <th class="text-right">{{ number_format($by_category->sum('barcoded_count')) }}</th>
+                        <th class="text-right">{{ number_format($by_category->sum('items_sold')) }}</th>
+                        <th class="text-right">${{ number_format($by_category->sum('total_revenue'), 2) }}</th>
+                    </tr>
+                </tfoot>
+                @endif
+            </table>
+        </div>
+    </div>
+
+    <div class="box box-solid">
+        <div class="box-header with-border">
             <h3 class="box-title">Items that sold {{ $start_date }} → {{ $end_date }}</h3>
         </div>
         <div class="box-body table-responsive">
