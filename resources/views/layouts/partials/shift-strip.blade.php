@@ -3,33 +3,32 @@
      $shift_panel injected by view composer registered in AppServiceProvider. --}}
 @if(isset($shift_panel))
 <style>
-    .st-strip { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:10px 14px; margin:10px 15px 14px; box-shadow:0 1px 2px rgba(0,0,0,0.03); }
-    .st-strip-head { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:8px; }
-    .st-strip-title { font-size:12px; font-weight:600; color:#374151; letter-spacing:.3px; text-transform:uppercase; }
+    .st-strip { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:6px 12px; margin:8px 15px; box-shadow:0 1px 2px rgba(0,0,0,0.03); }
+    .st-strip-head { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:4px; }
+    .st-strip-title { font-size:11px; font-weight:600; color:#374151; letter-spacing:.3px; text-transform:uppercase; }
     .st-strip-title .st-duty-pill { display:inline-block; padding:1px 8px; border-radius:999px; font-size:10px; font-weight:600; letter-spacing:.4px; vertical-align:middle; margin-left:6px; text-transform:uppercase; }
     .st-strip-title .st-duty-pill.cashier { background:#e0f2fe; color:#075985; }
     .st-strip-title .st-duty-pill.shipping { background:#fef3c7; color:#92400e; }
     .st-strip-title .st-duty-pill.inventory { background:#ede9fe; color:#5b21b6; }
     .st-strip-meta { font-size:11px; color:#6b7280; }
-    .st-strip-grid { display:grid; gap:10px 18px; }
-    .st-strip-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
-    .st-strip-grid.cols-1 { grid-template-columns: 1fr; }
-    .st-strip-grid + .st-strip-grid { margin-top:10px; padding-top:10px; border-top:1px solid #f1f2f4; }
-    .st-row { min-width:0; }
-    .st-row.scope-day_store { background:#f0f9ff; padding:8px 10px; border-radius:8px; }
+    .st-strip-grid { display:flex; flex-direction:column; gap:3px; }
+    .st-strip-grid + .st-strip-grid { margin-top:3px; }
+    .st-row { display:flex; align-items:center; gap:10px; min-width:0; padding:2px 0; }
+    .st-row.scope-day_store { background:#f0f9ff; padding:3px 8px; border-radius:6px; margin-top:1px; }
     .st-row.scope-day_store .st-bar > .st-fill { background:#0ea5e9; }
     .st-row.scope-day_store .st-row-label { color:#075985; }
-    .st-row-label { display:flex; justify-content:space-between; align-items:baseline; font-size:12px; font-weight:600; color:#111827; margin-bottom:4px; gap:8px; }
-    .st-row-label .st-target { color:#6b7280; font-weight:400; font-size:11px; }
-    .st-bar { height:6px; background:#eef2f7; border-radius:3px; overflow:hidden; }
+    .st-row-label { flex:0 0 auto; min-width:155px; max-width:200px; font-size:12px; font-weight:600; color:#111827; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .st-row-numbers { flex:0 0 auto; font-size:11px; font-weight:600; color:#111827; white-space:nowrap; }
+    .st-row-numbers .st-target { color:#6b7280; font-weight:400; }
+    .st-bar { flex:1 1 auto; height:6px; background:#eef2f7; border-radius:3px; overflow:hidden; min-width:60px; }
     .st-bar > .st-fill { height:100%; transition:width .6s ease; background:#534ab7; border-radius:3px; }
     .st-bar > .st-fill.complete { background:#16a34a; }
-    .st-row-foot { font-size:10px; color:#6b7280; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .st-row-status { flex:0 0 auto; font-size:11px; color:#6b7280; white-space:nowrap; min-width:135px; text-align:right; }
     .st-pace { font-weight:600; }
     .st-pace.ahead { color:#3b6d11; }
     .st-pace.behind { color:#9a3412; }
     .st-pace.on { color:#1d4ed8; }
-    .st-celebrate { background: linear-gradient(135deg, #fde68a, #fbbf24); color:#78350f; padding:6px 12px; border-radius:8px; margin-top:8px; font-weight:600; font-size:12px; text-align:center; }
+    .st-celebrate { background: linear-gradient(135deg, #fde68a, #fbbf24); color:#78350f; padding:4px 10px; border-radius:6px; margin-top:4px; font-weight:600; font-size:11px; text-align:center; }
     .st-empty { font-size:12px; color:#6b7280; }
     .st-live { display:inline-block; width:6px; height:6px; border-radius:50%; background:#9ca3af; vertical-align:middle; margin-left:6px; transition:background .3s, transform .3s; }
     .st-live.pulse { background:#16a34a; transform:scale(1.6); }
@@ -70,9 +69,9 @@
                         : number_format($v, $v < 10 ? 1 : 0);
                 };
                 $paceLabel = [
-                    'ahead'  => 'Ahead of pace',
+                    'ahead'  => 'Ahead',
                     'on'     => 'On pace',
-                    'behind' => 'Behind pace',
+                    'behind' => 'Behind',
                 ][$task['pace_status'] ?? ''] ?? null;
                 $peer_unit = $is_per_day ? '/day avg' : '/hr';
                 $tooltip = !is_null($pp)
@@ -82,32 +81,23 @@
                 ob_start();
                 ?>
                 <div class="st-row scope-<?= e($task['scope'] ?? 'shift') ?>" data-task-key="<?= e($task['key']) ?>" data-task-complete="<?= $task['complete'] ? '1' : '0' ?>" data-task-scope="<?= e($task['scope'] ?? 'shift') ?>">
-                    <div class="st-row-label">
-                        <span><?= e($task['label']) ?></span>
-                        <span class="st-task-numbers">
-                            <?php if ($is_money): ?>
-                                $<?= number_format($task['current'], 0) ?><span class="st-target"> / $<?= number_format($task['target'], 0) ?></span>
-                            <?php else: ?>
-                                <?= number_format($task['current'], 0) ?><span class="st-target"> / <?= number_format($task['target'], 0) ?> <?= e($task['unit']) ?></span>
-                            <?php endif; ?>
-                        </span>
+                    <div class="st-row-label" title="<?= e($task['label']) ?>"><?= e($task['label']) ?></div>
+                    <div class="st-row-numbers">
+                        <?php if ($is_money): ?>
+                            $<?= number_format($task['current'], 0) ?><span class="st-target"> / $<?= number_format($task['target'], 0) ?></span>
+                        <?php else: ?>
+                            <?= number_format($task['current'], 0) ?><span class="st-target"> / <?= number_format($task['target'], 0) ?> <?= e($task['unit']) ?></span>
+                        <?php endif; ?>
                     </div>
-                    <div class="st-bar">
+                    <div class="st-bar" title="<?= e($tooltip) ?>">
                         <div class="st-fill <?= $task['complete'] ? 'complete' : '' ?>" style="width: <?= $task['percent'] ?>%;"></div>
                     </div>
-                    <div class="st-row-foot">
+                    <div class="st-row-status" title="<?= e($tooltip) ?>">
                         <span class="st-pct"><?= number_format($task['percent'], 0) ?>%</span>
                         <?php if ($task['complete']): ?>
                             · <span class="st-pace ahead">Goal hit 🎉</span>
                         <?php elseif ($paceLabel): ?>
-                            · <span class="st-pace <?= e($task['pace_status']) ?>"<?= $tooltip ? ' title="'.e($tooltip).'"' : '' ?>><?= $paceLabel ?></span>
-                            <?php if (!is_null($pp)): ?>
-                                · <span title="<?= e($tooltip) ?>"><?= $is_per_day ? 'Avg ' : 'Peer ' ?><?= $fmt($pp) ?><?= $peer_unit ?></span>
-                            <?php endif; ?>
-                        <?php elseif (!is_null($pp)): ?>
-                            · <?= $is_per_day ? 'Avg ' : 'Peer ' ?><?= $fmt($pp) ?><?= $peer_unit ?>
-                        <?php else: ?>
-                            · Just getting started
+                            · <span class="st-pace <?= e($task['pace_status']) ?>"><?= $paceLabel ?></span>
                         <?php endif; ?>
                     </div>
                 </div>
@@ -197,36 +187,28 @@
             if (isMoney) return '$' + Math.round(v).toLocaleString();
             return v < 10 ? Number(v).toFixed(1) : String(Math.round(v));
         }
-        var paceLabels = { ahead: 'Ahead of pace', on: 'On pace', behind: 'Behind pace' };
+        var paceLabels = { ahead: 'Ahead', on: 'On pace', behind: 'Behind' };
 
-        function buildFootHtml(t) {
-            var pp = t.peer_per_hour, tp = t.peer_top_per_hour;
-            var isPerDay = t.scope === 'day_store';
-            var unit = isPerDay ? '/day avg' : '/hr';
-            var leadIn = isPerDay ? 'Typical day at this store: ' : 'Peers at this hour avg ';
-            var bestLabel = isPerDay ? '/day' : '/hr';
-            var peerLabel = isPerDay ? 'Avg ' : 'Peer ';
-            var tooltip = pp != null
-                ? leadIn + fmt(pp, t.unit === '$') + unit
-                    + (tp ? ' · best ' + fmt(tp, t.unit === '$') + bestLabel : '')
-                : '';
+        function buildStatusHtml(t) {
             var html = '<span class="st-pct">' + Math.round(t.percent) + '%</span>';
             if (t.complete) {
                 return html + ' · <span class="st-pace ahead">Goal hit 🎉</span>';
             }
             var label = paceLabels[t.pace_status];
             if (label) {
-                html += ' · <span class="st-pace ' + t.pace_status + '"'
-                    + (tooltip ? ' title="' + tooltip + '"' : '') + '>' + label + '</span>';
-                if (pp != null) {
-                    html += ' · <span title="' + tooltip + '">' + peerLabel + fmt(pp, t.unit === '$') + unit + '</span>';
-                }
-            } else if (pp != null) {
-                html += ' · ' + peerLabel + fmt(pp, t.unit === '$') + unit;
-            } else {
-                html += ' · Just getting started';
+                html += ' · <span class="st-pace ' + t.pace_status + '">' + label + '</span>';
             }
             return html;
+        }
+        function buildTooltip(t) {
+            var pp = t.peer_per_hour, tp = t.peer_top_per_hour;
+            if (pp == null) return '';
+            var isPerDay = t.scope === 'day_store';
+            var unit = isPerDay ? '/day avg' : '/hr';
+            var leadIn = isPerDay ? 'Typical day at this store: ' : 'Peers at this hour avg ';
+            var bestLabel = isPerDay ? '/day' : '/hr';
+            return leadIn + fmt(pp, t.unit === '$') + unit
+                + (tp ? ' · best ' + fmt(tp, t.unit === '$') + bestLabel : '');
         }
 
         function pulseLive() {
@@ -259,15 +241,17 @@
                         nums = Math.round(t.current).toLocaleString() +
                             '<span class="st-target"> / ' + Math.round(t.target).toLocaleString() + ' ' + t.unit + '</span>';
                     }
-                    $task.find('.st-task-numbers').html(nums);
-                    $task.find('.st-row-foot').html(buildFootHtml(t));
+                    $task.find('.st-row-numbers').html(nums);
+                    $task.find('.st-row-status').html(buildStatusHtml(t));
+                    var tip = buildTooltip(t);
+                    $task.find('.st-bar, .st-row-status').attr('title', tip);
 
                     if (t.complete && !celebratedKeys[t.key]) {
                         celebratedKeys[t.key] = true;
                         fireConfetti();
                         if (!$panel.find('[data-celebrate-banner]').length) {
                             var name = @json(Session::get('user.first_name') ?? '');
-                            $panel.find('.st-strip-grid').after(
+                            $panel.find('.st-strip-grid').last().after(
                                 '<div class="st-celebrate" data-celebrate-banner>' +
                                 'Goal hit — nice work ' + (name || 'there') + '!</div>'
                             );
