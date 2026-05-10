@@ -5394,6 +5394,184 @@ class ReportController extends Controller
     }
 
     /**
+     * Revenue by Employee — Barcoded Items
+     *
+     * Per-employee rollup tying products an employee added (added_via='mass_add',
+     * matching the Employee Productivity report's definition of "barcoded") to
+     * the revenue those items produced. Date range filters the SALES window;
+     * the barcoded count is lifetime so employees see the full denominator
+     * behind the conversion.
+     */
+    public function revenueByEmployeeBarcoding(Request $request)
+    {
+        $business_id = $request->session()->get('user.business_id');
+        $start_date = $request->input('start_date');
+        $end_date = $request->input('end_date');
+        if (empty($start_date) || empty($end_date)) {
+            $start_date = $start_date ?: \Carbon::today()->startOfMonth()->format('Y-m-d');
+            $end_date = $end_date ?: \Carbon::today()->format('Y-m-d');
+        }
+
+        // Non-admin staff see only their own row; admins see everyone.
+        // Treats this as personal performance data — same boundary the
+        // user agreed for the Revenue by Employee report (2026-05-09).
+        $is_admin = $this->businessUtil->is_admin(auth()->user());
+        $current_user_id = auth()->user()->id;
+
+        $users = User::where('business_id', $business_id)
+            ->where('allow_login', 1)
+            ->where('status', 'active')
+            ->when(!$is_admin, function ($q) use ($current_user_id) {
+                $q->where('id', $current_user_id);
+            })
+            ->select('id', DB::raw("CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')) as full_name"))
+            ->orderBy('first_name')
+            ->get();
+
+        // Backward-compat: if the added_via migration hasn't been run we can't
+        // distinguish barcoded items, so return an empty rollup rather than
+        // erroring (mirrors productEntryProductivity).
+        $productsTableHasAddedVia = \Schema::hasColumn('products', 'added_via');
+
+        $barcodedCountQuery = Product::where('business_id', $business_id)
+            ->whereNotNull('created_by');
+        if ($productsTableHasAddedVia) {
+            $barcodedCountQuery->where('added_via', 'mass_add');
+        } else {
+            $barcodedCountQuery->whereRaw('1 = 0');
+        }
+        $barcoded_total = $barcodedCountQuery
+            ->select('created_by', DB::raw('COUNT(*) as total'))
+            ->groupBy('created_by')
+            ->pluck('total', 'created_by');
+
+        $salesQuery = DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+            ->join('products as p', 'tsl.product_id', '=', 'p.id')
+            ->where('t.business_id', $business_id)
+            ->where('p.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereDate('t.transaction_date', '>=', $start_date)
+            ->whereDate('t.transaction_date', '<=', $end_date)
+            ->whereNotNull('p.created_by');
+        if ($productsTableHasAddedVia) {
+            $salesQuery->where('p.added_via', 'mass_add');
+        } else {
+            $salesQuery->whereRaw('1 = 0');
+        }
+        $sales = $salesQuery
+            ->select(
+                'p.created_by',
+                DB::raw('COUNT(DISTINCT p.id) as items_sold'),
+                DB::raw('SUM((tsl.quantity - tsl.quantity_returned) * tsl.unit_price_inc_tax) as revenue')
+            )
+            ->groupBy('p.created_by')
+            ->get()
+            ->keyBy('created_by');
+
+        $rows = $users->map(function ($u) use ($barcoded_total, $sales) {
+            $barcoded = (int) ($barcoded_total[$u->id] ?? 0);
+            $row = $sales[$u->id] ?? null;
+            $items_sold = $row ? (int) $row->items_sold : 0;
+            $revenue = $row ? (float) $row->revenue : 0.0;
+            return (object) [
+                'user_id' => $u->id,
+                'employee' => trim((string) $u->full_name),
+                'barcoded_count' => $barcoded,
+                'items_sold' => $items_sold,
+                'revenue_per_item' => $items_sold > 0 ? $revenue / $items_sold : 0.0,
+                'total_revenue' => $revenue,
+            ];
+        })->filter(function ($r) {
+            return $r->barcoded_count > 0 || $r->items_sold > 0;
+        })->sortByDesc('total_revenue')->values();
+
+        return view('report.revenue_by_employee_barcoding')->with(compact(
+            'rows', 'start_date', 'end_date'
+        ));
+    }
+
+    /**
+     * Drill-down for Revenue by Employee — Barcoded Items.
+     *
+     * Lists each barcoded product the employee added that sold within the
+     * window, with qty sold and revenue. Unsold items are omitted — this
+     * report's question is "what led to sales?", so zero-sale rows aren't
+     * useful here.
+     */
+    public function revenueByEmployeeBarcodingDetail(Request $request, $user_id)
+    {
+        $business_id = $request->session()->get('user.business_id');
+        $start_date = $request->input('start_date');
+        $end_date = $request->input('end_date');
+        if (empty($start_date) || empty($end_date)) {
+            $start_date = $start_date ?: \Carbon::today()->startOfMonth()->format('Y-m-d');
+            $end_date = $end_date ?: \Carbon::today()->format('Y-m-d');
+        }
+
+        // Non-admins can only drill into their own row.
+        if (!$this->businessUtil->is_admin(auth()->user()) && (int) $user_id !== (int) auth()->user()->id) {
+            abort(403, 'You can only view your own revenue detail.');
+        }
+
+        $user = User::where('business_id', $business_id)->findOrFail($user_id);
+        $employee = trim((string) ($user->first_name . ' ' . $user->last_name));
+
+        $productsTableHasAddedVia = \Schema::hasColumn('products', 'added_via');
+
+        $itemsQuery = DB::table('products as p')
+            ->join('transaction_sell_lines as tsl', 'tsl.product_id', '=', 'p.id')
+            ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+            ->where('p.business_id', $business_id)
+            ->where('p.created_by', $user_id)
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereDate('t.transaction_date', '>=', $start_date)
+            ->whereDate('t.transaction_date', '<=', $end_date);
+        if ($productsTableHasAddedVia) {
+            $itemsQuery->where('p.added_via', 'mass_add');
+        } else {
+            $itemsQuery->whereRaw('1 = 0');
+        }
+        $items = $itemsQuery
+            ->select(
+                'p.id',
+                'p.name',
+                'p.sku',
+                'p.created_at',
+                DB::raw('SUM(tsl.quantity - tsl.quantity_returned) as qty_sold'),
+                DB::raw('SUM((tsl.quantity - tsl.quantity_returned) * tsl.unit_price_inc_tax) as revenue')
+            )
+            ->groupBy('p.id', 'p.name', 'p.sku', 'p.created_at')
+            ->orderByDesc('revenue')
+            ->get();
+
+        $barcodedLifetimeQuery = Product::where('business_id', $business_id)
+            ->where('created_by', $user_id);
+        if ($productsTableHasAddedVia) {
+            $barcodedLifetimeQuery->where('added_via', 'mass_add');
+        } else {
+            $barcodedLifetimeQuery->whereRaw('1 = 0');
+        }
+        $barcoded_lifetime = (int) $barcodedLifetimeQuery->count();
+
+        $total_revenue = (float) $items->sum('revenue');
+        $items_sold = $items->count();
+        $totals = (object) [
+            'barcoded_lifetime' => $barcoded_lifetime,
+            'items_sold' => $items_sold,
+            'total_revenue' => $total_revenue,
+            'revenue_per_item' => $items_sold > 0 ? $total_revenue / $items_sold : 0.0,
+        ];
+
+        return view('report.revenue_by_employee_barcoding_detail')->with(compact(
+            'items', 'totals', 'employee', 'user', 'start_date', 'end_date'
+        ));
+    }
+
+    /**
      * Dead Stock Report
      *
      * Shows variations that currently have stock on hand but haven't been sold
@@ -9671,7 +9849,7 @@ class ReportController extends Controller
         // (revenue per hour desc, nulls last) — which preserves gold/silver/bronze.
         $sort = $request->input('sort');
         $dir  = strtolower($request->input('dir', 'desc')) === 'asc' ? 'asc' : 'desc';
-        $sort_keys = ['employee','revenue','tx_count','items_rung','avg_tx','priced_count','priced_revenue','hours_worked','revenue_per_hour','items_per_hour','tx_per_hour'];
+        $sort_keys = ['employee','revenue','non_whatnot_revenue','whatnot_revenue','tx_count','items_rung','avg_tx','priced_count','priced_revenue','hours_worked','revenue_per_hour','items_per_hour','tx_per_hour'];
         if (in_array($sort, $sort_keys)) {
             $rows = $rows->sortBy(function ($r) use ($sort) {
                 $v = $r->$sort ?? null;
@@ -9739,7 +9917,16 @@ class ReportController extends Controller
                       AND t2.type = 'sell' AND t2.status = 'final'
                       AND t2.import_source IS NULL
                       AND t2.created_by = t.created_by
-                      AND t2.transaction_date BETWEEN ? AND ?), 0) as revenue")
+                      AND t2.transaction_date BETWEEN ? AND ?), 0) as revenue,
+                COALESCE((SELECT SUM(t2.final_total) FROM transactions t2
+                    WHERE t2.business_id = t.business_id
+                      AND t2.type = 'sell' AND t2.status = 'final'
+                      AND t2.import_source IS NULL
+                      AND t2.created_by = t.created_by
+                      AND t2.is_whatnot = 1
+                      AND t2.transaction_date BETWEEN ? AND ?), 0) as whatnot_revenue")
+            ->addBinding($start, 'select')
+            ->addBinding($end, 'select')
             ->addBinding($start, 'select')
             ->addBinding($end, 'select')
             ->groupBy('t.created_by', 'u.first_name', 'u.last_name')
@@ -9793,6 +9980,8 @@ class ReportController extends Controller
             $name = $s->employee ?? trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
             $hours = (float) (optional($hours_raw->get($uid))->hours ?? 0);
             $revenue = (float) ($s->revenue ?? 0);
+            $whatnot_revenue = (float) ($s->whatnot_revenue ?? 0);
+            $non_whatnot_revenue = max($revenue - $whatnot_revenue, 0);
             $items_rung = (int) ($s->items_rung ?? 0);
             $tx_count = (int) ($s->tx_count ?? 0);
             $priced_count = (int) optional($priced->get($uid))->priced_count ?? 0;
@@ -9808,6 +9997,8 @@ class ReportController extends Controller
                 'tx_count' => $tx_count,
                 'items_rung' => $items_rung,
                 'revenue' => $revenue,
+                'whatnot_revenue' => $whatnot_revenue,
+                'non_whatnot_revenue' => $non_whatnot_revenue,
                 'avg_tx' => (float) ($s->avg_tx ?? 0),
                 'priced_count' => $priced_count,
                 'priced_revenue' => (float) optional($priced_rev->get($uid))->priced_revenue ?? 0,

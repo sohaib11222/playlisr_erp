@@ -395,6 +395,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/purchase-order-vs-received', 'ReportController@purchaseOrderVsReceived');
     Route::get('/reports/item-transaction-history', 'ReportController@itemTransactionHistory');
     Route::get('/reports/product-entry-productivity', 'ReportController@productEntryProductivity');
+    Route::get('/reports/revenue-by-employee-barcoding', 'ReportController@revenueByEmployeeBarcoding')->name('reports.revenue-by-employee-barcoding');
+    Route::get('/reports/revenue-by-employee-barcoding/{user_id}', 'ReportController@revenueByEmployeeBarcodingDetail')->name('reports.revenue-by-employee-barcoding.detail');
     Route::get('/reports/dead-stock', 'ReportController@deadStockReport');
     Route::get('/reports/whatnot', 'ReportController@whatnotReport');
     Route::get('/reports/sales-by-channel', 'ReportController@salesByChannel');
