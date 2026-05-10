@@ -5470,11 +5470,33 @@ class ReportController extends Controller
             ->get()
             ->keyBy('created_by');
 
-        $rows = $users->map(function ($u) use ($barcoded_total, $sales) {
+        // Lifetime sold count per employee — used for sell-through % which is
+        // a window-independent quality metric ("of everything I ever barcoded,
+        // what fraction has eventually sold?").
+        $lifetimeSalesQuery = DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+            ->join('products as p', 'tsl.product_id', '=', 'p.id')
+            ->where('t.business_id', $business_id)
+            ->where('p.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereNotNull('p.created_by');
+        if ($productsTableHasAddedVia) {
+            $lifetimeSalesQuery->where('p.added_via', 'mass_add');
+        } else {
+            $lifetimeSalesQuery->whereRaw('1 = 0');
+        }
+        $lifetime_sold = $lifetimeSalesQuery
+            ->select('p.created_by', DB::raw('COUNT(DISTINCT p.id) as items_sold_lifetime'))
+            ->groupBy('p.created_by')
+            ->pluck('items_sold_lifetime', 'p.created_by');
+
+        $rows = $users->map(function ($u) use ($barcoded_total, $sales, $lifetime_sold) {
             $barcoded = (int) ($barcoded_total[$u->id] ?? 0);
             $row = $sales[$u->id] ?? null;
             $items_sold = $row ? (int) $row->items_sold : 0;
             $revenue = $row ? (float) $row->revenue : 0.0;
+            $sold_lifetime = (int) ($lifetime_sold[$u->id] ?? 0);
             return (object) [
                 'user_id' => $u->id,
                 'employee' => trim((string) $u->full_name),
@@ -5483,6 +5505,8 @@ class ReportController extends Controller
                 'revenue_per_item' => $items_sold > 0 ? $revenue / $items_sold : 0.0,
                 'revenue_per_listed_item' => $barcoded > 0 ? $revenue / $barcoded : 0.0,
                 'total_revenue' => $revenue,
+                'lifetime_items_sold' => $sold_lifetime,
+                'sell_through_pct' => $barcoded > 0 ? ($sold_lifetime / $barcoded) * 100 : 0.0,
             ];
         })->filter(function ($r) {
             return $r->barcoded_count > 0 || $r->items_sold > 0;
@@ -5609,15 +5633,46 @@ class ReportController extends Controller
             ->get()
             ->keyBy(function ($r) { return $r->category_id . ':' . $r->sub_category_id; });
 
-        $by_category = $barcoded_by_cat->map(function ($b) use ($sales_by_cat) {
+        // Lifetime sold counts per (category, subcategory) — same purpose as
+        // $lifetime_sold on the summary view: gives a window-independent
+        // sell-through %.
+        $lifetimeSalesByCatQuery = DB::table('products as p')
+            ->join('transaction_sell_lines as tsl', 'tsl.product_id', '=', 'p.id')
+            ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+            ->where('p.business_id', $business_id)
+            ->where('p.created_by', $user_id)
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final');
+        if ($productsTableHasAddedVia) {
+            $lifetimeSalesByCatQuery->where('p.added_via', 'mass_add');
+        } else {
+            $lifetimeSalesByCatQuery->whereRaw('1 = 0');
+        }
+        $lifetime_sold_by_cat = $lifetimeSalesByCatQuery
+            ->select(
+                DB::raw('COALESCE(p.category_id, 0) as category_id'),
+                DB::raw('COALESCE(p.sub_category_id, 0) as sub_category_id'),
+                DB::raw('COUNT(DISTINCT p.id) as items_sold_lifetime')
+            )
+            ->groupBy('p.category_id', 'p.sub_category_id')
+            ->get()
+            ->keyBy(function ($r) { return $r->category_id . ':' . $r->sub_category_id; });
+
+        $by_category = $barcoded_by_cat->map(function ($b) use ($sales_by_cat, $lifetime_sold_by_cat) {
             $key = $b->category_id . ':' . $b->sub_category_id;
             $s = $sales_by_cat[$key] ?? null;
+            $life = $lifetime_sold_by_cat[$key] ?? null;
+            $sold_lifetime = $life ? (int) $life->items_sold_lifetime : 0;
+            $barcoded = (int) $b->barcoded_count;
             return (object) [
                 'category_name' => $b->category_name ?: '— Uncategorized —',
                 'subcategory_name' => $b->subcategory_name ?: '',
-                'barcoded_count' => (int) $b->barcoded_count,
+                'barcoded_count' => $barcoded,
                 'items_sold' => $s ? (int) $s->items_sold : 0,
                 'total_revenue' => $s ? (float) $s->revenue : 0.0,
+                'lifetime_items_sold' => $sold_lifetime,
+                'sell_through_pct' => $barcoded > 0 ? ($sold_lifetime / $barcoded) * 100 : 0.0,
             ];
         })->sortByDesc('total_revenue')->values();
 

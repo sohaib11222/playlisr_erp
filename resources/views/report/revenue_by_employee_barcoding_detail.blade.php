@@ -86,6 +86,7 @@
                         <th>Subcategory</th>
                         <th class="text-right">Items Barcoded</th>
                         <th class="text-right">Items Sold</th>
+                        <th class="text-right" title="Lifetime: items sold ÷ items barcoded">Sell-through</th>
                         <th class="text-right">Total Revenue</th>
                     </tr>
                 </thead>
@@ -96,18 +97,25 @@
                             <td>{{ $c->subcategory_name ?: '—' }}</td>
                             <td class="text-right">{{ number_format($c->barcoded_count) }}</td>
                             <td class="text-right">{{ number_format($c->items_sold) }}</td>
+                            <td class="text-right">{{ number_format($c->sell_through_pct, 1) }}%</td>
                             <td class="text-right">${{ number_format($c->total_revenue, 2) }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="5" class="text-center text-muted">No barcoded items found.</td></tr>
+                        <tr><td colspan="6" class="text-center text-muted">No barcoded items found.</td></tr>
                     @endforelse
                 </tbody>
                 @if($by_category->isNotEmpty())
+                @php
+                    $cat_tot_bar = $by_category->sum('barcoded_count');
+                    $cat_tot_life_sold = $by_category->sum('lifetime_items_sold');
+                    $cat_overall_st = $cat_tot_bar > 0 ? ($cat_tot_life_sold / $cat_tot_bar) * 100 : 0;
+                @endphp
                 <tfoot>
                     <tr>
                         <th colspan="2" class="text-right">Total</th>
-                        <th class="text-right">{{ number_format($by_category->sum('barcoded_count')) }}</th>
+                        <th class="text-right">{{ number_format($cat_tot_bar) }}</th>
                         <th class="text-right">{{ number_format($by_category->sum('items_sold')) }}</th>
+                        <th class="text-right">{{ number_format($cat_overall_st, 1) }}%</th>
                         <th class="text-right">${{ number_format($by_category->sum('total_revenue'), 2) }}</th>
                     </tr>
                 </tfoot>
