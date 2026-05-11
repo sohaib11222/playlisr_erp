@@ -211,8 +211,42 @@
                     <span style="margin-left:auto; color:#8A7C6A; font-size:11px;">ERP / Clover · click to expand</span>
                 </summary>
                 <div style="background:#FFFFFF; border:1px solid #ECE3CF; border-top:none; border-radius:0 0 8px 8px; padding:10px 14px; font-size:12px; color:#5A5045; line-height:1.5;">
-                    Net Sales (pre-tax). ERP totals include all tenders (cash + card + other);
-                    Clover is what hit the merchant account.
+                    <div style="margin-bottom:10px;">
+                        Net Sales (pre-tax). ERP totals include all tenders (cash + card + other);
+                        Clover is what hit the merchant account.
+                    </div>
+                    @foreach($byStore as $s)
+                        @if(!empty($s['clover_charges']))
+                            <div style="margin-top:8px; border-top:1px dashed #ECE3CF; padding-top:8px;">
+                                <div style="font-weight:600; color:#1F1B16; margin-bottom:4px;">
+                                    {{ $s['name'] }} · {{ count($s['clover_charges']) }} Clover charge{{ count($s['clover_charges']) === 1 ? '' : 's' }} today
+                                    <span style="color:#8A7C6A; font-weight:400;">(gross ${{ number_format(array_sum(array_column($s['clover_charges'], 'amount')), 2) }})</span>
+                                </div>
+                                <table style="width:100%; font-size:11px; font-variant-numeric:tabular-nums; border-collapse:collapse;">
+                                    <thead>
+                                        <tr style="color:#8A7C6A; text-align:left;">
+                                            <th style="padding:2px 6px; font-weight:500;">Time</th>
+                                            <th style="padding:2px 6px; font-weight:500; text-align:right;">Gross</th>
+                                            <th style="padding:2px 6px; font-weight:500; text-align:right;">Net</th>
+                                            <th style="padding:2px 6px; font-weight:500;">Clover employee</th>
+                                            <th style="padding:2px 6px; font-weight:500;">Card</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach($s['clover_charges'] as $c)
+                                            <tr>
+                                                <td style="padding:2px 6px; color:#5A5045;">{{ \Carbon\Carbon::parse($c['paid_at'])->format('g:i a') }}</td>
+                                                <td style="padding:2px 6px; text-align:right;">${{ number_format($c['amount'], 2) }}</td>
+                                                <td style="padding:2px 6px; text-align:right; color:#5A5045;">${{ number_format($c['net'], 2) }}</td>
+                                                <td style="padding:2px 6px; color:#5A5045;">{{ $c['employee'] ?: '—' }}</td>
+                                                <td style="padding:2px 6px; color:#5A5045;">{{ $c['card'] ?: '—' }}</td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                        @endif
+                    @endforeach
                 </div>
             </details>
         @endif

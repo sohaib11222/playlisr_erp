@@ -842,6 +842,9 @@ class SellPosController extends Controller
             ->select('id', 'location_id', 'total_before_tax')
             ->get();
 
+        // Include paid_at / employee / card so the banner can drill into
+        // each store's charges and Sarah can spot misrouted payments
+        // (e.g. Hollywood swipes showing up under Pico before Pico opens).
         $cloverRowsToday = \DB::table('clover_payments')
             ->where('business_id', $business_id)
             ->whereDate('paid_on', $todayStr)
@@ -849,7 +852,8 @@ class SellPosController extends Controller
                 $q->whereNull('result')->orWhere('result', 'SUCCESS')->orWhere('result', 'APPROVED');
             })
             ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id))
-            ->select('location_id', 'amount', 'tax_cents')
+            ->select('location_id', 'amount', 'tax_cents', 'paid_at', 'employee_name', 'card_type', 'card_last4', 'clover_payment_id')
+            ->orderBy('paid_at')
             ->get();
 
         // Bucket per location_id (0 = unattributed). For each store we
@@ -860,12 +864,13 @@ class SellPosController extends Controller
         $ensure = function (&$store, $key, $name) {
             if (!isset($store[$key])) {
                 $store[$key] = [
-                    'location_id'  => $key ?: null,
-                    'name'         => $name,
-                    'erp_net'      => 0.0,
-                    'erp_count'    => 0,
-                    'clover'       => 0.0,
-                    'clover_count' => 0,
+                    'location_id'    => $key ?: null,
+                    'name'           => $name,
+                    'erp_net'        => 0.0,
+                    'erp_count'      => 0,
+                    'clover'         => 0.0,
+                    'clover_count'   => 0,
+                    'clover_charges' => [],
                 ];
             }
         };
@@ -883,6 +888,17 @@ class SellPosController extends Controller
             $cloverNet = (float) $r->amount - ((float) ($r->tax_cents ?? 0)) / 100.0;
             $today_by_store[$k]['clover'] += $cloverNet;
             $today_by_store[$k]['clover_count']++;
+            $cardBits = [];
+            if (!empty($r->card_type))  $cardBits[] = strtoupper($r->card_type);
+            if (!empty($r->card_last4)) $cardBits[] = '••' . $r->card_last4;
+            $today_by_store[$k]['clover_charges'][] = [
+                'paid_at'  => self::formatCloverPaidAt((object) ['paid_at' => $r->paid_at]),
+                'amount'   => round((float) $r->amount, 2),
+                'net'      => round($cloverNet, 2),
+                'employee' => $r->employee_name,
+                'card'     => trim(implode(' ', $cardBits)),
+                'cp_id'    => $r->clover_payment_id,
+            ];
         }
         foreach ($today_by_store as &$s) {
             $s['erp_net'] = round($s['erp_net'], 2);
