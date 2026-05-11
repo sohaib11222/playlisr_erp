@@ -314,12 +314,12 @@
                                 </div>
 
                                 {{-- WHAT THEY SOLD — total + payment split.
-                                     Sarah 2026-05-06: "we don't necessarily
-                                     know if cash or credit was collected" —
-                                     so the non-Clover bucket is labeled
-                                     "Not on Clover" rather than asserted as
-                                     cash. The cashier could've taken cash,
-                                     or Clover sync might be lagging. --}}
+                                     Sarah 2026-05-11: cash IS recorded on
+                                     Clover at Nivessa — cashiers ring it on
+                                     the terminal too — so the "not on Clover"
+                                     bucket isn't cash, it's a real gap
+                                     (mis-rung sale, sync lag, voided one side
+                                     not the other). Label says so. --}}
                                 @php
                                     $missingClover = $totalSold > 0 && $cardClover == 0;
                                 @endphp
@@ -327,7 +327,7 @@
                                     <div class="cc-sec-h">What they sold @if($txnCount)<span style="font-weight:500; color:#9ca3af;">· {{ $txnCount }} sale{{ $txnCount === 1 ? '' : 's' }}</span>@endif</div>
                                     <div class="cc-line sum"><span class="cc-label">Total sales</span><span class="cc-val">${{ number_format($totalSold, 2) }}</span></div>
                                     <div class="cc-line"><span class="cc-label minor">— matched on Clover</span><span class="cc-val">${{ number_format($cardClover, 2) }}</span></div>
-                                    <div class="cc-line"><span class="cc-label minor">— not on Clover (cash or unsynced)</span><span class="cc-val">${{ number_format($impliedCash, 2) }}</span></div>
+                                    <div class="cc-line"><span class="cc-label minor" title="Cash IS rung on Clover too at Nivessa, so this gap isn't cash — it's a real reconciliation miss (sync lag, mis-rung sale, or one-side void).">— gap (not yet matched on Clover)</span><span class="cc-val">${{ number_format($impliedCash, 2) }}</span></div>
                                     @if($missingClover)
                                         <div class="cc-line"><span class="cc-label" style="color:#92400e;">⚠ No Clover swipes matched — sync may be stale</span><span class="cc-val"></span></div>
                                     @endif
@@ -341,7 +341,11 @@
                                      (no opening count, no close count), the Expected/Counted/Variance
                                      rows are all "—" and read as a fault. Hide that block in that case
                                      and surface a single "register not opened/closed" hint instead.
-                                     "+ Not on Clover (assumed cash)" still shows as the raw cash bucket. --}}
+                                     Sarah 2026-05-11: dropped the "assumed cash" line — cash IS on
+                                     Clover too, so "not on Clover" is a gap, not cash income. Cash
+                                     drawer math should derive cash income from tp.method='cash'
+                                     directly (transaction_payments is trustworthy since 2026-05-06);
+                                     follow-up to swap in. --}}
                                 @php
                                     $cashRefunds      = (float) ($e['cash_refunds']       ?? 0);
                                     $cashExpenses     = (float) ($e['cash_expenses']      ?? 0);
@@ -355,7 +359,7 @@
                                     @if(!$noDrawerCounts)
                                         <div class="cc-line"><span class="cc-label minor">Opening cash</span><span class="cc-val {{ is_null($opening) ? 'muted' : '' }}">{{ is_null($opening) ? '—' : '$' . number_format($opening, 2) }}</span></div>
                                     @endif
-                                    <div class="cc-line"><span class="cc-label minor">+ Not on Clover (assumed cash)</span><span class="cc-val">${{ number_format($impliedCash, 2) }}</span></div>
+                                    <div class="cc-line"><span class="cc-label minor" title="Gap between ERP total and Clover-matched amount — not necessarily cash, since cash is rung on Clover too at Nivessa. Could be sync lag, a mis-rung sale, or a one-side void.">+ Gap (ERP total − Clover-matched)</span><span class="cc-val">${{ number_format($impliedCash, 2) }}</span></div>
                                     @if($cashBuys > 0 || $hasShift)
                                         <div class="cc-line"><span class="cc-label minor">− Collection buys (cash)</span><span class="cc-val {{ $hasShift ? '' : 'muted' }}">{{ $hasShift ? '$' . number_format($cashBuys, 2) : '—' }}</span></div>
                                     @endif
