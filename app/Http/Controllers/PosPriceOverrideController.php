@@ -3,15 +3,78 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
 
 // Read-only audit log of cashier-edited prices at the POS.
 // Born after inline price edit was opened up to cashiers (no manager floor
 // staff to gate overrides); this lets Sarah scan recent overrides without
 // digging through transactions one by one.
+//
+// Schema setup is an admin button on this page, not a migration — Sarah
+// doesn't want to dispatch the migrations workflow because past runs broke
+// the site. setup() creates one new empty table and grants one permission;
+// it doesn't touch any existing data.
 class PosPriceOverrideController extends Controller
 {
+    // One-time install: create the audit table and grant the "edit price at
+    // POS" permission to every role so cashiers can edit prices inline.
+    // Idempotent — safe to click more than once.
+    public function setup(Request $request)
+    {
+        try {
+            if (!Schema::hasTable('pos_price_overrides')) {
+                Schema::create('pos_price_overrides', function (Blueprint $table) {
+                    $table->bigIncrements('id');
+                    $table->unsignedInteger('business_id')->index();
+                    $table->unsignedInteger('business_location_id')->nullable()->index();
+                    $table->unsignedInteger('transaction_id')->index();
+                    $table->unsignedBigInteger('transaction_sell_line_id')->nullable();
+                    $table->unsignedInteger('product_id')->nullable()->index();
+                    $table->unsignedInteger('variation_id')->nullable();
+                    $table->string('product_name', 191)->nullable();
+                    $table->string('artist', 191)->nullable();
+                    $table->decimal('system_price', 22, 4)->default(0);
+                    $table->decimal('sold_price', 22, 4)->default(0);
+                    $table->decimal('diff', 22, 4)->default(0);
+                    $table->unsignedInteger('user_id')->nullable()->index();
+                    $table->timestamps();
+                    $table->index(['business_id', 'created_at']);
+                });
+            }
+
+            $perm = Permission::where('name', 'edit_product_price_from_pos_screen')
+                ->where('guard_name', 'web')
+                ->first();
+            if (!$perm) {
+                $perm = Permission::create([
+                    'name' => 'edit_product_price_from_pos_screen',
+                    'guard_name' => 'web',
+                ]);
+            }
+            $rolesTouched = 0;
+            foreach (Role::all() as $role) {
+                if (!$role->hasPermissionTo($perm)) {
+                    $role->givePermissionTo($perm);
+                    $rolesTouched++;
+                }
+            }
+
+            return redirect('/admin/pos-overrides')->with('status_success',
+                'Setup complete. ' . ($rolesTouched > 0
+                    ? 'Granted price-edit permission to ' . $rolesTouched . ' role(s). '
+                    : 'Permission already granted on all roles. ')
+                . 'Cashiers can now edit prices inline after a hard refresh of the POS.');
+        } catch (\Exception $e) {
+            return redirect('/admin/pos-overrides')->with('status_error',
+                'Setup failed: ' . $e->getMessage());
+        }
+    }
+
+
     public function index(Request $request)
     {
         if (!Schema::hasTable('pos_price_overrides')) {

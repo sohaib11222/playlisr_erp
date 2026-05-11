@@ -45,40 +45,6 @@
             </div>
         </div>
     </div>
-</section>
-
-<section class="content no-print">
-    {{-- Filters retired 2026-05-05 — page is now strictly single-day,
-         use the prev/next/today nav. Location stays "All" by default;
-         deep-link via ?location_id=N if needed. --}}
-    @if(false)
-    @component('components.filters', ['title' => __('report.filters')])
-        <div class="col-md-4">
-            <div class="form-group">
-                <label>Date range:</label>
-                {!! Form::text('eod_date_range', $start . ' ~ ' . $end, [
-                    'class' => 'form-control', 'id' => 'eod_date_range',
-                    'placeholder' => 'Select a date range', 'readonly',
-                ]) !!}
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="form-group">
-                <label>Location:</label>
-                {!! Form::select('location_id', $business_locations, $location_id, [
-                    'class' => 'form-control select2', 'id' => 'eod_location_id',
-                    'placeholder' => 'All locations', 'style' => 'width:100%'
-                ]) !!}
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="form-group">
-                <label>&nbsp;</label><br>
-                <button type="button" class="btn btn-primary" id="eod_apply_btn">Apply</button>
-            </div>
-        </div>
-    @endcomponent
-    @endif
 
     {{-- Sync-now button — Sarah 2026-04-22: Clover column was $0 across
          every day because the scheduled clover:sync-payments wasn't

@@ -11,10 +11,27 @@
 
 <section class="content">
 
+    @if(session('status_success'))
+        <div class="alert alert-success">{{ session('status_success') }}</div>
+    @endif
+    @if(session('status_error'))
+        <div class="alert alert-danger">{{ session('status_error') }}</div>
+    @endif
+
     @if(!$tableExists)
-        <div class="alert alert-warning">
-            <strong>Setup pending.</strong> The <code>pos_price_overrides</code> table doesn't exist yet — dispatch the
-            <em>Run migrations</em> GitHub Actions workflow on the ERP repo, then refresh this page.
+        <div class="box box-warning">
+            <div class="box-header with-border">
+                <h3 class="box-title">One-time setup</h3>
+            </div>
+            <div class="box-body">
+                <p>This page needs one new empty table (<code>pos_price_overrides</code>) and one permission grant
+                   (<em>edit price at POS</em>) before it can capture overrides. Click below — it creates only this new
+                   table and updates role permissions. <strong>It doesn't touch any existing data.</strong> Safe to re-click.</p>
+                <form method="POST" action="{{ url('/admin/pos-overrides/setup') }}" style="display:inline;">
+                    @csrf
+                    <button type="submit" class="btn btn-warning"><i class="fa fa-cog"></i> Set it up</button>
+                </form>
+            </div>
         </div>
     @else
 
