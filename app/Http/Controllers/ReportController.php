@@ -6911,7 +6911,6 @@ class ReportController extends Controller
             'matched_by_listing' => $matched_by_listing,
             'matched_by_release' => $matched_by_release,
             'matched_by_fallback' => $matched_by_fallback,
-            'fallback_cost' => $discogs_fallback_cost,
             'matched_revenue' => $matched_revenue,
         ];
     }
@@ -7281,7 +7280,6 @@ class ReportController extends Controller
                     'matched_by_listing'  => (int) ($dgs['matched_by_listing'] ?? 0),
                     'matched_by_release'  => (int) ($dgs['matched_by_release'] ?? 0),
                     'matched_by_fallback' => (int) ($dgs['matched_by_fallback'] ?? 0),
-                    'fallback_cost'       => (float) ($dgs['fallback_cost'] ?? 0),
                     // Inventory coverage so it's obvious why match rate is what it is.
                     'inv_with_listing_id' => (int) \DB::table('products')
                         ->where('business_id', $business_id)
