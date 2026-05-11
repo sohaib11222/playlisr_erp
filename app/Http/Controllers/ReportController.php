@@ -7644,6 +7644,107 @@ class ReportController extends Controller
         $clover_day_total = (float) $cloverDayQ->selectRaw("COALESCE(SUM(amount - COALESCE(tax_cents, 0) / 100.0), 0) as net")->value('net');
         $clover_day_count = (int) $cloverDayQ->count();
 
+        // Per-store breakdown so the day-totals card can split Hollywood
+        // vs Pico — same numbers, sliced by location_id. Sarah 2026-05-11.
+        $erpPerLoc = (clone $erpBase)
+            ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
+            ->selectRaw('COALESCE(location_id, 0) as loc_key,
+                         COALESCE(SUM(total_before_tax), 0) as erp_net,
+                         COUNT(*) as erp_count')
+            ->groupBy('location_id')
+            ->get()->keyBy('loc_key');
+        $whatnotPerLoc = (clone $erpBase)
+            ->where('is_whatnot', 1)
+            ->selectRaw('COALESCE(location_id, 0) as loc_key,
+                         COALESCE(SUM(total_before_tax), 0) as whatnot_net,
+                         COUNT(*) as whatnot_count')
+            ->groupBy('location_id')
+            ->get()->keyBy('loc_key');
+        $cloverPerLocQ = \DB::table('clover_payments')
+            ->where('business_id', $business_id)
+            ->where(function ($q) {
+                $q->whereNull('result')->orWhere('result', 'SUCCESS')->orWhere('result', 'APPROVED');
+            })
+            ->whereRaw($this->cloverCreatedInWindowSql($eodWin));
+        if (!empty($location_id)) {
+            $cloverPerLocQ->where(function ($q) use ($location_id) {
+                $q->where('location_id', $location_id)->orWhereNull('location_id');
+            });
+        }
+        $cloverPerLoc = $cloverPerLocQ
+            ->selectRaw('COALESCE(location_id, 0) as loc_key,
+                         COALESCE(SUM(amount - COALESCE(tax_cents, 0) / 100.0), 0) as clover_net,
+                         COUNT(*) as clover_count')
+            ->groupBy('location_id')
+            ->get()->keyBy('loc_key');
+
+        $day_by_store = [];
+        $allLocKeys = collect($erpPerLoc->keys())
+            ->merge($cloverPerLoc->keys())
+            ->merge($whatnotPerLoc->keys())
+            ->unique();
+        foreach ($allLocKeys as $k) {
+            $name = ($k && isset($business_locations[$k])) ? $business_locations[$k] : '(no location)';
+            $erpN  = (float) (optional($erpPerLoc->get($k))->erp_net ?? 0);
+            $erpC  = (int)   (optional($erpPerLoc->get($k))->erp_count ?? 0);
+            $cloN  = (float) (optional($cloverPerLoc->get($k))->clover_net ?? 0);
+            $cloC  = (int)   (optional($cloverPerLoc->get($k))->clover_count ?? 0);
+            $whaN  = (float) (optional($whatnotPerLoc->get($k))->whatnot_net ?? 0);
+            $whaC  = (int)   (optional($whatnotPerLoc->get($k))->whatnot_count ?? 0);
+            $day_by_store[(int) $k] = [
+                'location_id'   => $k ?: null,
+                'name'          => $name,
+                'erp_net'       => round($erpN, 2),
+                'erp_count'     => $erpC,
+                'clover'        => round($cloN, 2),
+                'clover_count'  => $cloC,
+                'whatnot_net'   => round($whaN, 2),
+                'whatnot_count' => $whaC,
+                'diff'          => round($cloN - $erpN, 2),
+            ];
+        }
+        uasort($day_by_store, function ($a, $b) {
+            if (($a['location_id'] === null) !== ($b['location_id'] === null)) {
+                return ($a['location_id'] === null) ? 1 : -1;
+            }
+            return strcasecmp($a['name'], $b['name']);
+        });
+
+        // Unmatched-Clover drill-in: lists each Clover charge that didn't
+        // pair to an ERP sale in the day. Explains the Diff column in
+        // concrete terms (e.g. "one $37.71 charge with no matching ring").
+        $matchedTxIds = array_keys($rows ?? []);
+        // We don't have a direct matched_cp list here; recompute against
+        // the current xlsx_layout if present, else pull raw and let the
+        // blade list every Clover row when the Diff is non-zero.
+        $unmatchedCloverQ = \DB::table('clover_payments')
+            ->where('business_id', $business_id)
+            ->where(function ($q) {
+                $q->whereNull('result')->orWhere('result', 'SUCCESS')->orWhere('result', 'APPROVED');
+            })
+            ->whereRaw($this->cloverCreatedInWindowSql($eodWin));
+        if (!empty($location_id)) {
+            $unmatchedCloverQ->where(function ($q) use ($location_id) {
+                $q->where('location_id', $location_id)->orWhereNull('location_id');
+            });
+        }
+        $cloverChargesForDiff = $unmatchedCloverQ
+            ->select('clover_payment_id', 'amount', 'tax_cents', 'paid_at', 'location_id', 'employee_name', 'card_type', 'card_last4', 'raw_payload')
+            ->orderBy('paid_at')
+            ->get()
+            ->map(function ($r) use ($business_locations) {
+                $laTs = \App\Http\Controllers\SellPosController::parseCloverPaidAtLa($r);
+                return (object) [
+                    'clover_payment_id' => $r->clover_payment_id,
+                    'amount'   => (float) $r->amount,
+                    'net'      => round((float) $r->amount - ((float) ($r->tax_cents ?? 0)) / 100.0, 2),
+                    'paid_at'  => $laTs->format('Y-m-d g:i a'),
+                    'loc_name' => $r->location_id && isset($business_locations[$r->location_id]) ? $business_locations[$r->location_id] : '(no loc)',
+                    'employee' => $r->employee_name ?: null,
+                    'card'     => trim(strtoupper((string) $r->card_type) . ' ' . ($r->card_last4 ? '••' . $r->card_last4 : '')),
+                ];
+            });
+
         $day_totals = [
             'erp_net'        => round($erp_net_total, 2),
             'erp_count'      => $erp_count,
@@ -7652,6 +7753,8 @@ class ReportController extends Controller
             'diff'           => round($clover_day_total - $erp_net_total, 2),
             'whatnot_net'    => round($whatnot_net_total, 2),
             'whatnot_count'  => $whatnot_count,
+            'by_store'       => array_values($day_by_store),
+            'clover_charges' => $cloverChargesForDiff,
         ];
 
         return view('report.clover_eod_reconciliation')->with(compact(

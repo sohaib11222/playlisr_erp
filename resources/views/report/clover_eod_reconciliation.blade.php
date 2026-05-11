@@ -45,12 +45,69 @@
             </div>
         </div>
 
+        @if(!empty($dt['by_store']) && count($dt['by_store']) > 1)
+            <div style="margin-top:14px; padding-top:12px; border-top:1px dashed #ECE3CF; display:flex; gap:24px; flex-wrap:wrap; font-size:12px; color:#5A5045;">
+                @foreach($dt['by_store'] as $s)
+                    @php
+                        $sDiff = round($s['clover'] - $s['erp_net'], 2);
+                        $sMatched = abs($sDiff) < 0.01;
+                    @endphp
+                    <div style="display:inline-flex; gap:8px; align-items:baseline;">
+                        <span style="font-weight:600; color:#1F1B16;">{{ $s['name'] }}</span>
+                        <span style="font-variant-numeric:tabular-nums;">ERP ${{ number_format($s['erp_net'], 2) }}</span>
+                        <span style="color:#BFB096;">·</span>
+                        <span style="font-variant-numeric:tabular-nums;">Clover ${{ number_format($s['clover'], 2) }}</span>
+                        <span style="font-variant-numeric:tabular-nums; font-weight:700; color:{{ $sMatched ? '#2E6F40' : '#8B2C2C' }};">
+                            ({{ $sDiff > 0 ? '+' : '' }}${{ number_format($sDiff, 2) }})
+                        </span>
+                        @if(!empty($s['whatnot_count']))
+                            <span style="color:#8A7C6A; font-style:italic;" title="Whatnot sales rung in ERP for inventory only — paid through Whatnot, not Clover. Excluded from ERP and Diff.">
+                                + Whatnot ${{ number_format($s['whatnot_net'], 2) }} ({{ $s['whatnot_count'] }})
+                            </span>
+                        @endif
+                    </div>
+                @endforeach
+            </div>
+        @endif
+
         @if(!empty($dt['whatnot_count']))
             <div style="margin-top:14px; padding-top:12px; border-top:1px dashed #ECE3CF; font-size:12px; color:#5A5045; display:flex; gap:14px; align-items:baseline; flex-wrap:wrap;">
                 <span style="font-weight:600; color:#8A7C6A; text-transform:uppercase; letter-spacing:.06em; font-size:11px;">Whatnot</span>
                 <span style="font-variant-numeric: tabular-nums;">${{ number_format($dt['whatnot_net'], 2) }} · {{ $dt['whatnot_count'] }} sale{{ $dt['whatnot_count'] === 1 ? '' : 's' }}</span>
                 <span style="color:#8A7C6A;">Inventory-only — paid through Whatnot, not Clover, so excluded from ERP NET SALES and the Diff above.</span>
             </div>
+        @endif
+
+        @if(!$eodMatched && !empty($dt['clover_charges']) && count($dt['clover_charges']))
+            <details style="margin-top:12px;">
+                <summary style="cursor:pointer; font-size:12px; color:#8A7C6A; list-style:none;">▸ Show every Clover charge today ({{ $dt['clover_count'] ?? 0 }}) — to spot what's making up the {{ $eodDiff > 0 ? '+' : '' }}${{ number_format($eodDiff, 2) }} diff</summary>
+                <div style="margin-top:8px; padding-top:8px; border-top:1px dashed #ECE3CF;">
+                    <table style="width:100%; font-size:11px; font-variant-numeric:tabular-nums; border-collapse:collapse;">
+                        <thead>
+                            <tr style="color:#8A7C6A; text-align:left;">
+                                <th style="padding:3px 6px; font-weight:500;">Time</th>
+                                <th style="padding:3px 6px; font-weight:500;">Store</th>
+                                <th style="padding:3px 6px; font-weight:500; text-align:right;">Gross</th>
+                                <th style="padding:3px 6px; font-weight:500; text-align:right;">Net</th>
+                                <th style="padding:3px 6px; font-weight:500;">Clover employee</th>
+                                <th style="padding:3px 6px; font-weight:500;">Card</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($dt['clover_charges'] as $c)
+                                <tr>
+                                    <td style="padding:3px 6px; color:#5A5045;">{{ $c->paid_at }}</td>
+                                    <td style="padding:3px 6px; color:#5A5045;">{{ $c->loc_name }}</td>
+                                    <td style="padding:3px 6px; text-align:right;">${{ number_format($c->amount, 2) }}</td>
+                                    <td style="padding:3px 6px; text-align:right; color:#5A5045;">${{ number_format($c->net, 2) }}</td>
+                                    <td style="padding:3px 6px; color:#5A5045;">{{ $c->employee ?: '—' }}</td>
+                                    <td style="padding:3px 6px; color:#5A5045;">{{ $c->card ?: '—' }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </details>
         @endif
     </div>
 
