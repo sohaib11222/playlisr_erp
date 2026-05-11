@@ -83,7 +83,16 @@
 </style>
 
 <script>
-$(function () {
+(function bootstrap() {
+    if (typeof window.jQuery === 'undefined') { setTimeout(bootstrap, 100); return; }
+    var $ = window.jQuery;
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function () { initPosPriceOverride($); }, { once: true });
+    } else {
+        initPosPriceOverride($);
+    }
+})();
+function initPosPriceOverride($) {
     var $modal = $('#pos_price_override_modal');
     var $reason = $('#pos_price_override_reason_input');
     var $newInput = $('#pos_price_override_new_input');
@@ -199,5 +208,5 @@ $(function () {
         $errorEl.hide();
         $modal.modal('hide');
     });
-});
+}
 </script>
