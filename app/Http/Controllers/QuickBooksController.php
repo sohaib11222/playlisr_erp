@@ -268,5 +268,26 @@ class QuickBooksController extends Controller
             'msg' => !empty($result['msg']) ? $result['msg'] : 'Backfill finished.',
         ]);
     }
+
+    // Pull expenses from QB → ERP. Default window: last 14 days (tolerates
+    // late posts in QB) up to today. Pass ?from_date=&to_date= to override.
+    public function syncExpenses(Request $request)
+    {
+        if (!auth()->user()->can('business_settings.access')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = $request->session()->get('user.business_id');
+        $from = $request->input('from_date') ?: Carbon::now()->subDays(14)->format('Y-m-d');
+        $to   = $request->input('to_date')   ?: Carbon::now()->format('Y-m-d');
+
+        $qbService = new QuickBooksService($business_id);
+        $result = $qbService->syncExpensesFromQb($from, $to);
+
+        return redirect()->action('QuickBooksController@dashboard')->with('status', [
+            'success' => !empty($result['success']) ? 1 : 0,
+            'msg' => $result['msg'] ?? 'Expense sync finished.',
+        ]);
+    }
 }
 

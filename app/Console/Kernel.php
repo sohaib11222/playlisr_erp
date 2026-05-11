@@ -79,6 +79,21 @@ class Kernel extends ConsoleKernel
             ->timezone('America/Los_Angeles')
             ->withoutOverlapping(15);
 
+        // QuickBooks → ERP expense sync. Runs every 30 min so Sabina's QB
+        // edits land in the ERP expense report without a manual import. The
+        // 14-day window is intentional — late posts and reconcile edits in
+        // QB sometimes change rows after their date, so we re-sync the
+        // recent past every tick and rely on ref_no idempotency. Once a day
+        // at 03:15 PST we widen to 60 days as a safety net.
+        $schedule->command('quickbooks:sync-expenses --days=14')
+            ->cron('*/30 * * * *')
+            ->timezone('America/Los_Angeles')
+            ->withoutOverlapping(25);
+        $schedule->command('quickbooks:sync-expenses --days=60')
+            ->dailyAt('03:15')
+            ->timezone('America/Los_Angeles')
+            ->withoutOverlapping(60);
+
         // Clover → ERP payment sync. Runs every 30 min during business hours
         // to keep the Clover-vs-ERP reconciliation report near-live, then once
         // more overnight at 02:30 PST to pick up any late-night stragglers.

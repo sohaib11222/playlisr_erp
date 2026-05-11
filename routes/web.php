@@ -81,6 +81,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/business/quickbooks/sync-sale', 'QuickBooksController@syncSale')->name('business.quickbooks.syncSale');
     Route::get('/business/quickbooks/dashboard', 'QuickBooksController@dashboard')->name('business.quickbooks.dashboard');
     Route::post('/business/quickbooks/backfill', 'QuickBooksController@backfill')->name('business.quickbooks.backfill');
+    Route::post('/business/quickbooks/sync-expenses', 'QuickBooksController@syncExpenses')->name('business.quickbooks.syncExpenses');
     
     // Clover Customer Import
     Route::post('/business/test-clover-connection', 'CloverController@testConnection');

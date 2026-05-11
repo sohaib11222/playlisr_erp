@@ -514,6 +514,240 @@ class QuickBooksService
         ];
     }
 
+    /**
+     * QuickBooks "Transaction List by Date" report — the same report Sabina
+     * looks at for expenses. Returns the raw report payload (caller flattens).
+     */
+    public function getTransactionListReport($startDate, $endDate)
+    {
+        $params = [
+            'start_date' => $startDate,
+            'end_date'   => $endDate,
+        ];
+        $result = $this->apiRequest('GET', '/reports/TransactionList', null, $params);
+        if (empty($result['success'])) {
+            return $result;
+        }
+        return [
+            'success' => true,
+            'report'  => $result['data'] ?? [],
+        ];
+    }
+
+    /**
+     * Pull QB transactions in [from, to] via the TransactionList report and
+     * upsert them as ERP expense rows (type=expense for outflows,
+     * expense_refund for inflows). Idempotent via ref_no=QBO-EXP-{type}-{id}.
+     *
+     * Default location is read from api_settings.quickbooks.expense_default_location_id
+     * if set, otherwise the first BusinessLocation for this business.
+     *
+     * Returns ['success' => bool, 'msg' => string, 'created' => int,
+     *          'updated' => int, 'skipped' => int].
+     */
+    public function syncExpensesFromQb($fromDate, $toDate)
+    {
+        $report = $this->getTransactionListReport($fromDate, $toDate);
+        if (empty($report['success'])) {
+            return [
+                'success' => false,
+                'msg' => $report['msg'] ?? 'QuickBooks TransactionList report failed.',
+                'created' => 0, 'updated' => 0, 'skipped' => 0,
+            ];
+        }
+        $payload = $report['report'];
+
+        // QB report payload shape: Columns.Column = [{ColTitle, ColType}], Rows.Row = [{ColData:[{value, id?}], type?}]
+        $columns = $payload['Columns']['Column'] ?? [];
+        $col_type_to_idx = [];
+        $col_title_to_idx = [];
+        foreach ($columns as $i => $c) {
+            if (!empty($c['ColType'])) $col_type_to_idx[$c['ColType']] = $i;
+            if (!empty($c['ColTitle'])) $col_title_to_idx[strtolower(trim($c['ColTitle']))] = $i;
+        }
+        $idxFor = function ($types, $titles) use ($col_type_to_idx, $col_title_to_idx) {
+            foreach ($types as $t) if (isset($col_type_to_idx[$t])) return $col_type_to_idx[$t];
+            foreach ($titles as $t) {
+                $key = strtolower(trim($t));
+                if (isset($col_title_to_idx[$key])) return $col_title_to_idx[$key];
+            }
+            return null;
+        };
+        $idx = [
+            'date'   => $idxFor(['Date','txn_date'], ['Date']),
+            'type'   => $idxFor(['TxnType','txn_type'], ['Transaction type','Type']),
+            'num'    => $idxFor(['DocNum','doc_num'], ['Num','No.']),
+            'posting'=> $idxFor(['IsAdjustment','is_no_post'], ['Posting']),
+            'name'   => $idxFor(['Name','vendor_name'], ['Name','Vendor','Payee']),
+            'memo'   => $idxFor(['Memo','memo'], ['Memo','Memo/Description','Description']),
+            'account'=> $idxFor(['Account','account_name'], ['Account name','Account']),
+            'split'  => $idxFor(['Split','split_acc'], ['Split','Category']),
+            'amount' => $idxFor(['Amount','subt_nat_amount','Money'], ['Amount','Total']),
+        ];
+        if ($idx['date'] === null || $idx['amount'] === null) {
+            return [
+                'success' => false,
+                'msg' => 'TransactionList report missing Date or Amount columns.',
+                'created' => 0, 'updated' => 0, 'skipped' => 0,
+            ];
+        }
+
+        // Default ERP location for synced rows.
+        $default_location_id = $this->getQuickBooksSetting('expense_default_location_id', null);
+        if (empty($default_location_id)) {
+            $default_location_id = \DB::table('business_locations')
+                ->where('business_id', $this->businessId)
+                ->orderBy('id')
+                ->value('id');
+        }
+        if (empty($default_location_id)) {
+            return [
+                'success' => false,
+                'msg' => 'No BusinessLocation found for this business — cannot place imported expenses.',
+                'created' => 0, 'updated' => 0, 'skipped' => 0,
+            ];
+        }
+
+        // Walk the row tree (sections can be nested for sub-totals).
+        $flat_rows = [];
+        $walker = function ($rows) use (&$walker, &$flat_rows) {
+            foreach ($rows as $r) {
+                if (!empty($r['Rows']['Row'])) {
+                    $walker($r['Rows']['Row']);
+                }
+                if (!empty($r['ColData'])) {
+                    $flat_rows[] = $r;
+                }
+            }
+        };
+        $walker($payload['Rows']['Row'] ?? []);
+
+        $business_id = $this->businessId;
+        $now = Carbon::now();
+
+        // Preload category lookup.
+        $category_cache = \DB::table('expense_categories')
+            ->where('business_id', $business_id)
+            ->whereNull('parent_id')
+            ->pluck('id', 'name')
+            ->toArray();
+        $find_or_create_category = function ($name) use (&$category_cache, $business_id) {
+            $name = trim((string) $name);
+            if ($name === '') return null;
+            foreach ($category_cache as $cname => $cid) {
+                if (strcasecmp($cname, $name) === 0) return $cid;
+            }
+            $cid = \DB::table('expense_categories')->insertGetId([
+                'business_id' => $business_id,
+                'name' => $name,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            $category_cache[$name] = $cid;
+            return $cid;
+        };
+
+        $created = 0; $updated = 0; $skipped = 0;
+
+        foreach ($flat_rows as $r) {
+            $cd = $r['ColData'];
+            $get = function ($k) use ($cd, $idx) {
+                if ($idx[$k] === null) return null;
+                return $cd[$idx[$k]] ?? null;
+            };
+            $cell_val = function ($cell) {
+                if (!is_array($cell)) return (string) $cell;
+                return (string) ($cell['value'] ?? '');
+            };
+
+            $amount_raw = $cell_val($get('amount'));
+            $date_raw = $cell_val($get('date'));
+            if ($amount_raw === '' || $date_raw === '') { $skipped++; continue; }
+
+            $amount = $this->parseReportAmount($amount_raw);
+            if ($amount === null || $amount == 0.0) { $skipped++; continue; }
+
+            $type = $amount < 0 ? 'expense' : 'expense_refund';
+            $final_total = abs($amount);
+
+            $date_cell = $get('date');
+            $qb_id = is_array($date_cell) && !empty($date_cell['id']) ? (string) $date_cell['id'] : null;
+            $tx_type_qb = trim($cell_val($get('type')));
+            // Stable idempotent ref_no — QB ids are stable per (entity type, id).
+            $ref_no = 'QBO-EXP-' . preg_replace('/[^A-Za-z0-9]/', '', $tx_type_qb) . '-' . ($qb_id ?: md5($date_raw . '|' . $amount_raw . '|' . $cell_val($get('num'))));
+
+            $split_name = trim($cell_val($get('split')));
+            $account_name = trim($cell_val($get('account')));
+            $category_name = $split_name !== '' ? $split_name : $account_name;
+            $category_id = $find_or_create_category($category_name);
+
+            $name = trim($cell_val($get('name')));
+            $memo = trim($cell_val($get('memo')));
+            $notes_parts = [];
+            if ($tx_type_qb !== '') $notes_parts[] = $tx_type_qb;
+            if ($name !== '') $notes_parts[] = 'Vendor: ' . $name;
+            if ($memo !== '') $notes_parts[] = $memo;
+            $additional_notes = !empty($notes_parts) ? implode(' · ', $notes_parts) : null;
+
+            $existing = \DB::table('transactions')
+                ->where('business_id', $business_id)
+                ->where('ref_no', $ref_no)
+                ->first();
+
+            $row_data = [
+                'business_id'         => $business_id,
+                'location_id'         => $default_location_id,
+                'type'                => $type,
+                'status'              => 'final',
+                'payment_status'      => 'paid',
+                'transaction_date'    => date('Y-m-d H:i:s', strtotime($date_raw)),
+                'final_total'         => $final_total,
+                'total_before_tax'    => $final_total,
+                'tax_amount'          => 0,
+                'expense_category_id' => $category_id,
+                'additional_notes'    => $additional_notes,
+                'ref_no'              => $ref_no,
+                'updated_at'          => $now,
+            ];
+
+            if ($existing) {
+                \DB::table('transactions')->where('id', $existing->id)->update($row_data);
+                $updated++;
+            } else {
+                $row_data['created_at'] = $now;
+                \DB::table('transactions')->insert($row_data);
+                $created++;
+            }
+        }
+
+        // Stamp last-sync timestamp in api_settings.
+        $this->persistQuickBooksApiSettings([
+            'expense_last_sync_at' => $now->toDateTimeString(),
+            'expense_last_sync_from' => $fromDate,
+            'expense_last_sync_to' => $toDate,
+            'expense_last_sync_summary' => "created=$created updated=$updated skipped=$skipped",
+        ]);
+
+        return [
+            'success' => true,
+            'msg' => "Synced QB expenses: $created created, $updated updated, $skipped skipped.",
+            'created' => $created, 'updated' => $updated, 'skipped' => $skipped,
+        ];
+    }
+
+    /** Parse QB report amount cells: "1,407.90", "-735.95", "(67,032.83)". */
+    protected function parseReportAmount($raw)
+    {
+        $raw = trim((string) $raw);
+        if ($raw === '') return null;
+        $neg = false;
+        if (preg_match('/^\((.+)\)$/', $raw, $m)) { $neg = true; $raw = $m[1]; }
+        $raw = str_replace([',', '$', ' '], '', $raw);
+        if (!is_numeric($raw)) return null;
+        $val = (float) $raw;
+        return $neg ? -$val : $val;
+    }
+
     public function backfillSalesFromDate($fromDate)
     {
         $from = Carbon::parse($fromDate)->startOfDay();
