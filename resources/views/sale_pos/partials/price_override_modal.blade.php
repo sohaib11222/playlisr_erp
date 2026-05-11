@@ -56,20 +56,51 @@
 </div>
 
 <style>
+/* The price input on a POS line is read-only. It should LOOK like static
+   text — not an editable input — so cashiers don't feel invited to type. */
+input.pos_unit_price_inc_tax[readonly],
+input.pos_unit_price[readonly] {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    color: #2b1e16 !important;
+    font-weight: 600 !important;
+    cursor: default !important;
+    width: auto !important;
+    min-width: 0 !important;
+    pointer-events: none;
+}
+input.pos_unit_price_inc_tax[readonly]:focus,
+input.pos_unit_price[readonly]:focus {
+    outline: none !important;
+    box-shadow: none !important;
+}
+/* The Edit-price affordance is intentionally subtle — a small grey link
+   that fades in only on row hover. Cashiers who need it know it's there;
+   the rest of the time it stays out of the way. */
 .pos-edit-price-btn {
     display: inline-block;
-    margin-top: 4px;
-    padding: 2px 8px;
-    font-size: 12px;
+    margin-left: 6px;
+    padding: 0;
+    font-size: 10px;
     line-height: 1.4;
-    color: #8a6d3b;
+    color: #b0b0b0;
     background: transparent;
-    border: 1px dashed #d4ad6e;
-    border-radius: 4px;
+    border: none;
+    border-radius: 0;
     cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s ease, color 0.15s ease;
+    text-decoration: underline dotted;
+    text-underline-offset: 2px;
 }
-.pos-edit-price-btn:hover { background: #fff5e6; color: #2b1e16; }
-.pos-edit-price-btn .fa { margin-right: 4px; }
+#pos_table tbody tr.product_row:hover .pos-edit-price-btn,
+.pos-edit-price-btn:focus {
+    opacity: 1;
+}
+.pos-edit-price-btn:hover { color: #8a6d3b; }
+.pos-edit-price-btn .fa { display: none; }
 .pos-price-overridden {
     color: #d9534f !important;
     font-weight: 600;
