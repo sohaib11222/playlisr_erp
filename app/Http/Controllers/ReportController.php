@@ -7148,28 +7148,29 @@ class ReportController extends Controller
      *   otherwise          → review     (red)
      */
     /**
-     * Convert an LA-date range into the IST-datetime window that matches
-     * how clover_payments.paid_at / paid_on are actually stored (the sync
-     * cron writes IST despite web config saying LA — see
-     * SellPosController::CLOVER_PAID_AT_STORED_TZ for the diagnostic).
+     * Convert an LA-date range into both an IST-datetime window AND an
+     * LA-datetime window — mixed-TZ tolerant. The scheduled cron writes
+     * clover_payments.paid_at in IST, but the in-process "Refresh Clover
+     * swipes" button writes LA, and a single payment_id can flip TZ on
+     * each refresh via updateOrCreate. Callers should OR the two
+     * windows to catch every row regardless of which TZ it landed in.
      *
-     * Returns: [start_ist, end_ist, shift_sec] where shift_sec is the
-     * number of seconds to subtract from an IST paid_at to get the
-     * matching LA datetime (used in SQL DATE(paid_at - INTERVAL X SECOND)
-     * to derive an LA date for grouping). DST-aware via the LA offset
-     * of the start date.
+     * shift_sec is the number of seconds to subtract from an IST paid_at
+     * to derive its LA date — used in SQL DATE(paid_at - INTERVAL X
+     * SECOND) for grouping. la_shift_sec is 0 (LA-stored values need
+     * no shift). DST-aware via the LA offset of the start date.
      */
     private function cloverPaidAtIstWindow(string $startLa, string $endLa): array
     {
         $startCarbonLa = \Carbon\Carbon::parse($startLa, 'America/Los_Angeles')->startOfDay();
         $endCarbonLa   = \Carbon\Carbon::parse($endLa, 'America/Los_Angeles')->endOfDay();
         return [
-            'start_ist' => $startCarbonLa->copy()->setTimezone('Asia/Kolkata')->format('Y-m-d H:i:s'),
-            'end_ist'   => $endCarbonLa->copy()->setTimezone('Asia/Kolkata')->format('Y-m-d H:i:s'),
-            // IST offset (UTC+5:30 = +19800s) minus LA offset (UTC-7 for
-            // PDT or -8 for PST, returned as negative seconds by Carbon).
-            // For PDT: 19800 - (-25200) = 45000s = 12.5h. For PST: 48600.
-            'shift_sec' => 19800 - $startCarbonLa->offset,
+            'start_ist'    => $startCarbonLa->copy()->setTimezone('Asia/Kolkata')->format('Y-m-d H:i:s'),
+            'end_ist'      => $endCarbonLa->copy()->setTimezone('Asia/Kolkata')->format('Y-m-d H:i:s'),
+            'start_la'     => $startCarbonLa->format('Y-m-d H:i:s'),
+            'end_la'       => $endCarbonLa->format('Y-m-d H:i:s'),
+            'shift_sec'    => 19800 - $startCarbonLa->offset,
+            'la_shift_sec' => 0,
         ];
     }
 
@@ -7260,23 +7261,28 @@ class ReportController extends Controller
         // merchant scope) have location_id=NULL; we bucket those under
         // loc_key=0 and fall back to them when no per-location match exists
         // so historical data doesn't disappear.
-        // paid_at is IST-stored — filter on paid_at against the IST
-        // window for the LA-date range, and bucket by the LA-derived
-        // date (DATE(paid_at - INTERVAL shift_sec SECOND)).
+        // Mixed-TZ tolerant — paid_at may be IST (cron) or LA (refresh
+        // button). OR both windows; derive LA day per-row from whichever
+        // shift makes the value land inside [start_la, end_la].
         $payWin = $this->cloverPaidAtIstWindow($start, $end);
         $cloverQuery = \DB::table('clover_payments')
             ->where('business_id', $business_id)
             ->where(function ($q) {
                 $q->whereNull('result')->orWhere('result', 'SUCCESS')->orWhere('result', 'APPROVED');
             })
-            ->where('paid_at', '>=', $payWin['start_ist'])
-            ->where('paid_at', '<=', $payWin['end_ist']);
+            ->where(function ($q) use ($payWin) {
+                $q->whereBetween('paid_at', [$payWin['start_ist'], $payWin['end_ist']])
+                  ->orWhereBetween('paid_at', [$payWin['start_la'], $payWin['end_la']]);
+            });
         if (!empty($location_id)) {
             $cloverQuery->where(function ($q) use ($location_id) {
                 $q->where('location_id', $location_id)->orWhereNull('location_id');
             });
         }
-        $laDayExpr = "DATE(paid_at - INTERVAL {$payWin['shift_sec']} SECOND)";
+        // IF paid_at falls inside the IST window, it's IST-stored — shift by
+        // shift_sec to get LA date. Otherwise it's already LA-local.
+        $laDayExpr = "DATE(IF(paid_at >= '{$payWin['start_ist']}' AND paid_at <= '{$payWin['end_ist']}',"
+                   . " paid_at - INTERVAL {$payWin['shift_sec']} SECOND, paid_at))";
         $clover_rows_raw = $cloverQuery
             ->selectRaw("{$laDayExpr} as day, COALESCE(location_id, 0) as loc_key,
                 COUNT(*) as clover_count,
@@ -7551,17 +7557,19 @@ class ReportController extends Controller
             ->where('is_whatnot', 1)
             ->count();
 
-        // paid_at is IST-stored (sync cron env), so filter on paid_at
-        // against the IST window for the LA-date range, not paid_on
-        // (which is the IST date and would shift each LA day by ±12h).
+        // Mixed-TZ tolerant — cron writes IST, in-process "Refresh
+        // Clover swipes" writes LA, same payment_id can flip on each
+        // refresh. OR both windows so neither flavor of row is missed.
         $eodWin = $this->cloverPaidAtIstWindow($start, $end);
         $cloverDayQ = \DB::table('clover_payments')
             ->where('business_id', $business_id)
             ->where(function ($q) {
                 $q->whereNull('result')->orWhere('result', 'SUCCESS')->orWhere('result', 'APPROVED');
             })
-            ->where('paid_at', '>=', $eodWin['start_ist'])
-            ->where('paid_at', '<=', $eodWin['end_ist']);
+            ->where(function ($q) use ($eodWin) {
+                $q->whereBetween('paid_at', [$eodWin['start_ist'], $eodWin['end_ist']])
+                  ->orWhereBetween('paid_at', [$eodWin['start_la'], $eodWin['end_la']]);
+            });
         if (!empty($location_id)) {
             $cloverDayQ->where(function ($q) use ($location_id) {
                 $q->where('location_id', $location_id)->orWhereNull('location_id');

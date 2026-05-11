@@ -114,47 +114,72 @@ class SellPosController extends Controller
     }
 
     /**
-     * The TZ that paid_at / paid_on are actually stored in. Sarah's
-     * tz_debug session 2026-05-11 confirmed: config('app.timezone') on
-     * the web request returns 'America/Los_Angeles', but every stored
-     * paid_at is exactly +12:30 hours from the real LA moment (the
-     * Clover-supplied createdTime UTC unix-ms converts cleanly to that
-     * LA time). So the cron that runs SyncCloverPayments is using IST
-     * — most likely a cron environment that loads APP_TIMEZONE from
-     * .env.example ("Asia/Kolkata") or a separately-cached config —
-     * and the rows are IST-local. Until we backfill or align the cron
-     * env, all read paths must hardcode IST as the source TZ. Don't
-     * trust config('app.timezone') here.
+     * Mixed-TZ state (Sarah 2026-05-11): the scheduled cron writes
+     * paid_at as IST (env loads .env.example's APP_TIMEZONE), while
+     * the in-process "Refresh Clover swipes" button runs the same
+     * sync from the HTTP request (config('app.timezone')=LA) so its
+     * rows land as LA-local. Same payment ID can flip TZ on each
+     * refresh via updateOrCreate. Until Sohaib aligns the cron env
+     * and we backfill, every read path has to tolerate both shapes.
+     *
+     * Approach: prefer raw_payload->createdTime (UTC unix-ms — always
+     * correct, TZ-unambiguous) when present; fall back to interpreting
+     * paid_at against whichever TZ leaves the value closest to "now"
+     * (heuristic that picks the right interpretation per row).
      */
     const CLOVER_PAID_AT_STORED_TZ = 'Asia/Kolkata';
 
     /**
-     * Format a CloverPayment->paid_at as LA-local time. paid_at strings
-     * in the DB are IST-local (see CLOVER_PAID_AT_STORED_TZ above) —
-     * parse as IST, then convert to LA.
+     * Derive a row's true LA Carbon. $row may be:
+     *  - object with ->raw_payload (preferred — JSON with createdTime)
+     *  - object with ->paid_at only (legacy callsites)
+     *  - a paid_at string directly
      */
-    public static function formatCloverPaidAt($cp): string
+    public static function parseCloverPaidAtLa($row): \Carbon\Carbon
     {
-        try {
-            $dt = $cp->paid_at instanceof \Carbon\Carbon
-                ? $cp->paid_at->copy()
-                : \Carbon\Carbon::parse((string) $cp->paid_at, self::CLOVER_PAID_AT_STORED_TZ);
-            return $dt->setTimezone('America/Los_Angeles')->format('Y-m-d H:i:s');
-        } catch (\Throwable $e) {
-            return (string) $cp->paid_at;
+        // Raw object/array carrying createdTime — canonical source.
+        if (is_object($row) || is_array($row)) {
+            $raw = is_object($row) ? ($row->raw_payload ?? null) : ($row['raw_payload'] ?? null);
+            if (!empty($raw)) {
+                $json = is_string($raw) ? json_decode($raw, true) : $raw;
+                if (is_array($json) && !empty($json['createdTime'])) {
+                    return \Carbon\Carbon::createFromTimestampMs((int) $json['createdTime'], 'UTC')
+                        ->setTimezone('America/Los_Angeles');
+                }
+            }
+            $paidAt = is_object($row) ? ($row->paid_at ?? null) : ($row['paid_at'] ?? null);
+        } else {
+            $paidAt = $row;
         }
+
+        if ($paidAt instanceof \Carbon\Carbon) {
+            return $paidAt->copy()->setTimezone('America/Los_Angeles');
+        }
+        if (empty($paidAt)) return \Carbon\Carbon::now('America/Los_Angeles');
+
+        // No createdTime — interpret paid_at as whichever TZ lands the
+        // value closest to "now". IST-stored values for the last week
+        // are ~12.5h ahead of LA-stored values; whichever is closer to
+        // wall-clock now wins. Tolerates both legacy IST rows and
+        // freshly-refreshed LA rows in the same query.
+        $now    = \Carbon\Carbon::now('America/Los_Angeles');
+        $asIst  = \Carbon\Carbon::parse((string) $paidAt, self::CLOVER_PAID_AT_STORED_TZ)->setTimezone('America/Los_Angeles');
+        $asLa   = \Carbon\Carbon::parse((string) $paidAt, 'America/Los_Angeles');
+        return abs($asIst->diffInSeconds($now)) <= abs($asLa->diffInSeconds($now)) ? $asIst : $asLa;
     }
 
     /**
-     * Parse a CloverPayment->paid_at into an LA-local Carbon. Stored
-     * as IST-local in the DB; see CLOVER_PAID_AT_STORED_TZ.
+     * Format a CloverPayment->paid_at as LA-local time. See parse helper
+     * above for the mixed-TZ caveats — pass the full row when possible
+     * so it can use raw_payload->createdTime.
      */
-    public static function parseCloverPaidAtLa($paidAt): \Carbon\Carbon
+    public static function formatCloverPaidAt($row): string
     {
-        $dt = $paidAt instanceof \Carbon\Carbon
-            ? $paidAt->copy()
-            : \Carbon\Carbon::parse((string) $paidAt, self::CLOVER_PAID_AT_STORED_TZ);
-        return $dt->setTimezone('America/Los_Angeles');
+        try {
+            return self::parseCloverPaidAtLa($row)->format('Y-m-d H:i:s');
+        } catch (\Throwable $e) {
+            return is_object($row) ? (string) ($row->paid_at ?? '') : (string) $row;
+        }
     }
 
     /**
@@ -916,23 +941,42 @@ class SellPosController extends Controller
         // today's LA bucket with yesterday's late-afternoon LA swipes. Filter
         // on paid_at instead, converting LA today's [00:00, 23:59:59] into
         // the IST window the strings were stored in.
-        $appTz = config('app.timezone') ?: 'America/Los_Angeles';
+        // Mixed-TZ tolerant filter (cron writes IST, in-process button
+        // writes LA — same payment_id can flip TZ on each refresh). SQL
+        // widens to the UNION of both windows; PHP filter then keeps
+        // only rows whose canonical LA time (from raw_payload->createdTime
+        // when present) actually falls within LA-today.
         $startLaToday = \Carbon\Carbon::now('America/Los_Angeles')->startOfDay();
         $endLaToday   = \Carbon\Carbon::now('America/Los_Angeles')->endOfDay();
-        $startInAppTz = $startLaToday->copy()->setTimezone(self::CLOVER_PAID_AT_STORED_TZ)->format('Y-m-d H:i:s');
-        $endInAppTz   = $endLaToday->copy()->setTimezone(self::CLOVER_PAID_AT_STORED_TZ)->format('Y-m-d H:i:s');
+        $startInIst   = $startLaToday->copy()->setTimezone(self::CLOVER_PAID_AT_STORED_TZ)->format('Y-m-d H:i:s');
+        $endInIst     = $endLaToday->copy()->setTimezone(self::CLOVER_PAID_AT_STORED_TZ)->format('Y-m-d H:i:s');
+        $startInLa    = $startLaToday->format('Y-m-d H:i:s');
+        $endInLa      = $endLaToday->format('Y-m-d H:i:s');
+        $appTz        = config('app.timezone') ?: 'America/Los_Angeles';
+        $startInAppTz = $startInIst; // kept for the ?tz_debug=1 block
+        $endInAppTz   = $endInIst;
 
         $cloverRowsToday = \DB::table('clover_payments')
             ->where('business_id', $business_id)
-            ->where('paid_at', '>=', $startInAppTz)
-            ->where('paid_at', '<=', $endInAppTz)
+            ->where(function ($q) use ($startInIst, $endInIst, $startInLa, $endInLa) {
+                $q->whereBetween('paid_at', [$startInIst, $endInIst])
+                  ->orWhereBetween('paid_at', [$startInLa, $endInLa]);
+            })
             ->where(function ($q) {
                 $q->whereNull('result')->orWhere('result', 'SUCCESS')->orWhere('result', 'APPROVED');
             })
             ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id))
-            ->select('location_id', 'amount', 'tax_cents', 'paid_at', 'employee_name', 'card_type', 'card_last4', 'clover_payment_id')
+            ->select('location_id', 'amount', 'tax_cents', 'paid_at', 'employee_name', 'card_type', 'card_last4', 'clover_payment_id', 'raw_payload')
             ->orderBy('paid_at')
             ->get();
+
+        // Tighten in PHP — keep only rows whose canonical LA time is
+        // actually within LA-today. createdTime is the source of truth
+        // for each row regardless of what TZ paid_at landed in.
+        $cloverRowsToday = $cloverRowsToday->filter(function ($r) use ($startLaToday, $endLaToday) {
+            $laTs = self::parseCloverPaidAtLa($r);
+            return $laTs->between($startLaToday, $endLaToday);
+        })->values();
 
         // Bucket per location_id (0 = unattributed). For each store we
         // track card / cash / other ERP totals + ERP tx-ids (for sale
@@ -979,7 +1023,7 @@ class SellPosController extends Controller
             if (!empty($r->card_type))  $cardBits[] = strtoupper($r->card_type);
             if (!empty($r->card_last4)) $cardBits[] = '••' . $r->card_last4;
             $today_by_store[$k]['clover_charges'][] = [
-                'paid_at'  => self::formatCloverPaidAt((object) ['paid_at' => $r->paid_at]),
+                'paid_at'  => self::formatCloverPaidAt($r),
                 'amount'   => round((float) $r->amount, 2),
                 'net'      => round($cloverNet, 2),
                 'employee' => $r->employee_name,
