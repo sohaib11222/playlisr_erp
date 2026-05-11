@@ -107,22 +107,47 @@
     letter-spacing: 0;
 }
 
-.pos-duty-shell select.duty-input {
-    width: 100%;
-    height: 44px;
-    background: var(--d-surface);
-    border: 1px solid var(--d-line-2);
-    border-radius: var(--d-radius-sm);
-    color: var(--d-ink);
-    font-size: 14.5px;
-    font-weight: 500;
-    padding: 0 14px;
-    font-family: inherit;
+/* Store pills — horizontal flex-wrap, smaller than duty pills since
+   labels are short ("Pico", "HW", etc.). Same checked accent treatment. */
+.pos-duty-shell .store-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
 }
-.pos-duty-shell select.duty-input:focus {
-    outline: none;
+.pos-duty-shell .store-pill {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    padding: 10px 18px;
+    min-height: 44px;
+    background: var(--d-surface);
+    border: 2px solid var(--d-line);
+    border-radius: 999px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--d-ink);
+    line-height: 1;
+    transition: border-color .12s ease, background .12s ease, box-shadow .12s ease, transform .08s ease;
+    margin: 0;
+}
+.pos-duty-shell .store-pill:hover {
+    border-color: var(--d-line-2);
+    background: var(--d-surface-2);
+}
+.pos-duty-shell .store-pill:active { transform: scale(.98); }
+.pos-duty-shell .store-pill input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+.pos-duty-shell .store-pill:has(input:checked) {
     border-color: var(--d-accent-deep);
-    box-shadow: 0 0 0 3px var(--d-accent-soft);
+    background: var(--d-accent-soft);
+    color: var(--d-accent-text);
+    box-shadow: 0 0 0 3px rgba(232,207,104,.3);
 }
 
 /* Duty options — big tappable pills. Single column so each pill stretches
@@ -183,29 +208,15 @@
     background: var(--d-accent-soft);
     box-shadow: 0 0 0 3px rgba(232,207,104,.3);
 }
-.pos-duty-shell .duty-option .opt-body {
-    min-width: 0;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 10px;
-    flex: 1 1 auto;
-}
 .pos-duty-shell .duty-option .opt-title {
     font-size: 16px;
     font-weight: 700;
     color: var(--d-ink);
     line-height: 1.2;
     letter-spacing: -.005em;
-}
-.pos-duty-shell .duty-option .opt-desc {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--d-ink-3);
-    line-height: 1.35;
+    flex: 1 1 auto;
 }
 .pos-duty-shell .duty-option:has(input:checked) .opt-title { color: var(--d-accent-text); }
-.pos-duty-shell .duty-option:has(input:checked) .opt-desc { color: var(--d-accent-text); opacity: .8; }
 
 /* Opening cash callout — keep the existing "warning yellow" feel but
    re-skinned to match the accent tokens used everywhere else here. */
@@ -330,17 +341,24 @@
             {!! Form::open(['url' => action('SellPosController@savePosDuty'), 'method' => 'post']) !!}
             {!! Form::hidden('intended', $intended) !!}
 
+            @php $selectedLoc = (string) session('pos_duty_location_id'); @endphp
             <div class="field">
                 <label class="field-label">
                     Store
                     <span class="field-help">— optional, helps match Clover charges to the right location</span>
                 </label>
-                <select name="location_id" class="duty-input">
-                    <option value="">— All / not sure —</option>
+                <div class="store-pills">
+                    <label class="store-pill">
+                        <input type="radio" name="location_id" value="" {{ $selectedLoc === '' ? 'checked' : '' }}>
+                        All / not sure
+                    </label>
                     @foreach($business_locations as $id => $name)
-                        <option value="{{ $id }}" {{ (string)session('pos_duty_location_id') === (string)$id ? 'selected' : '' }}>{{ $name }}</option>
+                        <label class="store-pill">
+                            <input type="radio" name="location_id" value="{{ $id }}" {{ $selectedLoc === (string)$id ? 'checked' : '' }}>
+                            {{ $name }}
+                        </label>
                     @endforeach
-                </select>
+                </div>
             </div>
 
             <div class="field">
@@ -348,31 +366,19 @@
                 <div class="duty-options">
                     <label class="duty-option">
                         <input type="radio" name="duty" value="cashier" id="duty_cashier" required>
-                        <span class="opt-body">
-                            <span class="opt-title">Cashier</span>
-                            <span class="opt-desc">On the register, ringing sales</span>
-                        </span>
+                        <span class="opt-title">Cashier</span>
                     </label>
                     <label class="duty-option">
                         <input type="radio" name="duty" value="shipping" id="duty_shipping">
-                        <span class="opt-body">
-                            <span class="opt-title">Shipping</span>
-                            <span class="opt-desc">Packing / shipping, not on register</span>
-                        </span>
+                        <span class="opt-title">Shipping</span>
                     </label>
                     <label class="duty-option">
                         <input type="radio" name="duty" value="inventory" id="duty_inventory">
-                        <span class="opt-body">
-                            <span class="opt-title">Inventory</span>
-                            <span class="opt-desc">Receiving / counts, not on register</span>
-                        </span>
+                        <span class="opt-title">Inventory</span>
                     </label>
                     <label class="duty-option">
                         <input type="radio" name="duty" value="admin" id="duty_admin">
-                        <span class="opt-body">
-                            <span class="opt-title">Admin</span>
-                            <span class="opt-desc">Poking around — reports, settings, checking on things</span>
-                        </span>
+                        <span class="opt-title">Admin</span>
                     </label>
                 </div>
             </div>
