@@ -1436,6 +1436,7 @@ $(document).ready(function() {
         },
         columns: [
             { data: 'product_name', name: 'p.name' },
+            { data: 'artist', name: 'p.artist' },
             { data: 'format', name: 'p.format' },
             { data: 'sku', name: 'v.sub_sku' },
             { data: 'category', name: 'cat.name' },

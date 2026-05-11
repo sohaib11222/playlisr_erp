@@ -3174,6 +3174,7 @@ class ReportController extends Controller
                     'v.sub_sku as sku',
                     'p.type as product_type',
                     'p.name as product_name',
+                    'p.artist as artist',
                     'p.format as format',
                     'v.name as variation_name',
                     'pv.name as product_variation',
@@ -3223,6 +3224,7 @@ class ReportController extends Controller
                     DB::raw('NULL as sku'),
                     DB::raw("'single' as product_type"),
                     'transaction_sell_lines.product_name as product_name',
+                    'transaction_sell_lines.product_artist as artist',
                     DB::raw('NULL as format'),
                     DB::raw('NULL as variation_name'),
                     DB::raw('NULL as product_variation'),
@@ -3341,6 +3343,7 @@ class ReportController extends Controller
                 // Map original column names to aliased columns in unioned_query
                 // Use backticks and proper table reference for SQL compatibility
                 ->orderColumn('p.name', DB::raw('`unioned_query`.`product_name` $1'))
+                ->orderColumn('p.artist', DB::raw('`unioned_query`.`artist` $1'))
                 ->orderColumn('p.format', DB::raw('`unioned_query`.`format` $1'))
                 ->orderColumn('v.sub_sku', DB::raw('`unioned_query`.`sku` $1'))
                 ->orderColumn('cat.name', DB::raw('`unioned_query`.`category` $1'))
@@ -3511,6 +3514,7 @@ class ReportController extends Controller
                 'v.sub_sku as sku',
                 'p.type as product_type',
                 'p.name as product_name',
+                'p.artist as artist',
                 'p.format as format',
                 'v.name as variation_name',
                 'pv.name as product_variation',
@@ -3555,6 +3559,7 @@ class ReportController extends Controller
                 DB::raw('NULL as sku'),
                 DB::raw("'single' as product_type"),
                 'transaction_sell_lines.product_name as product_name',
+                'transaction_sell_lines.product_artist as artist',
                 DB::raw('NULL as format'),
                 DB::raw('NULL as variation_name'),
                 DB::raw('NULL as product_variation'),
@@ -3651,7 +3656,7 @@ class ReportController extends Controller
         return response()->streamDownload(function () use ($rows) {
             $out = fopen('php://output', 'w');
             fputcsv($out, [
-                'Product', 'Format', 'SKU', 'Category', 'Sub-category', 'Description',
+                'Product', 'Artist', 'Format', 'SKU', 'Category', 'Sub-category', 'Description',
                 'Purchase Date', 'Purchase Ref', 'Lot Number', 'Supplier', 'Purchase Price',
                 'Sell Date', 'Sale Invoice', 'Customer', 'Location',
                 'Quantity', 'Unit', 'Selling Price', 'Subtotal',
@@ -3689,6 +3694,7 @@ class ReportController extends Controller
 
                 fputcsv($out, [
                     $product_name,
+                    $r->artist,
                     $r->format,
                     $r->sku,
                     $r->category,
