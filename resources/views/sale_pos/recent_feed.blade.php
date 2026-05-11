@@ -178,6 +178,26 @@
     <h1>Recent Sales Feed <small>— items sold, expanded inline</small></h1>
 </section>
 
+@if(!empty($tz_debug))
+<section class="content">
+    <div style="background:#FFF8E1; border:1px solid #E6D58A; border-radius:8px; padding:12px 14px; font-family:ui-monospace,Menlo,monospace; font-size:11px; color:#5A5045; line-height:1.5;">
+        <div style="font-weight:700; font-size:12px; color:#1F1B16; margin-bottom:6px;">TZ diagnostic</div>
+        <div>config(app.timezone) = <strong>{{ $tz_debug['app_tz'] }}</strong> · PHP default = <strong>{{ $tz_debug['php_default_tz'] }}</strong></div>
+        <div>now (LA) = <strong>{{ $tz_debug['now_la'] }}</strong> · now (app TZ) = <strong>{{ $tz_debug['now_in_app_tz'] }}</strong></div>
+        <div>Today filter (in app TZ): <strong>{{ $tz_debug['today_filter_start'] }}</strong> → <strong>{{ $tz_debug['today_filter_end'] }}</strong></div>
+        <div>Rows matching today filter: <strong>{{ $tz_debug['today_bucket_count'] }}</strong></div>
+        <div style="margin-top:8px; font-weight:700; color:#1F1B16;">Most recent 8 clover_payments rows (regardless of date):</div>
+        @foreach($tz_debug['samples'] as $i => $s)
+            <div style="margin-top:4px; padding-left:6px; border-left:2px solid #E6D58A;">
+                <div>#{{ $i + 1 }} paid_at = <strong>{{ $s['paid_at_raw'] }}</strong> · paid_on = <strong>{{ $s['paid_on_raw'] }}</strong> · loc={{ $s['loc_id'] ?? '(null)' }} · $${{ $s['amount'] }}</div>
+                <div style="padding-left:14px;">createdTime (Clover, UTC unix-ms) = {{ $s['createdMs'] ?: '—' }} → {{ $s['createdUtc'] ?: '—' }} → {{ $s['createdLa'] ?: '—' }}</div>
+                <div style="padding-left:14px;">parse(paid_at, appTz) → LA = <strong>{{ $s['parsedAsAppTz'] }}</strong></div>
+            </div>
+        @endforeach
+    </div>
+</section>
+@endif
+
 <section class="content">
     @php
         $byStore = $today_by_store ?? [];

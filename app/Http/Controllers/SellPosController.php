@@ -969,7 +969,50 @@ class SellPosController extends Controller
         $clover_today_total = array_sum(array_column($today_by_store, 'clover'));
         $clover_today_count = array_sum(array_column($today_by_store, 'clover_count'));
 
-        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store'));
+        // TZ diagnostic — append ?tz_debug=1 when the today bucket is
+        // mysteriously wide and we need to see how paid_at strings are
+        // stored vs what config('app.timezone') reports.
+        $tz_debug = null;
+        if ($request->get('tz_debug')) {
+            $sampleRows = \DB::table('clover_payments')
+                ->where('business_id', $business_id)
+                ->orderByDesc('paid_at')
+                ->limit(8)
+                ->get(['paid_at', 'paid_on', 'amount', 'location_id', 'raw_payload']);
+            $samples = [];
+            foreach ($sampleRows as $sr) {
+                $raw  = $sr->paid_at;
+                $createdMs = null;
+                if ($sr->raw_payload) {
+                    $j = json_decode($sr->raw_payload, true);
+                    if (is_array($j) && isset($j['createdTime'])) {
+                        $createdMs = (int) $j['createdTime'];
+                    }
+                }
+                $samples[] = [
+                    'paid_at_raw' => (string) $raw,
+                    'paid_on_raw' => (string) $sr->paid_on,
+                    'amount'      => $sr->amount,
+                    'loc_id'      => $sr->location_id,
+                    'createdMs'   => $createdMs,
+                    'createdUtc'  => $createdMs ? \Carbon\Carbon::createFromTimestampMs($createdMs, 'UTC')->format('Y-m-d H:i:s') . ' UTC' : null,
+                    'createdLa'   => $createdMs ? \Carbon\Carbon::createFromTimestampMs($createdMs, 'UTC')->setTimezone('America/Los_Angeles')->format('Y-m-d H:i:s') . ' LA' : null,
+                    'parsedAsAppTz' => \Carbon\Carbon::parse((string) $raw, $appTz)->setTimezone('America/Los_Angeles')->format('Y-m-d H:i:s') . ' LA',
+                ];
+            }
+            $tz_debug = [
+                'app_tz'             => config('app.timezone'),
+                'php_default_tz'     => date_default_timezone_get(),
+                'now_la'             => \Carbon\Carbon::now('America/Los_Angeles')->format('Y-m-d H:i:s'),
+                'now_in_app_tz'      => \Carbon\Carbon::now($appTz)->format('Y-m-d H:i:s'),
+                'today_filter_start' => $startInAppTz,
+                'today_filter_end'   => $endInAppTz,
+                'today_bucket_count' => $cloverRowsToday->count(),
+                'samples'            => $samples,
+            ];
+        }
+
+        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store', 'tz_debug'));
     }
 
     /**
