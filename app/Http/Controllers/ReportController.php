@@ -6805,19 +6805,11 @@ class ReportController extends Controller
         }
         $cnt = count($orders);
 
-        // Read the flat-cost fallback from business api_settings. 0 / null
-        // disables it (default), so existing match-by-id behavior is
-        // unchanged unless an estimate is explicitly configured.
-        $business_row = \DB::table('businesses')->where('id', $business_id)->first();
-        $api_settings_raw = $business_row->api_settings ?? null;
-        if (is_string($api_settings_raw)) {
-            $api_settings_arr = json_decode($api_settings_raw, true) ?: [];
-        } else {
-            $api_settings_arr = is_array($api_settings_raw) ? $api_settings_raw : [];
-        }
-        $discogs_fallback_cost = isset($api_settings_arr['discogs']['fallback_item_cost'])
-            ? (float) $api_settings_arr['discogs']['fallback_item_cost']
-            : 0.0;
+        // No per-business fallback config — when an item doesn't match local
+        // inventory, fall back to the existing CostPriceRules table by the
+        // Discogs release format (Vinyl → Used Vinyl, CD → Used CD, etc.).
+        // Reuses the rules already configured at /admin/cost-price-rules so
+        // there's a single source of truth for fallback costs.
 
         // Cost-of-goods: walk order line items and match against local cost.
         // Two-tier match:
@@ -6884,13 +6876,23 @@ class ReportController extends Controller
                     $matched_revenue += $price;
                     $matched_items++;
                     $matched_by_release++;
-                } elseif ($discogs_fallback_cost > 0) {
-                    $cogs += $discogs_fallback_cost;
-                    $matched_revenue += $price;
-                    $matched_items++;
-                    $matched_by_fallback++;
                 } else {
-                    $unmatched_items++;
+                    // Format-based fallback from /admin/cost-price-rules.
+                    $format_str = '';
+                    if (!empty($it['release']['format'])) {
+                        $format_str = is_array($it['release']['format'])
+                            ? implode(' ', $it['release']['format'])
+                            : (string) $it['release']['format'];
+                    }
+                    $fallback = $this->discogsFormatFallbackCost($format_str);
+                    if ($fallback > 0) {
+                        $cogs += $fallback;
+                        $matched_revenue += $price;
+                        $matched_items++;
+                        $matched_by_fallback++;
+                    } else {
+                        $unmatched_items++;
+                    }
                 }
             }
         }
@@ -7172,32 +7174,21 @@ class ReportController extends Controller
     }
 
     /**
-     * Persist the Discogs flat-cost fallback into business api_settings.
-     * Used for COGS estimation on Discogs API orders that don't match any
-     * local product by listing_id or release_id.
+     * Map a Discogs release format string to a fallback cost, sourced from
+     * /admin/cost-price-rules. Vinyl → Used Vinyl, CD → Used CD, etc. Used
+     * for items sold on Discogs that aren't in local inventory.
      */
-    public function setDiscogsFallbackCost(Request $request)
+    protected function discogsFormatFallbackCost($formatStr)
     {
-        $this->ensureAdminOnlyReportAccess();
-        $business_id = $request->session()->get('user.business_id');
-        $cost = (float) $request->input('fallback_item_cost', 0);
-        if ($cost < 0) $cost = 0;
-
-        $business = \App\Business::find($business_id);
-        $api_settings = $business->api_settings ?? [];
-        if (is_string($api_settings)) $api_settings = json_decode($api_settings, true) ?: [];
-        if (!is_array($api_settings)) $api_settings = [];
-        if (!isset($api_settings['discogs']) || !is_array($api_settings['discogs'])) {
-            $api_settings['discogs'] = [];
-        }
-        $api_settings['discogs']['fallback_item_cost'] = $cost;
-        $business->api_settings = $api_settings;
-        $business->save();
-
-        return redirect()->action('ReportController@discogsReport')->with('status', [
-            'success' => 1,
-            'msg' => 'Discogs fallback cost set to $' . number_format($cost, 2) . '. Reload the report to see updated GP.',
-        ]);
+        $s = strtolower((string) $formatStr);
+        if ($s === '') return (float) (\App\Http\Controllers\CostPriceRulesController::RULES[1]['cost'] ?? 0); // default Used Vinyl
+        if (strpos($s, 'cd') !== false)        return 0.10;
+        if (strpos($s, 'cassette') !== false)  return 0.30;
+        if (strpos($s, 'vhs') !== false)       return 0.10;
+        if (strpos($s, '8 track') !== false || strpos($s, '8-track') !== false) return 0.25;
+        if (strpos($s, '7"') !== false || strpos($s, '45 rpm') !== false) return 0.15;
+        // Vinyl or anything else falls through to Used Vinyl.
+        return 0.35;
     }
 
     /**
@@ -9556,8 +9547,10 @@ class ReportController extends Controller
                 $signedDelta = $cpCents - $toCents($t->final_total); // + means Clover > ERP
                 $amtDelta = abs($signedDelta);
                 if ($amtDelta > $matchAmountCents) continue;
-                if ($cpLoc !== null && $t->location_id !== null
-                    && (int) $cpLoc !== (int) $t->location_id) continue;
+                // Sarah 2026-05-11: strict same-store. Allowing
+                // null-Clover-location to pair across stores was
+                // false-pairing Pico orphans to Hollywood cash tests.
+                if ((int) ($cpLoc ?? 0) !== (int) ($t->location_id ?? 0)) continue;
                 $timeDelta = abs(strtotime((string) $t->transaction_date) - $cpTs);
                 if ($timeDelta > $matchTimeWindow) continue;
                 // Score: amount gap weighted heavier than time gap so an
@@ -9618,8 +9611,10 @@ class ReportController extends Controller
             $bestId = null; $bestTd = PHP_INT_MAX; $bestSignedDelta = 0;
             foreach ($txns as $t) {
                 if (isset($claimedTxns[$t->id])) continue;
-                if ($cpLoc !== null && $t->location_id !== null
-                    && (int) $cpLoc !== (int) $t->location_id) continue;
+                // Sarah 2026-05-11: strict same-store. Allowing
+                // null-Clover-location to pair across stores was
+                // false-pairing Pico orphans to Hollywood cash tests.
+                if ((int) ($cpLoc ?? 0) !== (int) ($t->location_id ?? 0)) continue;
                 $td = abs(strtotime((string) $t->transaction_date) - $cpTs);
                 if ($td > $sameTimeWindow) continue;
                 if ($td < $bestTd) {

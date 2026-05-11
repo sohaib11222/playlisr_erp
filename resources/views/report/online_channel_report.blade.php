@@ -82,25 +82,12 @@
                 @endif
             </small>
             <hr style="margin:10px 0;">
-            <form method="POST" action="{{ route('reports.discogs.fallback') }}" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                @csrf
-                <label style="margin:0;">
-                    <strong>Flat-cost fallback per item:</strong>
-                    <span style="margin-left:4px;">$</span>
-                    <input type="number" step="0.01" min="0" name="fallback_item_cost"
-                           value="{{ number_format($mi['fallback_cost'], 2, '.', '') }}"
-                           style="width:80px; padding:2px 6px;">
-                </label>
-                <button type="submit" class="btn btn-default btn-sm">Save</button>
-                <small style="color:#666;">
-                    Applied to items that don't match by listing-id or release-id. Set to 0 to disable.
-                    @if($mi['fallback_cost'] > 0)
-                        Current: <strong>${{ number_format($mi['fallback_cost'], 2) }}/item</strong>.
-                    @else
-                        Currently disabled.
-                    @endif
-                </small>
-            </form>
+            <small style="color:#666;">
+                Items that don't match local inventory get a format-based fallback cost from
+                <a href="{{ url('/admin/cost-price-rules') }}">/admin/cost-price-rules</a>
+                (Used Vinyl $0.35, Used CD $0.10, Cassettes $0.30, etc.) so GP is never $0 from
+                missing data alone. Update those rules to change the fallback.
+            </small>
         </div>
     @endif
 
