@@ -44,6 +44,14 @@
                 @endif
             </div>
         </div>
+
+        @if(!empty($dt['whatnot_count']))
+            <div style="margin-top:14px; padding-top:12px; border-top:1px dashed #ECE3CF; font-size:12px; color:#5A5045; display:flex; gap:14px; align-items:baseline; flex-wrap:wrap;">
+                <span style="font-weight:600; color:#8A7C6A; text-transform:uppercase; letter-spacing:.06em; font-size:11px;">Whatnot</span>
+                <span style="font-variant-numeric: tabular-nums;">${{ number_format($dt['whatnot_net'], 2) }} · {{ $dt['whatnot_count'] }} sale{{ $dt['whatnot_count'] === 1 ? '' : 's' }}</span>
+                <span style="color:#8A7C6A;">Inventory-only — paid through Whatnot, not Clover, so excluded from ERP NET SALES and the Diff above.</span>
+            </div>
+        @endif
     </div>
 
     {{-- Sync-now button — Sarah 2026-04-22: Clover column was $0 across

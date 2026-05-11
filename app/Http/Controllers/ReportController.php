@@ -7520,23 +7520,35 @@ class ReportController extends Controller
         // net = SUM(amount − tax_cents/100). Both are pre-tax, matching
         // Clover dashboard's "Net Sales" definition. No tender split —
         // the prior proportional allocation broke on discounted lines.
-        $erp_net_total = (float) \DB::table('transactions')
+        //
+        // Sarah 2026-05-11: exclude is_whatnot=1 from ERP totals. Whatnot
+        // livestream sales ring in ERP for inventory but are paid through
+        // Whatnot, not Clover — including them inflated Pico's ERP side
+        // and made the Diff line look like a real discrepancy when it
+        // wasn't. They're broken out on a separate line below for
+        // transparency.
+        $erpBase = \DB::table('transactions')
             ->where('business_id', $business_id)
             ->where('type', 'sell')
             ->where('status', 'final')
             ->whereNull('import_source')
             ->whereDate('transaction_date', '>=', $start)
             ->whereDate('transaction_date', '<=', $end)
-            ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id))
+            ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id));
+
+        $erp_net_total = (float) (clone $erpBase)
+            ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
             ->sum('total_before_tax');
-        $erp_count = (int) \DB::table('transactions')
-            ->where('business_id', $business_id)
-            ->where('type', 'sell')
-            ->where('status', 'final')
-            ->whereNull('import_source')
-            ->whereDate('transaction_date', '>=', $start)
-            ->whereDate('transaction_date', '<=', $end)
-            ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id))
+        $erp_count = (int) (clone $erpBase)
+            ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
+            ->count();
+
+        // Whatnot sub-total — inventory-only, never on Clover.
+        $whatnot_net_total = (float) (clone $erpBase)
+            ->where('is_whatnot', 1)
+            ->sum('total_before_tax');
+        $whatnot_count = (int) (clone $erpBase)
+            ->where('is_whatnot', 1)
             ->count();
 
         // paid_at is IST-stored (sync cron env), so filter on paid_at
@@ -7559,11 +7571,13 @@ class ReportController extends Controller
         $clover_day_count = (int) $cloverDayQ->count();
 
         $day_totals = [
-            'erp_net'       => round($erp_net_total, 2),
-            'erp_count'     => $erp_count,
-            'clover'        => round($clover_day_total, 2),
-            'clover_count'  => $clover_day_count,
-            'diff'          => round($clover_day_total - $erp_net_total, 2),
+            'erp_net'        => round($erp_net_total, 2),
+            'erp_count'      => $erp_count,
+            'clover'         => round($clover_day_total, 2),
+            'clover_count'   => $clover_day_count,
+            'diff'           => round($clover_day_total - $erp_net_total, 2),
+            'whatnot_net'    => round($whatnot_net_total, 2),
+            'whatnot_count'  => $whatnot_count,
         ];
 
         return view('report.clover_eod_reconciliation')->with(compact(

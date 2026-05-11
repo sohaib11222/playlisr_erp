@@ -875,11 +875,32 @@ class SellPosController extends Controller
 
         // ERP net = transaction-level total_before_tax (no per-tp split).
         // Tried tp.amount × ratio earlier but it broke on discounted lines.
+        // Sarah 2026-05-11: exclude is_whatnot=1 — Whatnot livestream
+        // sales ring in ERP for inventory but are paid through Whatnot,
+        // not Clover, so including them inflates the per-store ERP totals
+        // and makes the Clover gap look like a real discrepancy. Surfaced
+        // separately below the store row.
         $erpRowsToday = \DB::table('transactions')
             ->where('business_id', $business_id)
             ->where('type', 'sell')
             ->where('status', 'final')
             ->whereNull('import_source')
+            ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
+            ->whereDate('transaction_date', $todayStr)
+            ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id))
+            ->select('id', 'location_id', 'total_before_tax')
+            ->get();
+
+        // Whatnot rows today — surfaced separately so the user can see
+        // the inventory-only side without it polluting the ERP / Clover
+        // reconciliation. Per-store totals so Pico's Whatnot heavy days
+        // don't look like a generic "Pico Whatnot" lump.
+        $whatnotRowsToday = \DB::table('transactions')
+            ->where('business_id', $business_id)
+            ->where('type', 'sell')
+            ->where('status', 'final')
+            ->whereNull('import_source')
+            ->where('is_whatnot', 1)
             ->whereDate('transaction_date', $todayStr)
             ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id))
             ->select('id', 'location_id', 'total_before_tax')
@@ -927,6 +948,8 @@ class SellPosController extends Controller
                     'erp_count'      => 0,
                     'clover'         => 0.0,
                     'clover_count'   => 0,
+                    'whatnot_net'    => 0.0,
+                    'whatnot_count'  => 0,
                     'clover_charges' => [],
                 ];
             }
@@ -937,6 +960,13 @@ class SellPosController extends Controller
             $ensure($today_by_store, $k, $name);
             $today_by_store[$k]['erp_net']   += (float) $r->total_before_tax;
             $today_by_store[$k]['erp_count']++;
+        }
+        foreach ($whatnotRowsToday as $r) {
+            $k = $locKey($r->location_id);
+            $name = $k && isset($business_locations[$k]) ? $business_locations[$k] : '(no location)';
+            $ensure($today_by_store, $k, $name);
+            $today_by_store[$k]['whatnot_net']  += (float) $r->total_before_tax;
+            $today_by_store[$k]['whatnot_count']++;
         }
         foreach ($cloverRowsToday as $r) {
             $k = $locKey($r->location_id);
@@ -958,9 +988,10 @@ class SellPosController extends Controller
             ];
         }
         foreach ($today_by_store as &$s) {
-            $s['erp_net'] = round($s['erp_net'], 2);
-            $s['clover']  = round($s['clover'], 2);
-            $s['diff']    = round($s['clover'] - $s['erp_net'], 2);
+            $s['erp_net']     = round($s['erp_net'], 2);
+            $s['clover']      = round($s['clover'], 2);
+            $s['whatnot_net'] = round($s['whatnot_net'], 2);
+            $s['diff']        = round($s['clover'] - $s['erp_net'], 2);
         }
         unset($s);
         uasort($today_by_store, function ($a, $b) {

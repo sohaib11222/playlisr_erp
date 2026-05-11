@@ -202,11 +202,14 @@
     @php
         $byStore = $today_by_store ?? [];
         $totErp = 0; $totErpCount = 0; $totClover = 0; $totCloverCount = 0;
+        $totWhatnot = 0; $totWhatnotCount = 0;
         foreach ($byStore as $s) {
-            $totErp        += $s['erp_net'];
-            $totErpCount   += $s['erp_count'] ?? 0;
-            $totClover     += $s['clover'];
-            $totCloverCount+= $s['clover_count'] ?? 0;
+            $totErp           += $s['erp_net'];
+            $totErpCount      += $s['erp_count'] ?? 0;
+            $totClover        += $s['clover'];
+            $totCloverCount   += $s['clover_count'] ?? 0;
+            $totWhatnot       += $s['whatnot_net'] ?? 0;
+            $totWhatnotCount  += $s['whatnot_count'] ?? 0;
         }
         $totDiff = round($totClover - $totErp, 2);
         $totMatched = abs($totDiff) < 0.01;
@@ -249,6 +252,8 @@
                         @php
                             $sDiff = round($s['clover'] - $s['erp_net'], 2);
                             $sMatched = abs($sDiff) < 0.01;
+                            $sWhatnot = (float) ($s['whatnot_net'] ?? 0);
+                            $sWhatnotCount = (int) ($s['whatnot_count'] ?? 0);
                         @endphp
                         <div style="display:inline-flex; gap:8px; align-items:baseline;">
                             <span style="font-weight:600; color:#1F1B16;">{{ $s['name'] }}</span>
@@ -258,8 +263,19 @@
                             <span style="font-variant-numeric:tabular-nums; font-weight:700; color:{{ $sMatched ? '#2E6F40' : '#8B2C2C' }};">
                                 ({{ $sDiff > 0 ? '+' : '' }}${{ number_format($sDiff, 2) }})
                             </span>
+                            @if($sWhatnotCount > 0)
+                                <span style="color:#8A7C6A; font-style:italic;" title="Whatnot sales ring in ERP for inventory but are paid through Whatnot, not Clover — excluded from the ERP and Diff numbers.">
+                                    + Whatnot ${{ number_format($sWhatnot, 2) }} ({{ $sWhatnotCount }})
+                                </span>
+                            @endif
                         </div>
                     @endforeach
+                </div>
+            @endif
+
+            @if($totWhatnotCount > 0)
+                <div style="margin-top:10px; font-size:12px; color:#8A7C6A;">
+                    <strong style="color:#5A5045;">Whatnot today:</strong> ${{ number_format($totWhatnot, 2) }} · {{ $totWhatnotCount }} sale{{ $totWhatnotCount === 1 ? '' : 's' }} — inventory-only, paid through Whatnot (not Clover), so excluded from ERP Net Sales and Diff above.
                 </div>
             @endif
 
