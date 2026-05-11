@@ -209,6 +209,7 @@
 @endsection
 
 @section('javascript')
+    <script src="{{ asset('js/report.js?v=' . $asset_v) }}"></script>
     <script>
         $(document).ready(function () {
             if ($.fn.DataTable.isDataTable('#expense_detail_table')) return;
