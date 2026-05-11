@@ -6109,7 +6109,16 @@ class ReportController extends Controller
             $rows[$key]['revenue']         += $dgs['revenue'];
             $rows[$key]['revenue_exc_tax'] += $dgs['revenue'];
             $rows[$key]['cnt']             += $dgs['cnt'];
-            $rows[$key]['cost_unknown'] = true;
+            // We now match Discogs order items → local listings → variation
+            // cost. Margin is computed only against matched-item revenue, so
+            // unmatched items inflate revenue without inflating COGS — flag
+            // the row only if EVERY item was unmatched.
+            $rows[$key]['gross_profit']    += (float) ($dgs['gross_profit'] ?? 0);
+            $matched = (int) ($dgs['matched_items'] ?? 0);
+            $unmatched = (int) ($dgs['unmatched_items'] ?? 0);
+            $rows[$key]['cost_unknown'] = ($matched === 0);
+            $rows[$key]['cost_partial'] = ($matched > 0 && $unmatched > 0);
+            $rows[$key]['discogs_match_summary'] = "{$matched}/" . ($matched + $unmatched) . ' line items matched to local cost';
             $overall_revenue += $dgs['revenue'];
         }
 
@@ -6795,10 +6804,59 @@ class ReportController extends Controller
             $revenue += isset($o['total']['value']) ? (float)$o['total']['value'] : 0.0;
         }
         $cnt = count($orders);
+
+        // Cost-of-goods: walk order line items and match Discogs listing_id
+        // → local products.discogs_listing_id → variation.default_purchase_price.
+        // Items we can't match contribute revenue without COGS, so margin %
+        // is best understood as a lower bound (matched-only cost).
+        $cogs = 0.0;
+        $matched_items = 0;
+        $unmatched_items = 0;
+        $matched_revenue = 0.0;
+        $listing_ids = [];
+        foreach ($orders as $o) {
+            foreach (($o['items'] ?? []) as $it) {
+                if (!empty($it['id'])) $listing_ids[] = (string) $it['id'];
+            }
+        }
+        $cost_map = [];
+        if (!empty($listing_ids)) {
+            $cost_map = DB::table('products as p')
+                ->join('variations as v', 'v.product_id', '=', 'p.id')
+                ->where('p.business_id', $business_id)
+                ->whereIn('p.discogs_listing_id', array_unique($listing_ids))
+                ->selectRaw('p.discogs_listing_id, MIN(v.default_purchase_price) as cost')
+                ->groupBy('p.discogs_listing_id')
+                ->pluck('cost', 'discogs_listing_id')
+                ->toArray();
+        }
+        foreach ($orders as $o) {
+            foreach (($o['items'] ?? []) as $it) {
+                $lid = isset($it['id']) ? (string) $it['id'] : '';
+                $price = isset($it['price']['value']) ? (float) $it['price']['value'] : 0.0;
+                if ($lid !== '' && isset($cost_map[$lid])) {
+                    $cogs += (float) $cost_map[$lid];
+                    $matched_revenue += $price;
+                    $matched_items++;
+                } else {
+                    $unmatched_items++;
+                }
+            }
+        }
+        $gross_profit = $matched_revenue - $cogs;
+
         $this->setDiag('discogs', $cnt > 0
-            ? "Discogs: pulled {$cnt} order(s) from API."
+            ? "Discogs: pulled {$cnt} order(s) from API. Items matched to local cost: {$matched_items}; unmatched: {$unmatched_items}."
             : 'Discogs: API reachable but no orders in revenue statuses for this date range.');
-        return ['revenue' => $revenue, 'cnt' => $cnt];
+        return [
+            'revenue' => $revenue,
+            'cnt' => $cnt,
+            'cogs' => $cogs,
+            'gross_profit' => $gross_profit,
+            'matched_items' => $matched_items,
+            'unmatched_items' => $unmatched_items,
+            'matched_revenue' => $matched_revenue,
+        ];
     }
 
     /** Append a diagnostic line, keyed so callers can replace prior state. */
@@ -7125,10 +7183,12 @@ class ReportController extends Controller
         $gross_profit = (float)($gp_obj->gross_profit ?? 0);
 
         // For Discogs / eBay, also live-fetch from their respective APIs.
-        // Header-level only (no line items mapped to local SKUs) so adds
-        // to revenue + count but not gross profit.
+        // Discogs: line items now matched to local cost via discogs_listing_id
+        // so external orders contribute to gross_profit when matched.
+        // eBay: still header-level only (no line-item match yet).
         $external_revenue = 0.0;
         $external_cnt = 0;
+        $external_cogs_revenue = 0.0; // revenue that has cost matched
         if ($channel === 'discogs') {
             $dgs = $this->fetchDiscogsChannelTotals($business_id, $start_date, $end_date);
             if ($dgs !== null) {
@@ -7136,6 +7196,8 @@ class ReportController extends Controller
                 $external_cnt = $dgs['cnt'];
                 $revenue += $external_revenue;
                 $cnt += $external_cnt;
+                $gross_profit += (float) ($dgs['gross_profit'] ?? 0);
+                $external_cogs_revenue = (float) ($dgs['matched_revenue'] ?? 0);
             }
         } elseif ($channel === 'ebay') {
             $eby = $this->fetchEbayChannelTotals($business_id, $start_date, $end_date);
@@ -7147,9 +7209,12 @@ class ReportController extends Controller
             }
         }
 
-        // Margin only reflects POS-side rows (where we have cost basis).
-        $pos_revenue = $revenue - $external_revenue;
-        $gross_margin = $pos_revenue > 0 ? ($gross_profit / $pos_revenue) * 100 : 0;
+        // Margin reflects revenue where we have cost basis (POS-side rows +
+        // matched API-side items). Unmatched API-side revenue is excluded
+        // from the denominator so the margin % isn't artificially dragged
+        // toward 100%.
+        $cost_known_revenue = ($revenue - $external_revenue) + $external_cogs_revenue;
+        $gross_margin = $cost_known_revenue > 0 ? ($gross_profit / $cost_known_revenue) * 100 : 0;
 
         $daily = (clone $base)
             ->selectRaw('DATE(t.transaction_date) as day,
