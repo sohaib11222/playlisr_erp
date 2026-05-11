@@ -8753,6 +8753,10 @@ class ReportController extends Controller
      */
     private function cloverEodEmployeeBreakdownRange($business_id, $start, $end, $location_id, array $card_methods, $used_all_methods)
     {
+        // Sarah 2026-05-11: exclude is_whatnot=1 from per-cashier rows
+        // so Whatnot livestream sales don't make a cashier's "matched
+        // on Clover" check look like they pocketed money. Whatnot is
+        // already surfaced separately in the day-totals card.
         $erpQ = \DB::table('transaction_payments as tp')
             ->join('transactions as t', 'tp.transaction_id', '=', 't.id')
             ->leftJoin('business_locations as bl', 't.location_id', '=', 'bl.id')
@@ -8760,6 +8764,7 @@ class ReportController extends Controller
             ->where('t.business_id', $business_id)
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
+            ->where(function ($q) { $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); })
             ->whereDate('t.transaction_date', '>=', $start)
             ->whereDate('t.transaction_date', '<=', $end);
         if (!$used_all_methods) {

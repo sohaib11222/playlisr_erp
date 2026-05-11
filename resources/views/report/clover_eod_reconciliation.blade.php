@@ -108,10 +108,13 @@
         $sumCash = max(0, round($sumTotal - $sumCard, 2));
     @endphp
     <div style="background:#f3f4f6; border:1px solid #e5e7eb; border-radius:8px; padding:10px 14px; margin-bottom:16px; font-size:14px; color:#1f2937; font-variant-numeric: tabular-nums;">
-        Total sold: <strong>${{ number_format($sumTotal, 2) }}</strong>
+        Total sold (gross, incl tax + fees): <strong>${{ number_format($sumTotal, 2) }}</strong>
         &nbsp;·&nbsp; Paid by card: <strong>${{ number_format($sumCard, 2) }}</strong>
         &nbsp;·&nbsp; Paid in cash: <strong>${{ number_format($sumCash, 2) }}</strong>
         &nbsp;·&nbsp; Reconciled: <strong>{{ $sumReconciled }} of {{ $sumCashiers }}</strong>
+        <div style="margin-top:4px; font-size:11px; color:#6b7280; font-weight:400;">
+            "Gross" = what customers paid (subtotal + tax + bag fees). Different from the pre-tax ERP Net Sales above.
+        </div>
     </div>
 
     {{-- Daily-nav bar — shown in single-day mode so Fatteen can step
