@@ -6805,23 +6805,32 @@ class ReportController extends Controller
         }
         $cnt = count($orders);
 
-        // Cost-of-goods: walk order line items and match Discogs listing_id
-        // → local products.discogs_listing_id → variation.default_purchase_price.
-        // Items we can't match contribute revenue without COGS, so margin %
-        // is best understood as a lower bound (matched-only cost).
+        // Cost-of-goods: walk order line items and match against local cost.
+        // Two-tier match:
+        //   1. Discogs listing_id → products.discogs_listing_id
+        //      (works for items listed to Discogs through the ERP).
+        //   2. Discogs release_id → products.discogs_release_id
+        //      (catches items where we own the release in local inventory
+        //      even though they were listed directly on Discogs).
+        // First match wins; tier-2 is the fallback. Unmatched items
+        // contribute revenue without COGS, so margin % is a lower bound.
         $cogs = 0.0;
         $matched_items = 0;
         $unmatched_items = 0;
         $matched_revenue = 0.0;
+        $matched_by_listing = 0;
+        $matched_by_release = 0;
         $listing_ids = [];
+        $release_ids = [];
         foreach ($orders as $o) {
             foreach (($o['items'] ?? []) as $it) {
                 if (!empty($it['id'])) $listing_ids[] = (string) $it['id'];
+                if (!empty($it['release']['id'])) $release_ids[] = (int) $it['release']['id'];
             }
         }
-        $cost_map = [];
+        $cost_by_listing = [];
         if (!empty($listing_ids)) {
-            $cost_map = DB::table('products as p')
+            $cost_by_listing = DB::table('products as p')
                 ->join('variations as v', 'v.product_id', '=', 'p.id')
                 ->where('p.business_id', $business_id)
                 ->whereIn('p.discogs_listing_id', array_unique($listing_ids))
@@ -6830,14 +6839,32 @@ class ReportController extends Controller
                 ->pluck('cost', 'discogs_listing_id')
                 ->toArray();
         }
+        $cost_by_release = [];
+        if (!empty($release_ids)) {
+            $cost_by_release = DB::table('products as p')
+                ->join('variations as v', 'v.product_id', '=', 'p.id')
+                ->where('p.business_id', $business_id)
+                ->whereIn('p.discogs_release_id', array_unique($release_ids))
+                ->selectRaw('p.discogs_release_id, MIN(v.default_purchase_price) as cost')
+                ->groupBy('p.discogs_release_id')
+                ->pluck('cost', 'discogs_release_id')
+                ->toArray();
+        }
         foreach ($orders as $o) {
             foreach (($o['items'] ?? []) as $it) {
                 $lid = isset($it['id']) ? (string) $it['id'] : '';
+                $rid = isset($it['release']['id']) ? (int) $it['release']['id'] : 0;
                 $price = isset($it['price']['value']) ? (float) $it['price']['value'] : 0.0;
-                if ($lid !== '' && isset($cost_map[$lid])) {
-                    $cogs += (float) $cost_map[$lid];
+                if ($lid !== '' && isset($cost_by_listing[$lid])) {
+                    $cogs += (float) $cost_by_listing[$lid];
                     $matched_revenue += $price;
                     $matched_items++;
+                    $matched_by_listing++;
+                } elseif ($rid > 0 && isset($cost_by_release[$rid])) {
+                    $cogs += (float) $cost_by_release[$rid];
+                    $matched_revenue += $price;
+                    $matched_items++;
+                    $matched_by_release++;
                 } else {
                     $unmatched_items++;
                 }
@@ -6846,7 +6873,7 @@ class ReportController extends Controller
         $gross_profit = $matched_revenue - $cogs;
 
         $this->setDiag('discogs', $cnt > 0
-            ? "Discogs: pulled {$cnt} order(s) from API. Items matched to local cost: {$matched_items}; unmatched: {$unmatched_items}."
+            ? "Discogs: pulled {$cnt} order(s) from API. Items matched: {$matched_items} ({$matched_by_listing} via listing, {$matched_by_release} via release); unmatched: {$unmatched_items}."
             : 'Discogs: API reachable but no orders in revenue statuses for this date range.');
         return [
             'revenue' => $revenue,
@@ -6855,6 +6882,8 @@ class ReportController extends Controller
             'gross_profit' => $gross_profit,
             'matched_items' => $matched_items,
             'unmatched_items' => $unmatched_items,
+            'matched_by_listing' => $matched_by_listing,
+            'matched_by_release' => $matched_by_release,
             'matched_revenue' => $matched_revenue,
         ];
     }
