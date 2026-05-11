@@ -5106,10 +5106,16 @@ class SellPosController extends Controller
         $locationId = $transaction->location_id;
         $userId = auth()->user()->id ?? null;
 
+        // Pull ALL sell lines for this transaction (including manual / no
+        // product_id ones). Two paths log a row:
+        //   1) Cashier filled the modal reason (deliberate override) — always
+        //      log, regardless of whether the product has a catalog baseline
+        //      or whether the sticker matches the sold price.
+        //   2) Catalog product whose sold price differs from the variation
+        //      sticker by ≥ 1 cent — log even if reason is empty (covers any
+        //      pre-modal flow / inline edits we still want to audit).
         $lines = \App\TransactionSellLine::where('transaction_id', $transaction->id)
             ->whereNull('parent_sell_line_id')
-            ->whereNotNull('product_id')
-            ->where('product_id', '>', 0)
             ->get();
 
         if ($lines->isEmpty()) {
@@ -5119,66 +5125,86 @@ class SellPosController extends Controller
         $variationIds = $lines->pluck('variation_id')->filter()->unique()->values();
         $productIds = $lines->pluck('product_id')->filter()->unique()->values();
 
-        $variationPrices = \DB::table('variations')
-            ->whereIn('id', $variationIds)
-            ->pluck('sell_price_inc_tax', 'id');
+        $variationPrices = $variationIds->isNotEmpty()
+            ? \DB::table('variations')->whereIn('id', $variationIds)->pluck('sell_price_inc_tax', 'id')
+            : collect();
 
-        $products = \App\Product::whereIn('id', $productIds)
-            ->get(['id', 'name', 'artist'])
-            ->keyBy('id');
+        $products = $productIds->isNotEmpty()
+            ? \App\Product::whereIn('id', $productIds)->get(['id', 'name', 'artist'])->keyBy('id')
+            : collect();
 
-        // Build a reason lookup keyed by (product_id, variation_id) from the
-        // posted form so the modal-captured reason can be attached to the
-        // right sell line. The posted products array is positional, so we
-        // also keep a flat list as a fallback.
+        // Build lookups keyed by (product_id, variation_id) from the posted
+        // form. Posted array is positional, so we ALSO keep flat lists so
+        // manual lines (which lack a real product_id) can still pair up by
+        // row order. Posted manual rows pass product_id="manual" + a real
+        // product_name/product_artist — capture both so the audit shows the
+        // cashier-entered name instead of "(unnamed)".
         $reasonByKey = [];
         $reasonsFlat = [];
-        foreach ($postedProducts as $p) {
+        $manualNamesFlat = [];
+        foreach ($postedProducts as $idx => $p) {
             $r = trim((string) ($p['price_override_reason'] ?? ''));
             if ($r === '') {
                 continue;
             }
+            $reasonsFlat[] = $r;
+            $manualNamesFlat[] = [
+                'name' => trim((string) ($p['product_name'] ?? '')),
+                'artist' => trim((string) ($p['product_artist'] ?? '')),
+            ];
             $pid = $p['product_id'] ?? null;
             $vid = $p['variation_id'] ?? null;
-            if ($pid && $vid) {
+            if ($pid && $vid && is_numeric($pid) && is_numeric($vid)) {
                 $reasonByKey[$pid . ':' . $vid] = $r;
             }
-            $reasonsFlat[] = $r;
         }
 
         $rows = [];
         $now = now();
         $tableHasReason = \Schema::hasColumn('pos_price_overrides', 'reason');
+
         foreach ($lines as $line) {
             $sysPrice = isset($variationPrices[$line->variation_id])
                 ? (float) $variationPrices[$line->variation_id] : 0;
             $soldPrice = (float) $line->unit_price_inc_tax;
-            if ($sysPrice <= 0) {
-                continue; // no baseline (likely a manual / one-off variation)
+
+            // Pick the reason: keyed lookup first (most precise), then fall
+            // back to FIFO consumption of the flat list — a cashier can't
+            // produce more reasons than they have edited lines.
+            $reason = null;
+            $manualName = null;
+            if ($line->product_id && $line->variation_id) {
+                $reason = $reasonByKey[$line->product_id . ':' . $line->variation_id] ?? null;
             }
-            $diff = $soldPrice - $sysPrice;
-            if (abs($diff) < 0.01) {
+            if ($reason === null && !empty($reasonsFlat)) {
+                $reason = array_shift($reasonsFlat);
+                $manualName = array_shift($manualNamesFlat);
+            }
+
+            $hasReason = $reason !== null && $reason !== '';
+            $diff = $sysPrice > 0 ? ($soldPrice - $sysPrice) : 0;
+            $hasDiff = $sysPrice > 0 && abs($diff) >= 0.01;
+
+            // Log if either: (a) cashier filled the reason via the modal, or
+            // (b) catalog product was sold for a different price than sticker.
+            // Skip otherwise — no signal worth recording.
+            if (!$hasReason && !$hasDiff) {
                 continue;
             }
 
-            $product = $products[$line->product_id] ?? null;
-            $reason = $reasonByKey[$line->product_id . ':' . $line->variation_id] ?? null;
-            // Fall back to flat list (one reason per overridden line in order)
-            // if the keyed lookup missed. Cashiers can't have more reasons
-            // than overrides in a single sale.
-            if ($reason === null && !empty($reasonsFlat)) {
-                $reason = array_shift($reasonsFlat);
-            }
+            $product = $line->product_id ? ($products[$line->product_id] ?? null) : null;
+            $name = $product ? (string) $product->name : ($manualName['name'] ?? '');
+            $artist = $product && isset($product->artist) ? (string) $product->artist : ($manualName['artist'] ?? '');
 
             $row = [
                 'business_id' => $businessId,
                 'business_location_id' => $locationId,
                 'transaction_id' => $transaction->id,
                 'transaction_sell_line_id' => $line->id,
-                'product_id' => $line->product_id,
-                'variation_id' => $line->variation_id,
-                'product_name' => $product ? mb_substr((string) $product->name, 0, 191) : null,
-                'artist' => $product && isset($product->artist) ? mb_substr((string) $product->artist, 0, 191) : null,
+                'product_id' => $line->product_id ?: null,
+                'variation_id' => $line->variation_id ?: null,
+                'product_name' => $name !== '' ? mb_substr($name, 0, 191) : null,
+                'artist' => $artist !== '' ? mb_substr($artist, 0, 191) : null,
                 'system_price' => round($sysPrice, 4),
                 'sold_price' => round($soldPrice, 4),
                 'diff' => round($diff, 4),
