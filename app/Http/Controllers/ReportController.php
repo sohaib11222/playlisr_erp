@@ -7209,22 +7209,18 @@ class ReportController extends Controller
      * for TZ-unambiguous filtering by Clover's createdTime; falls
      * back to OR-of-paid_at-windows when createdTime is missing.
      */
-    private function cloverCreatedInWindowSql(array $win): string
+    private function cloverCreatedInWindowSql(array $win, string $cpAlias = ''): string
     {
+        $p = $cpAlias ? "{$cpAlias}." : '';
         $startMs = (int) $win['start_ms'];
         $endMs   = (int) $win['end_ms'];
-        $startIst = $win['start_ist'];
-        $endIst   = $win['end_ist'];
-        $startLa  = $win['start_la'];
-        $endLa    = $win['end_la'];
+        // "\$.createdTime" — escape the $ so PHP doesn't try to interpolate;
+        // we want the literal JSON path $.createdTime sent to MySQL.
+        $path = "\$.createdTime";
         return "(
-            CASE
-              WHEN JSON_EXTRACT(raw_payload, '$.createdTime') IS NOT NULL
-                THEN CAST(JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '$.createdTime')) AS UNSIGNED)
-                       BETWEEN {$startMs} AND {$endMs}
-              ELSE (paid_at BETWEEN '{$startIst}' AND '{$endIst}')
-                  OR (paid_at BETWEEN '{$startLa}' AND '{$endLa}')
-            END
+            JSON_EXTRACT({$p}raw_payload, '{$path}') IS NOT NULL
+            AND CAST(JSON_UNQUOTE(JSON_EXTRACT({$p}raw_payload, '{$path}')) AS UNSIGNED)
+                BETWEEN {$startMs} AND {$endMs}
         )";
     }
 
@@ -7237,21 +7233,17 @@ class ReportController extends Controller
     {
         $p = $cpAlias ? "{$cpAlias}." : '';
         $laOff = (int) $win['la_offset_sec'];
-        $startIst = $win['start_ist'];
-        $endIst   = $win['end_ist'];
-        $shift    = (int) $win['shift_sec'];
-        return "DATE(
-            CASE
-              WHEN JSON_EXTRACT({$p}raw_payload, '$.createdTime') IS NOT NULL
-                THEN FROM_UNIXTIME(
-                       CAST(JSON_UNQUOTE(JSON_EXTRACT({$p}raw_payload, '$.createdTime')) AS UNSIGNED) / 1000
-                       + {$laOff}
-                     )
-              WHEN {$p}paid_at >= '{$startIst}' AND {$p}paid_at <= '{$endIst}'
-                THEN {$p}paid_at - INTERVAL {$shift} SECOND
-              ELSE {$p}paid_at
-            END
-        )";
+        $path = "\$.createdTime";
+        // FROM_UNIXTIME interprets in server TZ; UTC_TIMESTAMP() − NOW()
+        // gives that offset. The trick: take createdTime/1000 (UTC sec),
+        // add LA offset (negative for PT), subtract the server's own
+        // UTC offset. The result is a unix-sec that FROM_UNIXTIME will
+        // render as the LA-local datetime regardless of server TZ.
+        return "DATE(FROM_UNIXTIME(
+            CAST(JSON_UNQUOTE(JSON_EXTRACT({$p}raw_payload, '{$path}')) AS UNSIGNED) / 1000
+            + {$laOff}
+            - (UNIX_TIMESTAMP() - UNIX_TIMESTAMP(UTC_TIMESTAMP()))
+        ))";
     }
 
     public function cloverEodReconciliation(Request $request)
@@ -7341,28 +7333,23 @@ class ReportController extends Controller
         // merchant scope) have location_id=NULL; we bucket those under
         // loc_key=0 and fall back to them when no per-location match exists
         // so historical data doesn't disappear.
-        // Mixed-TZ tolerant — paid_at may be IST (cron) or LA (refresh
-        // button). OR both windows; derive LA day per-row from whichever
-        // shift makes the value land inside [start_la, end_la].
+        // Filter on createdTime (TZ-unambiguous) and derive LA day the
+        // same way. OR-of-paid_at-windows was double-counting yesterday-
+        // evening rows whose IST strings literally fell in today's LA
+        // window range.
         $payWin = $this->cloverPaidAtIstWindow($start, $end);
         $cloverQuery = \DB::table('clover_payments')
             ->where('business_id', $business_id)
             ->where(function ($q) {
                 $q->whereNull('result')->orWhere('result', 'SUCCESS')->orWhere('result', 'APPROVED');
             })
-            ->where(function ($q) use ($payWin) {
-                $q->whereBetween('paid_at', [$payWin['start_ist'], $payWin['end_ist']])
-                  ->orWhereBetween('paid_at', [$payWin['start_la'], $payWin['end_la']]);
-            });
+            ->whereRaw($this->cloverCreatedInWindowSql($payWin));
         if (!empty($location_id)) {
             $cloverQuery->where(function ($q) use ($location_id) {
                 $q->where('location_id', $location_id)->orWhereNull('location_id');
             });
         }
-        // IF paid_at falls inside the IST window, it's IST-stored — shift by
-        // shift_sec to get LA date. Otherwise it's already LA-local.
-        $laDayExpr = "DATE(IF(paid_at >= '{$payWin['start_ist']}' AND paid_at <= '{$payWin['end_ist']}',"
-                   . " paid_at - INTERVAL {$payWin['shift_sec']} SECOND, paid_at))";
+        $laDayExpr = $this->cloverLaDateSql($payWin);
         $clover_rows_raw = $cloverQuery
             ->selectRaw("{$laDayExpr} as day, COALESCE(location_id, 0) as loc_key,
                 COUNT(*) as clover_count,
@@ -7821,15 +7808,21 @@ class ReportController extends Controller
             $shiftEndIst   = $shiftEndLaC->copy()->setTimezone('Asia/Kolkata')->format('Y-m-d H:i:s');
             $shiftStartLa  = $shiftStartLaC->format('Y-m-d H:i:s');
             $shiftEndLa    = $shiftEndLaC->format('Y-m-d H:i:s');
+            // Filter via createdTime (TZ-unambiguous) — unix-ms range for
+            // the shift window in LA. Falls back to OR-of-paid_at-windows
+            // when raw_payload.createdTime is missing.
+            $shiftStartMs = $shiftStartLaC->valueOf();
+            $shiftEndMs   = $shiftEndLaC->valueOf();
             $cpQ = \DB::table('clover_payments as cp')
                 ->where('cp.business_id', $business_id)
                 ->where(function ($q) {
                     $q->whereNull('cp.result')->orWhere('cp.result', 'SUCCESS')->orWhere('cp.result', 'APPROVED');
                 })
-                ->where(function ($q) use ($shiftStartIst, $shiftEndIst, $shiftStartLa, $shiftEndLa) {
-                    $q->whereBetween('cp.paid_at', [$shiftStartIst, $shiftEndIst])
-                      ->orWhereBetween('cp.paid_at', [$shiftStartLa, $shiftEndLa]);
-                });
+                ->whereRaw("(
+                    JSON_EXTRACT(cp.raw_payload, '\$.createdTime') IS NOT NULL
+                    AND CAST(JSON_UNQUOTE(JSON_EXTRACT(cp.raw_payload, '\$.createdTime')) AS UNSIGNED)
+                        BETWEEN {$shiftStartMs} AND {$shiftEndMs}
+                )");
             if ($reg->location_id) {
                 $cpQ->where('cp.location_id', $reg->location_id);
             }
@@ -8001,15 +7994,11 @@ class ReportController extends Controller
             ->where(function ($q) {
                 $q->whereNull('cp.result')->orWhere('cp.result', 'SUCCESS')->orWhere('cp.result', 'APPROVED');
             })
-            ->where(function ($q) use ($empWin) {
-                $q->whereBetween('cp.paid_at', [$empWin['start_ist'], $empWin['end_ist']])
-                  ->orWhereBetween('cp.paid_at', [$empWin['start_la'], $empWin['end_la']]);
-            });
+            ->whereRaw($this->cloverCreatedInWindowSql($empWin, 'cp'));
         if (!empty($location_id)) {
             $cpQ->where('cp.location_id', $location_id);
         }
-        $empDayExpr = "DATE(IF(cp.paid_at >= '{$empWin['start_ist']}' AND cp.paid_at <= '{$empWin['end_ist']}',"
-                    . " cp.paid_at - INTERVAL {$empWin['shift_sec']} SECOND, cp.paid_at))";
+        $empDayExpr = $this->cloverLaDateSql($empWin, 'cp');
         $cpRows = $cpQ->selectRaw("
                 {$empDayExpr} as day,
                 cp.clover_payment_id,
@@ -8262,10 +8251,7 @@ class ReportController extends Controller
             ->where(function ($q) {
                 $q->whereNull('cp.result')->orWhere('cp.result', 'SUCCESS')->orWhere('cp.result', 'APPROVED');
             })
-            ->where(function ($q) use ($unkWin) {
-                $q->whereBetween('cp.paid_at', [$unkWin['start_ist'], $unkWin['end_ist']])
-                  ->orWhereBetween('cp.paid_at', [$unkWin['start_la'], $unkWin['end_la']]);
-            });
+            ->whereRaw($this->cloverCreatedInWindowSql($unkWin, 'cp'));
         if (!empty($location_id)) {
             $cpQ->where('cp.location_id', $location_id);
         }
@@ -8656,15 +8642,11 @@ class ReportController extends Controller
         // Clover side — employee_name empty at sync time. Usually a Clover
         // online order, self-checkout, or a payment run without a staff pin.
         $diagWin = $this->cloverPaidAtIstWindow($start, $end);
-        $diagDayExpr = "DATE(IF(cp.paid_at >= '{$diagWin['start_ist']}' AND cp.paid_at <= '{$diagWin['end_ist']}',"
-                     . " cp.paid_at - INTERVAL {$diagWin['shift_sec']} SECOND, cp.paid_at))";
+        $diagDayExpr = $this->cloverLaDateSql($diagWin, 'cp');
         $cloverQ = \DB::table('clover_payments as cp')
             ->leftJoin('business_locations as bl', 'cp.location_id', '=', 'bl.id')
             ->where('cp.business_id', $business_id)
-            ->where(function ($q) use ($diagWin) {
-                $q->whereBetween('cp.paid_at', [$diagWin['start_ist'], $diagWin['end_ist']])
-                  ->orWhereBetween('cp.paid_at', [$diagWin['start_la'], $diagWin['end_la']]);
-            })
+            ->whereRaw($this->cloverCreatedInWindowSql($diagWin, 'cp'))
             ->where(function ($q) {
                 $q->whereNull('cp.employee_name')
                   ->orWhereRaw("TRIM(cp.employee_name) = ''");
@@ -8698,10 +8680,7 @@ class ReportController extends Controller
         $fieldQ = \DB::table('clover_payments as cp')
             ->leftJoin('business_locations as bl', 'cp.location_id', '=', 'bl.id')
             ->where('cp.business_id', $business_id)
-            ->where(function ($q) use ($diagWin) {
-                $q->whereBetween('cp.paid_at', [$diagWin['start_ist'], $diagWin['end_ist']])
-                  ->orWhereBetween('cp.paid_at', [$diagWin['start_la'], $diagWin['end_la']]);
-            })
+            ->whereRaw($this->cloverCreatedInWindowSql($diagWin, 'cp'))
             ->where(function ($q) {
                 $q->whereNull('cp.result')->orWhere('cp.result', 'SUCCESS')->orWhere('cp.result', 'APPROVED');
             })
@@ -8924,18 +8903,14 @@ class ReportController extends Controller
         // for each pin-less swipe and attributing it to them — same logic
         // already used in cloverEodXlsxLayout.
         $xlsxWin = $this->cloverPaidAtIstWindow($start, $end);
-        $xlsxDayExpr = "DATE(IF(cp.paid_at >= '{$xlsxWin['start_ist']}' AND cp.paid_at <= '{$xlsxWin['end_ist']}',"
-                     . " cp.paid_at - INTERVAL {$xlsxWin['shift_sec']} SECOND, cp.paid_at))";
+        $xlsxDayExpr = $this->cloverLaDateSql($xlsxWin, 'cp');
         $cpQ = \DB::table('clover_payments as cp')
             ->leftJoin('business_locations as bl', 'cp.location_id', '=', 'bl.id')
             ->where('cp.business_id', $business_id)
             ->where(function ($q) {
                 $q->whereNull('cp.result')->orWhere('cp.result', 'SUCCESS')->orWhere('cp.result', 'APPROVED');
             })
-            ->where(function ($q) use ($xlsxWin) {
-                $q->whereBetween('cp.paid_at', [$xlsxWin['start_ist'], $xlsxWin['end_ist']])
-                  ->orWhereBetween('cp.paid_at', [$xlsxWin['start_la'], $xlsxWin['end_la']]);
-            });
+            ->whereRaw($this->cloverCreatedInWindowSql($xlsxWin, 'cp'));
         if (!empty($location_id)) {
             $cpQ->where(function ($q) use ($location_id) {
                 $q->where('cp.location_id', $location_id)->orWhereNull('cp.location_id');
@@ -9707,10 +9682,7 @@ class ReportController extends Controller
             ->where(function ($q) {
                 $q->whereNull('cp.result')->orWhere('cp.result', 'SUCCESS')->orWhere('cp.result', 'APPROVED');
             })
-            ->where(function ($q) use ($dayWin) {
-                $q->whereBetween('cp.paid_at', [$dayWin['start_ist'], $dayWin['end_ist']])
-                  ->orWhereBetween('cp.paid_at', [$dayWin['start_la'], $dayWin['end_la']]);
-            });
+            ->whereRaw($this->cloverCreatedInWindowSql($dayWin, 'cp'));
         if (!empty($location_id)) {
             $cloverQ->where('cp.location_id', $location_id);
         }
