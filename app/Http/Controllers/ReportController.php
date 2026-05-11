@@ -8943,6 +8943,7 @@ class ReportController extends Controller
             ->where('t.business_id', $business_id)
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
+            ->whereNull('t.import_source')
             ->where(function ($q) { $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); })
             ->whereDate('t.transaction_date', '>=', $start)
             ->whereDate('t.transaction_date', '<=', $end);
@@ -8970,6 +8971,7 @@ class ReportController extends Controller
         $cashQ = \DB::table('transaction_payments as tp')
             ->join('transactions as t', 'tp.transaction_id', '=', 't.id')
             ->leftJoin('users as u', 't.created_by', '=', 'u.id')
+            ->whereNull('t.import_source')
             ->where('t.business_id', $business_id)
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
@@ -9057,6 +9059,7 @@ class ReportController extends Controller
             ->where('t.business_id', $business_id)
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
+            ->whereNull('t.import_source')
             ->whereDate('t.transaction_date', '>=', \Carbon::parse($start)->subDay())
             ->whereDate('t.transaction_date', '<=', \Carbon::parse($end)->addDay());
         if (!empty($location_id)) {
@@ -9074,7 +9077,7 @@ class ReportController extends Controller
             $txnQ->where('t.channel', 'in_store');
         }
         $txns = $txnQ->selectRaw("
-                t.id, t.location_id, t.final_total, t.transaction_date,
+                t.id, t.location_id, t.final_total, t.total_before_tax, t.transaction_date,
                 t.created_by as cashier_user_id,
                 COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, '') as cashier_name
             ")
@@ -9288,8 +9291,9 @@ class ReportController extends Controller
                 $buckets[$day][$locKey]['employees'][$rangFn] = ['display_name' => ucfirst($rangFn)] + $emptyEmployee;
                 $buckets[$day][$locKey]['location_name'] = $buckets[$day][$locKey]['location_name'] ?? '(no location)';
             }
-            $buckets[$day][$locKey]['employees'][$rangFn]['total_sales'] += (float) $t->final_total;
-            $buckets[$day][$locKey]['employees'][$rangFn]['txn_count']   += 1;
+            $buckets[$day][$locKey]['employees'][$rangFn]['total_sales']    += (float) $t->final_total;
+            $buckets[$day][$locKey]['employees'][$rangFn]['net_sales']      += (float) $t->total_before_tax;
+            $buckets[$day][$locKey]['employees'][$rangFn]['txn_count']      += 1;
             // Capture the first non-admin user_id we see for each first
             // name. Used by the "View {cashier}'s sales" deep link so
             // the recent-sells feed opens already filtered to that user.
