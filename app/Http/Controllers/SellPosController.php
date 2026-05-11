@@ -905,6 +905,10 @@ class SellPosController extends Controller
         // not Clover, so including them inflates the per-store ERP totals
         // and makes the Clover gap look like a real discrepancy. Surfaced
         // separately below the store row.
+        // Sarah 2026-05-11: ERP Net = final_total − tax_amount so it
+        // matches Clover Net (which is amount − tax_cents). Using
+        // total_before_tax excluded shipping/fees that Clover does
+        // charge, making every pair look ~$3 off structurally.
         $erpRowsToday = \DB::table('transactions')
             ->where('business_id', $business_id)
             ->where('type', 'sell')
@@ -913,7 +917,7 @@ class SellPosController extends Controller
             ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
             ->whereDate('transaction_date', $todayStr)
             ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id))
-            ->select('id', 'location_id', 'total_before_tax')
+            ->selectRaw('id, location_id, (final_total - COALESCE(tax_amount, 0)) as net_sales')
             ->get();
 
         // Whatnot rows today — surfaced separately so the user can see
@@ -928,7 +932,7 @@ class SellPosController extends Controller
             ->where('is_whatnot', 1)
             ->whereDate('transaction_date', $todayStr)
             ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id))
-            ->select('id', 'location_id', 'total_before_tax')
+            ->selectRaw('id, location_id, (final_total - COALESCE(tax_amount, 0)) as net_sales')
             ->get();
 
         // Include paid_at / employee / card so the banner can drill into
@@ -1002,14 +1006,14 @@ class SellPosController extends Controller
             $k = $locKey($r->location_id);
             $name = $k && isset($business_locations[$k]) ? $business_locations[$k] : '(no location)';
             $ensure($today_by_store, $k, $name);
-            $today_by_store[$k]['erp_net']   += (float) $r->total_before_tax;
+            $today_by_store[$k]['erp_net']   += (float) $r->net_sales;
             $today_by_store[$k]['erp_count']++;
         }
         foreach ($whatnotRowsToday as $r) {
             $k = $locKey($r->location_id);
             $name = $k && isset($business_locations[$k]) ? $business_locations[$k] : '(no location)';
             $ensure($today_by_store, $k, $name);
-            $today_by_store[$k]['whatnot_net']  += (float) $r->total_before_tax;
+            $today_by_store[$k]['whatnot_net']  += (float) $r->net_sales;
             $today_by_store[$k]['whatnot_count']++;
         }
         foreach ($cloverRowsToday as $r) {
@@ -5140,7 +5144,9 @@ class SellPosController extends Controller
         // product_name/product_artist — capture both so the audit shows the
         // cashier-entered name instead of "(unnamed)".
         $reasonByKey = [];
+        $stickerByKey = [];
         $reasonsFlat = [];
+        $stickersFlat = [];
         $manualNamesFlat = [];
         foreach ($postedProducts as $idx => $p) {
             $r = trim((string) ($p['price_override_reason'] ?? ''));
@@ -5148,6 +5154,8 @@ class SellPosController extends Controller
                 continue;
             }
             $reasonsFlat[] = $r;
+            $postedSticker = $p['price_override_sticker'] ?? '';
+            $stickersFlat[] = is_numeric($postedSticker) ? (float) $postedSticker : null;
             $manualNamesFlat[] = [
                 'name' => trim((string) ($p['product_name'] ?? '')),
                 'artist' => trim((string) ($p['product_artist'] ?? '')),
@@ -5156,6 +5164,9 @@ class SellPosController extends Controller
             $vid = $p['variation_id'] ?? null;
             if ($pid && $vid && is_numeric($pid) && is_numeric($vid)) {
                 $reasonByKey[$pid . ':' . $vid] = $r;
+                if (is_numeric($postedSticker)) {
+                    $stickerByKey[$pid . ':' . $vid] = (float) $postedSticker;
+                }
             }
         }
 
@@ -5173,12 +5184,22 @@ class SellPosController extends Controller
             // produce more reasons than they have edited lines.
             $reason = null;
             $manualName = null;
+            $postedSticker = null;
             if ($line->product_id && $line->variation_id) {
                 $reason = $reasonByKey[$line->product_id . ':' . $line->variation_id] ?? null;
+                $postedSticker = $stickerByKey[$line->product_id . ':' . $line->variation_id] ?? null;
             }
             if ($reason === null && !empty($reasonsFlat)) {
                 $reason = array_shift($reasonsFlat);
+                $postedSticker = array_shift($stickersFlat);
                 $manualName = array_shift($manualNamesFlat);
+            }
+
+            // If we have no catalog baseline, fall back to the sticker the
+            // modal captured (the value the cashier SAW when they opened the
+            // modal). Manual / quick-add lines hit this path.
+            if ($sysPrice <= 0 && $postedSticker !== null && $postedSticker > 0) {
+                $sysPrice = $postedSticker;
             }
 
             $hasReason = $reason !== null && $reason !== '';

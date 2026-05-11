@@ -163,16 +163,22 @@ function initPosPriceOverride($) {
         if (!$input.attr('data-original-price')) {
             $input.attr('data-original-price', $input.val());
         }
-        // Hidden reason input.
+        // Hidden reason + sticker inputs. The sticker is the original price
+        // the cashier saw when they opened the modal — for manual / quick-add
+        // products there's no catalog variation to read it from server-side,
+        // so we have to pass it through the form.
         var $tr = $input.closest('tr');
+        var rowIdx = $tr.attr('data-row_index');
+        if (rowIdx === undefined || rowIdx === null) {
+            var any = $tr.find('input[name^="products"]').first().attr('name') || '';
+            var m = any.match(/products\[(\d+)\]/);
+            rowIdx = m ? m[1] : '0';
+        }
         if (!$tr.find('input.pos_price_override_reason').length) {
-            var rowIdx = $tr.attr('data-row_index');
-            if (rowIdx === undefined || rowIdx === null) {
-                var any = $tr.find('input[name^="products"]').first().attr('name') || '';
-                var m = any.match(/products\[(\d+)\]/);
-                rowIdx = m ? m[1] : '0';
-            }
             $input.after('<input type="hidden" name="products[' + rowIdx + '][price_override_reason]" class="pos_price_override_reason" value="">');
+        }
+        if (!$tr.find('input.pos_price_override_sticker').length) {
+            $input.after('<input type="hidden" name="products[' + rowIdx + '][price_override_sticker]" class="pos_price_override_sticker" value="">');
         }
         // "Edit price" button — sits in the same cell as the price input.
         // Skip for the bag-fee row and any row without a real product cell.
@@ -231,6 +237,10 @@ function initPosPriceOverride($) {
         if (!activeInput) { $modal.modal('hide'); return; }
 
         var $row = activeInput.closest('tr');
+        // Capture the sticker (the original price the cashier saw when they
+        // opened the modal) BEFORE we overwrite the input value, so manual
+        // / quick-add lines can still log their pre-edit sticker.
+        var stickerVal = activeInput.attr('data-original-price') || '';
         // Apply the new price to the inc-tax input, then trigger change
         // so the existing pos.js handlers recompute exc-tax + line totals.
         // Belt-and-suspenders: temporarily un-readonly the input so pos.js
@@ -239,6 +249,7 @@ function initPosPriceOverride($) {
         activeInput.val(newPrice.toFixed(2)).trigger('change').trigger('input');
         activeInput.prop('readonly', true).attr('readonly', 'readonly');
         $row.find('input.pos_price_override_reason').val(reason);
+        $row.find('input.pos_price_override_sticker').val(stickerVal);
         // Mark the line visually as overridden so the cashier (and Sarah on
         // a recent-sales eyeball) can see at a glance which line was edited.
         $row.attr('data-price-overridden', '1');
