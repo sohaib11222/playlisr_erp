@@ -735,6 +735,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/wipe-audit', 'WipeAuditController@index');
     Route::get('/admin/wipe-audit/csv', 'WipeAuditController@csv');
 
+    // Audit log of cashier-edited prices at the POS. Inline price edit is
+    // now enabled for cashiers (no managers on the floor) — this lets Sarah
+    // scan overrides after the fact instead of approving each one.
+    Route::get('/admin/pos-overrides', 'PosPriceOverrideController@index');
+
     // Diagnose why a specific staff member can't open POS. Lists every staff
     // user with the four POS gates (status, allow_login, user_type,
     // sell.create) + open-register status. Hit /admin/staff-pos-access?user=luis

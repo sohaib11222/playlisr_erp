@@ -1999,6 +1999,16 @@ class SellPosController extends Controller
 
                 $this->transactionUtil->activityLog($transaction, 'added');
 
+                // Capture any line where the cashier rang a price different from
+                // the variation's sticker price. Cashier-edit-price is enabled
+                // for all roles now (no managers on the floor); this audit log
+                // lets Sarah eyeball the overrides at /admin/pos-overrides.
+                try {
+                    $this->logPosPriceOverrides($transaction);
+                } catch (\Exception $e) {
+                    \Log::warning('pos_price_override_log_failed: ' . $e->getMessage());
+                }
+
                 DB::commit();
 
                 if ($request->input('is_save_and_print') == 1) {
@@ -5001,6 +5011,75 @@ class SellPosController extends Controller
                 
         } catch (\Exception $e) {
             \Log::error("Error updating product sale dates: " . $e->getMessage());
+        }
+    }
+
+    // Compare each line's cashier-entered price against the variation's
+    // sticker price; write an override row for every line that differs by
+    // more than a cent. Manual products (no product_id) skip — there's no
+    // baseline to compare against. Quoted at /admin/pos-overrides.
+    private function logPosPriceOverrides($transaction)
+    {
+        $businessId = $transaction->business_id;
+        $locationId = $transaction->location_id;
+        $userId = auth()->user()->id ?? null;
+
+        $lines = \App\TransactionSellLine::where('transaction_id', $transaction->id)
+            ->whereNull('parent_sell_line_id')
+            ->whereNotNull('product_id')
+            ->where('product_id', '>', 0)
+            ->get();
+
+        if ($lines->isEmpty()) {
+            return;
+        }
+
+        $variationIds = $lines->pluck('variation_id')->filter()->unique()->values();
+        $productIds = $lines->pluck('product_id')->filter()->unique()->values();
+
+        $variationPrices = \DB::table('variations')
+            ->whereIn('id', $variationIds)
+            ->pluck('sell_price_inc_tax', 'id');
+
+        $products = \App\Product::whereIn('id', $productIds)
+            ->get(['id', 'name', 'artist'])
+            ->keyBy('id');
+
+        $rows = [];
+        $now = now();
+        foreach ($lines as $line) {
+            $sysPrice = isset($variationPrices[$line->variation_id])
+                ? (float) $variationPrices[$line->variation_id] : 0;
+            $soldPrice = (float) $line->unit_price_inc_tax;
+            if ($sysPrice <= 0) {
+                continue; // no baseline (likely a manual / one-off variation)
+            }
+            $diff = $soldPrice - $sysPrice;
+            if (abs($diff) < 0.01) {
+                continue;
+            }
+
+            $product = $products[$line->product_id] ?? null;
+            $rows[] = [
+                'business_id' => $businessId,
+                'business_location_id' => $locationId,
+                'transaction_id' => $transaction->id,
+                'transaction_sell_line_id' => $line->id,
+                'product_id' => $line->product_id,
+                'variation_id' => $line->variation_id,
+                'product_name' => $product ? mb_substr((string) $product->name, 0, 191) : null,
+                'artist' => $product && isset($product->artist) ? mb_substr((string) $product->artist, 0, 191) : null,
+                'system_price' => round($sysPrice, 4),
+                'sold_price' => round($soldPrice, 4),
+                'diff' => round($diff, 4),
+                'user_id' => $userId,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+
+        if (!empty($rows)) {
+            \DB::table('pos_price_overrides')->insert($rows);
         }
     }
 
