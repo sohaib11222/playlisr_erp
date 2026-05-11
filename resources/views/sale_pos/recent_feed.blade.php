@@ -222,15 +222,15 @@
                 <div style="min-width:160px;">
                     <div style="font-size:11px; color:#5A5045; text-transform:uppercase; letter-spacing:.08em; font-weight:600;">Day totals</div>
                     <div style="font-size:13px; color:#8A7C6A; margin-top:2px;">{{ $todayLabel }}{{ $location_id && isset($business_locations[$location_id]) ? ' · ' . $business_locations[$location_id] : '' }}</div>
-                    <div style="font-size:11px; color:#8A7C6A; margin-top:6px; max-width:180px; line-height:1.4;">Net Sales (pre-tax). ERP includes all tenders; Clover only sees card.</div>
+                    <div style="font-size:11px; color:#8A7C6A; margin-top:6px; max-width:180px; line-height:1.4;">Customer-paid totals (gross). ERP = sum of final_total; Clover = sum of swipe amounts.</div>
                 </div>
                 <div style="flex:1; min-width:170px;">
-                    <div style="font-size:12px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">ERP Net Sales</div>
+                    <div style="font-size:12px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">ERP Sales</div>
                     <div style="font-size:30px; font-weight:700; color:#1F1B16; font-variant-numeric: tabular-nums;">${{ number_format($totErp, 2) }}</div>
                     <div style="font-size:11px; color:#8A7C6A;">{{ $totErpCount }} sale{{ $totErpCount === 1 ? '' : 's' }}</div>
                 </div>
                 <div style="flex:1; min-width:170px;">
-                    <div style="font-size:12px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Clover Net Sales</div>
+                    <div style="font-size:12px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Clover Sales</div>
                     <div style="font-size:30px; font-weight:700; color:#1F1B16; font-variant-numeric: tabular-nums;">${{ number_format($totClover, 2) }}</div>
                     <div style="font-size:11px; color:#8A7C6A;">{{ $totCloverCount }} charge{{ $totCloverCount === 1 ? '' : 's' }}</div>
                 </div>
@@ -275,7 +275,7 @@
 
             @if($totWhatnotCount > 0)
                 <div style="margin-top:10px; font-size:12px; color:#8A7C6A;">
-                    <strong style="color:#5A5045;">Whatnot today:</strong> ${{ number_format($totWhatnot, 2) }} · {{ $totWhatnotCount }} sale{{ $totWhatnotCount === 1 ? '' : 's' }} — inventory-only, paid through Whatnot (not Clover), so excluded from ERP Net Sales and Diff above.
+                    <strong style="color:#5A5045;">Whatnot today:</strong> ${{ number_format($totWhatnot, 2) }} · {{ $totWhatnotCount }} sale{{ $totWhatnotCount === 1 ? '' : 's' }} — inventory-only, paid through Whatnot (not Clover), so excluded from ERP Sales and Diff above.
                 </div>
             @endif
 

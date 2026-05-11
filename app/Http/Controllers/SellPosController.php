@@ -917,7 +917,7 @@ class SellPosController extends Controller
             ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
             ->whereDate('transaction_date', $todayStr)
             ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id))
-            ->selectRaw('id, location_id, (final_total - COALESCE(tax_amount, 0)) as net_sales')
+            ->selectRaw('id, location_id, final_total as net_sales')
             ->get();
 
         // Whatnot rows today — surfaced separately so the user can see
@@ -932,7 +932,7 @@ class SellPosController extends Controller
             ->where('is_whatnot', 1)
             ->whereDate('transaction_date', $todayStr)
             ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id))
-            ->selectRaw('id, location_id, (final_total - COALESCE(tax_amount, 0)) as net_sales')
+            ->selectRaw('id, location_id, final_total as net_sales')
             ->get();
 
         // Include paid_at / employee / card so the banner can drill into
@@ -1020,7 +1020,10 @@ class SellPosController extends Controller
             $k = $locKey($r->location_id);
             $name = $k && isset($business_locations[$k]) ? $business_locations[$k] : '(no location)';
             $ensure($today_by_store, $k, $name);
-            $cloverNet = (float) $r->amount - ((float) ($r->tax_cents ?? 0)) / 100.0;
+            // GROSS-to-GROSS reconciliation (Sarah 2026-05-11) — was
+            // (amount − tax_cents) but ERP and Clover disagree about
+            // what "tax" includes, so net-vs-net created phantom diffs.
+            $cloverNet = (float) $r->amount;
             $today_by_store[$k]['clover'] += $cloverNet;
             $today_by_store[$k]['clover_count']++;
             $cardBits = [];

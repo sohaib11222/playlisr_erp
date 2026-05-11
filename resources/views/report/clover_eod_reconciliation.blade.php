@@ -29,7 +29,7 @@
     @if($hasStores)
         <div style="margin-bottom:8px; font-size:11px; color:#5A5045;">
             <strong>{{ $eodLabel }}</strong>{{ $location_id && isset($business_locations[$location_id]) ? ' · ' . $business_locations[$location_id] : '' }}
-            <span style="color:#8A7C6A;">— Net Sales (pre-tax). ERP includes all tenders; Clover only sees card.</span>
+            <span style="color:#8A7C6A;">— Customer-paid totals (gross). ERP = sum of final_total; Clover = sum of swipe amounts.</span>
         </div>
         <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(360px, 1fr)); gap:14px; margin-bottom:16px;">
             @foreach($stores as $s)
@@ -42,12 +42,12 @@
                     <div style="font-weight:700; font-size:18px; color:#1F1B16; margin-bottom:10px; text-transform:capitalize;">{{ $s['name'] }}</div>
                     <div style="display:flex; gap:18px; align-items:baseline; flex-wrap:wrap;">
                         <div style="flex:1; min-width:120px;">
-                            <div style="font-size:10px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">ERP Net</div>
+                            <div style="font-size:10px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">ERP Sales</div>
                             <div style="font-size:22px; font-weight:700; color:#1F1B16; font-variant-numeric: tabular-nums;">${{ number_format($s['erp_net'], 2) }}</div>
                             <div style="font-size:11px; color:#8A7C6A;">{{ $s['erp_count'] ?? 0 }} sale{{ ($s['erp_count'] ?? 0) === 1 ? '' : 's' }}</div>
                         </div>
                         <div style="flex:1; min-width:120px;">
-                            <div style="font-size:10px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Clover Net</div>
+                            <div style="font-size:10px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Clover Sales</div>
                             <div style="font-size:22px; font-weight:700; color:#1F1B16; font-variant-numeric: tabular-nums;">${{ number_format($s['clover'], 2) }}</div>
                             <div style="font-size:11px; color:#8A7C6A;">{{ $s['clover_count'] ?? 0 }} charge{{ ($s['clover_count'] ?? 0) === 1 ? '' : 's' }}</div>
                         </div>
@@ -79,12 +79,12 @@
                 <div style="font-size:11px; color:#5A5045; text-transform:uppercase; letter-spacing:.08em; font-weight:600;">All stores combined</div>
             </div>
             <div style="flex:1; min-width:140px;">
-                <div style="font-size:10px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">ERP Net</div>
+                <div style="font-size:10px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">ERP Sales</div>
                 <div style="font-size:22px; font-weight:700; color:#1F1B16; font-variant-numeric: tabular-nums;">${{ number_format($eodErp, 2) }}</div>
                 <div style="font-size:11px; color:#8A7C6A;">{{ $dt['erp_count'] ?? 0 }} sales</div>
             </div>
             <div style="flex:1; min-width:140px;">
-                <div style="font-size:10px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Clover Net</div>
+                <div style="font-size:10px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Clover Sales</div>
                 <div style="font-size:22px; font-weight:700; color:#1F1B16; font-variant-numeric: tabular-nums;">${{ number_format($eodClover, 2) }}</div>
                 <div style="font-size:11px; color:#8A7C6A;">{{ $dt['clover_count'] ?? 0 }} charges</div>
             </div>
@@ -278,7 +278,7 @@
         &nbsp;·&nbsp; Paid in cash: <strong>${{ number_format($sumCash, 2) }}</strong>
         &nbsp;·&nbsp; Reconciled: <strong>{{ $sumReconciled }} of {{ $sumCashiers }}</strong>
         <div style="margin-top:4px; font-size:11px; color:#6b7280; font-weight:400;">
-            "Gross" = what customers paid (subtotal + tax + bag fees). Different from the pre-tax ERP Net Sales above.
+            "Gross" = what customers paid (subtotal + tax + bag fees). Different from the pre-tax ERP Sales Sales above.
         </div>
     </div>
 
@@ -491,8 +491,8 @@
                                 @endphp
                                 <div class="cc-section">
                                     <div class="cc-sec-h">What they sold @if($txnCount)<span style="font-weight:500; color:#9ca3af;">· {{ $txnCount }} sale{{ $txnCount === 1 ? '' : 's' }}</span>@endif</div>
-                                    <div class="cc-line sum"><span class="cc-label" title="Net sales = pre-tax, matches the Day Totals and per-store ERP Net.">ERP Net sales</span><span class="cc-val">${{ number_format($totalSold, 2) }}</span></div>
-                                    <div class="cc-line"><span class="cc-label minor">Clover Net (this cashier)</span><span class="cc-val">${{ number_format($cardClover, 2) }}</span></div>
+                                    <div class="cc-line sum"><span class="cc-label" title="ERP Sales (gross) = sum of final_total — what customers actually paid for this cashier's sales. Matches per-store and Day Totals.">ERP Sales</span><span class="cc-val">${{ number_format($totalSold, 2) }}</span></div>
+                                    <div class="cc-line"><span class="cc-label minor">Clover Sales (this cashier)</span><span class="cc-val">${{ number_format($cardClover, 2) }}</span></div>
                                     <div class="cc-line"><span class="cc-label minor" style="color:{{ abs($overSwipe) < 0.01 ? '#2E6F40' : '#8B2C2C' }};">Diff (Clover − ERP)</span><span class="cc-val" style="color:{{ abs($overSwipe) < 0.01 ? '#2E6F40' : '#8B2C2C' }}; font-weight:700;">{{ abs($overSwipe) < 0.01 ? '$0.00 ✓' : (($overSwipe > 0 ? '+' : '') . '$' . number_format($overSwipe, 2)) }}</span></div>
                                     <div class="cc-line"><span class="cc-label minor" style="color:#8A7C6A; font-size:11px;" title="Gross (incl tax + fees) — only used for the cash drawer math below.">Gross (incl tax + fees)</span><span class="cc-val" style="color:#8A7C6A; font-size:11px;">${{ number_format($totalSoldGross, 2) }}</span></div>
                                     @if($missingClover)
