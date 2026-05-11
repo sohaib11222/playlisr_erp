@@ -50,13 +50,14 @@
     font-weight: 800;
     letter-spacing: -.01em;
     color: var(--d-ink);
-    margin: 0 0 4px;
-    line-height: 1.15;
+    margin: 0;
+    line-height: 1.2;
 }
-.pos-duty-shell .duty-header .sub {
-    font-size: 13px;
-    color: var(--d-ink-3);
+.pos-duty-shell .duty-header .pick-one {
+    font-size: 16px;
     font-weight: 500;
+    color: var(--d-ink-3);
+    margin-left: 4px;
 }
 
 .pos-duty-shell .duty-card {
@@ -150,20 +151,20 @@
     box-shadow: 0 0 0 3px rgba(232,207,104,.3);
 }
 
-/* Duty options — big tappable pills. Single column so each pill stretches
-   the full width of the card; finger-sized hit target on touchscreens. */
+/* Duty options — 4 pills in one horizontal row, equal width. */
 .pos-duty-shell .duty-options {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     gap: 10px;
 }
 .pos-duty-shell .duty-option {
     position: relative;
+    flex: 1 1 0;
     display: flex;
     align-items: center;
-    gap: 14px;
-    padding: 16px 22px;
-    min-height: 64px;
+    justify-content: center;
+    padding: 0 14px;
+    min-height: 56px;
     background: var(--d-surface);
     border: 2px solid var(--d-line);
     border-radius: 999px;
@@ -172,36 +173,19 @@
     -webkit-tap-highlight-color: transparent;
     transition: border-color .12s ease, background .12s ease, box-shadow .12s ease, transform .08s ease;
     margin: 0;
+    text-align: center;
 }
 .pos-duty-shell .duty-option:hover {
     border-color: var(--d-line-2);
     background: var(--d-surface-2);
 }
 .pos-duty-shell .duty-option:active {
-    transform: scale(.99);
+    transform: scale(.98);
 }
 .pos-duty-shell .duty-option input[type="radio"] {
-    appearance: none;
-    -webkit-appearance: none;
-    width: 22px;
-    height: 22px;
-    border: 2px solid var(--d-line-2);
-    border-radius: 999px;
-    margin: 0;
-    flex: 0 0 auto;
-    cursor: pointer;
-    background: #fff;
-    position: relative;
-}
-.pos-duty-shell .duty-option input[type="radio"]:checked {
-    border-color: var(--d-accent-deep);
-}
-.pos-duty-shell .duty-option input[type="radio"]:checked::after {
-    content: "";
     position: absolute;
-    inset: 4px;
-    border-radius: 999px;
-    background: var(--d-accent-deep);
+    opacity: 0;
+    pointer-events: none;
 }
 .pos-duty-shell .duty-option:has(input:checked) {
     border-color: var(--d-accent-deep);
@@ -209,12 +193,11 @@
     box-shadow: 0 0 0 3px rgba(232,207,104,.3);
 }
 .pos-duty-shell .duty-option .opt-title {
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 700;
     color: var(--d-ink);
     line-height: 1.2;
     letter-spacing: -.005em;
-    flex: 1 1 auto;
 }
 .pos-duty-shell .duty-option:has(input:checked) .opt-title { color: var(--d-accent-text); }
 
@@ -322,18 +305,10 @@
 <section class="content" style="background:#FAF6EE;">
     <div class="pos-duty-shell">
         <div class="duty-header">
-            <h1>What are you doing today?</h1>
-            <div class="sub">POS — one pick per login</div>
+            <h1>What are you working on today? <span class="pick-one">(pick one)</span></h1>
         </div>
 
         <div class="duty-card">
-            <p class="duty-blurb">
-                Clover time-clock names don't always match who is actually on the register.
-                Pick what <strong>you</strong> are doing in the ERP right now. This is saved for this login
-                session and logged for the sales feed / reconciliation hints — it does <strong>not</strong>
-                change your permissions.
-            </p>
-
             @if (session('status') && is_array(session('status')) && empty(session('status')['success']))
                 <div class="alert-danger">{{ session('status')['msg'] ?? 'Something went wrong.' }}</div>
             @endif
@@ -343,18 +318,14 @@
 
             @php $selectedLoc = (string) session('pos_duty_location_id'); @endphp
             <div class="field">
-                <label class="field-label">
-                    Store
-                    <span class="field-help">— optional, helps match Clover charges to the right location</span>
-                </label>
                 <div class="store-pills">
                     <label class="store-pill">
-                        <input type="radio" name="location_id" value="" {{ $selectedLoc === '' ? 'checked' : '' }}>
-                        All / not sure
+                        <input type="radio" name="location_id" value="" required {{ $selectedLoc === '' ? 'checked' : '' }}>
+                        Both
                     </label>
                     @foreach($business_locations as $id => $name)
                         <label class="store-pill">
-                            <input type="radio" name="location_id" value="{{ $id }}" {{ $selectedLoc === (string)$id ? 'checked' : '' }}>
+                            <input type="radio" name="location_id" value="{{ $id }}" required {{ $selectedLoc === (string)$id ? 'checked' : '' }}>
                             {{ $name }}
                         </label>
                     @endforeach
@@ -362,7 +333,6 @@
             </div>
 
             <div class="field">
-                <label class="field-label">Today I am primarily…</label>
                 <div class="duty-options">
                     <label class="duty-option">
                         <input type="radio" name="duty" value="cashier" id="duty_cashier" required>
