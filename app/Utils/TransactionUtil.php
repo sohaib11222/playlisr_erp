@@ -2929,6 +2929,7 @@ class TransactionUtil extends Util
         if ($type == 'by_category') {
             $expenses = $query->select(
                 DB::raw("SUM( IF(transactions.type='expense_refund', -1 * final_total, final_total) ) as total_expense"),
+                'transactions.expense_category_id',
                 'ec.name as category'
             )
                         ->groupBy('expense_category_id')
