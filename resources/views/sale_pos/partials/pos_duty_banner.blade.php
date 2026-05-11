@@ -1,8 +1,8 @@
 @php
     $pd = session('pos_duty');
-    $dutyLabels = ['cashier' => 'Cashier', 'shipping' => 'Shipping', 'inventory' => 'Inventory'];
+    $dutyLabels = ['cashier' => 'Cashier', 'shipping' => 'Shipping', 'inventory' => 'Inventory', 'admin' => 'Admin'];
 @endphp
-@if(in_array($pd, ['cashier', 'shipping', 'inventory'], true))
+@if(in_array($pd, ['cashier', 'shipping', 'inventory', 'admin'], true))
     <div style="margin-bottom:12px;padding:6px 12px;border-radius:6px;display:flex;flex-wrap:wrap;align-items:center;gap:10px;justify-content:space-between;background:#FAF6EE;border:1px solid #ECE3CF;color:#5A5045;font-size:12px;">
         <span>
             <strong style="color:#1F1B16;">POS today:</strong> {{ $dutyLabels[$pd] ?? $pd }}
