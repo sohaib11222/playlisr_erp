@@ -114,26 +114,31 @@ class SellPosController extends Controller
     }
 
     /**
-     * Format a CloverPayment->paid_at as LA-local time.
-     *
-     * Sarah 2026-05-11: production .env has APP_TIMEZONE="Asia/Kolkata"
-     * (inherited from .env.example). SyncCloverPayments writes paid_at
-     * in config('app.timezone'), so the stored string is Kolkata-local
-     * (+12:30 from LA). Parsing without an explicit TZ would have PHP
-     * default TZ (LA, set by Timezone middleware) interpret a Kolkata
-     * string as LA — offsetting every charge by 12.5 hours, which is
-     * long enough that the ±12hr matcher window fails and every charge
-     * surfaces as a Clover-only orphan, and yesterday-evening swipes
-     * roll into today's "paid_on" bucket. Interpret as app.timezone
-     * (the TZ the row was actually written in) then convert to LA.
+     * The TZ that paid_at / paid_on are actually stored in. Sarah's
+     * tz_debug session 2026-05-11 confirmed: config('app.timezone') on
+     * the web request returns 'America/Los_Angeles', but every stored
+     * paid_at is exactly +12:30 hours from the real LA moment (the
+     * Clover-supplied createdTime UTC unix-ms converts cleanly to that
+     * LA time). So the cron that runs SyncCloverPayments is using IST
+     * — most likely a cron environment that loads APP_TIMEZONE from
+     * .env.example ("Asia/Kolkata") or a separately-cached config —
+     * and the rows are IST-local. Until we backfill or align the cron
+     * env, all read paths must hardcode IST as the source TZ. Don't
+     * trust config('app.timezone') here.
+     */
+    const CLOVER_PAID_AT_STORED_TZ = 'Asia/Kolkata';
+
+    /**
+     * Format a CloverPayment->paid_at as LA-local time. paid_at strings
+     * in the DB are IST-local (see CLOVER_PAID_AT_STORED_TZ above) —
+     * parse as IST, then convert to LA.
      */
     public static function formatCloverPaidAt($cp): string
     {
         try {
-            $appTz = config('app.timezone') ?: 'America/Los_Angeles';
             $dt = $cp->paid_at instanceof \Carbon\Carbon
                 ? $cp->paid_at->copy()
-                : \Carbon\Carbon::parse((string) $cp->paid_at, $appTz);
+                : \Carbon\Carbon::parse((string) $cp->paid_at, self::CLOVER_PAID_AT_STORED_TZ);
             return $dt->setTimezone('America/Los_Angeles')->format('Y-m-d H:i:s');
         } catch (\Throwable $e) {
             return (string) $cp->paid_at;
@@ -141,16 +146,14 @@ class SellPosController extends Controller
     }
 
     /**
-     * Parse a CloverPayment->paid_at into an LA-local Carbon. Same TZ
-     * caveats as formatCloverPaidAt above — paid_at strings in the DB
-     * are written in config('app.timezone'), which may not be LA.
+     * Parse a CloverPayment->paid_at into an LA-local Carbon. Stored
+     * as IST-local in the DB; see CLOVER_PAID_AT_STORED_TZ.
      */
     public static function parseCloverPaidAtLa($paidAt): \Carbon\Carbon
     {
-        $appTz = config('app.timezone') ?: 'America/Los_Angeles';
         $dt = $paidAt instanceof \Carbon\Carbon
             ? $paidAt->copy()
-            : \Carbon\Carbon::parse((string) $paidAt, $appTz);
+            : \Carbon\Carbon::parse((string) $paidAt, self::CLOVER_PAID_AT_STORED_TZ);
         return $dt->setTimezone('America/Los_Angeles');
     }
 
@@ -880,16 +883,16 @@ class SellPosController extends Controller
         // (e.g. Hollywood swipes showing up under Pico before Pico opens).
         //
         // Sarah 2026-05-11: filtering on paid_on (a DATE column) doesn't
-        // work when paid_at strings are written in app.timezone=Kolkata —
-        // a LA-evening swipe gets paid_on = next-Kolkata-date, flooding
-        // today's bucket with yesterday's swipes. Filter on the paid_at
-        // datetime instead, converting LA today's [00:00, 23:59:59] into
-        // the app.timezone the strings were stored in.
+        // work because paid_on is also IST-dated (see CLOVER_PAID_AT_STORED_TZ).
+        // A real LA-evening swipe gets paid_on = next-IST-date, flooding
+        // today's LA bucket with yesterday's late-afternoon LA swipes. Filter
+        // on paid_at instead, converting LA today's [00:00, 23:59:59] into
+        // the IST window the strings were stored in.
         $appTz = config('app.timezone') ?: 'America/Los_Angeles';
         $startLaToday = \Carbon\Carbon::now('America/Los_Angeles')->startOfDay();
         $endLaToday   = \Carbon\Carbon::now('America/Los_Angeles')->endOfDay();
-        $startInAppTz = $startLaToday->copy()->setTimezone($appTz)->format('Y-m-d H:i:s');
-        $endInAppTz   = $endLaToday->copy()->setTimezone($appTz)->format('Y-m-d H:i:s');
+        $startInAppTz = $startLaToday->copy()->setTimezone(self::CLOVER_PAID_AT_STORED_TZ)->format('Y-m-d H:i:s');
+        $endInAppTz   = $endLaToday->copy()->setTimezone(self::CLOVER_PAID_AT_STORED_TZ)->format('Y-m-d H:i:s');
 
         $cloverRowsToday = \DB::table('clover_payments')
             ->where('business_id', $business_id)
