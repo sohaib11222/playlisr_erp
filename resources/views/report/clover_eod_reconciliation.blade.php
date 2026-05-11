@@ -149,73 +149,122 @@
                 $events = $events->sortBy('sort_ts')->values();
             @endphp
 
+            @php
+                // Split events: flagged (need review) vs clean (paired w/ <$1 delta)
+                $flaggedEvents = collect($events)->filter(function ($ev) {
+                    if ($ev['kind'] !== 'paired') return true;
+                    if (!is_numeric($ev['clover']) || !is_numeric($ev['erp'])) return true;
+                    return abs($ev['clover'] - $ev['erp']) >= 1.00;
+                })->values();
+                $cleanEvents = collect($events)->filter(function ($ev) {
+                    if ($ev['kind'] !== 'paired') return false;
+                    if (!is_numeric($ev['clover']) || !is_numeric($ev['erp'])) return false;
+                    return abs($ev['clover'] - $ev['erp']) < 1.00;
+                })->values();
+            @endphp
+
             <div style="margin-top:14px; padding-top:12px; border-top:1px dashed #ECE3CF;">
                 <div style="display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin-bottom:10px;">
                     <span style="font-weight:700; font-size:13px; color:#1F1B16;">Reconciliation log</span>
-                    <span style="font-size:12px; color:#2E6F40;">{{ $matchedCharges }} swipes paired ✓</span>
-                    @if($needsReview > 0)
-                        <span style="font-size:12px; color:#8B2C2C; font-weight:600;">{{ $needsReview }} need{{ $needsReview === 1 ? 's' : '' }} your review ⚠</span>
+                    <span style="font-size:12px; color:#2E6F40;">{{ $cleanEvents->count() }} clean pairs ✓</span>
+                    @if($flaggedEvents->count() > 0)
+                        <span style="font-size:12px; color:#8B2C2C; font-weight:600;">{{ $flaggedEvents->count() }} need{{ $flaggedEvents->count() === 1 ? 's' : '' }} review ⚠</span>
                     @endif
-                    <span style="margin-left:auto; font-size:11px; color:#8A7C6A;">Every ERP sale should pair to a Clover swipe — cash is rung on Clover too at Nivessa. Pairs by amount (±$0.50) + time (±30 min), or same-time (±2 min) regardless of amount.</span>
                 </div>
 
-                <table style="width:100%; font-size:12px; font-variant-numeric:tabular-nums; border-collapse:collapse;">
-                    <thead>
-                        <tr style="color:#5A5045; text-align:left; border-bottom:2px solid #ECE3CF; font-size:11px;">
-                            <th style="padding:6px;">Time</th>
-                            <th style="padding:6px;">Store</th>
-                            <th style="padding:6px; text-align:right;">Clover swiped</th>
-                            <th style="padding:6px; text-align:right;">ERP rang</th>
-                            <th style="padding:6px; text-align:right;">Δ</th>
-                            <th style="padding:6px;">Invoice / status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach($events as $ev)
-                            @php
-                                $bg = '#FFFFFF';
-                                $statusLabel = '';
-                                $statusColor = '#2E6F40';
-                                if ($ev['kind'] === 'clover_only') { $bg = '#FFF3E0'; $statusLabel = 'Clover only — missing ERP ring'; $statusColor = '#8B2C2C'; }
-                                elseif ($ev['kind'] === 'erp_only') { $bg = '#FFFBEB'; $statusLabel = 'ERP only — missing Clover swipe'; $statusColor = '#8B6A1A'; }
-                                else { $statusLabel = '✓ paired'; }
-                                $delta = (is_numeric($ev['clover']) && is_numeric($ev['erp'])) ? round($ev['clover'] - $ev['erp'], 2) : null;
-                            @endphp
-                            <tr style="background:{{ $bg }}; border-bottom:1px solid #F5EFE3;">
-                                <td style="padding:6px; color:#5A5045;">{{ \Carbon\Carbon::parse($ev['ts'])->format('g:i a') }}</td>
-                                <td style="padding:6px; color:#5A5045;">{{ $ev['store'] }}</td>
-                                <td style="padding:6px; text-align:right;">{{ $ev['clover'] === null ? '—' : '$' . number_format($ev['clover'], 2) }}</td>
-                                <td style="padding:6px; text-align:right;">{{ $ev['erp'] === null ? '—' : '$' . number_format($ev['erp'], 2) }}</td>
-                                <td style="padding:6px; text-align:right; color:{{ $delta === null ? '#8A7C6A' : (abs($delta) < 0.02 ? '#2E6F40' : ($delta > 0 ? '#8B6A1A' : '#8B2C2C')) }};">
-                                    {{ $delta === null ? '—' : (($delta > 0 ? '+' : '') . '$' . number_format($delta, 2)) }}
-                                </td>
-                                <td style="padding:6px;">
-                                    @if($ev['kind'] === 'paired')
-                                        <a href="{{ url('sells/' . $ev['inv_id']) }}" style="color:#1F1B16; text-decoration:underline;">#{{ $ev['inv_no'] }}</a>
-                                        @if($delta !== null && abs($delta) >= 1.00)
-                                            <span style="color:#8B2C2C; font-size:11px; font-style:italic; font-weight:600;">⚠ keying error</span>
-                                        @elseif($delta !== null && abs($delta) >= 0.02)
-                                            <span style="color:#8A7C6A; font-size:11px; font-style:italic;">(rounding)</span>
-                                        @endif
-                                    @elseif($ev['kind'] === 'erp_only')
-                                        <a href="{{ url('sells/' . $ev['inv_id']) }}" style="color:#1F1B16; text-decoration:underline;">#{{ $ev['inv_no'] }}</a>
-                                        <span style="color:{{ $statusColor }}; font-size:11px; font-style:italic;">— {{ $statusLabel }}</span>
-                                    @else
-                                        <span style="color:{{ $statusColor }}; font-size:11px; font-style:italic;">{{ $statusLabel }}</span>
-                                        @if($ev['card'])<span style="color:#8A7C6A; font-size:11px;">· {{ $ev['card'] }}</span>@endif
-                                    @endif
-                                </td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
+                @php
+                    $renderRow = function ($ev) {
+                        $bg = '#FFFFFF';
+                        $statusLabel = '';
+                        $statusColor = '#2E6F40';
+                        if ($ev['kind'] === 'clover_only') { $bg = '#FFF3E0'; $statusLabel = 'Clover only — missing ERP ring'; $statusColor = '#8B2C2C'; }
+                        elseif ($ev['kind'] === 'erp_only') { $bg = '#FFFBEB'; $statusLabel = 'ERP only — missing Clover swipe'; $statusColor = '#8B6A1A'; }
+                        $delta = (is_numeric($ev['clover']) && is_numeric($ev['erp'])) ? round($ev['clover'] - $ev['erp'], 2) : null;
+                        return compact('bg', 'statusLabel', 'statusColor', 'delta');
+                    };
+                @endphp
 
-                @if($needsReview > 0)
+                @if($flaggedEvents->isNotEmpty())
+                    <table style="width:100%; font-size:12px; font-variant-numeric:tabular-nums; border-collapse:collapse;">
+                        <thead>
+                            <tr style="color:#5A5045; text-align:left; border-bottom:2px solid #ECE3CF; font-size:11px;">
+                                <th style="padding:6px;">Time</th>
+                                <th style="padding:6px;">Store</th>
+                                <th style="padding:6px; text-align:right;">Clover swiped</th>
+                                <th style="padding:6px; text-align:right;">ERP rang</th>
+                                <th style="padding:6px; text-align:right;">Δ</th>
+                                <th style="padding:6px;">Invoice / status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($flaggedEvents as $ev)
+                                @php $r = $renderRow($ev); @endphp
+                                <tr style="background:{{ $r['bg'] }}; border-bottom:1px solid #F5EFE3;">
+                                    <td style="padding:6px; color:#5A5045;">{{ \Carbon\Carbon::parse($ev['ts'])->format('g:i a') }}</td>
+                                    <td style="padding:6px; color:#5A5045;">{{ $ev['store'] }}</td>
+                                    <td style="padding:6px; text-align:right;">{{ $ev['clover'] === null ? '—' : '$' . number_format($ev['clover'], 2) }}</td>
+                                    <td style="padding:6px; text-align:right;">{{ $ev['erp'] === null ? '—' : '$' . number_format($ev['erp'], 2) }}</td>
+                                    <td style="padding:6px; text-align:right; color:{{ $r['delta'] === null ? '#8A7C6A' : ($r['delta'] > 0 ? '#8B6A1A' : '#8B2C2C') }}; font-weight:700;">
+                                        {{ $r['delta'] === null ? '—' : (($r['delta'] > 0 ? '+' : '') . '$' . number_format($r['delta'], 2)) }}
+                                    </td>
+                                    <td style="padding:6px;">
+                                        @if($ev['kind'] === 'paired')
+                                            <a href="{{ url('sells/' . $ev['inv_id']) }}" style="color:#1F1B16; text-decoration:underline;">#{{ $ev['inv_no'] }}</a>
+                                            <span style="color:#8B2C2C; font-size:11px; font-style:italic; font-weight:600;">⚠ keying error</span>
+                                        @elseif($ev['kind'] === 'erp_only')
+                                            <a href="{{ url('sells/' . $ev['inv_id']) }}" style="color:#1F1B16; text-decoration:underline;">#{{ $ev['inv_no'] }}</a>
+                                            <span style="color:{{ $r['statusColor'] }}; font-size:11px; font-style:italic;">— {{ $r['statusLabel'] }}</span>
+                                        @else
+                                            <span style="color:{{ $r['statusColor'] }}; font-size:11px; font-style:italic;">{{ $r['statusLabel'] }}</span>
+                                            @if($ev['card'])<span style="color:#8A7C6A; font-size:11px;">· {{ $ev['card'] }}</span>@endif
+                                        @endif
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+
                     <div style="margin-top:10px; padding:8px 12px; background:#FFF8E1; border:1px solid #E6D58A; border-radius:6px; font-size:12px; color:#5A5045; line-height:1.5;">
-                        <strong style="color:#1F1B16;">How to reconcile the {{ $needsReview }} flagged row{{ $needsReview === 1 ? '' : 's' }}:</strong><br>
-                        <span style="color:#8B2C2C;">⚠ Clover only</span> means a card was swiped but no one rang it in ERP. Click into the cashier's card below to see who was on shift — that's likely a missed ring-up to chase.<br>
-                        <span style="color:#8B6A1A;">⚠ ERP only</span> means a sale was rung but no card swipe paired with it. Most often this is cash (so it'd only show here if cash on Clover wasn't rung), a refund/void mismatch, or the matcher couldn't find a pair within the tolerance.
+                        <strong style="color:#1F1B16;">What each flag means:</strong>
+                        <span style="color:#8B2C2C;">Clover only</span> = card swiped, no ERP ring → missing ring-up.
+                        <span style="color:#8B6A1A;">ERP only</span> = sale rung, no Clover swipe → forgot to swipe or wrong amount typed.
+                        <span style="color:#8B2C2C;">Keying error</span> = paired but amounts differ by $1+ → wrong amount typed on Clover.
                     </div>
+                @else
+                    <div style="padding:14px; background:#F0F9F0; border:1px solid #BBE5BB; border-radius:6px; font-size:13px; color:#1F5D1F; text-align:center;">
+                        ✓ All Clover swipes paired cleanly — nothing to review.
+                    </div>
+                @endif
+
+                @if($cleanEvents->isNotEmpty())
+                    <details style="margin-top:10px;">
+                        <summary style="cursor:pointer; font-size:11px; color:#8A7C6A; list-style:none;">▸ Show {{ $cleanEvents->count() }} clean pairs (small rounding differences only)</summary>
+                        <table style="width:100%; font-size:11px; font-variant-numeric:tabular-nums; border-collapse:collapse; margin-top:8px;">
+                            <thead>
+                                <tr style="color:#8A7C6A; text-align:left; border-bottom:1px solid #ECE3CF;">
+                                    <th style="padding:4px 6px;">Time</th>
+                                    <th style="padding:4px 6px;">Store</th>
+                                    <th style="padding:4px 6px; text-align:right;">Clover</th>
+                                    <th style="padding:4px 6px; text-align:right;">ERP</th>
+                                    <th style="padding:4px 6px; text-align:right;">Δ</th>
+                                    <th style="padding:4px 6px;">Invoice</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach($cleanEvents as $ev)
+                                    @php $r = $renderRow($ev); @endphp
+                                    <tr style="border-bottom:1px solid #F5EFE3;">
+                                        <td style="padding:3px 6px; color:#5A5045;">{{ \Carbon\Carbon::parse($ev['ts'])->format('g:i a') }}</td>
+                                        <td style="padding:3px 6px; color:#5A5045;">{{ $ev['store'] }}</td>
+                                        <td style="padding:3px 6px; text-align:right; color:#5A5045;">${{ number_format($ev['clover'], 2) }}</td>
+                                        <td style="padding:3px 6px; text-align:right; color:#5A5045;">${{ number_format($ev['erp'], 2) }}</td>
+                                        <td style="padding:3px 6px; text-align:right; color:#8A7C6A;">{{ $r['delta'] > 0 ? '+' : '' }}${{ number_format($r['delta'], 2) }}</td>
+                                        <td style="padding:3px 6px;"><a href="{{ url('sells/' . $ev['inv_id']) }}" style="color:#5A5045; text-decoration:underline;">#{{ $ev['inv_no'] }}</a></td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </details>
                 @endif
             </div>
         @endif
