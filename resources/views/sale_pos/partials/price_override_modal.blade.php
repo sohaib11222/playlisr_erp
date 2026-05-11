@@ -121,6 +121,13 @@ function initPosPriceOverride($) {
     function ensureRowReady($row) {
         var $input = $row.find('input.pos_unit_price_inc_tax');
         if (!$input.length) return;
+        // The per-row $edit_price evaluation in product_row.blade.php sometimes
+        // returns false even when the page-level permission check returned
+        // true (different caches). Strip the .hide class off the price cell
+        // so the input + Edit button are visible on every product row.
+        if ($row.attr('data-plastic-bag') !== 'true') {
+            $input.closest('td').removeClass('hide');
+        }
         $input.prop('readonly', true).attr('readonly', 'readonly');
         if (!$input.attr('data-original-price')) {
             $input.attr('data-original-price', $input.val());
