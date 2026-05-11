@@ -7939,6 +7939,29 @@ class ReportController extends Controller
             $matchedCBySale[$cand['s']] = $cand['c'];
         }
 
+        // Second pass — same-time obvious pairs regardless of amount
+        // (Sarah 2026-05-11). Catches keying-error cases like the
+        // 12:29pm Hollywood \$177.06 Clover / \$161.33 ERP pair that the
+        // ±\$0.50 strict matcher rejects but are obviously the same sale.
+        $sameTimeWindow = 120;
+        foreach ($cloverRowsForDiff as $cIdx => $c) {
+            if (isset($matchedSByC[$cIdx])) continue;
+            $cTs = \App\Http\Controllers\SellPosController::parseCloverPaidAtLa($c)->getTimestamp();
+            $cLoc = $c->location_id !== null ? (int) $c->location_id : null;
+            $bestSid = null; $bestTd = PHP_INT_MAX;
+            foreach ($erpSales as $s) {
+                if (isset($matchedCBySale[$s->id])) continue;
+                if ($cLoc !== null && (int) $s->location_id !== $cLoc) continue;
+                $td = abs(strtotime((string) $s->transaction_date) - $cTs);
+                if ($td > $sameTimeWindow) continue;
+                if ($td < $bestTd) { $bestTd = $td; $bestSid = $s->id; }
+            }
+            if ($bestSid !== null) {
+                $matchedSByC[$cIdx] = $bestSid;
+                $matchedCBySale[$bestSid] = $cIdx;
+            }
+        }
+
         $cloverChargesForDiff = $cloverRowsForDiff->map(function ($r, $idx) use ($business_locations, $matchedSByC, $erpById) {
             $laTs = \App\Http\Controllers\SellPosController::parseCloverPaidAtLa($r);
             $matchedSaleId = $matchedSByC[$idx] ?? null;
