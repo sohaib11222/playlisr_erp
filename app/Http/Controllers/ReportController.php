@@ -7758,9 +7758,16 @@ class ReportController extends Controller
             ->whereDate('transaction_date', '<=', $end)
             ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id));
 
+        // Sarah 2026-05-11: ERP Net = SUM(final_total - tax_amount) so
+        // it matches Clover Net = SUM(amount - tax_cents) — both are
+        // "gross minus tax", including shipping/fees on both sides.
+        // total_before_tax was excluding shipping_charges/other_charges
+        // that Clover *does* include in its amount, which made every
+        // pair look like a ~$3 Clover-ahead gap structurally.
         $erp_net_total = (float) (clone $erpBase)
             ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
-            ->sum('total_before_tax');
+            ->selectRaw('COALESCE(SUM(final_total - COALESCE(tax_amount, 0)), 0) as v')
+            ->value('v');
         $erp_count = (int) (clone $erpBase)
             ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
             ->count();
@@ -7768,7 +7775,8 @@ class ReportController extends Controller
         // Whatnot sub-total — inventory-only, never on Clover.
         $whatnot_net_total = (float) (clone $erpBase)
             ->where('is_whatnot', 1)
-            ->sum('total_before_tax');
+            ->selectRaw('COALESCE(SUM(final_total - COALESCE(tax_amount, 0)), 0) as v')
+            ->value('v');
         $whatnot_count = (int) (clone $erpBase)
             ->where('is_whatnot', 1)
             ->count();
@@ -7798,14 +7806,14 @@ class ReportController extends Controller
         $erpPerLoc = (clone $erpBase)
             ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
             ->selectRaw('COALESCE(location_id, 0) as loc_key,
-                         COALESCE(SUM(total_before_tax), 0) as erp_net,
+                         COALESCE(SUM(final_total - COALESCE(tax_amount, 0)), 0) as erp_net,
                          COUNT(*) as erp_count')
             ->groupBy('location_id')
             ->get()->keyBy('loc_key');
         $whatnotPerLoc = (clone $erpBase)
             ->where('is_whatnot', 1)
             ->selectRaw('COALESCE(location_id, 0) as loc_key,
-                         COALESCE(SUM(total_before_tax), 0) as whatnot_net,
+                         COALESCE(SUM(final_total - COALESCE(tax_amount, 0)), 0) as whatnot_net,
                          COUNT(*) as whatnot_count')
             ->groupBy('location_id')
             ->get()->keyBy('loc_key');
@@ -9334,7 +9342,8 @@ class ReportController extends Controller
             $txnQ->where('t.channel', 'in_store');
         }
         $txns = $txnQ->selectRaw("
-                t.id, t.location_id, t.final_total, t.total_before_tax, t.transaction_date,
+                t.id, t.location_id, t.final_total, t.total_before_tax,
+                COALESCE(t.tax_amount, 0) as tax_amount, t.transaction_date,
                 t.created_by as cashier_user_id,
                 COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, '') as cashier_name
             ")
@@ -9613,7 +9622,9 @@ class ReportController extends Controller
                 $buckets[$day][$locKey]['location_name'] = $buckets[$day][$locKey]['location_name'] ?? '(no location)';
             }
             $buckets[$day][$locKey]['employees'][$rangFn]['total_sales']    += (float) $t->final_total;
-            $buckets[$day][$locKey]['employees'][$rangFn]['net_sales']      += (float) $t->total_before_tax;
+            // ERP Net = final_total − tax_amount (apples-to-apples with
+            // Clover Net = amount − tax_cents). Sarah 2026-05-11.
+            $buckets[$day][$locKey]['employees'][$rangFn]['net_sales']      += (float) $t->final_total - (float) ($t->tax_amount ?? 0);
             $buckets[$day][$locKey]['employees'][$rangFn]['txn_count']      += 1;
             // Capture the first non-admin user_id we see for each first
             // name. Used by the "View {cashier}'s sales" deep link so
