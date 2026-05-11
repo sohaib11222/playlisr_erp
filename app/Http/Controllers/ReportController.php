@@ -7147,6 +7147,32 @@ class ReportController extends Controller
      *   |variance| < \$10  → minor      (yellow)
      *   otherwise          → review     (red)
      */
+    /**
+     * Convert an LA-date range into the IST-datetime window that matches
+     * how clover_payments.paid_at / paid_on are actually stored (the sync
+     * cron writes IST despite web config saying LA — see
+     * SellPosController::CLOVER_PAID_AT_STORED_TZ for the diagnostic).
+     *
+     * Returns: [start_ist, end_ist, shift_sec] where shift_sec is the
+     * number of seconds to subtract from an IST paid_at to get the
+     * matching LA datetime (used in SQL DATE(paid_at - INTERVAL X SECOND)
+     * to derive an LA date for grouping). DST-aware via the LA offset
+     * of the start date.
+     */
+    private function cloverPaidAtIstWindow(string $startLa, string $endLa): array
+    {
+        $startCarbonLa = \Carbon\Carbon::parse($startLa, 'America/Los_Angeles')->startOfDay();
+        $endCarbonLa   = \Carbon\Carbon::parse($endLa, 'America/Los_Angeles')->endOfDay();
+        return [
+            'start_ist' => $startCarbonLa->copy()->setTimezone('Asia/Kolkata')->format('Y-m-d H:i:s'),
+            'end_ist'   => $endCarbonLa->copy()->setTimezone('Asia/Kolkata')->format('Y-m-d H:i:s'),
+            // IST offset (UTC+5:30 = +19800s) minus LA offset (UTC-7 for
+            // PDT or -8 for PST, returned as negative seconds by Carbon).
+            // For PDT: 19800 - (-25200) = 45000s = 12.5h. For PST: 48600.
+            'shift_sec' => 19800 - $startCarbonLa->offset,
+        ];
+    }
+
     public function cloverEodReconciliation(Request $request)
     {
         // Per-shift drawer totals + ERP-vs-Clover audit — admin-only
@@ -7234,23 +7260,28 @@ class ReportController extends Controller
         // merchant scope) have location_id=NULL; we bucket those under
         // loc_key=0 and fall back to them when no per-location match exists
         // so historical data doesn't disappear.
+        // paid_at is IST-stored — filter on paid_at against the IST
+        // window for the LA-date range, and bucket by the LA-derived
+        // date (DATE(paid_at - INTERVAL shift_sec SECOND)).
+        $payWin = $this->cloverPaidAtIstWindow($start, $end);
         $cloverQuery = \DB::table('clover_payments')
             ->where('business_id', $business_id)
             ->where(function ($q) {
                 $q->whereNull('result')->orWhere('result', 'SUCCESS')->orWhere('result', 'APPROVED');
             })
-            ->whereDate('paid_on', '>=', $start)
-            ->whereDate('paid_on', '<=', $end);
+            ->where('paid_at', '>=', $payWin['start_ist'])
+            ->where('paid_at', '<=', $payWin['end_ist']);
         if (!empty($location_id)) {
             $cloverQuery->where(function ($q) use ($location_id) {
                 $q->where('location_id', $location_id)->orWhereNull('location_id');
             });
         }
+        $laDayExpr = "DATE(paid_at - INTERVAL {$payWin['shift_sec']} SECOND)";
         $clover_rows_raw = $cloverQuery
-            ->selectRaw("DATE(paid_on) as day, COALESCE(location_id, 0) as loc_key,
+            ->selectRaw("{$laDayExpr} as day, COALESCE(location_id, 0) as loc_key,
                 COUNT(*) as clover_count,
                 COALESCE(SUM(amount), 0) as clover_total")
-            ->groupBy(DB::raw('DATE(paid_on)'), DB::raw('COALESCE(location_id, 0)'))
+            ->groupBy(DB::raw($laDayExpr), DB::raw('COALESCE(location_id, 0)'))
             ->get();
 
         // Clover batch/deposit side per (date, location) rollup.
@@ -7508,13 +7539,17 @@ class ReportController extends Controller
             ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id))
             ->count();
 
+        // paid_at is IST-stored (sync cron env), so filter on paid_at
+        // against the IST window for the LA-date range, not paid_on
+        // (which is the IST date and would shift each LA day by ±12h).
+        $eodWin = $this->cloverPaidAtIstWindow($start, $end);
         $cloverDayQ = \DB::table('clover_payments')
             ->where('business_id', $business_id)
             ->where(function ($q) {
                 $q->whereNull('result')->orWhere('result', 'SUCCESS')->orWhere('result', 'APPROVED');
             })
-            ->whereDate('paid_on', '>=', $start)
-            ->whereDate('paid_on', '<=', $end);
+            ->where('paid_at', '>=', $eodWin['start_ist'])
+            ->where('paid_at', '<=', $eodWin['end_ist']);
         if (!empty($location_id)) {
             $cloverDayQ->where(function ($q) use ($location_id) {
                 $q->where('location_id', $location_id)->orWhereNull('location_id');
@@ -7677,13 +7712,16 @@ class ReportController extends Controller
             // Clover payments at this location during the shift. Attribution
             // to THIS register uses (first-name match on Clover pin) OR
             // (blank Clover pin AND no other register open at same location
-            // at the time — handled later).
+            // at the time — handled later). paid_at is IST-stored; convert
+            // the LA shift window into IST so the BETWEEN matches.
+            $shiftStartIst = \Carbon\Carbon::parse($openedAt)->copy()->setTimezone('Asia/Kolkata')->format('Y-m-d H:i:s');
+            $shiftEndIst   = \Carbon\Carbon::parse($effectiveEnd)->copy()->setTimezone('Asia/Kolkata')->format('Y-m-d H:i:s');
             $cpQ = \DB::table('clover_payments as cp')
                 ->where('cp.business_id', $business_id)
                 ->where(function ($q) {
                     $q->whereNull('cp.result')->orWhere('cp.result', 'SUCCESS')->orWhere('cp.result', 'APPROVED');
                 })
-                ->whereBetween('cp.paid_at', [$openedAt, $effectiveEnd]);
+                ->whereBetween('cp.paid_at', [$shiftStartIst, $shiftEndIst]);
             if ($reg->location_id) {
                 $cpQ->where('cp.location_id', $reg->location_id);
             }
@@ -7847,20 +7885,22 @@ class ReportController extends Controller
             ->orderBy('t.transaction_date')
             ->get();
 
-        // Raw Clover payments.
+        // Raw Clover payments. paid_at is IST-stored; filter on IST
+        // window for the LA-date range and derive LA day from paid_at.
+        $empWin = $this->cloverPaidAtIstWindow($start, $end);
         $cpQ = \DB::table('clover_payments as cp')
             ->leftJoin('business_locations as bl', 'cp.location_id', '=', 'bl.id')
             ->where('cp.business_id', $business_id)
             ->where(function ($q) {
                 $q->whereNull('cp.result')->orWhere('cp.result', 'SUCCESS')->orWhere('cp.result', 'APPROVED');
             })
-            ->whereDate('cp.paid_on', '>=', $start)
-            ->whereDate('cp.paid_on', '<=', $end);
+            ->where('cp.paid_at', '>=', $empWin['start_ist'])
+            ->where('cp.paid_at', '<=', $empWin['end_ist']);
         if (!empty($location_id)) {
             $cpQ->where('cp.location_id', $location_id);
         }
         $cpRows = $cpQ->selectRaw("
-                cp.paid_on as day,
+                DATE(cp.paid_at - INTERVAL {$empWin['shift_sec']} SECOND) as day,
                 cp.clover_payment_id,
                 cp.paid_at as ts,
                 cp.amount,
@@ -8103,15 +8143,16 @@ class ReportController extends Controller
             ->orderBy('t.transaction_date')
             ->get();
 
-        // ---- Load Clover payments ----
+        // ---- Load Clover payments ---- paid_at is IST-stored.
+        $unkWin = $this->cloverPaidAtIstWindow($start, $end);
         $cpQ = \DB::table('clover_payments as cp')
             ->leftJoin('business_locations as bl', 'cp.location_id', '=', 'bl.id')
             ->where('cp.business_id', $business_id)
             ->where(function ($q) {
                 $q->whereNull('cp.result')->orWhere('cp.result', 'SUCCESS')->orWhere('cp.result', 'APPROVED');
             })
-            ->whereDate('cp.paid_on', '>=', $start)
-            ->whereDate('cp.paid_on', '<=', $end);
+            ->where('cp.paid_at', '>=', $unkWin['start_ist'])
+            ->where('cp.paid_at', '<=', $unkWin['end_ist']);
         if (!empty($location_id)) {
             $cpQ->where('cp.location_id', $location_id);
         }
@@ -8501,11 +8542,12 @@ class ReportController extends Controller
 
         // Clover side — employee_name empty at sync time. Usually a Clover
         // online order, self-checkout, or a payment run without a staff pin.
+        $diagWin = $this->cloverPaidAtIstWindow($start, $end);
         $cloverQ = \DB::table('clover_payments as cp')
             ->leftJoin('business_locations as bl', 'cp.location_id', '=', 'bl.id')
             ->where('cp.business_id', $business_id)
-            ->whereDate('cp.paid_on', '>=', $start)
-            ->whereDate('cp.paid_on', '<=', $end)
+            ->where('cp.paid_at', '>=', $diagWin['start_ist'])
+            ->where('cp.paid_at', '<=', $diagWin['end_ist'])
             ->where(function ($q) {
                 $q->whereNull('cp.employee_name')
                   ->orWhereRaw("TRIM(cp.employee_name) = ''");
@@ -8517,7 +8559,7 @@ class ReportController extends Controller
             $cloverQ->where('cp.location_id', $location_id);
         }
         $cloverRows = $cloverQ->selectRaw("
-                cp.paid_on as day,
+                DATE(cp.paid_at - INTERVAL {$diagWin['shift_sec']} SECOND) as day,
                 cp.clover_payment_id,
                 cp.clover_order_id,
                 cp.tender_type,
@@ -8539,8 +8581,8 @@ class ReportController extends Controller
         $fieldQ = \DB::table('clover_payments as cp')
             ->leftJoin('business_locations as bl', 'cp.location_id', '=', 'bl.id')
             ->where('cp.business_id', $business_id)
-            ->whereDate('cp.paid_on', '>=', $start)
-            ->whereDate('cp.paid_on', '<=', $end)
+            ->where('cp.paid_at', '>=', $diagWin['start_ist'])
+            ->where('cp.paid_at', '<=', $diagWin['end_ist'])
             ->where(function ($q) {
                 $q->whereNull('cp.result')->orWhere('cp.result', 'SUCCESS')->orWhere('cp.result', 'APPROVED');
             })
@@ -8555,7 +8597,7 @@ class ReportController extends Controller
         }
         $fieldRows = $fieldQ
             ->selectRaw("
-                cp.paid_on as day,
+                DATE(cp.paid_at - INTERVAL {$diagWin['shift_sec']} SECOND) as day,
                 cp.clover_payment_id,
                 cp.clover_order_id,
                 cp.employee_name,
@@ -8725,20 +8767,21 @@ class ReportController extends Controller
         // looking up which cashier's register was open at (paid_at, location)
         // for each pin-less swipe and attributing it to them — same logic
         // already used in cloverEodXlsxLayout.
+        $xlsxWin = $this->cloverPaidAtIstWindow($start, $end);
         $cpQ = \DB::table('clover_payments as cp')
             ->leftJoin('business_locations as bl', 'cp.location_id', '=', 'bl.id')
             ->where('cp.business_id', $business_id)
             ->where(function ($q) {
                 $q->whereNull('cp.result')->orWhere('cp.result', 'SUCCESS')->orWhere('cp.result', 'APPROVED');
             })
-            ->whereDate('cp.paid_on', '>=', $start)
-            ->whereDate('cp.paid_on', '<=', $end);
+            ->where('cp.paid_at', '>=', $xlsxWin['start_ist'])
+            ->where('cp.paid_at', '<=', $xlsxWin['end_ist']);
         if (!empty($location_id)) {
             $cpQ->where(function ($q) use ($location_id) {
                 $q->where('cp.location_id', $location_id)->orWhereNull('cp.location_id');
             });
         }
-        $cpRaw = $cpQ->selectRaw("DATE(cp.paid_on) as day,
+        $cpRaw = $cpQ->selectRaw("DATE(cp.paid_at - INTERVAL {$xlsxWin['shift_sec']} SECOND) as day,
                 cp.location_id, bl.name as location_name,
                 cp.paid_at as ts,
                 cp.amount as amount,
@@ -9491,13 +9534,16 @@ class ReportController extends Controller
             ->get();
 
         // Clover side — one row per (location_id, employee_name).
+        // paid_at is IST-stored; convert the LA $day to the IST window.
+        $dayWin = $this->cloverPaidAtIstWindow($day, $day);
         $cloverQ = \DB::table('clover_payments as cp')
             ->leftJoin('business_locations as bl', 'cp.location_id', '=', 'bl.id')
             ->where('cp.business_id', $business_id)
             ->where(function ($q) {
                 $q->whereNull('cp.result')->orWhere('cp.result', 'SUCCESS')->orWhere('cp.result', 'APPROVED');
             })
-            ->whereDate('cp.paid_on', $day);
+            ->where('cp.paid_at', '>=', $dayWin['start_ist'])
+            ->where('cp.paid_at', '<=', $dayWin['end_ist']);
         if (!empty($location_id)) {
             $cloverQ->where('cp.location_id', $location_id);
         }
