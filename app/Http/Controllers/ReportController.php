@@ -9399,6 +9399,50 @@ class ReportController extends Controller
             }
         }
 
+        // Second pass — same-time obvious pairs (Sarah 2026-05-11):
+        // if an unpaired Clover charge and an unpaired ERP sale happen
+        // at the same store within ±2 minutes, they're almost certainly
+        // the same transaction with a keying error. Pair them anyway
+        // and tag with the (potentially large) signed amount delta so
+        // the breakdown shows it as KEYING ERROR (large) instead of
+        // leaving both as separate orphans. This catches the 12:29pm
+        // Hollywood $177.06 Clover / $161.33 ERP case where the matcher
+        // rejected the pair on amount but they're obviously linked.
+        $sameTimeWindow = 120; // seconds (±2 min)
+        foreach ($cpForMatch as $r) {
+            if (!empty($r->matched_txn_id)) continue;
+            $cpTs    = strtotime((string) $r->ts);
+            $cpCents = $toCents($r->amount);
+            $cpLoc   = $r->location_id;
+            $bestId = null; $bestTd = PHP_INT_MAX; $bestSignedDelta = 0;
+            foreach ($txns as $t) {
+                if (isset($claimedTxns[$t->id])) continue;
+                if ($cpLoc !== null && $t->location_id !== null
+                    && (int) $cpLoc !== (int) $t->location_id) continue;
+                $td = abs(strtotime((string) $t->transaction_date) - $cpTs);
+                if ($td > $sameTimeWindow) continue;
+                if ($td < $bestTd) {
+                    $bestTd = $td;
+                    $bestId = $t->id;
+                    $bestSignedDelta = $cpCents - $toCents($t->final_total);
+                }
+            }
+            if ($bestId !== null) {
+                $claimedTxns[$bestId] = true;
+                $r->matched_txn_id = $bestId;
+                $r->matched_diff_cents = $bestSignedDelta;
+                $r->matched_same_time = true; // flag for the breakdown UI
+                $matchedCashier = '';
+                foreach ($txns as $t) {
+                    if ($t->id === $bestId) { $matchedCashier = $t->cashier_name; break; }
+                }
+                $matchedFirst = strtolower(preg_split('/\s+/', trim($matchedCashier))[0] ?? '');
+                if ($matchedCashier !== '' && !isset($adminSet[$matchedFirst])) {
+                    $r->employee_name = $matchedCashier;
+                }
+            }
+        }
+
         // Aggregate post-attribution. Pin-less swipes that still have no
         // matching open shift fall through to 'Unknown' and get skipped by
         // the card render — usually means a register was closed when a
