@@ -5778,6 +5778,32 @@ class ReportController extends Controller
         $overall_total = ((float)($whatnot->total ?? 0)) + ((float)($non->total ?? 0));
         $whatnot_pct = $overall_total > 0 ? ((float)$whatnot->total / $overall_total) * 100 : 0;
 
+        // Gross profit for Whatnot-flagged sales (mirrors sales-by-channel
+        // math — TSPL/PL join, ignore combos). Whatnot sales ring as real
+        // POS transactions with line items, so cost basis is available.
+        $whatnot_gp_obj = DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as sale', 'tsl.transaction_id', '=', 'sale.id')
+            ->leftJoin('transaction_sell_lines_purchase_lines as TSPL', 'tsl.id', '=', 'TSPL.sell_line_id')
+            ->leftJoin('purchase_lines as PL', 'TSPL.purchase_line_id', '=', 'PL.id')
+            ->where('sale.business_id', $business_id)
+            ->where('sale.type', 'sell')
+            ->where('sale.status', 'final')
+            ->where('sale.is_whatnot', 1)
+            ->whereDate('sale.transaction_date', '>=', $start_date)
+            ->whereDate('sale.transaction_date', '<=', $end_date)
+            ->when(!empty($location_id), function ($q) use ($location_id) {
+                return $q->where('sale.location_id', $location_id);
+            })
+            ->where('tsl.children_type', '!=', 'combo')
+            ->selectRaw('COALESCE(SUM((TSPL.quantity - TSPL.qty_returned) *
+                (tsl.unit_price_inc_tax - PL.purchase_price_inc_tax)), 0) as gross_profit,
+                COALESCE(SUM((TSPL.quantity - TSPL.qty_returned) * PL.purchase_price_inc_tax), 0) as cogs')
+            ->first();
+        $whatnot_gp = (float)($whatnot_gp_obj->gross_profit ?? 0);
+        $whatnot_cogs = (float)($whatnot_gp_obj->cogs ?? 0);
+        $whatnot_revenue = (float)($whatnot->total ?? 0);
+        $whatnot_margin_pct = $whatnot_revenue > 0 ? ($whatnot_gp / $whatnot_revenue) * 100 : 0;
+
         // Column sort (whitelisted) — applies to whichever table has `sort_table` matching
         $sort = $request->input('sort');
         $dir  = strtolower($request->input('dir', 'desc')) === 'asc' ? 'asc' : 'desc';
@@ -5819,6 +5845,7 @@ class ReportController extends Controller
 
         return view('report.whatnot_report')->with(compact(
             'whatnot', 'non', 'overall_total', 'whatnot_pct',
+            'whatnot_gp', 'whatnot_cogs', 'whatnot_margin_pct',
             'daily', 'top_sellers',
             'start_date', 'end_date', 'location_id', 'business_locations',
             'sort', 'dir', 'sort_table'
@@ -7734,16 +7761,23 @@ class ReportController extends Controller
             // Clover payments at this location during the shift. Attribution
             // to THIS register uses (first-name match on Clover pin) OR
             // (blank Clover pin AND no other register open at same location
-            // at the time — handled later). paid_at is IST-stored; convert
-            // the LA shift window into IST so the BETWEEN matches.
-            $shiftStartIst = \Carbon\Carbon::parse($openedAt)->copy()->setTimezone('Asia/Kolkata')->format('Y-m-d H:i:s');
-            $shiftEndIst   = \Carbon\Carbon::parse($effectiveEnd)->copy()->setTimezone('Asia/Kolkata')->format('Y-m-d H:i:s');
+            // at the time — handled later). Mixed-TZ tolerant: paid_at
+            // may be IST (cron-written) or LA (refresh-button-written).
+            $shiftStartLaC = \Carbon\Carbon::parse($openedAt);
+            $shiftEndLaC   = \Carbon\Carbon::parse($effectiveEnd);
+            $shiftStartIst = $shiftStartLaC->copy()->setTimezone('Asia/Kolkata')->format('Y-m-d H:i:s');
+            $shiftEndIst   = $shiftEndLaC->copy()->setTimezone('Asia/Kolkata')->format('Y-m-d H:i:s');
+            $shiftStartLa  = $shiftStartLaC->format('Y-m-d H:i:s');
+            $shiftEndLa    = $shiftEndLaC->format('Y-m-d H:i:s');
             $cpQ = \DB::table('clover_payments as cp')
                 ->where('cp.business_id', $business_id)
                 ->where(function ($q) {
                     $q->whereNull('cp.result')->orWhere('cp.result', 'SUCCESS')->orWhere('cp.result', 'APPROVED');
                 })
-                ->whereBetween('cp.paid_at', [$shiftStartIst, $shiftEndIst]);
+                ->where(function ($q) use ($shiftStartIst, $shiftEndIst, $shiftStartLa, $shiftEndLa) {
+                    $q->whereBetween('cp.paid_at', [$shiftStartIst, $shiftEndIst])
+                      ->orWhereBetween('cp.paid_at', [$shiftStartLa, $shiftEndLa]);
+                });
             if ($reg->location_id) {
                 $cpQ->where('cp.location_id', $reg->location_id);
             }
@@ -7907,8 +7941,7 @@ class ReportController extends Controller
             ->orderBy('t.transaction_date')
             ->get();
 
-        // Raw Clover payments. paid_at is IST-stored; filter on IST
-        // window for the LA-date range and derive LA day from paid_at.
+        // Raw Clover payments. Mixed-TZ tolerant — OR both windows.
         $empWin = $this->cloverPaidAtIstWindow($start, $end);
         $cpQ = \DB::table('clover_payments as cp')
             ->leftJoin('business_locations as bl', 'cp.location_id', '=', 'bl.id')
@@ -7916,13 +7949,17 @@ class ReportController extends Controller
             ->where(function ($q) {
                 $q->whereNull('cp.result')->orWhere('cp.result', 'SUCCESS')->orWhere('cp.result', 'APPROVED');
             })
-            ->where('cp.paid_at', '>=', $empWin['start_ist'])
-            ->where('cp.paid_at', '<=', $empWin['end_ist']);
+            ->where(function ($q) use ($empWin) {
+                $q->whereBetween('cp.paid_at', [$empWin['start_ist'], $empWin['end_ist']])
+                  ->orWhereBetween('cp.paid_at', [$empWin['start_la'], $empWin['end_la']]);
+            });
         if (!empty($location_id)) {
             $cpQ->where('cp.location_id', $location_id);
         }
+        $empDayExpr = "DATE(IF(cp.paid_at >= '{$empWin['start_ist']}' AND cp.paid_at <= '{$empWin['end_ist']}',"
+                    . " cp.paid_at - INTERVAL {$empWin['shift_sec']} SECOND, cp.paid_at))";
         $cpRows = $cpQ->selectRaw("
-                DATE(cp.paid_at - INTERVAL {$empWin['shift_sec']} SECOND) as day,
+                {$empDayExpr} as day,
                 cp.clover_payment_id,
                 cp.paid_at as ts,
                 cp.amount,
@@ -8165,7 +8202,7 @@ class ReportController extends Controller
             ->orderBy('t.transaction_date')
             ->get();
 
-        // ---- Load Clover payments ---- paid_at is IST-stored.
+        // ---- Load Clover payments ---- mixed-TZ tolerant.
         $unkWin = $this->cloverPaidAtIstWindow($start, $end);
         $cpQ = \DB::table('clover_payments as cp')
             ->leftJoin('business_locations as bl', 'cp.location_id', '=', 'bl.id')
@@ -8173,8 +8210,10 @@ class ReportController extends Controller
             ->where(function ($q) {
                 $q->whereNull('cp.result')->orWhere('cp.result', 'SUCCESS')->orWhere('cp.result', 'APPROVED');
             })
-            ->where('cp.paid_at', '>=', $unkWin['start_ist'])
-            ->where('cp.paid_at', '<=', $unkWin['end_ist']);
+            ->where(function ($q) use ($unkWin) {
+                $q->whereBetween('cp.paid_at', [$unkWin['start_ist'], $unkWin['end_ist']])
+                  ->orWhereBetween('cp.paid_at', [$unkWin['start_la'], $unkWin['end_la']]);
+            });
         if (!empty($location_id)) {
             $cpQ->where('cp.location_id', $location_id);
         }
@@ -8565,11 +8604,15 @@ class ReportController extends Controller
         // Clover side — employee_name empty at sync time. Usually a Clover
         // online order, self-checkout, or a payment run without a staff pin.
         $diagWin = $this->cloverPaidAtIstWindow($start, $end);
+        $diagDayExpr = "DATE(IF(cp.paid_at >= '{$diagWin['start_ist']}' AND cp.paid_at <= '{$diagWin['end_ist']}',"
+                     . " cp.paid_at - INTERVAL {$diagWin['shift_sec']} SECOND, cp.paid_at))";
         $cloverQ = \DB::table('clover_payments as cp')
             ->leftJoin('business_locations as bl', 'cp.location_id', '=', 'bl.id')
             ->where('cp.business_id', $business_id)
-            ->where('cp.paid_at', '>=', $diagWin['start_ist'])
-            ->where('cp.paid_at', '<=', $diagWin['end_ist'])
+            ->where(function ($q) use ($diagWin) {
+                $q->whereBetween('cp.paid_at', [$diagWin['start_ist'], $diagWin['end_ist']])
+                  ->orWhereBetween('cp.paid_at', [$diagWin['start_la'], $diagWin['end_la']]);
+            })
             ->where(function ($q) {
                 $q->whereNull('cp.employee_name')
                   ->orWhereRaw("TRIM(cp.employee_name) = ''");
@@ -8581,7 +8624,7 @@ class ReportController extends Controller
             $cloverQ->where('cp.location_id', $location_id);
         }
         $cloverRows = $cloverQ->selectRaw("
-                DATE(cp.paid_at - INTERVAL {$diagWin['shift_sec']} SECOND) as day,
+                {$diagDayExpr} as day,
                 cp.clover_payment_id,
                 cp.clover_order_id,
                 cp.tender_type,
@@ -8603,8 +8646,10 @@ class ReportController extends Controller
         $fieldQ = \DB::table('clover_payments as cp')
             ->leftJoin('business_locations as bl', 'cp.location_id', '=', 'bl.id')
             ->where('cp.business_id', $business_id)
-            ->where('cp.paid_at', '>=', $diagWin['start_ist'])
-            ->where('cp.paid_at', '<=', $diagWin['end_ist'])
+            ->where(function ($q) use ($diagWin) {
+                $q->whereBetween('cp.paid_at', [$diagWin['start_ist'], $diagWin['end_ist']])
+                  ->orWhereBetween('cp.paid_at', [$diagWin['start_la'], $diagWin['end_la']]);
+            })
             ->where(function ($q) {
                 $q->whereNull('cp.result')->orWhere('cp.result', 'SUCCESS')->orWhere('cp.result', 'APPROVED');
             })
@@ -8619,7 +8664,7 @@ class ReportController extends Controller
         }
         $fieldRows = $fieldQ
             ->selectRaw("
-                DATE(cp.paid_at - INTERVAL {$diagWin['shift_sec']} SECOND) as day,
+                {$diagDayExpr} as day,
                 cp.clover_payment_id,
                 cp.clover_order_id,
                 cp.employee_name,
@@ -8795,20 +8840,24 @@ class ReportController extends Controller
         // for each pin-less swipe and attributing it to them — same logic
         // already used in cloverEodXlsxLayout.
         $xlsxWin = $this->cloverPaidAtIstWindow($start, $end);
+        $xlsxDayExpr = "DATE(IF(cp.paid_at >= '{$xlsxWin['start_ist']}' AND cp.paid_at <= '{$xlsxWin['end_ist']}',"
+                     . " cp.paid_at - INTERVAL {$xlsxWin['shift_sec']} SECOND, cp.paid_at))";
         $cpQ = \DB::table('clover_payments as cp')
             ->leftJoin('business_locations as bl', 'cp.location_id', '=', 'bl.id')
             ->where('cp.business_id', $business_id)
             ->where(function ($q) {
                 $q->whereNull('cp.result')->orWhere('cp.result', 'SUCCESS')->orWhere('cp.result', 'APPROVED');
             })
-            ->where('cp.paid_at', '>=', $xlsxWin['start_ist'])
-            ->where('cp.paid_at', '<=', $xlsxWin['end_ist']);
+            ->where(function ($q) use ($xlsxWin) {
+                $q->whereBetween('cp.paid_at', [$xlsxWin['start_ist'], $xlsxWin['end_ist']])
+                  ->orWhereBetween('cp.paid_at', [$xlsxWin['start_la'], $xlsxWin['end_la']]);
+            });
         if (!empty($location_id)) {
             $cpQ->where(function ($q) use ($location_id) {
                 $q->where('cp.location_id', $location_id)->orWhereNull('cp.location_id');
             });
         }
-        $cpRaw = $cpQ->selectRaw("DATE(cp.paid_at - INTERVAL {$xlsxWin['shift_sec']} SECOND) as day,
+        $cpRaw = $cpQ->selectRaw("{$xlsxDayExpr} as day,
                 cp.location_id, bl.name as location_name,
                 cp.paid_at as ts,
                 cp.amount as amount,
@@ -9561,7 +9610,7 @@ class ReportController extends Controller
             ->get();
 
         // Clover side — one row per (location_id, employee_name).
-        // paid_at is IST-stored; convert the LA $day to the IST window.
+        // Mixed-TZ tolerant for the LA $day.
         $dayWin = $this->cloverPaidAtIstWindow($day, $day);
         $cloverQ = \DB::table('clover_payments as cp')
             ->leftJoin('business_locations as bl', 'cp.location_id', '=', 'bl.id')
@@ -9569,8 +9618,10 @@ class ReportController extends Controller
             ->where(function ($q) {
                 $q->whereNull('cp.result')->orWhere('cp.result', 'SUCCESS')->orWhere('cp.result', 'APPROVED');
             })
-            ->where('cp.paid_at', '>=', $dayWin['start_ist'])
-            ->where('cp.paid_at', '<=', $dayWin['end_ist']);
+            ->where(function ($q) use ($dayWin) {
+                $q->whereBetween('cp.paid_at', [$dayWin['start_ist'], $dayWin['end_ist']])
+                  ->orWhereBetween('cp.paid_at', [$dayWin['start_la'], $dayWin['end_la']]);
+            });
         if (!empty($location_id)) {
             $cloverQ->where('cp.location_id', $location_id);
         }

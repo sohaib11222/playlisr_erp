@@ -9,17 +9,27 @@
 <section class="content">
 
     <div class="row">
-        <div class="col-md-4">
+        <div class="col-md-3">
             <div class="info-box bg-purple">
                 <span class="info-box-icon"><i class="fa fa-tv"></i></span>
                 <div class="info-box-content">
-                    <span class="info-box-text">Whatnot sales</span>
+                    <span class="info-box-text">Whatnot revenue</span>
                     <span class="info-box-number">${{ number_format($whatnot->total ?? 0, 2) }}</span>
-                    <span class="progress-description">{{ (int)($whatnot->cnt ?? 0) }} transactions ({{ number_format($whatnot_pct, 1) }}% of total)</span>
+                    <span class="progress-description">{{ (int)($whatnot->cnt ?? 0) }} tx ({{ number_format($whatnot_pct, 1) }}% of total)</span>
                 </div>
             </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
+            <div class="info-box bg-yellow">
+                <span class="info-box-icon"><i class="fa fa-chart-line"></i></span>
+                <div class="info-box-content">
+                    <span class="info-box-text">Whatnot gross profit</span>
+                    <span class="info-box-number">${{ number_format($whatnot_gp, 2) }}</span>
+                    <span class="progress-description">{{ number_format($whatnot_margin_pct, 1) }}% margin · COGS ${{ number_format($whatnot_cogs, 2) }}</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
             <div class="info-box bg-blue">
                 <span class="info-box-icon"><i class="fa fa-store"></i></span>
                 <div class="info-box-content">
@@ -29,7 +39,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
             <div class="info-box bg-green">
                 <span class="info-box-icon"><i class="fa fa-dollar-sign"></i></span>
                 <div class="info-box-content">
