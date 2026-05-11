@@ -891,7 +891,7 @@ class ReportController extends Controller
         $filters = $request->only(['category', 'location_id']);
 
         $date_range = $request->input('date_range');
-        
+
         if (!empty($date_range)) {
             $date_range_array = explode('~', $date_range);
             $filters['start_date'] = $this->transactionUtil->uf_date(trim($date_range_array[0]));
@@ -901,27 +901,111 @@ class ReportController extends Controller
             $filters['end_date'] = \Carbon::now()->endOfMonth()->format('Y-m-d');
         }
 
+        // Summary rollup by category (keeps the same shape the old view used).
         $expenses = $this->transactionUtil->getExpenseReport($business_id, $filters);
 
-        $values = [];
-        $labels = [];
-        foreach ($expenses as $expense) {
-            $values[] = (float) $expense->total_expense;
-            $labels[] = !empty($expense->category) ? $expense->category : __('report.others');
-        }
-
-        $chart = new CommonChart;
-        $chart->labels($labels)
-            ->title(__('report.expense_report'))
-            ->dataset(__('report.total_expense'), 'column', $values);
+        // Transaction-detail list — QB-like columns. Filtered by the same
+        // category/location/date pickers; Sabina clicks a category in the
+        // summary table to focus the detail rows.
+        $detail = $this->getExpenseDetailRows($business_id, $filters);
 
         $categories = ExpenseCategory::where('business_id', $business_id)
                             ->pluck('name', 'id');
-        
+
         $business_locations = BusinessLocation::forDropdown($business_id, true);
 
+        // If the request is asking for CSV export, return that instead of HTML.
+        if ($request->input('export') === 'csv') {
+            return $this->streamExpenseReportCsv($detail, $filters);
+        }
+
         return view('report.expense_report')
-                    ->with(compact('chart', 'categories', 'business_locations', 'expenses'));
+                    ->with(compact('categories', 'business_locations', 'expenses', 'detail', 'filters'));
+    }
+
+    /**
+     * Per-transaction detail rows for the expense report. QB-style columns:
+     * Date, Transaction type (from QB type tag), Num (ref_no tail), Vendor
+     * (parsed from additional_notes), Memo, Category, Location, Amount.
+     */
+    protected function getExpenseDetailRows($business_id, array $filters)
+    {
+        $q = DB::table('transactions as t')
+            ->leftJoin('expense_categories as ec', 't.expense_category_id', '=', 'ec.id')
+            ->leftJoin('business_locations as bl', 't.location_id', '=', 'bl.id')
+            ->where('t.business_id', $business_id)
+            ->whereIn('t.type', ['expense', 'expense_refund'])
+            ->orderByDesc('t.transaction_date')
+            ->orderByDesc('t.id')
+            ->select(
+                't.id', 't.type', 't.transaction_date', 't.ref_no', 't.final_total',
+                't.additional_notes', 't.expense_category_id',
+                'ec.name as category',
+                'bl.name as location_name'
+            );
+
+        $permitted_locations = auth()->user()->permitted_locations();
+        if ($permitted_locations !== 'all') {
+            $q->whereIn('t.location_id', $permitted_locations);
+        }
+        if (!empty($filters['location_id'])) {
+            $q->where('t.location_id', $filters['location_id']);
+        }
+        if (!empty($filters['category'])) {
+            $q->where('t.expense_category_id', $filters['category']);
+        }
+        if (!empty($filters['start_date']) && !empty($filters['end_date'])) {
+            $q->whereBetween(DB::raw('date(t.transaction_date)'), [$filters['start_date'], $filters['end_date']]);
+        }
+
+        return $q->limit(5000)->get();
+    }
+
+    protected function streamExpenseReportCsv($rows, array $filters)
+    {
+        $filename = 'expense-report_' . ($filters['start_date'] ?? 'all') . '_to_' . ($filters['end_date'] ?? 'all') . '.csv';
+        $headers = [
+            'Content-Type'        => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ];
+        return response()->stream(function () use ($rows) {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, ['Date', 'Transaction type', 'Num', 'Vendor', 'Memo', 'Category', 'Location', 'Amount']);
+            foreach ($rows as $r) {
+                $signed = $r->type === 'expense_refund' ? (float) $r->final_total : -1 * (float) $r->final_total;
+                $vendor = '';
+                $memo = '';
+                $tx_type = $r->type === 'expense_refund' ? 'Expense refund' : 'Expense';
+                if (!empty($r->additional_notes)) {
+                    // additional_notes is "Type · Vendor: X · Memo text"
+                    $parts = array_map('trim', explode(' · ', $r->additional_notes));
+                    foreach ($parts as $p) {
+                        if (stripos($p, 'Vendor:') === 0) {
+                            $vendor = trim(substr($p, strlen('Vendor:')));
+                        } elseif ($p !== '' && stripos($p, 'Vendor:') !== 0) {
+                            // First non-vendor part that looks like a QB type goes to tx_type;
+                            // others become memo.
+                            if ($memo === '' && $tx_type === ($r->type === 'expense_refund' ? 'Expense refund' : 'Expense')) {
+                                $tx_type = $p;
+                            } else {
+                                $memo = $memo === '' ? $p : ($memo . ' · ' . $p);
+                            }
+                        }
+                    }
+                }
+                fputcsv($out, [
+                    $r->transaction_date,
+                    $tx_type,
+                    $r->ref_no,
+                    $vendor,
+                    $memo,
+                    $r->category ?: '(uncategorized)',
+                    $r->location_name,
+                    number_format($signed, 2, '.', ''),
+                ]);
+            }
+            fclose($out);
+        }, 200, $headers);
     }
 
     /**
@@ -7758,12 +7842,11 @@ class ReportController extends Controller
 
         $toCents = function ($x) { return (int) round(((float) $x) * 100); };
 
-        // Generous matcher: tips can add 5-25% to the Clover amount
-        // (customer signs and adds a tip after the swipe), and tax-
-        // rounding adds a few cents either way. Pair if same store +
-        // within ±1 hour + Clover within [ERP-$0.50, ERP+25%+$0.50].
-        // Score prefers small amount-diff (so a $0.01 rounding wins
-        // over a $5 tip when both are candidates).
+        // Sarah 2026-05-11: Nivessa doesn't accept tips, so the only
+        // legitimate Clover-vs-ERP delta is tax rounding / bag-fee
+        // mismatch (a few cents). Anything beyond ±$0.50 is a real
+        // reconciliation issue and shouldn't auto-pair. Tight symmetric
+        // tolerance, ±30 min.
         $candidates = [];
         foreach ($cloverRowsForDiff as $cIdx => $c) {
             $cCents = $toCents($c->amount);
@@ -7772,13 +7855,12 @@ class ReportController extends Controller
             foreach ($erpSales as $s) {
                 if ($cLoc !== null && (int) $s->location_id !== $cLoc) continue;
                 $sCents = $toCents($s->final_total);
-                $delta = $cCents - $sCents;
-                $tipCap = (int) round($sCents * 0.25) + 50;
-                if ($delta < -50 || $delta > $tipCap) continue;
+                $delta = abs($cCents - $sCents);
+                if ($delta > 50) continue;
                 $sTs = strtotime((string) $s->transaction_date);
                 $td = abs($sTs - $cTs);
-                if ($td > 3600) continue;
-                $candidates[] = ['c' => $cIdx, 's' => $s->id, 'score' => abs($delta) * 1000 + $td];
+                if ($td > 1800) continue;
+                $candidates[] = ['c' => $cIdx, 's' => $s->id, 'score' => $delta * 1000 + $td];
             }
         }
         usort($candidates, fn($a, $b) => $a['score'] <=> $b['score']);

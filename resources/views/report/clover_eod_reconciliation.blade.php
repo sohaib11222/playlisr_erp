@@ -130,7 +130,7 @@
                     @if($needsReview > 0)
                         <span style="font-size:12px; color:#8B2C2C; font-weight:600;">{{ $needsReview }} need{{ $needsReview === 1 ? 's' : '' }} your review ⚠</span>
                     @endif
-                    <span style="margin-left:auto; font-size:11px; color:#8A7C6A;">Card swipes ↔ ERP rings, sorted by time. Pairing allows tips and ±$0.50 rounding within 1 hour.</span>
+                    <span style="margin-left:auto; font-size:11px; color:#8A7C6A;">Card swipes ↔ ERP rings, sorted by time. Pairs within ±$0.50 (tax/fee rounding only — Nivessa doesn't accept tips) and ±30 minutes.</span>
                 </div>
 
                 <table style="width:100%; font-size:12px; font-variant-numeric:tabular-nums; border-collapse:collapse;">
@@ -167,9 +167,7 @@
                                     @if($ev['kind'] === 'paired')
                                         <a href="{{ url('sells/' . $ev['inv_id']) }}" style="color:#1F1B16; text-decoration:underline;">#{{ $ev['inv_no'] }}</a>
                                         @if($delta !== null && abs($delta) >= 0.02)
-                                            <span style="color:#8A7C6A; font-size:11px; font-style:italic;">
-                                                ({{ $delta > 0 ? 'likely tip' : 'small diff' }})
-                                            </span>
+                                            <span style="color:#8A7C6A; font-size:11px; font-style:italic;">(tax/fee rounding)</span>
                                         @endif
                                     @elseif($ev['kind'] === 'erp_only')
                                         <a href="{{ url('sells/' . $ev['inv_id']) }}" style="color:#1F1B16; text-decoration:underline;">#{{ $ev['inv_no'] }}</a>
