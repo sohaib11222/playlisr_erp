@@ -595,3 +595,5 @@
 		</script>
 	</div>
 </div>
+
+@include('sale_pos.partials.price_override_modal')

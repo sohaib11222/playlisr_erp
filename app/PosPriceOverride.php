@@ -20,6 +20,7 @@ class PosPriceOverride extends Model
         'system_price',
         'sold_price',
         'diff',
+        'reason',
         'user_id',
     ];
 

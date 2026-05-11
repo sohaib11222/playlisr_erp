@@ -40,9 +40,14 @@ class PosPriceOverrideController extends Controller
                     $table->decimal('system_price', 22, 4)->default(0);
                     $table->decimal('sold_price', 22, 4)->default(0);
                     $table->decimal('diff', 22, 4)->default(0);
+                    $table->text('reason')->nullable();
                     $table->unsignedInteger('user_id')->nullable()->index();
                     $table->timestamps();
                     $table->index(['business_id', 'created_at']);
+                });
+            } elseif (!Schema::hasColumn('pos_price_overrides', 'reason')) {
+                Schema::table('pos_price_overrides', function (Blueprint $table) {
+                    $table->text('reason')->nullable()->after('diff');
                 });
             }
 
@@ -116,18 +121,28 @@ class PosPriceOverrideController extends Controller
             $q->where('o.diff', '>', 0);
         }
 
+        $hasReasonColumn = Schema::hasColumn('pos_price_overrides', 'reason');
+        $selects = [
+            'o.id', 'o.created_at',
+            'o.transaction_id', 'o.product_name', 'o.artist',
+            'o.system_price', 'o.sold_price', 'o.diff',
+            'u.username as cashier_username',
+            'u.first_name as cashier_first',
+            'u.surname as cashier_last',
+            't.invoice_no',
+            'bl.name as location_name',
+        ];
+        if ($hasReasonColumn) {
+            $selects[] = 'o.reason';
+        }
         $rows = $q->orderByDesc('o.created_at')
             ->limit(500)
-            ->get([
-                'o.id', 'o.created_at',
-                'o.transaction_id', 'o.product_name', 'o.artist',
-                'o.system_price', 'o.sold_price', 'o.diff',
-                'u.username as cashier_username',
-                'u.first_name as cashier_first',
-                'u.surname as cashier_last',
-                't.invoice_no',
-                'bl.name as location_name',
-            ]);
+            ->get($selects);
+        // Make `reason` always present on the row objects so the view can
+        // render it unconditionally.
+        if (!$hasReasonColumn) {
+            $rows = $rows->map(function ($r) { $r->reason = null; return $r; });
+        }
 
         $totals = (object) [
             'count' => $rows->count(),

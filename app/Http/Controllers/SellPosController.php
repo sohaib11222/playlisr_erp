@@ -2086,7 +2086,7 @@ class SellPosController extends Controller
                 // for all roles now (no managers on the floor); this audit log
                 // lets Sarah eyeball the overrides at /admin/pos-overrides.
                 try {
-                    $this->logPosPriceOverrides($transaction);
+                    $this->logPosPriceOverrides($transaction, $input['products'] ?? []);
                 } catch (\Exception $e) {
                     \Log::warning('pos_price_override_log_failed: ' . $e->getMessage());
                 }
@@ -5100,7 +5100,7 @@ class SellPosController extends Controller
     // sticker price; write an override row for every line that differs by
     // more than a cent. Manual products (no product_id) skip — there's no
     // baseline to compare against. Quoted at /admin/pos-overrides.
-    private function logPosPriceOverrides($transaction)
+    private function logPosPriceOverrides($transaction, array $postedProducts = [])
     {
         $businessId = $transaction->business_id;
         $locationId = $transaction->location_id;
@@ -5127,8 +5127,28 @@ class SellPosController extends Controller
             ->get(['id', 'name', 'artist'])
             ->keyBy('id');
 
+        // Build a reason lookup keyed by (product_id, variation_id) from the
+        // posted form so the modal-captured reason can be attached to the
+        // right sell line. The posted products array is positional, so we
+        // also keep a flat list as a fallback.
+        $reasonByKey = [];
+        $reasonsFlat = [];
+        foreach ($postedProducts as $p) {
+            $r = trim((string) ($p['price_override_reason'] ?? ''));
+            if ($r === '') {
+                continue;
+            }
+            $pid = $p['product_id'] ?? null;
+            $vid = $p['variation_id'] ?? null;
+            if ($pid && $vid) {
+                $reasonByKey[$pid . ':' . $vid] = $r;
+            }
+            $reasonsFlat[] = $r;
+        }
+
         $rows = [];
         $now = now();
+        $tableHasReason = \Schema::hasColumn('pos_price_overrides', 'reason');
         foreach ($lines as $line) {
             $sysPrice = isset($variationPrices[$line->variation_id])
                 ? (float) $variationPrices[$line->variation_id] : 0;
@@ -5142,7 +5162,15 @@ class SellPosController extends Controller
             }
 
             $product = $products[$line->product_id] ?? null;
-            $rows[] = [
+            $reason = $reasonByKey[$line->product_id . ':' . $line->variation_id] ?? null;
+            // Fall back to flat list (one reason per overridden line in order)
+            // if the keyed lookup missed. Cashiers can't have more reasons
+            // than overrides in a single sale.
+            if ($reason === null && !empty($reasonsFlat)) {
+                $reason = array_shift($reasonsFlat);
+            }
+
+            $row = [
                 'business_id' => $businessId,
                 'business_location_id' => $locationId,
                 'transaction_id' => $transaction->id,
@@ -5158,6 +5186,10 @@ class SellPosController extends Controller
                 'created_at' => $now,
                 'updated_at' => $now,
             ];
+            if ($tableHasReason) {
+                $row['reason'] = $reason ? mb_substr($reason, 0, 1000) : null;
+            }
+            $rows[] = $row;
         }
 
         if (!empty($rows)) {

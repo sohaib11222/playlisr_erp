@@ -34,6 +34,22 @@
             </div>
         </div>
     @else
+        @php $hasReason = \Illuminate\Support\Facades\Schema::hasColumn('pos_price_overrides', 'reason'); @endphp
+        @if(!$hasReason)
+            <div class="box box-warning">
+                <div class="box-header with-border">
+                    <h3 class="box-title">Schema update available</h3>
+                </div>
+                <div class="box-body">
+                    <p>The <code>reason</code> column was added so cashier explanations show up alongside each override.
+                       Click below to add the column — it's a no-data ALTER TABLE, doesn't touch existing rows.</p>
+                    <form method="POST" action="{{ url('/admin/pos-overrides/setup') }}" style="display:inline;">
+                        @csrf
+                        <button type="submit" class="btn btn-warning"><i class="fa fa-cog"></i> Add reason column</button>
+                    </form>
+                </div>
+            </div>
+        @endif
 
         <div class="box box-primary">
             <div class="box-header with-border">
@@ -124,6 +140,7 @@
                                 <th class="text-right">Sticker</th>
                                 <th class="text-right">Charged</th>
                                 <th class="text-right">Diff</th>
+                                <th>Reason</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -151,6 +168,13 @@
                                 <td class="text-right">${{ number_format($r->system_price, 2) }}</td>
                                 <td class="text-right"><strong>${{ number_format($r->sold_price, 2) }}</strong></td>
                                 <td class="text-right {{ $diffClass }}"><strong>{{ $diffSign }}${{ number_format($diff, 2) }}</strong></td>
+                                <td style="max-width:280px; font-size:13px; color:#555;">
+                                    @if(!empty($r->reason))
+                                        {{ $r->reason }}
+                                    @else
+                                        <span class="text-muted" style="font-style:italic;">—</span>
+                                    @endif
+                                </td>
                             </tr>
                         @endforeach
                         </tbody>
