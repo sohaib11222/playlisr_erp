@@ -547,6 +547,52 @@ class QuickBooksService
      */
     public function syncExpensesFromQb($fromDate, $toDate)
     {
+        // For windows >180 days, chunk by ~90-day slices so QB's report API
+        // doesn't time out / truncate and we don't blow the PHP max_execution_time.
+        $from = \Carbon\Carbon::parse($fromDate);
+        $to   = \Carbon\Carbon::parse($toDate);
+        if ($from->diffInDays($to) > 180) {
+            $totals = ['created' => 0, 'updated' => 0, 'skipped' => 0];
+            $cursor = $from->copy();
+            $errors = [];
+            while ($cursor <= $to) {
+                $chunkEnd = $cursor->copy()->addDays(89);
+                if ($chunkEnd > $to) $chunkEnd = $to->copy();
+                $slice = $this->syncExpensesChunk($cursor->format('Y-m-d'), $chunkEnd->format('Y-m-d'));
+                if (!empty($slice['success'])) {
+                    $totals['created'] += $slice['created'];
+                    $totals['updated'] += $slice['updated'];
+                    $totals['skipped'] += $slice['skipped'];
+                } else {
+                    $errors[] = $cursor->format('Y-m-d') . '→' . $chunkEnd->format('Y-m-d') . ': ' . ($slice['msg'] ?? '?');
+                }
+                $cursor = $chunkEnd->copy()->addDay();
+            }
+            $msg = "Backfill {$fromDate} → {$toDate}: {$totals['created']} created, {$totals['updated']} updated, {$totals['skipped']} skipped.";
+            if (!empty($errors)) {
+                $msg .= ' Chunk errors: ' . implode(' | ', array_slice($errors, 0, 5));
+            }
+            $this->persistQuickBooksApiSettings([
+                'expense_last_sync_at' => \Carbon\Carbon::now()->toDateTimeString(),
+                'expense_last_sync_from' => $fromDate,
+                'expense_last_sync_to' => $toDate,
+                'expense_last_sync_summary' => "created={$totals['created']} updated={$totals['updated']} skipped={$totals['skipped']}" . (count($errors) ? " (errs=" . count($errors) . ')' : ''),
+            ]);
+            return [
+                'success' => empty($errors),
+                'msg' => $msg,
+                'created' => $totals['created'],
+                'updated' => $totals['updated'],
+                'skipped' => $totals['skipped'],
+            ];
+        }
+
+        return $this->syncExpensesChunk($fromDate, $toDate);
+    }
+
+    /** One TransactionList report call → upserts. Caller chunks for big ranges. */
+    protected function syncExpensesChunk($fromDate, $toDate)
+    {
         $report = $this->getTransactionListReport($fromDate, $toDate);
         if (empty($report['success'])) {
             return [

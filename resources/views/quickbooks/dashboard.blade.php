@@ -81,10 +81,11 @@
                     </form>
                     <form method="POST" action="{{ action('QuickBooksController@syncExpenses') }}" style="display:inline-block;">
                         @csrf
-                        <input type="hidden" name="from_date" value="2026-01-01">
+                        <label style="font-size:12px; color:#555;">Backfill from:</label>
+                        <input type="date" name="from_date" value="2025-01-01" style="height:30px; padding:2px 6px; vertical-align:middle;">
                         <input type="hidden" name="to_date" value="{{ date('Y-m-d') }}">
-                        <button type="submit" class="btn btn-default" onclick="return confirm('Pull every QB expense since 2026-01-01? Can take a couple minutes.');">
-                            <i class="fa fa-history"></i> Backfill 2026-01-01 → today
+                        <button type="submit" class="btn btn-default" onclick="return confirm('Pull every QB expense from the chosen start date to today? Multi-year ranges chunk by 90-day windows and can take a few minutes.');">
+                            <i class="fa fa-history"></i> Backfill historical
                         </button>
                     </form>
                 </div>
