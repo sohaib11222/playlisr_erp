@@ -572,11 +572,18 @@ class QuickBooksService
             if (!empty($errors)) {
                 $msg .= ' Chunk errors: ' . implode(' | ', array_slice($errors, 0, 5));
             }
+            // Track backfill status separately from the rolling-window sync
+            // so the auto-cron's status doesn't overwrite a multi-year run.
+            $summary = "created={$totals['created']} updated={$totals['updated']} skipped={$totals['skipped']}" . (count($errors) ? " (errs=" . count($errors) . ')' : '');
             $this->persistQuickBooksApiSettings([
                 'expense_last_sync_at' => \Carbon\Carbon::now()->toDateTimeString(),
                 'expense_last_sync_from' => $fromDate,
                 'expense_last_sync_to' => $toDate,
-                'expense_last_sync_summary' => "created={$totals['created']} updated={$totals['updated']} skipped={$totals['skipped']}" . (count($errors) ? " (errs=" . count($errors) . ')' : ''),
+                'expense_last_sync_summary' => $summary,
+                'expense_last_backfill_at' => \Carbon\Carbon::now()->toDateTimeString(),
+                'expense_last_backfill_from' => $fromDate,
+                'expense_last_backfill_to' => $toDate,
+                'expense_last_backfill_summary' => $summary,
             ]);
             return [
                 'success' => empty($errors),

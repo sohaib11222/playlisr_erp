@@ -66,15 +66,23 @@
                         (rows are idempotent — re-runs update in place).
                     </p>
                     <p>
-                        <strong>Last sync:</strong>
+                        <strong>Last sync (auto, every 30 min):</strong>
                         {{ $qb_expense['expense_last_sync_at'] ?? '— never —' }}
                         @if(!empty($qb_expense['expense_last_sync_from']))
                             ({{ $qb_expense['expense_last_sync_from'] }} → {{ $qb_expense['expense_last_sync_to'] ?? '?' }})
                         @endif
                         <br>
-                        <strong>Last result:</strong>
-                        {{ $qb_expense['expense_last_sync_summary'] ?? '—' }}
+                        <span style="color:#666;">{{ $qb_expense['expense_last_sync_summary'] ?? '—' }}</span>
                     </p>
+                    @if(!empty($qb_expense['expense_last_backfill_at']))
+                        <p style="background:#f4f4f4; padding:8px; border-left:4px solid #00a65a;">
+                            <strong>Last historical backfill:</strong>
+                            {{ $qb_expense['expense_last_backfill_at'] }}
+                            ({{ $qb_expense['expense_last_backfill_from'] ?? '?' }} → {{ $qb_expense['expense_last_backfill_to'] ?? '?' }})
+                            <br>
+                            <span style="color:#666;">{{ $qb_expense['expense_last_backfill_summary'] ?? '—' }}</span>
+                        </p>
+                    @endif
                     <form method="POST" action="{{ action('QuickBooksController@syncExpenses') }}" style="display:inline-block; margin-right:8px;">
                         @csrf
                         <button type="submit" class="btn btn-success"><i class="fa fa-sync"></i> Sync now (last 14 days)</button>
