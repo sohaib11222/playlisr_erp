@@ -78,35 +78,92 @@
             </div>
         @endif
 
-        @if(!$eodMatched && !empty($dt['clover_charges']) && count($dt['clover_charges']))
-            <details style="margin-top:12px;">
-                <summary style="cursor:pointer; font-size:12px; color:#8A7C6A; list-style:none;">▸ Show every Clover charge today ({{ $dt['clover_count'] ?? 0 }}) — to spot what's making up the {{ $eodDiff > 0 ? '+' : '' }}${{ number_format($eodDiff, 2) }} diff</summary>
-                <div style="margin-top:8px; padding-top:8px; border-top:1px dashed #ECE3CF;">
+        @if(!empty($dt['clover_charges']) && count($dt['clover_charges']))
+            @php
+                $totalCharges = count($dt['clover_charges']);
+                $matchedCharges = collect($dt['clover_charges'])->filter(fn($c) => !empty($c->matched_erp_id))->count();
+                $unmatchedCharges = $totalCharges - $matchedCharges;
+                $unmatchedErpCount = !empty($dt['unmatched_erp']) ? count($dt['unmatched_erp']) : 0;
+            @endphp
+            <details style="margin-top:14px;" @if($unmatchedCharges > 0 || $unmatchedErpCount > 0) open @endif>
+                <summary style="cursor:pointer; font-size:13px; color:#1F1B16; list-style:none; font-weight:600;">
+                    ▸ Per-charge reconciliation —
+                    <span style="color:#2E6F40;">{{ $matchedCharges }} matched</span>,
+                    @if($unmatchedCharges > 0)<span style="color:#8B2C2C;">{{ $unmatchedCharges }} Clover-only</span>@endif
+                    @if($unmatchedCharges > 0 && $unmatchedErpCount > 0), @endif
+                    @if($unmatchedErpCount > 0)<span style="color:#8B6A1A;">{{ $unmatchedErpCount }} ERP-only</span>@endif
+                </summary>
+
+                <div style="margin-top:10px; padding-top:8px; border-top:1px dashed #ECE3CF; font-size:11px; color:#5A5045;">
+                    Each Clover charge below should pair to an ERP sale. Unmatched Clover = card was swiped but no ERP ring exists (missing ring-up). Unmatched ERP = sale was rung but no Clover charge (real cash, refund/void mismatch, or pre-Clover-on-cash-rings era).
+                </div>
+
+                <div style="margin-top:10px;">
+                    <div style="font-weight:700; font-size:12px; color:#1F1B16; margin-bottom:4px;">Clover charges ({{ $totalCharges }})</div>
                     <table style="width:100%; font-size:11px; font-variant-numeric:tabular-nums; border-collapse:collapse;">
                         <thead>
-                            <tr style="color:#8A7C6A; text-align:left;">
+                            <tr style="color:#8A7C6A; text-align:left; border-bottom:1px solid #ECE3CF;">
+                                <th style="padding:3px 6px; font-weight:500;">Status</th>
                                 <th style="padding:3px 6px; font-weight:500;">Time</th>
                                 <th style="padding:3px 6px; font-weight:500;">Store</th>
-                                <th style="padding:3px 6px; font-weight:500; text-align:right;">Gross</th>
-                                <th style="padding:3px 6px; font-weight:500; text-align:right;">Net</th>
-                                <th style="padding:3px 6px; font-weight:500;">Clover employee</th>
+                                <th style="padding:3px 6px; font-weight:500; text-align:right;">Clover gross</th>
+                                <th style="padding:3px 6px; font-weight:500;">→ ERP sale</th>
+                                <th style="padding:3px 6px; font-weight:500; text-align:right;">ERP gross</th>
                                 <th style="padding:3px 6px; font-weight:500;">Card</th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach($dt['clover_charges'] as $c)
-                                <tr>
-                                    <td style="padding:3px 6px; color:#5A5045;">{{ $c->paid_at }}</td>
-                                    <td style="padding:3px 6px; color:#5A5045;">{{ $c->loc_name }}</td>
-                                    <td style="padding:3px 6px; text-align:right;">${{ number_format($c->amount, 2) }}</td>
-                                    <td style="padding:3px 6px; text-align:right; color:#5A5045;">${{ number_format($c->net, 2) }}</td>
-                                    <td style="padding:3px 6px; color:#5A5045;">{{ $c->employee ?: '—' }}</td>
-                                    <td style="padding:3px 6px; color:#5A5045;">{{ $c->card ?: '—' }}</td>
+                                @php $isMatched = !empty($c->matched_erp_id); @endphp
+                                <tr style="background:{{ $isMatched ? 'transparent' : '#FFF3E0' }}; border-bottom:1px solid #F5EFE3;">
+                                    <td style="padding:4px 6px; font-weight:700; color:{{ $isMatched ? '#2E6F40' : '#8B2C2C' }};">
+                                        {{ $isMatched ? '✓' : '⚠ no match' }}
+                                    </td>
+                                    <td style="padding:4px 6px; color:#5A5045;">{{ $c->paid_at }}</td>
+                                    <td style="padding:4px 6px; color:#5A5045;">{{ $c->loc_name }}</td>
+                                    <td style="padding:4px 6px; text-align:right;">${{ number_format($c->amount, 2) }}</td>
+                                    <td style="padding:4px 6px; color:#5A5045;">
+                                        @if($isMatched)
+                                            <a href="{{ url('sells/' . $c->matched_erp_id) }}" style="color:#1F1B16; text-decoration:underline;">#{{ $c->matched_erp_invoice_no }}</a>
+                                        @else
+                                            <span style="color:#8B2C2C; font-style:italic;">no ERP ring within $0.05 / ±12h</span>
+                                        @endif
+                                    </td>
+                                    <td style="padding:4px 6px; text-align:right; color:#5A5045;">
+                                        {{ $isMatched ? '$' . number_format($c->matched_erp_amount, 2) : '—' }}
+                                    </td>
+                                    <td style="padding:4px 6px; color:#5A5045;">{{ $c->card ?: '—' }}</td>
                                 </tr>
                             @endforeach
                         </tbody>
                     </table>
                 </div>
+
+                @if(!empty($dt['unmatched_erp']) && count($dt['unmatched_erp']))
+                    <div style="margin-top:14px;">
+                        <div style="font-weight:700; font-size:12px; color:#1F1B16; margin-bottom:4px;">ERP sales with no matching Clover charge ({{ count($dt['unmatched_erp']) }})</div>
+                        <table style="width:100%; font-size:11px; font-variant-numeric:tabular-nums; border-collapse:collapse;">
+                            <thead>
+                                <tr style="color:#8A7C6A; text-align:left; border-bottom:1px solid #ECE3CF;">
+                                    <th style="padding:3px 6px; font-weight:500;">Time</th>
+                                    <th style="padding:3px 6px; font-weight:500;">Store</th>
+                                    <th style="padding:3px 6px; font-weight:500;">Invoice</th>
+                                    <th style="padding:3px 6px; font-weight:500; text-align:right;">ERP gross</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach($dt['unmatched_erp'] as $s)
+                                    <tr style="background:#FFFBEB; border-bottom:1px solid #F5EFE3;">
+                                        <td style="padding:4px 6px; color:#5A5045;">{{ \Carbon\Carbon::parse($s->ts)->format('g:i a') }}</td>
+                                        <td style="padding:4px 6px; color:#5A5045;">{{ $s->loc_name }}</td>
+                                        <td style="padding:4px 6px;"><a href="{{ url('sells/' . $s->id) }}" style="color:#1F1B16; text-decoration:underline;">#{{ $s->invoice_no }}</a></td>
+                                        <td style="padding:4px 6px; text-align:right;">${{ number_format($s->amount, 2) }}</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
             </details>
         @endif
     </div>
