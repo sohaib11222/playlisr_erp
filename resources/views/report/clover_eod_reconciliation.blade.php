@@ -16,63 +16,89 @@
         $eodPct = $eodClover > 0 ? abs($eodDiff) / $eodClover : 0;
         $eodLabel = $is_single_day ? \Carbon\Carbon::parse($start)->format('l, M j') : (\Carbon\Carbon::parse($start)->format('M j') . ' – ' . \Carbon\Carbon::parse($end)->format('M j'));
     @endphp
-    <div style="background:#FFFFFF; border:1px solid #ECE3CF; border-radius:12px; padding:18px 24px; margin-bottom:16px; box-shadow:0 1px 3px rgba(31,27,22,.08);">
+    {{-- Two-column store layout: Hollywood + Pico each render as a
+         full-width card with their own ERP / Clover / Diff. Sarah's
+         feedback 2026-05-11: "where is pico and hollywood sales
+         separate?" — answered by promoting per-store from a thin row
+         to side-by-side primary cards. --}}
+    @php
+        $stores = $dt['by_store'] ?? [];
+        $hasStores = !empty($stores) && count($stores) >= 1;
+    @endphp
+
+    @if($hasStores)
+        <div style="margin-bottom:8px; font-size:11px; color:#5A5045;">
+            <strong>{{ $eodLabel }}</strong>{{ $location_id && isset($business_locations[$location_id]) ? ' · ' . $business_locations[$location_id] : '' }}
+            <span style="color:#8A7C6A;">— Net Sales (pre-tax). ERP includes all tenders; Clover only sees card.</span>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(360px, 1fr)); gap:14px; margin-bottom:16px;">
+            @foreach($stores as $s)
+                @php
+                    $sDiff = round($s['clover'] - $s['erp_net'], 2);
+                    $sMatched = abs($sDiff) < 0.01;
+                    $sPct = $s['clover'] > 0 ? abs($sDiff) / $s['clover'] : 0;
+                @endphp
+                <div style="background:#FFFFFF; border:1px solid #ECE3CF; border-radius:12px; padding:16px 20px; box-shadow:0 1px 3px rgba(31,27,22,.08);">
+                    <div style="font-weight:700; font-size:18px; color:#1F1B16; margin-bottom:10px; text-transform:capitalize;">{{ $s['name'] }}</div>
+                    <div style="display:flex; gap:18px; align-items:baseline; flex-wrap:wrap;">
+                        <div style="flex:1; min-width:120px;">
+                            <div style="font-size:10px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">ERP Net</div>
+                            <div style="font-size:22px; font-weight:700; color:#1F1B16; font-variant-numeric: tabular-nums;">${{ number_format($s['erp_net'], 2) }}</div>
+                            <div style="font-size:11px; color:#8A7C6A;">{{ $s['erp_count'] ?? 0 }} sale{{ ($s['erp_count'] ?? 0) === 1 ? '' : 's' }}</div>
+                        </div>
+                        <div style="flex:1; min-width:120px;">
+                            <div style="font-size:10px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Clover Net</div>
+                            <div style="font-size:22px; font-weight:700; color:#1F1B16; font-variant-numeric: tabular-nums;">${{ number_format($s['clover'], 2) }}</div>
+                            <div style="font-size:11px; color:#8A7C6A;">{{ $s['clover_count'] ?? 0 }} charge{{ ($s['clover_count'] ?? 0) === 1 ? '' : 's' }}</div>
+                        </div>
+                        <div style="flex:1; min-width:110px;">
+                            <div style="font-size:10px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Diff</div>
+                            @if($sMatched)
+                                <div style="font-size:22px; font-weight:700; color:#2E6F40; font-variant-numeric: tabular-nums;">$0.00</div>
+                                <div style="font-size:11px; color:#2E6F40; font-weight:600;">✓ Matched</div>
+                            @else
+                                <div style="font-size:22px; font-weight:700; color:#8B2C2C; font-variant-numeric: tabular-nums;">{{ $sDiff > 0 ? '+' : '' }}${{ number_format($sDiff, 2) }}</div>
+                                <div style="font-size:11px; color:#8B2C2C;">{{ $sDiff > 0 ? 'Clover ahead' : 'ERP ahead' }} · {{ number_format($sPct * 100, 1) }}%</div>
+                            @endif
+                        </div>
+                    </div>
+                    @if(!empty($s['whatnot_count']))
+                        <div style="margin-top:8px; padding-top:6px; border-top:1px dashed #ECE3CF; font-size:11px; color:#8A7C6A; font-style:italic;" title="Whatnot inventory-only — paid through Whatnot, not Clover; excluded from ERP / Diff.">
+                            + Whatnot ${{ number_format($s['whatnot_net'], 2) }} · {{ $s['whatnot_count'] }} sale{{ $s['whatnot_count'] === 1 ? '' : 's' }} (inventory-only, not on Clover)
+                        </div>
+                    @endif
+                </div>
+            @endforeach
+        </div>
+    @endif
+
+    {{-- Combined day totals below the per-store cards, kept compact. --}}
+    <div style="background:#FFFFFF; border:1px solid #ECE3CF; border-radius:12px; padding:14px 20px; margin-bottom:16px; box-shadow:0 1px 3px rgba(31,27,22,.08);">
         <div style="display:flex; gap:24px; align-items:baseline; flex-wrap:wrap;">
-            <div style="min-width:160px;">
-                <div style="font-size:11px; color:#5A5045; text-transform:uppercase; letter-spacing:.08em; font-weight:600;">Day totals</div>
-                <div style="font-size:13px; color:#8A7C6A; margin-top:2px;">{{ $eodLabel }}{{ $location_id && isset($business_locations[$location_id]) ? ' · ' . $business_locations[$location_id] : '' }}</div>
-                <div style="font-size:11px; color:#8A7C6A; margin-top:6px; max-width:180px; line-height:1.4;">Net Sales (pre-tax). ERP includes all tenders; Clover only sees card.</div>
+            <div style="min-width:140px;">
+                <div style="font-size:11px; color:#5A5045; text-transform:uppercase; letter-spacing:.08em; font-weight:600;">All stores combined</div>
             </div>
-            <div style="flex:1; min-width:170px;">
-                <div style="font-size:12px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">ERP Net Sales</div>
-                <div style="font-size:30px; font-weight:700; color:#1F1B16; font-variant-numeric: tabular-nums;">${{ number_format($eodErp, 2) }}</div>
+            <div style="flex:1; min-width:140px;">
+                <div style="font-size:10px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">ERP Net</div>
+                <div style="font-size:22px; font-weight:700; color:#1F1B16; font-variant-numeric: tabular-nums;">${{ number_format($eodErp, 2) }}</div>
                 <div style="font-size:11px; color:#8A7C6A;">{{ $dt['erp_count'] ?? 0 }} sales</div>
             </div>
-            <div style="flex:1; min-width:170px;">
-                <div style="font-size:12px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Clover Net Sales</div>
-                <div style="font-size:30px; font-weight:700; color:#1F1B16; font-variant-numeric: tabular-nums;">${{ number_format($eodClover, 2) }}</div>
+            <div style="flex:1; min-width:140px;">
+                <div style="font-size:10px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Clover Net</div>
+                <div style="font-size:22px; font-weight:700; color:#1F1B16; font-variant-numeric: tabular-nums;">${{ number_format($eodClover, 2) }}</div>
                 <div style="font-size:11px; color:#8A7C6A;">{{ $dt['clover_count'] ?? 0 }} charges</div>
             </div>
-            <div style="flex:1; min-width:170px;">
-                <div style="font-size:12px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Diff</div>
+            <div style="flex:1; min-width:140px;">
+                <div style="font-size:10px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Diff</div>
                 @if($eodMatched)
-                    <div style="font-size:30px; font-weight:700; color:#2E6F40; font-variant-numeric: tabular-nums;">$0.00</div>
+                    <div style="font-size:22px; font-weight:700; color:#2E6F40; font-variant-numeric: tabular-nums;">$0.00</div>
                     <div style="font-size:11px; color:#2E6F40; font-weight:600;">✓ Matched</div>
                 @else
-                    <div style="font-size:30px; font-weight:700; color:#8B2C2C; font-variant-numeric: tabular-nums;">{{ $eodDiff > 0 ? '+' : '' }}${{ number_format($eodDiff, 2) }}</div>
+                    <div style="font-size:22px; font-weight:700; color:#8B2C2C; font-variant-numeric: tabular-nums;">{{ $eodDiff > 0 ? '+' : '' }}${{ number_format($eodDiff, 2) }}</div>
                     <div style="font-size:11px; color:#8B2C2C;">{{ $eodDiff > 0 ? 'Clover ahead' : 'ERP ahead' }} · {{ number_format($eodPct * 100, 1) }}%</div>
                 @endif
             </div>
         </div>
-
-        @if(!empty($dt['by_store']) && count($dt['by_store']) > 1)
-            <div style="margin-top:16px; padding-top:14px; border-top:1px dashed #ECE3CF;">
-                <div style="font-size:11px; color:#5A5045; text-transform:uppercase; letter-spacing:.08em; font-weight:600; margin-bottom:8px;">By store</div>
-                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:12px;">
-                    @foreach($dt['by_store'] as $s)
-                        @php
-                            $sDiff = round($s['clover'] - $s['erp_net'], 2);
-                            $sMatched = abs($sDiff) < 0.01;
-                        @endphp
-                        <div style="background:#FAF6EE; border:1px solid #ECE3CF; border-radius:8px; padding:12px 14px;">
-                            <div style="font-weight:700; font-size:14px; color:#1F1B16; margin-bottom:6px;">{{ $s['name'] }}</div>
-                            <div style="display:flex; gap:14px; align-items:baseline; flex-wrap:wrap; font-size:13px; font-variant-numeric:tabular-nums;">
-                                <span><span style="color:#8A7C6A; font-size:11px;">ERP</span> <strong>${{ number_format($s['erp_net'], 2) }}</strong></span>
-                                <span><span style="color:#8A7C6A; font-size:11px;">Clover</span> <strong>${{ number_format($s['clover'], 2) }}</strong></span>
-                                <span style="margin-left:auto; font-weight:700; color:{{ $sMatched ? '#2E6F40' : '#8B2C2C' }};">
-                                    {{ $sMatched ? '✓ matched' : (($sDiff > 0 ? '+' : '') . '$' . number_format($sDiff, 2)) }}
-                                </span>
-                            </div>
-                            @if(!empty($s['whatnot_count']))
-                                <div style="margin-top:6px; font-size:11px; color:#8A7C6A; font-style:italic;" title="Whatnot inventory-only">
-                                    + Whatnot ${{ number_format($s['whatnot_net'], 2) }} · {{ $s['whatnot_count'] }} sale{{ $s['whatnot_count'] === 1 ? '' : 's' }}
-                                </div>
-                            @endif
-                        </div>
-                    @endforeach
-                </div>
-            </div>
-        @endif
 
         @if(!empty($dt['whatnot_count']))
             <div style="margin-top:14px; padding-top:12px; border-top:1px dashed #ECE3CF; font-size:12px; color:#5A5045; display:flex; gap:14px; align-items:baseline; flex-wrap:wrap;">
