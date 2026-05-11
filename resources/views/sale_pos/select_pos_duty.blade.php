@@ -155,6 +155,20 @@
     color: #6E2B12;
     box-shadow: 0 0 0 3px rgba(217,120,90,.3);
 }
+/* Disabled state — used on "Both" when Cashier duty is picked, since a
+   register can only be at one store. */
+.pos-duty-shell .store-pill.is-disabled {
+    opacity: .45;
+    cursor: not-allowed;
+    background: var(--d-surface);
+    border-color: var(--d-line);
+    color: var(--d-ink-3);
+    box-shadow: none;
+}
+.pos-duty-shell .store-pill.is-disabled:hover {
+    background: var(--d-surface);
+    border-color: var(--d-line);
+}
 
 /* Duty options — 4 pills in one horizontal row, equal width. */
 .pos-duty-shell .duty-options {
@@ -403,6 +417,11 @@
                 var err = document.getElementById('opening_cash_error');
                 if (!group || !input) return;
 
+                // Cashier locks out the "Both" store pill — a register sits
+                // at exactly one store, so Both isn't valid here.
+                var bothPill = document.querySelector('.store-pill[data-store="both"]');
+                var bothInput = bothPill ? bothPill.querySelector('input[type="radio"]') : null;
+
                 function refresh() {
                     var cashier = document.getElementById('duty_cashier');
                     var on = cashier && cashier.checked;
@@ -412,6 +431,18 @@
                     } else {
                         input.removeAttribute('required');
                         err.style.display = 'none';
+                    }
+                    if (bothPill && bothInput) {
+                        if (on) {
+                            // Deselect "Both" if it was checked; cashier needs
+                            // to pick Pico or Hollywood specifically.
+                            if (bothInput.checked) bothInput.checked = false;
+                            bothInput.disabled = true;
+                            bothPill.classList.add('is-disabled');
+                        } else {
+                            bothInput.disabled = false;
+                            bothPill.classList.remove('is-disabled');
+                        }
                     }
                 }
                 ['duty_cashier','duty_shipping','duty_inventory','duty_admin'].forEach(function (id) {
@@ -431,6 +462,13 @@
                                 e.preventDefault();
                                 err.style.display = 'block';
                                 input.focus();
+                            }
+                            // Block Cashier + Both at the form level so the
+                            // server doesn't have to bounce them back.
+                            var locChecked = form.querySelector('input[name="location_id"]:checked');
+                            if (!locChecked || locChecked.value === '') {
+                                e.preventDefault();
+                                alert('Cashier must pick a specific store (not "Both").');
                             }
                         }
                     });

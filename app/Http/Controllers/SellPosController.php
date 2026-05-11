@@ -209,6 +209,13 @@ class SellPosController extends Controller
             $locationId = null;
         }
 
+        // Cashier must pick a specific store — "Both" doesn't make sense at
+        // the register since a single Clover terminal can only be at one
+        // location at a time.
+        if ($duty === 'cashier' && $locationId === null) {
+            return back()->with('status', ['success' => 0, 'msg' => 'Cashier must pick a specific store (not "Both").'])->withInput();
+        }
+
         $request->session()->put('pos_duty', $duty);
         $request->session()->put('pos_duty_location_id', $locationId);
         $locLabel = null;
