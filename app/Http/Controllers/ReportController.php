@@ -9285,6 +9285,7 @@ class ReportController extends Controller
         // that was never closed doesn't absorb today's swipes.
         $findShiftCashier = function ($ts, $locId) use ($registers, $adminSet) {
             $cpTs = strtotime((string) $ts);
+            // 1) Strict pass: a register actually open at $cpTs.
             foreach ($registers as $reg) {
                 if ((int) ($reg->location_id ?? 0) !== (int) ($locId ?? 0)) continue;
                 if ($reg->user_name === '') continue;
@@ -9298,7 +9299,24 @@ class ReportController extends Controller
                     return $reg->user_name;
                 }
             }
-            return null;
+            // 2) Sarah 2026-05-11: Zak's first Pico swipe of the day was
+            //    at 12:05pm but he opened his register at 12:13pm — strict
+            //    pass missed him so the $5 charge had no card. Fall back
+            //    to the cashier whose shift START is nearest to the swipe
+            //    on the same calendar day at the same location.
+            $cpDay = date('Y-m-d', $cpTs);
+            $bestName = null; $bestDelta = PHP_INT_MAX;
+            foreach ($registers as $reg) {
+                if ((int) ($reg->location_id ?? 0) !== (int) ($locId ?? 0)) continue;
+                if ($reg->user_name === '') continue;
+                $rfn = strtolower(preg_split('/\s+/', trim($reg->user_name))[0] ?? '');
+                if (isset($adminSet[$rfn])) continue;
+                $openTs = strtotime((string) $reg->opened_at);
+                if (date('Y-m-d', $openTs) !== $cpDay) continue;
+                $delta = abs($openTs - $cpTs);
+                if ($delta < $bestDelta) { $bestDelta = $delta; $bestName = $reg->user_name; }
+            }
+            return $bestName;
         };
 
         $toCents = function ($x) { return (int) round(((float) $x) * 100); };

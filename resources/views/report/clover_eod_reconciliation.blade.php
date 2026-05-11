@@ -394,16 +394,19 @@
                                 $empKey = strtolower(trim($e['display_name']));
                                 if ($empKey === 'unknown' || $empKey === 'unattributed') continue;
 
-                                // Source of truth: total_sales = sum of t.final_total for
-                                // this cashier's transactions, IGNORING payment method.
-                                // Cashiers ring everything as 'cash' regardless of how
-                                // the customer actually paid, so the only trustworthy
-                                // "what they sold" number is the transaction total.
-                                $totalSold  = (float) ($e['total_sales'] ?? 0);
-                                $cardClover = (float) ($e['clover_total'] ?? 0);
-                                // Implied cash = what was sold minus what Clover settled.
-                                // If Clover > sold (mis-keyed amount), don't go negative;
-                                // surface as a flag instead.
+                                // Sarah 2026-05-11: unify on NET (pre-tax) everywhere
+                                // so per-cashier rolls up to per-store rolls up to day-
+                                // total. Gross stays as a subtitle since the cash drawer
+                                // math uses it, but the reconciliation diff is NET.
+                                $totalSoldGross = (float) ($e['total_sales'] ?? 0);
+                                $cardCloverGross = (float) ($e['clover_total'] ?? 0);
+                                $totalSold  = (float) ($e['net_sales'] ?? 0);
+                                // Clover net per cashier = gross − tax. We don't have
+                                // per-cashier Clover tax aggregated separately, so
+                                // approximate by applying the same ratio that Clover's
+                                // own dashboard uses (gross × erp_net / erp_gross).
+                                $taxRatio = $totalSoldGross > 0 ? ($totalSold / $totalSoldGross) : 1.0;
+                                $cardClover = round($cardCloverGross * $taxRatio, 2);
                                 $impliedCash = max(0.0, round($totalSold - $cardClover, 2));
                                 $overSwipe   = round($cardClover - $totalSold, 2);
 
@@ -478,21 +481,25 @@
                                     </label>
                                 </div>
 
-                                {{-- WHAT THEY SOLD — total + payment split.
-                                     Sarah 2026-05-11: cash IS recorded on
-                                     Clover at Nivessa — cashiers ring it on
-                                     the terminal too — so the "not on Clover"
-                                     bucket isn't cash, it's a real gap
-                                     (mis-rung sale, sync lag, voided one side
-                                     not the other). Label says so. --}}
+                                {{-- WHAT THEY SOLD — Sarah 2026-05-11: every
+                                     "daily sales" number on the page must
+                                     match the same definition (NET pre-tax,
+                                     like Clover's dashboard). Per-cashier
+                                     primary numbers are now NET so they
+                                     sum to the per-store Net cards above.
+                                     Gross is shown as a smaller subtitle
+                                     because it's only meaningful for the
+                                     cash drawer math below, not for the
+                                     reconciliation diff. --}}
                                 @php
                                     $missingClover = $totalSold > 0 && $cardClover == 0;
                                 @endphp
                                 <div class="cc-section">
                                     <div class="cc-sec-h">What they sold @if($txnCount)<span style="font-weight:500; color:#9ca3af;">· {{ $txnCount }} sale{{ $txnCount === 1 ? '' : 's' }}</span>@endif</div>
-                                    <div class="cc-line sum"><span class="cc-label">Total sales</span><span class="cc-val">${{ number_format($totalSold, 2) }}</span></div>
-                                    <div class="cc-line"><span class="cc-label minor">— matched on Clover</span><span class="cc-val">${{ number_format($cardClover, 2) }}</span></div>
-                                    <div class="cc-line"><span class="cc-label minor" title="Cash IS rung on Clover too at Nivessa, so this gap isn't cash — it's a real reconciliation miss (sync lag, mis-rung sale, or one-side void).">— gap (not yet matched on Clover)</span><span class="cc-val">${{ number_format($impliedCash, 2) }}</span></div>
+                                    <div class="cc-line sum"><span class="cc-label" title="Net sales = pre-tax, matches the Day Totals and per-store ERP Net.">ERP Net sales</span><span class="cc-val">${{ number_format($totalSold, 2) }}</span></div>
+                                    <div class="cc-line"><span class="cc-label minor">Clover Net (this cashier)</span><span class="cc-val">${{ number_format($cardClover, 2) }}</span></div>
+                                    <div class="cc-line"><span class="cc-label minor" style="color:{{ abs($overSwipe) < 0.01 ? '#2E6F40' : '#8B2C2C' }};">Diff (Clover − ERP)</span><span class="cc-val" style="color:{{ abs($overSwipe) < 0.01 ? '#2E6F40' : '#8B2C2C' }}; font-weight:700;">{{ abs($overSwipe) < 0.01 ? '$0.00 ✓' : (($overSwipe > 0 ? '+' : '') . '$' . number_format($overSwipe, 2)) }}</span></div>
+                                    <div class="cc-line"><span class="cc-label minor" style="color:#8A7C6A; font-size:11px;" title="Gross (incl tax + fees) — only used for the cash drawer math below.">Gross (incl tax + fees)</span><span class="cc-val" style="color:#8A7C6A; font-size:11px;">${{ number_format($totalSoldGross, 2) }}</span></div>
                                     @if($missingClover)
                                         <div class="cc-line"><span class="cc-label" style="color:#92400e;">⚠ No Clover swipes matched — sync may be stale</span><span class="cc-val"></span></div>
                                     @endif
