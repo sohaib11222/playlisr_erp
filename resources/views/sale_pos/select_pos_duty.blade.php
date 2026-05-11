@@ -125,42 +125,44 @@
     box-shadow: 0 0 0 3px var(--d-accent-soft);
 }
 
-/* Duty option tiles — radios styled as clickable cards */
+/* Duty options — big tappable pills. Single column so each pill stretches
+   the full width of the card; finger-sized hit target on touchscreens. */
 .pos-duty-shell .duty-options {
-    display: grid;
-    grid-template-columns: 1fr;
+    display: flex;
+    flex-direction: column;
     gap: 10px;
-}
-@media (min-width: 640px) {
-    .pos-duty-shell .duty-options {
-        grid-template-columns: 1fr 1fr;
-    }
 }
 .pos-duty-shell .duty-option {
     position: relative;
     display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    padding: 14px 16px;
+    align-items: center;
+    gap: 14px;
+    padding: 16px 22px;
+    min-height: 64px;
     background: var(--d-surface);
-    border: 1.5px solid var(--d-line);
-    border-radius: var(--d-radius-sm);
+    border: 2px solid var(--d-line);
+    border-radius: 999px;
     cursor: pointer;
-    transition: border-color .12s ease, background .12s ease, box-shadow .12s ease;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: border-color .12s ease, background .12s ease, box-shadow .12s ease, transform .08s ease;
     margin: 0;
 }
 .pos-duty-shell .duty-option:hover {
     border-color: var(--d-line-2);
     background: var(--d-surface-2);
 }
+.pos-duty-shell .duty-option:active {
+    transform: scale(.99);
+}
 .pos-duty-shell .duty-option input[type="radio"] {
     appearance: none;
     -webkit-appearance: none;
-    width: 18px;
-    height: 18px;
+    width: 22px;
+    height: 22px;
     border: 2px solid var(--d-line-2);
     border-radius: 999px;
-    margin: 2px 0 0;
+    margin: 0;
     flex: 0 0 auto;
     cursor: pointer;
     background: #fff;
@@ -172,31 +174,38 @@
 .pos-duty-shell .duty-option input[type="radio"]:checked::after {
     content: "";
     position: absolute;
-    inset: 3px;
+    inset: 4px;
     border-radius: 999px;
     background: var(--d-accent-deep);
 }
 .pos-duty-shell .duty-option:has(input:checked) {
     border-color: var(--d-accent-deep);
     background: var(--d-accent-soft);
-    box-shadow: 0 0 0 3px rgba(232,207,104,.25);
+    box-shadow: 0 0 0 3px rgba(232,207,104,.3);
 }
-.pos-duty-shell .duty-option .opt-body { min-width: 0; }
+.pos-duty-shell .duty-option .opt-body {
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 10px;
+    flex: 1 1 auto;
+}
 .pos-duty-shell .duty-option .opt-title {
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 700;
     color: var(--d-ink);
     line-height: 1.2;
-    margin-bottom: 2px;
+    letter-spacing: -.005em;
 }
 .pos-duty-shell .duty-option .opt-desc {
-    font-size: 12.5px;
+    font-size: 13px;
     font-weight: 500;
-    color: var(--d-ink-2);
+    color: var(--d-ink-3);
     line-height: 1.35;
 }
 .pos-duty-shell .duty-option:has(input:checked) .opt-title { color: var(--d-accent-text); }
-.pos-duty-shell .duty-option:has(input:checked) .opt-desc { color: var(--d-accent-text); opacity: .85; }
+.pos-duty-shell .duty-option:has(input:checked) .opt-desc { color: var(--d-accent-text); opacity: .8; }
 
 /* Opening cash callout — keep the existing "warning yellow" feel but
    re-skinned to match the accent tokens used everywhere else here. */
