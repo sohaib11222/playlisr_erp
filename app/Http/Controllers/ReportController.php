@@ -9193,6 +9193,7 @@ class ReportController extends Controller
                 cp.location_id, bl.name as location_name,
                 cp.paid_at as ts,
                 cp.amount as amount,
+                COALESCE(cp.tax_cents, 0) as tax_cents,
                 COALESCE(NULLIF(TRIM(cp.employee_name), ''), '') as employee_name")
             ->orderBy('cp.paid_at')
             ->get();
@@ -9414,10 +9415,12 @@ class ReportController extends Controller
                     'employee_name' => $emp,
                     'clover_count' => 0,
                     'clover_total' => 0.0,
+                    'clover_net'   => 0.0,
                 ];
             }
             $cloverAgg[$key]->clover_count += 1;
             $cloverAgg[$key]->clover_total += (float) $r->amount;
+            $cloverAgg[$key]->clover_net   += (float) $r->amount - ((float) $r->tax_cents) / 100.0;
         }
         $cloverRows = collect(array_values($cloverAgg));
 
@@ -9433,7 +9436,7 @@ class ReportController extends Controller
         $emptyEmployee = [
             'display_name' => '',
             'erp_total' => 0.0, 'erp_count' => 0,
-            'clover_total' => 0.0, 'clover_count' => 0,
+            'clover_total' => 0.0, 'clover_net' => 0.0, 'clover_count' => 0,
             'total_sales' => 0.0, 'net_sales' => 0.0, 'txn_count' => 0,
             'shift_start' => null, 'shift_end' => null, 'shift_status' => null,
             'opening_cash' => null, 'cash_sales' => 0.0,
@@ -9541,6 +9544,7 @@ class ReportController extends Controller
                 $buckets[$day][$locKey]['employees'][$empKey] = ['display_name' => ucfirst($empKey)] + $emptyEmployee;
             }
             $buckets[$day][$locKey]['employees'][$empKey]['clover_total'] += (float) $r->clover_total;
+            $buckets[$day][$locKey]['employees'][$empKey]['clover_net']   += (float) ($r->clover_net ?? 0);
             $buckets[$day][$locKey]['employees'][$empKey]['clover_count'] += (int) $r->clover_count;
         }
 
@@ -10004,7 +10008,7 @@ class ReportController extends Controller
             return [
                 'display_name' => ucfirst($empKey),
                 'erp_total' => 0.0, 'erp_count' => 0,
-                'clover_total' => 0.0, 'clover_count' => 0,
+                'clover_total' => 0.0, 'clover_net' => 0.0, 'clover_count' => 0,
                 'total_sales' => 0.0, 'net_sales' => 0.0, 'txn_count' => 0,
                 'cash_rung' => 0.0,
                 'shift_start' => null, 'shift_end' => null, 'shift_status' => null,
@@ -10034,6 +10038,7 @@ class ReportController extends Controller
                 $byLoc[$locKey]['employees'][$empKey] = $blankEmp($empKey);
             }
             $byLoc[$locKey]['employees'][$empKey]['clover_total'] += (float) $r->clover_total;
+            $byLoc[$locKey]['employees'][$empKey]['clover_net']   += (float) ($r->clover_net ?? 0);
             $byLoc[$locKey]['employees'][$empKey]['clover_count'] += (int) $r->clover_count;
         }
 

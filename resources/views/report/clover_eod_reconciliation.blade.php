@@ -394,19 +394,14 @@
                                 $empKey = strtolower(trim($e['display_name']));
                                 if ($empKey === 'unknown' || $empKey === 'unattributed') continue;
 
-                                // Sarah 2026-05-11: unify on NET (pre-tax) everywhere
-                                // so per-cashier rolls up to per-store rolls up to day-
-                                // total. Gross stays as a subtitle since the cash drawer
-                                // math uses it, but the reconciliation diff is NET.
-                                $totalSoldGross = (float) ($e['total_sales'] ?? 0);
+                                // Sarah 2026-05-11: unify on NET everywhere — per-cashier
+                                // rolls to per-store rolls to day-total. NET values come
+                                // direct from aggregates (ERP total_before_tax sum, Clover
+                                // amount − tax_cents sum). No ratio approximation.
+                                $totalSoldGross  = (float) ($e['total_sales'] ?? 0);
                                 $cardCloverGross = (float) ($e['clover_total'] ?? 0);
-                                $totalSold  = (float) ($e['net_sales'] ?? 0);
-                                // Clover net per cashier = gross − tax. We don't have
-                                // per-cashier Clover tax aggregated separately, so
-                                // approximate by applying the same ratio that Clover's
-                                // own dashboard uses (gross × erp_net / erp_gross).
-                                $taxRatio = $totalSoldGross > 0 ? ($totalSold / $totalSoldGross) : 1.0;
-                                $cardClover = round($cardCloverGross * $taxRatio, 2);
+                                $totalSold       = (float) ($e['net_sales'] ?? 0);
+                                $cardClover      = (float) ($e['clover_net'] ?? 0);
                                 $impliedCash = max(0.0, round($totalSold - $cardClover, 2));
                                 $overSwipe   = round($cardClover - $totalSold, 2);
 
