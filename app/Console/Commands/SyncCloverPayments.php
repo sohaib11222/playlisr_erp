@@ -146,14 +146,18 @@ class SyncCloverPayments extends Command
                 continue;
             }
 
-            // createdTime is unix-ms (UTC). Build the Carbon explicitly in
-            // UTC, then convert to the app TZ before storing, so the
-            // serialized DATETIME string in MySQL is unambiguously LA
-            // local time. Sarah 2026-05-08: orphans were rendering with
-            // future-day timestamps (e.g. "May 9 7:46 AM" while it was
-            // still May 8 evening) because the blade assumed paid_at was
-            // already in LA but Carbon::createFromTimestampMs without an
-            // explicit tz arg was returning UTC.
+            // createdTime is unix-ms (UTC). Build the Carbon explicitly
+            // in UTC, then convert to config('app.timezone') before
+            // storing — the read-side helper SellPosController::
+            // parseCloverPaidAtLa interprets stored strings in the same
+            // TZ and explicitly converts to LA. Keeping write and read
+            // both anchored to config('app.timezone') means the pipeline
+            // stays consistent whether APP_TIMEZONE is LA or (the
+            // current misconfig) Asia/Kolkata. Sarah 2026-05-11: the
+            // matcher previously called strtotime() which interprets
+            // strings in PHP-default-TZ (LA), so Kolkata-stored values
+            // were off by 12.5h — long enough to bust the ±12h window
+            // and surface every charge as a Clover-only orphan.
             $createdMs = $p['createdTime'] ?? 0;
             $paidAt = $createdMs
                 ? Carbon::createFromTimestampMs($createdMs, 'UTC')->setTimezone(config('app.timezone'))

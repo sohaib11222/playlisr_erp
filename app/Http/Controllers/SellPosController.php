@@ -114,23 +114,44 @@ class SellPosController extends Controller
     }
 
     /**
-     * Format a CloverPayment->paid_at as Hollywood-local time. paid_at is
-     * stored in app TZ (America/Los_Angeles) by SyncCloverPayments — the
-     * model's 'datetime' cast reads it back in that TZ, so use the cast
-     * value directly. setTimezone('LA') is defensive in case PHP default
-     * TZ on the box isn't LA. (Earlier this re-parsed as UTC and converted
-     * to LA, which subtracted 7 hours from every charge — Sarah 2026-05-07.)
+     * Format a CloverPayment->paid_at as LA-local time.
+     *
+     * Sarah 2026-05-11: production .env has APP_TIMEZONE="Asia/Kolkata"
+     * (inherited from .env.example). SyncCloverPayments writes paid_at
+     * in config('app.timezone'), so the stored string is Kolkata-local
+     * (+12:30 from LA). Parsing without an explicit TZ would have PHP
+     * default TZ (LA, set by Timezone middleware) interpret a Kolkata
+     * string as LA — offsetting every charge by 12.5 hours, which is
+     * long enough that the ±12hr matcher window fails and every charge
+     * surfaces as a Clover-only orphan, and yesterday-evening swipes
+     * roll into today's "paid_on" bucket. Interpret as app.timezone
+     * (the TZ the row was actually written in) then convert to LA.
      */
     public static function formatCloverPaidAt($cp): string
     {
         try {
+            $appTz = config('app.timezone') ?: 'America/Los_Angeles';
             $dt = $cp->paid_at instanceof \Carbon\Carbon
                 ? $cp->paid_at->copy()
-                : \Carbon\Carbon::parse((string) $cp->paid_at);
+                : \Carbon\Carbon::parse((string) $cp->paid_at, $appTz);
             return $dt->setTimezone('America/Los_Angeles')->format('Y-m-d H:i:s');
         } catch (\Throwable $e) {
             return (string) $cp->paid_at;
         }
+    }
+
+    /**
+     * Parse a CloverPayment->paid_at into an LA-local Carbon. Same TZ
+     * caveats as formatCloverPaidAt above — paid_at strings in the DB
+     * are written in config('app.timezone'), which may not be LA.
+     */
+    public static function parseCloverPaidAtLa($paidAt): \Carbon\Carbon
+    {
+        $appTz = config('app.timezone') ?: 'America/Los_Angeles';
+        $dt = $paidAt instanceof \Carbon\Carbon
+            ? $paidAt->copy()
+            : \Carbon\Carbon::parse((string) $paidAt, $appTz);
+        return $dt->setTimezone('America/Los_Angeles');
     }
 
     /**
@@ -168,7 +189,7 @@ class SellPosController extends Controller
         }
 
         $request->validate([
-            'duty' => 'required|in:cashier,shipping,inventory',
+            'duty' => 'required|in:cashier,shipping,inventory,admin',
             'location_id' => 'nullable|integer',
             'intended' => 'nullable|string|max:2048',
         ]);
@@ -575,6 +596,17 @@ class SellPosController extends Controller
                 $cpByCents[$toCents($cp->amount)][] = $key;
             }
 
+            // Pre-compute LA-correct epochs for every Clover row once.
+            // paid_at strings in the DB are in config('app.timezone') —
+            // strtotime() would interpret them as PHP-default-TZ (LA),
+            // which silently subtracts 12.5h on Kolkata-stored values and
+            // blows the ±12h match window, surfacing every charge as a
+            // Clover-only orphan. (Sarah 2026-05-11.)
+            $cpTsByKey = [];
+            foreach ($cpRows as $key => $cp) {
+                $cpTsByKey[$key] = self::parseCloverPaidAtLa($cp->paid_at)->getTimestamp();
+            }
+
             $candidates = [];
             foreach ($matchSales as $sale) {
                 $erTs    = strtotime((string) $sale->transaction_date);
@@ -584,7 +616,7 @@ class SellPosController extends Controller
                     foreach (($cpByCents[$erCents + $d] ?? []) as $key) {
                         $cp = $cpRows[$key];
                         if ($cp->location_id !== null && (int) $cp->location_id !== $erLoc) continue;
-                        $timeDelta = abs(strtotime((string) $cp->paid_at) - $erTs);
+                        $timeDelta = abs(($cpTsByKey[$key] ?? 0) - $erTs);
                         if ($timeDelta > $matchTimeWindow) continue;
                         $candidates[] = [
                             'sale_id' => $sale->id,
@@ -649,7 +681,8 @@ class SellPosController extends Controller
             $toCentsDiag = function ($x) { return (int) round(((float) $x) * 100); };
             foreach ($unclaimed_clover_payments as $cp) {
                 $cpCents = $toCentsDiag($cp->amount);
-                $cpTs    = strtotime((string) $cp->paid_at);
+                // LA-correct epoch — see TZ note above on the matcher.
+                $cpTs    = self::parseCloverPaidAtLa($cp->paid_at)->getTimestamp();
                 $cpLoc   = $cp->location_id !== null ? (int) $cp->location_id : null;
                 $rows = [];
                 foreach ($matchSales as $sale) {
@@ -845,9 +878,23 @@ class SellPosController extends Controller
         // Include paid_at / employee / card so the banner can drill into
         // each store's charges and Sarah can spot misrouted payments
         // (e.g. Hollywood swipes showing up under Pico before Pico opens).
+        //
+        // Sarah 2026-05-11: filtering on paid_on (a DATE column) doesn't
+        // work when paid_at strings are written in app.timezone=Kolkata —
+        // a LA-evening swipe gets paid_on = next-Kolkata-date, flooding
+        // today's bucket with yesterday's swipes. Filter on the paid_at
+        // datetime instead, converting LA today's [00:00, 23:59:59] into
+        // the app.timezone the strings were stored in.
+        $appTz = config('app.timezone') ?: 'America/Los_Angeles';
+        $startLaToday = \Carbon\Carbon::now('America/Los_Angeles')->startOfDay();
+        $endLaToday   = \Carbon\Carbon::now('America/Los_Angeles')->endOfDay();
+        $startInAppTz = $startLaToday->copy()->setTimezone($appTz)->format('Y-m-d H:i:s');
+        $endInAppTz   = $endLaToday->copy()->setTimezone($appTz)->format('Y-m-d H:i:s');
+
         $cloverRowsToday = \DB::table('clover_payments')
             ->where('business_id', $business_id)
-            ->whereDate('paid_on', $todayStr)
+            ->where('paid_at', '>=', $startInAppTz)
+            ->where('paid_at', '<=', $endInAppTz)
             ->where(function ($q) {
                 $q->whereNull('result')->orWhere('result', 'SUCCESS')->orWhere('result', 'APPROVED');
             })
@@ -1160,6 +1207,17 @@ class SellPosController extends Controller
                 $cpByCents[$toCents($cp->amount)][] = $key;
             }
 
+            // Pre-compute LA-correct epochs for every Clover row once.
+            // paid_at strings in the DB are in config('app.timezone') —
+            // strtotime() would interpret them as PHP-default-TZ (LA),
+            // which silently subtracts 12.5h on Kolkata-stored values and
+            // blows the ±12h match window, surfacing every charge as a
+            // Clover-only orphan. (Sarah 2026-05-11.)
+            $cpTsByKey = [];
+            foreach ($cpRows as $key => $cp) {
+                $cpTsByKey[$key] = self::parseCloverPaidAtLa($cp->paid_at)->getTimestamp();
+            }
+
             $candidates = [];
             foreach ($matchSales as $sale) {
                 $erTs    = strtotime((string) $sale->transaction_date);
@@ -1169,7 +1227,7 @@ class SellPosController extends Controller
                     foreach (($cpByCents[$erCents + $d] ?? []) as $key) {
                         $cp = $cpRows[$key];
                         if ($cp->location_id !== null && (int) $cp->location_id !== $erLoc) continue;
-                        $timeDelta = abs(strtotime((string) $cp->paid_at) - $erTs);
+                        $timeDelta = abs(($cpTsByKey[$key] ?? 0) - $erTs);
                         if ($timeDelta > $matchTimeWindow) continue;
                         $candidates[] = [
                             'sale_id' => $sale->id,

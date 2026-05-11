@@ -179,78 +179,112 @@
 </section>
 
 <section class="content">
-    <div class="rf-wrap">
-        @php
-            $byStore = $today_by_store ?? [];
-            $totErp = 0; $totClover = 0;
-            foreach ($byStore as $s) {
-                $totErp    += $s['erp_net'];
-                $totClover += $s['clover'];
-            }
-            $totDiff = round($totClover - $totErp, 2);
-        @endphp
-        @if(!empty($byStore))
-            <details style="margin-bottom:12px;">
-                <summary style="list-style:none; cursor:pointer; padding:10px 14px; background:#FFFFFF; border:1px solid #ECE3CF; border-radius:8px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; font-size:13px; color:#1F1B16;">
-                    <span style="font-weight:600; color:#5A5045; font-size:11px; text-transform:uppercase; letter-spacing:.06em;">Today</span>
+    @php
+        $byStore = $today_by_store ?? [];
+        $totErp = 0; $totErpCount = 0; $totClover = 0; $totCloverCount = 0;
+        foreach ($byStore as $s) {
+            $totErp        += $s['erp_net'];
+            $totErpCount   += $s['erp_count'] ?? 0;
+            $totClover     += $s['clover'];
+            $totCloverCount+= $s['clover_count'] ?? 0;
+        }
+        $totDiff = round($totClover - $totErp, 2);
+        $totMatched = abs($totDiff) < 0.01;
+        $totPct = $totClover > 0 ? abs($totDiff) / $totClover : 0;
+        $todayLabel = \Carbon\Carbon::now('America/Los_Angeles')->format('l, M j');
+    @endphp
+    @if(!empty($byStore))
+        <div style="background:#FFFFFF; border:1px solid #ECE3CF; border-radius:12px; padding:18px 24px; margin-bottom:16px; box-shadow:0 1px 3px rgba(31,27,22,.08);">
+            <div style="display:flex; gap:24px; align-items:baseline; flex-wrap:wrap;">
+                <div style="min-width:160px;">
+                    <div style="font-size:11px; color:#5A5045; text-transform:uppercase; letter-spacing:.08em; font-weight:600;">Day totals</div>
+                    <div style="font-size:13px; color:#8A7C6A; margin-top:2px;">{{ $todayLabel }}{{ $location_id && isset($business_locations[$location_id]) ? ' · ' . $business_locations[$location_id] : '' }}</div>
+                    <div style="font-size:11px; color:#8A7C6A; margin-top:6px; max-width:180px; line-height:1.4;">Net Sales (pre-tax). ERP includes all tenders; Clover only sees card.</div>
+                </div>
+                <div style="flex:1; min-width:170px;">
+                    <div style="font-size:12px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">ERP Net Sales</div>
+                    <div style="font-size:30px; font-weight:700; color:#1F1B16; font-variant-numeric: tabular-nums;">${{ number_format($totErp, 2) }}</div>
+                    <div style="font-size:11px; color:#8A7C6A;">{{ $totErpCount }} sale{{ $totErpCount === 1 ? '' : 's' }}</div>
+                </div>
+                <div style="flex:1; min-width:170px;">
+                    <div style="font-size:12px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Clover Net Sales</div>
+                    <div style="font-size:30px; font-weight:700; color:#1F1B16; font-variant-numeric: tabular-nums;">${{ number_format($totClover, 2) }}</div>
+                    <div style="font-size:11px; color:#8A7C6A;">{{ $totCloverCount }} charge{{ $totCloverCount === 1 ? '' : 's' }}</div>
+                </div>
+                <div style="flex:1; min-width:170px;">
+                    <div style="font-size:12px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Diff</div>
+                    @if($totMatched)
+                        <div style="font-size:30px; font-weight:700; color:#2E6F40; font-variant-numeric: tabular-nums;">$0.00</div>
+                        <div style="font-size:11px; color:#2E6F40; font-weight:600;">✓ Matched</div>
+                    @else
+                        <div style="font-size:30px; font-weight:700; color:#8B2C2C; font-variant-numeric: tabular-nums;">{{ $totDiff > 0 ? '+' : '' }}${{ number_format($totDiff, 2) }}</div>
+                        <div style="font-size:11px; color:#8B2C2C;">{{ $totDiff > 0 ? 'Clover ahead' : 'ERP ahead' }} · {{ number_format($totPct * 100, 1) }}%</div>
+                    @endif
+                </div>
+            </div>
+
+            @if(count($byStore) > 1)
+                <div style="margin-top:14px; padding-top:12px; border-top:1px dashed #ECE3CF; display:flex; gap:24px; flex-wrap:wrap; font-size:12px; color:#5A5045;">
                     @foreach($byStore as $s)
                         @php
                             $sDiff = round($s['clover'] - $s['erp_net'], 2);
                             $sMatched = abs($sDiff) < 0.01;
                         @endphp
-                        <span style="display:inline-flex; gap:6px; align-items:baseline;">
-                            <span style="color:#5A5045;">{{ $s['name'] }}</span>
-                            <span style="font-variant-numeric:tabular-nums; font-weight:600;">${{ number_format($s['erp_net'], 0) }}</span>
-                            <span style="color:#BFB096;">/</span>
-                            <span style="font-variant-numeric:tabular-nums; font-weight:600;">${{ number_format($s['clover'], 0) }}</span>
+                        <div style="display:inline-flex; gap:8px; align-items:baseline;">
+                            <span style="font-weight:600; color:#1F1B16;">{{ $s['name'] }}</span>
+                            <span style="font-variant-numeric:tabular-nums;">ERP ${{ number_format($s['erp_net'], 2) }}</span>
+                            <span style="color:#BFB096;">·</span>
+                            <span style="font-variant-numeric:tabular-nums;">Clover ${{ number_format($s['clover'], 2) }}</span>
                             <span style="font-variant-numeric:tabular-nums; font-weight:700; color:{{ $sMatched ? '#2E6F40' : '#8B2C2C' }};">
-                                ({{ $sDiff > 0 ? '+' : '' }}${{ number_format($sDiff, 0) }})
+                                ({{ $sDiff > 0 ? '+' : '' }}${{ number_format($sDiff, 2) }})
                             </span>
-                        </span>
-                    @endforeach
-                    <span style="margin-left:auto; color:#8A7C6A; font-size:11px;">ERP / Clover · click to expand</span>
-                </summary>
-                <div style="background:#FFFFFF; border:1px solid #ECE3CF; border-top:none; border-radius:0 0 8px 8px; padding:10px 14px; font-size:12px; color:#5A5045; line-height:1.5;">
-                    <div style="margin-bottom:10px;">
-                        Net Sales (pre-tax). ERP totals include all tenders (cash + card + other);
-                        Clover is what hit the merchant account.
-                    </div>
-                    @foreach($byStore as $s)
-                        @if(!empty($s['clover_charges']))
-                            <div style="margin-top:8px; border-top:1px dashed #ECE3CF; padding-top:8px;">
-                                <div style="font-weight:600; color:#1F1B16; margin-bottom:4px;">
-                                    {{ $s['name'] }} · {{ count($s['clover_charges']) }} Clover charge{{ count($s['clover_charges']) === 1 ? '' : 's' }} today
-                                    <span style="color:#8A7C6A; font-weight:400;">(gross ${{ number_format(array_sum(array_column($s['clover_charges'], 'amount')), 2) }})</span>
-                                </div>
-                                <table style="width:100%; font-size:11px; font-variant-numeric:tabular-nums; border-collapse:collapse;">
-                                    <thead>
-                                        <tr style="color:#8A7C6A; text-align:left;">
-                                            <th style="padding:2px 6px; font-weight:500;">Time</th>
-                                            <th style="padding:2px 6px; font-weight:500; text-align:right;">Gross</th>
-                                            <th style="padding:2px 6px; font-weight:500; text-align:right;">Net</th>
-                                            <th style="padding:2px 6px; font-weight:500;">Clover employee</th>
-                                            <th style="padding:2px 6px; font-weight:500;">Card</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach($s['clover_charges'] as $c)
-                                            <tr>
-                                                <td style="padding:2px 6px; color:#5A5045;">{{ \Carbon\Carbon::parse($c['paid_at'])->format('g:i a') }}</td>
-                                                <td style="padding:2px 6px; text-align:right;">${{ number_format($c['amount'], 2) }}</td>
-                                                <td style="padding:2px 6px; text-align:right; color:#5A5045;">${{ number_format($c['net'], 2) }}</td>
-                                                <td style="padding:2px 6px; color:#5A5045;">{{ $c['employee'] ?: '—' }}</td>
-                                                <td style="padding:2px 6px; color:#5A5045;">{{ $c['card'] ?: '—' }}</td>
-                                            </tr>
-                                        @endforeach
-                                    </tbody>
-                                </table>
-                            </div>
-                        @endif
+                        </div>
                     @endforeach
                 </div>
-            </details>
-        @endif
-    </div>
+            @endif
+
+            @php $anyCharges = false; foreach ($byStore as $_s) { if (!empty($_s['clover_charges'])) { $anyCharges = true; break; } } @endphp
+            @if($anyCharges)
+                <details style="margin-top:12px;">
+                    <summary style="cursor:pointer; font-size:12px; color:#8A7C6A; list-style:none;">▸ Show every Clover charge today ({{ $totCloverCount }})</summary>
+                    <div style="margin-top:10px;">
+                        @foreach($byStore as $s)
+                            @if(!empty($s['clover_charges']))
+                                <div style="margin-top:8px; border-top:1px dashed #ECE3CF; padding-top:8px;">
+                                    <div style="font-weight:600; color:#1F1B16; margin-bottom:4px; font-size:12px;">
+                                        {{ $s['name'] }} · {{ count($s['clover_charges']) }} charge{{ count($s['clover_charges']) === 1 ? '' : 's' }}
+                                        <span style="color:#8A7C6A; font-weight:400;">(gross ${{ number_format(array_sum(array_column($s['clover_charges'], 'amount')), 2) }})</span>
+                                    </div>
+                                    <table style="width:100%; font-size:11px; font-variant-numeric:tabular-nums; border-collapse:collapse;">
+                                        <thead>
+                                            <tr style="color:#8A7C6A; text-align:left;">
+                                                <th style="padding:2px 6px; font-weight:500;">Time</th>
+                                                <th style="padding:2px 6px; font-weight:500; text-align:right;">Gross</th>
+                                                <th style="padding:2px 6px; font-weight:500; text-align:right;">Net</th>
+                                                <th style="padding:2px 6px; font-weight:500;">Clover employee</th>
+                                                <th style="padding:2px 6px; font-weight:500;">Card</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach($s['clover_charges'] as $c)
+                                                <tr>
+                                                    <td style="padding:2px 6px; color:#5A5045;">{{ \Carbon\Carbon::parse($c['paid_at'])->format('g:i a') }}</td>
+                                                    <td style="padding:2px 6px; text-align:right;">${{ number_format($c['amount'], 2) }}</td>
+                                                    <td style="padding:2px 6px; text-align:right; color:#5A5045;">${{ number_format($c['net'], 2) }}</td>
+                                                    <td style="padding:2px 6px; color:#5A5045;">{{ $c['employee'] ?: '—' }}</td>
+                                                    <td style="padding:2px 6px; color:#5A5045;">{{ $c['card'] ?: '—' }}</td>
+                                                </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
+                            @endif
+                        @endforeach
+                    </div>
+                </details>
+            @endif
+        </div>
+    @endif
 </section>
 
 <section class="content">
@@ -388,16 +422,13 @@
         @if($item['type'] === 'clover')
             @php
                 $cp = $item['cp'];
-                // paid_at is stored in app TZ (America/Los_Angeles) by
-                // SyncCloverPayments — Carbon::createFromTimestampMs picks
-                // up the app default TZ, and Eloquent serializes Carbons in
-                // their current TZ. The model's 'datetime' cast then reads
-                // them back in app TZ, so use that directly. (Earlier code
-                // re-parsed the raw value as UTC and converted to LA, which
-                // subtracted 7 hours from every charge — Sarah, 2026-05-07.)
-                $cpDt = $cp->paid_at instanceof \Carbon\Carbon
-                    ? $cp->paid_at->copy()->setTimezone('America/Los_Angeles')
-                    : \Carbon\Carbon::parse((string) $cp->paid_at)->setTimezone('America/Los_Angeles');
+                // paid_at is stored in config('app.timezone'), which on
+                // this server is "Asia/Kolkata" (inherited from .env.example).
+                // Use the controller's TZ-aware helper so a Kolkata-local
+                // string is correctly converted to LA, not naively reparsed
+                // as LA (which would shift every charge by 12.5h — Sarah,
+                // 2026-05-11). See SellPosController::parseCloverPaidAtLa.
+                $cpDt = \App\Http\Controllers\SellPosController::parseCloverPaidAtLa($cp->paid_at);
                 $cpWhen = $cpDt->isToday() ? $cpDt->format('g:i a') : $cpDt->format('M j · g:i a');
                 $cpStore = $cp->location_id && isset($business_locations[$cp->location_id])
                     ? $business_locations[$cp->location_id]
