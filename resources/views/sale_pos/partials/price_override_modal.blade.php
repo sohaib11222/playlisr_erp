@@ -52,6 +52,50 @@
 
 <script>
 $(function () {
+    // Make every cart-line price input editable and stamp its original
+    // value as data-original-price. We do this client-side so the feature
+    // works the moment the modal partial deploys, even if the AJAX-fetched
+    // product_row template is still serving cached HTML without the
+    // attribute. Once the view cache catches up, this is a no-op.
+    function ensureRowReady($row) {
+        var $input = $row.find('input.pos_unit_price_inc_tax');
+        if (!$input.length) return;
+        if (!$input.attr('data-original-price')) {
+            $input.attr('data-original-price', $input.val());
+        }
+        if ($input.prop('readonly')) {
+            $input.prop('readonly', false).removeAttr('readonly');
+        }
+        // Make sure the hidden reason input exists.
+        var $tr = $input.closest('tr');
+        if (!$tr.find('input.pos_price_override_reason').length) {
+            var rowIdx = $tr.attr('data-row_index') || $tr.find('input[name^="products"]').first().attr('name').match(/products\[(\d+)\]/);
+            if (rowIdx && rowIdx[1] !== undefined) rowIdx = rowIdx[1];
+            $input.after('<input type="hidden" name="products[' + rowIdx + '][price_override_reason]" class="pos_price_override_reason" value="">');
+        }
+    }
+
+    function sweepRows() {
+        $('#pos_table tbody tr.product_row').each(function () { ensureRowReady($(this)); });
+    }
+    sweepRows();
+    // New rows are added dynamically — watch the tbody for additions.
+    var tbody = document.querySelector('#pos_table tbody');
+    if (tbody) {
+        new MutationObserver(function (muts) {
+            muts.forEach(function (m) {
+                m.addedNodes && Array.prototype.forEach.call(m.addedNodes, function (n) {
+                    if (n.nodeType === 1) {
+                        if (n.matches && n.matches('tr.product_row')) ensureRowReady($(n));
+                        else if (n.querySelectorAll) {
+                            n.querySelectorAll('tr.product_row').forEach(function (r) { ensureRowReady($(r)); });
+                        }
+                    }
+                });
+            });
+        }).observe(tbody, { childList: true, subtree: true });
+    }
+
     // The unit-price input that fired the change. Captured when the modal
     // opens so Confirm/Cancel know which row to apply the result to.
     var activeInput = null;
