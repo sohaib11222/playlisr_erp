@@ -7175,17 +7175,16 @@ class ReportController extends Controller
      *   otherwise          → review     (red)
      */
     /**
-     * Convert an LA-date range into both an IST-datetime window AND an
-     * LA-datetime window — mixed-TZ tolerant. The scheduled cron writes
-     * clover_payments.paid_at in IST, but the in-process "Refresh Clover
-     * swipes" button writes LA, and a single payment_id can flip TZ on
-     * each refresh via updateOrCreate. Callers should OR the two
-     * windows to catch every row regardless of which TZ it landed in.
+     * Window helpers for clover_payments queries when paid_at storage
+     * is mixed-TZ. The cleanest filter is on Clover's own createdTime
+     * (UTC unix-ms in raw_payload — always correct), so this returns
+     * start_ms / end_ms in addition to the legacy IST + LA paid_at
+     * windows. Use the createdTime predicate in SQL via JSON_EXTRACT;
+     * fall back to OR-of-windows on paid_at when JSON_EXTRACT is
+     * unavailable.
      *
-     * shift_sec is the number of seconds to subtract from an IST paid_at
-     * to derive its LA date — used in SQL DATE(paid_at - INTERVAL X
-     * SECOND) for grouping. la_shift_sec is 0 (LA-stored values need
-     * no shift). DST-aware via the LA offset of the start date.
+     * shift_sec stays as the IST→LA offset for the date-grouping
+     * fallback. la_shift_sec=0 since LA-stored values need no shift.
      */
     private function cloverPaidAtIstWindow(string $startLa, string $endLa): array
     {
@@ -7196,9 +7195,63 @@ class ReportController extends Controller
             'end_ist'      => $endCarbonLa->copy()->setTimezone('Asia/Kolkata')->format('Y-m-d H:i:s'),
             'start_la'     => $startCarbonLa->format('Y-m-d H:i:s'),
             'end_la'       => $endCarbonLa->format('Y-m-d H:i:s'),
+            'start_ms'     => $startCarbonLa->valueOf(),
+            'end_ms'       => $endCarbonLa->valueOf(),
+            'la_offset_sec'=> $startCarbonLa->offset,
             'shift_sec'    => 19800 - $startCarbonLa->offset,
             'la_shift_sec' => 0,
         ];
+    }
+
+    /**
+     * SQL predicate string for "this clover_payments row was created
+     * within $win's LA date range". Uses JSON_EXTRACT on raw_payload
+     * for TZ-unambiguous filtering by Clover's createdTime; falls
+     * back to OR-of-paid_at-windows when createdTime is missing.
+     */
+    private function cloverCreatedInWindowSql(array $win): string
+    {
+        $startMs = (int) $win['start_ms'];
+        $endMs   = (int) $win['end_ms'];
+        $startIst = $win['start_ist'];
+        $endIst   = $win['end_ist'];
+        $startLa  = $win['start_la'];
+        $endLa    = $win['end_la'];
+        return "(
+            CASE
+              WHEN JSON_EXTRACT(raw_payload, '$.createdTime') IS NOT NULL
+                THEN CAST(JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '$.createdTime')) AS UNSIGNED)
+                       BETWEEN {$startMs} AND {$endMs}
+              ELSE (paid_at BETWEEN '{$startIst}' AND '{$endIst}')
+                  OR (paid_at BETWEEN '{$startLa}' AND '{$endLa}')
+            END
+        )";
+    }
+
+    /**
+     * SQL expression that yields the LA date for a row — uses
+     * createdTime when present, otherwise the IST-vs-LA shift
+     * heuristic. Suitable for use in SELECT / GROUP BY.
+     */
+    private function cloverLaDateSql(array $win, string $cpAlias = ''): string
+    {
+        $p = $cpAlias ? "{$cpAlias}." : '';
+        $laOff = (int) $win['la_offset_sec'];
+        $startIst = $win['start_ist'];
+        $endIst   = $win['end_ist'];
+        $shift    = (int) $win['shift_sec'];
+        return "DATE(
+            CASE
+              WHEN JSON_EXTRACT({$p}raw_payload, '$.createdTime') IS NOT NULL
+                THEN FROM_UNIXTIME(
+                       CAST(JSON_UNQUOTE(JSON_EXTRACT({$p}raw_payload, '$.createdTime')) AS UNSIGNED) / 1000
+                       + {$laOff}
+                     )
+              WHEN {$p}paid_at >= '{$startIst}' AND {$p}paid_at <= '{$endIst}'
+                THEN {$p}paid_at - INTERVAL {$shift} SECOND
+              ELSE {$p}paid_at
+            END
+        )";
     }
 
     public function cloverEodReconciliation(Request $request)
@@ -7584,19 +7637,18 @@ class ReportController extends Controller
             ->where('is_whatnot', 1)
             ->count();
 
-        // Mixed-TZ tolerant — cron writes IST, in-process "Refresh
-        // Clover swipes" writes LA, same payment_id can flip on each
-        // refresh. OR both windows so neither flavor of row is missed.
+        // TZ-unambiguous: filter on raw_payload.createdTime (UTC unix-ms),
+        // not paid_at. The OR-of-windows approach was double-counting
+        // yesterday-evening rows that happened to have IST strings
+        // matching today's LA range. createdTime is the canonical
+        // source from Clover regardless of how paid_at landed.
         $eodWin = $this->cloverPaidAtIstWindow($start, $end);
         $cloverDayQ = \DB::table('clover_payments')
             ->where('business_id', $business_id)
             ->where(function ($q) {
                 $q->whereNull('result')->orWhere('result', 'SUCCESS')->orWhere('result', 'APPROVED');
             })
-            ->where(function ($q) use ($eodWin) {
-                $q->whereBetween('paid_at', [$eodWin['start_ist'], $eodWin['end_ist']])
-                  ->orWhereBetween('paid_at', [$eodWin['start_la'], $eodWin['end_la']]);
-            });
+            ->whereRaw($this->cloverCreatedInWindowSql($eodWin));
         if (!empty($location_id)) {
             $cloverDayQ->where(function ($q) use ($location_id) {
                 $q->where('location_id', $location_id)->orWhereNull('location_id');
