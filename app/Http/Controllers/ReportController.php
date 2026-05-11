@@ -6839,8 +6839,11 @@ class ReportController extends Controller
                 ->pluck('cost', 'discogs_listing_id')
                 ->toArray();
         }
+        // Release-id match is gated on the migration being run. If the
+        // column isn't there yet, silently skip the fallback so the page
+        // renders (listing-id match still works on its own).
         $cost_by_release = [];
-        if (!empty($release_ids)) {
+        if (!empty($release_ids) && \Schema::hasColumn('products', 'discogs_release_id')) {
             $cost_by_release = DB::table('products as p')
                 ->join('variations as v', 'v.product_id', '=', 'p.id')
                 ->where('p.business_id', $business_id)
@@ -7787,25 +7790,25 @@ class ReportController extends Controller
             ->whereDate('transaction_date', '<=', $end)
             ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id));
 
-        // Sarah 2026-05-11: ERP Net = SUM(final_total - tax_amount) so
-        // it matches Clover Net = SUM(amount - tax_cents) — both are
-        // "gross minus tax", including shipping/fees on both sides.
-        // total_before_tax was excluding shipping_charges/other_charges
-        // that Clover *does* include in its amount, which made every
-        // pair look like a ~$3 Clover-ahead gap structurally.
+        // Sarah 2026-05-11 (after multiple attempts): comparing NET to
+        // NET kept producing phantom diffs because ERP and Clover
+        // disagree about what counts toward tax (shipping, bag fees,
+        // tax-exempt items). The customer-paid GROSS is unambiguous on
+        // both sides — switch the whole report to compare GROSS↔GROSS:
+        //   ERP "sales"    = SUM(final_total)
+        //   Clover "sales" = SUM(amount)
+        // Diff = Clover − ERP. Reflects only real keying errors and
+        // missed/orphan rings, not accounting framework differences.
         $erp_net_total = (float) (clone $erpBase)
             ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
-            ->selectRaw('COALESCE(SUM(final_total - COALESCE(tax_amount, 0)), 0) as v')
-            ->value('v');
+            ->sum('final_total');
         $erp_count = (int) (clone $erpBase)
             ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
             ->count();
 
-        // Whatnot sub-total — inventory-only, never on Clover.
         $whatnot_net_total = (float) (clone $erpBase)
             ->where('is_whatnot', 1)
-            ->selectRaw('COALESCE(SUM(final_total - COALESCE(tax_amount, 0)), 0) as v')
-            ->value('v');
+            ->sum('final_total');
         $whatnot_count = (int) (clone $erpBase)
             ->where('is_whatnot', 1)
             ->count();
@@ -7827,7 +7830,7 @@ class ReportController extends Controller
                 $q->where('location_id', $location_id)->orWhereNull('location_id');
             });
         }
-        $clover_day_total = (float) $cloverDayQ->selectRaw("COALESCE(SUM(amount - COALESCE(tax_cents, 0) / 100.0), 0) as net")->value('net');
+        $clover_day_total = (float) $cloverDayQ->selectRaw("COALESCE(SUM(amount), 0) as gross")->value('gross');
         $clover_day_count = (int) $cloverDayQ->count();
 
         // Per-store breakdown so the day-totals card can split Hollywood
@@ -7835,14 +7838,14 @@ class ReportController extends Controller
         $erpPerLoc = (clone $erpBase)
             ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
             ->selectRaw('COALESCE(location_id, 0) as loc_key,
-                         COALESCE(SUM(final_total - COALESCE(tax_amount, 0)), 0) as erp_net,
+                         COALESCE(SUM(final_total), 0) as erp_net,
                          COUNT(*) as erp_count')
             ->groupBy('location_id')
             ->get()->keyBy('loc_key');
         $whatnotPerLoc = (clone $erpBase)
             ->where('is_whatnot', 1)
             ->selectRaw('COALESCE(location_id, 0) as loc_key,
-                         COALESCE(SUM(final_total - COALESCE(tax_amount, 0)), 0) as whatnot_net,
+                         COALESCE(SUM(final_total), 0) as whatnot_net,
                          COUNT(*) as whatnot_count')
             ->groupBy('location_id')
             ->get()->keyBy('loc_key');
@@ -7859,7 +7862,7 @@ class ReportController extends Controller
         }
         $cloverPerLoc = $cloverPerLocQ
             ->selectRaw('COALESCE(location_id, 0) as loc_key,
-                         COALESCE(SUM(amount - COALESCE(tax_cents, 0) / 100.0), 0) as clover_net,
+                         COALESCE(SUM(amount), 0) as clover_net,
                          COUNT(*) as clover_count')
             ->groupBy('location_id')
             ->get()->keyBy('loc_key');
@@ -9590,7 +9593,7 @@ class ReportController extends Controller
             }
             $cloverAgg[$key]->clover_count += 1;
             $cloverAgg[$key]->clover_total += (float) $r->amount;
-            $cloverAgg[$key]->clover_net   += (float) $r->amount - ((float) $r->tax_cents) / 100.0;
+            $cloverAgg[$key]->clover_net   += (float) $r->amount;
         }
         $cloverRows = collect(array_values($cloverAgg));
 
@@ -9651,9 +9654,9 @@ class ReportController extends Controller
                 $buckets[$day][$locKey]['location_name'] = $buckets[$day][$locKey]['location_name'] ?? '(no location)';
             }
             $buckets[$day][$locKey]['employees'][$rangFn]['total_sales']    += (float) $t->final_total;
-            // ERP Net = final_total − tax_amount (apples-to-apples with
-            // Clover Net = amount − tax_cents). Sarah 2026-05-11.
-            $buckets[$day][$locKey]['employees'][$rangFn]['net_sales']      += (float) $t->final_total - (float) ($t->tax_amount ?? 0);
+            // Per-cashier ERP "sales" = sum(final_total). GROSS-to-GROSS
+            // reconciliation with Clover (Sarah 2026-05-11).
+            $buckets[$day][$locKey]['employees'][$rangFn]['net_sales']      += (float) $t->final_total;
             $buckets[$day][$locKey]['employees'][$rangFn]['txn_count']      += 1;
             // Capture the first non-admin user_id we see for each first
             // name. Used by the "View {cashier}'s sales" deep link so
