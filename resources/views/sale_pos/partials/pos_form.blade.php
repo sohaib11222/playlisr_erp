@@ -557,7 +557,11 @@
 					<th class="text-center col-md-2 {{$hide_tax}}">
 						@lang('lang_v1.purchase_price')
 					</th>
-					<th class="text-center col-md-2 {{$hide_tax}}">
+					{{-- Show the unit-price column whenever the cashier has
+						 edit-price permission, even when inline tax is off.
+						 That's the field they need to fix when the sticker
+						 disagrees with the ERP. --}}
+					<th class="text-center col-md-2 @if(!auth()->user()->can('edit_product_price_from_pos_screen')) {{$hide_tax}} @endif">
 						@lang('sale.price_inc_tax')
 					</th>
 					<th class="text-center col-md-2">

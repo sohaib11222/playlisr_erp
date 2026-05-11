@@ -410,7 +410,11 @@
 	<td class="text-center {{$hide_tax}}">
 		<span class="display_currency" data-currency_symbol="true">{{@num_format($unit_purchase_price_inc_tax)}}</span>
 	</td>
-	<td class="{{$hide_tax}}">
+	{{-- Show the unit-price input whenever the cashier can edit price,
+		 even with inline tax off. Lets cashiers fix individual prices
+		 when the sticker disagrees with the ERP. Subtotal stays
+		 non-editable. --}}
+	<td class="@if(!$edit_price) {{$hide_tax}} @endif">
 		<input type="text" name="products[{{$row_count}}][unit_price_inc_tax]" class="form-control pos_unit_price_inc_tax input_number" value="{{@num_format($unit_price_inc_tax)}}" @if(!$edit_price) readonly @endif @if(!empty($pos_settings['enable_msp'])) data-rule-min-value="{{$unit_price_inc_tax}}" data-msg-min-value="{{__('lang_v1.minimum_selling_price_error_msg', ['price' => @num_format($unit_price_inc_tax)])}}" @endif>
 	</td>
 	@if(!empty($common_settings['enable_product_warranty']) && !empty($is_direct_sell))
