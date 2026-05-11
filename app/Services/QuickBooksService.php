@@ -592,7 +592,8 @@ class QuickBooksService
             ];
         }
 
-        // Default ERP location for synced rows.
+        // Default ERP location for synced rows. QB doesn't track locations, so
+        // every row lands at this single default.
         $default_location_id = $this->getQuickBooksSetting('expense_default_location_id', null);
         if (empty($default_location_id)) {
             $default_location_id = \DB::table('business_locations')
@@ -604,6 +605,28 @@ class QuickBooksService
             return [
                 'success' => false,
                 'msg' => 'No BusinessLocation found for this business — cannot place imported expenses.',
+                'created' => 0, 'updated' => 0, 'skipped' => 0,
+            ];
+        }
+
+        // transactions.created_by is FK to users.id and non-nullable. Pick a
+        // sensible system user so cron-driven inserts don't violate the FK:
+        // the currently-authenticated user (web "Sync now") if there is one,
+        // else the lowest-id user in this business (deterministic).
+        $created_by = null;
+        if (function_exists('auth') && auth()->check()) {
+            $created_by = (int) auth()->id();
+        }
+        if (empty($created_by)) {
+            $created_by = (int) \DB::table('users')
+                ->where('business_id', $this->businessId)
+                ->orderBy('id')
+                ->value('id');
+        }
+        if (empty($created_by)) {
+            return [
+                'success' => false,
+                'msg' => 'No user found to attribute QB-synced expenses to — cannot insert.',
                 'created' => 0, 'updated' => 0, 'skipped' => 0,
             ];
         }
@@ -631,7 +654,7 @@ class QuickBooksService
             ->whereNull('parent_id')
             ->pluck('id', 'name')
             ->toArray();
-        $find_or_create_category = function ($name) use (&$category_cache, $business_id) {
+        $find_or_create_category = function ($name) use (&$category_cache, $business_id, &$created_by) {
             $name = trim((string) $name);
             if ($name === '') return null;
             foreach ($category_cache as $cname => $cid) {
@@ -640,6 +663,7 @@ class QuickBooksService
             $cid = \DB::table('expense_categories')->insertGetId([
                 'business_id' => $business_id,
                 'name' => $name,
+                'created_by' => $created_by ?: null,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -715,6 +739,7 @@ class QuickBooksService
                 $updated++;
             } else {
                 $row_data['created_at'] = $now;
+                $row_data['created_by'] = $created_by;
                 \DB::table('transactions')->insert($row_data);
                 $created++;
             }
