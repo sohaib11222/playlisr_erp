@@ -225,4 +225,39 @@ class PosPriceOverrideController extends Controller
             'recentLines' => $recentLines,
         ]);
     }
+
+    // Backfill / correct the system_price (sticker) on a single audit row.
+    // Used for legacy rows that landed with sticker=0 (manual / quick-add
+    // lines logged before the modal started passing price_override_sticker).
+    // Diff is recalculated; sold_price + reason are NOT touched.
+    public function fixSticker(Request $request)
+    {
+        $id = (int) $request->input('id');
+        $newSticker = $request->input('sticker');
+        if ($id <= 0 || !is_numeric($newSticker) || (float) $newSticker < 0) {
+            return redirect('/admin/pos-overrides')->with('status_error',
+                'Need a valid row ID and non-negative sticker price.');
+        }
+        $businessId = $request->session()->get('user.business_id');
+        $row = DB::table('pos_price_overrides')
+            ->where('id', $id)
+            ->where('business_id', $businessId)
+            ->first();
+        if (!$row) {
+            return redirect('/admin/pos-overrides')->with('status_error',
+                'Override row not found.');
+        }
+        $newSticker = round((float) $newSticker, 4);
+        $newDiff = round((float) $row->sold_price - $newSticker, 4);
+        DB::table('pos_price_overrides')
+            ->where('id', $id)
+            ->update([
+                'system_price' => $newSticker,
+                'diff' => $newDiff,
+                'updated_at' => now(),
+            ]);
+        return redirect('/admin/pos-overrides')->with('status_success',
+            'Row #' . $id . ' updated: sticker $' . number_format($newSticker, 2)
+            . ', diff $' . number_format($newDiff, 2) . '.');
+    }
 }

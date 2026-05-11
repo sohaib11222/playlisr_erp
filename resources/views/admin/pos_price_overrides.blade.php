@@ -165,7 +165,19 @@
                                     @endif
                                 </td>
                                 <td>{{ $productLabel }}</td>
-                                <td class="text-right">${{ number_format($r->system_price, 2) }}</td>
+                                <td class="text-right">
+                                    ${{ number_format($r->system_price, 2) }}
+                                    <form method="POST" action="{{ url('/admin/pos-overrides/fix-sticker') }}"
+                                          style="display:inline-block; margin-left:6px;"
+                                          onsubmit="var v = prompt('Correct sticker price for this row?\n(charged: ${{ number_format($r->sold_price, 2) }})', '{{ number_format($r->system_price, 2) }}'); if (v === null) return false; this.elements.sticker.value = v; return true;">
+                                        @csrf
+                                        <input type="hidden" name="id" value="{{ $r->id }}">
+                                        <input type="hidden" name="sticker" value="">
+                                        <button type="submit" class="btn btn-xs btn-link" style="padding:0; font-size:11px; color:#aaa;" title="Fix the sticker price on this audit row">
+                                            <i class="fa fa-pencil"></i>
+                                        </button>
+                                    </form>
+                                </td>
                                 <td class="text-right"><strong>${{ number_format($r->sold_price, 2) }}</strong></td>
                                 <td class="text-right {{ $diffClass }}"><strong>{{ $diffSign }}${{ number_format($diff, 2) }}</strong></td>
                                 <td style="max-width:280px; font-size:13px; color:#555;">

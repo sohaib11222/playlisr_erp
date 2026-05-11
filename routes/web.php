@@ -743,6 +743,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // scan overrides after the fact instead of approving each one.
     Route::get('/admin/pos-overrides', 'PosPriceOverrideController@index');
     Route::post('/admin/pos-overrides/setup', 'PosPriceOverrideController@setup');
+    Route::post('/admin/pos-overrides/fix-sticker', 'PosPriceOverrideController@fixSticker');
 
     // Diagnose why a specific staff member can't open POS. Lists every staff
     // user with the four POS gates (status, allow_login, user_type,
