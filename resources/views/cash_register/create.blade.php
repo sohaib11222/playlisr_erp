@@ -2,6 +2,20 @@
 @section('title',  __('cash_register.open_cash_register'))
 
 @section('content')
+@php
+    // Sarah 2026-05-11: prefill from the duty-picker session so cashiers
+    // who already counted the drawer + picked a store there don't have to
+    // do it again here. Falls back to old behavior if the session keys are
+    // missing (e.g. arriving via a deep link that skipped the duty picker).
+    $prefillAmount = null;
+    if (session('pos_duty') === 'cashier' && session('pos_duty_opening_cash') !== null) {
+        $prefillAmount = number_format((float) session('pos_duty_opening_cash'), 2, '.', '');
+    }
+    $prefillLoc = session('pos_duty_location_id');
+    if ($prefillLoc !== null && $prefillLoc !== '' && !$business_locations->has((int) $prefillLoc)) {
+        $prefillLoc = null;
+    }
+@endphp
 <style type="text/css">
   /* Hero "Cash in hand" input — Sarah 2026-05-08: this is the primary
      action on the page; make it the visual anchor. Same input shape as
@@ -131,7 +145,7 @@
             </label>
             <div class="ocr-hero-wrap">
               <span class="ocr-hero-currency">$</span>
-              {!! Form::text('amount', null, [
+              {!! Form::text('amount', $prefillAmount, [
                 'class' => 'ocr-hero-input input_number',
                 'id' => 'cash_in_hand_amount',
                 'placeholder' => '0.00',
@@ -199,10 +213,11 @@
                  location (typically Pico + Hollywood). Selecting a pill
                  writes the id into the hidden #location_id input that the
                  form posts. --}}
-            <input type="hidden" name="location_id" id="location_id" value="">
+            <input type="hidden" name="location_id" id="location_id" value="{{ $prefillLoc ?? '' }}">
             <div class="ocr-loc-pills" id="ocr-loc-pills">
               @foreach($business_locations as $loc_id => $loc_name)
-                <button type="button" class="ocr-loc-pill"
+                <button type="button"
+                        class="ocr-loc-pill {{ $prefillLoc !== null && (int) $prefillLoc === (int) $loc_id ? 'is-selected' : '' }}"
                         data-loc-id="{{ $loc_id }}">
                   {{-- Title-case the label so DB values stored as "pico"
                        render as "Pico" without forcing Sarah to fix the

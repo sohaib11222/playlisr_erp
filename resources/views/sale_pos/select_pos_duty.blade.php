@@ -333,16 +333,16 @@
             <div class="field">
                 <div class="field-prompt">Choose a store</div>
                 <div class="store-pills">
-                    <label class="store-pill" data-store="both">
-                        <input type="radio" name="location_id" value="" required {{ $selectedLoc === '' ? 'checked' : '' }}>
-                        Both
-                    </label>
                     @foreach($business_locations as $id => $name)
                         <label class="store-pill" data-store="{{ $storeKey($name) }}">
                             <input type="radio" name="location_id" value="{{ $id }}" required {{ $selectedLoc === (string)$id ? 'checked' : '' }}>
                             {{ $name }}
                         </label>
                     @endforeach
+                    <label class="store-pill" data-store="both">
+                        <input type="radio" name="location_id" value="" required {{ $selectedLoc === '' ? 'checked' : '' }}>
+                        Both
+                    </label>
                 </div>
             </div>
 
