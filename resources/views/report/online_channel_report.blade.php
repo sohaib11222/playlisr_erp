@@ -57,6 +57,36 @@
         </div>
     </div>
 
+    @if(!empty($discogs_match_info))
+        @php
+            $mi = $discogs_match_info;
+            $total = $mi['matched_items'] + $mi['unmatched_items'];
+            $rate = $total > 0 ? round(100 * $mi['matched_items'] / $total, 1) : 0;
+        @endphp
+        <div class="alert {{ $mi['matched_items'] === 0 ? 'alert-warning' : 'alert-info' }}" style="margin-bottom:14px;">
+            <strong>COGS match diagnostic:</strong>
+            {{ $mi['matched_items'] }} of {{ $total }} Discogs line items matched local cost ({{ $rate }}%).
+            By listing-id: {{ $mi['matched_by_listing'] }} ·
+            By release-id: {{ $mi['matched_by_release'] }} ·
+            Unmatched: {{ $mi['unmatched_items'] }}.
+            <br>
+            <small>
+                Local inventory coverage:
+                products with a Discogs listing-id stored: <strong>{{ number_format($mi['inv_with_listing_id']) }}</strong>;
+                products with a Discogs release-id stored:
+                @if($mi['inv_with_release_id'] === null)
+                    <strong>column missing</strong> — run the <code>add_discogs_release_id_to_products_table</code> migration to enable release-id matching.
+                @else
+                    <strong>{{ number_format($mi['inv_with_release_id']) }}</strong>.
+                @endif
+                @if($mi['matched_items'] === 0)
+                    <br>No matches means none of the sold Discogs releases exist in local inventory under these IDs.
+                    Fix path: backfill <code>discogs_release_id</code> on existing products (Discogs API lookup, one-shot).
+                @endif
+            </small>
+        </div>
+    @endif
+
     <div class="box box-primary">
         <div class="box-header with-border"><h3 class="box-title">Filters</h3></div>
         <div class="box-body">

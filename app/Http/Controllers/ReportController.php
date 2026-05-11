@@ -7221,6 +7221,7 @@ class ReportController extends Controller
         $external_revenue = 0.0;
         $external_cnt = 0;
         $external_cogs_revenue = 0.0; // revenue that has cost matched
+        $discogs_match_info = null;
         if ($channel === 'discogs') {
             $dgs = $this->fetchDiscogsChannelTotals($business_id, $start_date, $end_date);
             if ($dgs !== null) {
@@ -7230,6 +7231,24 @@ class ReportController extends Controller
                 $cnt += $external_cnt;
                 $gross_profit += (float) ($dgs['gross_profit'] ?? 0);
                 $external_cogs_revenue = (float) ($dgs['matched_revenue'] ?? 0);
+                // Per-tier match info for the view's diagnostic panel.
+                $discogs_match_info = [
+                    'matched_items'      => (int) ($dgs['matched_items'] ?? 0),
+                    'unmatched_items'    => (int) ($dgs['unmatched_items'] ?? 0),
+                    'matched_by_listing' => (int) ($dgs['matched_by_listing'] ?? 0),
+                    'matched_by_release' => (int) ($dgs['matched_by_release'] ?? 0),
+                    // Inventory coverage so it's obvious why match rate is what it is.
+                    'inv_with_listing_id' => (int) \DB::table('products')
+                        ->where('business_id', $business_id)
+                        ->whereNotNull('discogs_listing_id')
+                        ->count(),
+                    'inv_with_release_id' => \Schema::hasColumn('products', 'discogs_release_id')
+                        ? (int) \DB::table('products')
+                            ->where('business_id', $business_id)
+                            ->whereNotNull('discogs_release_id')
+                            ->count()
+                        : null,
+                ];
             }
         } elseif ($channel === 'ebay') {
             $eby = $this->fetchEbayChannelTotals($business_id, $start_date, $end_date);
@@ -7329,7 +7348,8 @@ class ReportController extends Controller
             'channel', 'channel_name', 'action',
             'revenue', 'cnt', 'gross_profit', 'gross_margin',
             'daily', 'top_items',
-            'start_date', 'end_date'
+            'start_date', 'end_date',
+            'discogs_match_info'
         ));
     }
 
