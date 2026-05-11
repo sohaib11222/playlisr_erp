@@ -156,7 +156,7 @@
                     @if($needsReview > 0)
                         <span style="font-size:12px; color:#8B2C2C; font-weight:600;">{{ $needsReview }} need{{ $needsReview === 1 ? 's' : '' }} your review ⚠</span>
                     @endif
-                    <span style="margin-left:auto; font-size:11px; color:#8A7C6A;">Card swipes ↔ ERP rings, sorted by time. Pairs within ±$0.50 (tax/fee rounding only — Nivessa doesn't accept tips) and ±30 minutes.</span>
+                    <span style="margin-left:auto; font-size:11px; color:#8A7C6A;">Every ERP sale should pair to a Clover swipe — cash is rung on Clover too at Nivessa. Pairs by amount (±$0.50) + time (±30 min), or same-time (±2 min) regardless of amount.</span>
                 </div>
 
                 <table style="width:100%; font-size:12px; font-variant-numeric:tabular-nums; border-collapse:collapse;">
@@ -177,7 +177,7 @@
                                 $statusLabel = '';
                                 $statusColor = '#2E6F40';
                                 if ($ev['kind'] === 'clover_only') { $bg = '#FFF3E0'; $statusLabel = 'Clover only — missing ERP ring'; $statusColor = '#8B2C2C'; }
-                                elseif ($ev['kind'] === 'erp_only') { $bg = '#FFFBEB'; $statusLabel = 'ERP only — no Clover swipe (real cash?)'; $statusColor = '#8B6A1A'; }
+                                elseif ($ev['kind'] === 'erp_only') { $bg = '#FFFBEB'; $statusLabel = 'ERP only — missing Clover swipe'; $statusColor = '#8B6A1A'; }
                                 else { $statusLabel = '✓ paired'; }
                                 $delta = (is_numeric($ev['clover']) && is_numeric($ev['erp'])) ? round($ev['clover'] - $ev['erp'], 2) : null;
                             @endphp
@@ -192,8 +192,10 @@
                                 <td style="padding:6px;">
                                     @if($ev['kind'] === 'paired')
                                         <a href="{{ url('sells/' . $ev['inv_id']) }}" style="color:#1F1B16; text-decoration:underline;">#{{ $ev['inv_no'] }}</a>
-                                        @if($delta !== null && abs($delta) >= 0.02)
-                                            <span style="color:#8A7C6A; font-size:11px; font-style:italic;">(tax/fee rounding)</span>
+                                        @if($delta !== null && abs($delta) >= 1.00)
+                                            <span style="color:#8B2C2C; font-size:11px; font-style:italic; font-weight:600;">⚠ keying error</span>
+                                        @elseif($delta !== null && abs($delta) >= 0.02)
+                                            <span style="color:#8A7C6A; font-size:11px; font-style:italic;">(rounding)</span>
                                         @endif
                                     @elseif($ev['kind'] === 'erp_only')
                                         <a href="{{ url('sells/' . $ev['inv_id']) }}" style="color:#1F1B16; text-decoration:underline;">#{{ $ev['inv_no'] }}</a>

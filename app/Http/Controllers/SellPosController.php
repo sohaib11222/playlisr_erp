@@ -650,7 +650,11 @@ class SellPosController extends Controller
                 for ($d = -$matchAmountCents; $d <= $matchAmountCents; $d++) {
                     foreach (($cpByCents[$erCents + $d] ?? []) as $key) {
                         $cp = $cpRows[$key];
-                        if ($cp->location_id !== null && (int) $cp->location_id !== $erLoc) continue;
+                        // Sarah 2026-05-11: require explicit same-store
+                        // match. Allowing null cp.location_id to pair
+                        // across any store was false-pairing Pico
+                        // orphans to Hollywood cash test rings.
+                        if ((int) ($cp->location_id ?? 0) !== $erLoc) continue;
                         $timeDelta = abs(($cpTsByKey[$key] ?? 0) - $erTs);
                         if ($timeDelta > $matchTimeWindow) continue;
                         $candidates[] = [
@@ -917,7 +921,7 @@ class SellPosController extends Controller
             ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
             ->whereDate('transaction_date', $todayStr)
             ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id))
-            ->selectRaw('id, location_id, final_total as net_sales')
+            ->selectRaw('id, location_id, (final_total - COALESCE(tax_amount, 0)) as net_sales')
             ->get();
 
         // Whatnot rows today — surfaced separately so the user can see
@@ -932,7 +936,7 @@ class SellPosController extends Controller
             ->where('is_whatnot', 1)
             ->whereDate('transaction_date', $todayStr)
             ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id))
-            ->selectRaw('id, location_id, final_total as net_sales')
+            ->selectRaw('id, location_id, (final_total - COALESCE(tax_amount, 0)) as net_sales')
             ->get();
 
         // Include paid_at / employee / card so the banner can drill into
@@ -1361,7 +1365,11 @@ class SellPosController extends Controller
                 for ($d = -$matchAmountCents; $d <= $matchAmountCents; $d++) {
                     foreach (($cpByCents[$erCents + $d] ?? []) as $key) {
                         $cp = $cpRows[$key];
-                        if ($cp->location_id !== null && (int) $cp->location_id !== $erLoc) continue;
+                        // Sarah 2026-05-11: require explicit same-store
+                        // match. Allowing null cp.location_id to pair
+                        // across any store was false-pairing Pico
+                        // orphans to Hollywood cash test rings.
+                        if ((int) ($cp->location_id ?? 0) !== $erLoc) continue;
                         $timeDelta = abs(($cpTsByKey[$key] ?? 0) - $erTs);
                         if ($timeDelta > $matchTimeWindow) continue;
                         $candidates[] = [
