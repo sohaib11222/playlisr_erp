@@ -46,27 +46,31 @@
         </div>
 
         @if(!empty($dt['by_store']) && count($dt['by_store']) > 1)
-            <div style="margin-top:14px; padding-top:12px; border-top:1px dashed #ECE3CF; display:flex; gap:24px; flex-wrap:wrap; font-size:12px; color:#5A5045;">
-                @foreach($dt['by_store'] as $s)
-                    @php
-                        $sDiff = round($s['clover'] - $s['erp_net'], 2);
-                        $sMatched = abs($sDiff) < 0.01;
-                    @endphp
-                    <div style="display:inline-flex; gap:8px; align-items:baseline;">
-                        <span style="font-weight:600; color:#1F1B16;">{{ $s['name'] }}</span>
-                        <span style="font-variant-numeric:tabular-nums;">ERP ${{ number_format($s['erp_net'], 2) }}</span>
-                        <span style="color:#BFB096;">·</span>
-                        <span style="font-variant-numeric:tabular-nums;">Clover ${{ number_format($s['clover'], 2) }}</span>
-                        <span style="font-variant-numeric:tabular-nums; font-weight:700; color:{{ $sMatched ? '#2E6F40' : '#8B2C2C' }};">
-                            ({{ $sDiff > 0 ? '+' : '' }}${{ number_format($sDiff, 2) }})
-                        </span>
-                        @if(!empty($s['whatnot_count']))
-                            <span style="color:#8A7C6A; font-style:italic;" title="Whatnot sales rung in ERP for inventory only — paid through Whatnot, not Clover. Excluded from ERP and Diff.">
-                                + Whatnot ${{ number_format($s['whatnot_net'], 2) }} ({{ $s['whatnot_count'] }})
-                            </span>
-                        @endif
-                    </div>
-                @endforeach
+            <div style="margin-top:16px; padding-top:14px; border-top:1px dashed #ECE3CF;">
+                <div style="font-size:11px; color:#5A5045; text-transform:uppercase; letter-spacing:.08em; font-weight:600; margin-bottom:8px;">By store</div>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:12px;">
+                    @foreach($dt['by_store'] as $s)
+                        @php
+                            $sDiff = round($s['clover'] - $s['erp_net'], 2);
+                            $sMatched = abs($sDiff) < 0.01;
+                        @endphp
+                        <div style="background:#FAF6EE; border:1px solid #ECE3CF; border-radius:8px; padding:12px 14px;">
+                            <div style="font-weight:700; font-size:14px; color:#1F1B16; margin-bottom:6px;">{{ $s['name'] }}</div>
+                            <div style="display:flex; gap:14px; align-items:baseline; flex-wrap:wrap; font-size:13px; font-variant-numeric:tabular-nums;">
+                                <span><span style="color:#8A7C6A; font-size:11px;">ERP</span> <strong>${{ number_format($s['erp_net'], 2) }}</strong></span>
+                                <span><span style="color:#8A7C6A; font-size:11px;">Clover</span> <strong>${{ number_format($s['clover'], 2) }}</strong></span>
+                                <span style="margin-left:auto; font-weight:700; color:{{ $sMatched ? '#2E6F40' : '#8B2C2C' }};">
+                                    {{ $sMatched ? '✓ matched' : (($sDiff > 0 ? '+' : '') . '$' . number_format($sDiff, 2)) }}
+                                </span>
+                            </div>
+                            @if(!empty($s['whatnot_count']))
+                                <div style="margin-top:6px; font-size:11px; color:#8A7C6A; font-style:italic;" title="Whatnot inventory-only">
+                                    + Whatnot ${{ number_format($s['whatnot_net'], 2) }} · {{ $s['whatnot_count'] }} sale{{ $s['whatnot_count'] === 1 ? '' : 's' }}
+                                </div>
+                            @endif
+                        </div>
+                    @endforeach
+                </div>
             </div>
         @endif
 
@@ -84,87 +88,110 @@
                 $matchedCharges = collect($dt['clover_charges'])->filter(fn($c) => !empty($c->matched_erp_id))->count();
                 $unmatchedCharges = $totalCharges - $matchedCharges;
                 $unmatchedErpCount = !empty($dt['unmatched_erp']) ? count($dt['unmatched_erp']) : 0;
+                $needsReview = $unmatchedCharges + $unmatchedErpCount;
+
+                // Merge into one chronological event list — each entry is
+                // either a matched pair, a Clover-only orphan, or an
+                // ERP-only orphan. Time-sorted, bank-rec style.
+                $events = collect();
+                foreach ($dt['clover_charges'] as $c) {
+                    $events->push([
+                        'ts'        => $c->paid_at,
+                        'sort_ts'   => strtotime($c->paid_at),
+                        'store'     => $c->loc_name,
+                        'clover'    => (float) $c->amount,
+                        'erp'       => $c->matched_erp_amount,
+                        'inv_id'    => $c->matched_erp_id,
+                        'inv_no'    => $c->matched_erp_invoice_no,
+                        'kind'      => $c->matched_erp_id ? 'paired' : 'clover_only',
+                        'card'      => $c->card,
+                    ]);
+                }
+                foreach (($dt['unmatched_erp'] ?? []) as $s) {
+                    $events->push([
+                        'ts'        => \Carbon\Carbon::parse($s->ts)->format('Y-m-d g:i a'),
+                        'sort_ts'   => strtotime((string) $s->ts),
+                        'store'     => $s->loc_name,
+                        'clover'    => null,
+                        'erp'       => (float) $s->amount,
+                        'inv_id'    => $s->id,
+                        'inv_no'    => $s->invoice_no,
+                        'kind'      => 'erp_only',
+                        'card'      => null,
+                    ]);
+                }
+                $events = $events->sortBy('sort_ts')->values();
             @endphp
-            <details style="margin-top:14px;" @if($unmatchedCharges > 0 || $unmatchedErpCount > 0) open @endif>
-                <summary style="cursor:pointer; font-size:13px; color:#1F1B16; list-style:none; font-weight:600;">
-                    ▸ Per-charge reconciliation —
-                    <span style="color:#2E6F40;">{{ $matchedCharges }} matched</span>,
-                    @if($unmatchedCharges > 0)<span style="color:#8B2C2C;">{{ $unmatchedCharges }} Clover-only</span>@endif
-                    @if($unmatchedCharges > 0 && $unmatchedErpCount > 0), @endif
-                    @if($unmatchedErpCount > 0)<span style="color:#8B6A1A;">{{ $unmatchedErpCount }} ERP-only</span>@endif
-                </summary>
 
-                <div style="margin-top:10px; padding-top:8px; border-top:1px dashed #ECE3CF; font-size:11px; color:#5A5045;">
-                    Each Clover charge below should pair to an ERP sale. Unmatched Clover = card was swiped but no ERP ring exists (missing ring-up). Unmatched ERP = sale was rung but no Clover charge (real cash, refund/void mismatch, or pre-Clover-on-cash-rings era).
+            <div style="margin-top:14px; padding-top:12px; border-top:1px dashed #ECE3CF;">
+                <div style="display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin-bottom:10px;">
+                    <span style="font-weight:700; font-size:13px; color:#1F1B16;">Reconciliation log</span>
+                    <span style="font-size:12px; color:#2E6F40;">{{ $matchedCharges }} swipes paired ✓</span>
+                    @if($needsReview > 0)
+                        <span style="font-size:12px; color:#8B2C2C; font-weight:600;">{{ $needsReview }} need{{ $needsReview === 1 ? 's' : '' }} your review ⚠</span>
+                    @endif
+                    <span style="margin-left:auto; font-size:11px; color:#8A7C6A;">Card swipes ↔ ERP rings, sorted by time. Pairing allows tips and ±$0.50 rounding within 1 hour.</span>
                 </div>
 
-                <div style="margin-top:10px;">
-                    <div style="font-weight:700; font-size:12px; color:#1F1B16; margin-bottom:4px;">Clover charges ({{ $totalCharges }})</div>
-                    <table style="width:100%; font-size:11px; font-variant-numeric:tabular-nums; border-collapse:collapse;">
-                        <thead>
-                            <tr style="color:#8A7C6A; text-align:left; border-bottom:1px solid #ECE3CF;">
-                                <th style="padding:3px 6px; font-weight:500;">Status</th>
-                                <th style="padding:3px 6px; font-weight:500;">Time</th>
-                                <th style="padding:3px 6px; font-weight:500;">Store</th>
-                                <th style="padding:3px 6px; font-weight:500; text-align:right;">Clover gross</th>
-                                <th style="padding:3px 6px; font-weight:500;">→ ERP sale</th>
-                                <th style="padding:3px 6px; font-weight:500; text-align:right;">ERP gross</th>
-                                <th style="padding:3px 6px; font-weight:500;">Card</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach($dt['clover_charges'] as $c)
-                                @php $isMatched = !empty($c->matched_erp_id); @endphp
-                                <tr style="background:{{ $isMatched ? 'transparent' : '#FFF3E0' }}; border-bottom:1px solid #F5EFE3;">
-                                    <td style="padding:4px 6px; font-weight:700; color:{{ $isMatched ? '#2E6F40' : '#8B2C2C' }};">
-                                        {{ $isMatched ? '✓' : '⚠ no match' }}
-                                    </td>
-                                    <td style="padding:4px 6px; color:#5A5045;">{{ $c->paid_at }}</td>
-                                    <td style="padding:4px 6px; color:#5A5045;">{{ $c->loc_name }}</td>
-                                    <td style="padding:4px 6px; text-align:right;">${{ number_format($c->amount, 2) }}</td>
-                                    <td style="padding:4px 6px; color:#5A5045;">
-                                        @if($isMatched)
-                                            <a href="{{ url('sells/' . $c->matched_erp_id) }}" style="color:#1F1B16; text-decoration:underline;">#{{ $c->matched_erp_invoice_no }}</a>
-                                        @else
-                                            <span style="color:#8B2C2C; font-style:italic;">no ERP ring within $0.05 / ±12h</span>
+                <table style="width:100%; font-size:12px; font-variant-numeric:tabular-nums; border-collapse:collapse;">
+                    <thead>
+                        <tr style="color:#5A5045; text-align:left; border-bottom:2px solid #ECE3CF; font-size:11px;">
+                            <th style="padding:6px;">Time</th>
+                            <th style="padding:6px;">Store</th>
+                            <th style="padding:6px; text-align:right;">Clover swiped</th>
+                            <th style="padding:6px; text-align:right;">ERP rang</th>
+                            <th style="padding:6px; text-align:right;">Δ</th>
+                            <th style="padding:6px;">Invoice / status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($events as $ev)
+                            @php
+                                $bg = '#FFFFFF';
+                                $statusLabel = '';
+                                $statusColor = '#2E6F40';
+                                if ($ev['kind'] === 'clover_only') { $bg = '#FFF3E0'; $statusLabel = 'Clover only — missing ERP ring'; $statusColor = '#8B2C2C'; }
+                                elseif ($ev['kind'] === 'erp_only') { $bg = '#FFFBEB'; $statusLabel = 'ERP only — no Clover swipe (real cash?)'; $statusColor = '#8B6A1A'; }
+                                else { $statusLabel = '✓ paired'; }
+                                $delta = (is_numeric($ev['clover']) && is_numeric($ev['erp'])) ? round($ev['clover'] - $ev['erp'], 2) : null;
+                            @endphp
+                            <tr style="background:{{ $bg }}; border-bottom:1px solid #F5EFE3;">
+                                <td style="padding:6px; color:#5A5045;">{{ \Carbon\Carbon::parse($ev['ts'])->format('g:i a') }}</td>
+                                <td style="padding:6px; color:#5A5045;">{{ $ev['store'] }}</td>
+                                <td style="padding:6px; text-align:right;">{{ $ev['clover'] === null ? '—' : '$' . number_format($ev['clover'], 2) }}</td>
+                                <td style="padding:6px; text-align:right;">{{ $ev['erp'] === null ? '—' : '$' . number_format($ev['erp'], 2) }}</td>
+                                <td style="padding:6px; text-align:right; color:{{ $delta === null ? '#8A7C6A' : (abs($delta) < 0.02 ? '#2E6F40' : ($delta > 0 ? '#8B6A1A' : '#8B2C2C')) }};">
+                                    {{ $delta === null ? '—' : (($delta > 0 ? '+' : '') . '$' . number_format($delta, 2)) }}
+                                </td>
+                                <td style="padding:6px;">
+                                    @if($ev['kind'] === 'paired')
+                                        <a href="{{ url('sells/' . $ev['inv_id']) }}" style="color:#1F1B16; text-decoration:underline;">#{{ $ev['inv_no'] }}</a>
+                                        @if($delta !== null && abs($delta) >= 0.02)
+                                            <span style="color:#8A7C6A; font-size:11px; font-style:italic;">
+                                                ({{ $delta > 0 ? 'likely tip' : 'small diff' }})
+                                            </span>
                                         @endif
-                                    </td>
-                                    <td style="padding:4px 6px; text-align:right; color:#5A5045;">
-                                        {{ $isMatched ? '$' . number_format($c->matched_erp_amount, 2) : '—' }}
-                                    </td>
-                                    <td style="padding:4px 6px; color:#5A5045;">{{ $c->card ?: '—' }}</td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                </div>
+                                    @elseif($ev['kind'] === 'erp_only')
+                                        <a href="{{ url('sells/' . $ev['inv_id']) }}" style="color:#1F1B16; text-decoration:underline;">#{{ $ev['inv_no'] }}</a>
+                                        <span style="color:{{ $statusColor }}; font-size:11px; font-style:italic;">— {{ $statusLabel }}</span>
+                                    @else
+                                        <span style="color:{{ $statusColor }}; font-size:11px; font-style:italic;">{{ $statusLabel }}</span>
+                                        @if($ev['card'])<span style="color:#8A7C6A; font-size:11px;">· {{ $ev['card'] }}</span>@endif
+                                    @endif
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
 
-                @if(!empty($dt['unmatched_erp']) && count($dt['unmatched_erp']))
-                    <div style="margin-top:14px;">
-                        <div style="font-weight:700; font-size:12px; color:#1F1B16; margin-bottom:4px;">ERP sales with no matching Clover charge ({{ count($dt['unmatched_erp']) }})</div>
-                        <table style="width:100%; font-size:11px; font-variant-numeric:tabular-nums; border-collapse:collapse;">
-                            <thead>
-                                <tr style="color:#8A7C6A; text-align:left; border-bottom:1px solid #ECE3CF;">
-                                    <th style="padding:3px 6px; font-weight:500;">Time</th>
-                                    <th style="padding:3px 6px; font-weight:500;">Store</th>
-                                    <th style="padding:3px 6px; font-weight:500;">Invoice</th>
-                                    <th style="padding:3px 6px; font-weight:500; text-align:right;">ERP gross</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach($dt['unmatched_erp'] as $s)
-                                    <tr style="background:#FFFBEB; border-bottom:1px solid #F5EFE3;">
-                                        <td style="padding:4px 6px; color:#5A5045;">{{ \Carbon\Carbon::parse($s->ts)->format('g:i a') }}</td>
-                                        <td style="padding:4px 6px; color:#5A5045;">{{ $s->loc_name }}</td>
-                                        <td style="padding:4px 6px;"><a href="{{ url('sells/' . $s->id) }}" style="color:#1F1B16; text-decoration:underline;">#{{ $s->invoice_no }}</a></td>
-                                        <td style="padding:4px 6px; text-align:right;">${{ number_format($s->amount, 2) }}</td>
-                                    </tr>
-                                @endforeach
-                            </tbody>
-                        </table>
+                @if($needsReview > 0)
+                    <div style="margin-top:10px; padding:8px 12px; background:#FFF8E1; border:1px solid #E6D58A; border-radius:6px; font-size:12px; color:#5A5045; line-height:1.5;">
+                        <strong style="color:#1F1B16;">How to reconcile the {{ $needsReview }} flagged row{{ $needsReview === 1 ? '' : 's' }}:</strong><br>
+                        <span style="color:#8B2C2C;">⚠ Clover only</span> means a card was swiped but no one rang it in ERP. Click into the cashier's card below to see who was on shift — that's likely a missed ring-up to chase.<br>
+                        <span style="color:#8B6A1A;">⚠ ERP only</span> means a sale was rung but no card swipe paired with it. Most often this is cash (so it'd only show here if cash on Clover wasn't rung), a refund/void mismatch, or the matcher couldn't find a pair within the tolerance.
                     </div>
                 @endif
-            </details>
+            </div>
         @endif
     </div>
 

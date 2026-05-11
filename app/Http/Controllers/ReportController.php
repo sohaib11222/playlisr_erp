@@ -7757,27 +7757,28 @@ class ReportController extends Controller
         $erpSales = $erpSalesQ->select('id', 'invoice_no', 'final_total', 'transaction_date', 'location_id')->get();
 
         $toCents = function ($x) { return (int) round(((float) $x) * 100); };
-        $erpByCents = [];
-        foreach ($erpSales as $s) {
-            $erpByCents[$toCents($s->final_total)][] = $s;
-        }
 
-        // Globally-optimal pairing — enumerate viable (charge, sale)
-        // pairs, sort by score (amount-cents × 1000 + time-seconds),
-        // claim in score order. Same as recent feed matcher.
+        // Generous matcher: tips can add 5-25% to the Clover amount
+        // (customer signs and adds a tip after the swipe), and tax-
+        // rounding adds a few cents either way. Pair if same store +
+        // within ±1 hour + Clover within [ERP-$0.50, ERP+25%+$0.50].
+        // Score prefers small amount-diff (so a $0.01 rounding wins
+        // over a $5 tip when both are candidates).
         $candidates = [];
         foreach ($cloverRowsForDiff as $cIdx => $c) {
             $cCents = $toCents($c->amount);
             $cTs = \App\Http\Controllers\SellPosController::parseCloverPaidAtLa($c)->getTimestamp();
             $cLoc = $c->location_id !== null ? (int) $c->location_id : null;
-            for ($d = -5; $d <= 5; $d++) {
-                foreach (($erpByCents[$cCents + $d] ?? []) as $s) {
-                    if ($cLoc !== null && (int) $s->location_id !== $cLoc) continue;
-                    $sTs = strtotime((string) $s->transaction_date);
-                    $td = abs($sTs - $cTs);
-                    if ($td > 43200) continue;
-                    $candidates[] = ['c' => $cIdx, 's' => $s->id, 'score' => abs($d) * 1000 + $td];
-                }
+            foreach ($erpSales as $s) {
+                if ($cLoc !== null && (int) $s->location_id !== $cLoc) continue;
+                $sCents = $toCents($s->final_total);
+                $delta = $cCents - $sCents;
+                $tipCap = (int) round($sCents * 0.25) + 50;
+                if ($delta < -50 || $delta > $tipCap) continue;
+                $sTs = strtotime((string) $s->transaction_date);
+                $td = abs($sTs - $cTs);
+                if ($td > 3600) continue;
+                $candidates[] = ['c' => $cIdx, 's' => $s->id, 'score' => abs($delta) * 1000 + $td];
             }
         }
         usort($candidates, fn($a, $b) => $a['score'] <=> $b['score']);
