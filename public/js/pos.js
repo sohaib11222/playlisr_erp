@@ -4974,6 +4974,7 @@ function validateManualProductForm() {
     $('#manual_products_container .manual_product_row').each(function() {
         var $row = $(this);
         var productName = $row.find('input[name*="[name]"]').val();
+        var artist = $row.find('input[name*="[artist]"]').val();
         var price = $row.find('input[name*="[price]"]').val();
         var categoryId = $row.find('input[name*="[category_id]"]').val();
         var subCategoryId = $row.find('input[name*="[sub_category_id]"]').val();
@@ -4993,13 +4994,18 @@ function validateManualProductForm() {
             hasValidProduct = true;
 
             var trimmedName = (productName || '').trim();
+            var trimmedArtist = (artist || '').trim();
+            var hasArtist = trimmedArtist.length > 0;
             if (trimmedName === '') {
                 toastr.error('Product name is required for all products');
                 isValid = false;
                 return false;
             }
 
-            if (trimmedName.length < 3) {
+            // Artist field, when filled, supplies the context the description
+            // checks are trying to enforce (e.g. ADELE — 19), so skip the
+            // length/digits gates in that case.
+            if (!hasArtist && trimmedName.length < 3) {
                 toastr.error('Please describe the item in a few more words (e.g. "Airheads candy")');
                 isValid = false;
                 return false;
@@ -5017,8 +5023,9 @@ function validateManualProductForm() {
                 return false;
             }
 
-            // Reject pure digits / punctuation — the name needs actual words.
-            if (/^[0-9\W_]+$/.test(trimmedName)) {
+            // Reject pure digits / punctuation — the name needs actual words,
+            // unless an artist is supplied (e.g. ADELE — 19).
+            if (!hasArtist && /^[0-9\W_]+$/.test(trimmedName)) {
                 toastr.error('Please add a short description with words (e.g. "Soda can")');
                 isValid = false;
                 return false;

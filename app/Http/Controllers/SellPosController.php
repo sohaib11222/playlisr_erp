@@ -3221,13 +3221,18 @@ class SellPosController extends Controller
 
                 // Validate required fields
                 $productName = trim((string) $productName);
+                $trimmedArtist = trim((string) $artist);
+                $hasArtist = $trimmedArtist !== '';
                 if ($productName === '') {
                     $output['success'] = false;
                     $output['msg'] = __('lang_v1.product_name_required') . ' (Row ' . ($index + 1) . ')';
                     return $output;
                 }
 
-                if (mb_strlen($productName) < 3) {
+                // Artist field supplies the context the description checks are
+                // trying to enforce (e.g. ADELE — 19), so skip the length/digits
+                // gates when an artist is filled in.
+                if (!$hasArtist && mb_strlen($productName) < 3) {
                     $output['success'] = false;
                     $output['msg'] = 'Please describe the item in a few more words, e.g. "Airheads candy" (Row ' . ($index + 1) . ')';
                     return $output;
@@ -3245,7 +3250,7 @@ class SellPosController extends Controller
                     return $output;
                 }
 
-                if (preg_match('/^[\d\W_]+$/u', $productName)) {
+                if (!$hasArtist && preg_match('/^[\d\W_]+$/u', $productName)) {
                     $output['success'] = false;
                     $output['msg'] = 'Please add a short description with words, e.g. "Soda can" (Row ' . ($index + 1) . ')';
                     return $output;
