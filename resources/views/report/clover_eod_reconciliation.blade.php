@@ -354,12 +354,13 @@
                                     $cashOtherNet     = (float) ($e['cash_other_net']     ?? 0);
                                     $noDrawerCounts   = is_null($opening) && is_null($expected) && is_null($reported) && is_null($cashVar);
                                 @endphp
+                                @php $cashRung = (float) ($e['cash_rung'] ?? 0); @endphp
                                 <div class="cc-section">
                                     <div class="cc-sec-h">Cash drawer <span class="cc-flag {{ $cashCls }}">{{ $cashLabel }}</span></div>
                                     @if(!$noDrawerCounts)
                                         <div class="cc-line"><span class="cc-label minor">Opening cash</span><span class="cc-val {{ is_null($opening) ? 'muted' : '' }}">{{ is_null($opening) ? '—' : '$' . number_format($opening, 2) }}</span></div>
                                     @endif
-                                    <div class="cc-line"><span class="cc-label minor" title="Gap between ERP total and Clover-matched amount — not necessarily cash, since cash is rung on Clover too at Nivessa. Could be sync lag, a mis-rung sale, or a one-side void.">+ Gap (ERP total − Clover-matched)</span><span class="cc-val">${{ number_format($impliedCash, 2) }}</span></div>
+                                    <div class="cc-line"><span class="cc-label minor" title="Sum of transaction_payments where method='cash' for this cashier's day. Authoritative source for cash collected — not the ERP–Clover gap.">+ Cash sales (rung as cash)</span><span class="cc-val">${{ number_format($cashRung, 2) }}</span></div>
                                     @if($cashBuys > 0 || $hasShift)
                                         <div class="cc-line"><span class="cc-label minor">− Collection buys (cash)</span><span class="cc-val {{ $hasShift ? '' : 'muted' }}">{{ $hasShift ? '$' . number_format($cashBuys, 2) : '—' }}</span></div>
                                     @endif

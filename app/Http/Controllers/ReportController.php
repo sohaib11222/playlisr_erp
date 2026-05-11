@@ -8826,6 +8826,38 @@ class ReportController extends Controller
             ->groupBy(DB::raw('DATE(t.transaction_date)'), 't.location_id', 'bl.name', 'employee_name')
             ->get();
 
+        // Cash-rung-as-cash per (day, location, employee). Sarah 2026-05-11:
+        // cash IS recorded on Clover at Nivessa, so the previous "implied
+        // cash = total − clover" proxy is wrong — that gap is a real
+        // reconciliation miss, not cash income. tp.method='cash' is the
+        // trustworthy source (Sarah's memory 2026-05-06). This feeds the
+        // cash drawer "+ Cash sales" line and the expected_ending_cash
+        // calculation downstream.
+        $cashQ = \DB::table('transaction_payments as tp')
+            ->join('transactions as t', 'tp.transaction_id', '=', 't.id')
+            ->leftJoin('users as u', 't.created_by', '=', 'u.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->where(function ($q) { $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); })
+            ->where('tp.method', 'cash')
+            ->whereDate('t.transaction_date', '>=', $start)
+            ->whereDate('t.transaction_date', '<=', $end);
+        if (!empty($location_id)) {
+            $cashQ->where('t.location_id', $location_id);
+        }
+        $cashRows = $cashQ->selectRaw("DATE(t.transaction_date) as day,
+                t.location_id,
+                COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, 'Unknown') as employee_name,
+                COALESCE(SUM(tp.amount), 0) as cash_total")
+            ->groupBy(DB::raw('DATE(t.transaction_date)'), 't.location_id', 'employee_name')
+            ->get();
+        $cashByKey = [];
+        foreach ($cashRows as $cr) {
+            $k = $cr->day . '|' . ($cr->location_id ?: 0) . '|' . strtolower(trim(explode(' ', $cr->employee_name)[0] ?? ''));
+            $cashByKey[$k] = (float) $cr->cash_total;
+        }
+
         // total_sales aggregation now happens in PHP from $txns below
         // (so we can re-attribute admin-rung sales to the on-shift
         // cashier). $totalQ used to do the SUM in SQL but lost that
@@ -9086,6 +9118,7 @@ class ReportController extends Controller
             'total_sales' => 0.0, 'txn_count' => 0,
             'shift_start' => null, 'shift_end' => null, 'shift_status' => null,
             'opening_cash' => null, 'cash_sales' => 0.0,
+            'cash_rung' => 0.0,
             'cash_buys' => 0.0, 'collection_buys_all' => 0.0,
             'expected_ending_cash' => null, 'reported_ending_cash' => null,
             'cash_variance' => null, 'has_shift' => false,
@@ -9511,17 +9544,21 @@ class ReportController extends Controller
         }
         unset($locsD);
 
-        // Derived numbers — total_sales is the only trustworthy "what they
-        // sold" number, clover_total is what was paid by card. Implied cash
-        // = total_sales − clover_total, and the drawer should hold opening
-        // + that cash − cash buys at close. Variance only meaningful when
-        // the shift is closed (open shifts have no reported count yet).
+        // Derived numbers. Sarah 2026-05-11: cash drawer math now uses
+        // cash_rung (real tp.method='cash' sum) instead of the implied
+        // gap, since cash is rung on Clover too at Nivessa and the gap
+        // isn't cash income. The gap is still surfaced separately as a
+        // reconciliation anomaly indicator on the "What they sold" line.
         foreach ($buckets as $day => &$locs) {
             foreach ($locs as $locKey => &$loc) {
                 if (!isset($loc['employees'])) continue;
                 foreach ($loc['employees'] as &$e) {
+                    $empKey = strtolower(trim(explode(' ', $e['display_name'] ?? '')[0] ?? ''));
+                    $cashKey = $day . '|' . ($locKey ?: 0) . '|' . $empKey;
+                    $cashRung = (float) ($cashByKey[$cashKey] ?? 0);
+                    $e['cash_rung'] = round($cashRung, 2);
                     $impliedCash = max(0.0, round(((float) $e['total_sales']) - ((float) $e['clover_total']), 2));
-                    $e['cash_sales'] = $impliedCash;
+                    $e['cash_sales'] = $impliedCash; // legacy alias = the gap
                     if ($e['has_shift'] && !is_null($e['opening_cash'])) {
                         $cashOut = ((float) ($e['cash_buys']           ?? 0))
                                  + ((float) ($e['cash_refunds']        ?? 0))
@@ -9530,7 +9567,7 @@ class ReportController extends Controller
                         $cashIn  = ((float) ($e['cash_transfers_in']   ?? 0))
                                  + ((float) ($e['cash_other_net']      ?? 0));
                         $e['expected_ending_cash'] = round(
-                            ((float) $e['opening_cash']) + $impliedCash - $cashOut + $cashIn,
+                            ((float) $e['opening_cash']) + $cashRung - $cashOut + $cashIn,
                             2
                         );
                         if ($e['shift_status'] === 'closed' && !is_null($e['reported_ending_cash'])) {
