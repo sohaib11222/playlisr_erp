@@ -70,9 +70,13 @@
             @component('components.widget', ['class' => 'box-primary', 'title' => __('expense.all_expenses')])
                 @can('expense.add')
                     @slot('tool')
-                        <div class="box-tools">
-                            <a class="btn btn-block btn-primary" href="{{action('ExpenseController@create')}}">
-                            <i class="fa fa-plus"></i> @lang('messages.add')</a>
+                        <div class="box-tools" style="display:flex; gap:6px;">
+                            <a class="btn btn-default" href="{{ url('/expenses/import-qb') }}" title="Backfill from a QuickBooks Transaction List by Date export">
+                                <i class="fa fa-file-import"></i> Import from QB
+                            </a>
+                            <a class="btn btn-primary" href="{{action('ExpenseController@create')}}">
+                                <i class="fa fa-plus"></i> @lang('messages.add')
+                            </a>
                         </div>
                     @endslot
                 @endcan

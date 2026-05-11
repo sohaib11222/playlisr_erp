@@ -487,6 +487,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::resource('expense-categories', 'ExpenseCategoryController');
 
     //Expenses...
+    Route::get('/expenses/import-qb', 'ImportQbExpenseController@index');
+    Route::post('/expenses/import-qb', 'ImportQbExpenseController@store');
     Route::resource('expenses', 'ExpenseController');
 
     //Transaction payments...

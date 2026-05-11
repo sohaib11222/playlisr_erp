@@ -78,7 +78,7 @@ class AdminActionHistoryController extends Controller
         // line, marks the auto-created product inactive, and flips the
         // linked transaction back to draft. Skips any line that's already
         // had stock sold against it.
-        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'bfc-receive'];
+        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'bfc-receive', 'qb-expense-import'];
         if (!in_array($action, $supportedActions, true)) {
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 0, 'msg' => "Don't know how to undo action: " . $action]);
@@ -86,6 +86,18 @@ class AdminActionHistoryController extends Controller
 
         if ($action === 'bfc-receive') {
             return $this->undoBfcReceive($data, $key);
+        }
+
+        // qb-expense-import: snapshot rows hold inserted transaction IDs.
+        // Undo deletes them outright (no payment/line items to worry about).
+        if ($action === 'qb-expense-import') {
+            $ids = array_filter(array_map(function ($r) { return $r['id'] ?? null; }, $data['rows']));
+            $deleted = DB::table('transactions')
+                ->whereIn('id', $ids)
+                ->whereIn('type', ['expense', 'expense_refund'])
+                ->delete();
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 1, 'msg' => "Deleted $deleted imported expense row(s) from snapshot $key."]);
         }
 
         $restored = 0;
