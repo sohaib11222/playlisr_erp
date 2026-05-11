@@ -7728,22 +7728,106 @@ class ReportController extends Controller
                 $q->where('location_id', $location_id)->orWhereNull('location_id');
             });
         }
-        $cloverChargesForDiff = $unmatchedCloverQ
+        // Per-charge reconciliation: for each Clover charge, find its
+        // matching ERP sale (same store + amount within 5¢ + time
+        // within ±12h). If no match, flag and surface near-misses so
+        // Sarah can see WHY — e.g. amount off by $0.07, or a real
+        // missing ring-up. Same matcher as the recent-feed page.
+        $cloverRowsForDiff = $unmatchedCloverQ
             ->select('clover_payment_id', 'amount', 'tax_cents', 'paid_at', 'location_id', 'employee_name', 'card_type', 'card_last4', 'raw_payload')
             ->orderBy('paid_at')
-            ->get()
-            ->map(function ($r) use ($business_locations) {
-                $laTs = \App\Http\Controllers\SellPosController::parseCloverPaidAtLa($r);
-                return (object) [
-                    'clover_payment_id' => $r->clover_payment_id,
-                    'amount'   => (float) $r->amount,
-                    'net'      => round((float) $r->amount - ((float) ($r->tax_cents ?? 0)) / 100.0, 2),
-                    'paid_at'  => $laTs->format('Y-m-d g:i a'),
-                    'loc_name' => $r->location_id && isset($business_locations[$r->location_id]) ? $business_locations[$r->location_id] : '(no loc)',
-                    'employee' => $r->employee_name ?: null,
-                    'card'     => trim(strtoupper((string) $r->card_type) . ' ' . ($r->card_last4 ? '••' . $r->card_last4 : '')),
-                ];
-            });
+            ->get();
+
+        // Pull ERP sales for the day (matching pool — channel='in_store'
+        // since Whatnot doesn't hit Clover).
+        $erpSalesQ = \DB::table('transactions')
+            ->where('business_id', $business_id)
+            ->where('type', 'sell')
+            ->where('status', 'final')
+            ->whereNull('import_source')
+            ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
+            ->whereDate('transaction_date', '>=', \Carbon\Carbon::parse($start)->subDay()->toDateString())
+            ->whereDate('transaction_date', '<=', \Carbon\Carbon::parse($end)->addDay()->toDateString());
+        if (!empty($location_id)) {
+            $erpSalesQ->where('location_id', $location_id);
+        }
+        if (\Schema::hasColumn('transactions', 'channel')) {
+            $erpSalesQ->where(function ($q) { $q->where('channel', 'in_store')->orWhereNull('channel'); });
+        }
+        $erpSales = $erpSalesQ->select('id', 'invoice_no', 'final_total', 'transaction_date', 'location_id')->get();
+
+        $toCents = function ($x) { return (int) round(((float) $x) * 100); };
+        $erpByCents = [];
+        foreach ($erpSales as $s) {
+            $erpByCents[$toCents($s->final_total)][] = $s;
+        }
+
+        // Globally-optimal pairing — enumerate viable (charge, sale)
+        // pairs, sort by score (amount-cents × 1000 + time-seconds),
+        // claim in score order. Same as recent feed matcher.
+        $candidates = [];
+        foreach ($cloverRowsForDiff as $cIdx => $c) {
+            $cCents = $toCents($c->amount);
+            $cTs = \App\Http\Controllers\SellPosController::parseCloverPaidAtLa($c)->getTimestamp();
+            $cLoc = $c->location_id !== null ? (int) $c->location_id : null;
+            for ($d = -5; $d <= 5; $d++) {
+                foreach (($erpByCents[$cCents + $d] ?? []) as $s) {
+                    if ($cLoc !== null && (int) $s->location_id !== $cLoc) continue;
+                    $sTs = strtotime((string) $s->transaction_date);
+                    $td = abs($sTs - $cTs);
+                    if ($td > 43200) continue;
+                    $candidates[] = ['c' => $cIdx, 's' => $s->id, 'score' => abs($d) * 1000 + $td];
+                }
+            }
+        }
+        usort($candidates, fn($a, $b) => $a['score'] <=> $b['score']);
+        $matchedCBySale = [];
+        $matchedSByC = [];
+        $erpById = $erpSales->keyBy('id');
+        foreach ($candidates as $cand) {
+            if (isset($matchedSByC[$cand['c']])) continue;
+            if (isset($matchedCBySale[$cand['s']])) continue;
+            $matchedSByC[$cand['c']] = $cand['s'];
+            $matchedCBySale[$cand['s']] = $cand['c'];
+        }
+
+        $cloverChargesForDiff = $cloverRowsForDiff->map(function ($r, $idx) use ($business_locations, $matchedSByC, $erpById) {
+            $laTs = \App\Http\Controllers\SellPosController::parseCloverPaidAtLa($r);
+            $matchedSaleId = $matchedSByC[$idx] ?? null;
+            $matchedSale = $matchedSaleId ? $erpById->get($matchedSaleId) : null;
+            return (object) [
+                'clover_payment_id' => $r->clover_payment_id,
+                'amount'    => (float) $r->amount,
+                'net'       => round((float) $r->amount - ((float) ($r->tax_cents ?? 0)) / 100.0, 2),
+                'paid_at'   => $laTs->format('Y-m-d g:i a'),
+                'loc_name'  => $r->location_id && isset($business_locations[$r->location_id]) ? $business_locations[$r->location_id] : '(no loc)',
+                'employee'  => $r->employee_name ?: null,
+                'card'      => trim(strtoupper((string) $r->card_type) . ' ' . ($r->card_last4 ? '••' . $r->card_last4 : '')),
+                'matched_erp_id'         => $matchedSaleId,
+                'matched_erp_invoice_no' => $matchedSale ? $matchedSale->invoice_no : null,
+                'matched_erp_amount'     => $matchedSale ? round((float) $matchedSale->final_total, 2) : null,
+            ];
+        });
+
+        // Also surface ERP sales that didn't match any Clover charge —
+        // the OTHER side of the reconciliation gap (sale rung but no
+        // card swipe found, e.g. real cash sale that should have been on
+        // Clover, or a sync miss).
+        $erpSalesInRange = $erpSales->filter(function ($s) use ($start, $end) {
+            $d = substr((string) $s->transaction_date, 0, 10);
+            return $d >= $start && $d <= $end;
+        });
+        $unmatchedErp = $erpSalesInRange->reject(function ($s) use ($matchedCBySale) {
+            return isset($matchedCBySale[$s->id]);
+        })->map(function ($s) use ($business_locations) {
+            return (object) [
+                'id'         => $s->id,
+                'invoice_no' => $s->invoice_no,
+                'amount'     => round((float) $s->final_total, 2),
+                'ts'         => (string) $s->transaction_date,
+                'loc_name'   => $s->location_id && isset($business_locations[$s->location_id]) ? $business_locations[$s->location_id] : '(no loc)',
+            ];
+        })->values();
 
         $day_totals = [
             'erp_net'        => round($erp_net_total, 2),
@@ -7753,8 +7837,9 @@ class ReportController extends Controller
             'diff'           => round($clover_day_total - $erp_net_total, 2),
             'whatnot_net'    => round($whatnot_net_total, 2),
             'whatnot_count'  => $whatnot_count,
-            'by_store'       => array_values($day_by_store),
-            'clover_charges' => $cloverChargesForDiff,
+            'by_store'           => array_values($day_by_store),
+            'clover_charges'     => $cloverChargesForDiff,
+            'unmatched_erp'      => $unmatchedErp,
         ];
 
         return view('report.clover_eod_reconciliation')->with(compact(

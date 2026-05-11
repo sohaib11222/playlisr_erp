@@ -663,7 +663,6 @@ class QuickBooksService
             $cid = \DB::table('expense_categories')->insertGetId([
                 'business_id' => $business_id,
                 'name' => $name,
-                'created_by' => $created_by ?: null,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);

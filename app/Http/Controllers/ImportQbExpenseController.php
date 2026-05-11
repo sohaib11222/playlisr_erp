@@ -135,7 +135,6 @@ class ImportQbExpenseController extends Controller
             $cat = ExpenseCategory::create([
                 'business_id' => $business_id,
                 'name' => $name,
-                'created_by' => $user_id,
             ]);
             $category_cache[$name] = $cat->id;
             return $cat->id;
