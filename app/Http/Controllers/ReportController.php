@@ -3160,6 +3160,8 @@ class ReportController extends Controller
                 ->leftJoin('stock_adjustment_lines as SAL', 'SAL.id', '=', 'transaction_sell_lines_purchase_lines.stock_adjustment_line_id')
                 ->leftJoin('transactions as sale', 'SL.transaction_id', '=', 'sale.id')
                 ->leftJoin('transactions as stock_adjustment', 'SAL.transaction_id', '=', 'stock_adjustment.id')
+                ->leftJoin('users as sale_user', 'sale_user.id', '=', 'sale.created_by')
+                ->leftJoin('users as adj_user', 'adj_user.id', '=', 'stock_adjustment.created_by')
                 ->join('business_locations as bl', 'purchase.location_id', '=', 'bl.id')
                 ->join('variations as v', 'PL.variation_id', '=', 'v.id')
                 ->join('product_variations as pv', 'v.product_variation_id', '=', 'pv.id')
@@ -3203,7 +3205,8 @@ class ReportController extends Controller
                     'transaction_sell_lines_purchase_lines.qty_returned',
                     'bl.name as location',
                     'SL.sell_line_note',
-                    'PL.lot_number'
+                    'PL.lot_number',
+                    DB::raw("TRIM(CONCAT_WS(' ', COALESCE(sale_user.first_name, adj_user.first_name), COALESCE(sale_user.last_name, adj_user.last_name))) as created_by")
                 );
 
             // Query for manual items (items without product_id)
@@ -3212,6 +3215,7 @@ class ReportController extends Controller
                 ->leftJoin('categories as cat', 'transaction_sell_lines.category_id', '=', 'cat.id')
                 ->leftJoin('categories as sub_cat', 'transaction_sell_lines.sub_category_id', '=', 'sub_cat.id')
                 ->leftJoin('contacts as customers', 'sale.contact_id', '=', 'customers.id')
+                ->leftJoin('users as sale_user', 'sale_user.id', '=', 'sale.created_by')
                 ->where('sale.business_id', $business_id)
                 ->where('sale.type', 'sell')
                 ->where('sale.status', 'final')
@@ -3253,7 +3257,8 @@ class ReportController extends Controller
                     DB::raw('0 as qty_returned'),
                     'bl.name as location',
                     'transaction_sell_lines.sell_line_note',
-                    DB::raw('NULL as lot_number')
+                    DB::raw('NULL as lot_number'),
+                    DB::raw("TRIM(CONCAT_WS(' ', sale_user.first_name, sale_user.last_name)) as created_by")
                 );
 
             // Apply filters to purchased items query
@@ -3368,6 +3373,7 @@ class ReportController extends Controller
                 ->orderColumn('location', DB::raw('`unioned_query`.`location` $1'))
                 ->orderColumn('supplier', DB::raw('`unioned_query`.`supplier` $1'))
                 ->orderColumn('customer', DB::raw('`unioned_query`.`customer` $1'))
+                ->orderColumn('created_by', DB::raw('`unioned_query`.`created_by` $1'))
                 ->orderColumn('purchase_ref_no', DB::raw('`unioned_query`.`purchase_ref_no` $1'))
                 ->editColumn('product_name', function ($row) {
                     $product_name = $row->product_name;
@@ -3500,6 +3506,8 @@ class ReportController extends Controller
             ->leftJoin('stock_adjustment_lines as SAL', 'SAL.id', '=', 'transaction_sell_lines_purchase_lines.stock_adjustment_line_id')
             ->leftJoin('transactions as sale', 'SL.transaction_id', '=', 'sale.id')
             ->leftJoin('transactions as stock_adjustment', 'SAL.transaction_id', '=', 'stock_adjustment.id')
+            ->leftJoin('users as sale_user', 'sale_user.id', '=', 'sale.created_by')
+            ->leftJoin('users as adj_user', 'adj_user.id', '=', 'stock_adjustment.created_by')
             ->join('business_locations as bl', 'purchase.location_id', '=', 'bl.id')
             ->join('variations as v', 'PL.variation_id', '=', 'v.id')
             ->join('product_variations as pv', 'v.product_variation_id', '=', 'pv.id')
@@ -3539,7 +3547,8 @@ class ReportController extends Controller
                 'transaction_sell_lines_purchase_lines.sell_line_id',
                 'bl.name as location',
                 'SL.sell_line_note',
-                'PL.lot_number'
+                'PL.lot_number',
+                DB::raw("TRIM(CONCAT_WS(' ', COALESCE(sale_user.first_name, adj_user.first_name), COALESCE(sale_user.last_name, adj_user.last_name))) as created_by")
             );
 
         $manual_items_query = TransactionSellLine::join('transactions as sale', 'transaction_sell_lines.transaction_id', '=', 'sale.id')
@@ -3547,6 +3556,7 @@ class ReportController extends Controller
             ->leftJoin('categories as cat', 'transaction_sell_lines.category_id', '=', 'cat.id')
             ->leftJoin('categories as sub_cat', 'transaction_sell_lines.sub_category_id', '=', 'sub_cat.id')
             ->leftJoin('contacts as customers', 'sale.contact_id', '=', 'customers.id')
+            ->leftJoin('users as sale_user', 'sale_user.id', '=', 'sale.created_by')
             ->where('sale.business_id', $business_id)
             ->where('sale.type', 'sell')
             ->where('sale.status', 'final')
@@ -3584,7 +3594,8 @@ class ReportController extends Controller
                 'transaction_sell_lines.id as sell_line_id',
                 'bl.name as location',
                 'transaction_sell_lines.sell_line_note',
-                DB::raw('NULL as lot_number')
+                DB::raw('NULL as lot_number'),
+                DB::raw("TRIM(CONCAT_WS(' ', sale_user.first_name, sale_user.last_name)) as created_by")
             );
 
         $permitted_locations = auth()->user()->permitted_locations();
@@ -3658,7 +3669,7 @@ class ReportController extends Controller
             fputcsv($out, [
                 'Product', 'Artist', 'Format', 'SKU', 'Category', 'Sub-category', 'Description',
                 'Purchase Date', 'Purchase Ref', 'Lot Number', 'Supplier', 'Purchase Price',
-                'Sell Date', 'Sale Invoice', 'Customer', 'Location',
+                'Sell Date', 'Sale Invoice', 'Customer', 'Created By', 'Location',
                 'Quantity', 'Unit', 'Selling Price', 'Subtotal',
             ]);
             foreach ($rows as $r) {
@@ -3708,6 +3719,7 @@ class ReportController extends Controller
                     $sell_date,
                     $sale_invoice,
                     $customer,
+                    $r->created_by,
                     $r->location,
                     (float) $r->quantity,
                     $r->unit ?? 'pcs',

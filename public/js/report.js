@@ -1450,6 +1450,7 @@ $(document).ready(function() {
             { data: 'sell_date', searchable: false },
             { data: 'sale_invoice_no', name: 'sale_invoice_no' },
             { data: 'customer', searchable: false },
+            { data: 'created_by', name: 'created_by' },
             { data: 'location', name: 'bl.name' },
             { data: 'quantity', searchable: false },
             { data: 'selling_price', searchable: false },

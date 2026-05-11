@@ -137,6 +137,7 @@
                                 <th>@lang('lang_v1.sell_date')</th>
                                 <th>@lang('business.sale')</th>
                                 <th>@lang('contact.customer')</th>
+                                <th>Created By</th>
                                 <th>@lang('sale.location')</th>
                                 <th>@lang('lang_v1.sell_quantity')</th>
                                 <th>@lang('lang_v1.selling_price')</th>
@@ -146,9 +147,9 @@
                         <tfoot>
                             <tr class="bg-gray font-17 text-center footer-total">
                                 <td colspan="11"><strong>@lang('sale.total'):</strong></td>
-                                <td id="footer_total_pp" 
+                                <td id="footer_total_pp"
                                     class="display_currency" data-currency_symbol="true"></td>
-                                <td colspan="4"></td>
+                                <td colspan="5"></td>
                                 <td id="footer_total_qty"></td>
                                 <td id="footer_total_sp"
                                     class="display_currency" data-currency_symbol="true"></td>
