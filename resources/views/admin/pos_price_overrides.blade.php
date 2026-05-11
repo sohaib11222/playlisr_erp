@@ -182,6 +182,69 @@
                 @endif
             </div>
         </div>
+
+        @if(isset($recentLines) && $recentLines->count())
+        <div class="box box-info collapsed-box">
+            <div class="box-header with-border">
+                <h3 class="box-title">
+                    <i class="fa fa-stethoscope"></i> Recent sales — override eligibility
+                    <small style="margin-left:8px;">Last 48h. Use this to see why a specific sale did/didn't produce an override row.</small>
+                </h3>
+                <div class="box-tools pull-right">
+                    <button type="button" class="btn btn-box-tool" data-widget="collapse">
+                        <i class="fa fa-plus"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="box-body" style="display:none;">
+                <p style="color:#666; font-size:13px;">
+                    Each row is one sell line from the last 48 hours. The <strong>Verdict</strong> column
+                    says whether an override row was (or should have been) logged at <code>/admin/pos-overrides</code>.
+                </p>
+                <table class="table table-striped table-condensed" style="font-size:13px;">
+                    <thead>
+                        <tr>
+                            <th>When</th>
+                            <th>Invoice</th>
+                            <th>Cashier</th>
+                            <th>Product</th>
+                            <th class="text-right">Sticker</th>
+                            <th class="text-right">Sold</th>
+                            <th class="text-right">Diff</th>
+                            <th>Verdict</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($recentLines as $rl)
+                            @php
+                                $diffCls = abs($rl->diff) < 0.01 ? '' : ($rl->diff < 0 ? 'text-danger' : 'text-success');
+                                $verdictCls = str_contains($rl->verdict, 'logged ✓') ? 'text-success'
+                                    : (str_contains($rl->verdict, 'NOT logged') ? 'text-danger' : 'text-muted');
+                            @endphp
+                            <tr>
+                                <td>{{ \Carbon\Carbon::parse($rl->tx_at)->format('M j, g:i A') }}</td>
+                                <td>
+                                    @if($rl->invoice_no)
+                                        <a href="{{ url('/sells/' . $rl->tx_id) }}" target="_blank">{{ $rl->invoice_no }}</a>
+                                    @else
+                                        <span class="text-muted">#{{ $rl->tx_id }}</span>
+                                    @endif
+                                </td>
+                                <td>{{ trim(($rl->cashier_first ?? '') . ' ' . ($rl->cashier_last ?? '')) ?: '—' }}</td>
+                                <td>{{ $rl->product_name ?? '(manual)' }}</td>
+                                <td class="text-right">${{ number_format((float) $rl->sticker_inc, 2) }}</td>
+                                <td class="text-right">${{ number_format((float) $rl->sold_inc, 2) }}</td>
+                                <td class="text-right {{ $diffCls }}">
+                                    <strong>{{ $rl->diff > 0 ? '+' : '' }}${{ number_format($rl->diff, 2) }}</strong>
+                                </td>
+                                <td class="{{ $verdictCls }}" style="font-size:12px;">{{ $rl->verdict }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        @endif
     @endif
 
 </section>

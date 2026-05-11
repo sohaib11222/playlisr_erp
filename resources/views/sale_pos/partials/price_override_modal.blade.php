@@ -231,11 +231,17 @@ function initPosPriceOverride($) {
         if (!activeInput) { $modal.modal('hide'); return; }
 
         var $row = activeInput.closest('tr');
-        // Apply the new price to the underlying input, then trigger change
-        // so the existing pos.js handlers recompute the line subtotal and
-        // cart totals.
-        activeInput.val(newPrice.toFixed(2)).trigger('change');
+        // Apply the new price to the inc-tax input, then trigger change
+        // so the existing pos.js handlers recompute exc-tax + line totals.
+        // Belt-and-suspenders: temporarily un-readonly the input so pos.js
+        // change handlers (which sometimes ignore readonly inputs) fire.
+        activeInput.prop('readonly', false);
+        activeInput.val(newPrice.toFixed(2)).trigger('change').trigger('input');
+        activeInput.prop('readonly', true).attr('readonly', 'readonly');
         $row.find('input.pos_price_override_reason').val(reason);
+        // Mark the line visually as overridden so the cashier (and Sarah on
+        // a recent-sales eyeball) can see at a glance which line was edited.
+        $row.attr('data-price-overridden', '1');
         $errorEl.hide();
         activeInput = null;
         $modal.modal('hide');
