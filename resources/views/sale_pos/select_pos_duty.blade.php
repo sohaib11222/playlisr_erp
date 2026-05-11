@@ -90,22 +90,13 @@
     display: block;
     margin-bottom: 18px;
 }
-.pos-duty-shell .field-label {
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: .12em;
-    text-transform: uppercase;
-    color: var(--d-ink-3);
+.pos-duty-shell .field-prompt {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--d-ink);
     display: block;
-    margin-bottom: 8px;
-}
-.pos-duty-shell .field-help {
-    font-size: 12px;
-    color: var(--d-ink-3);
-    font-weight: 500;
-    margin-left: 6px;
-    text-transform: none;
-    letter-spacing: 0;
+    margin: 0 0 10px;
+    letter-spacing: -.005em;
 }
 
 /* Store pills — horizontal flex-wrap, smaller than duty pills since
@@ -149,6 +140,20 @@
     background: var(--d-accent-soft);
     color: var(--d-accent-text);
     box-shadow: 0 0 0 3px rgba(232,207,104,.3);
+}
+/* Per-store color hooks so it's obvious at a glance which store is picked.
+   Pico → cool blue, Hollywood → warm sunset coral, Both → yellow accent. */
+.pos-duty-shell .store-pill[data-store="pico"]:has(input:checked) {
+    border-color: #5C8FBF;
+    background: #DCE9F5;
+    color: #1F3E63;
+    box-shadow: 0 0 0 3px rgba(92,143,191,.3);
+}
+.pos-duty-shell .store-pill[data-store="hollywood"]:has(input:checked) {
+    border-color: #D9785A;
+    background: #FBE2D5;
+    color: #6E2B12;
+    box-shadow: 0 0 0 3px rgba(217,120,90,.3);
 }
 
 /* Duty options — 4 pills in one horizontal row, equal width. */
@@ -316,15 +321,24 @@
             {!! Form::open(['url' => action('SellPosController@savePosDuty'), 'method' => 'post']) !!}
             {!! Form::hidden('intended', $intended) !!}
 
-            @php $selectedLoc = (string) session('pos_duty_location_id'); @endphp
+            @php
+                $selectedLoc = (string) session('pos_duty_location_id');
+                $storeKey = function ($name) {
+                    $n = strtolower(trim((string) $name));
+                    if (str_contains($n, 'pico')) return 'pico';
+                    if (str_contains($n, 'holly') || str_contains($n, 'hw')) return 'hollywood';
+                    return 'other';
+                };
+            @endphp
             <div class="field">
+                <div class="field-prompt">Choose a store</div>
                 <div class="store-pills">
-                    <label class="store-pill">
+                    <label class="store-pill" data-store="both">
                         <input type="radio" name="location_id" value="" required {{ $selectedLoc === '' ? 'checked' : '' }}>
                         Both
                     </label>
                     @foreach($business_locations as $id => $name)
-                        <label class="store-pill">
+                        <label class="store-pill" data-store="{{ $storeKey($name) }}">
                             <input type="radio" name="location_id" value="{{ $id }}" required {{ $selectedLoc === (string)$id ? 'checked' : '' }}>
                             {{ $name }}
                         </label>
@@ -333,6 +347,7 @@
             </div>
 
             <div class="field">
+                <div class="field-prompt">Choose your role</div>
                 <div class="duty-options">
                     <label class="duty-option">
                         <input type="radio" name="duty" value="cashier" id="duty_cashier" required>
