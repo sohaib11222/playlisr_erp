@@ -139,21 +139,11 @@ $(function () {
         $('#pos_table tbody tr.product_row').each(function () { ensureRowReady($(this)); });
     }
     sweepRows();
-    var tbody = document.querySelector('#pos_table tbody');
-    if (tbody) {
-        new MutationObserver(function (muts) {
-            muts.forEach(function (m) {
-                if (!m.addedNodes) return;
-                Array.prototype.forEach.call(m.addedNodes, function (n) {
-                    if (n.nodeType !== 1) return;
-                    if (n.matches && n.matches('tr.product_row')) ensureRowReady($(n));
-                    else if (n.querySelectorAll) {
-                        n.querySelectorAll('tr.product_row').forEach(function (r) { ensureRowReady($(r)); });
-                    }
-                });
-            });
-        }).observe(tbody, { childList: true, subtree: true });
-    }
+    // MutationObserver was unreliable on this layout (rows seem to get rebuilt
+    // out of band); fall back to a cheap interval poll. ensureRowReady is
+    // idempotent — it no-ops when the row already has the button + hidden
+    // reason input, so the cost is just a few DOM reads per tick.
+    setInterval(sweepRows, 500);
 
     // Open the modal in response to a deliberate Edit-price click. Pre-fill
     // it with the line's current value and last-saved reason (if any) so
