@@ -6805,6 +6805,20 @@ class ReportController extends Controller
         }
         $cnt = count($orders);
 
+        // Read the flat-cost fallback from business api_settings. 0 / null
+        // disables it (default), so existing match-by-id behavior is
+        // unchanged unless an estimate is explicitly configured.
+        $business_row = \DB::table('businesses')->where('id', $business_id)->first();
+        $api_settings_raw = $business_row->api_settings ?? null;
+        if (is_string($api_settings_raw)) {
+            $api_settings_arr = json_decode($api_settings_raw, true) ?: [];
+        } else {
+            $api_settings_arr = is_array($api_settings_raw) ? $api_settings_raw : [];
+        }
+        $discogs_fallback_cost = isset($api_settings_arr['discogs']['fallback_item_cost'])
+            ? (float) $api_settings_arr['discogs']['fallback_item_cost']
+            : 0.0;
+
         // Cost-of-goods: walk order line items and match against local cost.
         // Two-tier match:
         //   1. Discogs listing_id → products.discogs_listing_id
@@ -6812,14 +6826,16 @@ class ReportController extends Controller
         //   2. Discogs release_id → products.discogs_release_id
         //      (catches items where we own the release in local inventory
         //      even though they were listed directly on Discogs).
-        // First match wins; tier-2 is the fallback. Unmatched items
-        // contribute revenue without COGS, so margin % is a lower bound.
+        // First match wins; tier-2 is the fallback. Items missing both get
+        // a flat estimated cost if discogs.fallback_item_cost is configured,
+        // otherwise they contribute revenue without COGS.
         $cogs = 0.0;
         $matched_items = 0;
         $unmatched_items = 0;
         $matched_revenue = 0.0;
         $matched_by_listing = 0;
         $matched_by_release = 0;
+        $matched_by_fallback = 0;
         $listing_ids = [];
         $release_ids = [];
         foreach ($orders as $o) {
@@ -6868,6 +6884,11 @@ class ReportController extends Controller
                     $matched_revenue += $price;
                     $matched_items++;
                     $matched_by_release++;
+                } elseif ($discogs_fallback_cost > 0) {
+                    $cogs += $discogs_fallback_cost;
+                    $matched_revenue += $price;
+                    $matched_items++;
+                    $matched_by_fallback++;
                 } else {
                     $unmatched_items++;
                 }
@@ -6876,7 +6897,7 @@ class ReportController extends Controller
         $gross_profit = $matched_revenue - $cogs;
 
         $this->setDiag('discogs', $cnt > 0
-            ? "Discogs: pulled {$cnt} order(s) from API. Items matched: {$matched_items} ({$matched_by_listing} via listing, {$matched_by_release} via release); unmatched: {$unmatched_items}."
+            ? "Discogs: pulled {$cnt} order(s) from API. Items matched: {$matched_items} ({$matched_by_listing} via listing, {$matched_by_release} via release, {$matched_by_fallback} via fallback); unmatched: {$unmatched_items}."
             : 'Discogs: API reachable but no orders in revenue statuses for this date range.');
         return [
             'revenue' => $revenue,
@@ -6887,6 +6908,8 @@ class ReportController extends Controller
             'unmatched_items' => $unmatched_items,
             'matched_by_listing' => $matched_by_listing,
             'matched_by_release' => $matched_by_release,
+            'matched_by_fallback' => $matched_by_fallback,
+            'fallback_cost' => $discogs_fallback_cost,
             'matched_revenue' => $matched_revenue,
         ];
     }
@@ -7149,6 +7172,35 @@ class ReportController extends Controller
     }
 
     /**
+     * Persist the Discogs flat-cost fallback into business api_settings.
+     * Used for COGS estimation on Discogs API orders that don't match any
+     * local product by listing_id or release_id.
+     */
+    public function setDiscogsFallbackCost(Request $request)
+    {
+        $this->ensureAdminOnlyReportAccess();
+        $business_id = $request->session()->get('user.business_id');
+        $cost = (float) $request->input('fallback_item_cost', 0);
+        if ($cost < 0) $cost = 0;
+
+        $business = \App\Business::find($business_id);
+        $api_settings = $business->api_settings ?? [];
+        if (is_string($api_settings)) $api_settings = json_decode($api_settings, true) ?: [];
+        if (!is_array($api_settings)) $api_settings = [];
+        if (!isset($api_settings['discogs']) || !is_array($api_settings['discogs'])) {
+            $api_settings['discogs'] = [];
+        }
+        $api_settings['discogs']['fallback_item_cost'] = $cost;
+        $business->api_settings = $api_settings;
+        $business->save();
+
+        return redirect()->action('ReportController@discogsReport')->with('status', [
+            'success' => 1,
+            'msg' => 'Discogs fallback cost set to $' . number_format($cost, 2) . '. Reload the report to see updated GP.',
+        ]);
+    }
+
+    /**
      * eBay Sales Report — same shape as Discogs, scoped to channel='ebay'.
      */
     public function ebayReport(Request $request)
@@ -7233,10 +7285,12 @@ class ReportController extends Controller
                 $external_cogs_revenue = (float) ($dgs['matched_revenue'] ?? 0);
                 // Per-tier match info for the view's diagnostic panel.
                 $discogs_match_info = [
-                    'matched_items'      => (int) ($dgs['matched_items'] ?? 0),
-                    'unmatched_items'    => (int) ($dgs['unmatched_items'] ?? 0),
-                    'matched_by_listing' => (int) ($dgs['matched_by_listing'] ?? 0),
-                    'matched_by_release' => (int) ($dgs['matched_by_release'] ?? 0),
+                    'matched_items'       => (int) ($dgs['matched_items'] ?? 0),
+                    'unmatched_items'     => (int) ($dgs['unmatched_items'] ?? 0),
+                    'matched_by_listing'  => (int) ($dgs['matched_by_listing'] ?? 0),
+                    'matched_by_release'  => (int) ($dgs['matched_by_release'] ?? 0),
+                    'matched_by_fallback' => (int) ($dgs['matched_by_fallback'] ?? 0),
+                    'fallback_cost'       => (float) ($dgs['fallback_cost'] ?? 0),
                     // Inventory coverage so it's obvious why match rate is what it is.
                     'inv_with_listing_id' => (int) \DB::table('products')
                         ->where('business_id', $business_id)
@@ -7810,25 +7864,23 @@ class ReportController extends Controller
             ->whereDate('transaction_date', '<=', $end)
             ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id));
 
-        // Sarah 2026-05-11 (after multiple attempts): comparing NET to
-        // NET kept producing phantom diffs because ERP and Clover
-        // disagree about what counts toward tax (shipping, bag fees,
-        // tax-exempt items). The customer-paid GROSS is unambiguous on
-        // both sides — switch the whole report to compare GROSS↔GROSS:
-        //   ERP "sales"    = SUM(final_total)
-        //   Clover "sales" = SUM(amount)
-        // Diff = Clover − ERP. Reflects only real keying errors and
-        // missed/orphan rings, not accounting framework differences.
+        // Sarah 2026-05-11: match Clover's own dashboard, which shows
+        // Net Sales = SUM(amount − tax_cents). To compare apples-to-
+        // apples, ERP Sales uses the equivalent formula on its side:
+        // SUM(final_total − tax_amount). Both = "customer paid minus
+        // the tax line", so totals tie to what Sarah sees in Clover.
         $erp_net_total = (float) (clone $erpBase)
             ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
-            ->sum('final_total');
+            ->selectRaw('COALESCE(SUM(final_total - COALESCE(tax_amount, 0)), 0) as v')
+            ->value('v');
         $erp_count = (int) (clone $erpBase)
             ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
             ->count();
 
         $whatnot_net_total = (float) (clone $erpBase)
             ->where('is_whatnot', 1)
-            ->sum('final_total');
+            ->selectRaw('COALESCE(SUM(final_total - COALESCE(tax_amount, 0)), 0) as v')
+            ->value('v');
         $whatnot_count = (int) (clone $erpBase)
             ->where('is_whatnot', 1)
             ->count();
@@ -7850,7 +7902,7 @@ class ReportController extends Controller
                 $q->where('location_id', $location_id)->orWhereNull('location_id');
             });
         }
-        $clover_day_total = (float) $cloverDayQ->selectRaw("COALESCE(SUM(amount), 0) as gross")->value('gross');
+        $clover_day_total = (float) $cloverDayQ->selectRaw("COALESCE(SUM(amount - COALESCE(tax_cents, 0) / 100.0), 0) as net")->value('net');
         $clover_day_count = (int) $cloverDayQ->count();
 
         // Per-store breakdown so the day-totals card can split Hollywood
@@ -7858,14 +7910,14 @@ class ReportController extends Controller
         $erpPerLoc = (clone $erpBase)
             ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
             ->selectRaw('COALESCE(location_id, 0) as loc_key,
-                         COALESCE(SUM(final_total), 0) as erp_net,
+                         COALESCE(SUM(final_total - COALESCE(tax_amount, 0)), 0) as erp_net,
                          COUNT(*) as erp_count')
             ->groupBy('location_id')
             ->get()->keyBy('loc_key');
         $whatnotPerLoc = (clone $erpBase)
             ->where('is_whatnot', 1)
             ->selectRaw('COALESCE(location_id, 0) as loc_key,
-                         COALESCE(SUM(final_total), 0) as whatnot_net,
+                         COALESCE(SUM(final_total - COALESCE(tax_amount, 0)), 0) as whatnot_net,
                          COUNT(*) as whatnot_count')
             ->groupBy('location_id')
             ->get()->keyBy('loc_key');
@@ -7882,7 +7934,7 @@ class ReportController extends Controller
         }
         $cloverPerLoc = $cloverPerLocQ
             ->selectRaw('COALESCE(location_id, 0) as loc_key,
-                         COALESCE(SUM(amount), 0) as clover_net,
+                         COALESCE(SUM(amount - COALESCE(tax_cents, 0) / 100.0), 0) as clover_net,
                          COUNT(*) as clover_count')
             ->groupBy('location_id')
             ->get()->keyBy('loc_key');
@@ -9613,7 +9665,7 @@ class ReportController extends Controller
             }
             $cloverAgg[$key]->clover_count += 1;
             $cloverAgg[$key]->clover_total += (float) $r->amount;
-            $cloverAgg[$key]->clover_net   += (float) $r->amount;
+            $cloverAgg[$key]->clover_net   += (float) $r->amount - ((float) ($r->tax_cents ?? 0)) / 100.0;
         }
         $cloverRows = collect(array_values($cloverAgg));
 
@@ -9674,9 +9726,9 @@ class ReportController extends Controller
                 $buckets[$day][$locKey]['location_name'] = $buckets[$day][$locKey]['location_name'] ?? '(no location)';
             }
             $buckets[$day][$locKey]['employees'][$rangFn]['total_sales']    += (float) $t->final_total;
-            // Per-cashier ERP "sales" = sum(final_total). GROSS-to-GROSS
-            // reconciliation with Clover (Sarah 2026-05-11).
-            $buckets[$day][$locKey]['employees'][$rangFn]['net_sales']      += (float) $t->final_total;
+            // ERP Net = final_total − tax_amount (matches Clover dashboard
+            // formula: amount − tax_cents). Sarah 2026-05-11.
+            $buckets[$day][$locKey]['employees'][$rangFn]['net_sales']      += (float) $t->final_total - (float) ($t->tax_amount ?? 0);
             $buckets[$day][$locKey]['employees'][$rangFn]['txn_count']      += 1;
             // Capture the first non-admin user_id we see for each first
             // name. Used by the "View {cashier}'s sales" deep link so

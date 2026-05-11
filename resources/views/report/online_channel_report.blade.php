@@ -68,6 +68,7 @@
             {{ $mi['matched_items'] }} of {{ $total }} Discogs line items matched local cost ({{ $rate }}%).
             By listing-id: {{ $mi['matched_by_listing'] }} ·
             By release-id: {{ $mi['matched_by_release'] }} ·
+            By fallback: {{ $mi['matched_by_fallback'] }} ·
             Unmatched: {{ $mi['unmatched_items'] }}.
             <br>
             <small>
@@ -79,11 +80,27 @@
                 @else
                     <strong>{{ number_format($mi['inv_with_release_id']) }}</strong>.
                 @endif
-                @if($mi['matched_items'] === 0)
-                    <br>No matches means none of the sold Discogs releases exist in local inventory under these IDs.
-                    Fix path: backfill <code>discogs_release_id</code> on existing products (Discogs API lookup, one-shot).
-                @endif
             </small>
+            <hr style="margin:10px 0;">
+            <form method="POST" action="{{ route('reports.discogs.fallback') }}" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                @csrf
+                <label style="margin:0;">
+                    <strong>Flat-cost fallback per item:</strong>
+                    <span style="margin-left:4px;">$</span>
+                    <input type="number" step="0.01" min="0" name="fallback_item_cost"
+                           value="{{ number_format($mi['fallback_cost'], 2, '.', '') }}"
+                           style="width:80px; padding:2px 6px;">
+                </label>
+                <button type="submit" class="btn btn-default btn-sm">Save</button>
+                <small style="color:#666;">
+                    Applied to items that don't match by listing-id or release-id. Set to 0 to disable.
+                    @if($mi['fallback_cost'] > 0)
+                        Current: <strong>${{ number_format($mi['fallback_cost'], 2) }}/item</strong>.
+                    @else
+                        Currently disabled.
+                    @endif
+                </small>
+            </form>
         </div>
     @endif
 

@@ -402,6 +402,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/whatnot', 'ReportController@whatnotReport');
     Route::get('/reports/sales-by-channel', 'ReportController@salesByChannel');
     Route::get('/reports/discogs', 'ReportController@discogsReport');
+    Route::post('/reports/discogs/set-fallback-cost', 'ReportController@setDiscogsFallbackCost')->name('reports.discogs.fallback');
     Route::get('/reports/ebay', 'ReportController@ebayReport');
     Route::get('/reports/cash-flow', 'ReportController@cashFlowReport');
     Route::get('/admin/qb-balance-fix', 'QbBalanceFixController@index');
