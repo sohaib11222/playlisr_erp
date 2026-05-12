@@ -343,13 +343,16 @@ class PosQuickReceiveController extends Controller
             });
         }
 
-        $activeRows = $rows->whereNull('undone_at');
+        // Note: Collection::whereNull doesn't exist on this Laravel version,
+        // hence the manual filter() closures.
+        $activeRows = $rows->filter(function ($r) { return is_null($r->undone_at); });
+        $undoneRows = $rows->filter(function ($r) { return !is_null($r->undone_at); });
         $totals = (object) [
             'count' => $activeRows->count(),
             'qty_total' => round($activeRows->sum('qty'), 2),
             'distinct_products' => $activeRows->pluck('product_id')->filter()->unique()->count(),
             'distinct_cashiers' => $activeRows->pluck('cashier_username')->filter()->unique()->count(),
-            'undone_count' => $rows->whereNotNull('undone_at')->count(),
+            'undone_count' => $undoneRows->count(),
         ];
 
         $locations = DB::table('business_locations')
