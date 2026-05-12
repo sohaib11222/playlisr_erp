@@ -78,7 +78,7 @@ class AdminActionHistoryController extends Controller
         // line, marks the auto-created product inactive, and flips the
         // linked transaction back to draft. Skips any line that's already
         // had stock sold against it.
-        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'bfc-receive', 'qb-expense-import'];
+        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import'];
         if (!in_array($action, $supportedActions, true)) {
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 0, 'msg' => "Don't know how to undo action: " . $action]);
@@ -98,6 +98,20 @@ class AdminActionHistoryController extends Controller
                 ->delete();
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 1, 'msg' => "Deleted $deleted imported expense row(s) from snapshot $key."]);
+        }
+
+        // whatnot-statement-import: snapshot rows = inserted transaction IDs
+        // (one sell for revenue + one or more expense for fees). Same shape
+        // as qb-expense-import — delete by id, scoped to sell/expense types
+        // to avoid stomping anything that happened to share an id.
+        if ($action === 'whatnot-statement-import') {
+            $ids = array_filter(array_map(function ($r) { return $r['id'] ?? null; }, $data['rows']));
+            $deleted = DB::table('transactions')
+                ->whereIn('id', $ids)
+                ->whereIn('type', ['sell', 'expense', 'expense_refund'])
+                ->delete();
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 1, 'msg' => "Deleted $deleted Whatnot statement row(s) from snapshot $key."]);
         }
 
         $restored = 0;

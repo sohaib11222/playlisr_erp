@@ -2,8 +2,11 @@
 @section('title', 'Whatnot Sales Report')
 
 @section('content')
-<section class="content-header">
-    <h1>Whatnot Sales Report <small>live-auction vs in-store / online</small></h1>
+<section class="content-header" style="display:flex; align-items:center; justify-content:space-between;">
+    <h1 style="margin:0;">Whatnot Sales Report <small>live-auction vs in-store / online</small></h1>
+    <a href="{{ url('/whatnot/import-statement') }}" class="btn btn-primary" style="margin-right:20px;">
+        <i class="fa fa-upload"></i> Import monthly statement
+    </a>
 </section>
 
 <section class="content">
