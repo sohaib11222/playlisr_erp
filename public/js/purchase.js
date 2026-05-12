@@ -1200,6 +1200,28 @@ $(document).on('click', 'button#submit_purchase_form, button#submit_purchase_for
                 remote: LANG.ref_no_already_exists,
             },
         },
+        invalidHandler: function(event, validator) {
+            if (!validator.numberOfInvalids()) {
+                return;
+            }
+
+            var firstError = $(validator.errorList[0].element);
+            var label = firstError
+                .closest('.form-group')
+                .find('label')
+                .first()
+                .text()
+                .replace('*', '')
+                .replace(':', '')
+                .trim();
+
+            toastr.error((label ? label + ' is required. ' : '') + LANG.some_error_in_input_field);
+
+            var target = firstError.hasClass('select2') ? firstError.next('.select2') : firstError;
+            if (target.length) {
+                $('html, body').animate({ scrollTop: target.offset().top - 120 }, 300);
+            }
+        },
     });
     var payment_types_dropdown = $('.payment_types_dropdown')
     var payment_type = payment_types_dropdown.val();

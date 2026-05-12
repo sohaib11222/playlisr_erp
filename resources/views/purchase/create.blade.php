@@ -39,7 +39,7 @@
 							<button type="button" class="btn btn-default bg-white btn-flat add_new_supplier" data-name=""><i class="fa fa-plus-circle text-primary fa-lg"></i></button>
 						</span>
 					</div>
-					<p class="help-block">Type <strong>walkin</strong> for a used collection.</p>
+					<p class="help-block">Type <strong>walkin</strong> and select the Walk-in supplier for a used collection.</p>
 				</div>
 				<strong>
 					@lang('business.address'):
