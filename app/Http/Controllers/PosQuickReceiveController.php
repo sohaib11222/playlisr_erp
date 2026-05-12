@@ -48,9 +48,23 @@ class PosQuickReceiveController extends Controller
                     $table->decimal('qty', 22, 4)->default(1);
                     $table->text('note')->nullable();
                     $table->unsignedInteger('user_id')->nullable()->index();
+                    $table->timestamp('undone_at')->nullable();
+                    $table->unsignedInteger('undone_by_user_id')->nullable();
                     $table->timestamps();
                     $table->index(['business_id', 'created_at']);
                 });
+            } else {
+                // Idempotent add for installs that ran before the undo feature.
+                if (!Schema::hasColumn('pos_quick_receives', 'undone_at')) {
+                    Schema::table('pos_quick_receives', function (Blueprint $table) {
+                        $table->timestamp('undone_at')->nullable()->after('user_id');
+                    });
+                }
+                if (!Schema::hasColumn('pos_quick_receives', 'undone_by_user_id')) {
+                    Schema::table('pos_quick_receives', function (Blueprint $table) {
+                        $table->unsignedInteger('undone_by_user_id')->nullable()->after('undone_at');
+                    });
+                }
             }
 
             $perm = Permission::where('name', 'pos_quick_receive')
@@ -191,6 +205,83 @@ class PosQuickReceiveController extends Controller
         ]);
     }
 
+    // Admin undo: when a quick-receive was clicked by mistake (or the line
+    // was deleted from the cart and the unit was never sold), this rolls
+    // back the stock bump and marks the audit row as undone. Decrement is
+    // atomic via DB::raw so it can't double-undo on a double-click race.
+    public function undo(Request $request)
+    {
+        if (!Schema::hasTable('pos_quick_receives')) {
+            return redirect('/admin/pos-quick-receives')->with('status_error',
+                'Quick-receive table does not exist yet.');
+        }
+        if (!Schema::hasColumn('pos_quick_receives', 'undone_at')) {
+            return redirect('/admin/pos-quick-receives')->with('status_error',
+                'Undo column is missing — click "Set it up" once on this page.');
+        }
+
+        $id = (int) $request->input('id');
+        if ($id <= 0) {
+            return redirect('/admin/pos-quick-receives')->with('status_error',
+                'Missing row id.');
+        }
+        $businessId = $request->session()->get('user.business_id');
+        $userId = auth()->id();
+
+        $row = DB::table('pos_quick_receives')
+            ->where('id', $id)
+            ->where('business_id', $businessId)
+            ->first();
+        if (!$row) {
+            return redirect('/admin/pos-quick-receives')->with('status_error',
+                'Row not found.');
+        }
+        if (!empty($row->undone_at)) {
+            return redirect('/admin/pos-quick-receives')->with('status_error',
+                'This receive was already undone on ' . \Carbon\Carbon::parse($row->undone_at)->format('M j, g:i a') . '.');
+        }
+
+        try {
+            DB::transaction(function () use ($row, $userId) {
+                // Atomic decrement. We don't refuse if it would go negative
+                // — negative stock is itself the signal that the unit was
+                // already sold (or the catalog is out of sync elsewhere),
+                // and Sarah needs to see that, not have the undo silently
+                // refuse and leave the audit row marked as active.
+                $variation = \App\Variation::find($row->variation_id);
+                $productVariationId = $variation ? $variation->product_variation_id : null;
+
+                $vldQuery = \App\VariationLocationDetails::where('variation_id', $row->variation_id)
+                    ->where('product_id', $row->product_id)
+                    ->where('location_id', $row->business_location_id);
+                if (!is_null($productVariationId)) {
+                    $vldQuery->where('product_variation_id', $productVariationId);
+                }
+                $vld = $vldQuery->lockForUpdate()->first();
+                if ($vld) {
+                    $vld->qty_available = (float) $vld->qty_available - (float) $row->qty;
+                    $vld->save();
+                }
+
+                DB::table('pos_quick_receives')
+                    ->where('id', $row->id)
+                    ->update([
+                        'undone_at' => now(),
+                        'undone_by_user_id' => $userId,
+                        'updated_at' => now(),
+                    ]);
+            });
+        } catch (\Exception $e) {
+            \Log::error('PosQuickReceive undo failed: ' . $e->getMessage());
+            return redirect('/admin/pos-quick-receives')->with('status_error',
+                'Undo failed: ' . $e->getMessage());
+        }
+
+        $label = trim(($row->artist ? $row->artist . ' — ' : '') . ($row->product_name ?? ''));
+        return redirect('/admin/pos-quick-receives')->with('status_success',
+            'Undone. Stock for "' . ($label ?: 'item') . '" decreased by ' . rtrim(rtrim(number_format($row->qty, 2), '0'), '.') . '.');
+    }
+
     public function index(Request $request)
     {
         if (!Schema::hasTable('pos_quick_receives')) {
@@ -227,25 +318,38 @@ class PosQuickReceiveController extends Controller
             $q->where('r.business_location_id', $locationFilter);
         }
 
-        $rows = $q->orderByDesc('r.created_at')
-            ->limit(500)
-            ->get([
-                'r.id', 'r.created_at',
-                'r.product_id', 'r.variation_id',
-                'r.product_name', 'r.artist', 'r.sub_sku',
-                'r.qty', 'r.note',
-                'u.username as cashier_username',
-                'u.first_name as cashier_first',
-                'u.surname as cashier_last',
-                'bl.name as location_name',
-                'r.business_location_id',
-            ]);
+        $hasUndoCol = Schema::hasColumn('pos_quick_receives', 'undone_at');
+        $selects = [
+            'r.id', 'r.created_at',
+            'r.product_id', 'r.variation_id',
+            'r.product_name', 'r.artist', 'r.sub_sku',
+            'r.qty', 'r.note',
+            'u.username as cashier_username',
+            'u.first_name as cashier_first',
+            'u.surname as cashier_last',
+            'bl.name as location_name',
+            'r.business_location_id',
+        ];
+        if ($hasUndoCol) {
+            $selects[] = 'r.undone_at';
+            $selects[] = 'r.undone_by_user_id';
+        }
+        $rows = $q->orderByDesc('r.created_at')->limit(500)->get($selects);
+        if (!$hasUndoCol) {
+            $rows = $rows->map(function ($r) {
+                $r->undone_at = null;
+                $r->undone_by_user_id = null;
+                return $r;
+            });
+        }
 
+        $activeRows = $rows->whereNull('undone_at');
         $totals = (object) [
-            'count' => $rows->count(),
-            'qty_total' => round($rows->sum('qty'), 2),
-            'distinct_products' => $rows->pluck('product_id')->filter()->unique()->count(),
-            'distinct_cashiers' => $rows->pluck('cashier_username')->filter()->unique()->count(),
+            'count' => $activeRows->count(),
+            'qty_total' => round($activeRows->sum('qty'), 2),
+            'distinct_products' => $activeRows->pluck('product_id')->filter()->unique()->count(),
+            'distinct_cashiers' => $activeRows->pluck('cashier_username')->filter()->unique()->count(),
+            'undone_count' => $rows->whereNotNull('undone_at')->count(),
         ];
 
         $locations = DB::table('business_locations')

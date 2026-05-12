@@ -400,6 +400,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/revenue-by-employee-barcoding/{user_id}', 'ReportController@revenueByEmployeeBarcodingDetail')->name('reports.revenue-by-employee-barcoding.detail');
     Route::get('/reports/dead-stock', 'ReportController@deadStockReport');
     Route::get('/reports/whatnot', 'ReportController@whatnotReport');
+    Route::get('/whatnot/import-statement', 'ImportWhatnotStatementController@index')->name('whatnot.import-statement');
+    Route::post('/whatnot/import-statement', 'ImportWhatnotStatementController@store');
     Route::get('/reports/sales-by-channel', 'ReportController@salesByChannel');
     Route::get('/reports/discogs', 'ReportController@discogsReport');
     Route::get('/reports/ebay', 'ReportController@ebayReport');
@@ -751,6 +753,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // and add it to the sale. Same trust-but-audit pattern as price overrides.
     Route::get('/admin/pos-quick-receives', 'PosQuickReceiveController@index');
     Route::post('/admin/pos-quick-receives/setup', 'PosQuickReceiveController@setup');
+    Route::post('/admin/pos-quick-receives/undo', 'PosQuickReceiveController@undo');
     Route::post('/sells/pos/quick-receive', 'PosQuickReceiveController@store');
 
     // Diagnose why a specific staff member can't open POS. Lists every staff

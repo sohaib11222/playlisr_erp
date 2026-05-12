@@ -34,6 +34,23 @@
             </div>
         </div>
     @else
+        @php $hasUndoCol = \Illuminate\Support\Facades\Schema::hasColumn('pos_quick_receives', 'undone_at'); @endphp
+        @if(!$hasUndoCol)
+            <div class="box box-warning">
+                <div class="box-header with-border">
+                    <h3 class="box-title">Schema update available</h3>
+                </div>
+                <div class="box-body">
+                    <p>The <code>undone_at</code> column was added so you can undo a quick-receive directly from this page
+                       (decrements stock back + marks the row as undone). Click below to add the columns — it's a no-data ALTER TABLE.</p>
+                    <form method="POST" action="{{ url('/admin/pos-quick-receives/setup') }}" style="display:inline;">
+                        @csrf
+                        <button type="submit" class="btn btn-warning"><i class="fa fa-cog"></i> Add undo columns</button>
+                    </form>
+                </div>
+            </div>
+        @endif
+
         <div class="box box-primary">
             <div class="box-header with-border">
                 <h3 class="box-title">Filters</h3>
@@ -106,6 +123,13 @@
             </div>
         </div>
 
+        @if(isset($totals->undone_count) && $totals->undone_count > 0)
+            <div class="alert alert-info" style="margin-bottom:14px;">
+                <i class="fa fa-undo"></i>
+                {{ number_format($totals->undone_count) }} receive(s) in this window were undone &mdash; stock at the matching store(s) was decremented back.
+            </div>
+        @endif
+
         <div class="box box-default">
             <div class="box-header with-border">
                 <h3 class="box-title">Recent quick-receives (latest 500)</h3>
@@ -124,6 +148,7 @@
                                 <th>SKU</th>
                                 <th class="text-right">Qty</th>
                                 <th>Note</th>
+                                <th>Status</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -133,8 +158,11 @@
                                 if ($cashier === '') { $cashier = $r->cashier_username ?? '—'; }
                                 $productLabel = trim(($r->artist ? $r->artist . ' — ' : '') . ($r->product_name ?? ''));
                                 if ($productLabel === '— ' || $productLabel === '') { $productLabel = '(unnamed)'; }
+                                $isUndone = !empty($r->undone_at);
+                                $rowStyle = $isUndone ? 'opacity:0.55; text-decoration:line-through;' : '';
+                                $qtyDisplay = rtrim(rtrim(number_format($r->qty, 2), '0'), '.');
                             @endphp
-                            <tr>
+                            <tr style="{{ $rowStyle }}">
                                 <td>{{ \Carbon\Carbon::parse($r->created_at)->format('M j, g:i a') }}</td>
                                 <td>{{ $cashier }}</td>
                                 <td>{{ $r->location_name ?? '—' }}</td>
@@ -146,12 +174,32 @@
                                     @endif
                                 </td>
                                 <td style="font-family: monospace; font-size:12px; color:#666;">{{ $r->sub_sku ?? '—' }}</td>
-                                <td class="text-right"><strong>{{ rtrim(rtrim(number_format($r->qty, 2), '0'), '.') }}</strong></td>
-                                <td style="max-width:280px; font-size:13px; color:#555;">
+                                <td class="text-right"><strong>{{ $qtyDisplay }}</strong></td>
+                                <td style="max-width:240px; font-size:13px; color:#555;">
                                     @if(!empty($r->note))
                                         {{ $r->note }}
                                     @else
                                         <span class="text-muted" style="font-style:italic;">—</span>
+                                    @endif
+                                </td>
+                                <td style="white-space:nowrap;">
+                                    @if($isUndone)
+                                        <span class="text-muted" style="font-size:12px;">
+                                            <i class="fa fa-undo"></i> Undone
+                                            <br><span style="font-size:11px;">{{ \Carbon\Carbon::parse($r->undone_at)->format('M j, g:i a') }}</span>
+                                        </span>
+                                    @elseif($hasUndoCol)
+                                        <form method="POST" action="{{ url('/admin/pos-quick-receives/undo') }}"
+                                              style="display:inline;"
+                                              onsubmit="return confirm('Undo this quick-receive?\n\nThis will DECREASE stock for &quot;{{ addslashes($productLabel) }}&quot; at {{ addslashes($r->location_name ?? 'this store') }} by {{ $qtyDisplay }}.\n\nUse this only if the unit was never actually sold — e.g. cashier clicked Receive by mistake and deleted the line, or you confirmed nothing of this title exists at the store.');">
+                                            @csrf
+                                            <input type="hidden" name="id" value="{{ $r->id }}">
+                                            <button type="submit" class="btn btn-xs btn-warning" title="Decrease stock back to where it was before this quick-receive">
+                                                <i class="fa fa-undo"></i> Undo
+                                            </button>
+                                        </form>
+                                    @else
+                                        <span class="text-muted" style="font-size:11px;">—</span>
                                     @endif
                                 </td>
                             </tr>
