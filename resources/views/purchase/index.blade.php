@@ -87,6 +87,8 @@
 <script src="{{ asset('js/purchase.js?v=' . $asset_v) }}"></script>
 <script src="{{ asset('js/payment.js?v=' . $asset_v) }}"></script>
 <script>
+    var can_bulk_update_purchase_status = {{ (auth()->user()->can('purchase.update') || auth()->user()->can('purchase.update_status')) ? 'true' : 'false' }};
+
         //Date range as a button
     $('#purchase_list_filter_date_range').daterangepicker(
         dateRangeSettings,

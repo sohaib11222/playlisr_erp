@@ -530,6 +530,23 @@ $(document).ready(function() {
         update_grand_total();
     });
 
+    var purchase_columns = [];
+    if (window.can_bulk_update_purchase_status) {
+        purchase_columns.push({ data: 'select', name: 'select', orderable: false, searchable: false });
+    }
+    purchase_columns = purchase_columns.concat([
+        { data: 'action', name: 'action', orderable: false, searchable: false },
+        { data: 'transaction_date', name: 'transaction_date' },
+        { data: 'ref_no', name: 'ref_no' },
+        { data: 'location_name', name: 'BS.name' },
+        { data: 'name', name: 'contacts.name' },
+        { data: 'status', name: 'status' },
+        { data: 'payment_status', name: 'payment_status' },
+        { data: 'final_total', name: 'final_total' },
+        { data: 'payment_due', name: 'payment_due', orderable: false, searchable: false },
+        { data: 'added_by', name: 'u.first_name' },
+    ]);
+
     //Purchase table
     purchase_table = $('#purchase_table').DataTable({
         processing: true,
@@ -569,21 +586,11 @@ $(document).ready(function() {
                 d = __datatable_ajax_callback(d);
             },
         },
-        aaSorting: [[1, 'desc']],
-        columns: [
-            { data: 'action', name: 'action', orderable: false, searchable: false },
-            { data: 'transaction_date', name: 'transaction_date' },
-            { data: 'ref_no', name: 'ref_no' },
-            { data: 'location_name', name: 'BS.name' },
-            { data: 'name', name: 'contacts.name' },
-            { data: 'status', name: 'status' },
-            { data: 'payment_status', name: 'payment_status' },
-            { data: 'final_total', name: 'final_total' },
-            { data: 'payment_due', name: 'payment_due', orderable: false, searchable: false },
-            { data: 'added_by', name: 'u.first_name' },
-        ],
+        aaSorting: [[window.can_bulk_update_purchase_status ? 2 : 1, 'desc']],
+        columns: purchase_columns,
         fnDrawCallback: function(oSettings) {
             __currency_convert_recursively($('#purchase_table'));
+            $('#select_all_purchases').prop('checked', false);
         },
         "footerCallback": function ( row, data, start, end, display ) {
             var total_purchase = 0;
@@ -608,9 +615,73 @@ $(document).ready(function() {
         },
         createdRow: function(row, data, dataIndex) {
             $(row)
-                .find('td:eq(5)')
+                .find('td:eq(' + (window.can_bulk_update_purchase_status ? 6 : 5) + ')')
                 .attr('class', 'clickable_td');
         },
+    });
+
+    $(document).on('change', '#select_all_purchases', function() {
+        $('#purchase_table')
+            .find('input.purchase_row_select')
+            .prop('checked', $(this).is(':checked'));
+    });
+
+    $(document).on('click', '.purchase_row_select, #select_all_purchases', function(e) {
+        e.stopPropagation();
+    });
+
+    $(document).on('change', '.purchase_row_select', function() {
+        var total = $('#purchase_table').find('input.purchase_row_select').length;
+        var checked = $('#purchase_table').find('input.purchase_row_select:checked').length;
+        $('#select_all_purchases').prop('checked', total > 0 && total === checked);
+    });
+
+    $(document).on('click', '#bulk_update_purchase_status', function() {
+        var selected = [];
+        $('#purchase_table')
+            .find('input.purchase_row_select:checked')
+            .each(function() {
+                selected.push($(this).val());
+            });
+
+        var status = $('#bulk_purchase_status').val();
+        if (!selected.length) {
+            toastr.error('Please select at least one purchase.');
+            return;
+        }
+
+        if (!status) {
+            toastr.error('Please select a purchase status.');
+            return;
+        }
+
+        var btn = $(this);
+        btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Updating...');
+
+        $.ajax({
+            method: 'POST',
+            url: '/purchases/update-status',
+            dataType: 'json',
+            data: {
+                purchase_ids: selected,
+                status: status,
+                _token: $('meta[name="csrf-token"]').attr('content'),
+            },
+            success: function(result) {
+                if (result.success == true) {
+                    toastr.success(result.msg);
+                    purchase_table.ajax.reload();
+                } else {
+                    toastr.error(result.msg);
+                }
+            },
+            error: function() {
+                toastr.error('Unable to update selected purchases.');
+            },
+            complete: function() {
+                btn.prop('disabled', false).html('<i class="fas fa-edit"></i> Update Status');
+            },
+        });
     });
 
     $(document).on(
@@ -1089,8 +1160,9 @@ function update_table_sr_number() {
         });
 }
 
-$(document).on('click', 'button#submit_purchase_form', function(e) {
+$(document).on('click', 'button#submit_purchase_form, button#submit_purchase_form_print_labels', function(e) {
     e.preventDefault();
+    $('#purchase_save_action').val($(this).attr('id') == 'submit_purchase_form_print_labels' ? 'print_labels' : 'save');
 
     //Check if product is present or not.
     if ($('table#purchase_entry_table tbody tr').length <= 0) {
@@ -1179,6 +1251,7 @@ $(document).on('click', 'button#submit_purchase_form', function(e) {
 
     if ($('form#add_purchase_form').valid()) {
         $(this).attr('disabled', true);
+        $('button#submit_purchase_form, button#submit_purchase_form_print_labels').attr('disabled', true);
         $('form#add_purchase_form').submit();
     }
 });

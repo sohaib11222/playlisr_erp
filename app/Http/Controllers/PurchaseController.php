@@ -101,7 +101,17 @@ class PurchaseController extends Controller
                 $purchases->where('transactions.created_by', request()->session()->get('user.id'));
             }
 
-            return Datatables::of($purchases)
+            $can_update_purchase_status = auth()->user()->can('purchase.update') || auth()->user()->can('purchase.update_status');
+
+            $datatable = Datatables::of($purchases);
+
+            if ($can_update_purchase_status) {
+                $datatable->addColumn('select', function ($row) {
+                    return '<input type="checkbox" class="purchase_row_select" value="' . $row->id . '">';
+                });
+            }
+
+            return $datatable
                 ->addColumn('action', function ($row) {
                     $html = '<div class="btn-group">
                             <button type="button" class="btn btn-info dropdown-toggle btn-xs" 
@@ -183,7 +193,7 @@ class PurchaseController extends Controller
                             return '';
                         }
                     }])
-                ->rawColumns(['final_total', 'action', 'payment_due', 'payment_status', 'status', 'ref_no', 'name'])
+                ->rawColumns(['select', 'final_total', 'action', 'payment_due', 'payment_status', 'status', 'ref_no', 'name'])
                 ->make(true);
         }
 
@@ -413,6 +423,12 @@ class PurchaseController extends Controller
             $output = ['success' => 0,
                             'msg' => __('messages.something_went_wrong')
                         ];
+        }
+
+        if (!empty($output['success']) && $request->input('save_action') == 'print_labels' && !empty($transaction)) {
+            return redirect()
+                ->route('labels.show', ['purchase_id' => $transaction->id])
+                ->with('status', $output);
         }
 
         return redirect('purchases')->with('status', $output);
@@ -1373,26 +1389,77 @@ class PurchaseController extends Controller
         if (!auth()->user()->can('purchase.update') && !auth()->user()->can('purchase.update_status')) {
             abort(403, 'Unauthorized action.');
         }
+
+        $status = $request->input('status');
+        $valid_statuses = array_keys($this->productUtil->orderStatuses());
+        if (empty($status) || !in_array($status, $valid_statuses)) {
+            return [
+                'success' => 0,
+                'msg' => __('messages.something_went_wrong')
+            ];
+        }
+
+        $purchase_ids = $request->input('purchase_ids', []);
+        if (empty($purchase_ids)) {
+            $purchase_ids = [$request->input('purchase_id')];
+        }
+        $purchase_ids = array_values(array_unique(array_filter((array) $purchase_ids)));
+
+        if (empty($purchase_ids)) {
+            return [
+                'success' => 0,
+                'msg' => __('messages.something_went_wrong')
+            ];
+        }
+
+        $business_id = request()->session()->get('user.business_id');
+
+        if (count($purchase_ids) === 1) {
+            return $this->updatePurchaseStatusById($purchase_ids[0], $status, $business_id);
+        }
+
+        $updated = 0;
+        $errors = [];
+        foreach ($purchase_ids as $purchase_id) {
+            $result = $this->updatePurchaseStatusById($purchase_id, $status, $business_id);
+            if (!empty($result['success'])) {
+                $updated++;
+            } else {
+                $errors[] = '#' . $purchase_id . ': ' . ($result['msg'] ?? __('messages.something_went_wrong'));
+            }
+        }
+
+        $msg = $updated . ' purchase(s) updated.';
+        if (!empty($errors)) {
+            $msg .= ' Failed: ' . implode(' | ', array_slice($errors, 0, 5));
+            if (count($errors) > 5) {
+                $msg .= ' and ' . (count($errors) - 5) . ' more.';
+            }
+        }
+
+        return [
+            'success' => $updated > 0 ? 1 : 0,
+            'msg' => $msg
+        ];
+    }
+
+    private function updatePurchaseStatusById($purchase_id, $status, $business_id)
+    {
         //Check if the transaction can be edited or not.
         $edit_days = request()->session()->get('business.transaction_edit_days');
-        if (!$this->transactionUtil->canBeEdited($request->input('purchase_id'), $edit_days)) {
+        if (!$this->transactionUtil->canBeEdited($purchase_id, $edit_days)) {
             return ['success' => 0,
                     'msg' => __('messages.transaction_edit_not_allowed', ['days' => $edit_days])];
         }
 
         try {
-            $business_id = request()->session()->get('user.business_id');
-
             $transaction = Transaction::where('business_id', $business_id)
                                 ->where('type', 'purchase')
                                 ->with(['purchase_lines'])
-                                ->findOrFail($request->input('purchase_id'));
+                                ->findOrFail($purchase_id);
 
             $before_status = $transaction->status;
-            
-
-            $update_data['status'] = $request->input('status');
-
+            $update_data['status'] = $status;
 
             DB::beginTransaction();
 

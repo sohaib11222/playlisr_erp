@@ -24,6 +24,7 @@
 	@include('layouts.partials.error')
 
 	{!! Form::open(['url' => action('PurchaseController@store'), 'method' => 'post', 'id' => 'add_purchase_form', 'files' => true ]) !!}
+	{!! Form::hidden('save_action', 'save', ['id' => 'purchase_save_action']) !!}
 	@component('components.widget', ['class' => 'box-primary'])
 		<div class="row">
 			<div class="@if(!empty($default_purchase_status)) col-sm-4 @else col-sm-3 @endif">
@@ -33,11 +34,12 @@
 						<span class="input-group-addon">
 							<i class="fa fa-user"></i>
 						</span>
-						{!! Form::select('contact_id', [], null, ['class' => 'form-control', 'placeholder' => __('messages.please_select'), 'required', 'id' => 'supplier_id']); !!}
+						{!! Form::select('contact_id', [], null, ['class' => 'form-control', 'placeholder' => __('messages.please_select'), 'required', 'id' => 'supplier_id']) !!}
 						<span class="input-group-btn">
 							<button type="button" class="btn btn-default bg-white btn-flat add_new_supplier" data-name=""><i class="fa fa-plus-circle text-primary fa-lg"></i></button>
 						</span>
 					</div>
+					<p class="help-block">Type <strong>walkin</strong> for a used collection.</p>
 				</div>
 				<strong>
 					@lang('business.address'):
@@ -48,7 +50,7 @@
 				<div class="form-group">
 					{!! Form::label('ref_no', __('purchase.ref_no').':') !!}
 					@show_tooltip(__('lang_v1.leave_empty_to_autogenerate'))
-					{!! Form::text('ref_no', null, ['class' => 'form-control']); !!}
+					{!! Form::text('ref_no', null, ['class' => 'form-control']) !!}
 				</div>
 			</div>
 			<div class="@if(!empty($default_purchase_status)) col-sm-4 @else col-sm-3 @endif">
@@ -58,14 +60,15 @@
 						<span class="input-group-addon">
 							<i class="fa fa-calendar"></i>
 						</span>
-						{!! Form::text('transaction_date', @format_datetime('now'), ['class' => 'form-control', 'readonly', 'required']); !!}
+						{!! Form::text('transaction_date', @format_datetime('now'), ['class' => 'form-control', 'readonly', 'required']) !!}
 					</div>
 				</div>
 			</div>
 			<div class="col-sm-3 @if(!empty($default_purchase_status)) hide @endif">
 				<div class="form-group">
 					{!! Form::label('status', __('purchase.purchase_status') . ':*') !!} @show_tooltip(__('tooltip.order_status'))
-					{!! Form::select('status', $orderStatuses, $default_purchase_status, ['class' => 'form-control select2', 'placeholder' => __('messages.please_select'), 'required']); !!}
+					{!! Form::select('status', $orderStatuses, $default_purchase_status, ['class' => 'form-control select2', 'placeholder' => __('messages.please_select'), 'required']) !!}
+					<p class="help-block">Choose <strong>received</strong> if item is in hand.</p>
 				</div>
 			</div>
 			@if(count($business_locations) == 1)
@@ -82,7 +85,7 @@
 				<div class="form-group">
 					{!! Form::label('location_id', __('purchase.business_location').':*') !!}
 					@show_tooltip(__('tooltip.purchase_location'))
-					{!! Form::select('location_id', $business_locations, $default_location, ['class' => 'form-control select2', 'placeholder' => __('messages.please_select'), 'required'], $bl_attributes); !!}
+					{!! Form::select('location_id', $business_locations, $default_location, ['class' => 'form-control select2', 'placeholder' => __('messages.please_select'), 'required'], $bl_attributes) !!}
 				</div>
 			</div>
 
@@ -563,6 +566,9 @@
 			<div class="row">
 				<div class="col-sm-12">
 					<button type="button" id="submit_purchase_form" class="btn btn-primary pull-right btn-flat">@lang('messages.save')</button>
+					<button type="button" id="submit_purchase_form_print_labels" class="btn btn-success pull-right btn-flat" style="margin-right: 8px;">
+						<i class="fas fa-barcode"></i> Save &amp; Print Labels
+					</button>
 				</div>
 			</div>
 		</div>
