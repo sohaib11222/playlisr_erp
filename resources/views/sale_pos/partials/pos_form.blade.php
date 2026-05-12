@@ -597,3 +597,4 @@
 </div>
 
 @include('sale_pos.partials.price_override_modal')
+@include('sale_pos.partials.quick_receive_modal')

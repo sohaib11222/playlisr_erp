@@ -745,6 +745,14 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/admin/pos-overrides/setup', 'PosPriceOverrideController@setup');
     Route::post('/admin/pos-overrides/fix-sticker', 'PosPriceOverrideController@fixSticker');
 
+    // Cashier-side "quick receive at the till" + its audit log. When the
+    // customer brings a record that the system says is out of stock, the
+    // cashier confirms and we receive 1 unit at the current store, log it,
+    // and add it to the sale. Same trust-but-audit pattern as price overrides.
+    Route::get('/admin/pos-quick-receives', 'PosQuickReceiveController@index');
+    Route::post('/admin/pos-quick-receives/setup', 'PosQuickReceiveController@setup');
+    Route::post('/sells/pos/quick-receive', 'PosQuickReceiveController@store');
+
     // Diagnose why a specific staff member can't open POS. Lists every staff
     // user with the four POS gates (status, allow_login, user_type,
     // sell.create) + open-register status. Hit /admin/staff-pos-access?user=luis

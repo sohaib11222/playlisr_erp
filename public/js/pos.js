@@ -612,8 +612,12 @@ $(document).ready(function() {
                             for_so = true;
                         }
 
-                        if ((ui.item.enable_stock == 1 && ui.item.qty_available > 0) || 
-                                (ui.item.enable_stock == 0) || is_overselling_allowed || for_so) {
+                        // In-stock single hit: auto-select.
+                        // OOS single hit: also fire select so the quick-receive
+                        // modal pops (the select handler routes OOS to the modal).
+                        if ((ui.item.enable_stock == 1 && ui.item.qty_available > 0) ||
+                                (ui.item.enable_stock == 0) || is_overselling_allowed || for_so ||
+                                (ui.item.enable_stock == 1 && ui.item.qty_available <= 0)) {
                             $(this)
                                 .data('ui-autocomplete')
                                 ._trigger('select', 'autocompleteselect', ui);
@@ -625,9 +629,10 @@ $(document).ready(function() {
                     }
                 },
                 focus: function(event, ui) {
-                    if (ui.item.qty_available <= 0) {
-                        return false;
-                    }
+                    // OOS rows used to be unfocusable. Now they are clickable
+                    // (they pop the quick-receive modal), so let them focus
+                    // normally — this keeps arrow-key navigation working.
+                    return true;
                 },
                 select: function(event, ui) {
                     var searched_term = $(this).val();
@@ -646,6 +651,21 @@ $(document).ready(function() {
                         //Pre select lot number only if the searched term is same as the lot number
                         var purchase_line_id = ui.item.purchase_line_id && searched_term == ui.item.lot_number ? ui.item.purchase_line_id : null;
                         pos_product_row(ui.item.variation_id, purchase_line_id);
+                    } else if (typeof window.posQuickReceivePrompt === 'function') {
+                        // Out of stock at this store. Instead of refusing the
+                        // sale, offer to receive 1 unit on the spot and add
+                        // it to the cart. Logged at /admin/pos-quick-receives.
+                        $(this).val(null);
+                        var label = ui.item.name || '';
+                        if (ui.item.artist && ui.item.artist.trim() !== '') {
+                            label = ui.item.artist + ' — ' + label;
+                        }
+                        window.posQuickReceivePrompt({
+                            variation_id: ui.item.variation_id,
+                            product_label: label,
+                            sub_sku: ui.item.sub_sku,
+                            selling_price: ui.item.variation_group_price || ui.item.selling_price,
+                        });
                     } else {
                         alert(LANG.out_of_stock);
                     }
@@ -699,7 +719,11 @@ $(document).ready(function() {
             }
 
             if (item.enable_stock == 1 && item.qty_available <= 0 && !is_overselling_allowed && !for_so) {
-                var string = '<li class="ui-state-disabled">' + displayName;
+                // Out-of-stock rows used to be greyed and un-clickable. They
+                // are now clickable — tapping pops the quick-receive modal
+                // (receive 1 here + add to sale). Style highlights them so
+                // the cashier can see the difference at a glance.
+                var string = '<li class="pos-quick-receive-row">' + displayName;
                 if (item.type == 'variable') {
                     string += ' - ' + item.variation;
                 }
@@ -713,7 +737,7 @@ $(document).ready(function() {
                     ')' +
                     '<br> Price: ' +
                     selling_price +
-                    ' (Out of stock) </li>';
+                    ' <span class="pos-oos-hint">(out of stock &mdash; tap to receive &amp; add)</span></li>';
                 return $(string).appendTo(ul);
             } else {
                 var string = '<div>' + displayName;
@@ -3115,10 +3139,28 @@ function pos_product_row(variation_id = null, purchase_line_id = null, weighing_
                     //scroll bottom of items list
                     $(".pos_product_div").animate({ scrollTop: $('.pos_product_div').prop("scrollHeight")}, 1000);
                 } else {
-                    toastr.error(result.msg);
-                    $('input#search_product')
-                        .focus()
-                        .select();
+                    // Server flagged this as out-of-stock at the current
+                    // location AND gave us the product info. Pop the
+                    // quick-receive modal instead of just a toastr — the
+                    // cashier can receive 1 unit on the spot and add it.
+                    if (result.is_out_of_stock && result.variation_id &&
+                            typeof window.posQuickReceivePrompt === 'function') {
+                        var label = result.product_name || '';
+                        if (result.artist && (result.artist + '').trim() !== '') {
+                            label = result.artist + ' — ' + label;
+                        }
+                        window.posQuickReceivePrompt({
+                            variation_id: result.variation_id,
+                            product_label: label,
+                            sub_sku: result.sub_sku,
+                            selling_price: result.selling_price,
+                        });
+                    } else {
+                        toastr.error(result.msg);
+                        $('input#search_product')
+                            .focus()
+                            .select();
+                    }
                 }
             },
         });

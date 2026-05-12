@@ -3232,6 +3232,29 @@ class SellPosController extends Controller
 
             $output['success'] = false;
             $output['msg'] = __('lang_v1.item_out_of_stock');
+
+            // If the failure is actually "this variation has 0 stock at
+            // this location", surface enough info for the POS to offer
+            // the quick-receive modal instead of just a toastr error.
+            try {
+                $variation = \App\Variation::with('product')->find($variation_id);
+                if ($variation && $variation->product && (int) $variation->product->enable_stock === 1) {
+                    $vld = \App\VariationLocationDetails::where('variation_id', $variation->id)
+                        ->where('location_id', $location_id)
+                        ->first();
+                    $on_hand = $vld ? (float) $vld->qty_available : 0;
+                    if ($on_hand <= 0) {
+                        $output['is_out_of_stock'] = true;
+                        $output['variation_id'] = $variation->id;
+                        $output['product_name'] = $variation->product->name;
+                        $output['artist'] = $variation->product->artist ?? null;
+                        $output['sub_sku'] = $variation->sub_sku;
+                        $output['selling_price'] = (float) ($variation->sell_price_inc_tax ?: $variation->default_sell_price);
+                    }
+                }
+            } catch (\Exception $inner) {
+                // best-effort enrichment; never let it mask the original error
+            }
         }
 
         return $output;
