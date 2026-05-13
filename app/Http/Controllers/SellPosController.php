@@ -1583,7 +1583,51 @@ class SellPosController extends Controller
             }
         }
 
-        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'orphan_by_loc', 'orphan_null_loc', 'orphan_refund_count', 'orphan_voided_count', 'orphan_real_count', 'orphan_nearmatch_count', 'orphan_dup_cluster_count', 'orphan_dup_cluster_rows', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'pending_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store', 'tz_debug', 'dateStr', 'day_label', 'prev_date', 'next_date', 'is_today', 'allow_next', 'dayMode', 'is_month_mode', 'month_label', 'prev_month', 'next_month', 'allow_next_month', 'monthStr', 'sales_by_store', 'orphans_by_store', 'pending_by_store', 'pending_amount_by_store', 'pending_count_by_store', 'store_order', 'orphan_duplicate_of', 'erp_only_pair_candidates', 'clover_explanations'));
+        // Sarah 2026-05-13: per-cashier daily reconciliation cards. Was on
+        // /reports/clover-eod-reconciliation; moved here so cash drawer +
+        // card check + mark-reconciled live on the same screen Sarah's
+        // already watching for live POS. Single-day only — month-mode
+        // reviewers don't need the per-cashier sign-off flow.
+        //
+        // Wrapped in try/catch: this page is live POS-facing and a fault
+        // in the reconciliation helpers must NOT break the feed itself.
+        // (Sarah's POS stability rule — prefer soft warnings over hard
+        // failures here.)
+        $employee_breakdown_by_day = [];
+        $reconciliations = [];
+        if (!$is_month_mode) {
+            try {
+                $card_methods = [
+                    'clover', 'card', 'credit_card', 'credit_sale',
+                    'custom_pay_1', 'custom_pay_2', 'custom_pay_3', 'custom_pay_4',
+                    'custom_pay_5', 'custom_pay_6', 'custom_pay_7',
+                ];
+                // Auto-fallback to "all methods" when nothing in the day uses
+                // a recognised card method (matches the EOD page's behaviour).
+                $peek = \DB::table('transaction_payments as tp')
+                    ->join('transactions as t', 'tp.transaction_id', '=', 't.id')
+                    ->where('t.business_id', $business_id)
+                    ->where('t.type', 'sell')
+                    ->where('t.status', 'final')
+                    ->whereDate('t.transaction_date', '>=', $start_date)
+                    ->whereDate('t.transaction_date', '<=', $end_date)
+                    ->when($location_id, fn($q) => $q->where('t.location_id', $location_id))
+                    ->distinct()->pluck('tp.method')->map(fn($m) => (string) $m)->all();
+                $used_all_methods = empty(array_intersect($peek, $card_methods)) && !empty($peek);
+
+                $reports = app(\App\Http\Controllers\ReportController::class);
+                $employee_breakdown_by_day = $reports->cloverEodEmployeeBreakdownRange(
+                    $business_id, $start_date, $end_date, $location_id, $card_methods, $used_all_methods
+                );
+                $reconciliations = $reports->loadReconciliations($business_id, $start_date, $end_date);
+            } catch (\Throwable $e) {
+                \Log::warning('recent_feed: per-cashier reconciliation failed', ['err' => $e->getMessage()]);
+                $employee_breakdown_by_day = [];
+                $reconciliations = [];
+            }
+        }
+
+        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'orphan_by_loc', 'orphan_null_loc', 'orphan_refund_count', 'orphan_voided_count', 'orphan_real_count', 'orphan_nearmatch_count', 'orphan_dup_cluster_count', 'orphan_dup_cluster_rows', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'pending_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store', 'tz_debug', 'dateStr', 'day_label', 'prev_date', 'next_date', 'is_today', 'allow_next', 'dayMode', 'is_month_mode', 'month_label', 'prev_month', 'next_month', 'allow_next_month', 'monthStr', 'sales_by_store', 'orphans_by_store', 'pending_by_store', 'pending_amount_by_store', 'pending_count_by_store', 'store_order', 'orphan_duplicate_of', 'erp_only_pair_candidates', 'clover_explanations', 'employee_breakdown_by_day', 'reconciliations'));
     }
 
     /**

@@ -74,7 +74,7 @@ class ReportsHubController extends Controller
                 'title' => 'Reconciliation & Channels',
                 'icon'  => 'fa-balance-scale',
                 'reports' => [
-                    ['key' => 'clover-eod',            'name' => 'Clover EOD Reconciliation', 'icon' => 'fa-balance-scale',  'action' => 'ReportController@cloverEodReconciliation',    'desc' => 'Per-shift audit — ERP vs Clover + drawer math.', 'admin_only' => true],
+                    ['key' => 'clover-eod',            'name' => 'Daily Cash Reconciliation', 'icon' => 'fa-balance-scale',  'action' => 'SellPosController@recentSalesFeed',            'desc' => 'Per-cashier reconciliation lives on the live feed now — ERP vs Clover + drawer math + ✓ sign-off.', 'admin_only' => true],
                     ['key' => 'whatnot-sales',         'name' => 'Whatnot Sales',         'icon' => 'fa-tv',                 'action' => 'ReportController@whatnotReport',              'desc' => 'Live-auction vs in-store/online.', 'admin_only' => true],
                     ['key' => 'sales-by-channel',      'name' => 'Sales by Channel',      'icon' => 'fa-stream',             'action' => 'ReportController@salesByChannel',             'desc' => 'Revenue + gross profit per location & channel.', 'admin_only' => true],
                     ['key' => 'discogs-sales',         'name' => 'Discogs Sales',         'icon' => 'fa-record-vinyl',       'action' => 'ReportController@discogsReport',              'desc' => 'Discogs revenue, profit, daily + top items.', 'admin_only' => true],

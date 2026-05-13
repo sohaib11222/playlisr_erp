@@ -560,6 +560,22 @@
     @endif
 </section>
 
+{{-- Per-cashier daily reconciliation (Sarah 2026-05-13: moved from
+     /reports/clover-eod-reconciliation onto this page so the daily-cash
+     flow lives in one place). Skipped in month-mode and when the
+     controller couldn't compute the breakdown (empty array). --}}
+@if(!empty($employee_breakdown_by_day))
+<section class="content">
+    <div class="rf-wrap">
+        <div style="margin-bottom:10px;">
+            <h3 style="margin:0; font-size:18px; font-weight:700; color:#1F1B16;">Per-cashier reconciliation</h3>
+            <div style="font-size:12px; color:#5A5045; margin-top:2px;">One card per cashier · Cash drawer + card check + ✓ sign-off. Replaces the old /reports/clover-eod-reconciliation page.</div>
+        </div>
+        @include('report._eod_per_cashier_cards')
+    </div>
+</section>
+@endif
+
 <section class="content">
     <div class="rf-wrap">
         <form method="GET" action="{{ action('SellPosController@recentSalesFeed') }}" class="rf-filters">
@@ -1276,4 +1292,128 @@
         @endif {{-- /is_month_mode skip --}}
     </div>
 </section>
+
+{{-- Per-cashier reconciliation handlers (Sarah 2026-05-13: same POST
+     endpoints that powered /reports/clover-eod-reconciliation, just
+     wired up on this page too). POSTs land on the existing
+     /reports/clover-eod/* routes so nothing on the server side moved. --}}
+@if(!empty($employee_breakdown_by_day))
+<script>
+$(function () {
+    // ✓ Reconciled checkbox on each per-cashier card.
+    $('body').on('change', '.eod-loc-card .eod-recon-checkbox', function () {
+        var $card = $(this).closest('.eod-loc-card');
+        var $lbl = $card.find('.eod-recon-label');
+        var $stamp = $card.find('.eod-recon-stamp, .eod-recon-notes-status').first();
+        var $toggle = $card.find('.eod-recon-toggle');
+        $lbl.text('Saving…');
+        $.ajax({
+            url: '/reports/clover-eod/mark-reconciled',
+            method: 'POST',
+            dataType: 'json',
+            data: {
+                _token: $('meta[name="csrf-token"]').attr('content'),
+                day: $card.data('day'),
+                location_id: $card.data('location-id'),
+                employee_key: $card.data('employee-key') || ''
+            }
+        }).done(function (r) {
+            if (!r.success) { $lbl.text('Mark reconciled'); alert(r.msg || 'Could not save.'); return; }
+            if (r.reconciled) {
+                $lbl.text('✓ Reconciled');
+                $toggle.css('color', '#166534');
+                $stamp.text('Reconciled' + (r.reconciled_by ? ' by ' + r.reconciled_by : '') + ' · ' + (r.reconciled_at || ''));
+                $card.addClass('cc-collapsed');
+            } else {
+                $lbl.text('Mark reconciled');
+                $toggle.css('color', '#374151');
+                $stamp.text('');
+                $card.removeClass('cc-collapsed');
+            }
+        }).fail(function () {
+            $lbl.text('Mark reconciled');
+            alert('Network error — try again.');
+        });
+    });
+
+    // Click a collapsed card (except the checkbox label, which stops
+    // propagation) to re-expand it.
+    $('body').on('click', '.eod-loc-card.cc-collapsed', function () {
+        $(this).removeClass('cc-collapsed');
+    });
+
+    // Notes — debounced autosave on input + immediate save on blur.
+    (function () {
+        var timers = new WeakMap();
+        $('body').on('input', '.eod-loc-card .eod-recon-notes', function () {
+            var el = this;
+            var $status = $(el).siblings('.eod-recon-notes-status');
+            $status.text('Typing…').css('color', '#9ca3af');
+            if (timers.get(el)) clearTimeout(timers.get(el));
+            timers.set(el, setTimeout(function () { saveNotes(el); }, 900));
+        });
+        $('body').on('blur', '.eod-loc-card .eod-recon-notes', function () {
+            if (timers.get(this)) clearTimeout(timers.get(this));
+            saveNotes(this);
+        });
+        function saveNotes(el) {
+            var $el = $(el);
+            var $card = $el.closest('.eod-loc-card');
+            var $status = $el.siblings('.eod-recon-notes-status');
+            $status.text('Saving…').css('color', '#9ca3af');
+            $.ajax({
+                url: '/reports/clover-eod/save-notes',
+                method: 'POST',
+                dataType: 'json',
+                data: {
+                    _token: $('meta[name="csrf-token"]').attr('content'),
+                    day: $card.data('day'),
+                    location_id: $card.data('location-id'),
+                    employee_key: $card.data('employee-key') || '',
+                    notes: $el.val()
+                }
+            }).done(function (r) {
+                $status.text(r.success ? ('Saved ' + (r.saved_at || '')) : 'Save failed').css('color', r.success ? '#166534' : '#b91c1c');
+            }).fail(function () {
+                $status.text('Save failed — will retry on blur').css('color', '#b91c1c');
+            });
+        }
+    })();
+
+    // "→ in-store" reclassify button on Other-channels rows.
+    $('body').on('click', '.cc-recat-btn', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var $row = $(this).closest('.cc-recat-row');
+        var $btn = $(this);
+        var txnId = $row.data('txn-id');
+        if (!txnId) return;
+        if (!confirm('Move this sale back to in-store?\nIt will count toward the cashier\'s drawer math.')) return;
+        $btn.prop('disabled', true).text('saving…');
+        $.ajax({
+            url: '/reports/clover-eod/recategorize-channel',
+            method: 'POST',
+            dataType: 'json',
+            data: {
+                _token: $('meta[name="csrf-token"]').attr('content'),
+                transaction_id: txnId,
+                channel: 'in_store'
+            }
+        }).done(function (r) {
+            if (r.success) {
+                $btn.text('✓ moved');
+                setTimeout(function () { window.location.reload(); }, 600);
+            } else {
+                alert(r.msg || 'Could not save.');
+                $btn.prop('disabled', false).text('→ in-store');
+            }
+        }).fail(function () {
+            alert('Network error — try again.');
+            $btn.prop('disabled', false).text('→ in-store');
+        });
+    });
+});
+</script>
+@endif
+
 @endsection
