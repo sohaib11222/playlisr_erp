@@ -1593,9 +1593,14 @@ class SellPosController extends Controller
         // in the reconciliation helpers must NOT break the feed itself.
         // (Sarah's POS stability rule — prefer soft warnings over hard
         // failures here.)
+        // Sarah 2026-05-13: per-cashier reconciliation is admin-only
+        // (Sarah / Jon / Fatteen) — same gate the old EOD report used so
+        // cashiers don't see theft signals about themselves on the feed
+        // they're working from.
         $employee_breakdown_by_day = [];
         $reconciliations = [];
-        if (!$is_month_mode) {
+        $can_see_reconciliation = $this->businessUtil->is_admin(auth()->user());
+        if ($can_see_reconciliation && !$is_month_mode) {
             try {
                 $card_methods = [
                     'clover', 'card', 'credit_card', 'credit_sale',
