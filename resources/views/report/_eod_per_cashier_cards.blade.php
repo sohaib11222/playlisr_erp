@@ -56,7 +56,9 @@
         .cc-card.cc-collapsed.warn { background:#f9fafb; border-color:#e5e7eb; }
         .cc-card.cc-collapsed .cc-head { margin-bottom:0; padding-bottom:0; border-bottom:none; }
         .cc-card.cc-collapsed .cc-section,
-        .cc-card.cc-collapsed .cc-foot { display:none; }
+        .cc-card.cc-collapsed .cc-foot,
+        .cc-card.cc-collapsed .cc-details,
+        .cc-card.cc-collapsed .cc-sub { display:none; }
         .cc-card.cc-collapsed .cc-collapsed-summary { display:block; }
         .cc-collapsed-summary { display:none; font-size:12px; color:#6b7280; margin-top:4px; font-variant-numeric: tabular-nums; }
     </style>
@@ -155,7 +157,7 @@
                                 <div style="flex:1; min-width:0;">
                                     <div class="cc-title">{{ $e['display_name'] }}</div>
                                     <div class="cc-sub">{{ $locNameDisplay }}@if($shiftLabel) · {{ $shiftLabel }}@endif</div>
-                                    <div class="cc-collapsed-summary">${{ number_format($totalSold, 2) }} sold @if($txnCount) · {{ $txnCount }} sale{{ $txnCount === 1 ? '' : 's' }}@endif @if(!is_null($cashVar)) · drawer {{ $cashVar >= 0 ? '+' : '' }}${{ number_format($cashVar, 2) }}@endif</div>
+                                    <div class="cc-collapsed-summary">${{ number_format($cardClover, 2) }} Clover sales</div>
                                 </div>
                                 <label class="eod-recon-toggle" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; cursor:pointer; color:{{ $isReconciled ? '#166534' : '#374151' }}; white-space:nowrap;" onclick="event.stopPropagation();">
                                     <input type="checkbox" class="eod-recon-checkbox" {{ $isReconciled ? 'checked' : '' }}>
