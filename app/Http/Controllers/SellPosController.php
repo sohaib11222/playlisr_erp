@@ -678,7 +678,7 @@ class SellPosController extends Controller
             // Clover-only orphan. (Sarah 2026-05-11.)
             $cpTsByKey = [];
             foreach ($cpRows as $key => $cp) {
-                $cpTsByKey[$key] = self::parseCloverPaidAtLa($cp->paid_at)->getTimestamp();
+                $cpTsByKey[$key] = self::parseCloverPaidAtLa($cp)->getTimestamp();
             }
 
             $candidates = [];
@@ -815,7 +815,7 @@ class SellPosController extends Controller
             foreach ($unclaimed_clover_payments as $cp) {
                 $cpCents = $toCentsDiag($cp->amount);
                 // LA-correct epoch — see TZ note above on the matcher.
-                $cpTs    = self::parseCloverPaidAtLa($cp->paid_at)->getTimestamp();
+                $cpTs    = self::parseCloverPaidAtLa($cp)->getTimestamp();
                 $cpLoc   = $cp->location_id !== null ? (int) $cp->location_id : null;
                 $rows = [];
                 foreach ($matchSales as $sale) {
@@ -1546,7 +1546,7 @@ class SellPosController extends Controller
             // Clover-only orphan. (Sarah 2026-05-11.)
             $cpTsByKey = [];
             foreach ($cpRows as $key => $cp) {
-                $cpTsByKey[$key] = self::parseCloverPaidAtLa($cp->paid_at)->getTimestamp();
+                $cpTsByKey[$key] = self::parseCloverPaidAtLa($cp)->getTimestamp();
             }
 
             $candidates = [];
