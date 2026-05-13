@@ -750,12 +750,15 @@
                 $orphanCashierId = $cashier_for_orphan[$cp->id] ?? null;
                 $orphanCashierName = $orphanCashierId ? ($cashierNameById[$orphanCashierId] ?? null) : null;
                 $isPending = !empty($item['pending']);
+                $dupOfTxId = $orphan_duplicate_of[$cp->id] ?? null;
             @endphp
             <div class="rf-card {{ $isPending ? 'rf-clover-pending' : 'rf-clover-orphan' }}">
                 <div class="rf-head">
                     <div class="rf-head-left">
                         @if($isPending)
                             <span class="rf-invoice"><span class="rf-orphan-tag">⏱ Pending</span></span>
+                        @elseif($dupOfTxId)
+                            <span class="rf-invoice"><span class="rf-orphan-tag" style="background:#A88032;color:#fff;">⚠ DUPLICATE</span></span>
                         @else
                             <span class="rf-invoice"><span class="rf-orphan-tag">Clover only</span></span>
                         @endif
@@ -772,10 +775,17 @@
                 <div class="rf-orphan-note">
                     @if($isPending)
                         Clover charged <strong>${{ number_format($cpAmount, 2) }}</strong> in the last 10 min — ERP ring not in yet. Give it a minute.
+                    @elseif($dupOfTxId)
+                        Clover charged <strong>${{ number_format($cpAmount, 2) }}</strong> — same Clover order as paired sale <a href="{{ url('sells/' . $dupOfTxId) }}" style="color:#1F1B16;text-decoration:underline;">#{{ $dupOfTxId }}</a>. Likely a sync-side duplicate (Clover API returned 2 payment records for one logical sale). Not a missed ring-up.
                     @else
                         Clover charged <strong>${{ number_format($cpAmount, 2) }}</strong> — no matching ERP ring.
                     @endif
                 </div>
+                @if(!empty($cp->clover_order_id))
+                    <div style="margin:0 16px 6px 16px; font-size:11px; color:#8A7C6A;">
+                        Clover order <code style="background:#F7F1E3;border:1px solid #DFD2B3;border-radius:3px;padding:1px 4px;font-size:11px;">{{ $cp->clover_order_id }}</code>
+                    </div>
+                @endif
                 @php $nearMatches = $orphan_near_matches[$cp->clover_payment_id] ?? []; @endphp
                 <div style="margin: 6px 16px 8px 16px; padding: 8px 10px; background:#FAF6EE; border:1px dashed #DFD2B3; border-radius:6px; font-size: 12px;">
                     @if(!empty($nearMatches))

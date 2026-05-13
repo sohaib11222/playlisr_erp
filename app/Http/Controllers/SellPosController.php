@@ -745,6 +745,33 @@ class SellPosController extends Controller
             $unclaimed_clover_payments = $cpRows->reject(function ($cp, $key) use ($claimedCpKeys) {
                 return isset($claimedCpKeys[$key]);
             });
+
+            // Sarah 2026-05-13: diagnostic — Clover's API sometimes returns
+            // multiple payment records for one logical sale (auth + capture,
+            // tip-adjustment, void-on-original, etc.), each with a unique
+            // clover_payment_id. When that happens, ONE of them pairs to the
+            // ERP ring (1-to-1 match) and the OTHER falls out as a "Clover
+            // only" orphan even though it's the same money. Build a lookup
+            // of paired-Clover order_ids so the orphan card can flag "this
+            // shares clover_order_id with #INVOICE — likely sync duplicate".
+            $paired_order_id_to_tx = [];
+            foreach ($matchedCpByTx as $txId => $payments) {
+                foreach ($payments as $p) {
+                    $oid = $p->clover_order_id ?? null;
+                    if (!empty($oid)) {
+                        $paired_order_id_to_tx[$oid] = $txId;
+                    }
+                }
+            }
+            // Tag each orphan with a flag if its clover_order_id matches a
+            // paired charge — surfaces the sync-duplicate pattern.
+            $orphan_duplicate_of = [];
+            foreach ($unclaimed_clover_payments as $cp) {
+                $oid = $cp->clover_order_id ?? null;
+                if (!empty($oid) && isset($paired_order_id_to_tx[$oid])) {
+                    $orphan_duplicate_of[$cp->id] = $paired_order_id_to_tx[$oid];
+                }
+            }
             // Sarah 2026-05-12: when a store filter is active, only show
             // orphans tied to that store. Other-store orphans (and NULL-
             // location historical rows from the old top-level merchant
@@ -1268,7 +1295,7 @@ class SellPosController extends Controller
             if (!in_array($k, $store_order, true)) $store_order[] = $k;
         }
 
-        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'orphan_by_loc', 'orphan_null_loc', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'pending_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store', 'tz_debug', 'dateStr', 'day_label', 'prev_date', 'next_date', 'is_today', 'allow_next', 'dayMode', 'sales_by_store', 'orphans_by_store', 'pending_by_store', 'pending_amount_by_store', 'pending_count_by_store', 'store_order'));
+        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'orphan_by_loc', 'orphan_null_loc', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'pending_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store', 'tz_debug', 'dateStr', 'day_label', 'prev_date', 'next_date', 'is_today', 'allow_next', 'dayMode', 'sales_by_store', 'orphans_by_store', 'pending_by_store', 'pending_amount_by_store', 'pending_count_by_store', 'store_order', 'orphan_duplicate_of'));
     }
 
     /**
