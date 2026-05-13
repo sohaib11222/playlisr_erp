@@ -82,19 +82,19 @@ try { console.log('[clover_mismatch_modal] partial loaded'); } catch (_) {}
         var detailErp = '';
         var detailClover = '';
         if (item.type === 'mismatch') {
-            prompt = 'Sale #' + (item.invoice_no || item.transaction_id) + ': ERP ' + fmtMoney(item.erp_amount_cents) + ' vs Clover ' + fmtMoney(item.clover_amount_cents) + '. Please explain the difference.';
+            prompt = 'Sale #' + (item.invoice_no || item.transaction_id) + ' shows ' + fmtMoney(item.erp_amount_cents) + ' in ERP and ' + fmtMoney(item.clover_amount_cents) + ' in Clover. Please make sure the exact total from ERP is entered into Clover. Explain the difference below.';
             detailErp = '<strong>ERP:</strong> ' + fmtMoney(item.erp_amount_cents) + ' &nbsp; (sale #' + (item.invoice_no || item.transaction_id) + ')';
             detailClover = '<strong>Clover charged:</strong> ' + fmtMoney(item.clover_amount_cents);
         } else if (item.type === 'no_clover') {
-            prompt = 'Sale #' + (item.invoice_no || item.transaction_id) + ' rang ' + fmtMoney(item.erp_amount_cents) + ' in ERP, no Clover charge. Please explain.';
+            prompt = 'Sale #' + (item.invoice_no || item.transaction_id) + ' shows ' + fmtMoney(item.erp_amount_cents) + ' in ERP, but there is no matching Clover charge. Please confirm the sale was rung up in Clover. All cash sales must also be entered into Clover. Explain the difference below.';
             detailErp = '<strong>ERP:</strong> ' + fmtMoney(item.erp_amount_cents) + ' &nbsp; (sale #' + (item.invoice_no || item.transaction_id) + ')';
             detailClover = '<strong>Clover:</strong> <span style="color:#B0451A;">no matching charge</span>';
         } else if (item.type === 'no_erp') {
-            prompt = 'Clover charged ' + fmtMoney(item.clover_amount_cents) + ', but there is no matching ERP sale. Please explain.';
+            prompt = 'Clover charged ' + fmtMoney(item.clover_amount_cents) + ', but there is no matching ERP sale. Please make sure all sold products are added into ERP so inventory stays accurate. <a href="{{ route(\'pos.create\') }}" target="_blank" style="color:#1F1B16; text-decoration:underline; font-weight:600;">Add the sale to ERP →</a>';
             detailErp = '<strong>ERP:</strong> <span style="color:#B0451A;">no matching sale</span>';
             detailClover = '<strong>Clover charged:</strong> ' + fmtMoney(item.clover_amount_cents);
         }
-        document.getElementById('clover_mismatch_prompt').textContent = prompt;
+        document.getElementById('clover_mismatch_prompt').innerHTML = prompt;
         document.getElementById('clover_mismatch_detail_erp').innerHTML = detailErp;
         document.getElementById('clover_mismatch_detail_clover').innerHTML = detailClover;
         document.getElementById('clover_mismatch_reason').value = '';
