@@ -577,6 +577,7 @@ class SellPosController extends Controller
         $unclaimed_clover_payments = collect();
         $matchedCpByTx = [];
         $claimedCpKeys = [];
+        $orphan_duplicate_of = [];
 
         if ($sales->isNotEmpty()) {
             $minDate = $sales->min('transaction_date');
