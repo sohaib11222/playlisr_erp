@@ -786,6 +786,22 @@
                         Clover order <code style="background:#F7F1E3;border:1px solid #DFD2B3;border-radius:3px;padding:1px 4px;font-size:11px;">{{ $cp->clover_order_id }}</code>
                     </div>
                 @endif
+
+                {{-- Inline raw_payload viewer for sync-bug investigation.
+                     Sarah 2026-05-13: click to expand the original JSON
+                     Clover returned for this payment. Comparing the raw
+                     payload of an orphan against its paired sibling tells
+                     us which Clover-side workflow created the dup record
+                     (auth+capture, tip adjustment, void+re-charge, etc.). --}}
+                @if(!empty($cp->raw_payload))
+                    <details style="margin: 0 16px 8px 16px;">
+                        <summary style="cursor:pointer; font-size:11px; color:#8B6A1A; list-style:none; padding:4px 0;">▸ Show raw Clover payload (for sync-bug diagnostic)</summary>
+                        <pre style="margin-top:6px; padding:8px 10px; background:#F7F1E3; border:1px solid #DFD2B3; border-radius:6px; font-size:10px; line-height:1.4; color:#1F1B16; overflow-x:auto; max-height:340px; white-space:pre-wrap; word-break:break-all;">@php
+                            try { echo json_encode(json_decode($cp->raw_payload, true), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES); }
+                            catch (\Throwable $e) { echo e((string) $cp->raw_payload); }
+                        @endphp</pre>
+                    </details>
+                @endif
                 @php $nearMatches = $orphan_near_matches[$cp->clover_payment_id] ?? []; @endphp
                 <div style="margin: 6px 16px 8px 16px; padding: 8px 10px; background:#FAF6EE; border:1px dashed #DFD2B3; border-radius:6px; font-size: 12px;">
                     @if(!empty($nearMatches))
