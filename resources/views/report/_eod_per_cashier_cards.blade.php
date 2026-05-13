@@ -82,10 +82,18 @@
                             $empKey = strtolower(trim($e['display_name']));
                             if ($empKey === 'unknown' || $empKey === 'unattributed') continue;
 
-                            $totalSoldGross  = (float) ($e['total_sales'] ?? 0);
-                            $cardCloverGross = (float) ($e['clover_total'] ?? 0);
-                            $totalSold       = (float) ($e['net_sales'] ?? 0);
-                            $cardClover      = (float) ($e['clover_net'] ?? 0);
+                            // Sarah 2026-05-13: per-cashier numbers are GROSS
+                            // (final_total vs Clover amount) so they sum to
+                            // the per-store banner above. NET-vs-NET caused
+                            // confusing $13+ "diffs" on individual cashiers
+                            // when the store as a whole reconciled to pennies
+                            // — the gap was Clover's tax_cents column
+                            // disagreeing with ERP's tax rather than a real
+                            // keying/swipe issue.
+                            $totalSold       = (float) ($e['total_sales'] ?? 0);
+                            $cardClover      = (float) ($e['clover_total'] ?? 0);
+                            $totalSoldNet    = (float) ($e['net_sales'] ?? 0);
+                            $cardCloverNet   = (float) ($e['clover_net'] ?? 0);
                             $impliedCash = max(0.0, round($totalSold - $cardClover, 2));
                             $overSwipe   = round($cardClover - $totalSold, 2);
 
@@ -161,9 +169,9 @@
                             <div class="cc-section">
                                 <div class="cc-sec-h">What they sold @if($txnCount)<span style="font-weight:500; color:#9ca3af;">· {{ $txnCount }} sale{{ $txnCount === 1 ? '' : 's' }}</span>@endif</div>
                                 <div class="cc-line sum"><span class="cc-label" title="ERP Sales (gross) = sum of final_total — what customers actually paid for this cashier's sales. Matches per-store and Day Totals.">ERP Sales</span><span class="cc-val">${{ number_format($totalSold, 2) }}</span></div>
-                                <div class="cc-line"><span class="cc-label minor">Clover Sales (this cashier)</span><span class="cc-val">${{ number_format($cardClover, 2) }}</span></div>
+                                <div class="cc-line"><span class="cc-label minor" title="Clover swipes attributed to this cashier (gross, customer-paid). Matches the per-store banner.">Clover Sales (this cashier)</span><span class="cc-val">${{ number_format($cardClover, 2) }}</span></div>
                                 <div class="cc-line"><span class="cc-label minor" style="color:{{ abs($overSwipe) < 0.01 ? '#2E6F40' : '#8B2C2C' }};">Diff (Clover − ERP)</span><span class="cc-val" style="color:{{ abs($overSwipe) < 0.01 ? '#2E6F40' : '#8B2C2C' }}; font-weight:700;">{{ abs($overSwipe) < 0.01 ? '$0.00 ✓' : (($overSwipe > 0 ? '+' : '') . '$' . number_format($overSwipe, 2)) }}</span></div>
-                                <div class="cc-line"><span class="cc-label minor" style="color:#8A7C6A; font-size:11px;" title="Gross (incl tax + fees) — only used for the cash drawer math below.">Gross (incl tax + fees)</span><span class="cc-val" style="color:#8A7C6A; font-size:11px;">${{ number_format($totalSoldGross, 2) }}</span></div>
+                                <div class="cc-line"><span class="cc-label minor" style="color:#8A7C6A; font-size:11px;" title="Net (pre-tax) — same sales without tax + fees. Useful for cross-checking Clover's Net Sales dashboard.">Net (pre-tax, both sides)</span><span class="cc-val" style="color:#8A7C6A; font-size:11px;">${{ number_format($totalSoldNet, 2) }} / ${{ number_format($cardCloverNet, 2) }}</span></div>
                                 @if($missingClover)
                                     <div class="cc-line"><span class="cc-label" style="color:#92400e;">⚠ No Clover swipes matched — sync may be stale</span><span class="cc-val"></span></div>
                                 @endif
@@ -344,7 +352,7 @@
         </div>
     @endforeach
     <p class="help-block" style="margin-top:-6px; margin-bottom:18px;">
-        <strong>ERP Sales</strong> is the sum of every sale this cashier rang up (NET, pre-tax). <strong>Clover Sales (this cashier)</strong> = matched against Clover settlements. <strong>Over swipe</strong> means Clover collected more than the cashier rang up — the theft tell.
+        <strong>ERP Sales</strong> is the gross total (final_total) of every sale this cashier rang up. <strong>Clover Sales (this cashier)</strong> = gross Clover swipes attributed to them. Both match the per-store banner above. <strong>Over swipe</strong> means Clover collected more than the cashier rang up — the theft tell.
         <strong>Cash drawer</strong>: opening + cash collected − cash buys should equal what the cashier counted at close. <em>Short</em> = drawer low (skim or wrong change), <em>Over</em> = drawer high (mis-rung sale).
     </p>
 @endif
