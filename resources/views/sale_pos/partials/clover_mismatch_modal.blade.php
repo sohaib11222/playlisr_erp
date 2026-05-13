@@ -28,6 +28,7 @@
   </div>
 </div>
 <script>
+try { console.log('[clover_mismatch_modal] partial loaded'); } catch (_) {}
 (function () {
     // Sarah 2026-05-13: hard-wrapped in try/catch so a popup bug can
     // never block /pos checkout. If anything throws on init, the rest
@@ -165,6 +166,7 @@
     try {
         var qs = new URLSearchParams(window.location.search || '');
         var demoMode = qs.get('clover_mismatch_demo');
+        try { console.log('[clover_mismatch_modal] demo mode =', demoMode); } catch (_) {}
         if (demoMode && ['mismatch', 'no_clover', 'no_erp'].indexOf(demoMode) !== -1) {
             var fake = {
                 'mismatch': {
