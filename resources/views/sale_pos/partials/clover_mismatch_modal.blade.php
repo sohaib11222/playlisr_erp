@@ -30,16 +30,39 @@
 <script>
 try { console.log('[clover_mismatch_modal] partial loaded'); } catch (_) {}
 (function () {
-    // Sarah 2026-05-13: hard-wrapped in try/catch so a popup bug can
-    // never block /pos checkout. If anything throws on init, the rest
-    // of the page keeps working — popup just silently doesn't appear.
+    // Sarah 2026-05-13: wait for jQuery to load before init. The modal
+    // partial is included inline in the @section('content'), which the
+    // POS layout renders BEFORE the jQuery <script> tag at the bottom
+    // of the page. So our init has to defer until jQuery is on window,
+    // otherwise the script silently no-ops. Poll up to 10s.
+    function startWhenReady(attemptsLeft) {
+        if (typeof jQuery !== 'undefined' && jQuery.fn && jQuery.fn.modal) {
+            init();
+            return;
+        }
+        if (attemptsLeft <= 0) {
+            try { console.warn('[clover_mismatch_modal] gave up waiting for jQuery'); } catch (_) {}
+            return;
+        }
+        setTimeout(function () { startWhenReady(attemptsLeft - 1); }, 200);
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function () { startWhenReady(50); });
+    } else {
+        startWhenReady(50);
+    }
+
+    function init() {
+    // Hard-wrapped in try/catch so a popup bug can never block /pos
+    // checkout. If init throws, the rest of the page keeps working —
+    // popup just silently doesn't appear.
     try {
     var POLL_MS = 30000;
     var LATER_MS = 5 * 60 * 1000;
     var modalEl = document.getElementById('clover_mismatch_modal');
-    try { console.log('[clover_mismatch_modal] modalEl=', !!modalEl, 'jQuery=', typeof jQuery); } catch (_) {}
+    try { console.log('[clover_mismatch_modal] init — modalEl=', !!modalEl, 'jQuery=', typeof jQuery); } catch (_) {}
     if (!modalEl || typeof jQuery === 'undefined') {
-        try { console.warn('[clover_mismatch_modal] early-exit: missing modal or jQuery'); } catch (_) {}
+        try { console.warn('[clover_mismatch_modal] init — missing modal'); } catch (_) {}
         return;
     }
     var $modal = jQuery(modalEl);
@@ -196,5 +219,6 @@ try { console.log('[clover_mismatch_modal] partial loaded'); } catch (_) {}
     } catch (e) {
         try { console && console.warn && console.warn('clover_mismatch_modal init error', e); } catch (_) {}
     }
+    } // end init
 })();
 </script>
