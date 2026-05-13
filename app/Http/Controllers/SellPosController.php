@@ -511,6 +511,37 @@ class SellPosController extends Controller
         $is_today = $currentDate->isSameDay($todayLa);
         $allow_next = $currentDate->lt($todayLa->copy()->startOfDay());
         $day_label = $currentDate->format('l, F j, Y');
+
+        // Sarah 2026-05-13: monthly view for reviewers (Sabina). ?month=YYYY-MM
+        // overrides day mode and scopes the feed to the full calendar month
+        // in LA. Per-transaction listings + Clover-match logic stay the same;
+        // only the date window and nav change. Default day-mode flow is
+        // untouched so live POS reconciliation isn't affected.
+        $is_month_mode = false;
+        $month_label = null;
+        $prev_month = null;
+        $next_month = null;
+        $allow_next_month = false;
+        $monthStr = $request->get('month');
+        if ($monthStr && preg_match('/^\d{4}-\d{2}$/', (string) $monthStr)) {
+            $monthCarbon = \Carbon\Carbon::createFromFormat('Y-m-d', $monthStr . '-01', $tz);
+            if ($monthCarbon !== false) {
+                $is_month_mode = true;
+                $monthStart = $monthCarbon->copy()->startOfMonth();
+                $monthEnd   = $monthCarbon->copy()->endOfMonth();
+                $start_date = $monthStart->format('Y-m-d');
+                $end_date   = $monthEnd->format('Y-m-d');
+                $month_label = $monthCarbon->format('F Y');
+                $day_label   = $month_label; // copy spots reading $day_label flow through
+                $prev_month = $monthCarbon->copy()->subMonthNoOverflow()->format('Y-m');
+                $next_month = $monthCarbon->copy()->addMonthNoOverflow()->format('Y-m');
+                $allow_next_month = $monthCarbon->copy()->startOfMonth()
+                    ->lt($todayLa->copy()->startOfMonth());
+                // Reviewer view — no live auto-refresh, no day nav semantics.
+                $is_today = false;
+                $allow_next = false;
+            }
+        }
         // Discrepancy filter — '', 'mismatch', 'no_clover', 'no_erp', 'any'.
         // Applied *after* the Clover match runs (since both sides need to be
         // paired before we can know which sales are discrepant), so when a
@@ -528,7 +559,9 @@ class SellPosController extends Controller
         // monster Whatnot day can't blow up the eager-load. (Previously the
         // page was limit-paginated; day-mode supersedes that for clarity —
         // Sarah wants the full day's transactions, both stores, side-by-side.)
-        $fetchLimit = 2000;
+        // Month-mode bumps the cap so a full calendar month doesn't get
+        // silently truncated; reviewer flow accepts the heavier render.
+        $fetchLimit = $is_month_mode ? 20000 : 2000;
 
         // Exclude historical xlsx imports — they're backfilled "Legacy Historical Item"
         // rows with old transaction_dates that were drowning out actual recent POS sales.
@@ -826,8 +859,11 @@ class SellPosController extends Controller
             // "Clover-only" list, exploding the orphan count for no
             // reason. Use createdTime when available (canonical UTC) so
             // mis-stored paid_at TZ can't confuse the day boundary.
-            $dayStartTs = \Carbon\Carbon::parse($dateStr, $tz)->startOfDay()->getTimestamp();
-            $dayEndTs   = \Carbon\Carbon::parse($dateStr, $tz)->endOfDay()->getTimestamp();
+            // Use the current filter window (single day in day mode, full
+            // month in month mode) so orphan filtering doesn't truncate
+            // when the user is reviewing a longer range.
+            $dayStartTs = \Carbon\Carbon::parse($start_date, $tz)->startOfDay()->getTimestamp();
+            $dayEndTs   = \Carbon\Carbon::parse($end_date,   $tz)->endOfDay()->getTimestamp();
             $unclaimed_clover_payments = $unclaimed_clover_payments->filter(function ($cp) use ($dayStartTs, $dayEndTs) {
                 try {
                     $ts = self::parseCloverPaidAtLa($cp)->getTimestamp();
@@ -1148,7 +1184,8 @@ class SellPosController extends Controller
             ->where('status', 'final')
             ->whereNull('import_source')
             ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
-            ->whereDate('transaction_date', $todayStr)
+            ->whereDate('transaction_date', '>=', $start_date)
+            ->whereDate('transaction_date', '<=', $end_date)
             ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id))
             ->selectRaw('id, location_id, final_total as net_sales')
             ->get();
@@ -1163,7 +1200,8 @@ class SellPosController extends Controller
             ->where('status', 'final')
             ->whereNull('import_source')
             ->where('is_whatnot', 1)
-            ->whereDate('transaction_date', $todayStr)
+            ->whereDate('transaction_date', '>=', $start_date)
+            ->whereDate('transaction_date', '<=', $end_date)
             ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id))
             ->selectRaw('id, location_id, final_total as net_sales')
             ->get();
@@ -1183,8 +1221,15 @@ class SellPosController extends Controller
         // widens to the UNION of both windows; PHP filter then keeps
         // only rows whose canonical LA time (from raw_payload->createdTime
         // when present) actually falls within LA-today.
-        $startLaToday = \Carbon\Carbon::parse($dateStr, 'America/Los_Angeles')->startOfDay();
-        $endLaToday   = \Carbon\Carbon::parse($dateStr, 'America/Los_Angeles')->endOfDay();
+        // Month mode widens the LA window to the whole month so the banner
+        // and Clover-side query span all 30 days, not just $dateStr.
+        if ($is_month_mode) {
+            $startLaToday = \Carbon\Carbon::parse($start_date, 'America/Los_Angeles')->startOfDay();
+            $endLaToday   = \Carbon\Carbon::parse($end_date,   'America/Los_Angeles')->endOfDay();
+        } else {
+            $startLaToday = \Carbon\Carbon::parse($dateStr, 'America/Los_Angeles')->startOfDay();
+            $endLaToday   = \Carbon\Carbon::parse($dateStr, 'America/Los_Angeles')->endOfDay();
+        }
         $startInIst   = $startLaToday->copy()->setTimezone(self::CLOVER_PAID_AT_STORED_TZ)->format('Y-m-d H:i:s');
         $endInIst     = $endLaToday->copy()->setTimezone(self::CLOVER_PAID_AT_STORED_TZ)->format('Y-m-d H:i:s');
         $startInLa    = $startLaToday->format('Y-m-d H:i:s');
@@ -1413,7 +1458,7 @@ class SellPosController extends Controller
             }
         }
 
-        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'orphan_by_loc', 'orphan_null_loc', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'pending_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store', 'tz_debug', 'dateStr', 'day_label', 'prev_date', 'next_date', 'is_today', 'allow_next', 'dayMode', 'sales_by_store', 'orphans_by_store', 'pending_by_store', 'pending_amount_by_store', 'pending_count_by_store', 'store_order', 'orphan_duplicate_of', 'erp_only_pair_candidates', 'clover_explanations'));
+        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'orphan_by_loc', 'orphan_null_loc', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'pending_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store', 'tz_debug', 'dateStr', 'day_label', 'prev_date', 'next_date', 'is_today', 'allow_next', 'dayMode', 'is_month_mode', 'month_label', 'prev_month', 'next_month', 'allow_next_month', 'monthStr', 'sales_by_store', 'orphans_by_store', 'pending_by_store', 'pending_amount_by_store', 'pending_count_by_store', 'store_order', 'orphan_duplicate_of', 'erp_only_pair_candidates', 'clover_explanations'));
     }
 
     /**

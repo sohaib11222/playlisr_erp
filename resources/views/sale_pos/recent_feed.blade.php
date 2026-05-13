@@ -241,43 +241,72 @@
         <script>setTimeout(function(){var el=document.getElementById('rf-sync-flash');if(el)el.style.display='none';},8000);</script>
     @endif
 
-    {{-- Date navigation: prev / today / next day + Sync Now button. Always
-         visible so the user can step back through days even when the
-         current day's banner is empty (no activity yet). --}}
+    {{-- Date navigation: prev / today / next day + Sync Now button in day
+         mode, or prev / this-month / next month in month mode. Always
+         visible so the user can step back through periods even when the
+         current period's banner is empty (no activity yet). --}}
     <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
-        <a href="{{ action('SellPosController@recentSalesFeed', array_filter(['date' => $prev_date, 'location_id' => $location_id, 'created_by' => $created_by, 'discrepancy' => $discrepancy])) }}"
-           style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; background:#FFFFFF; border:1px solid #DFD2B3; border-radius:8px; color:#1F1B16; font-weight:600; font-size:13px; text-decoration:none;">
-            ← Previous day
-        </a>
-        @if($is_today)
-            <form method="POST" action="{{ action('SellPosController@cloverSyncNow') }}" style="margin:0;">
-                @csrf
-                <button type="submit" title="Pull the latest Clover charges into our DB right now (the cron runs every 5 min during business hours, but click this if you just rang something and want to see it immediately)"
-                        style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; background:#1F1B16; color:#fff; border:none; border-radius:8px; font-weight:700; font-size:13px; cursor:pointer;">
-                    ↻ Sync Clover Now
-                </button>
-            </form>
-        @endif
-        <div style="flex:1; text-align:center;">
-            <div style="font-size:18px; font-weight:700; color:#1F1B16;">{{ $day_label }}</div>
-            @if($is_today)
-                <div style="font-size:11px; color:#2E6F40; font-weight:700; letter-spacing:.06em; text-transform:uppercase; margin-top:2px;">● Live · auto-refresh 30s</div>
-            @else
+        @if($is_month_mode)
+            <a href="{{ action('SellPosController@recentSalesFeed', array_filter(['month' => $prev_month, 'location_id' => $location_id, 'created_by' => $created_by, 'discrepancy' => $discrepancy])) }}"
+               style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; background:#FFFFFF; border:1px solid #DFD2B3; border-radius:8px; color:#1F1B16; font-weight:600; font-size:13px; text-decoration:none;">
+                ← Previous month
+            </a>
+            <div style="flex:1; text-align:center;">
+                <div style="font-size:18px; font-weight:700; color:#1F1B16;">{{ $month_label }}</div>
                 <div style="font-size:11px; color:#8A7C6A; margin-top:2px;">
                     <a href="{{ action('SellPosController@recentSalesFeed', array_filter(['location_id' => $location_id, 'created_by' => $created_by, 'discrepancy' => $discrepancy])) }}"
-                       style="color:#8B6A1A; text-decoration:underline;">Jump to today</a>
+                       style="color:#8B6A1A; text-decoration:underline;">Switch to daily view</a>
                 </div>
+            </div>
+            @if($allow_next_month)
+                <a href="{{ action('SellPosController@recentSalesFeed', array_filter(['month' => $next_month, 'location_id' => $location_id, 'created_by' => $created_by, 'discrepancy' => $discrepancy])) }}"
+                   style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; background:#FFFFFF; border:1px solid #DFD2B3; border-radius:8px; color:#1F1B16; font-weight:600; font-size:13px; text-decoration:none;">
+                    Next month →
+                </a>
+            @else
+                <span style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; background:#F7F1E3; border:1px solid #ECE3CF; border-radius:8px; color:#BFB096; font-weight:600; font-size:13px; cursor:not-allowed;" title="Already on the current month">
+                    Next month →
+                </span>
             @endif
-        </div>
-        @if($allow_next)
-            <a href="{{ action('SellPosController@recentSalesFeed', array_filter(['date' => $next_date, 'location_id' => $location_id, 'created_by' => $created_by, 'discrepancy' => $discrepancy])) }}"
-               style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; background:#FFFFFF; border:1px solid #DFD2B3; border-radius:8px; color:#1F1B16; font-weight:600; font-size:13px; text-decoration:none;">
-                Next day →
-            </a>
         @else
-            <span style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; background:#F7F1E3; border:1px solid #ECE3CF; border-radius:8px; color:#BFB096; font-weight:600; font-size:13px; cursor:not-allowed;" title="Already on the most recent day">
-                Next day →
-            </span>
+            <a href="{{ action('SellPosController@recentSalesFeed', array_filter(['date' => $prev_date, 'location_id' => $location_id, 'created_by' => $created_by, 'discrepancy' => $discrepancy])) }}"
+               style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; background:#FFFFFF; border:1px solid #DFD2B3; border-radius:8px; color:#1F1B16; font-weight:600; font-size:13px; text-decoration:none;">
+                ← Previous day
+            </a>
+            @if($is_today)
+                <form method="POST" action="{{ action('SellPosController@cloverSyncNow') }}" style="margin:0;">
+                    @csrf
+                    <button type="submit" title="Pull the latest Clover charges into our DB right now (the cron runs every 5 min during business hours, but click this if you just rang something and want to see it immediately)"
+                            style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; background:#1F1B16; color:#fff; border:none; border-radius:8px; font-weight:700; font-size:13px; cursor:pointer;">
+                        ↻ Sync Clover Now
+                    </button>
+                </form>
+            @endif
+            <div style="flex:1; text-align:center;">
+                <div style="font-size:18px; font-weight:700; color:#1F1B16;">{{ $day_label }}</div>
+                @if($is_today)
+                    <div style="font-size:11px; color:#2E6F40; font-weight:700; letter-spacing:.06em; text-transform:uppercase; margin-top:2px;">● Live · auto-refresh 30s</div>
+                @else
+                    <div style="font-size:11px; color:#8A7C6A; margin-top:2px;">
+                        <a href="{{ action('SellPosController@recentSalesFeed', array_filter(['location_id' => $location_id, 'created_by' => $created_by, 'discrepancy' => $discrepancy])) }}"
+                           style="color:#8B6A1A; text-decoration:underline;">Jump to today</a>
+                    </div>
+                @endif
+                <div style="font-size:11px; color:#8A7C6A; margin-top:2px;">
+                    <a href="{{ action('SellPosController@recentSalesFeed', array_filter(['month' => \Carbon\Carbon::parse($dateStr)->format('Y-m'), 'location_id' => $location_id, 'created_by' => $created_by, 'discrepancy' => $discrepancy])) }}"
+                       style="color:#8B6A1A; text-decoration:underline;">View this month</a>
+                </div>
+            </div>
+            @if($allow_next)
+                <a href="{{ action('SellPosController@recentSalesFeed', array_filter(['date' => $next_date, 'location_id' => $location_id, 'created_by' => $created_by, 'discrepancy' => $discrepancy])) }}"
+                   style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; background:#FFFFFF; border:1px solid #DFD2B3; border-radius:8px; color:#1F1B16; font-weight:600; font-size:13px; text-decoration:none;">
+                    Next day →
+                </a>
+            @else
+                <span style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; background:#F7F1E3; border:1px solid #ECE3CF; border-radius:8px; color:#BFB096; font-weight:600; font-size:13px; cursor:not-allowed;" title="Already on the most recent day">
+                    Next day →
+                </span>
+            @endif
         @endif
     </div>
 
