@@ -183,6 +183,171 @@ class SellPosController extends Controller
     }
 
     /**
+     * Per-store ERP / Clover / Whatnot gross totals for an LA date range.
+     * The /pos/recent-feed page builds its banner from this; the Clover
+     * EOD Reconciliation report calls into it too so both pages report
+     * the same numbers (Sarah 2026-05-13: "i want the recent feed to be
+     * the source of truth").
+     *
+     * Gross-vs-gross (Sarah 2026-05-13) — ERP final_total vs Clover
+     * amount. Earlier net-vs-net flagged false discrepancies when ERP's
+     * stored tax_amount and Clover's tax_cents disagreed on a manual line
+     * even though the customer paid identical amounts both places. Field
+     * names `erp_net` / `clover_total` etc. are kept to avoid a wide
+     * rename; they now carry gross values.
+     *
+     * Returns:
+     *   by_store        — [loc_key => ['name','erp_net','erp_count',
+     *                      'clover','clover_count','whatnot_net',
+     *                      'whatnot_count','clover_charges','diff']]
+     *   erp_total / erp_count / clover_total / clover_count /
+     *   whatnot_total / whatnot_count — aggregates across stores
+     *   clover_rows_raw — the LA-tightened clover_payments rows used to
+     *                     build the buckets (callers that match per-charge
+     *                     should reuse these to stay in lockstep).
+     *
+     * ERP side: transactions where status=final, type=sell, no
+     * import_source, transaction_date in [startDate, endDate]. is_whatnot=1
+     * split into the whatnot_* fields so the in-store Diff isn't polluted.
+     *
+     * Clover side: clover_payments with result NULL/SUCCESS/APPROVED
+     * whose canonical LA time (createdTime when present, else paid_at
+     * with IST/LA TZ-flip tolerance via parseCloverPaidAtLa) lands in
+     * the LA range. SQL pre-filter is OR-of-IST-and-LA paid_at windows
+     * so mixed-TZ paid_at strings don't drop rows; PHP filter is the
+     * authoritative answer.
+     */
+    public static function dayByStoreTotals(int $businessId, string $startDate, string $endDate, $locationId, array $businessLocations): array
+    {
+        $erpBase = \DB::table('transactions')
+            ->where('business_id', $businessId)
+            ->where('type', 'sell')
+            ->where('status', 'final')
+            ->whereNull('import_source')
+            ->whereDate('transaction_date', '>=', $startDate)
+            ->whereDate('transaction_date', '<=', $endDate)
+            ->when(!empty($locationId), fn($q) => $q->where('location_id', $locationId));
+
+        $erpRows = (clone $erpBase)
+            ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
+            ->selectRaw('id, location_id, final_total as gross_sales')
+            ->get();
+
+        $whatnotRows = (clone $erpBase)
+            ->where('is_whatnot', 1)
+            ->selectRaw('id, location_id, final_total as gross_sales')
+            ->get();
+
+        $startLa = \Carbon\Carbon::parse($startDate, 'America/Los_Angeles')->startOfDay();
+        $endLa   = \Carbon\Carbon::parse($endDate,   'America/Los_Angeles')->endOfDay();
+        $startInIst = $startLa->copy()->setTimezone(self::CLOVER_PAID_AT_STORED_TZ)->format('Y-m-d H:i:s');
+        $endInIst   = $endLa->copy()->setTimezone(self::CLOVER_PAID_AT_STORED_TZ)->format('Y-m-d H:i:s');
+        $startInLaStr = $startLa->format('Y-m-d H:i:s');
+        $endInLaStr   = $endLa->format('Y-m-d H:i:s');
+
+        $cloverRows = \DB::table('clover_payments')
+            ->where('business_id', $businessId)
+            ->where(function ($q) use ($startInIst, $endInIst, $startInLaStr, $endInLaStr) {
+                $q->whereBetween('paid_at', [$startInIst, $endInIst])
+                  ->orWhereBetween('paid_at', [$startInLaStr, $endInLaStr]);
+            })
+            ->where(function ($q) {
+                $q->whereNull('result')->orWhere('result', 'SUCCESS')->orWhere('result', 'APPROVED');
+            })
+            ->when(!empty($locationId), fn($q) => $q->where('location_id', $locationId))
+            ->select('location_id', 'amount', 'tax_cents', 'paid_at', 'employee_name', 'card_type', 'card_last4', 'clover_payment_id', 'raw_payload')
+            ->orderBy('paid_at')
+            ->get();
+
+        // PHP-side LA tightening — keep only rows whose canonical LA
+        // time is in the [start, end] LA window. Tolerates IST/LA mixed
+        // paid_at by reading createdTime from raw_payload when present.
+        $cloverRows = $cloverRows->filter(function ($r) use ($startLa, $endLa) {
+            try {
+                return self::parseCloverPaidAtLa($r)->between($startLa, $endLa);
+            } catch (\Throwable $e) {
+                return false;
+            }
+        })->values();
+
+        $locKey = function ($id) { return (int) ($id ?? 0); };
+        $byStore = [];
+        $ensure = function (&$store, $key, $name) {
+            if (!isset($store[$key])) {
+                $store[$key] = [
+                    'location_id'    => $key ?: null,
+                    'name'           => $name,
+                    'erp_net'        => 0.0,
+                    'erp_count'      => 0,
+                    'clover'         => 0.0,
+                    'clover_count'   => 0,
+                    'whatnot_net'    => 0.0,
+                    'whatnot_count'  => 0,
+                    'clover_charges' => [],
+                ];
+            }
+        };
+        foreach ($erpRows as $r) {
+            $k = $locKey($r->location_id);
+            $name = $k && isset($businessLocations[$k]) ? $businessLocations[$k] : '(no location)';
+            $ensure($byStore, $k, $name);
+            $byStore[$k]['erp_net']   += (float) $r->gross_sales;
+            $byStore[$k]['erp_count']++;
+        }
+        foreach ($whatnotRows as $r) {
+            $k = $locKey($r->location_id);
+            $name = $k && isset($businessLocations[$k]) ? $businessLocations[$k] : '(no location)';
+            $ensure($byStore, $k, $name);
+            $byStore[$k]['whatnot_net']  += (float) $r->gross_sales;
+            $byStore[$k]['whatnot_count']++;
+        }
+        foreach ($cloverRows as $r) {
+            $k = $locKey($r->location_id);
+            $name = $k && isset($businessLocations[$k]) ? $businessLocations[$k] : '(no location)';
+            $ensure($byStore, $k, $name);
+            $cloverGross = (float) $r->amount;
+            $cloverNet   = max(0.0, $cloverGross - ((int) ($r->tax_cents ?? 0)) / 100);
+            $byStore[$k]['clover'] += $cloverGross;
+            $byStore[$k]['clover_count']++;
+            $cardBits = [];
+            if (!empty($r->card_type))  $cardBits[] = strtoupper($r->card_type);
+            if (!empty($r->card_last4)) $cardBits[] = '••' . $r->card_last4;
+            $byStore[$k]['clover_charges'][] = [
+                'paid_at'  => self::formatCloverPaidAt($r),
+                'amount'   => round($cloverGross, 2),
+                'net'      => round($cloverNet, 2),
+                'employee' => $r->employee_name,
+                'card'     => trim(implode(' ', $cardBits)),
+                'cp_id'    => $r->clover_payment_id,
+            ];
+        }
+        foreach ($byStore as &$s) {
+            $s['erp_net']     = round($s['erp_net'], 2);
+            $s['clover']      = round($s['clover'], 2);
+            $s['whatnot_net'] = round($s['whatnot_net'], 2);
+            $s['diff']        = round($s['clover'] - $s['erp_net'], 2);
+        }
+        unset($s);
+        uasort($byStore, function ($a, $b) {
+            if (($a['location_id'] === null) !== ($b['location_id'] === null)) {
+                return ($a['location_id'] === null) ? 1 : -1;
+            }
+            return strcasecmp($a['name'], $b['name']);
+        });
+
+        return [
+            'by_store'        => $byStore,
+            'erp_total'       => round((float) array_sum(array_column($byStore, 'erp_net')), 2),
+            'erp_count'       => (int) array_sum(array_column($byStore, 'erp_count')),
+            'clover_total'    => round((float) array_sum(array_column($byStore, 'clover')), 2),
+            'clover_count'    => (int) array_sum(array_column($byStore, 'clover_count')),
+            'whatnot_total'   => round((float) array_sum(array_column($byStore, 'whatnot_net')), 2),
+            'whatnot_count'   => (int) array_sum(array_column($byStore, 'whatnot_count')),
+            'clover_rows_raw' => $cloverRows,
+        ];
+    }
+
+    /**
      * One-time screen after login: what are you doing at the store today?
      * Session-only + activity log — does not alter auth roles (Sarah 2026-05).
      */

@@ -592,9 +592,31 @@
                 <span class="amt">$<span id="total_payable">0</span></span>
             </div>
         </div>
-        {{-- Payment row — Cash / Card / More. Same classes & IDs as the
-             old pos_form_actions markup so pos.js handlers keep firing
-             without any JS changes. --}}
+        {{-- Sarah 2026-05-13: Clover-key reminder. Mirrors the grand
+             total above and reminds cashier to key the exact amount
+             into the Clover terminal. Read-only, non-blocking. --}}
+        <div class="pos-clover-reminder" id="pos_clover_reminder" style="margin: 4px 0 8px; padding: 6px 10px; border-radius: 6px; background: #FFF7E1; border: 1px solid #F0DFAA; color: #6B4F12; font-size: 13px; text-align: center; line-height: 1.3;">
+            ⚠ Key <strong>EXACTLY $<span id="pos_clover_reminder_amt">0.00</span></strong> into Clover. Double-check before swiping.
+        </div>
+        <script>
+            (function () {
+                var src = document.getElementById('total_payable');
+                var dst = document.getElementById('pos_clover_reminder_amt');
+                if (!src || !dst) return;
+                function fmt(raw) {
+                    var n = parseFloat(String(raw || '0').replace(/[^0-9.\-]/g, ''));
+                    if (!isFinite(n)) n = 0;
+                    return n.toFixed(2);
+                }
+                function sync() { dst.textContent = fmt(src.textContent); }
+                sync();
+                try {
+                    var mo = new MutationObserver(sync);
+                    mo.observe(src, { childList: true, characterData: true, subtree: true });
+                } catch (e) { /* older browsers — fall back to interval below */ }
+                setInterval(sync, 1500);
+            })();
+        </script>
         <div class="pos-pay-row">
             <button type="button"
                 class="pos-pay-btn pay-cash pos-express-finalize @if($pos_settings['disable_express_checkout'] != 0 || !array_key_exists('cash', $payment_types)) hide @endif"

@@ -895,6 +895,17 @@
                         </div>
                     </div>
                 </div>
+                @php
+                    $orphanExKey = 'no_erp:0:' . (int) $cp->id;
+                    $orphanExplanation = $clover_explanations[$orphanExKey] ?? null;
+                @endphp
+                @if(!empty($orphanExplanation))
+                    <div style="margin:0 16px 8px 16px; padding:8px 10px; background:#EEF7EC; border:1px solid #B7DDB3; border-radius:6px; font-size:12px; color:#2C4F2A;">
+                        <strong>Cashier explained:</strong>
+                        <span style="white-space:pre-wrap;">{{ $orphanExplanation->reason }}</span>
+                        <span style="color:#5A7A5A; margin-left:6px;">— {{ \Carbon\Carbon::parse($orphanExplanation->created_at)->setTimezone('America/Los_Angeles')->format('M j g:i a') }}</span>
+                    </div>
+                @endif
             </div>
         @else
             @php
@@ -1036,6 +1047,20 @@
                         $cloverMismatch = abs($cloverInfo['amount_cents'] - $saleCents) > 1;
                     }
                 @endphp
+                @php
+                    // Sarah 2026-05-13: look up cashier explanation for
+                    // this row's discrepancy type. Mismatch shares
+                    // (tx, 0) key with the popup; no_clover keys to
+                    // (tx, 0) under no_clover type.
+                    $exMismatchKey = 'mismatch:' . (int) $sale->id . ':0';
+                    $exNoCloverKey = 'no_clover:' . (int) $sale->id . ':0';
+                    $rowExplanation = null;
+                    if ($cloverInfo && $cloverMismatch) {
+                        $rowExplanation = $clover_explanations[$exMismatchKey] ?? null;
+                    } elseif (!$cloverInfo) {
+                        $rowExplanation = $clover_explanations[$exNoCloverKey] ?? null;
+                    }
+                @endphp
                 <div class="rf-foot">
                     <div class="rf-foot-meta">
                         {{ ucfirst(str_replace('_', ' ', $sale->payment_status ?? '')) }}
@@ -1074,6 +1099,13 @@
                         </div>
                     </div>
                 </div>
+                @if(!empty($rowExplanation))
+                    <div style="margin:0 16px 8px 16px; padding:8px 10px; background:#EEF7EC; border:1px solid #B7DDB3; border-radius:6px; font-size:12px; color:#2C4F2A;">
+                        <strong>Cashier explained:</strong>
+                        <span style="white-space:pre-wrap;">{{ $rowExplanation->reason }}</span>
+                        <span style="color:#5A7A5A; margin-left:6px;">— {{ \Carbon\Carbon::parse($rowExplanation->created_at)->setTimezone('America/Los_Angeles')->format('M j g:i a') }}</span>
+                    </div>
+                @endif
                 @php $erpPairCands = $erp_only_pair_candidates[$sale->id] ?? []; @endphp
                 @if(!empty($erpPairCands))
                     <div style="margin:0 16px 8px 16px; padding:8px 10px; background:#FDF2D7; border:1px dashed #D9B95C; border-radius:6px; font-size:12px;">
