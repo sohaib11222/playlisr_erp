@@ -232,6 +232,35 @@
         $totPct = $totClover > 0 ? abs($totDiff) / $totClover : 0;
         $todayLabel = \Carbon\Carbon::now('America/Los_Angeles')->format('l, M j');
     @endphp
+    {{-- Sarah 2026-05-13: shout when a cashier left the register open.
+         Triggered when a shift was carried overnight or when a second
+         cashier opened on top at the same store (Manolo→Henry case).
+         Manager clicks through to /cash-register/close-register/{id} to
+         record the missing closing count + safe drop. --}}
+    @if(!empty($stale_open_registers))
+        <div style="background:#FDECCB; border:2px solid #E0A93A; border-radius:10px; padding:14px 18px; margin-bottom:14px;">
+            <div style="font-size:12px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; color:#7A4E0A; margin-bottom:8px;">
+                ⚠ Register left open
+            </div>
+            @foreach($stale_open_registers as $r)
+                <div style="margin-top:6px; font-size:14px; color:#3A2E0F; line-height:1.5;">
+                    <strong>{{ $r['cashier'] }}</strong>
+                    opened the register at <strong>{{ $r['location'] }}</strong>
+                    on {{ $r['opened_at'] }} and never closed it
+                    @if($r['reason'] === 'opened_on_top')
+                        — another cashier opened on top, so this shift's closing cash + safe drop weren't recorded.
+                    @else
+                        — the shift was carried overnight.
+                    @endif
+                    <a href="{{ url('/cash-register/close-register/' . $r['id']) }}"
+                       style="margin-left:8px; padding:5px 12px; background:#1F1B16; color:#fff; text-decoration:none; border-radius:6px; font-weight:700; font-size:12px; display:inline-block;">
+                        Close {{ $r['cashier'] }}'s register
+                    </a>
+                </div>
+            @endforeach
+        </div>
+    @endif
+
     {{-- Sync-status flash banner. After a manual "Sync Clover Now" the
          user sees confirmation here. Auto-fades after 8s via the inline JS. --}}
     @if(session('status') || session('error'))

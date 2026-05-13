@@ -1632,7 +1632,57 @@ class SellPosController extends Controller
             }
         }
 
-        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'orphan_by_loc', 'orphan_null_loc', 'orphan_refund_count', 'orphan_voided_count', 'orphan_real_count', 'orphan_nearmatch_count', 'orphan_dup_cluster_count', 'orphan_dup_cluster_rows', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'pending_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store', 'tz_debug', 'dateStr', 'day_label', 'prev_date', 'next_date', 'is_today', 'allow_next', 'dayMode', 'is_month_mode', 'month_label', 'prev_month', 'next_month', 'allow_next_month', 'monthStr', 'sales_by_store', 'orphans_by_store', 'pending_by_store', 'pending_amount_by_store', 'pending_count_by_store', 'store_order', 'orphan_duplicate_of', 'erp_only_pair_candidates', 'clover_explanations', 'employee_breakdown_by_day', 'reconciliations'));
+        // Sarah 2026-05-13: surface registers that were left open. Manolo
+        // opened with $1,028 this morning but never closed before Henry
+        // opened on top — that means Manolo's closing cash + safe drop
+        // were never recorded. We want the page to scream so a manager
+        // can close the abandoned shift and reconcile. Stale =
+        //   (a) opened before today LA — overnight carry, OR
+        //   (b) another cashier has since opened on top at same location.
+        $stale_open_registers = [];
+        try {
+            $todayStartLa = \Carbon\Carbon::now($tz)->startOfDay();
+            $openRegs = \App\CashRegister::where('business_id', $business_id)
+                ->where('status', 'open')
+                ->orderBy('id', 'desc')
+                ->get();
+            if ($openRegs->isNotEmpty()) {
+                $uIds = $openRegs->pluck('user_id')->unique()->all();
+                $uMap = User::whereIn('id', $uIds)
+                    ->select('id', 'surname', 'first_name', 'last_name')
+                    ->get()->keyBy('id');
+                $locIds = $openRegs->pluck('location_id')->unique()->filter()->all();
+                $locMap = !empty($locIds)
+                    ? BusinessLocation::whereIn('id', $locIds)->pluck('name', 'id')
+                    : collect();
+                foreach ($openRegs as $r) {
+                    $created = \Carbon\Carbon::parse($r->created_at);
+                    $isOvernight = $created->copy()->setTimezone($tz)->lt($todayStartLa);
+                    $hasNewerSameLoc = $openRegs->first(function ($x) use ($r) {
+                        return (int) $x->id !== (int) $r->id
+                            && (int) $x->location_id === (int) $r->location_id
+                            && strtotime((string) $x->created_at) > strtotime((string) $r->created_at);
+                    });
+                    if (!$isOvernight && !$hasNewerSameLoc) continue;
+                    $u = $uMap->get($r->user_id);
+                    $name = $u
+                        ? trim(($u->surname ?? '') . ' ' . ($u->first_name ?? '') . ' ' . ($u->last_name ?? ''))
+                        : ('User #' . $r->user_id);
+                    $name = preg_replace('/\s+/', ' ', $name) ?: ('User #' . $r->user_id);
+                    $stale_open_registers[] = [
+                        'id'         => $r->id,
+                        'cashier'    => $name,
+                        'location'   => $locMap[$r->location_id] ?? 'Unknown location',
+                        'opened_at'  => $created->copy()->setTimezone($tz)->format('M j, g:i A'),
+                        'reason'     => $hasNewerSameLoc ? 'opened_on_top' : 'overnight',
+                    ];
+                }
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('stale_open_registers detection failed: ' . $e->getMessage());
+        }
+
+        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'orphan_by_loc', 'orphan_null_loc', 'orphan_refund_count', 'orphan_voided_count', 'orphan_real_count', 'orphan_nearmatch_count', 'orphan_dup_cluster_count', 'orphan_dup_cluster_rows', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'pending_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store', 'tz_debug', 'dateStr', 'day_label', 'prev_date', 'next_date', 'is_today', 'allow_next', 'dayMode', 'is_month_mode', 'month_label', 'prev_month', 'next_month', 'allow_next_month', 'monthStr', 'sales_by_store', 'orphans_by_store', 'pending_by_store', 'pending_amount_by_store', 'pending_count_by_store', 'store_order', 'orphan_duplicate_of', 'erp_only_pair_candidates', 'clover_explanations', 'employee_breakdown_by_day', 'reconciliations', 'stale_open_registers'));
     }
 
     /**

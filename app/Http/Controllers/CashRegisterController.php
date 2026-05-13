@@ -92,12 +92,41 @@ class CashRegisterController extends Controller
 
             $user_id = $request->session()->get('user.id');
             $business_id = $request->session()->get('user.business_id');
+            $location_id = $request->input('location_id');
+
+            // Sarah 2026-05-13: block opening on top of another cashier's
+            // still-open register at the same location. Manolo opened with
+            // $1,028 and never closed; Henry opened on top with $484 so
+            // Manolo's closing count + safe drop were never recorded.
+            // We're single-cashier-per-store until further notice — when
+            // we onboard a second concurrent cashier this gate gets a
+            // business-setting toggle.
+            $existing_open = CashRegister::where('business_id', $business_id)
+                ->where('status', 'open')
+                ->where('location_id', $location_id)
+                ->where('user_id', '!=', $user_id)
+                ->latest('id')
+                ->first();
+            if ($existing_open) {
+                $other = \App\User::find($existing_open->user_id);
+                $otherName = $other
+                    ? trim(($other->surname ?? '') . ' ' . ($other->first_name ?? '') . ' ' . ($other->last_name ?? ''))
+                    : ('User #' . $existing_open->user_id);
+                $otherName = preg_replace('/\s+/', ' ', $otherName) ?: ('User #' . $existing_open->user_id);
+                $opened = \Carbon::parse($existing_open->created_at)
+                    ->setTimezone('America/Los_Angeles')->format('M j, g:i A');
+                return redirect()->back()->withInput()
+                    ->with('error', $otherName . " still has the register open at this store from "
+                        . $opened . ". Close their shift first (record their closing cash + safe drop) before starting a new one.")
+                    ->with('blocked_open_register_id', $existing_open->id)
+                    ->with('blocked_open_cashier', $otherName);
+            }
 
             $registerData = [
                 'business_id' => $business_id,
                 'user_id' => $user_id,
                 'status' => 'open',
-                'location_id' => $request->input('location_id'),
+                'location_id' => $location_id,
                 'created_at' => \Carbon::now()->format('Y-m-d H:i:00'),
             ];
             // Only set safe_drop_amount when the column exists (the

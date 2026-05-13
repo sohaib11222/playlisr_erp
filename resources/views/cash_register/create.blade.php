@@ -130,6 +130,25 @@
 
 <!-- Main content -->
 <section class="content">
+{{-- Sarah 2026-05-13: another cashier still has the register open at
+     this store. Block the new open until that shift is closed so the
+     prior cashier's closing count + safe drop get recorded. --}}
+@if(session('error'))
+    <div style="background:#FDECCB; border:2px solid #E0A93A; border-radius:12px; padding:18px 22px; margin:18px auto; max-width:780px; color:#3A2E0F;">
+        <div style="font-size:12px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; color:#7A4E0A; margin-bottom:8px;">
+            ⚠ Can't open yet
+        </div>
+        <div style="font-size:15px; line-height:1.55; font-weight:600;">
+            {{ session('error') }}
+        </div>
+        @if(session('blocked_open_register_id'))
+            <a href="{{ url('/cash-register/close-register/' . session('blocked_open_register_id')) }}"
+               style="display:inline-block; margin-top:12px; padding:10px 18px; background:#1F1B16; color:#fff; text-decoration:none; border-radius:8px; font-weight:700; font-size:14px;">
+                Close {{ session('blocked_open_cashier') ?: 'their' }}'s register
+            </a>
+        @endif
+    </div>
+@endif
 {!! Form::open(['url' => action('CashRegisterController@store'), 'method' => 'post',
 'id' => 'add_cash_register_form' ]) !!}
   <div class="box box-solid">
