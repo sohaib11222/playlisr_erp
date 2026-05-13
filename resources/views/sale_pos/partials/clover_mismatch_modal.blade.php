@@ -37,7 +37,11 @@ try { console.log('[clover_mismatch_modal] partial loaded'); } catch (_) {}
     var POLL_MS = 30000;
     var LATER_MS = 5 * 60 * 1000;
     var modalEl = document.getElementById('clover_mismatch_modal');
-    if (!modalEl || typeof jQuery === 'undefined') return;
+    try { console.log('[clover_mismatch_modal] modalEl=', !!modalEl, 'jQuery=', typeof jQuery); } catch (_) {}
+    if (!modalEl || typeof jQuery === 'undefined') {
+        try { console.warn('[clover_mismatch_modal] early-exit: missing modal or jQuery'); } catch (_) {}
+        return;
+    }
     var $modal = jQuery(modalEl);
     var current = null;
     var hiddenUntil = 0;
