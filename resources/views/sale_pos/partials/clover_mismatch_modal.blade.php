@@ -82,15 +82,15 @@ try { console.log('[clover_mismatch_modal] partial loaded'); } catch (_) {}
         var detailErp = '';
         var detailClover = '';
         if (item.type === 'mismatch') {
-            prompt = 'Sale #' + (item.invoice_no || item.transaction_id) + ': ERP ' + fmtMoney(item.erp_amount_cents) + ' vs Clover ' + fmtMoney(item.clover_amount_cents) + '. Why?';
+            prompt = 'Sale #' + (item.invoice_no || item.transaction_id) + ': ERP ' + fmtMoney(item.erp_amount_cents) + ' vs Clover ' + fmtMoney(item.clover_amount_cents) + '. Please explain the difference.';
             detailErp = '<strong>ERP:</strong> ' + fmtMoney(item.erp_amount_cents) + ' &nbsp; (sale #' + (item.invoice_no || item.transaction_id) + ')';
             detailClover = '<strong>Clover charged:</strong> ' + fmtMoney(item.clover_amount_cents);
         } else if (item.type === 'no_clover') {
-            prompt = 'Sale #' + (item.invoice_no || item.transaction_id) + ' rang ' + fmtMoney(item.erp_amount_cents) + ' in ERP, no Clover charge. Why?';
+            prompt = 'Sale #' + (item.invoice_no || item.transaction_id) + ' rang ' + fmtMoney(item.erp_amount_cents) + ' in ERP, no Clover charge. Please explain.';
             detailErp = '<strong>ERP:</strong> ' + fmtMoney(item.erp_amount_cents) + ' &nbsp; (sale #' + (item.invoice_no || item.transaction_id) + ')';
             detailClover = '<strong>Clover:</strong> <span style="color:#B0451A;">no matching charge</span>';
         } else if (item.type === 'no_erp') {
-            prompt = 'Clover charged ' + fmtMoney(item.clover_amount_cents) + ', no ERP sale. Why?';
+            prompt = 'Clover charged ' + fmtMoney(item.clover_amount_cents) + ', but there is no matching ERP sale. Please explain.';
             detailErp = '<strong>ERP:</strong> <span style="color:#B0451A;">no matching sale</span>';
             detailClover = '<strong>Clover charged:</strong> ' + fmtMoney(item.clover_amount_cents);
         }
