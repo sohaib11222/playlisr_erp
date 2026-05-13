@@ -888,6 +888,20 @@ class SellPosController extends Controller
             }
         }
         $no_erp_count = $unclaimed_clover_payments->count();
+        // Sarah 2026-05-12: break orphans down by location-id presence so
+        // the UI can show "X null-loc · Y at <store>" — null-loc orphans
+        // are historical rows from the old top-level merchant sync that
+        // can be backfilled, while real-store orphans are reconcile gaps.
+        $orphan_by_loc = [];
+        $orphan_null_loc = 0;
+        foreach ($unclaimed_clover_payments as $cp) {
+            if ($cp->location_id === null || (int) $cp->location_id === 0) {
+                $orphan_null_loc++;
+            } else {
+                $lid = (int) $cp->location_id;
+                $orphan_by_loc[$lid] = ($orphan_by_loc[$lid] ?? 0) + 1;
+            }
+        }
         $scanned_count = $sales->count();
 
         if ($discrepancy === 'no_erp') {
@@ -1123,7 +1137,7 @@ class SellPosController extends Controller
             ];
         }
 
-        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store', 'tz_debug'));
+        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'orphan_by_loc', 'orphan_null_loc', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store', 'tz_debug'));
     }
 
     /**

@@ -394,6 +394,21 @@
                 <span><span style="color:#B0451A;font-weight:700;">{{ number_format($mismatch_count) }}</span> mismatch{{ $mismatch_count === 1 ? '' : 'es' }}</span>
                 <span><span style="color:#8B6A1A;font-weight:700;">{{ number_format($no_clover_count) }}</span> ERP only (no Clover)</span>
                 <span><span style="color:#7B3FA0;font-weight:700;">{{ number_format($no_erp_count) }}</span> Clover only (no ERP)</span>
+                @if(!empty($orphan_by_loc) || ($orphan_null_loc ?? 0) > 0)
+                    @php
+                        $parts = [];
+                        if (($orphan_null_loc ?? 0) > 0) {
+                            $parts[] = '<span style="color:#8B2C2C;font-weight:700;">' . number_format($orphan_null_loc) . ' null-loc</span> <span style="color:#8A7C6A;">(historical sync, backfillable)</span>';
+                        }
+                        foreach (($orphan_by_loc ?? []) as $lid => $n) {
+                            $name = $business_locations[$lid] ?? ('loc ' . $lid);
+                            $parts[] = '<strong>' . number_format($n) . '</strong> at ' . e($name);
+                        }
+                    @endphp
+                    <span style="width:100%;color:#5A5045;font-size:11px;padding-left:2px;">
+                        ↳ orphan breakdown: {!! implode(' · ', $parts) !!}
+                    </span>
+                @endif
                 @if($isFiltered)
                     <a href="{{ action('SellPosController@recentSalesFeed', array_filter(['location_id' => $location_id, 'created_by' => $created_by, 'limit' => $limit])) }}"
                        style="margin-left:auto;color:#8B6A1A;text-decoration:underline;font-weight:600;">
