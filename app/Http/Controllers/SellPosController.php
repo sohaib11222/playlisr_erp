@@ -677,12 +677,13 @@ class SellPosController extends Controller
             $matchTimeWindow  = 43200;
 
             // Sarah 2026-05-13: honor manual matches BEFORE auto-match.
-            // A Clover row with manual_erp_transaction_id set claims its
-            // ERP sale unconditionally — bypasses amount/time/store
-            // checks. Lets the user pair cases the auto-matcher can't
-            // see (wrong store, big amount gap, etc.) by hand.
+            // Manual links live in storage/app/clover-manual-matches-*.json
+            // (no DB column — Sarah doesn't run migrations). A Clover
+            // row appearing in the map claims its ERP sale unconditionally,
+            // bypassing amount/time/store checks.
+            $manualMatches = self::loadCloverManualMatches((int) $business_id);
             foreach ($cpRows as $key => $cp) {
-                $manualTxId = $cp->manual_erp_transaction_id ?? null;
+                $manualTxId = $manualMatches[(int) $cp->id] ?? null;
                 if ($manualTxId) {
                     $claimedCpKeys[$key] = true;
                     $matchedCpByTx[(int) $manualTxId][] = $cp;
@@ -1133,11 +1134,14 @@ class SellPosController extends Controller
         // and makes the Clover gap look like a real discrepancy. Surfaced
         // separately below the store row.
         //
-        // Sarah 2026-05-12: NET-vs-NET so the page's "Clover Sales" matches
-        // Sarah's Clover dashboard / item-sales CSV (which reports pre-tax
-        // gross). Clover side subtracts tax_cents from amount; ERP side
-        // subtracts tax_amount from final_total. Both sides represent
-        // item revenue before tax.
+        // Sarah 2026-05-13: gross-vs-gross — ERP final_total vs Clover
+        // amount. The earlier net-vs-net math (final_total − tax_amount
+        // vs amount − tax_cents) flagged a false "ERP ahead $0.59" when
+        // gross matched to the penny — ERP's stored tax_amount and
+        // Clover's tax_cents disagreed on a manual line even though the
+        // customer paid identical amounts both places. Reconciliation
+        // is a gross question. (Field name `net_sales` kept to avoid a
+        // wide rename; it now carries the gross amount.)
         $erpRowsToday = \DB::table('transactions')
             ->where('business_id', $business_id)
             ->where('type', 'sell')
@@ -1146,7 +1150,7 @@ class SellPosController extends Controller
             ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
             ->whereDate('transaction_date', $todayStr)
             ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id))
-            ->selectRaw('id, location_id, (final_total - COALESCE(tax_amount, 0)) as net_sales')
+            ->selectRaw('id, location_id, final_total as net_sales')
             ->get();
 
         // Whatnot rows today — surfaced separately so the user can see
@@ -1161,7 +1165,7 @@ class SellPosController extends Controller
             ->where('is_whatnot', 1)
             ->whereDate('transaction_date', $todayStr)
             ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id))
-            ->selectRaw('id, location_id, (final_total - COALESCE(tax_amount, 0)) as net_sales')
+            ->selectRaw('id, location_id, final_total as net_sales')
             ->get();
 
         // Include paid_at / employee / card so the banner can drill into
@@ -1249,12 +1253,12 @@ class SellPosController extends Controller
             $k = $locKey($r->location_id);
             $name = $k && isset($business_locations[$k]) ? $business_locations[$k] : '(no location)';
             $ensure($today_by_store, $k, $name);
-            // Sarah 2026-05-12: NET-vs-NET. Clover net = amount − tax_cents,
-            // matching Clover's own "Items Report" Gross Sales column (which
-            // is pre-tax item revenue, not customer-paid). Paired with ERP
-            // side using final_total − tax_amount.
-            $cloverNet = max(0.0, (float) $r->amount - ((int) ($r->tax_cents ?? 0)) / 100);
-            $today_by_store[$k]['clover'] += $cloverNet;
+            // Sarah 2026-05-13: gross-vs-gross. Aggregate Clover's
+            // customer-paid amount (what hit the card). Per-charge `net`
+            // is still kept below for the drilldown's Net column.
+            $cloverGross = (float) $r->amount;
+            $cloverNet   = max(0.0, $cloverGross - ((int) ($r->tax_cents ?? 0)) / 100);
+            $today_by_store[$k]['clover'] += $cloverGross;
             $today_by_store[$k]['clover_count']++;
             $cardBits = [];
             if (!empty($r->card_type))  $cardBits[] = strtoupper($r->card_type);
@@ -1386,7 +1390,30 @@ class SellPosController extends Controller
             if (!in_array($k, $store_order, true)) $store_order[] = $k;
         }
 
-        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'orphan_by_loc', 'orphan_null_loc', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'pending_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store', 'tz_debug', 'dateStr', 'day_label', 'prev_date', 'next_date', 'is_today', 'allow_next', 'dayMode', 'sales_by_store', 'orphans_by_store', 'pending_by_store', 'pending_amount_by_store', 'pending_count_by_store', 'store_order', 'orphan_duplicate_of', 'erp_only_pair_candidates'));
+        // Sarah 2026-05-13: pull any saved cashier explanations for the
+        // visible rows so the view can show them inline next to MISMATCH /
+        // NO-ERP / NO-CLOVER chips. Most recent reason wins per (type,
+        // tx, cp) key.
+        $visible_tx_ids = $sales->pluck('id')->all();
+        $visible_cp_ids = $unclaimed_clover_payments->pluck('id')->all();
+        $clover_explanations = [];
+        if (!empty($visible_tx_ids) || !empty($visible_cp_ids)) {
+            $exRows = \App\CloverMismatchExplanation::where('business_id', $business_id)
+                ->where(function ($q) use ($visible_tx_ids, $visible_cp_ids) {
+                    if (!empty($visible_tx_ids)) $q->orWhereIn('transaction_id', $visible_tx_ids);
+                    if (!empty($visible_cp_ids)) $q->orWhereIn('clover_payment_id', $visible_cp_ids);
+                })
+                ->orderBy('created_at', 'desc')
+                ->get(['transaction_id', 'clover_payment_id', 'discrepancy_type', 'reason', 'explained_by', 'created_at']);
+            foreach ($exRows as $row) {
+                $key = $row->discrepancy_type . ':' . (int) ($row->transaction_id ?? 0) . ':' . (int) ($row->clover_payment_id ?? 0);
+                if (!isset($clover_explanations[$key])) {
+                    $clover_explanations[$key] = $row;
+                }
+            }
+        }
+
+        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'orphan_by_loc', 'orphan_null_loc', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'pending_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store', 'tz_debug', 'dateStr', 'day_label', 'prev_date', 'next_date', 'is_today', 'allow_next', 'dayMode', 'sales_by_store', 'orphans_by_store', 'pending_by_store', 'pending_amount_by_store', 'pending_count_by_store', 'store_order', 'orphan_duplicate_of', 'erp_only_pair_candidates', 'clover_explanations'));
     }
 
     /**
@@ -1562,10 +1589,47 @@ class SellPosController extends Controller
     }
 
     /**
+     * Manual Clover↔ERP pair overrides are stored as a JSON file in
+     * storage/ instead of a DB column — Sarah doesn't run migrations
+     * on the ERP server (they've broken prod before). Shape:
+     *   { "<clover_payment_db_id>": <transaction_id>, ... }
+     */
+    protected static function cloverManualMatchPath(int $business_id): string
+    {
+        return storage_path('app/clover-manual-matches-' . $business_id . '.json');
+    }
+
+    /** [cp_db_id => transaction_id]; missing file returns empty. */
+    public static function loadCloverManualMatches(int $business_id): array
+    {
+        $path = self::cloverManualMatchPath($business_id);
+        if (!is_file($path)) return [];
+        try {
+            $json = json_decode((string) file_get_contents($path), true);
+            if (!is_array($json)) return [];
+            $out = [];
+            foreach ($json as $k => $v) { $out[(int) $k] = (int) $v; }
+            return $out;
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    protected static function saveCloverManualMatches(int $business_id, array $map): void
+    {
+        $path = self::cloverManualMatchPath($business_id);
+        $dir = dirname($path);
+        if (!is_dir($dir)) { @mkdir($dir, 0775, true); }
+        $tmp = $path . '.tmp';
+        file_put_contents($tmp, json_encode($map, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        @rename($tmp, $path);
+    }
+
+    /**
      * Manually link a Clover payment to an ERP transaction. The matcher
-     * honors this link first, before automatic pairing — so wrong-amount
-     * or wrong-store pairs the auto-matcher can't see still get paired.
-     * Auto-match tolerance stays tight (±20¢); anything wider goes here.
+     * honors this link first, before automatic pairing. Auto-match
+     * tolerance stays tight (±20¢); anything wider goes here. Persisted
+     * to a JSON file in storage/ — no DB migration required.
      */
     public function cloverManualMatch(Request $request)
     {
@@ -1581,23 +1645,21 @@ class SellPosController extends Controller
             return redirect($back)->with('error', 'Manual match requires both clover_payment_id and transaction_id.');
         }
 
-        $business_id = $request->session()->get('user.business_id');
+        $business_id = (int) $request->session()->get('user.business_id');
         $cp = \App\CloverPayment::where('id', $cpId)->where('business_id', $business_id)->first();
         $tx = Transaction::where('id', $txId)->where('business_id', $business_id)->first();
         if (!$cp || !$tx) {
             return redirect($back)->with('error', 'Clover payment or ERP transaction not found.');
         }
 
-        $cp->manual_erp_transaction_id = $tx->id;
-        $cp->save();
+        $map = self::loadCloverManualMatches($business_id);
+        $map[$cpId] = $txId;
+        self::saveCloverManualMatches($business_id, $map);
 
         return redirect($back)->with('status', '✓ Manually paired Clover ' . $cp->clover_payment_id . ' with ERP #' . $tx->invoice_no . '.');
     }
 
-    /**
-     * Clear a manual Clover ↔ ERP link, restoring the row to the
-     * automatic matcher's behavior.
-     */
+    /** Clear a manual Clover ↔ ERP link. */
     public function cloverManualUnmatch(Request $request)
     {
         if (!auth()->user()->can('sell.create')) {
@@ -1607,16 +1669,15 @@ class SellPosController extends Controller
         $cpId = (int) $request->input('clover_payment_id');
         $back = $request->headers->get('referer') ?: route('pos.recentFeed');
 
-        $business_id = $request->session()->get('user.business_id');
-        $cp = \App\CloverPayment::where('id', $cpId)->where('business_id', $business_id)->first();
-        if (!$cp) {
-            return redirect($back)->with('error', 'Clover payment not found.');
+        $business_id = (int) $request->session()->get('user.business_id');
+        $map = self::loadCloverManualMatches($business_id);
+        if (!isset($map[$cpId])) {
+            return redirect($back)->with('error', 'No manual pairing recorded for that Clover row.');
         }
+        unset($map[$cpId]);
+        self::saveCloverManualMatches($business_id, $map);
 
-        $cp->manual_erp_transaction_id = null;
-        $cp->save();
-
-        return redirect($back)->with('status', '✓ Cleared manual pairing for Clover ' . $cp->clover_payment_id . '.');
+        return redirect($back)->with('status', '✓ Cleared manual pairing.');
     }
 
     public function recentRings(Request $request)
@@ -1852,12 +1913,13 @@ class SellPosController extends Controller
             $matchTimeWindow  = 43200;
 
             // Sarah 2026-05-13: honor manual matches BEFORE auto-match.
-            // A Clover row with manual_erp_transaction_id set claims its
-            // ERP sale unconditionally — bypasses amount/time/store
-            // checks. Lets the user pair cases the auto-matcher can't
-            // see (wrong store, big amount gap, etc.) by hand.
+            // Manual links live in storage/app/clover-manual-matches-*.json
+            // (no DB column — Sarah doesn't run migrations). A Clover
+            // row appearing in the map claims its ERP sale unconditionally,
+            // bypassing amount/time/store checks.
+            $manualMatches = self::loadCloverManualMatches((int) $business_id);
             foreach ($cpRows as $key => $cp) {
-                $manualTxId = $cp->manual_erp_transaction_id ?? null;
+                $manualTxId = $manualMatches[(int) $cp->id] ?? null;
                 if ($manualTxId) {
                     $claimedCpKeys[$key] = true;
                     $matchedCpByTx[(int) $manualTxId][] = $cp;
