@@ -1316,11 +1316,6 @@ class SellPosController extends Controller
         }
         $scanned_count = $sales->count();
 
-        // Snapshot the unfiltered ERP set so the headline real_diff
-        // (computed after today_by_store is built) reflects the full
-        // day regardless of ?discrepancy=mismatch / no_clover filter.
-        $sales_all_for_real_diff = $sales;
-
         if ($discrepancy === 'no_erp') {
             // Special case: user wants ONLY orphan Clover charges. Hide all
             // ERP rows; the view will render the unclaimed Clover list.
@@ -1516,42 +1511,6 @@ class SellPosController extends Controller
             }
             return strcasecmp($a['name'], $b['name']);
         });
-
-        // Sarah 2026-05-13: per-store "real_diff" — actionable Diff for
-        // the headline. Sums per-sale gaps that exceed the 1¢ MISMATCH
-        // threshold (mirroring the per-sale chip rule at recent_feed.-
-        // blade.php:1047), plus full amounts for unpaired ERP/Clover.
-        // Sub-cent tax-rounding offsets contribute 0 instead of netting
-        // against a real keying error and hiding it (e.g. a $0.12
-        // mismatch was being masked by +$0.04 of penny-rounding cents
-        // on four other sales → headline showed −$0.08 instead of −$0.12).
-        // ERP / Clover total numbers stay as raw sums; only Diff changes.
-        $realDiffCentsByStore = [];
-        foreach ($today_by_store as $k => $_) { $realDiffCentsByStore[$k] = 0; }
-        foreach ($sales_all_for_real_diff as $sale) {
-            $k = (int) ($sale->location_id ?? 0);
-            if (!array_key_exists($k, $realDiffCentsByStore)) $realDiffCentsByStore[$k] = 0;
-            $erpCents = (int) round(((float) $sale->final_total) * 100);
-            $info = $clover_by_transaction[$sale->id] ?? null;
-            if ($info === null) {
-                // No Clover pair — ERP ahead by full amount.
-                $realDiffCentsByStore[$k] -= $erpCents;
-            } else {
-                $perSaleDiff = ((int) $info['amount_cents']) - $erpCents;
-                if (abs($perSaleDiff) > 1) {
-                    $realDiffCentsByStore[$k] += $perSaleDiff;
-                }
-            }
-        }
-        foreach ($unclaimed_clover_payments as $cp) {
-            $k = (int) ($cp->location_id ?? 0);
-            if (!array_key_exists($k, $realDiffCentsByStore)) $realDiffCentsByStore[$k] = 0;
-            $realDiffCentsByStore[$k] += (int) round(((float) $cp->amount) * 100);
-        }
-        foreach ($today_by_store as $k => &$_s) {
-            $_s['real_diff'] = round(($realDiffCentsByStore[$k] ?? 0) / 100, 2);
-        }
-        unset($_s);
 
         // Backwards-compat aggregates (kept for any old blade refs).
         $erp_today_total      = array_sum(array_column($today_by_store, 'erp_net'));
