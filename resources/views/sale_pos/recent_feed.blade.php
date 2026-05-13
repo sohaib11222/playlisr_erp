@@ -419,6 +419,52 @@
                     @endforeach
                 </div>
 
+                {{-- Sarah 2026-05-12: dedicated Whatnot row(s). Same big-number
+                     layout as ERP/Clover rows but only the ERP column —
+                     Whatnot doesn't hit Clover, so no Diff to compute. One
+                     row per store with Whatnot activity that day. Purple
+                     accent so it reads as a separate channel from the main
+                     ERP-vs-Clover reconciliation. --}}
+                @php
+                    $whatnotStores = [];
+                    foreach ($byStore as $sk => $sv) {
+                        if ((int) ($sv['whatnot_count'] ?? 0) > 0) {
+                            $whatnotStores[$sk] = $sv;
+                        }
+                    }
+                @endphp
+                @if(!empty($whatnotStores))
+                    <div style="margin-top:10px; padding-top:10px; border-top:1px dashed #ECE3CF;">
+                        @foreach($whatnotStores as $sk => $s)
+                            <div style="display:flex; gap:24px; align-items:center; flex-wrap:wrap; padding:14px 14px 14px 16px; margin:0 -8px 6px -8px; border-left:5px solid #7B3FA0; background:#FAF4FF; border-radius:6px;">
+                                <div style="min-width:160px;">
+                                    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                        <span style="font-size:14px; font-weight:700; color:#1F1B16; text-transform:uppercase; letter-spacing:.06em;">Whatnot · {{ $s['name'] }}</span>
+                                    </div>
+                                    <div style="margin-top:4px;">
+                                        <span style="display:inline-block; background:#7B3FA0; color:#FFFFFF; font-size:11px; font-weight:700; letter-spacing:.04em; padding:3px 8px; border-radius:4px;">📺 LIVESTREAM</span>
+                                    </div>
+                                </div>
+                                <div style="flex:1; min-width:140px;">
+                                    <div style="font-size:11px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">ERP Sales</div>
+                                    <div style="font-size:26px; font-weight:700; color:#1F1B16; font-variant-numeric: tabular-nums;">${{ number_format($s['whatnot_net'] ?? 0, 2) }}</div>
+                                    <div style="font-size:11px; color:#8A7C6A;">{{ (int) ($s['whatnot_count'] ?? 0) }} sale{{ ((int) ($s['whatnot_count'] ?? 0)) === 1 ? '' : 's' }}</div>
+                                </div>
+                                <div style="flex:1; min-width:140px;">
+                                    <div style="font-size:11px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Clover Sales</div>
+                                    <div style="font-size:20px; font-weight:600; color:#BFB096; font-variant-numeric: tabular-nums;">—</div>
+                                    <div style="font-size:11px; color:#8A7C6A; font-style:italic;">paid through Whatnot</div>
+                                </div>
+                                <div style="flex:1; min-width:140px;">
+                                    <div style="font-size:11px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Diff</div>
+                                    <div style="font-size:20px; font-weight:600; color:#BFB096; font-variant-numeric: tabular-nums;">N/A</div>
+                                    <div style="font-size:11px; color:#8A7C6A; font-style:italic;">inventory-only channel</div>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                @endif
+
                 @if(count($byStore) > 1)
                     @php $allStoresAccent = abs($totDiff) >= 1.00 ? '#D94B4B' : (abs($totDiff) >= 0.01 ? '#C99A2A' : '#2E6F40'); @endphp
                     <div style="margin-top:8px; padding:10px 14px; border-top:2px solid #ECE3CF; display:flex; gap:24px; align-items:baseline; flex-wrap:wrap; font-size:12px; color:#5A5045; background:#FAF6EE; border-radius:6px;">
@@ -431,11 +477,11 @@
                     </div>
                 @endif
 
-            @if($totWhatnotCount > 0)
-                <div style="margin-top:10px; font-size:12px; color:#8A7C6A;">
-                    <strong style="color:#5A5045;">Whatnot today:</strong> ${{ number_format($totWhatnot, 2) }} · {{ $totWhatnotCount }} sale{{ $totWhatnotCount === 1 ? '' : 's' }} — inventory-only, paid through Whatnot (not Clover), so excluded from ERP Sales and Diff above.
-                </div>
-            @endif
+                @if($totWhatnotCount > 0)
+                    <div style="margin-top:10px; font-size:11px; color:#8A7C6A; padding: 0 4px;">
+                        <strong style="color:#5A5045;">Note:</strong> Whatnot totals are tracked separately because the customer paid through the Whatnot app (not Clover). They ring in ERP for inventory but are <em>excluded</em> from the ERP / Clover / Diff numbers above, which are the reconciliation against Clover deposits.
+                    </div>
+                @endif
 
             @php $anyCharges = false; foreach ($byStore as $_s) { if (!empty($_s['clover_charges'])) { $anyCharges = true; break; } } @endphp
             @if($anyCharges)
