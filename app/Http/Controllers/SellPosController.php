@@ -1290,12 +1290,28 @@ class SellPosController extends Controller
         // can be backfilled, while real-store orphans are reconcile gaps.
         $orphan_by_loc = [];
         $orphan_null_loc = 0;
+        // Sarah 2026-05-13: also bucket by refund-vs-sale and by result so
+        // the monthly review can see how many of the orphan count is
+        // actually noise (refunds match sell_returns not sells; non-SUCCESS
+        // rows are voids/test charges) vs genuine missed cashier entries.
+        $orphan_refund_count = 0;
+        $orphan_voided_count = 0;
+        $orphan_real_count = 0;
         foreach ($unclaimed_clover_payments as $cp) {
             if ($cp->location_id === null || (int) $cp->location_id === 0) {
                 $orphan_null_loc++;
             } else {
                 $lid = (int) $cp->location_id;
                 $orphan_by_loc[$lid] = ($orphan_by_loc[$lid] ?? 0) + 1;
+            }
+            $amt = (float) ($cp->amount ?? 0);
+            $res = (string) ($cp->result ?? '');
+            if ($amt < 0) {
+                $orphan_refund_count++;
+            } elseif ($res !== '' && $res !== 'SUCCESS' && $res !== 'APPROVED') {
+                $orphan_voided_count++;
+            } else {
+                $orphan_real_count++;
             }
         }
         $scanned_count = $sales->count();
@@ -1674,7 +1690,7 @@ class SellPosController extends Controller
             }
         }
 
-        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'orphan_by_loc', 'orphan_null_loc', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'pending_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store', 'tz_debug', 'dateStr', 'day_label', 'prev_date', 'next_date', 'is_today', 'allow_next', 'dayMode', 'is_month_mode', 'month_label', 'prev_month', 'next_month', 'allow_next_month', 'monthStr', 'sales_by_store', 'orphans_by_store', 'pending_by_store', 'pending_amount_by_store', 'pending_count_by_store', 'store_order', 'orphan_duplicate_of', 'erp_only_pair_candidates', 'clover_explanations'));
+        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'orphan_by_loc', 'orphan_null_loc', 'orphan_refund_count', 'orphan_voided_count', 'orphan_real_count', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'pending_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store', 'tz_debug', 'dateStr', 'day_label', 'prev_date', 'next_date', 'is_today', 'allow_next', 'dayMode', 'is_month_mode', 'month_label', 'prev_month', 'next_month', 'allow_next_month', 'monthStr', 'sales_by_store', 'orphans_by_store', 'pending_by_store', 'pending_amount_by_store', 'pending_count_by_store', 'store_order', 'orphan_duplicate_of', 'erp_only_pair_candidates', 'clover_explanations'));
     }
 
     /**

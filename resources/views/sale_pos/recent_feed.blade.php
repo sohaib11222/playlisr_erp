@@ -699,6 +699,47 @@
                 <a href="{{ action('SellPosController@recentSalesFeed', array_filter(['location_id' => $location_id, 'created_by' => $created_by, 'discrepancy' => $discrepancy])) }}"
                    style="color:#8B6A1A; text-decoration:underline; font-weight:600;">switch to daily view</a>.
             </div>
+
+            {{-- Sarah 2026-05-13: break the "Clover-only" count into the
+                 buckets that aren't actually missed sales — Clover refunds
+                 pair with ERP sell_returns (not sells, so the matcher
+                 misses them); voided/failed Clover rows aren't real
+                 charges; rows with no location_id can never match because
+                 the matcher requires same-store. Only the "needs ERP
+                 entry" count is a true cashier-miss signal. --}}
+            @if($no_erp_count > 0)
+                <div style="background:#FFFFFF; border:1px solid #DFD2B3; border-radius:10px; padding:14px 16px; margin-bottom:14px; font-size:13px; color:#5A5045;">
+                    <div style="font-weight:700; color:#1F1B16; margin-bottom:8px;">Clover-only breakdown ({{ number_format($no_erp_count) }} total)</div>
+                    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px;">
+                        <div style="padding:10px 12px; background:#F7F1E3; border-radius:8px;">
+                            <div style="font-size:11px; color:#8A7C6A; text-transform:uppercase; letter-spacing:.04em;">Likely missed cashier entries</div>
+                            <div style="font-size:22px; font-weight:700; color:#B0451A; font-variant-numeric:tabular-nums;">{{ number_format(max(0, $orphan_real_count - $orphan_null_loc)) }}</div>
+                            <div style="font-size:11px; color:#5A5045; margin-top:2px;">SUCCESS rows, positive amount, store-tagged</div>
+                        </div>
+                        @if($orphan_refund_count > 0)
+                            <div style="padding:10px 12px; background:#F7F1E3; border-radius:8px;">
+                                <div style="font-size:11px; color:#8A7C6A; text-transform:uppercase; letter-spacing:.04em;">Refunds (match sell_returns)</div>
+                                <div style="font-size:22px; font-weight:700; color:#5A5045; font-variant-numeric:tabular-nums;">{{ number_format($orphan_refund_count) }}</div>
+                                <div style="font-size:11px; color:#8A7C6A; margin-top:2px;">negative-amount Clover rows</div>
+                            </div>
+                        @endif
+                        @if($orphan_voided_count > 0)
+                            <div style="padding:10px 12px; background:#F7F1E3; border-radius:8px;">
+                                <div style="font-size:11px; color:#8A7C6A; text-transform:uppercase; letter-spacing:.04em;">Voided / failed</div>
+                                <div style="font-size:22px; font-weight:700; color:#5A5045; font-variant-numeric:tabular-nums;">{{ number_format($orphan_voided_count) }}</div>
+                                <div style="font-size:11px; color:#8A7C6A; margin-top:2px;">result ≠ SUCCESS/APPROVED</div>
+                            </div>
+                        @endif
+                        @if($orphan_null_loc > 0)
+                            <div style="padding:10px 12px; background:#F7F1E3; border-radius:8px;">
+                                <div style="font-size:11px; color:#8A7C6A; text-transform:uppercase; letter-spacing:.04em;">No location stamped</div>
+                                <div style="font-size:22px; font-weight:700; color:#5A5045; font-variant-numeric:tabular-nums;">{{ number_format($orphan_null_loc) }}</div>
+                                <div style="font-size:11px; color:#8A7C6A; margin-top:2px;">historical sync — can't match</div>
+                            </div>
+                        @endif
+                    </div>
+                </div>
+            @endif
         @else
         {{-- Sarah 2026-05-12: 2-column day-mode layout. Each active store
              gets its own column with its sales + Clover orphans interleaved
