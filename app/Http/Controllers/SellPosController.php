@@ -480,6 +480,26 @@ class SellPosController extends Controller
         $start_date = $request->get('start_date');
         $end_date   = $request->get('end_date');
         $hide_orphans = (bool) $request->get('hide_orphans');
+
+        // Sarah 2026-05-12: by-day mode. ?date=YYYY-MM-DD scopes everything
+        // (sales feed, Clover pool, totals banner) to one calendar day in
+        // LA. Default is today. Drives prev/next-day nav in the view.
+        $tz = 'America/Los_Angeles';
+        $todayLa = \Carbon\Carbon::now($tz);
+        $dateStr = $request->get('date');
+        if (!$dateStr || !preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $dateStr)) {
+            $dateStr = $todayLa->format('Y-m-d');
+        }
+        $dayMode = true; // page is always day-scoped now
+        // Day-mode overrides start_date/end_date when those weren't already set.
+        if (empty($start_date)) $start_date = $dateStr;
+        if (empty($end_date))   $end_date   = $dateStr;
+        $currentDate = \Carbon\Carbon::parse($dateStr, $tz);
+        $prev_date = $currentDate->copy()->subDay()->format('Y-m-d');
+        $next_date = $currentDate->copy()->addDay()->format('Y-m-d');
+        $is_today = $currentDate->isSameDay($todayLa);
+        $allow_next = $currentDate->lt($todayLa->copy()->startOfDay());
+        $day_label = $currentDate->format('l, F j, Y');
         // Discrepancy filter — '', 'mismatch', 'no_clover', 'no_erp', 'any'.
         // Applied *after* the Clover match runs (since both sides need to be
         // paired before we can know which sales are discrepant), so when a
@@ -493,11 +513,11 @@ class SellPosController extends Controller
         // ex-employees (allow_login=0) shouldn't clutter the cashier filter.
         $employees = User::forDropdown($business_id, false, false, true, false, true);
 
-        // When filtering for discrepancies, scan a wider pool so the user
-        // actually sees `limit` results — mismatches are rare, so a vanilla
-        // `LIMIT 30` would usually return 0–2 rows. Capped at 500 to keep
-        // the eager-load + Clover match cheap.
-        $fetchLimit = $discrepancy ? min(max($limit, 30) * 20, 500) : $limit;
+        // Day-mode: fetch all sales for the date. Safety cap at 2000 so a
+        // monster Whatnot day can't blow up the eager-load. (Previously the
+        // page was limit-paginated; day-mode supersedes that for clarity —
+        // Sarah wants the full day's transactions, both stores, side-by-side.)
+        $fetchLimit = 2000;
 
         // Exclude historical xlsx imports — they're backfilled "Legacy Historical Item"
         // rows with old transaction_dates that were drowning out actual recent POS sales.
@@ -776,6 +796,31 @@ class SellPosController extends Controller
             $unclaimed_clover_payments = collect();
         }
 
+        // Sarah 2026-05-12: grace period. Cashiers often run the card on
+        // Clover FIRST and ring the ERP sale a minute or two later —
+        // especially during a rush. A Clover charge that lands and gets
+        // flagged "orphan" 30 seconds later is just slow data entry, not
+        // a real reconcile gap. Hold orphans dated within the last 10 min
+        // out of the alarm count and tag them "pending" in the feed; they
+        // promote to real orphans automatically if no ERP ring lands by
+        // then. Only applied when viewing today (past-day pending makes
+        // no sense — the day is over, anything still unmatched is real).
+        $GRACE_MINUTES = 10;
+        $pending_clover_payments = collect();
+        if ($is_today && $unclaimed_clover_payments->isNotEmpty()) {
+            $graceCutoff = \Carbon\Carbon::now($tz)->subMinutes($GRACE_MINUTES);
+            [$pending_clover_payments, $unclaimed_clover_payments] = $unclaimed_clover_payments
+                ->partition(function ($cp) use ($graceCutoff) {
+                    try {
+                        return self::parseCloverPaidAtLa($cp)->gt($graceCutoff);
+                    } catch (\Throwable $e) {
+                        return false;
+                    }
+                });
+            $unclaimed_clover_payments = $unclaimed_clover_payments->values();
+            $pending_clover_payments = $pending_clover_payments->values();
+        }
+
         // Orphan Clover → ERP user: prefer activity_log pos_duty=cashier at
         // this store before the charge; else login heuristic (Sarah 2026-05).
         [$cashier_for_orphan, $cashierNameById] = $this->inferOrphanCloverCashierMaps(
@@ -925,11 +970,11 @@ class SellPosController extends Controller
         // are explicitly ERP-side filters, so suppress orphan Clover there.
         $show_clover_only = in_array($discrepancy, ['', 'any', 'no_erp'], true);
 
-        // Today's totals — Sarah 2026-05-09: split by store (Pico vs
-        // Hollywood) since aggregating across them hides per-store gaps.
-        // Card-to-Clover is the apples-to-apples comparison; cash and
-        // other tenders are informational because they don't hit Clover.
-        $todayStr = \Carbon\Carbon::now()->format('Y-m-d');
+        // Day totals — split by store (Pico vs Hollywood) since aggregating
+        // across them hides per-store gaps. Scoped to the chosen day
+        // (`?date=YYYY-MM-DD`, defaulting to today) so prev/next-day nav
+        // recomputes the banner against the selected day.
+        $todayStr = $dateStr;
 
         // ERP net = transaction-level total_before_tax (no per-tp split).
         // Tried tp.amount × ratio earlier but it broke on discounted lines.
@@ -983,8 +1028,8 @@ class SellPosController extends Controller
         // widens to the UNION of both windows; PHP filter then keeps
         // only rows whose canonical LA time (from raw_payload->createdTime
         // when present) actually falls within LA-today.
-        $startLaToday = \Carbon\Carbon::now('America/Los_Angeles')->startOfDay();
-        $endLaToday   = \Carbon\Carbon::now('America/Los_Angeles')->endOfDay();
+        $startLaToday = \Carbon\Carbon::parse($dateStr, 'America/Los_Angeles')->startOfDay();
+        $endLaToday   = \Carbon\Carbon::parse($dateStr, 'America/Los_Angeles')->endOfDay();
         $startInIst   = $startLaToday->copy()->setTimezone(self::CLOVER_PAID_AT_STORED_TZ)->format('Y-m-d H:i:s');
         $endInIst     = $endLaToday->copy()->setTimezone(self::CLOVER_PAID_AT_STORED_TZ)->format('Y-m-d H:i:s');
         $startInLa    = $startLaToday->format('Y-m-d H:i:s');
@@ -1137,7 +1182,59 @@ class SellPosController extends Controller
             ];
         }
 
-        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'orphan_by_loc', 'orphan_null_loc', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store', 'tz_debug'));
+        // Sarah 2026-05-12: per-store grouping for the 2-column day-mode
+        // layout. Each store's column shows its ERP sales (post-discrepancy
+        // filter) plus its unclaimed Clover orphans, sorted oldest-first
+        // (chronological top-to-bottom — easier to read down a day).
+        $sales_by_store = [];
+        $orphans_by_store = [];
+        $pending_by_store = [];
+        foreach ($business_locations as $lid => $lname) {
+            $sales_by_store[$lid]   = collect();
+            $orphans_by_store[$lid] = collect();
+            $pending_by_store[$lid] = collect();
+        }
+        // Catch-all bucket for rows whose location_id doesn't map to a known
+        // active location (e.g. closed stores, NULL-location Clover rows).
+        $sales_by_store[0]   = $sales_by_store[0]   ?? collect();
+        $orphans_by_store[0] = $orphans_by_store[0] ?? collect();
+        $pending_by_store[0] = $pending_by_store[0] ?? collect();
+        foreach ($sales as $sale) {
+            $k = (int) ($sale->location_id ?? 0);
+            if (!isset($sales_by_store[$k])) $sales_by_store[$k] = collect();
+            $sales_by_store[$k]->push($sale);
+        }
+        foreach ($unclaimed_clover_payments as $cp) {
+            $k = (int) ($cp->location_id ?? 0);
+            if (!isset($orphans_by_store[$k])) $orphans_by_store[$k] = collect();
+            $orphans_by_store[$k]->push($cp);
+        }
+        foreach ($pending_clover_payments as $cp) {
+            $k = (int) ($cp->location_id ?? 0);
+            if (!isset($pending_by_store[$k])) $pending_by_store[$k] = collect();
+            $pending_by_store[$k]->push($cp);
+        }
+        // Per-store pending Clover totals — the view subtracts these from
+        // the Diff before deciding whether to fire the "⚠ OFF BY" alarm.
+        // Cashiers running the card before ringing the ERP sale shouldn't
+        // trip a red banner for the 10-min grace window.
+        $pending_amount_by_store = [];
+        $pending_count_by_store = [];
+        foreach ($pending_clover_payments as $cp) {
+            $k = (int) ($cp->location_id ?? 0);
+            $pending_amount_by_store[$k] = ($pending_amount_by_store[$k] ?? 0) + (float) $cp->amount;
+            $pending_count_by_store[$k]  = ($pending_count_by_store[$k] ?? 0) + 1;
+        }
+        // Order matters for the view's left-to-right layout. Use the same
+        // store ordering today_by_store uses (Pico-then-Hollywood when
+        // they're the active stores, alphabetical otherwise, NULL bucket
+        // last).
+        $store_order = array_keys($today_by_store);
+        foreach (array_keys($sales_by_store) as $k) {
+            if (!in_array($k, $store_order, true)) $store_order[] = $k;
+        }
+
+        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'orphan_by_loc', 'orphan_null_loc', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'pending_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store', 'tz_debug', 'dateStr', 'day_label', 'prev_date', 'next_date', 'is_today', 'allow_next', 'dayMode', 'sales_by_store', 'orphans_by_store', 'pending_by_store', 'pending_amount_by_store', 'pending_count_by_store', 'store_order'));
     }
 
     /**

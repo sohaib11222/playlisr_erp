@@ -8,8 +8,11 @@
     // Auto-refresh every 30 seconds so the feed stays live without
     // a manual reload. Pauses while the user has a focused select/input
     // (changing filters), and skips refresh when the tab is hidden so
-    // background tabs don't keep hammering the server.
+    // background tabs don't keep hammering the server. Disabled on
+    // past-day views — yesterday's data won't change, no point reloading.
     (function () {
+        var IS_TODAY = {{ $is_today ? 'true' : 'false' }};
+        if (!IS_TODAY) return;
         var REFRESH_MS = 30000;
         function tick() {
             if (document.hidden) return;
@@ -23,7 +26,20 @@
 
 <style>
     body.pos-list-v2 section.content { background: #FAF6EE; }
-    .rf-wrap { max-width: 860px; margin: 0 auto; }
+    .rf-wrap { max-width: 1400px; margin: 0 auto; }
+    .rf-day-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+    .rf-day-col { min-width: 0; }
+    .rf-day-col-head { background: #FFFFFF; border: 1px solid #ECE3CF; border-radius: 10px;
+        padding: 10px 14px; margin-bottom: 10px; box-shadow: 0 1px 2px rgba(31,27,22,.06);
+        display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+    .rf-day-col-head .rf-day-store-name { font-size: 14px; font-weight: 700; color: #1F1B16;
+        text-transform: uppercase; letter-spacing: .06em; }
+    .rf-day-col-head .rf-day-col-summary { font-size: 12px; color: #5A5045; }
+    .rf-day-empty { background: #FFFFFF; border: 1px dashed #DFD2B3; border-radius: 10px;
+        padding: 18px; text-align: center; color: #8A7C6A; font-size: 13px; }
+    .rf-card.rf-clover-pending { border-left: 4px solid #C99A2A; background: #FDF9EC; }
+    .rf-card.rf-clover-pending .rf-orphan-tag { background: #C99A2A; color: #fff; }
+    @media (max-width: 1000px) { .rf-day-grid { grid-template-columns: 1fr; } }
     .rf-filters { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap;
         background: #FFFFFF; border: 1px solid #ECE3CF; border-radius: 10px;
         padding: 14px 16px; margin-bottom: 16px; box-shadow: 0 1px 2px rgba(31,27,22,.06); }
@@ -216,6 +232,37 @@
         $totPct = $totClover > 0 ? abs($totDiff) / $totClover : 0;
         $todayLabel = \Carbon\Carbon::now('America/Los_Angeles')->format('l, M j');
     @endphp
+    {{-- Date navigation: prev / today / next day. Always visible so the
+         user can step back through days even when the current day's banner
+         is empty (no activity yet). --}}
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+        <a href="{{ action('SellPosController@recentSalesFeed', array_filter(['date' => $prev_date, 'location_id' => $location_id, 'created_by' => $created_by, 'discrepancy' => $discrepancy])) }}"
+           style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; background:#FFFFFF; border:1px solid #DFD2B3; border-radius:8px; color:#1F1B16; font-weight:600; font-size:13px; text-decoration:none;">
+            ← Previous day
+        </a>
+        <div style="flex:1; text-align:center;">
+            <div style="font-size:18px; font-weight:700; color:#1F1B16;">{{ $day_label }}</div>
+            @if($is_today)
+                <div style="font-size:11px; color:#2E6F40; font-weight:700; letter-spacing:.06em; text-transform:uppercase; margin-top:2px;">● Live · auto-refresh 30s</div>
+            @else
+                <div style="font-size:11px; color:#8A7C6A; margin-top:2px;">
+                    <a href="{{ action('SellPosController@recentSalesFeed', array_filter(['location_id' => $location_id, 'created_by' => $created_by, 'discrepancy' => $discrepancy])) }}"
+                       style="color:#8B6A1A; text-decoration:underline;">Jump to today</a>
+                </div>
+            @endif
+        </div>
+        @if($allow_next)
+            <a href="{{ action('SellPosController@recentSalesFeed', array_filter(['date' => $next_date, 'location_id' => $location_id, 'created_by' => $created_by, 'discrepancy' => $discrepancy])) }}"
+               style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; background:#FFFFFF; border:1px solid #DFD2B3; border-radius:8px; color:#1F1B16; font-weight:600; font-size:13px; text-decoration:none;">
+                Next day →
+            </a>
+        @else
+            <span style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; background:#F7F1E3; border:1px solid #ECE3CF; border-radius:8px; color:#BFB096; font-weight:600; font-size:13px; cursor:not-allowed;" title="Already on the most recent day">
+                Next day →
+            </span>
+        @endif
+    </div>
+
     @if(!empty($byStore))
         @php
             // Sarah 2026-05-12: pre-compute per-store status tiers so the
@@ -224,34 +271,56 @@
             //   rounding  $0.01-$0.99 — yellow ◐ (tax/fee dust, low concern)
             //   off       ≥$1.00      — RED ⚠ (real keying error, fix it)
             // Threshold aligns with Sarah's 429d301 "≥\$1 = keying error" rule.
+            //
+            // Grace period: Clover charges in the last 10 min that have no
+            // ERP ring yet (pending) are subtracted from the diff before
+            // tier classification — cashiers often run the card a beat
+            // before they ring the sale. The raw Diff column still shows
+            // the un-adjusted number so Sarah sees the live state.
             $storeStatus = [];
             $offStores = [];
             $roundingStores = [];
+            $pendingStores = [];
             foreach ($byStore as $sk => $sv) {
-                $d = round($sv['clover'] - $sv['erp_net'], 2);
-                if (abs($d) < 0.01) {
+                $rawDiff = round($sv['clover'] - $sv['erp_net'], 2);
+                $pendAmt = (float) ($pending_amount_by_store[$sk] ?? 0);
+                $pendCnt = (int) ($pending_count_by_store[$sk] ?? 0);
+                $adjDiff = round($rawDiff - $pendAmt, 2);
+                if ($pendCnt > 0) {
+                    $pendingStores[] = ['name' => $sv['name'], 'amount' => $pendAmt, 'count' => $pendCnt];
+                }
+                if (abs($adjDiff) < 0.01) {
                     $tier = 'matched';
-                } elseif (abs($d) < 1.00) {
+                } elseif (abs($adjDiff) < 1.00) {
                     $tier = 'rounding';
                     $roundingStores[] = $sv['name'];
                 } else {
                     $tier = 'off';
-                    $offStores[] = ['name' => $sv['name'], 'diff' => $d];
+                    $offStores[] = ['name' => $sv['name'], 'diff' => $adjDiff];
                 }
-                $storeStatus[$sk] = ['tier' => $tier, 'diff' => $d];
+                $storeStatus[$sk] = [
+                    'tier'     => $tier,
+                    'diff'     => $rawDiff,
+                    'adj_diff' => $adjDiff,
+                    'pending'  => $pendAmt,
+                    'pending_n'=> $pendCnt,
+                ];
             }
             $anyOff = !empty($offStores);
+            $anyPending = !empty($pendingStores);
         @endphp
 
         <div style="background:#FFFFFF; border:1px solid {{ $anyOff ? '#D94B4B' : '#ECE3CF' }}; border-width:{{ $anyOff ? '2px' : '1px' }}; border-radius:12px; padding:0; margin-bottom:16px; box-shadow:0 1px 3px rgba(31,27,22,.08); overflow:hidden;">
 
             {{-- ALARM STRIP — only shown when ≥$1 discrepancy exists. Sized
                  big and red so Sarah can't miss it. Lists which stores are
-                 off and by how much before she reads any other number. --}}
+                 off and by how much before she reads any other number. Diff
+                 used here is *after* subtracting pending Clover so the
+                 10-min grace doesn't trip false red alarms. --}}
             @if($anyOff)
                 <div style="background:#D94B4B; color:#FFFFFF; padding:10px 20px; font-size:14px; font-weight:700; letter-spacing:.02em; display:flex; gap:14px; align-items:center; flex-wrap:wrap;">
                     <span style="font-size:18px;">⚠</span>
-                    <span style="text-transform:uppercase; letter-spacing:.08em;">{{ count($offStores) }} store{{ count($offStores) === 1 ? '' : 's' }} off today</span>
+                    <span style="text-transform:uppercase; letter-spacing:.08em;">{{ count($offStores) }} store{{ count($offStores) === 1 ? '' : 's' }} off{{ $is_today ? ' today' : '' }}</span>
                     <span style="opacity:.85; font-weight:600;">·</span>
                     @foreach($offStores as $os)
                         <span style="font-variant-numeric:tabular-nums;">{{ $os['name'] }} {{ $os['diff'] > 0 ? '+' : '' }}${{ number_format($os['diff'], 2) }}</span>
@@ -262,6 +331,22 @@
                 <div style="background:#E8F3EA; color:#1F5A2E; padding:8px 20px; font-size:13px; font-weight:700; letter-spacing:.02em; display:flex; gap:10px; align-items:center;">
                     <span style="font-size:16px;">✓</span>
                     <span style="text-transform:uppercase; letter-spacing:.06em;">All stores reconciled{{ empty($roundingStores) ? '' : ' (minor rounding only)' }}</span>
+                </div>
+            @endif
+
+            {{-- PENDING strip — shown whenever there's a Clover charge in the
+                 last 10 min with no ERP ring yet. Lives below any alarm/✓
+                 strip so it's always visible. Yellow ⏱ to signal "soft hold,
+                 not a problem yet". --}}
+            @if($anyPending)
+                <div style="background:#FDF2D7; color:#7A5A12; padding:8px 20px; font-size:13px; font-weight:700; letter-spacing:.02em; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                    <span style="font-size:16px;">⏱</span>
+                    <span style="text-transform:uppercase; letter-spacing:.06em;">Pending — give it a minute:</span>
+                    @foreach($pendingStores as $ps)
+                        <span style="font-variant-numeric:tabular-nums;">{{ $ps['name'] }} ${{ number_format($ps['amount'], 2) }} ({{ $ps['count'] }})</span>
+                        @if(!$loop->last)<span style="opacity:.7;">·</span>@endif
+                    @endforeach
+                    <span style="opacity:.7; font-weight:600;">— last-10-min Clover, alarm held off</span>
                 </div>
             @endif
 
@@ -400,6 +485,9 @@
 <section class="content">
     <div class="rf-wrap">
         <form method="GET" action="{{ action('SellPosController@recentSalesFeed') }}" class="rf-filters">
+            {{-- Persist the chosen date through filter changes so picking
+                 a different employee doesn't bounce back to today. --}}
+            <input type="hidden" name="date" value="{{ $dateStr }}">
             <div style="min-width: 180px;">
                 <label for="rf-location">Store</label>
                 <select name="location_id" id="rf-location" class="form-control" onchange="this.form.submit()">
@@ -418,14 +506,10 @@
                     @endforeach
                 </select>
             </div>
-            <div style="min-width: 120px;">
-                <label for="rf-limit">Show</label>
-                <select name="limit" id="rf-limit" class="form-control" onchange="this.form.submit()">
-                    @foreach([15, 30, 50, 100, 250, 500] as $n)
-                        <option value="{{ $n }}" {{ (int)$limit === $n ? 'selected' : '' }}>{{ $n }} sales</option>
-                    @endforeach
-                </select>
-            </div>
+            {{-- Sarah 2026-05-12: limit dropdown removed in day-mode rework
+                 (the page now shows the full day). Field kept hidden so
+                 deep links carrying ?limit=N still parse. --}}
+            <input type="hidden" name="limit" value="{{ $limit }}">
             <div style="min-width: 220px;">
                 <label for="rf-discrepancy">Clover sync</label>
                 <select name="discrepancy" id="rf-discrepancy" class="form-control" onchange="this.form.submit()">
@@ -463,7 +547,7 @@
                         border:1px solid {{ $isFiltered ? '#E6B98A' : '#DFD2B3' }};
                         border-radius:8px;padding:8px 14px;margin-bottom:14px;
                         font-size:12px;color:#5A5045;">
-                <span>Scanned <strong>{{ number_format($scanned_count) }}</strong> recent sale{{ $scanned_count === 1 ? '' : 's' }}:</span>
+                <span><strong>{{ number_format($scanned_count) }}</strong> sale{{ $scanned_count === 1 ? '' : 's' }} on {{ $day_label }}:</span>
                 <span><span style="color:#1F8B3F;font-weight:700;">{{ number_format($matched_count) }}</span> matched</span>
                 <span><span style="color:#B0451A;font-weight:700;">{{ number_format($mismatch_count) }}</span> mismatch{{ $mismatch_count === 1 ? '' : 'es' }}</span>
                 <span><span style="color:#8B6A1A;font-weight:700;">{{ number_format($no_clover_count) }}</span> ERP only (no Clover)</span>
@@ -524,40 +608,97 @@
             </div>
         @endif
 
+        {{-- Sarah 2026-05-12: 2-column day-mode layout. Each active store
+             gets its own column with its sales + Clover orphans interleaved
+             chronologically. LA-normalized epoch sort, same as before — see
+             parseCloverPaidAtLa for the mixed-TZ background. --}}
         @php
-            // Interleave ERP sales with orphan Clover charges (when the
-            // current filter allows orphans). Each item carries a 'ts'
-            // for unified newest-first ordering — ERP uses transaction_date,
-            // orphan Clover uses paid_at (often the next morning's batch
-            // settlement, which is the right "when did the money show up"
-            // moment to surface in this feed).
-            //
-            // Sarah 2026-05-12: sort by LA-normalized epoch, NOT raw
-            // strings. paid_at is mixed-TZ-stored (some rows Kolkata,
-            // some LA — see SellPosController::parseCloverPaidAtLa).
-            // The display helper rescues the wall-clock by preferring
-            // raw_payload->createdTime, but a raw-string sort scattered
-            // three orphans that all wall-clock to "5:22 pm" across the
-            // 4:34/4:31/4:10 ERP rows because their underlying strings
-            // straddled Kolkata-day and LA-day boundaries. Compute one
-            // canonical LA epoch per row and sort by that.
-            $feedItems = collect();
-            foreach ($sales as $s) {
-                $erpTs = 0;
-                try { $erpTs = \Carbon\Carbon::parse($s->transaction_date)->getTimestamp(); } catch (\Throwable $e) {}
-                $feedItems->push(['type' => 'erp', 'sale' => $s, 'ts' => $erpTs]);
+            // Build per-store $feedItems collections. Stores with no
+            // activity show an empty-state card instead of being hidden.
+            $store_feeds = [];
+            $store_id_list = (isset($store_order) && is_array($store_order))
+                ? $store_order
+                : array_keys($business_locations);
+            // Filter out catch-all '0' bucket from headers, but keep its
+            // items in a virtual "Unattributed" column if any rows live there.
+            $visible_store_ids = [];
+            foreach ($store_id_list as $sid) {
+                $hasSales = isset($sales_by_store[$sid]) && $sales_by_store[$sid]->isNotEmpty();
+                $hasOrph  = isset($orphans_by_store[$sid]) && $orphans_by_store[$sid]->isNotEmpty();
+                $hasPend  = isset($pending_by_store[$sid]) && $pending_by_store[$sid]->isNotEmpty();
+                if ($sid === 0 && !$hasOrph && !$hasPend) continue;
+                $visible_store_ids[] = $sid;
             }
-            if ($show_clover_only) {
-                foreach ($unclaimed_clover_payments as $cp) {
-                    $cpTs = 0;
-                    try { $cpTs = \App\Http\Controllers\SellPosController::parseCloverPaidAtLa($cp)->getTimestamp(); } catch (\Throwable $e) {}
-                    $feedItems->push(['type' => 'clover', 'cp' => $cp, 'ts' => $cpTs]);
+            // If a location_id filter is active, show only that store.
+            if (!empty($location_id)) {
+                $visible_store_ids = array_values(array_filter($visible_store_ids, fn($s) => (int) $s === (int) $location_id));
+            }
+            foreach ($visible_store_ids as $sid) {
+                $items = collect();
+                foreach (($sales_by_store[$sid] ?? collect()) as $s) {
+                    // Apply discrepancy filter at render time so a "mismatch
+                    // only" filter still uses the same per-store buckets.
+                    if ($discrepancy === 'mismatch') {
+                        $info = $clover_by_transaction[$s->id] ?? null;
+                        $isMismatch = $info !== null && abs($info['amount_cents'] - (int) round((float) $s->final_total * 100)) > 5;
+                        if (!$isMismatch) continue;
+                    } elseif ($discrepancy === 'no_clover') {
+                        if (isset($clover_by_transaction[$s->id])) continue;
+                    } elseif ($discrepancy === 'any') {
+                        $info = $clover_by_transaction[$s->id] ?? null;
+                        $isMismatch = $info !== null && abs($info['amount_cents'] - (int) round((float) $s->final_total * 100)) > 5;
+                        $isNoClover = $info === null;
+                        if (!$isMismatch && !$isNoClover) continue;
+                    } elseif ($discrepancy === 'no_erp') {
+                        continue; // Hide all ERP rows in no_erp mode
+                    }
+                    $erpTs = 0;
+                    try { $erpTs = \Carbon\Carbon::parse($s->transaction_date)->getTimestamp(); } catch (\Throwable $e) {}
+                    $items->push(['type' => 'erp', 'sale' => $s, 'ts' => $erpTs]);
                 }
+                if ($show_clover_only) {
+                    foreach (($orphans_by_store[$sid] ?? collect()) as $cp) {
+                        $cpTs = 0;
+                        try { $cpTs = \App\Http\Controllers\SellPosController::parseCloverPaidAtLa($cp)->getTimestamp(); } catch (\Throwable $e) {}
+                        $items->push(['type' => 'clover', 'cp' => $cp, 'ts' => $cpTs, 'pending' => false]);
+                    }
+                    foreach (($pending_by_store[$sid] ?? collect()) as $cp) {
+                        $cpTs = 0;
+                        try { $cpTs = \App\Http\Controllers\SellPosController::parseCloverPaidAtLa($cp)->getTimestamp(); } catch (\Throwable $e) {}
+                        $items->push(['type' => 'clover', 'cp' => $cp, 'ts' => $cpTs, 'pending' => true]);
+                    }
+                }
+                $store_feeds[$sid] = $items->sortByDesc('ts')->values();
             }
-            $feedItems = $feedItems->sortByDesc('ts')->values();
         @endphp
 
-        @forelse($feedItems as $item)
+        @if(count($visible_store_ids) === 0)
+            <div class="rf-day-empty">No sales or Clover activity for {{ $day_label }}.</div>
+        @else
+        <div class="rf-day-grid" style="{{ count($visible_store_ids) === 1 ? 'grid-template-columns: 1fr; max-width: 860px; margin: 0 auto;' : '' }}">
+        @foreach($visible_store_ids as $sid)
+            @php
+                $colItems = $store_feeds[$sid] ?? collect();
+                $colName = $sid === 0 ? '(Unattributed)' : ($business_locations[$sid] ?? ('loc ' . $sid));
+                $colSales = $sales_by_store[$sid] ?? collect();
+                $colOrphans = $orphans_by_store[$sid] ?? collect();
+                $colPending = $pending_by_store[$sid] ?? collect();
+            @endphp
+            <div class="rf-day-col">
+                <div class="rf-day-col-head">
+                    <span class="rf-day-store-name">{{ $colName }}</span>
+                    <span class="rf-day-col-summary">
+                        {{ $colSales->count() }} sale{{ $colSales->count() === 1 ? '' : 's' }}
+                        @if($colOrphans->count() > 0)
+                            · <strong style="color:#7B3FA0;">{{ $colOrphans->count() }} Clover-only</strong>
+                        @endif
+                        @if($colPending->count() > 0)
+                            · <strong style="color:#C99A2A;">{{ $colPending->count() }} pending</strong>
+                        @endif
+                    </span>
+                </div>
+
+        @forelse($colItems as $item)
         @if($item['type'] === 'clover')
             @php
                 $cp = $item['cp'];
@@ -580,11 +721,16 @@
                 $cpTip = (int) ($cp->tip_cents ?? 0);
                 $orphanCashierId = $cashier_for_orphan[$cp->id] ?? null;
                 $orphanCashierName = $orphanCashierId ? ($cashierNameById[$orphanCashierId] ?? null) : null;
+                $isPending = !empty($item['pending']);
             @endphp
-            <div class="rf-card rf-clover-orphan">
+            <div class="rf-card {{ $isPending ? 'rf-clover-pending' : 'rf-clover-orphan' }}">
                 <div class="rf-head">
                     <div class="rf-head-left">
-                        <span class="rf-invoice"><span class="rf-orphan-tag">Clover only</span></span>
+                        @if($isPending)
+                            <span class="rf-invoice"><span class="rf-orphan-tag">⏱ Pending</span></span>
+                        @else
+                            <span class="rf-invoice"><span class="rf-orphan-tag">Clover only</span></span>
+                        @endif
                         <span class="rf-time">{{ $cpWhen }}</span>
                         <span class="rf-store-badge">{{ $cpStore }}</span>
                         @if($cpCardLabel)<span class="rf-customer">· {{ $cpCardLabel }}</span>@endif
@@ -596,7 +742,11 @@
                     </div>
                 </div>
                 <div class="rf-orphan-note">
-                    Clover charged <strong>${{ number_format($cpAmount, 2) }}</strong> but no matching ERP sale was found for this store + amount in the scanned window. Investigate: missing ring-up, voided sale, or a charge from outside the scanned date range.
+                    @if($isPending)
+                        Clover charged <strong>${{ number_format($cpAmount, 2) }}</strong> within the last 10 minutes — ERP ring not in yet. <strong>Give it a minute</strong>: cashiers often run the card first and ring the sale after. If it doesn't auto-pair on the next refresh, it'll promote to a real orphan.
+                    @else
+                        Clover charged <strong>${{ number_format($cpAmount, 2) }}</strong> but no matching ERP sale was found for this store + amount in the scanned window. Investigate: missing ring-up, voided sale, or a charge from outside the scanned date range.
+                    @endif
                 </div>
                 @php $nearMatches = $orphan_near_matches[$cp->clover_payment_id] ?? []; @endphp
                 <div style="margin: 6px 16px 8px 16px; padding: 8px 10px; background:#FAF6EE; border:1px dashed #DFD2B3; border-radius:6px; font-size: 12px;">
@@ -810,20 +960,24 @@
             </div>
         @endif
         @empty
-            <div class="rf-empty">
+            <div class="rf-empty" style="background:#FFFFFF; border:1px dashed #DFD2B3; border-radius:10px; padding:18px; text-align:center; color:#8A7C6A; font-size:13px;">
                 @if($discrepancy === 'mismatch')
-                    No mismatches in the scanned window — every paired ERP sale matches Clover within ±1¢.
+                    No mismatches for this store on {{ $day_label }}.
                 @elseif($discrepancy === 'no_clover')
-                    Every recent ERP sale paired to a Clover charge — nothing unmatched.
+                    Every {{ $colName }} sale paired to Clover.
                 @elseif($discrepancy === 'no_erp')
-                    No orphan Clover charges in the scanned window — every Clover payment paired to an ERP sale.
+                    No Clover-only orphans at {{ $colName }}.
                 @elseif($discrepancy === 'any')
-                    No discrepancies in the scanned window — ERP and Clover are fully reconciled.
+                    No discrepancies at {{ $colName }} on {{ $day_label }}.
                 @else
-                    No sales yet for this filter.
+                    No sales at {{ $colName }} on {{ $day_label }}.
                 @endif
             </div>
         @endforelse
+            </div>{{-- /rf-day-col --}}
+        @endforeach
+        </div>{{-- /rf-day-grid --}}
+        @endif
     </div>
 </section>
 @endsection
