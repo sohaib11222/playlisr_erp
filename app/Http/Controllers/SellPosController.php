@@ -598,13 +598,18 @@ class SellPosController extends Controller
             // (id, final_total, transaction_date, location_id) to match.
             // When no cashier filter is active this still costs one extra
             // query but is bounded by the same time window cpRows uses.
+            // Sarah 2026-05-12: don't apply the URL location filter here.
+            // Same logic as the cashier filter above — a Pico Clover swipe
+            // pairs to a Pico ERP sale, and shouldn't surface as an orphan
+            // just because the user is viewing Hollywood. The view-side
+            // $sales is still location-scoped, so on-page ERP rows stay
+            // correct; only the orphan determination becomes accurate.
             $matchSales = Transaction::where('business_id', $business_id)
                 ->where('type', 'sell')
                 ->where('status', 'final')
                 ->whereNull('import_source')
                 ->where('transaction_date', '>=', \Carbon\Carbon::parse($minDate)->subDay())
                 ->where('transaction_date', '<=', \Carbon\Carbon::parse($maxDate)->addDay())
-                ->when($location_id, fn($q) => $q->where('location_id', $location_id))
                 ->orderByDesc('transaction_date')
                 ->get(['id', 'invoice_no', 'final_total', 'transaction_date', 'location_id']);
 
@@ -706,7 +711,17 @@ class SellPosController extends Controller
             // the Z-out won't reflect it.
             $unclaimed_clover_payments = $cpRows->reject(function ($cp, $key) use ($claimedCpKeys) {
                 return isset($claimedCpKeys[$key]);
-            })->values();
+            });
+            // Sarah 2026-05-12: when a store filter is active, only show
+            // orphans tied to that store. Other-store orphans (and NULL-
+            // location historical rows from the old top-level merchant
+            // sync) belong on the all-locations view, not Hollywood's.
+            if ($location_id) {
+                $unclaimed_clover_payments = $unclaimed_clover_payments->filter(function ($cp) use ($location_id) {
+                    return (int) ($cp->location_id ?? 0) === (int) $location_id;
+                });
+            }
+            $unclaimed_clover_payments = $unclaimed_clover_payments->values();
         }
 
         // Per-orphan diagnostic: for each unclaimed Clover charge, find ERP
@@ -1308,16 +1323,15 @@ class SellPosController extends Controller
             // Float math drops 1¢-rounding pairs (e.g. $2.19 ↔ $2.20).
             $toCents = function ($x) { return (int) round(((float) $x) * 100); };
 
-            // Match against ALL ERP sales in the window (no cashier filter)
-            // for accurate orphan-Clover determination. See recentSalesFeed
-            // for the why.
+            // Match against ALL ERP sales in the window (no cashier filter,
+            // no location filter) for accurate orphan-Clover determination.
+            // See recentSalesFeed for the why.
             $matchSales = Transaction::where('business_id', $business_id)
                 ->where('type', 'sell')
                 ->where('status', 'final')
                 ->whereNull('import_source')
                 ->where('transaction_date', '>=', \Carbon\Carbon::parse($minDate)->subDay())
                 ->where('transaction_date', '<=', \Carbon\Carbon::parse($maxDate)->addDay())
-                ->when($location_id, fn($q) => $q->where('location_id', $location_id))
                 ->orderByDesc('transaction_date')
                 ->get(['id', 'final_total', 'transaction_date', 'location_id']);
 
