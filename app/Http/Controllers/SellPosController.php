@@ -1508,6 +1508,34 @@ class SellPosController extends Controller
         ));
     }
 
+    /**
+     * Sarah 2026-05-13: on-demand Clover sync trigger from the recent-feed
+     * page. The cron runs every 5 min during business hours but charges
+     * that happened in the last 5 min still aren't in our DB yet — when
+     * Sarah's actively reconciling she wants the latest data NOW, not in
+     * a few minutes. POST to this endpoint, the controller fires the same
+     * `clover:sync-payments` artisan command (today only, both stores),
+     * waits for it, then returns. View shows a flash-style success/error.
+     */
+    public function cloverSyncNow(Request $request)
+    {
+        if (!auth()->user()->can('sell.view') && !auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $back = $request->headers->get('referer') ?: route('pos.recentFeed');
+        try {
+            // Sync today only (default range = yesterday + today, fine).
+            // withoutOverlapping not needed here because Sarah's hitting it
+            // by hand; the cron's lock is separate.
+            \Artisan::call('clover:sync-payments');
+            $output = trim(\Artisan::output());
+            return redirect($back)->with('status', '✓ Clover sync ran: ' . $output);
+        } catch (\Throwable $e) {
+            return redirect($back)->with('error', 'Clover sync failed: ' . $e->getMessage());
+        }
+    }
+
     public function recentRings(Request $request)
     {
         try {

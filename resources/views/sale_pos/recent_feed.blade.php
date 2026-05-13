@@ -232,14 +232,32 @@
         $totPct = $totClover > 0 ? abs($totDiff) / $totClover : 0;
         $todayLabel = \Carbon\Carbon::now('America/Los_Angeles')->format('l, M j');
     @endphp
-    {{-- Date navigation: prev / today / next day. Always visible so the
-         user can step back through days even when the current day's banner
-         is empty (no activity yet). --}}
+    {{-- Sync-status flash banner. After a manual "Sync Clover Now" the
+         user sees confirmation here. Auto-fades after 8s via the inline JS. --}}
+    @if(session('status') || session('error'))
+        <div id="rf-sync-flash" style="display:flex; align-items:center; gap:10px; padding:10px 16px; margin-bottom:10px; border-radius:8px; font-size:13px; font-weight:600; background:{{ session('error') ? '#FDF1F1' : '#E8F3EA' }}; color:{{ session('error') ? '#8B2C2C' : '#1F5A2E' }}; border:1px solid {{ session('error') ? '#E6B5B5' : '#B5DCB8' }};">
+            <span>{{ session('error') ?: session('status') }}</span>
+        </div>
+        <script>setTimeout(function(){var el=document.getElementById('rf-sync-flash');if(el)el.style.display='none';},8000);</script>
+    @endif
+
+    {{-- Date navigation: prev / today / next day + Sync Now button. Always
+         visible so the user can step back through days even when the
+         current day's banner is empty (no activity yet). --}}
     <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
         <a href="{{ action('SellPosController@recentSalesFeed', array_filter(['date' => $prev_date, 'location_id' => $location_id, 'created_by' => $created_by, 'discrepancy' => $discrepancy])) }}"
            style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; background:#FFFFFF; border:1px solid #DFD2B3; border-radius:8px; color:#1F1B16; font-weight:600; font-size:13px; text-decoration:none;">
             ← Previous day
         </a>
+        @if($is_today)
+            <form method="POST" action="{{ action('SellPosController@cloverSyncNow') }}" style="margin:0;">
+                @csrf
+                <button type="submit" title="Pull the latest Clover charges into our DB right now (the cron runs every 5 min during business hours, but click this if you just rang something and want to see it immediately)"
+                        style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; background:#1F1B16; color:#fff; border:none; border-radius:8px; font-weight:700; font-size:13px; cursor:pointer;">
+                    ↻ Sync Clover Now
+                </button>
+            </form>
+        @endif
         <div style="flex:1; text-align:center;">
             <div style="font-size:18px; font-weight:700; color:#1F1B16;">{{ $day_label }}</div>
             @if($is_today)

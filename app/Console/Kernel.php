@@ -94,13 +94,18 @@ class Kernel extends ConsoleKernel
             ->timezone('America/Los_Angeles')
             ->withoutOverlapping(60);
 
-        // Clover → ERP payment sync. Runs every 30 min during business hours
-        // to keep the Clover-vs-ERP reconciliation report near-live, then once
-        // more overnight at 02:30 PST to pick up any late-night stragglers.
-        // Uses the default --days=2 window so a brief outage doesn't leave
-        // gaps — the next run re-fetches yesterday + today and upserts.
+        // Clover → ERP payment sync. Sarah 2026-05-13: tightened from
+        // every 30 min to every 5 min during business hours. 30 min was
+        // creating a "missing in Clover" alarm on the recon page for any
+        // charge that happened in the current half-hour window — Sarah
+        // would look at a 9:57am Clover charge on the dashboard, see it
+        // flagged as missing on our report, and waste time investigating
+        // when really the sync just hadn't caught up. Every 5 min keeps
+        // the lag tight enough that "missing" actually means missing.
+        // Still uses the default --days=2 window so a brief outage
+        // re-fetches yesterday + today and upserts.
         $schedule->command('clover:sync-payments')
-            ->cron('*/30 10-23 * * *')
+            ->cron('*/5 10-23 * * *')
             ->timezone('America/Los_Angeles')
             ->withoutOverlapping(25);
         $schedule->command('clover:sync-payments --days=2')

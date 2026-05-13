@@ -301,6 +301,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
         Route::get('/pos/recent-feed', 'SellPosController@recentSalesFeed')->name('pos.recentFeed');
         Route::get('/pos/recent-feed/export', 'SellPosController@recentSalesFeedExport')->name('pos.recentFeedExport');
         Route::get('/pos/clover-live-check', 'SellPosController@cloverLiveCheck')->name('pos.cloverLiveCheck');
+        Route::post('/pos/clover-sync-now', 'SellPosController@cloverSyncNow')->name('pos.cloverSyncNow');
 
         Route::resource('pos', 'SellPosController');
     });
