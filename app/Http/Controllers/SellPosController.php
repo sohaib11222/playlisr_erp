@@ -933,6 +933,21 @@ class SellPosController extends Controller
                         if ((int) ($cp->location_id ?? 0) !== $erLoc) continue;
                         $timeDelta = abs(($cpTsByKey[$key] ?? 0) - $erTs);
                         if ($timeDelta > $matchTimeWindow) continue;
+                        // Sarah 2026-05-13: in month mode, force pairings
+                        // to stay within the same LA calendar day (or the
+                        // next morning for batch-settlement carryover).
+                        // Daily view doesn't need this because its data
+                        // pool is already scoped to one day; month mode
+                        // was letting greedy matching cross day boundaries
+                        // and orphaning correct same-day pairs.
+                        if (isset($is_month_mode) && $is_month_mode) {
+                            $saleDay = date('Y-m-d', $erTs);
+                            $cpDay   = date('Y-m-d', (int) ($cpTsByKey[$key] ?? 0));
+                            if ($saleDay !== $cpDay) {
+                                $dayDiff = strtotime($cpDay) - strtotime($saleDay);
+                                if ($dayDiff <= 0 || $dayDiff > 86400) continue;
+                            }
+                        }
                         $candidates[] = [
                             'sale_id' => $sale->id,
                             'cp_key'  => $key,
@@ -2108,6 +2123,21 @@ class SellPosController extends Controller
                         if ((int) ($cp->location_id ?? 0) !== $erLoc) continue;
                         $timeDelta = abs(($cpTsByKey[$key] ?? 0) - $erTs);
                         if ($timeDelta > $matchTimeWindow) continue;
+                        // Sarah 2026-05-13: in month mode, force pairings
+                        // to stay within the same LA calendar day (or the
+                        // next morning for batch-settlement carryover).
+                        // Daily view doesn't need this because its data
+                        // pool is already scoped to one day; month mode
+                        // was letting greedy matching cross day boundaries
+                        // and orphaning correct same-day pairs.
+                        if (isset($is_month_mode) && $is_month_mode) {
+                            $saleDay = date('Y-m-d', $erTs);
+                            $cpDay   = date('Y-m-d', (int) ($cpTsByKey[$key] ?? 0));
+                            if ($saleDay !== $cpDay) {
+                                $dayDiff = strtotime($cpDay) - strtotime($saleDay);
+                                if ($dayDiff <= 0 || $dayDiff > 86400) continue;
+                            }
+                        }
                         $candidates[] = [
                             'sale_id' => $sale->id,
                             'cp_key'  => $key,
