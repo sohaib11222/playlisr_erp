@@ -224,52 +224,63 @@
                     <div style="font-size:13px; color:#8A7C6A; margin-top:2px;">{{ $todayLabel }}{{ $location_id && isset($business_locations[$location_id]) ? ' · ' . $business_locations[$location_id] : '' }}</div>
                     <div style="font-size:11px; color:#8A7C6A; margin-top:6px; max-width:180px; line-height:1.4;">Customer-paid totals (gross). ERP = sum of final_total; Clover = sum of swipe amounts.</div>
                 </div>
-                <div style="flex:1; min-width:170px;">
-                    <div style="font-size:12px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">ERP Sales</div>
-                    <div style="font-size:30px; font-weight:700; color:#1F1B16; font-variant-numeric: tabular-nums;">${{ number_format($totErp, 2) }}</div>
-                    <div style="font-size:11px; color:#8A7C6A;">{{ $totErpCount }} sale{{ $totErpCount === 1 ? '' : 's' }}</div>
-                </div>
-                <div style="flex:1; min-width:170px;">
-                    <div style="font-size:12px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Clover Sales</div>
-                    <div style="font-size:30px; font-weight:700; color:#1F1B16; font-variant-numeric: tabular-nums;">${{ number_format($totClover, 2) }}</div>
-                    <div style="font-size:11px; color:#8A7C6A;">{{ $totCloverCount }} charge{{ $totCloverCount === 1 ? '' : 's' }}</div>
-                </div>
-                <div style="flex:1; min-width:170px;">
-                    <div style="font-size:12px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Diff</div>
-                    @if($totMatched)
-                        <div style="font-size:30px; font-weight:700; color:#2E6F40; font-variant-numeric: tabular-nums;">$0.00</div>
-                        <div style="font-size:11px; color:#2E6F40; font-weight:600;">✓ Matched</div>
-                    @else
-                        <div style="font-size:30px; font-weight:700; color:#8B2C2C; font-variant-numeric: tabular-nums;">{{ $totDiff > 0 ? '+' : '' }}${{ number_format($totDiff, 2) }}</div>
-                        <div style="font-size:11px; color:#8B2C2C;">{{ $totDiff > 0 ? 'Clover ahead' : 'ERP ahead' }} · {{ number_format($totPct * 100, 1) }}%</div>
-                    @endif
-                </div>
+            </div>
+
+            {{-- Sarah 2026-05-12: lead with per-store rows. Pico and Hollywood
+                 each get the same big ERP / Clover / Diff treatment the
+                 combined row used to have. Combined "All stores" footer
+                 lives at the bottom for the rare moment Sarah wants the
+                 day-wide total. --}}
+            <div style="margin-top:14px;">
+                @foreach($byStore as $s)
+                    @php
+                        $sDiff = round($s['clover'] - $s['erp_net'], 2);
+                        $sMatched = abs($sDiff) < 0.01;
+                        $sPct = $s['clover'] > 0 ? abs($sDiff) / $s['clover'] : 0;
+                        $sWhatnot = (float) ($s['whatnot_net'] ?? 0);
+                        $sWhatnotCount = (int) ($s['whatnot_count'] ?? 0);
+                    @endphp
+                    <div style="display:flex; gap:24px; align-items:baseline; flex-wrap:wrap; padding:12px 0; {{ !$loop->last ? 'border-bottom:1px solid #F2EBD8;' : '' }}">
+                        <div style="min-width:120px;">
+                            <div style="font-size:13px; font-weight:700; color:#1F1B16; text-transform:uppercase; letter-spacing:.06em;">{{ $s['name'] }}</div>
+                            @if($sWhatnotCount > 0)
+                                <div style="font-size:11px; color:#8A7C6A; margin-top:4px; font-style:italic;" title="Whatnot sales ring in ERP for inventory but are paid through Whatnot, not Clover — excluded from the ERP and Diff numbers.">
+                                    + Whatnot ${{ number_format($sWhatnot, 2) }} ({{ $sWhatnotCount }})
+                                </div>
+                            @endif
+                        </div>
+                        <div style="flex:1; min-width:150px;">
+                            <div style="font-size:11px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">ERP Sales</div>
+                            <div style="font-size:26px; font-weight:700; color:#1F1B16; font-variant-numeric: tabular-nums;">${{ number_format($s['erp_net'], 2) }}</div>
+                            <div style="font-size:11px; color:#8A7C6A;">{{ $s['erp_count'] ?? 0 }} sale{{ ($s['erp_count'] ?? 0) === 1 ? '' : 's' }}</div>
+                        </div>
+                        <div style="flex:1; min-width:150px;">
+                            <div style="font-size:11px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Clover Sales</div>
+                            <div style="font-size:26px; font-weight:700; color:#1F1B16; font-variant-numeric: tabular-nums;">${{ number_format($s['clover'], 2) }}</div>
+                            <div style="font-size:11px; color:#8A7C6A;">{{ $s['clover_count'] ?? 0 }} charge{{ ($s['clover_count'] ?? 0) === 1 ? '' : 's' }}</div>
+                        </div>
+                        <div style="flex:1; min-width:150px;">
+                            <div style="font-size:11px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Diff</div>
+                            @if($sMatched)
+                                <div style="font-size:26px; font-weight:700; color:#2E6F40; font-variant-numeric: tabular-nums;">$0.00</div>
+                                <div style="font-size:11px; color:#2E6F40; font-weight:600;">✓ Matched</div>
+                            @else
+                                <div style="font-size:26px; font-weight:700; color:#8B2C2C; font-variant-numeric: tabular-nums;">{{ $sDiff > 0 ? '+' : '' }}${{ number_format($sDiff, 2) }}</div>
+                                <div style="font-size:11px; color:#8B2C2C;">{{ $sDiff > 0 ? 'Clover ahead' : 'ERP ahead' }} · {{ number_format($sPct * 100, 1) }}%</div>
+                            @endif
+                        </div>
+                    </div>
+                @endforeach
             </div>
 
             @if(count($byStore) > 1)
-                <div style="margin-top:14px; padding-top:12px; border-top:1px dashed #ECE3CF; display:flex; gap:24px; flex-wrap:wrap; font-size:12px; color:#5A5045;">
-                    @foreach($byStore as $s)
-                        @php
-                            $sDiff = round($s['clover'] - $s['erp_net'], 2);
-                            $sMatched = abs($sDiff) < 0.01;
-                            $sWhatnot = (float) ($s['whatnot_net'] ?? 0);
-                            $sWhatnotCount = (int) ($s['whatnot_count'] ?? 0);
-                        @endphp
-                        <div style="display:inline-flex; gap:8px; align-items:baseline;">
-                            <span style="font-weight:600; color:#1F1B16;">{{ $s['name'] }}</span>
-                            <span style="font-variant-numeric:tabular-nums;">ERP ${{ number_format($s['erp_net'], 2) }}</span>
-                            <span style="color:#BFB096;">·</span>
-                            <span style="font-variant-numeric:tabular-nums;">Clover ${{ number_format($s['clover'], 2) }}</span>
-                            <span style="font-variant-numeric:tabular-nums; font-weight:700; color:{{ $sMatched ? '#2E6F40' : '#8B2C2C' }};">
-                                ({{ $sDiff > 0 ? '+' : '' }}${{ number_format($sDiff, 2) }})
-                            </span>
-                            @if($sWhatnotCount > 0)
-                                <span style="color:#8A7C6A; font-style:italic;" title="Whatnot sales ring in ERP for inventory but are paid through Whatnot, not Clover — excluded from the ERP and Diff numbers.">
-                                    + Whatnot ${{ number_format($sWhatnot, 2) }} ({{ $sWhatnotCount }})
-                                </span>
-                            @endif
-                        </div>
-                    @endforeach
+                <div style="margin-top:12px; padding-top:12px; border-top:2px solid #ECE3CF; display:flex; gap:24px; align-items:baseline; flex-wrap:wrap; font-size:12px; color:#5A5045;">
+                    <div style="min-width:120px; font-weight:700; color:#1F1B16; text-transform:uppercase; letter-spacing:.06em; font-size:12px;">All stores</div>
+                    <div style="flex:1; min-width:150px; font-variant-numeric:tabular-nums;">ERP <strong style="color:#1F1B16;">${{ number_format($totErp, 2) }}</strong> · {{ $totErpCount }}</div>
+                    <div style="flex:1; min-width:150px; font-variant-numeric:tabular-nums;">Clover <strong style="color:#1F1B16;">${{ number_format($totClover, 2) }}</strong> · {{ $totCloverCount }}</div>
+                    <div style="flex:1; min-width:150px; font-variant-numeric:tabular-nums; font-weight:700; color:{{ $totMatched ? '#2E6F40' : '#8B2C2C' }};">
+                        Diff {{ $totMatched ? '$0.00 ✓' : (($totDiff > 0 ? '+' : '') . '$' . number_format($totDiff, 2)) }}
+                    </div>
                 </div>
             @endif
 
