@@ -217,8 +217,17 @@ class SellPosController extends Controller
      * so mixed-TZ paid_at strings don't drop rows; PHP filter is the
      * authoritative answer.
      */
-    public static function dayByStoreTotals(int $businessId, string $startDate, string $endDate, $locationId, array $businessLocations): array
+    public static function dayByStoreTotals(int $businessId, string $startDate, string $endDate, $locationId, $businessLocations): array
     {
+        // Caller may pass a Laravel Collection (BusinessLocation::forDropdown
+        // returns one in some versions) — coerce to plain array so the
+        // [$k] lookup and isset() work uniformly. Sarah 2026-05-13.
+        if (is_object($businessLocations) && method_exists($businessLocations, 'all')) {
+            $businessLocations = $businessLocations->all();
+        } elseif (!is_array($businessLocations)) {
+            $businessLocations = (array) $businessLocations;
+        }
+
         $erpBase = \DB::table('transactions')
             ->where('business_id', $businessId)
             ->where('type', 'sell')
