@@ -712,9 +712,9 @@
                     <div style="font-weight:700; color:#1F1B16; margin-bottom:8px;">Clover-only breakdown ({{ number_format($no_erp_count) }} total)</div>
                     <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px;">
                         <div style="padding:10px 12px; background:#F7F1E3; border-radius:8px;">
-                            <div style="font-size:11px; color:#8A7C6A; text-transform:uppercase; letter-spacing:.04em;">Likely missed cashier entries</div>
+                            <div style="font-size:11px; color:#8A7C6A; text-transform:uppercase; letter-spacing:.04em;">Unpaired Clover charges</div>
                             <div style="font-size:22px; font-weight:700; color:#B0451A; font-variant-numeric:tabular-nums;">{{ number_format(max(0, $orphan_real_count - $orphan_null_loc)) }}</div>
-                            <div style="font-size:11px; color:#5A5045; margin-top:2px;">SUCCESS rows, positive amount, store-tagged</div>
+                            <div style="font-size:11px; color:#5A5045; margin-top:2px;">Includes real missed entries AND pairs the matcher couldn't reconcile (±$0.20 / ±12h thresholds). Compare to ERP-only count above — if both are non-zero, many are paired-but-not-matched.</div>
                         </div>
                         @if($orphan_refund_count > 0)
                             <div style="padding:10px 12px; background:#F7F1E3; border-radius:8px;">
