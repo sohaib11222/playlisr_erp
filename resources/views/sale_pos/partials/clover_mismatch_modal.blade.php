@@ -29,6 +29,10 @@
 </div>
 <script>
 (function () {
+    // Sarah 2026-05-13: hard-wrapped in try/catch so a popup bug can
+    // never block /pos checkout. If anything throws on init, the rest
+    // of the page keeps working — popup just silently doesn't appear.
+    try {
     var POLL_MS = 30000;
     var LATER_MS = 5 * 60 * 1000;
     var modalEl = document.getElementById('clover_mismatch_modal');
@@ -106,6 +110,10 @@
             err.style.display = 'block';
             return;
         }
+        if (current._demo) {
+            close();
+            return;
+        }
         var btn = this; btn.disabled = true; btn.textContent = 'Saving…';
         jQuery.ajax({
             url: "{{ route('pos.mismatchExplain') }}",
@@ -149,5 +157,38 @@
 
     setTimeout(poll, 4000);
     setInterval(poll, POLL_MS);
+
+    // Sarah 2026-05-13: ?clover_mismatch_demo=mismatch|no_clover|no_erp
+    // shows the popup once on page load with fake data so Sarah can
+    // preview the UI from home without a Clover terminal. Does NOT
+    // write to the DB — Save button just closes the modal in demo mode.
+    try {
+        var qs = new URLSearchParams(window.location.search || '');
+        var demoMode = qs.get('clover_mismatch_demo');
+        if (demoMode && ['mismatch', 'no_clover', 'no_erp'].indexOf(demoMode) !== -1) {
+            var fake = {
+                'mismatch': {
+                    type: 'mismatch', transaction_id: 99999, clover_payment_id: null,
+                    invoice_no: 'DEMO-99999', erp_amount_cents: 500, clover_amount_cents: 400,
+                    _demo: true
+                },
+                'no_clover': {
+                    type: 'no_clover', transaction_id: 99999, clover_payment_id: null,
+                    invoice_no: 'DEMO-99999', erp_amount_cents: 1599, clover_amount_cents: null,
+                    _demo: true
+                },
+                'no_erp': {
+                    type: 'no_erp', transaction_id: null, clover_payment_id: 99999,
+                    invoice_no: null, erp_amount_cents: null, clover_amount_cents: 1599,
+                    _demo: true
+                }
+            }[demoMode];
+            setTimeout(function () { open(fake); }, 800);
+        }
+    } catch (e) { /* swallow */ }
+
+    } catch (e) {
+        try { console && console.warn && console.warn('clover_mismatch_modal init error', e); } catch (_) {}
+    }
 })();
 </script>
