@@ -90,7 +90,7 @@ try { console.log('[clover_mismatch_modal] partial loaded'); } catch (_) {}
             detailErp = '<strong>ERP:</strong> ' + fmtMoney(item.erp_amount_cents) + ' &nbsp; (sale #' + (item.invoice_no || item.transaction_id) + ')';
             detailClover = '<strong>Clover:</strong> <span style="color:#B0451A;">no matching charge</span>';
         } else if (item.type === 'no_erp') {
-            prompt = 'Clover charged ' + fmtMoney(item.clover_amount_cents) + ', but there is no matching ERP sale. Please make sure all sold products are added into ERP so inventory stays accurate. <a href="{{ route(\'pos.create\') }}" target="_blank" style="color:#1F1B16; text-decoration:underline; font-weight:600;">Add the sale to ERP →</a>';
+            prompt = 'Clover charged ' + fmtMoney(item.clover_amount_cents) + ', but there is no matching ERP sale. Please make sure all sold products are added into ERP so inventory stays accurate. <a href="' + (window.__posCreateUrl || '/pos/create') + '" target="_blank" style="color:#1F1B16; text-decoration:underline; font-weight:600;">Add the sale to ERP →</a>';
             detailErp = '<strong>ERP:</strong> <span style="color:#B0451A;">no matching sale</span>';
             detailClover = '<strong>Clover charged:</strong> ' + fmtMoney(item.clover_amount_cents);
         }
