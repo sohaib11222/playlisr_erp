@@ -8779,7 +8779,7 @@ class ReportController extends Controller
      * the null/no-location bucket — matches the cloverEodEmployeeBreakdown
      * bucket key shape so the blade can look up by $day . '|' . $locKey.
      */
-    private function loadReconciliations($business_id, $start, $end): array
+    public function loadReconciliations($business_id, $start, $end): array
     {
         $rows = \App\CloverReconciliation::where('business_id', $business_id)
             ->whereBetween('day', [$start, $end])
@@ -9174,7 +9174,7 @@ class ReportController extends Controller
      * across the range (not per-day) so a 30-day backfill is 2 queries
      * instead of 60.
      */
-    private function cloverEodEmployeeBreakdownRange($business_id, $start, $end, $location_id, array $card_methods, $used_all_methods)
+    public function cloverEodEmployeeBreakdownRange($business_id, $start, $end, $location_id, array $card_methods, $used_all_methods)
     {
         // Sarah 2026-05-11: exclude is_whatnot=1 from per-cashier rows
         // so Whatnot livestream sales don't make a cashier's "matched

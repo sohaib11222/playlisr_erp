@@ -108,7 +108,7 @@
 
 @include('sale_pos.partials.customer_account_modal')
 
-@include('sale_pos.partials.clover_mismatch_modal')
+{{-- @include('sale_pos.partials.clover_mismatch_modal') — temporarily disabled while debugging /pos/create layout issue --}}
 
 {{-- Buy Calculator iframe modal removed (2026-04-19): iframe loaded blank for some users,
      likely auth/cookie issues when the protected route is loaded inside an iframe.
