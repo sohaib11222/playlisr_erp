@@ -332,9 +332,22 @@ class SellPosController extends Controller
             ];
         }
 
-        $loginEvents = $activities->where('description', 'login')->values();
+        // Sarah 2026-05-12: drop the login fallback. It was attributing
+        // orphan charges to anyone who'd logged into the ERP in the past
+        // 12 hours, which conflates "looked at a dashboard" with "was
+        // running the register" — pinned a 7:02pm Hollywood orphan on
+        // Jonathan Hedvat (who was viewing this very page, not cashiering)
+        // and pinned a 7:02pm orphan on Manolo Osorio whose only duty
+        // event today was his morning shift. "ERP session unknown" is a
+        // more honest answer than the wrong name.
         $cashier_for_orphan = [];
-        $maxStaleSeconds = 12 * 3600;
+
+        // 4-hour staleness cap on cashier-duty attribution. A cashier
+        // who set pos_duty=cashier in the morning and never explicitly
+        // cleared it shouldn't be tagged on an evening orphan — there's
+        // no "I'm off cashier" event in the UI today, so duty-stickiness
+        // accumulates across the day. One shift is the right ceiling.
+        $maxDutyGapSeconds = 4 * 3600;
 
         foreach ($unclaimed_clover_payments as $cp) {
             $cpTs = strtotime((string) $cp->paid_at);
@@ -361,7 +374,11 @@ class SellPosController extends Controller
                     continue;
                 }
                 $gap = $cpTs - $lastChangeTs;
-                if ($gap >= 0 && $gap < $bestGap) {
+                // Skip stale duty events — see comment above.
+                if ($gap < 0 || $gap > $maxDutyGapSeconds) {
+                    continue;
+                }
+                if ($gap < $bestGap) {
                     $bestGap = $gap;
                     $bestUid = $uid;
                 }
@@ -369,22 +386,6 @@ class SellPosController extends Controller
 
             if ($bestUid !== null) {
                 $cashier_for_orphan[$cp->id] = $bestUid;
-                continue;
-            }
-
-            $recentUserId = null;
-            foreach ($loginEvents as $ev) {
-                $evTs = strtotime((string) $ev->created_at);
-                if ($evTs > $cpTs) {
-                    break;
-                }
-                if (($cpTs - $evTs) > $maxStaleSeconds) {
-                    continue;
-                }
-                $recentUserId = (int) $ev->causer_id;
-            }
-            if ($recentUserId) {
-                $cashier_for_orphan[$cp->id] = $recentUserId;
             }
         }
 
