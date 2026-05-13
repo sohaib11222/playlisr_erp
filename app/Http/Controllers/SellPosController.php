@@ -1131,10 +1131,11 @@ class SellPosController extends Controller
             $k = $locKey($r->location_id);
             $name = $k && isset($business_locations[$k]) ? $business_locations[$k] : '(no location)';
             $ensure($today_by_store, $k, $name);
-            // GROSS-to-GROSS reconciliation (Sarah 2026-05-11) — was
-            // (amount − tax_cents) but ERP and Clover disagree about
-            // what "tax" includes, so net-vs-net created phantom diffs.
-            $cloverNet = (float) $r->amount;
+            // Sarah 2026-05-12: NET-vs-NET. Clover net = amount − tax_cents,
+            // matching Clover's own "Items Report" Gross Sales column (which
+            // is pre-tax item revenue, not customer-paid). Paired with ERP
+            // side using final_total − tax_amount.
+            $cloverNet = max(0.0, (float) $r->amount - ((int) ($r->tax_cents ?? 0)) / 100);
             $today_by_store[$k]['clover'] += $cloverNet;
             $today_by_store[$k]['clover_count']++;
             $cardBits = [];
