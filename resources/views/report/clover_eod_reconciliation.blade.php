@@ -285,10 +285,11 @@
              and lives elsewhere if she ever needs it. Hidden input
              keeps the existing JS handler working with a fixed 2-day
              pull window. --}}
-        <input type="hidden" id="eod_sync_days" value="2">
-        <button type="button" class="btn btn-default" id="eod_sync_now_btn">
+        <button type="button" class="btn btn-default" id="eod_sync_now_btn" title="Pull Clover swipes for the chosen number of days back from today. Default 2 for daily refresh; bump to 90 to backfill a missing historical window.">
             <i class="fa fa-sync"></i> Refresh Clover swipes
         </button>
+        <label for="eod_sync_days" style="margin-left:8px; font-size:12px; color:#6b7280; font-weight:500;">days back:</label>
+        <input type="number" id="eod_sync_days" value="2" min="1" max="90" step="1" style="width:64px; padding:4px 6px; border:1px solid #d1d5db; border-radius:6px; font-size:12px;">
         <span id="eod_sync_status" style="margin-left:8px; font-size:12px; color:#6b7280;"></span>
     </div>
     <div id="eod_sync_output" style="display:none; margin-bottom:14px;">
