@@ -1856,48 +1856,48 @@ class ProductUtil extends Util
 
             //Search with like condition
             if($search_type == 'like'){
-                $query->where(function ($query) use ($search_term, $search_fields) {
+                // Each whitespace-separated word must match somewhere in the
+                // enabled columns. Lets a cashier type "miles davis kind of
+                // blue" and find a row where artist="Miles Davis" and
+                // name="Kind of Blue".
+                $searchTerms = preg_split('/\\s+/', trim($search_term), -1, PREG_SPLIT_NO_EMPTY);
 
-                    if (in_array('name', $search_fields)) {
-                        // Split search term into words
-                        $searchTerms = explode(' ', $search_term);
-                        
-                        $query->where(function($q) use ($searchTerms) {
-                            foreach($searchTerms as $term) {
-                                $q->where('products.name', 'like', '%' . $term . '%');
+                if (!empty($searchTerms)) {
+                $query->where(function ($query) use ($searchTerms, $search_fields) {
+                    foreach ($searchTerms as $term) {
+                        $like = '%' . $term . '%';
+                        $query->where(function ($q) use ($like, $search_fields) {
+                            if (in_array('name', $search_fields)) {
+                                $q->orWhere('products.name', 'like', $like);
+                            }
+                            if (in_array('sku', $search_fields)) {
+                                $q->orWhere('products.sku', 'like', $like);
+                            }
+                            if (in_array('artist', $search_fields)) {
+                                $q->orWhere('products.artist', 'like', $like);
+                            }
+                            if (in_array('sub_sku', $search_fields)) {
+                                $q->orWhere('variations.sub_sku', 'like', $like);
+                            }
+                            if (in_array('lot', $search_fields)) {
+                                $q->orWhere('pl.lot_number', 'like', $like);
+                            }
+                            if (in_array('product_custom_field1', $search_fields)) {
+                                $q->orWhere('products.product_custom_field1', 'like', $like);
+                            }
+                            if (in_array('product_custom_field2', $search_fields)) {
+                                $q->orWhere('products.product_custom_field2', 'like', $like);
+                            }
+                            if (in_array('product_custom_field3', $search_fields)) {
+                                $q->orWhere('products.product_custom_field3', 'like', $like);
+                            }
+                            if (in_array('product_custom_field4', $search_fields)) {
+                                $q->orWhere('products.product_custom_field4', 'like', $like);
                             }
                         });
                     }
-                    
-                    if (in_array('sku', $search_fields)) {
-                        $query->orWhere('sku', 'like', '%' . $search_term .'%');
-                    }
-
-                    if (in_array('artist', $search_fields)) {
-                        $query->orWhere('artist', 'like', '%' . $search_term .'%');
-                    }
-
-                    if (in_array('sub_sku', $search_fields)) {
-                        $query->orWhere('sub_sku', 'like', '%' . $search_term .'%');
-                    }
-
-                    if (in_array('lot', $search_fields)) {
-                        $query->orWhere('pl.lot_number', 'like', '%' . $search_term .'%');
-                    }
-
-                    if (in_array('product_custom_field1', $search_fields)) {
-                        $query->orWhere('product_custom_field1', 'like', '%' . $search_term .'%');
-                    }
-                    if (in_array('product_custom_field2', $search_fields)) {
-                        $query->orWhere('product_custom_field2', 'like', '%' . $search_term .'%');
-                    }
-                    if (in_array('product_custom_field3', $search_fields)) {
-                        $query->orWhere('product_custom_field3', 'like', '%' . $search_term .'%');
-                    }
-                    if (in_array('product_custom_field4', $search_fields)) {
-                        $query->orWhere('product_custom_field4', 'like', '%' . $search_term .'%');
-                    }
                 });
+                }
             }
 
             //Search with exact condition

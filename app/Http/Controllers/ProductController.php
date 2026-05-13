@@ -1606,10 +1606,13 @@ class ProductController extends Controller
             $product_types = request()->get('product_types', []);
 
             $search_fields = request()->get('search_fields', ['name', 'sku']);
-            if (in_array('sku', $search_fields)) {
-                $search_fields[] = 'sub_sku';
+            // Always include sku/sub_sku/artist so the POS search bar finds
+            // matches in those fields regardless of the configure-search modal.
+            foreach (['sku', 'sub_sku', 'artist'] as $forced) {
+                if (!in_array($forced, $search_fields)) {
+                    $search_fields[] = $forced;
+                }
             }
-            $search_fields[] = 'artist';
 
             $result = $this->productUtil->filterProduct($business_id, $search_term, $location_id, $not_for_selling, $price_group_id, $product_types, $search_fields, $check_qty);
 
