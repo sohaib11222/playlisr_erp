@@ -442,13 +442,27 @@
             // orphan Clover uses paid_at (often the next morning's batch
             // settlement, which is the right "when did the money show up"
             // moment to surface in this feed).
+            //
+            // Sarah 2026-05-12: sort by LA-normalized epoch, NOT raw
+            // strings. paid_at is mixed-TZ-stored (some rows Kolkata,
+            // some LA — see SellPosController::parseCloverPaidAtLa).
+            // The display helper rescues the wall-clock by preferring
+            // raw_payload->createdTime, but a raw-string sort scattered
+            // three orphans that all wall-clock to "5:22 pm" across the
+            // 4:34/4:31/4:10 ERP rows because their underlying strings
+            // straddled Kolkata-day and LA-day boundaries. Compute one
+            // canonical LA epoch per row and sort by that.
             $feedItems = collect();
             foreach ($sales as $s) {
-                $feedItems->push(['type' => 'erp', 'sale' => $s, 'ts' => (string) $s->transaction_date]);
+                $erpTs = 0;
+                try { $erpTs = \Carbon\Carbon::parse($s->transaction_date)->getTimestamp(); } catch (\Throwable $e) {}
+                $feedItems->push(['type' => 'erp', 'sale' => $s, 'ts' => $erpTs]);
             }
             if ($show_clover_only) {
                 foreach ($unclaimed_clover_payments as $cp) {
-                    $feedItems->push(['type' => 'clover', 'cp' => $cp, 'ts' => (string) $cp->paid_at]);
+                    $cpTs = 0;
+                    try { $cpTs = \App\Http\Controllers\SellPosController::parseCloverPaidAtLa($cp)->getTimestamp(); } catch (\Throwable $e) {}
+                    $feedItems->push(['type' => 'clover', 'cp' => $cp, 'ts' => $cpTs]);
                 }
             }
             $feedItems = $feedItems->sortByDesc('ts')->values();
