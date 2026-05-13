@@ -825,11 +825,17 @@
                     @if(!empty($nearMatches))
                         <div style="color:#5A5045; font-weight:600; margin-bottom:4px;">Unmatched ERP sales within 1h:</div>
                         @foreach($nearMatches as $nm)
-                            <div style="display:flex; gap:10px; padding:2px 0; color:#3A3128;">
+                            <div style="display:flex; gap:10px; padding:2px 0; color:#3A3128; align-items:center;">
                                 <a href="{{ url('sells/' . $nm['tx_id']) }}" style="color:#1F1B16; text-decoration:underline;">#{{ $nm['invoice_no'] }}</a>
                                 <span style="color:#5A5045;">{{ \Carbon\Carbon::parse($nm['ts'])->format('g:i a') }}</span>
                                 <span style="font-variant-numeric: tabular-nums;">${{ number_format($nm['amount'], 2) }}</span>
-                                <span style="color:{{ $nm['why'] === 'WOULD MATCH' ? '#8B2C2C' : '#5A5045' }}; margin-left:auto; font-style:italic;">{{ $nm['why'] }}</span>
+                                <span style="color:{{ $nm['why'] === 'WOULD MATCH' ? '#8B2C2C' : '#5A5045' }}; font-style:italic;">{{ $nm['why'] }}</span>
+                                <form method="POST" action="{{ route('pos.cloverManualMatch') }}" style="margin:0 0 0 auto;" onsubmit="return confirm('Manually pair this Clover charge with ERP #{{ $nm['invoice_no'] }}? It will show as a mismatch.');">
+                                    @csrf
+                                    <input type="hidden" name="clover_payment_id" value="{{ $cp->id }}">
+                                    <input type="hidden" name="transaction_id" value="{{ $nm['tx_id'] }}">
+                                    <button type="submit" style="padding:3px 10px; background:#1F1B16; color:#fff; border:none; border-radius:5px; font-size:11px; font-weight:700; cursor:pointer;">↔ Match</button>
+                                </form>
                             </div>
                         @endforeach
                     @else
@@ -1044,11 +1050,17 @@
                     <div style="margin:0 16px 8px 16px; padding:8px 10px; background:#FDF2D7; border:1px dashed #D9B95C; border-radius:6px; font-size:12px;">
                         <div style="color:#7A5A12; font-weight:600; margin-bottom:4px;">Probable Clover match for this ERP-only sale:</div>
                         @foreach($erpPairCands as $pc)
-                            <div style="display:flex; gap:10px; padding:2px 0; color:#3A3128;">
+                            <div style="display:flex; gap:10px; padding:2px 0; color:#3A3128; align-items:center;">
                                 <code style="background:#F7F1E3;border:1px solid #DFD2B3;border-radius:3px;padding:0 4px;font-size:11px;">{{ $pc['cp_id'] }}</code>
                                 <span style="color:#5A5045;">{{ \Carbon\Carbon::createFromTimestamp($pc['ts'])->setTimezone('America/Los_Angeles')->format('g:i a') }}</span>
                                 <span style="font-variant-numeric: tabular-nums;">${{ number_format($pc['amount'], 2) }}</span>
-                                <span style="color:{{ $pc['why'] === 'LIKELY MATCH' ? '#1F5A2E' : '#7A5A12' }}; margin-left:auto; font-style:italic; font-weight:600;">{{ $pc['why'] }}</span>
+                                <span style="color:{{ $pc['why'] === 'LIKELY MATCH' ? '#1F5A2E' : '#7A5A12' }}; font-style:italic; font-weight:600;">{{ $pc['why'] }}</span>
+                                <form method="POST" action="{{ route('pos.cloverManualMatch') }}" style="margin:0 0 0 auto;" onsubmit="return confirm('Manually pair this Clover charge with ERP #{{ $sale->invoice_no }}? It will show as a mismatch.');">
+                                    @csrf
+                                    <input type="hidden" name="clover_payment_id" value="{{ $pc['cp_db_id'] }}">
+                                    <input type="hidden" name="transaction_id" value="{{ $sale->id }}">
+                                    <button type="submit" style="padding:3px 10px; background:#1F1B16; color:#fff; border:none; border-radius:5px; font-size:11px; font-weight:700; cursor:pointer;">↔ Match</button>
+                                </form>
                             </div>
                         @endforeach
                     </div>

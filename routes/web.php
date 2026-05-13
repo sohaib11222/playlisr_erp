@@ -302,6 +302,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
         Route::get('/pos/recent-feed/export', 'SellPosController@recentSalesFeedExport')->name('pos.recentFeedExport');
         Route::get('/pos/clover-live-check', 'SellPosController@cloverLiveCheck')->name('pos.cloverLiveCheck');
         Route::post('/pos/clover-sync-now', 'SellPosController@cloverSyncNow')->name('pos.cloverSyncNow');
+        Route::post('/pos/clover-manual-match', 'SellPosController@cloverManualMatch')->name('pos.cloverManualMatch');
+        Route::post('/pos/clover-manual-unmatch', 'SellPosController@cloverManualUnmatch')->name('pos.cloverManualUnmatch');
 
         Route::resource('pos', 'SellPosController');
     });

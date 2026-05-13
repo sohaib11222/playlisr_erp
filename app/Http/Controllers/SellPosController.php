@@ -666,20 +666,36 @@ class SellPosController extends Controller
             // orphan case where the previous greedy newest-first ERP loop
             // had ERP B claim its best Clover early, blocking ERP A from
             // its only viable pair.
-            // Sarah 2026-05-13: widen amount tolerance from 15¢ to \$1.00.
-            // Real pairs regularly show up \$0.50-\$1.10 apart when the
-            // cashier types a slightly different amount on Clover vs ERP
-            // (bag fees, typos, missed cents). Pairs >5¢ off still tag
-            // as "mismatch" in the view so the discrepancy is visible.
-            // False-pair risk is low because the global-optimal scorer
-            // prefers smaller-delta pairs.
-            $matchAmountCents = 100;
+            // Sarah 2026-05-13: auto-pair tolerance ±20¢. Tight enough to
+            // avoid false pairs across customers buying similar-priced
+            // items at the same minute. Catches bag-fee gaps (12¢) and
+            // tax-rounding (1-5¢). Anything wider — \$1.10 typos,
+            // wrong-store pairs, etc. — should go through manual match
+            // (see manual_erp_transaction_id on clover_payments). Pairs
+            // >5¢ off still tag as "mismatch" in the view.
+            $matchAmountCents = 20;
             $matchTimeWindow  = 43200;
+
+            // Sarah 2026-05-13: honor manual matches BEFORE auto-match.
+            // A Clover row with manual_erp_transaction_id set claims its
+            // ERP sale unconditionally — bypasses amount/time/store
+            // checks. Lets the user pair cases the auto-matcher can't
+            // see (wrong store, big amount gap, etc.) by hand.
+            foreach ($cpRows as $key => $cp) {
+                $manualTxId = $cp->manual_erp_transaction_id ?? null;
+                if ($manualTxId) {
+                    $claimedCpKeys[$key] = true;
+                    $matchedCpByTx[(int) $manualTxId][] = $cp;
+                }
+            }
 
             // Index Clover rows by amount-cents so the candidate scan
             // visits only the ±5¢ neighborhood, not every Clover row.
+            // Manually-claimed rows are filtered out so they don't also
+            // get considered by the auto-matcher.
             $cpByCents = [];
             foreach ($cpRows as $key => $cp) {
+                if (isset($claimedCpKeys[$key])) continue;
                 $cpByCents[$toCents($cp->amount)][] = $key;
             }
 
@@ -718,7 +734,13 @@ class SellPosController extends Controller
                 }
             }
             usort($candidates, fn($a, $b) => $a['score'] <=> $b['score']);
+            // Sarah 2026-05-13: seed $claimedSaleIds with any sale IDs
+            // already manually paired above, so the auto-matcher won't
+            // try to re-pair them with another Clover charge.
             $claimedSaleIds = [];
+            foreach ($matchedCpByTx as $manualTxId => $_) {
+                $claimedSaleIds[$manualTxId] = true;
+            }
             foreach ($candidates as $c) {
                 if (isset($claimedCpKeys[$c['cp_key']])) continue;
                 if (isset($claimedSaleIds[$c['sale_id']])) continue;
@@ -904,6 +926,7 @@ class SellPosController extends Controller
                     }
                     $cands[] = [
                         'cp_id'      => $cp->clover_payment_id,
+                        'cp_db_id'   => $cp->id,  // DB primary key, used by manual-match POST
                         'amount'     => round((float) $cp->amount, 2),
                         'ts'         => $cpTs,
                         'loc_id'     => $cpLoc,
@@ -1538,6 +1561,64 @@ class SellPosController extends Controller
         }
     }
 
+    /**
+     * Manually link a Clover payment to an ERP transaction. The matcher
+     * honors this link first, before automatic pairing — so wrong-amount
+     * or wrong-store pairs the auto-matcher can't see still get paired.
+     * Auto-match tolerance stays tight (±20¢); anything wider goes here.
+     */
+    public function cloverManualMatch(Request $request)
+    {
+        if (!auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $cpId = (int) $request->input('clover_payment_id');
+        $txId = (int) $request->input('transaction_id');
+        $back = $request->headers->get('referer') ?: route('pos.recentFeed');
+
+        if (!$cpId || !$txId) {
+            return redirect($back)->with('error', 'Manual match requires both clover_payment_id and transaction_id.');
+        }
+
+        $business_id = $request->session()->get('user.business_id');
+        $cp = \App\CloverPayment::where('id', $cpId)->where('business_id', $business_id)->first();
+        $tx = Transaction::where('id', $txId)->where('business_id', $business_id)->first();
+        if (!$cp || !$tx) {
+            return redirect($back)->with('error', 'Clover payment or ERP transaction not found.');
+        }
+
+        $cp->manual_erp_transaction_id = $tx->id;
+        $cp->save();
+
+        return redirect($back)->with('status', '✓ Manually paired Clover ' . $cp->clover_payment_id . ' with ERP #' . $tx->invoice_no . '.');
+    }
+
+    /**
+     * Clear a manual Clover ↔ ERP link, restoring the row to the
+     * automatic matcher's behavior.
+     */
+    public function cloverManualUnmatch(Request $request)
+    {
+        if (!auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $cpId = (int) $request->input('clover_payment_id');
+        $back = $request->headers->get('referer') ?: route('pos.recentFeed');
+
+        $business_id = $request->session()->get('user.business_id');
+        $cp = \App\CloverPayment::where('id', $cpId)->where('business_id', $business_id)->first();
+        if (!$cp) {
+            return redirect($back)->with('error', 'Clover payment not found.');
+        }
+
+        $cp->manual_erp_transaction_id = null;
+        $cp->save();
+
+        return redirect($back)->with('status', '✓ Cleared manual pairing for Clover ' . $cp->clover_payment_id . '.');
+    }
+
     public function recentRings(Request $request)
     {
         try {
@@ -1760,20 +1841,36 @@ class SellPosController extends Controller
             // orphan case where the previous greedy newest-first ERP loop
             // had ERP B claim its best Clover early, blocking ERP A from
             // its only viable pair.
-            // Sarah 2026-05-13: widen amount tolerance from 15¢ to \$1.00.
-            // Real pairs regularly show up \$0.50-\$1.10 apart when the
-            // cashier types a slightly different amount on Clover vs ERP
-            // (bag fees, typos, missed cents). Pairs >5¢ off still tag
-            // as "mismatch" in the view so the discrepancy is visible.
-            // False-pair risk is low because the global-optimal scorer
-            // prefers smaller-delta pairs.
-            $matchAmountCents = 100;
+            // Sarah 2026-05-13: auto-pair tolerance ±20¢. Tight enough to
+            // avoid false pairs across customers buying similar-priced
+            // items at the same minute. Catches bag-fee gaps (12¢) and
+            // tax-rounding (1-5¢). Anything wider — \$1.10 typos,
+            // wrong-store pairs, etc. — should go through manual match
+            // (see manual_erp_transaction_id on clover_payments). Pairs
+            // >5¢ off still tag as "mismatch" in the view.
+            $matchAmountCents = 20;
             $matchTimeWindow  = 43200;
+
+            // Sarah 2026-05-13: honor manual matches BEFORE auto-match.
+            // A Clover row with manual_erp_transaction_id set claims its
+            // ERP sale unconditionally — bypasses amount/time/store
+            // checks. Lets the user pair cases the auto-matcher can't
+            // see (wrong store, big amount gap, etc.) by hand.
+            foreach ($cpRows as $key => $cp) {
+                $manualTxId = $cp->manual_erp_transaction_id ?? null;
+                if ($manualTxId) {
+                    $claimedCpKeys[$key] = true;
+                    $matchedCpByTx[(int) $manualTxId][] = $cp;
+                }
+            }
 
             // Index Clover rows by amount-cents so the candidate scan
             // visits only the ±5¢ neighborhood, not every Clover row.
+            // Manually-claimed rows are filtered out so they don't also
+            // get considered by the auto-matcher.
             $cpByCents = [];
             foreach ($cpRows as $key => $cp) {
+                if (isset($claimedCpKeys[$key])) continue;
                 $cpByCents[$toCents($cp->amount)][] = $key;
             }
 
@@ -1812,7 +1909,13 @@ class SellPosController extends Controller
                 }
             }
             usort($candidates, fn($a, $b) => $a['score'] <=> $b['score']);
+            // Sarah 2026-05-13: seed $claimedSaleIds with any sale IDs
+            // already manually paired above, so the auto-matcher won't
+            // try to re-pair them with another Clover charge.
             $claimedSaleIds = [];
+            foreach ($matchedCpByTx as $manualTxId => $_) {
+                $claimedSaleIds[$manualTxId] = true;
+            }
             foreach ($candidates as $c) {
                 if (isset($claimedCpKeys[$c['cp_key']])) continue;
                 if (isset($claimedSaleIds[$c['sale_id']])) continue;
