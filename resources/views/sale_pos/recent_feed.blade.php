@@ -962,28 +962,33 @@
                         {{ ucfirst(str_replace('_', ' ', $sale->payment_status ?? '')) }}
                         @if($discount > 0) · discount −${{ number_format($discount, 2) }} @endif
                     </div>
-                    @if($cloverInfo)
-                        <div class="rf-recon {{ $cloverMismatch ? 'is-mismatch' : '' }}">
-                            <div class="rf-recon-col rf-recon-erp">
-                                <div class="lbl">ERP</div>
-                                <div class="amt">${{ number_format($total, 2) }}</div>
+                    {{-- Sarah 2026-05-12: always show ERP amount. When there's
+                         no Clover pair, render the Clover column as "—" so the
+                         layout stays consistent and "did this ring in ERP" is
+                         answerable at a glance for every row. --}}
+                    <div class="rf-recon {{ $cloverInfo && $cloverMismatch ? 'is-mismatch' : '' }}">
+                        <div class="rf-recon-col rf-recon-erp">
+                            <div class="lbl">ERP</div>
+                            <div class="amt">${{ number_format($total, 2) }}</div>
+                        </div>
+                        <div class="rf-recon-col rf-recon-clover">
+                            <div class="lbl">
+                                Clover
+                                @if($cloverInfo && $cloverMismatch)<span class="rf-recon-mismatch-tag" title="Clover charged ≠ ERP total">mismatch</span>@endif
                             </div>
-                            <div class="rf-recon-col rf-recon-clover">
-                                <div class="lbl">
-                                    Clover
-                                    @if($cloverMismatch)<span class="rf-recon-mismatch-tag" title="Clover charged ≠ ERP total">mismatch</span>@endif
-                                </div>
+                            @if($cloverInfo)
                                 <div class="amt">${{ number_format($cloverInfo['amount_cents'] / 100, 2) }}</div>
                                 <div class="sub">
                                     @if($cloverInfo['tax_cents'] > 0)Tax ${{ number_format($cloverInfo['tax_cents'] / 100, 2) }}@endif
                                     @if($cloverInfo['tip_cents'] > 0) · Tip ${{ number_format($cloverInfo['tip_cents'] / 100, 2) }}@endif
                                     @if(!empty($cloverInfo['cards']))<div>{{ implode(' · ', $cloverInfo['cards']) }}</div>@endif
                                 </div>
-                            </div>
+                            @else
+                                <div class="amt" style="color:#BFB096;">—</div>
+                                <div class="sub" style="color:#8A7C6A;">no Clover match</div>
+                            @endif
                         </div>
-                    @else
-                        <div class="rf-total"><span class="lbl">Total</span>${{ number_format($total, 2) }}</div>
-                    @endif
+                    </div>
                 </div>
             </div>
         @endif

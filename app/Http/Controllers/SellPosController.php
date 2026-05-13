@@ -654,7 +654,12 @@ class SellPosController extends Controller
             // orphan case where the previous greedy newest-first ERP loop
             // had ERP B claim its best Clover early, blocking ERP A from
             // its only viable pair.
-            $matchAmountCents = 5;
+            // Sarah 2026-05-12: widen amount tolerance 5¢→15¢. Real pairs
+            // show up with 9¢-12¢ gaps from bag fees (cashier types pre-bag-fee
+            // amount on Clover) and small typing differences — the previous
+            // ±5¢ rejected obvious matches. False-pair risk is low because
+            // the global-optimal scorer prefers smaller-amount-delta pairs.
+            $matchAmountCents = 15;
             $matchTimeWindow  = 43200;
 
             // Index Clover rows by amount-cents so the candidate scan
@@ -1010,15 +1015,11 @@ class SellPosController extends Controller
         // and makes the Clover gap look like a real discrepancy. Surfaced
         // separately below the store row.
         //
-        // Sarah 2026-05-12: GROSS-to-GROSS. Both sides use customer-paid
-        // total (tax included). Clover side already does — its `amount`
-        // is what the cashier swiped, including tax. ERP side was
-        // subtracting tax_amount, which made every store look "off by
-        // the tax" every single day (e.g. today's Hollywood +$51.01 diff
-        // is exactly Hollywood's tax_amount). Net-vs-net would also work
-        // in principle but requires subtracting Clover's tax_cents too,
-        // and Clover under-reports tax_cents on a non-trivial fraction
-        // of rows — gross-vs-gross sidesteps that whole class of bug.
+        // Sarah 2026-05-12: NET-vs-NET so the page's "Clover Sales" matches
+        // Sarah's Clover dashboard / item-sales CSV (which reports pre-tax
+        // gross). Clover side subtracts tax_cents from amount; ERP side
+        // subtracts tax_amount from final_total. Both sides represent
+        // item revenue before tax.
         $erpRowsToday = \DB::table('transactions')
             ->where('business_id', $business_id)
             ->where('type', 'sell')
@@ -1027,7 +1028,7 @@ class SellPosController extends Controller
             ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
             ->whereDate('transaction_date', $todayStr)
             ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id))
-            ->selectRaw('id, location_id, final_total as net_sales')
+            ->selectRaw('id, location_id, (final_total - COALESCE(tax_amount, 0)) as net_sales')
             ->get();
 
         // Whatnot rows today — surfaced separately so the user can see
@@ -1042,7 +1043,7 @@ class SellPosController extends Controller
             ->where('is_whatnot', 1)
             ->whereDate('transaction_date', $todayStr)
             ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id))
-            ->selectRaw('id, location_id, final_total as net_sales')
+            ->selectRaw('id, location_id, (final_total - COALESCE(tax_amount, 0)) as net_sales')
             ->get();
 
         // Include paid_at / employee / card so the banner can drill into
@@ -1493,7 +1494,12 @@ class SellPosController extends Controller
             // orphan case where the previous greedy newest-first ERP loop
             // had ERP B claim its best Clover early, blocking ERP A from
             // its only viable pair.
-            $matchAmountCents = 5;
+            // Sarah 2026-05-12: widen amount tolerance 5¢→15¢. Real pairs
+            // show up with 9¢-12¢ gaps from bag fees (cashier types pre-bag-fee
+            // amount on Clover) and small typing differences — the previous
+            // ±5¢ rejected obvious matches. False-pair risk is low because
+            // the global-optimal scorer prefers smaller-amount-delta pairs.
+            $matchAmountCents = 15;
             $matchTimeWindow  = 43200;
 
             // Index Clover rows by amount-cents so the candidate scan
