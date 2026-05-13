@@ -984,10 +984,16 @@ class SellPosController extends Controller
         // not Clover, so including them inflates the per-store ERP totals
         // and makes the Clover gap look like a real discrepancy. Surfaced
         // separately below the store row.
-        // Sarah 2026-05-11: ERP Net = final_total − tax_amount so it
-        // matches Clover Net (which is amount − tax_cents). Using
-        // total_before_tax excluded shipping/fees that Clover does
-        // charge, making every pair look ~$3 off structurally.
+        //
+        // Sarah 2026-05-12: GROSS-to-GROSS. Both sides use customer-paid
+        // total (tax included). Clover side already does — its `amount`
+        // is what the cashier swiped, including tax. ERP side was
+        // subtracting tax_amount, which made every store look "off by
+        // the tax" every single day (e.g. today's Hollywood +$51.01 diff
+        // is exactly Hollywood's tax_amount). Net-vs-net would also work
+        // in principle but requires subtracting Clover's tax_cents too,
+        // and Clover under-reports tax_cents on a non-trivial fraction
+        // of rows — gross-vs-gross sidesteps that whole class of bug.
         $erpRowsToday = \DB::table('transactions')
             ->where('business_id', $business_id)
             ->where('type', 'sell')
@@ -996,7 +1002,7 @@ class SellPosController extends Controller
             ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
             ->whereDate('transaction_date', $todayStr)
             ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id))
-            ->selectRaw('id, location_id, (final_total - COALESCE(tax_amount, 0)) as net_sales')
+            ->selectRaw('id, location_id, final_total as net_sales')
             ->get();
 
         // Whatnot rows today — surfaced separately so the user can see
@@ -1011,7 +1017,7 @@ class SellPosController extends Controller
             ->where('is_whatnot', 1)
             ->whereDate('transaction_date', $todayStr)
             ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id))
-            ->selectRaw('id, location_id, (final_total - COALESCE(tax_amount, 0)) as net_sales')
+            ->selectRaw('id, location_id, final_total as net_sales')
             ->get();
 
         // Include paid_at / employee / card so the banner can drill into

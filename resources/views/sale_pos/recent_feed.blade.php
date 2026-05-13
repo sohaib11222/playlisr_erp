@@ -191,7 +191,7 @@
 @endphp
 
 <section class="content-header">
-    <h1>Recent Sales Feed <small>— items sold, expanded inline</small></h1>
+    <h1>Recent Sales Feed</h1>
 </section>
 
 @if(!empty($tz_debug))
@@ -351,19 +351,9 @@
             @endif
 
             <div style="padding:18px 24px;">
-                <div style="display:flex; gap:24px; align-items:baseline; flex-wrap:wrap;">
-                    <div style="min-width:160px;">
-                        <div style="font-size:11px; color:#5A5045; text-transform:uppercase; letter-spacing:.08em; font-weight:600;">Day totals</div>
-                        <div style="font-size:13px; color:#8A7C6A; margin-top:2px;">{{ $todayLabel }}{{ $location_id && isset($business_locations[$location_id]) ? ' · ' . $business_locations[$location_id] : '' }}</div>
-                        <div style="font-size:11px; color:#8A7C6A; margin-top:6px; max-width:180px; line-height:1.4;">Customer-paid totals (gross). ERP = sum of final_total; Clover = sum of swipe amounts.</div>
-                    </div>
-                </div>
-
-                {{-- Sarah 2026-05-12: lead with per-store rows. Each store row
-                     is tinted + left-bordered by its reconcile status so
-                     discrepancies are obvious at a glance even without
-                     reading the Diff column. --}}
-                <div style="margin-top:14px;">
+                {{-- Per-store rows. Tinted + left-bordered by reconcile
+                     status so discrepancies pop at a glance. --}}
+                <div>
                     @foreach($byStore as $sk => $s)
                         @php
                             $stat = $storeStatus[$sk];
@@ -389,11 +379,6 @@
                                 <div style="margin-top:4px;">
                                     <span style="display:inline-block; background:{{ $badgeBg }}; color:#FFFFFF; font-size:11px; font-weight:700; letter-spacing:.04em; padding:3px 8px; border-radius:4px; font-variant-numeric:tabular-nums;">{{ $badgeIcon }} {{ $badgeText }}</span>
                                 </div>
-                                @if($sWhatnotCount > 0)
-                                    <div style="font-size:11px; color:#8A7C6A; margin-top:6px; font-style:italic;" title="Whatnot sales ring in ERP for inventory but are paid through Whatnot, not Clover — excluded from the ERP and Diff numbers.">
-                                        + Whatnot ${{ number_format($sWhatnot, 2) }} ({{ $sWhatnotCount }})
-                                    </div>
-                                @endif
                             </div>
                             <div style="flex:1; min-width:140px;">
                                 <div style="font-size:11px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">ERP Sales</div>
@@ -477,11 +462,6 @@
                     </div>
                 @endif
 
-                @if($totWhatnotCount > 0)
-                    <div style="margin-top:10px; font-size:11px; color:#8A7C6A; padding: 0 4px;">
-                        <strong style="color:#5A5045;">Note:</strong> Whatnot totals are tracked separately because the customer paid through the Whatnot app (not Clover). They ring in ERP for inventory but are <em>excluded</em> from the ERP / Clover / Diff numbers above, which are the reconciliation against Clover deposits.
-                    </div>
-                @endif
 
             @php $anyCharges = false; foreach ($byStore as $_s) { if (!empty($_s['clover_charges'])) { $anyCharges = true; break; } } @endphp
             @if($anyCharges)
@@ -781,17 +761,17 @@
                         <span class="rf-store-badge">{{ $cpStore }}</span>
                         @if($cpCardLabel)<span class="rf-customer">· {{ $cpCardLabel }}</span>@endif
                         @if($orphanCashierName)
-                            <span class="rf-cashier" title="Who was logged into the ERP (POS) around this charge — not who is clocked into Clover">· <strong>ERP (POS): {{ $orphanCashierName }}</strong></span>
+                            <span class="rf-cashier" title="Cashier whose pos_duty was 'cashier' at this store within 4h of the charge">· <strong>Cashier: {{ $orphanCashierName }}</strong></span>
                         @else
-                            <span class="rf-cashier" style="color:#8A7C6A;">· ERP session unknown (no login in activity log near this time)</span>
+                            <span class="rf-cashier" style="color:#8A7C6A;">· cashier unknown</span>
                         @endif
                     </div>
                 </div>
                 <div class="rf-orphan-note">
                     @if($isPending)
-                        Clover charged <strong>${{ number_format($cpAmount, 2) }}</strong> within the last 10 minutes — ERP ring not in yet. <strong>Give it a minute</strong>: cashiers often run the card first and ring the sale after. If it doesn't auto-pair on the next refresh, it'll promote to a real orphan.
+                        Clover charged <strong>${{ number_format($cpAmount, 2) }}</strong> in the last 10 min — ERP ring not in yet. Give it a minute.
                     @else
-                        Clover charged <strong>${{ number_format($cpAmount, 2) }}</strong> but no matching ERP sale was found for this store + amount in the scanned window. Investigate: missing ring-up, voided sale, or a charge from outside the scanned date range.
+                        Clover charged <strong>${{ number_format($cpAmount, 2) }}</strong> — no matching ERP ring.
                     @endif
                 </div>
                 @php $nearMatches = $orphan_near_matches[$cp->clover_payment_id] ?? []; @endphp
