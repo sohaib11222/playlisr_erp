@@ -728,13 +728,15 @@
         @if($item['type'] === 'clover')
             @php
                 $cp = $item['cp'];
-                // paid_at is stored in config('app.timezone'), which on
-                // this server is "Asia/Kolkata" (inherited from .env.example).
-                // Use the controller's TZ-aware helper so a Kolkata-local
-                // string is correctly converted to LA, not naively reparsed
-                // as LA (which would shift every charge by 12.5h — Sarah,
-                // 2026-05-11). See SellPosController::parseCloverPaidAtLa.
-                $cpDt = \App\Http\Controllers\SellPosController::parseCloverPaidAtLa($cp->paid_at);
+                // Pass the full row, not just $cp->paid_at: parseCloverPaidAtLa
+                // prefers raw_payload.createdTime (canonical UTC unix-ms from
+                // Clover) and only reaches it when handed the row object.
+                // Passing the string falls through to a heuristic against a
+                // mixed-TZ-stored paid_at that bunches charges into wrong
+                // wall-clock clusters. (Sarah 2026-05-12: 6 charges from
+                // different times appearing at "9:51pm" because the heuristic
+                // saw the same string for all of them.)
+                $cpDt = \App\Http\Controllers\SellPosController::parseCloverPaidAtLa($cp);
                 $cpWhen = $cpDt->isToday() ? $cpDt->format('g:i a') : $cpDt->format('M j · g:i a');
                 $cpStore = $cp->location_id && isset($business_locations[$cp->location_id])
                     ? $business_locations[$cp->location_id]

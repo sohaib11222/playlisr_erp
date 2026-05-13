@@ -321,7 +321,14 @@ class SellPosController extends Controller
                 $duty = $props['duty'] ?? null;
                 $locId = $props['location_id'] ?? null;
             }
-            if (!in_array($duty, ['cashier', 'shipping', 'inventory'], true)) {
+            // Sarah 2026-05-12: track EVERY pos_duty event, not just
+            // cashier/shipping/inventory. A "pricing" or "admin" event
+            // is what transitions a user OUT of cashier role — filtering
+            // those out makes a cashier-duty event "sticky" forever for
+            // a user who later switched to pricing (the bug that pinned
+            // Zella's 11am cashier-duty on 9:51pm Pico orphans even
+            // though she did pricing all afternoon).
+            if (!is_string($duty) || $duty === '') {
                 continue;
             }
             $t = strtotime((string) $act->created_at);
@@ -742,6 +749,24 @@ class SellPosController extends Controller
                     return (int) ($cp->location_id ?? 0) === (int) $location_id;
                 });
             }
+            // Sarah 2026-05-12: orphan list MUST be filtered to charges
+            // whose actual LA-day equals the viewed date. cpRows above
+            // is intentionally fetched at sales-window ±1 day (to catch
+            // overnight batch-settlement pairing). Without this filter,
+            // yesterday's unpaired Clover charges leak into today's
+            // "Clover-only" list, exploding the orphan count for no
+            // reason. Use createdTime when available (canonical UTC) so
+            // mis-stored paid_at TZ can't confuse the day boundary.
+            $dayStartTs = \Carbon\Carbon::parse($dateStr, $tz)->startOfDay()->getTimestamp();
+            $dayEndTs   = \Carbon\Carbon::parse($dateStr, $tz)->endOfDay()->getTimestamp();
+            $unclaimed_clover_payments = $unclaimed_clover_payments->filter(function ($cp) use ($dayStartTs, $dayEndTs) {
+                try {
+                    $ts = self::parseCloverPaidAtLa($cp)->getTimestamp();
+                    return $ts >= $dayStartTs && $ts <= $dayEndTs;
+                } catch (\Throwable $e) {
+                    return false;
+                }
+            });
             $unclaimed_clover_payments = $unclaimed_clover_payments->values();
         }
 
