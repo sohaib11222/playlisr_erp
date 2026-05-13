@@ -1116,6 +1116,31 @@
                                 <div class="sub" style="color:#8B2C2C; font-weight:600;">not in Clover</div>
                             @endif
                         </div>
+                        {{-- Sarah 2026-05-13: per-sale Diff column. Shows every
+                             gap (including 1¢ tax-rounding) so Sarah can add
+                             them up by eye against the headline. Skipped when
+                             there's no Clover pair — MISSING already conveys
+                             ERP-is-ahead-by-full-amount. --}}
+                        @if($cloverInfo)
+                            @php
+                                $perSaleDiffCents = (int) $cloverInfo['amount_cents'] - (int) round($total * 100);
+                                $perSaleDiffAbs   = number_format(abs($perSaleDiffCents) / 100, 2);
+                                if ($perSaleDiffCents === 0) {
+                                    $diffColor = '#8A7C6A';
+                                    $diffStr   = '$0.00';
+                                } elseif (abs($perSaleDiffCents) <= 1) {
+                                    $diffColor = '#8A7C6A';
+                                    $diffStr   = ($perSaleDiffCents > 0 ? '+' : '−') . '$' . $perSaleDiffAbs;
+                                } else {
+                                    $diffColor = '#B0451A';
+                                    $diffStr   = ($perSaleDiffCents > 0 ? '+' : '−') . '$' . $perSaleDiffAbs;
+                                }
+                            @endphp
+                            <div class="rf-recon-col" style="min-width:70px;">
+                                <div class="lbl">Diff</div>
+                                <div class="amt" style="color:{{ $diffColor }};">{{ $diffStr }}</div>
+                            </div>
+                        @endif
                     </div>
                 </div>
                 @if(!empty($rowExplanation))
