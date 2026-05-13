@@ -1373,6 +1373,141 @@ class SellPosController extends Controller
      * Wrapped in try/catch and returns an empty list on any failure — the
      * POS sell flow must never break because this side-channel is degraded.
      */
+
+    /**
+     * Sarah 2026-05-13: live Clover-API diagnostic. For a given date +
+     * location + amount, query (a) our local clover_payments DB and
+     * (b) the Clover API live, and show the union side-by-side. Lets
+     * Sarah verify whether an "ERP-only" sale that should have had a
+     * Clover entry actually does have one Clover-side that our sync
+     * missed, or whether the cashier truly never entered it.
+     *
+     * Params (?date=YYYY-MM-DD&location_id=N&amount=58.17[&window=60])
+     *   date       — LA-day to search (default today)
+     *   location_id — ERP location (1=Pico, 2=Hollywood, etc.; required)
+     *   amount     — dollar amount (e.g. 58.17); matched ±$3
+     *   window     — minutes around the day to scan (default whole day)
+     */
+    public function cloverLiveCheck(Request $request)
+    {
+        if (!auth()->user()->can('sell.view') && !auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = $request->session()->get('user.business_id');
+        $tz = 'America/Los_Angeles';
+
+        $date = $request->get('date');
+        if (!$date || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            $date = \Carbon\Carbon::now($tz)->format('Y-m-d');
+        }
+        $locationId = (int) $request->get('location_id', 0);
+        $amountStr = (string) $request->get('amount', '');
+        $amount = is_numeric($amountStr) ? (float) $amountStr : null;
+        $tolDollars = 3.0;
+
+        $business_locations = BusinessLocation::forDropdown($business_id, false);
+        $locName = $locationId && isset($business_locations[$locationId])
+            ? $business_locations[$locationId]
+            : ('loc ' . $locationId);
+
+        // (a) Our DB — match by amount within ±$3 on the requested date.
+        $dbRows = [];
+        if ($amount !== null) {
+            $minAmt = $amount - $tolDollars;
+            $maxAmt = $amount + $tolDollars;
+            $startLa = \Carbon\Carbon::parse($date, $tz)->startOfDay();
+            $endLa   = \Carbon\Carbon::parse($date, $tz)->endOfDay();
+            $startIst = $startLa->copy()->setTimezone(self::CLOVER_PAID_AT_STORED_TZ)->format('Y-m-d H:i:s');
+            $endIst   = $endLa->copy()->setTimezone(self::CLOVER_PAID_AT_STORED_TZ)->format('Y-m-d H:i:s');
+            $rows = \App\CloverPayment::where('business_id', $business_id)
+                ->whereBetween('amount', [$minAmt, $maxAmt])
+                ->where(function ($q) use ($startIst, $endIst, $startLa, $endLa) {
+                    $q->whereBetween('paid_at', [$startIst, $endIst])
+                      ->orWhereBetween('paid_at', [$startLa->format('Y-m-d H:i:s'), $endLa->format('Y-m-d H:i:s')]);
+                })
+                ->when($locationId, fn($q) => $q->where(function ($q) use ($locationId) {
+                    $q->where('location_id', $locationId)->orWhereNull('location_id');
+                }))
+                ->orderBy('paid_at')
+                ->get();
+            foreach ($rows as $r) {
+                $la = self::parseCloverPaidAtLa($r);
+                if (!$la->between($startLa, $endLa)) continue;
+                $dbRows[] = [
+                    'clover_payment_id' => $r->clover_payment_id,
+                    'amount'    => round((float) $r->amount, 2),
+                    'paid_at'   => $la->format('Y-m-d H:i:s') . ' LA',
+                    'location'  => $r->location_id ? ($business_locations[$r->location_id] ?? ('loc ' . $r->location_id)) : '— (null)',
+                    'result'    => $r->result,
+                    'card'      => trim(($r->card_type ?? '') . ' ' . ($r->card_last4 ? '••' . $r->card_last4 : '')),
+                    'employee'  => $r->employee_name,
+                    'order_id'  => $r->clover_order_id,
+                ];
+            }
+        }
+
+        // (b) Live Clover API for the day. Pulls every payment that day,
+        // filter PHP-side by amount range.
+        $liveRows = [];
+        $liveError = null;
+        $liveScopesQueried = [];
+        try {
+            $clover = new \App\Services\CloverService($business_id);
+            if (!$clover->isConfigured()) {
+                $liveError = 'Clover API not configured.';
+            } else {
+                $scopes = $clover->getConfiguredScopes();
+                if ($locationId && in_array($locationId, $scopes, true)) {
+                    $scopes = [$locationId]; // narrow to requested store's scope if configured per-location
+                }
+                foreach ($scopes as $scopeLocId) {
+                    $scoped = new \App\Services\CloverService($business_id);
+                    if ($scopeLocId !== null) $scoped->forLocation($scopeLocId);
+                    $liveScopesQueried[] = $scopeLocId === null ? '(top-level)' : ($business_locations[$scopeLocId] ?? ('loc ' . $scopeLocId));
+                    $result = $scoped->getPayments($date, $date);
+                    if (empty($result['success'])) {
+                        $liveError = ($liveError ? $liveError . ' / ' : '') . ($result['msg'] ?? 'unknown error');
+                        continue;
+                    }
+                    foreach ($result['payments'] ?? [] as $p) {
+                        $pAmt = ((int) ($p['amount'] ?? 0)) / 100;
+                        if ($amount !== null && abs($pAmt - $amount) > $tolDollars) continue;
+                        $createdMs = $p['createdTime'] ?? 0;
+                        $createdLa = $createdMs
+                            ? \Carbon\Carbon::createFromTimestampMs($createdMs, 'UTC')->setTimezone($tz)->format('Y-m-d H:i:s') . ' LA'
+                            : '(no createdTime)';
+                        $card = trim(($p['cardTransaction']['cardType'] ?? '') . ' ' . (isset($p['cardTransaction']['last4']) ? '••' . $p['cardTransaction']['last4'] : ''));
+                        $emp = $p['employee']['name'] ?? ($p['employee']['nickname'] ?? null);
+                        $liveRows[] = [
+                            'clover_payment_id' => $p['id'] ?? null,
+                            'amount'    => $pAmt,
+                            'paid_at'   => $createdLa,
+                            'scope'     => $scopeLocId === null ? '(top-level)' : ($business_locations[$scopeLocId] ?? ('loc ' . $scopeLocId)),
+                            'result'    => $p['result'] ?? null,
+                            'voided'    => !empty($p['voided']),
+                            'refunded'  => !empty($p['refunded']),
+                            'tender'    => $p['tender']['labelKey'] ?? ($p['tender']['label'] ?? null),
+                            'card'      => $card,
+                            'employee'  => $emp,
+                            'order_id'  => $p['order']['id'] ?? null,
+                            'tip_cents' => (int) ($p['tipAmount'] ?? 0),
+                            'tax_cents' => (int) ($p['taxAmount'] ?? 0),
+                        ];
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            $liveError = 'Exception: ' . $e->getMessage();
+        }
+
+        return view('sale_pos.clover_live_check')->with(compact(
+            'date', 'locationId', 'locName', 'amount', 'tolDollars',
+            'dbRows', 'liveRows', 'liveError', 'liveScopesQueried',
+            'business_locations'
+        ));
+    }
+
     public function recentRings(Request $request)
     {
         try {
