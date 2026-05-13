@@ -740,6 +740,40 @@
                     </div>
                 </div>
             @endif
+
+            {{-- Sarah 2026-05-13: "is this sync or matcher?" diagnostic.
+                 If a big chunk of orphans have a near-match in the ERP-only
+                 pool, the matcher's ±$0.20/±12h thresholds are too tight —
+                 loosening them would close most of the gap without
+                 touching the sync. If the cluster count is non-zero, the
+                 sync is generating real near-duplicates worth checking. --}}
+            @if($no_erp_count > 0 && (isset($orphan_nearmatch_count) || isset($orphan_dup_cluster_count)))
+                <div style="background:#FFF8E1; border:1px solid #E6D58A; border-radius:10px; padding:14px 16px; margin-bottom:14px; font-size:13px; color:#5A5045;">
+                    <div style="font-weight:700; color:#1F1B16; margin-bottom:8px;">Where is the gap actually coming from?</div>
+                    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:10px;">
+                        <div style="padding:10px 12px; background:#FFFFFF; border-radius:8px; border:1px solid #ECE3CF;">
+                            <div style="font-size:11px; color:#8A7C6A; text-transform:uppercase; letter-spacing:.04em;">Orphans with a near-match in ERP-only</div>
+                            <div style="font-size:22px; font-weight:700; color:{{ $orphan_nearmatch_count > 50 ? '#8B6A1A' : '#1F1B16' }}; font-variant-numeric:tabular-nums;">{{ number_format($orphan_nearmatch_count) }} <span style="font-size:13px; color:#8A7C6A; font-weight:500;">of {{ number_format($no_erp_count) }}</span></div>
+                            <div style="font-size:11px; color:#5A5045; margin-top:2px;">Same store, ±$2, ±60min. High count = matcher thresholds too tight, not a sync issue.</div>
+                        </div>
+                        <div style="padding:10px 12px; background:#FFFFFF; border-radius:8px; border:1px solid #ECE3CF;">
+                            <div style="font-size:11px; color:#8A7C6A; text-transform:uppercase; letter-spacing:.04em;">Near-duplicate clusters</div>
+                            <div style="font-size:22px; font-weight:700; color:{{ $orphan_dup_cluster_count > 0 ? '#B0451A' : '#1F8B3F' }}; font-variant-numeric:tabular-nums;">{{ number_format($orphan_dup_cluster_count) }}</div>
+                            <div style="font-size:11px; color:#5A5045; margin-top:2px;">Orphan groups sharing (amount, minute, card last4). Non-zero = the sync probably is inserting dupes — {{ number_format($orphan_dup_cluster_rows) }} rows affected.</div>
+                        </div>
+                    </div>
+                    <div style="margin-top:10px; font-size:12px; color:#5A5045;">
+                        <strong>Read:</strong>
+                        @if($orphan_dup_cluster_count > 0)
+                            sync IS producing near-duplicates ({{ number_format($orphan_dup_cluster_rows) }} suspicious rows).
+                        @elseif($orphan_nearmatch_count > ($no_erp_count / 2))
+                            sync looks fine. Most orphans have a near-match in ERP-only — the matcher is too strict.
+                        @else
+                            sync looks clean, near-match rate is low — the orphans are mostly real missed entries.
+                        @endif
+                    </div>
+                </div>
+            @endif
         @else
         {{-- Sarah 2026-05-12: 2-column day-mode layout. Each active store
              gets its own column with its sales + Clover orphans interleaved

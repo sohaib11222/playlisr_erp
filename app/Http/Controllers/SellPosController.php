@@ -1325,6 +1325,56 @@ class SellPosController extends Controller
         }
         $scanned_count = $sales->count();
 
+        // Sarah 2026-05-13: "is it the sync or the matcher?" diagnostic.
+        // For each orphan Clover charge, look for an unmatched ERP sale at
+        // the same store within ±$2 amount and ±60min time. A high count
+        // here means the matcher's ±$0.20/±12h thresholds are dropping
+        // legitimate pairs (matcher problem); a low count means the
+        // orphans really have no ERP counterpart (sync or workflow).
+        // Also detect (amount, paid_at minute, card_last4) clusters — those
+        // are the signature of true sync-side duplicates.
+        $orphan_nearmatch_count = 0;
+        $orphan_dup_cluster_count = 0;
+        $orphan_dup_cluster_rows = 0;
+        if ($is_month_mode && $unclaimed_clover_payments->isNotEmpty()) {
+            $erpOnlyRows = [];
+            foreach ($sales as $sale) {
+                if (isset($clover_by_transaction[$sale->id])) continue;
+                $erpOnlyRows[] = [
+                    'cents' => (int) round((float) $sale->final_total * 100),
+                    'loc'   => (int) ($sale->location_id ?? 0),
+                    'ts'    => @strtotime((string) $sale->transaction_date) ?: 0,
+                ];
+            }
+            $clusterMap = [];
+            foreach ($unclaimed_clover_payments as $cp) {
+                $cpCents = (int) round((float) ($cp->amount ?? 0) * 100);
+                $cpLoc = (int) ($cp->location_id ?? 0);
+                $cpTs = 0;
+                $cpMinute = 'unknown';
+                try {
+                    $laTs = self::parseCloverPaidAtLa($cp);
+                    $cpTs = $laTs->getTimestamp();
+                    $cpMinute = $laTs->format('Y-m-d H:i');
+                } catch (\Throwable $e) { /* skip */ }
+                foreach ($erpOnlyRows as $e) {
+                    if ($e['loc'] !== $cpLoc) continue;
+                    if (abs($e['cents'] - $cpCents) > 200) continue;
+                    if ($cpTs && abs($e['ts'] - $cpTs) > 3600) continue;
+                    $orphan_nearmatch_count++;
+                    break;
+                }
+                $clusterKey = $cpCents . '|' . $cpMinute . '|' . ((string) ($cp->card_last4 ?? ''));
+                $clusterMap[$clusterKey] = ($clusterMap[$clusterKey] ?? 0) + 1;
+            }
+            foreach ($clusterMap as $key => $n) {
+                if ($n >= 2) {
+                    $orphan_dup_cluster_count++;
+                    $orphan_dup_cluster_rows += $n;
+                }
+            }
+        }
+
         if ($discrepancy === 'no_erp') {
             // Special case: user wants ONLY orphan Clover charges. Hide all
             // ERP rows; the view will render the unclaimed Clover list.
@@ -1509,7 +1559,7 @@ class SellPosController extends Controller
             }
         }
 
-        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'orphan_by_loc', 'orphan_null_loc', 'orphan_refund_count', 'orphan_voided_count', 'orphan_real_count', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'pending_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store', 'tz_debug', 'dateStr', 'day_label', 'prev_date', 'next_date', 'is_today', 'allow_next', 'dayMode', 'is_month_mode', 'month_label', 'prev_month', 'next_month', 'allow_next_month', 'monthStr', 'sales_by_store', 'orphans_by_store', 'pending_by_store', 'pending_amount_by_store', 'pending_count_by_store', 'store_order', 'orphan_duplicate_of', 'erp_only_pair_candidates', 'clover_explanations'));
+        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'orphan_by_loc', 'orphan_null_loc', 'orphan_refund_count', 'orphan_voided_count', 'orphan_real_count', 'orphan_nearmatch_count', 'orphan_dup_cluster_count', 'orphan_dup_cluster_rows', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'pending_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store', 'tz_debug', 'dateStr', 'day_label', 'prev_date', 'next_date', 'is_today', 'allow_next', 'dayMode', 'is_month_mode', 'month_label', 'prev_month', 'next_month', 'allow_next_month', 'monthStr', 'sales_by_store', 'orphans_by_store', 'pending_by_store', 'pending_amount_by_store', 'pending_count_by_store', 'store_order', 'orphan_duplicate_of', 'erp_only_pair_candidates', 'clover_explanations'));
     }
 
     /**
