@@ -349,12 +349,15 @@ class SellPosController extends Controller
         // more honest answer than the wrong name.
         $cashier_for_orphan = [];
 
-        // 4-hour staleness cap on cashier-duty attribution. A cashier
-        // who set pos_duty=cashier in the morning and never explicitly
-        // cleared it shouldn't be tagged on an evening orphan — there's
-        // no "I'm off cashier" event in the UI today, so duty-stickiness
-        // accumulates across the day. One shift is the right ceiling.
-        $maxDutyGapSeconds = 4 * 3600;
+        // Sarah 2026-05-13: 8-hour staleness cap (one full shift, was 4hr).
+        // The original 4-hr cap was over-conservative for cashiers who set
+        // pos_duty=cashier once at shift-start and worked through — Luis
+        // setting duty at 1:30pm and getting "cashier unknown" on a 6:09pm
+        // orphan is exactly that. Safe to widen now because the duty-tracker
+        // sees ALL pos_duty events (previous commit), so a duty CHANGE
+        // (e.g. Zella → pricing in the afternoon) correctly overrides her
+        // earlier cashier event without us relying on the time cap alone.
+        $maxDutyGapSeconds = 8 * 3600;
 
         foreach ($unclaimed_clover_payments as $cp) {
             $cpTs = strtotime((string) $cp->paid_at);
