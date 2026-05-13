@@ -690,6 +690,14 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/fix-stray-in-store-date', 'FixStrayInStoreDateController@index');
     Route::post('/admin/fix-stray-in-store-date/run', 'FixStrayInStoreDateController@run');
 
+    // Store-mistag fixer — for ERP sales rung before the 2026-05-11 duty
+    // picker landed, when HW sales sometimes got stored with Pico's
+    // location_id (or vice versa). Matches ERP final_total + minute
+    // against Clover charges at a different store; lets Sarah retag with
+    // snapshot + undo.
+    Route::get('/admin/store-mistag-fix', 'StoreMistagFixController@index');
+    Route::post('/admin/store-mistag-fix/run', 'StoreMistagFixController@run');
+
     // One-shot cleanup: clears future created_at / updated_at on products
     // (sync TZ drift wrote them). Snapshots the BEFORE state so it can be
     // undone via /admin/admin-action-history.
