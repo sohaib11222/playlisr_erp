@@ -666,12 +666,14 @@ class SellPosController extends Controller
             // orphan case where the previous greedy newest-first ERP loop
             // had ERP B claim its best Clover early, blocking ERP A from
             // its only viable pair.
-            // Sarah 2026-05-12: widen amount tolerance 5¢→15¢. Real pairs
-            // show up with 9¢-12¢ gaps from bag fees (cashier types pre-bag-fee
-            // amount on Clover) and small typing differences — the previous
-            // ±5¢ rejected obvious matches. False-pair risk is low because
-            // the global-optimal scorer prefers smaller-amount-delta pairs.
-            $matchAmountCents = 15;
+            // Sarah 2026-05-13: widen amount tolerance from 15¢ to \$1.00.
+            // Real pairs regularly show up \$0.50-\$1.10 apart when the
+            // cashier types a slightly different amount on Clover vs ERP
+            // (bag fees, typos, missed cents). Pairs >5¢ off still tag
+            // as "mismatch" in the view so the discrepancy is visible.
+            // False-pair risk is low because the global-optimal scorer
+            // prefers smaller-delta pairs.
+            $matchAmountCents = 100;
             $matchTimeWindow  = 43200;
 
             // Index Clover rows by amount-cents so the candidate scan
@@ -1758,12 +1760,14 @@ class SellPosController extends Controller
             // orphan case where the previous greedy newest-first ERP loop
             // had ERP B claim its best Clover early, blocking ERP A from
             // its only viable pair.
-            // Sarah 2026-05-12: widen amount tolerance 5¢→15¢. Real pairs
-            // show up with 9¢-12¢ gaps from bag fees (cashier types pre-bag-fee
-            // amount on Clover) and small typing differences — the previous
-            // ±5¢ rejected obvious matches. False-pair risk is low because
-            // the global-optimal scorer prefers smaller-amount-delta pairs.
-            $matchAmountCents = 15;
+            // Sarah 2026-05-13: widen amount tolerance from 15¢ to \$1.00.
+            // Real pairs regularly show up \$0.50-\$1.10 apart when the
+            // cashier types a slightly different amount on Clover vs ERP
+            // (bag fees, typos, missed cents). Pairs >5¢ off still tag
+            // as "mismatch" in the view so the discrepancy is visible.
+            // False-pair risk is low because the global-optimal scorer
+            // prefers smaller-delta pairs.
+            $matchAmountCents = 100;
             $matchTimeWindow  = 43200;
 
             // Index Clover rows by amount-cents so the candidate scan
