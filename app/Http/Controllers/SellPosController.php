@@ -1343,174 +1343,20 @@ class SellPosController extends Controller
         // recomputes the banner against the selected day.
         $todayStr = $dateStr;
 
-        // ERP net = transaction-level total_before_tax (no per-tp split).
-        // Tried tp.amount × ratio earlier but it broke on discounted lines.
-        // Sarah 2026-05-11: exclude is_whatnot=1 — Whatnot livestream
-        // sales ring in ERP for inventory but are paid through Whatnot,
-        // not Clover, so including them inflates the per-store ERP totals
-        // and makes the Clover gap look like a real discrepancy. Surfaced
-        // separately below the store row.
-        //
-        // Sarah 2026-05-13: gross-vs-gross — ERP final_total vs Clover
-        // amount. The earlier net-vs-net math (final_total − tax_amount
-        // vs amount − tax_cents) flagged a false "ERP ahead $0.59" when
-        // gross matched to the penny — ERP's stored tax_amount and
-        // Clover's tax_cents disagreed on a manual line even though the
-        // customer paid identical amounts both places. Reconciliation
-        // is a gross question. (Field name `net_sales` kept to avoid a
-        // wide rename; it now carries the gross amount.)
-        $erpRowsToday = \DB::table('transactions')
-            ->where('business_id', $business_id)
-            ->where('type', 'sell')
-            ->where('status', 'final')
-            ->whereNull('import_source')
-            ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
-            ->whereDate('transaction_date', '>=', $start_date)
-            ->whereDate('transaction_date', '<=', $end_date)
-            ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id))
-            ->selectRaw('id, location_id, final_total as net_sales')
-            ->get();
-
-        // Whatnot rows today — surfaced separately so the user can see
-        // the inventory-only side without it polluting the ERP / Clover
-        // reconciliation. Per-store totals so Pico's Whatnot heavy days
-        // don't look like a generic "Pico Whatnot" lump.
-        $whatnotRowsToday = \DB::table('transactions')
-            ->where('business_id', $business_id)
-            ->where('type', 'sell')
-            ->where('status', 'final')
-            ->whereNull('import_source')
-            ->where('is_whatnot', 1)
-            ->whereDate('transaction_date', '>=', $start_date)
-            ->whereDate('transaction_date', '<=', $end_date)
-            ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id))
-            ->selectRaw('id, location_id, final_total as net_sales')
-            ->get();
-
-        // Include paid_at / employee / card so the banner can drill into
-        // each store's charges and Sarah can spot misrouted payments
-        // (e.g. Hollywood swipes showing up under Pico before Pico opens).
-        //
-        // Sarah 2026-05-11: filtering on paid_on (a DATE column) doesn't
-        // work because paid_on is also IST-dated (see CLOVER_PAID_AT_STORED_TZ).
-        // A real LA-evening swipe gets paid_on = next-IST-date, flooding
-        // today's LA bucket with yesterday's late-afternoon LA swipes. Filter
-        // on paid_at instead, converting LA today's [00:00, 23:59:59] into
-        // the IST window the strings were stored in.
-        // Mixed-TZ tolerant filter (cron writes IST, in-process button
-        // writes LA — same payment_id can flip TZ on each refresh). SQL
-        // widens to the UNION of both windows; PHP filter then keeps
-        // only rows whose canonical LA time (from raw_payload->createdTime
-        // when present) actually falls within LA-today.
-        // Month mode widens the LA window to the whole month so the banner
-        // and Clover-side query span all 30 days, not just $dateStr.
-        if ($is_month_mode) {
-            $startLaToday = \Carbon\Carbon::parse($start_date, 'America/Los_Angeles')->startOfDay();
-            $endLaToday   = \Carbon\Carbon::parse($end_date,   'America/Los_Angeles')->endOfDay();
-        } else {
-            $startLaToday = \Carbon\Carbon::parse($dateStr, 'America/Los_Angeles')->startOfDay();
-            $endLaToday   = \Carbon\Carbon::parse($dateStr, 'America/Los_Angeles')->endOfDay();
-        }
-        $startInIst   = $startLaToday->copy()->setTimezone(self::CLOVER_PAID_AT_STORED_TZ)->format('Y-m-d H:i:s');
-        $endInIst     = $endLaToday->copy()->setTimezone(self::CLOVER_PAID_AT_STORED_TZ)->format('Y-m-d H:i:s');
-        $startInLa    = $startLaToday->format('Y-m-d H:i:s');
-        $endInLa      = $endLaToday->format('Y-m-d H:i:s');
-        $appTz        = config('app.timezone') ?: 'America/Los_Angeles';
-        $startInAppTz = $startInIst; // kept for the ?tz_debug=1 block
-        $endInAppTz   = $endInIst;
-
-        $cloverRowsToday = \DB::table('clover_payments')
-            ->where('business_id', $business_id)
-            ->where(function ($q) use ($startInIst, $endInIst, $startInLa, $endInLa) {
-                $q->whereBetween('paid_at', [$startInIst, $endInIst])
-                  ->orWhereBetween('paid_at', [$startInLa, $endInLa]);
-            })
-            ->where(function ($q) {
-                $q->whereNull('result')->orWhere('result', 'SUCCESS')->orWhere('result', 'APPROVED');
-            })
-            ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id))
-            ->select('location_id', 'amount', 'tax_cents', 'paid_at', 'employee_name', 'card_type', 'card_last4', 'clover_payment_id', 'raw_payload')
-            ->orderBy('paid_at')
-            ->get();
-
-        // Tighten in PHP — keep only rows whose canonical LA time is
-        // actually within LA-today. createdTime is the source of truth
-        // for each row regardless of what TZ paid_at landed in.
-        $cloverRowsToday = $cloverRowsToday->filter(function ($r) use ($startLaToday, $endLaToday) {
-            $laTs = self::parseCloverPaidAtLa($r);
-            return $laTs->between($startLaToday, $endLaToday);
-        })->values();
-
-        // Bucket per location_id (0 = unattributed). For each store we
-        // track card / cash / other ERP totals + ERP tx-ids (for sale
-        // count), plus Clover total + Clover count.
-        $locKey = function ($id) { return (int) ($id ?? 0); };
-        $today_by_store = [];
-        $ensure = function (&$store, $key, $name) {
-            if (!isset($store[$key])) {
-                $store[$key] = [
-                    'location_id'    => $key ?: null,
-                    'name'           => $name,
-                    'erp_net'        => 0.0,
-                    'erp_count'      => 0,
-                    'clover'         => 0.0,
-                    'clover_count'   => 0,
-                    'whatnot_net'    => 0.0,
-                    'whatnot_count'  => 0,
-                    'clover_charges' => [],
-                ];
-            }
-        };
-        foreach ($erpRowsToday as $r) {
-            $k = $locKey($r->location_id);
-            $name = $k && isset($business_locations[$k]) ? $business_locations[$k] : '(no location)';
-            $ensure($today_by_store, $k, $name);
-            $today_by_store[$k]['erp_net']   += (float) $r->net_sales;
-            $today_by_store[$k]['erp_count']++;
-        }
-        foreach ($whatnotRowsToday as $r) {
-            $k = $locKey($r->location_id);
-            $name = $k && isset($business_locations[$k]) ? $business_locations[$k] : '(no location)';
-            $ensure($today_by_store, $k, $name);
-            $today_by_store[$k]['whatnot_net']  += (float) $r->net_sales;
-            $today_by_store[$k]['whatnot_count']++;
-        }
-        foreach ($cloverRowsToday as $r) {
-            $k = $locKey($r->location_id);
-            $name = $k && isset($business_locations[$k]) ? $business_locations[$k] : '(no location)';
-            $ensure($today_by_store, $k, $name);
-            // Sarah 2026-05-13: gross-vs-gross. Aggregate Clover's
-            // customer-paid amount (what hit the card). Per-charge `net`
-            // is still kept below for the drilldown's Net column.
-            $cloverGross = (float) $r->amount;
-            $cloverNet   = max(0.0, $cloverGross - ((int) ($r->tax_cents ?? 0)) / 100);
-            $today_by_store[$k]['clover'] += $cloverGross;
-            $today_by_store[$k]['clover_count']++;
-            $cardBits = [];
-            if (!empty($r->card_type))  $cardBits[] = strtoupper($r->card_type);
-            if (!empty($r->card_last4)) $cardBits[] = '••' . $r->card_last4;
-            $today_by_store[$k]['clover_charges'][] = [
-                'paid_at'  => self::formatCloverPaidAt($r),
-                'amount'   => round((float) $r->amount, 2),
-                'net'      => round($cloverNet, 2),
-                'employee' => $r->employee_name,
-                'card'     => trim(implode(' ', $cardBits)),
-                'cp_id'    => $r->clover_payment_id,
-            ];
-        }
-        foreach ($today_by_store as &$s) {
-            $s['erp_net']     = round($s['erp_net'], 2);
-            $s['clover']      = round($s['clover'], 2);
-            $s['whatnot_net'] = round($s['whatnot_net'], 2);
-            $s['diff']        = round($s['clover'] - $s['erp_net'], 2);
-        }
-        unset($s);
-        uasort($today_by_store, function ($a, $b) {
-            if (($a['location_id'] === null) !== ($b['location_id'] === null)) {
-                return ($a['location_id'] === null) ? 1 : -1;
-            }
-            return strcasecmp($a['name'], $b['name']);
-        });
+        // Sarah 2026-05-13: per-store totals are sourced from the shared
+        // dayByStoreTotals() helper so the Clover EOD Reconciliation
+        // report reuses the same numbers — "i want the recent feed to be
+        // the source of truth". Helper handles the gross-vs-gross math,
+        // Whatnot split, and TZ-correct Clover row pull for the date
+        // range. See helper docblock for the ERP / Clover inclusion rules.
+        $totals = self::dayByStoreTotals(
+            (int) $business_id,
+            $start_date,
+            $end_date,
+            !empty($location_id) ? (int) $location_id : null,
+            $business_locations
+        );
+        $today_by_store = $totals['by_store'];
 
         // Backwards-compat aggregates (kept for any old blade refs).
         $erp_today_total      = array_sum(array_column($today_by_store, 'erp_net'));
@@ -1526,6 +1372,11 @@ class SellPosController extends Controller
         // stored vs what config('app.timezone') reports.
         $tz_debug = null;
         if ($request->get('tz_debug')) {
+            $appTz       = config('app.timezone') ?: 'America/Los_Angeles';
+            $startLaDbg  = \Carbon\Carbon::parse($start_date, 'America/Los_Angeles')->startOfDay();
+            $endLaDbg    = \Carbon\Carbon::parse($end_date,   'America/Los_Angeles')->endOfDay();
+            $startInIst  = $startLaDbg->copy()->setTimezone(self::CLOVER_PAID_AT_STORED_TZ)->format('Y-m-d H:i:s');
+            $endInIst    = $endLaDbg->copy()->setTimezone(self::CLOVER_PAID_AT_STORED_TZ)->format('Y-m-d H:i:s');
             $sampleRows = \DB::table('clover_payments')
                 ->where('business_id', $business_id)
                 ->orderByDesc('paid_at')
@@ -1557,9 +1408,9 @@ class SellPosController extends Controller
                 'php_default_tz'     => date_default_timezone_get(),
                 'now_la'             => \Carbon\Carbon::now('America/Los_Angeles')->format('Y-m-d H:i:s'),
                 'now_in_app_tz'      => \Carbon\Carbon::now($appTz)->format('Y-m-d H:i:s'),
-                'today_filter_start' => $startInAppTz,
-                'today_filter_end'   => $endInAppTz,
-                'today_bucket_count' => $cloverRowsToday->count(),
+                'today_filter_start' => $startInIst,
+                'today_filter_end'   => $endInIst,
+                'today_bucket_count' => $clover_today_count,
                 'samples'            => $samples,
             ];
         }

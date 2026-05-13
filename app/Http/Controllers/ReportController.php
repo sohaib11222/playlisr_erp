@@ -7844,149 +7844,36 @@ class ReportController extends Controller
         // and made the Diff line look like a real discrepancy when it
         // wasn't. They're broken out on a separate line below for
         // transparency.
-        $erpBase = \DB::table('transactions')
-            ->where('business_id', $business_id)
-            ->where('type', 'sell')
-            ->where('status', 'final')
-            ->whereNull('import_source')
-            ->whereDate('transaction_date', '>=', $start)
-            ->whereDate('transaction_date', '<=', $end)
-            ->when(!empty($location_id), fn($q) => $q->where('location_id', $location_id));
-
-        // Sarah 2026-05-11: match Clover's own dashboard, which shows
-        // Net Sales = SUM(amount − tax_cents). To compare apples-to-
-        // apples, ERP Sales uses the equivalent formula on its side:
-        // SUM(final_total − tax_amount). Both = "customer paid minus
-        // the tax line", so totals tie to what Sarah sees in Clover.
-        $erp_net_total = (float) (clone $erpBase)
-            ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
-            ->selectRaw('COALESCE(SUM(final_total - COALESCE(tax_amount, 0)), 0) as v')
-            ->value('v');
-        $erp_count = (int) (clone $erpBase)
-            ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
-            ->count();
-
-        $whatnot_net_total = (float) (clone $erpBase)
-            ->where('is_whatnot', 1)
-            ->selectRaw('COALESCE(SUM(final_total - COALESCE(tax_amount, 0)), 0) as v')
-            ->value('v');
-        $whatnot_count = (int) (clone $erpBase)
-            ->where('is_whatnot', 1)
-            ->count();
-
-        // TZ-unambiguous: filter on raw_payload.createdTime (UTC unix-ms),
-        // not paid_at. The OR-of-windows approach was double-counting
-        // yesterday-evening rows that happened to have IST strings
-        // matching today's LA range. createdTime is the canonical
-        // source from Clover regardless of how paid_at landed.
-        $eodWin = $this->cloverPaidAtIstWindow($start, $end);
-        $cloverDayQ = \DB::table('clover_payments')
-            ->where('business_id', $business_id)
-            ->where(function ($q) {
-                $q->whereNull('result')->orWhere('result', 'SUCCESS')->orWhere('result', 'APPROVED');
-            })
-            ->whereRaw($this->cloverCreatedInWindowSql($eodWin));
-        if (!empty($location_id)) {
-            $cloverDayQ->where(function ($q) use ($location_id) {
-                $q->where('location_id', $location_id)->orWhereNull('location_id');
-            });
-        }
-        $clover_day_total = (float) $cloverDayQ->selectRaw("COALESCE(SUM(amount - COALESCE(tax_cents, 0) / 100.0), 0) as net")->value('net');
-        $clover_day_count = (int) $cloverDayQ->count();
-
-        // Per-store breakdown so the day-totals card can split Hollywood
-        // vs Pico — same numbers, sliced by location_id. Sarah 2026-05-11.
-        $erpPerLoc = (clone $erpBase)
-            ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
-            ->selectRaw('COALESCE(location_id, 0) as loc_key,
-                         COALESCE(SUM(final_total - COALESCE(tax_amount, 0)), 0) as erp_net,
-                         COUNT(*) as erp_count')
-            ->groupBy('location_id')
-            ->get()->keyBy('loc_key');
-        $whatnotPerLoc = (clone $erpBase)
-            ->where('is_whatnot', 1)
-            ->selectRaw('COALESCE(location_id, 0) as loc_key,
-                         COALESCE(SUM(final_total - COALESCE(tax_amount, 0)), 0) as whatnot_net,
-                         COUNT(*) as whatnot_count')
-            ->groupBy('location_id')
-            ->get()->keyBy('loc_key');
-        $cloverPerLocQ = \DB::table('clover_payments')
-            ->where('business_id', $business_id)
-            ->where(function ($q) {
-                $q->whereNull('result')->orWhere('result', 'SUCCESS')->orWhere('result', 'APPROVED');
-            })
-            ->whereRaw($this->cloverCreatedInWindowSql($eodWin));
-        if (!empty($location_id)) {
-            $cloverPerLocQ->where(function ($q) use ($location_id) {
-                $q->where('location_id', $location_id)->orWhereNull('location_id');
-            });
-        }
-        $cloverPerLoc = $cloverPerLocQ
-            ->selectRaw('COALESCE(location_id, 0) as loc_key,
-                         COALESCE(SUM(amount - COALESCE(tax_cents, 0) / 100.0), 0) as clover_net,
-                         COUNT(*) as clover_count')
-            ->groupBy('location_id')
-            ->get()->keyBy('loc_key');
-
-        $day_by_store = [];
-        $allLocKeys = collect($erpPerLoc->keys())
-            ->merge($cloverPerLoc->keys())
-            ->merge($whatnotPerLoc->keys())
-            ->unique();
-        foreach ($allLocKeys as $k) {
-            $name = ($k && isset($business_locations[$k])) ? $business_locations[$k] : '(no location)';
-            $erpN  = (float) (optional($erpPerLoc->get($k))->erp_net ?? 0);
-            $erpC  = (int)   (optional($erpPerLoc->get($k))->erp_count ?? 0);
-            $cloN  = (float) (optional($cloverPerLoc->get($k))->clover_net ?? 0);
-            $cloC  = (int)   (optional($cloverPerLoc->get($k))->clover_count ?? 0);
-            $whaN  = (float) (optional($whatnotPerLoc->get($k))->whatnot_net ?? 0);
-            $whaC  = (int)   (optional($whatnotPerLoc->get($k))->whatnot_count ?? 0);
-            $day_by_store[(int) $k] = [
-                'location_id'   => $k ?: null,
-                'name'          => $name,
-                'erp_net'       => round($erpN, 2),
-                'erp_count'     => $erpC,
-                'clover'        => round($cloN, 2),
-                'clover_count'  => $cloC,
-                'whatnot_net'   => round($whaN, 2),
-                'whatnot_count' => $whaC,
-                'diff'          => round($cloN - $erpN, 2),
-            ];
-        }
-        uasort($day_by_store, function ($a, $b) {
-            if (($a['location_id'] === null) !== ($b['location_id'] === null)) {
-                return ($a['location_id'] === null) ? 1 : -1;
-            }
-            return strcasecmp($a['name'], $b['name']);
-        });
+        // Sarah 2026-05-13: source of truth is /pos/recent-feed. Both
+        // pages now call into the shared SellPosController::dayByStoreTotals()
+        // helper so the per-store ERP / Clover / Whatnot / Diff numbers
+        // are guaranteed to match. Gross-vs-gross (final_total vs Clover
+        // amount); Whatnot is broken out so the in-store Diff isn't
+        // polluted by inventory-only sales. Field names erp_net / clover
+        // are kept for back-compat; they now carry gross values.
+        $totalsByStore = \App\Http\Controllers\SellPosController::dayByStoreTotals(
+            (int) $business_id,
+            $start,
+            $end,
+            !empty($location_id) ? (int) $location_id : null,
+            $business_locations
+        );
+        $erp_net_total      = $totalsByStore['erp_total'];
+        $erp_count          = $totalsByStore['erp_count'];
+        $whatnot_net_total  = $totalsByStore['whatnot_total'];
+        $whatnot_count      = $totalsByStore['whatnot_count'];
+        $clover_day_total   = $totalsByStore['clover_total'];
+        $clover_day_count   = $totalsByStore['clover_count'];
+        $day_by_store       = $totalsByStore['by_store'];
 
         // Unmatched-Clover drill-in: lists each Clover charge that didn't
         // pair to an ERP sale in the day. Explains the Diff column in
         // concrete terms (e.g. "one $37.71 charge with no matching ring").
         $matchedTxIds = array_keys($rows ?? []);
-        // We don't have a direct matched_cp list here; recompute against
-        // the current xlsx_layout if present, else pull raw and let the
-        // blade list every Clover row when the Diff is non-zero.
-        $unmatchedCloverQ = \DB::table('clover_payments')
-            ->where('business_id', $business_id)
-            ->where(function ($q) {
-                $q->whereNull('result')->orWhere('result', 'SUCCESS')->orWhere('result', 'APPROVED');
-            })
-            ->whereRaw($this->cloverCreatedInWindowSql($eodWin));
-        if (!empty($location_id)) {
-            $unmatchedCloverQ->where(function ($q) use ($location_id) {
-                $q->where('location_id', $location_id)->orWhereNull('location_id');
-            });
-        }
-        // Per-charge reconciliation: for each Clover charge, find its
-        // matching ERP sale (same store + amount within 5¢ + time
-        // within ±12h). If no match, flag and surface near-misses so
-        // Sarah can see WHY — e.g. amount off by $0.07, or a real
-        // missing ring-up. Same matcher as the recent-feed page.
-        $cloverRowsForDiff = $unmatchedCloverQ
-            ->select('clover_payment_id', 'amount', 'tax_cents', 'paid_at', 'location_id', 'employee_name', 'card_type', 'card_last4', 'raw_payload')
-            ->orderBy('paid_at')
-            ->get();
+        // Sarah 2026-05-13: reuse the same LA-tightened Clover rows the
+        // helper used to build the per-store Diff — so the per-charge
+        // list and the totals are sourced from the same dataset.
+        $cloverRowsForDiff = $totalsByStore['clover_rows_raw'];
 
         // Pull ERP sales for the day (matching pool — channel='in_store'
         // since Whatnot doesn't hit Clover).
