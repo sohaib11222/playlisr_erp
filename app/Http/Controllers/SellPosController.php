@@ -1441,20 +1441,30 @@ class SellPosController extends Controller
         // tx, cp) key.
         $visible_tx_ids = $sales->pluck('id')->all();
         $visible_cp_ids = $unclaimed_clover_payments->pluck('id')->all();
+        // Skip the lookup if the model class hasn't been added to the repo
+        // yet (Sarah's commit referenced \App\CloverMismatchExplanation but
+        // the model file isn't there). The view tolerates an empty map, so
+        // the page renders cleanly until the model ships.
         $clover_explanations = [];
-        if (!empty($visible_tx_ids) || !empty($visible_cp_ids)) {
-            $exRows = \App\CloverMismatchExplanation::where('business_id', $business_id)
-                ->where(function ($q) use ($visible_tx_ids, $visible_cp_ids) {
-                    if (!empty($visible_tx_ids)) $q->orWhereIn('transaction_id', $visible_tx_ids);
-                    if (!empty($visible_cp_ids)) $q->orWhereIn('clover_payment_id', $visible_cp_ids);
-                })
-                ->orderBy('created_at', 'desc')
-                ->get(['transaction_id', 'clover_payment_id', 'discrepancy_type', 'reason', 'explained_by', 'created_at']);
-            foreach ($exRows as $row) {
-                $key = $row->discrepancy_type . ':' . (int) ($row->transaction_id ?? 0) . ':' . (int) ($row->clover_payment_id ?? 0);
-                if (!isset($clover_explanations[$key])) {
-                    $clover_explanations[$key] = $row;
+        if (class_exists('\App\CloverMismatchExplanation')
+            && (!empty($visible_tx_ids) || !empty($visible_cp_ids))) {
+            try {
+                $exRows = \App\CloverMismatchExplanation::where('business_id', $business_id)
+                    ->where(function ($q) use ($visible_tx_ids, $visible_cp_ids) {
+                        if (!empty($visible_tx_ids)) $q->orWhereIn('transaction_id', $visible_tx_ids);
+                        if (!empty($visible_cp_ids)) $q->orWhereIn('clover_payment_id', $visible_cp_ids);
+                    })
+                    ->orderBy('created_at', 'desc')
+                    ->get(['transaction_id', 'clover_payment_id', 'discrepancy_type', 'reason', 'explained_by', 'created_at']);
+                foreach ($exRows as $row) {
+                    $key = $row->discrepancy_type . ':' . (int) ($row->transaction_id ?? 0) . ':' . (int) ($row->clover_payment_id ?? 0);
+                    if (!isset($clover_explanations[$key])) {
+                        $clover_explanations[$key] = $row;
+                    }
                 }
+            } catch (\Throwable $e) {
+                // Missing table or query error — degrade silently.
+                $clover_explanations = [];
             }
         }
 
