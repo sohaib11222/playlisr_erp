@@ -1010,12 +1010,31 @@
                                     @if(!empty($cloverInfo['cards']))<div>{{ implode(' · ', $cloverInfo['cards']) }}</div>@endif
                                 </div>
                             @else
-                                <div class="amt" style="color:#BFB096;">—</div>
-                                <div class="sub" style="color:#8A7C6A;">no Clover match</div>
+                                {{-- Sarah 2026-05-13: Clover records cash too,
+                                     so "no Clover match" is a real reconcile
+                                     gap (cashier rang ERP but didn't enter on
+                                     Clover terminal). Treat with the same
+                                     severity as a Clover-only orphan. --}}
+                                <div class="amt" style="color:#8B2C2C; font-weight:700;">⚠ MISSING</div>
+                                <div class="sub" style="color:#8B2C2C; font-weight:600;">not in Clover</div>
                             @endif
                         </div>
                     </div>
                 </div>
+                @php $erpPairCands = $erp_only_pair_candidates[$sale->id] ?? []; @endphp
+                @if(!empty($erpPairCands))
+                    <div style="margin:0 16px 8px 16px; padding:8px 10px; background:#FDF2D7; border:1px dashed #D9B95C; border-radius:6px; font-size:12px;">
+                        <div style="color:#7A5A12; font-weight:600; margin-bottom:4px;">Probable Clover match for this ERP-only sale:</div>
+                        @foreach($erpPairCands as $pc)
+                            <div style="display:flex; gap:10px; padding:2px 0; color:#3A3128;">
+                                <code style="background:#F7F1E3;border:1px solid #DFD2B3;border-radius:3px;padding:0 4px;font-size:11px;">{{ $pc['cp_id'] }}</code>
+                                <span style="color:#5A5045;">{{ \Carbon\Carbon::createFromTimestamp($pc['ts'])->setTimezone('America/Los_Angeles')->format('g:i a') }}</span>
+                                <span style="font-variant-numeric: tabular-nums;">${{ number_format($pc['amount'], 2) }}</span>
+                                <span style="color:{{ $pc['why'] === 'LIKELY MATCH' ? '#1F5A2E' : '#7A5A12' }}; margin-left:auto; font-style:italic; font-weight:600;">{{ $pc['why'] }}</span>
+                            </div>
+                        @endforeach
+                    </div>
+                @endif
             </div>
         @endif
         @empty

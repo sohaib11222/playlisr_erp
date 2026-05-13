@@ -533,6 +533,13 @@ class SellPosController extends Controller
             ->where('transactions.type', 'sell')
             ->where('transactions.status', 'final')
             ->whereNull('transactions.import_source')
+            // Sarah 2026-05-13: exclude Whatnot livestream sales so the
+            // matcher / per-store counts stop disagreeing with the day
+            // totals banner (which already excludes Whatnot via the
+            // erpRowsToday query). Whatnot doesn't go through Clover and
+            // gets its own banner row, so leaking it into $sales just
+            // inflates "ERP only" counts and per-store column totals.
+            ->where(function ($q) { $q->where('transactions.is_whatnot', 0)->orWhereNull('transactions.is_whatnot'); })
             ->when($location_id, fn($q) => $q->where('transactions.location_id', $location_id))
             ->when($created_by, fn($q) => $q->where('transactions.created_by', $created_by))
             ->when($start_date, fn($q) => $q->whereDate('transactions.transaction_date', '>=', $start_date))
@@ -578,6 +585,7 @@ class SellPosController extends Controller
         $matchedCpByTx = [];
         $claimedCpKeys = [];
         $orphan_duplicate_of = [];
+        $erp_only_pair_candidates = [];
 
         if ($sales->isNotEmpty()) {
             $minDate = $sales->min('transaction_date');
@@ -853,6 +861,60 @@ class SellPosController extends Controller
         // into Manolo's feed.
         if ($hide_orphans) {
             $unclaimed_clover_payments = collect();
+        }
+
+        // Sarah 2026-05-13: cross-store probable-pair detector. For every
+        // ERP-only sale (no Clover match), scan ALL unmatched Clover
+        // charges across stores for ones within ±$3 and ±60 min and
+        // surface them inline as "probable pair: this Clover orphan IS
+        // likely your match, just at the wrong store / wrong amount by
+        // X". Answers Sarah's "do any of those 5+5 match?" directly.
+        $erp_only_pair_candidates = [];
+        if (isset($matchSales) && $unclaimed_clover_payments->isNotEmpty()) {
+            $toCentsCand = function ($x) { return (int) round(((float) $x) * 100); };
+            foreach ($sales as $sale) {
+                // Only ERP-only sales — those that didn't pair.
+                if (isset($clover_by_transaction[$sale->id])) continue;
+                $erTs = strtotime((string) $sale->transaction_date);
+                $erCents = $toCentsCand($sale->final_total);
+                $erLoc = (int) $sale->location_id;
+                $cands = [];
+                foreach ($unclaimed_clover_payments as $cp) {
+                    $cpCents = $toCentsCand($cp->amount);
+                    if (abs($cpCents - $erCents) > 300) continue; // ±$3
+                    try {
+                        $cpTs = self::parseCloverPaidAtLa($cp)->getTimestamp();
+                    } catch (\Throwable $e) {
+                        continue;
+                    }
+                    $timeDelta = abs($cpTs - $erTs);
+                    if ($timeDelta > 3600) continue; // ±1hr
+                    $cpLoc = $cp->location_id !== null ? (int) $cp->location_id : null;
+                    $why = [];
+                    if (abs($cpCents - $erCents) > 0) {
+                        $why[] = '$' . number_format(abs($cpCents - $erCents) / 100, 2) . ' off';
+                    }
+                    if ($cpLoc !== null && $cpLoc !== $erLoc) {
+                        $why[] = 'wrong store (' . ($business_locations[$cpLoc] ?? ('loc ' . $cpLoc)) . ')';
+                    }
+                    $cands[] = [
+                        'cp_id'      => $cp->clover_payment_id,
+                        'amount'     => round((float) $cp->amount, 2),
+                        'ts'         => $cpTs,
+                        'loc_id'     => $cpLoc,
+                        'amt_delta'  => abs($cpCents - $erCents),
+                        'time_delta' => $timeDelta,
+                        'why'        => empty($why) ? 'LIKELY MATCH' : implode(' · ', $why),
+                    ];
+                }
+                if (!empty($cands)) {
+                    usort($cands, function ($a, $b) {
+                        return $a['amt_delta'] <=> $b['amt_delta']
+                            ?: $a['time_delta'] <=> $b['time_delta'];
+                    });
+                    $erp_only_pair_candidates[$sale->id] = array_slice($cands, 0, 3);
+                }
+            }
         }
 
         // Sarah 2026-05-12: grace period. Cashiers often run the card on
@@ -1296,7 +1358,7 @@ class SellPosController extends Controller
             if (!in_array($k, $store_order, true)) $store_order[] = $k;
         }
 
-        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'orphan_by_loc', 'orphan_null_loc', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'pending_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store', 'tz_debug', 'dateStr', 'day_label', 'prev_date', 'next_date', 'is_today', 'allow_next', 'dayMode', 'sales_by_store', 'orphans_by_store', 'pending_by_store', 'pending_amount_by_store', 'pending_count_by_store', 'store_order', 'orphan_duplicate_of'));
+        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'orphan_by_loc', 'orphan_null_loc', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'pending_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store', 'tz_debug', 'dateStr', 'day_label', 'prev_date', 'next_date', 'is_today', 'allow_next', 'dayMode', 'sales_by_store', 'orphans_by_store', 'pending_by_store', 'pending_amount_by_store', 'pending_count_by_store', 'store_order', 'orphan_duplicate_of', 'erp_only_pair_candidates'));
     }
 
     /**
@@ -1458,6 +1520,13 @@ class SellPosController extends Controller
             ->where('transactions.type', 'sell')
             ->where('transactions.status', 'final')
             ->whereNull('transactions.import_source')
+            // Sarah 2026-05-13: exclude Whatnot livestream sales so the
+            // matcher / per-store counts stop disagreeing with the day
+            // totals banner (which already excludes Whatnot via the
+            // erpRowsToday query). Whatnot doesn't go through Clover and
+            // gets its own banner row, so leaking it into $sales just
+            // inflates "ERP only" counts and per-store column totals.
+            ->where(function ($q) { $q->where('transactions.is_whatnot', 0)->orWhereNull('transactions.is_whatnot'); })
             ->when($location_id, fn($q) => $q->where('transactions.location_id', $location_id))
             ->when($created_by, fn($q) => $q->where('transactions.created_by', $created_by))
             ->when($start_date, fn($q) => $q->whereDate('transactions.transaction_date', '>=', $start_date))
