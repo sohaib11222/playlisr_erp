@@ -1180,6 +1180,13 @@
                                     @if($cloverInfo['tax_cents'] > 0)Tax ${{ number_format($cloverInfo['tax_cents'] / 100, 2) }}@endif
                                     @if($cloverInfo['tip_cents'] > 0) · Tip ${{ number_format($cloverInfo['tip_cents'] / 100, 2) }}@endif
                                     @if(!empty($cloverInfo['cards']))<div>{{ implode(' · ', $cloverInfo['cards']) }}</div>@endif
+                                    @if(!empty($cloverInfo['clover_payment_ids']))
+                                        <div style="margin-top:2px;">
+                                            @foreach($cloverInfo['clover_payment_ids'] as $cpid)
+                                                <code style="background:#F7F1E3;border:1px solid #DFD2B3;border-radius:3px;padding:0 4px;font-size:11px;">{{ $cpid }}</code>
+                                            @endforeach
+                                        </div>
+                                    @endif
                                 </div>
                             @else
                                 {{-- Sarah 2026-05-13: Clover records cash too,

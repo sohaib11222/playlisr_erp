@@ -987,12 +987,21 @@ class SellPosController extends Controller
                     return trim($brand . ' ' . $last4);
                 })->filter()->unique()->values()->all();
 
+                // Sarah 2026-05-13 (Sabina ask): surface Clover transaction
+                // IDs on the paired-row so the recent feed is reconcilable
+                // back to the source payment without needing the orphan
+                // panel. One ERP sale can have multiple Clover payments
+                // (split / re-auth), so this is an array.
+                $clover_ids = $payments->pluck('clover_payment_id')
+                    ->filter()->unique()->values()->all();
+
                 $clover_by_transaction[$txId] = [
-                    'amount_cents' => $amount,
-                    'tip_cents'    => $tip,
-                    'tax_cents'    => $tax,
-                    'total_cents'  => $amount + $tip,
-                    'cards'        => $cards,
+                    'amount_cents'       => $amount,
+                    'tip_cents'          => $tip,
+                    'tax_cents'          => $tax,
+                    'total_cents'        => $amount + $tip,
+                    'cards'              => $cards,
+                    'clover_payment_ids' => $clover_ids,
                 ];
             }
 
