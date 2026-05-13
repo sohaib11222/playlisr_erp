@@ -329,7 +329,12 @@
             $roundingStores = [];
             $pendingStores = [];
             foreach ($byStore as $sk => $sv) {
-                $rawDiff = round($sv['clover'] - $sv['erp_net'], 2);
+                // Sarah 2026-05-13: use the controller's real_diff — sum
+                // of per-sale gaps > 1¢ + unpaired amounts. Sub-cent
+                // tax-rounding offsets contribute 0 so they don't net
+                // against a real mismatch and hide it. Fallback to the
+                // raw subtraction when the field is missing (defensive).
+                $rawDiff = round($sv['real_diff'] ?? ($sv['clover'] - $sv['erp_net']), 2);
                 $pendAmt = (float) ($pending_amount_by_store[$sk] ?? 0);
                 $pendCnt = (int) ($pending_count_by_store[$sk] ?? 0);
                 $adjDiff = round($rawDiff - $pendAmt, 2);
