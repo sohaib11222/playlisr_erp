@@ -681,6 +681,20 @@
             </div>
         @endif
 
+        {{-- Month mode renders the totals banner + per-cashier breakdown
+             only; per-transaction listings (2k+ rows) would blow the page's
+             memory budget and aren't useful at monthly granularity anyway.
+             Reviewers click "Switch to daily view" or a specific day in the
+             per-cashier breakdown below to drill down. --}}
+        @if($is_month_mode)
+            <div style="background:#F7F1E3; border:1px solid #DFD2B3; border-radius:10px; padding:14px 16px; margin-bottom:14px; font-size:13px; color:#5A5045;">
+                <strong style="color:#1F1B16;">Monthly summary view.</strong>
+                Per-transaction listings are hidden so the page can render across {{ number_format($scanned_count) }}+ sales.
+                For per-row ERP-vs-Clover detail, click a specific day in the per-cashier breakdown below, or
+                <a href="{{ action('SellPosController@recentSalesFeed', array_filter(['location_id' => $location_id, 'created_by' => $created_by, 'discrepancy' => $discrepancy])) }}"
+                   style="color:#8B6A1A; text-decoration:underline; font-weight:600;">switch to daily view</a>.
+            </div>
+        @else
         {{-- Sarah 2026-05-12: 2-column day-mode layout. Each active store
              gets its own column with its sales + Clover orphans interleaved
              chronologically. LA-normalized epoch sort, same as before — see
@@ -1147,6 +1161,7 @@
         @endforeach
         </div>{{-- /rf-day-grid --}}
         @endif
+        @endif {{-- /is_month_mode skip --}}
     </div>
 </section>
 @endsection
