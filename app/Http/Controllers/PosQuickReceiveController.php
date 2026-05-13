@@ -139,6 +139,12 @@ class PosQuickReceiveController extends Controller
         if ($qty <= 0 || $qty > 50) {
             $qty = 1;
         }
+        if ($note === '') {
+            return response()->json([
+                'success' => false,
+                'msg' => 'A note is required — explain why this item is off the books (e.g. "just arrived from AMS").',
+            ], 422);
+        }
 
         $business_id = $request->session()->get('user.business_id');
         $user_id = auth()->id();
@@ -305,6 +311,7 @@ class PosQuickReceiveController extends Controller
                 'totals' => null,
                 'filters' => ['days' => 30, 'user' => '', 'location' => ''],
                 'locations' => collect(),
+                'pendingRepairCount' => 0,
             ]);
         }
 
@@ -374,6 +381,15 @@ class PosQuickReceiveController extends Controller
             ->orderBy('name')
             ->get(['id', 'name']);
 
+        // Count receives that are still missing their purchase trail (so the
+        // view can surface a "Repair" button — without it, those receives
+        // sit in inventory but throw a sell/purchase mismatch at the POS).
+        $pendingRepairQ = DB::table('pos_quick_receives')
+            ->where('business_id', $businessId)
+            ->whereNull('transaction_id');
+        if ($hasUndoCol) { $pendingRepairQ->whereNull('undone_at'); }
+        $pendingRepairCount = (int) $pendingRepairQ->count();
+
         return view('admin.pos_quick_receives', [
             'tableExists' => true,
             'rows' => $rows,
@@ -384,6 +400,7 @@ class PosQuickReceiveController extends Controller
                 'location' => $locationFilter,
             ],
             'locations' => $locations,
+            'pendingRepairCount' => $pendingRepairCount,
         ]);
     }
 

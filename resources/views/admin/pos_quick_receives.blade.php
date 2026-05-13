@@ -51,6 +51,23 @@
             </div>
         @endif
 
+        @if(!empty($pendingRepairCount) && $pendingRepairCount > 0)
+            <div class="box box-danger">
+                <div class="box-header with-border">
+                    <h3 class="box-title">{{ $pendingRepairCount }} receive(s) need repair to be sellable</h3>
+                </div>
+                <div class="box-body">
+                    <p>These were received before the purchase-trail fix shipped. Stock is on the shelf, but the POS rejects
+                       them at checkout with <em>"Mismatch between sold and purchase quantity."</em> Click below to create
+                       the missing purchase trail (cost defaults to the variation's purchase price). Safe to re-click.</p>
+                    <form method="POST" action="{{ url('/admin/pos-quick-receives/setup') }}" style="display:inline;">
+                        @csrf
+                        <button type="submit" class="btn btn-danger"><i class="fa fa-wrench"></i> Repair {{ $pendingRepairCount }} receive(s) now</button>
+                    </form>
+                </div>
+            </div>
+        @endif
+
         <div class="box box-primary">
             <div class="box-header with-border">
                 <h3 class="box-title">Filters</h3>

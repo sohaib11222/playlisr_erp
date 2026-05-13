@@ -23,9 +23,10 @@
                     <div id="pos_quick_receive_sub" style="font-size:12px; color:#777; text-align:center; margin-top:4px;"></div>
                 </div>
                 <label for="pos_quick_receive_note_input" style="font-weight:600; margin-bottom:6px; display:block;">
-                    Optional note <span class="text-muted" style="font-weight:400; font-size:12px;">(why was this off the books?)</span>
+                    Note <span style="color:#c0392b;">*</span>
+                    <span class="text-muted" style="font-weight:400; font-size:12px;">(required — why was this off the books?)</span>
                 </label>
-                <textarea id="pos_quick_receive_note_input" class="form-control" rows="2" maxlength="300"
+                <textarea id="pos_quick_receive_note_input" class="form-control" rows="2" maxlength="300" required
                           placeholder="e.g. 'customer pulled the last copy from the dollar bin'"></textarea>
                 <div id="pos_quick_receive_error" class="text-danger" style="display:none; margin-top:6px; font-size:13px;"></div>
             </div>
@@ -113,6 +114,11 @@
                 return;
             }
             var note = ($note.val() || '').trim();
+            if (note === '') {
+                $error.text('A note is required — explain why this item is off the books (e.g. "just arrived from AMS").').show();
+                $note.focus();
+                return;
+            }
             $confirm.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Receiving...');
             $error.hide().text('');
 
