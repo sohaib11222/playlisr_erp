@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Product;
+use App\PurchaseLine;
+use App\Transaction;
 use App\Variation;
 use App\VariationLocationDetails;
 use Illuminate\Http\Request;
@@ -84,10 +86,22 @@ class PosQuickReceiveController extends Controller
                 }
             }
 
+            // Backfill purchase-side trails for rows from before this fix
+            // (otherwise items already received the new way are still
+            // unsellable — they bumped qty_available but have no purchase
+            // line to map a sell against, so POS rejects with the
+            // "purchase/sell mismatch" error).
+            $backfilled = $this->backfillPurchaseTrails(
+                $request->session()->get('user.business_id')
+            );
+
             return redirect('/admin/pos-quick-receives')->with('status_success',
                 'Setup complete. ' . ($rolesTouched > 0
                     ? 'Granted quick-receive permission to ' . $rolesTouched . ' role(s). '
                     : 'Permission already granted on all roles. ')
+                . ($backfilled > 0
+                    ? 'Repaired ' . $backfilled . ' earlier receive(s) so they can now be sold. '
+                    : '')
                 . 'Cashiers can now quick-receive out-of-stock items at the POS after a hard refresh.');
         } catch (\Exception $e) {
             return redirect('/admin/pos-quick-receives')->with('status_error',
@@ -371,5 +385,95 @@ class PosQuickReceiveController extends Controller
             ],
             'locations' => $locations,
         ]);
+    }
+
+    // Create the purchase-side trail (transactions row + purchase_line) that
+    // mirrors the stock bump. The sell-allocation logic in TransactionUtil
+    // joins purchase_lines to transactions WHERE type IN (purchase, …) AND
+    // status = 'received' AND location matches the selling store — so we
+    // need a row that satisfies all three filters. Returns the new tx id.
+    //
+    // Cost comes from variation->default_purchase_price (mirrored to inc-tax
+    // by the resale-cert hook on Variation::saving). If the variation has no
+    // cost on file we still create the line at 0 — better an inaccurate
+    // cost than a blocked sale; Sarah can fix the cost later from the audit.
+    private static function createPurchaseTrail(
+        $variation, $product, $location_id, $qty,
+        $business_id, $user_id
+    ) {
+        $purchase_price = isset($variation->default_purchase_price)
+            ? (float) $variation->default_purchase_price : 0.0;
+        $purchase_price_inc_tax = isset($variation->dpp_inc_tax)
+            ? (float) $variation->dpp_inc_tax : $purchase_price;
+
+        $transaction = Transaction::create([
+            'type' => 'purchase',
+            'status' => 'received',
+            'business_id' => $business_id,
+            'location_id' => $location_id,
+            'transaction_date' => now(),
+            'total_before_tax' => $purchase_price * $qty,
+            'final_total' => $purchase_price_inc_tax * $qty,
+            'payment_status' => 'paid',
+            'created_by' => $user_id,
+            'additional_notes' => 'POS quick-receive at the till',
+        ]);
+
+        $pl = new PurchaseLine();
+        $pl->transaction_id = $transaction->id;
+        $pl->product_id = $product->id;
+        $pl->variation_id = $variation->id;
+        $pl->quantity = $qty;
+        $pl->purchase_price = $purchase_price;
+        $pl->purchase_price_inc_tax = $purchase_price_inc_tax;
+        $pl->pp_without_discount = $purchase_price;
+        $pl->item_tax = 0;
+        $pl->tax_id = null;
+        $pl->save();
+
+        return $transaction->id;
+    }
+
+    // Backfill the purchase trail for quick-receives that landed before this
+    // fix shipped (so cashiers can ring up items received the new way that
+    // are still sitting in inventory without a matching purchase_line).
+    // Called from setup(); skips rows that already have a transaction_id and
+    // rows that were undone.
+    private function backfillPurchaseTrails($businessId)
+    {
+        if (!Schema::hasTable('pos_quick_receives')) {
+            return 0;
+        }
+        $hasUndoCol = Schema::hasColumn('pos_quick_receives', 'undone_at');
+        $q = DB::table('pos_quick_receives')
+            ->where('business_id', $businessId)
+            ->whereNull('transaction_id');
+        if ($hasUndoCol) {
+            $q->whereNull('undone_at');
+        }
+        $rows = $q->orderBy('id')->get();
+
+        $filled = 0;
+        foreach ($rows as $row) {
+            $variation = Variation::with('product')->find($row->variation_id);
+            if (!$variation || !$variation->product) {
+                continue;
+            }
+            $product = $variation->product;
+            try {
+                $tx_id = self::createPurchaseTrail(
+                    $variation, $product,
+                    (int) $row->business_location_id, (float) $row->qty,
+                    (int) $businessId, (int) ($row->user_id ?: 1)
+                );
+                DB::table('pos_quick_receives')
+                    ->where('id', $row->id)
+                    ->update(['transaction_id' => $tx_id, 'updated_at' => now()]);
+                $filled++;
+            } catch (\Exception $e) {
+                \Log::warning('PosQuickReceive backfill skipped row ' . $row->id . ': ' . $e->getMessage());
+            }
+        }
+        return $filled;
     }
 }
