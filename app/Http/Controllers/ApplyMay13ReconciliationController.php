@@ -2,8 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\BusinessLocation;
+use App\Contact;
 use App\Transaction;
 use App\TransactionPayment;
+use App\TransactionSellLine;
+use App\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -139,6 +143,52 @@ class ApplyMay13ReconciliationController extends Controller
             }
         });
 
+        // 4.5) Bonnie Raitt — auto-create the missing ERP ring + match it.
+        $applied['rings_created'] = [];
+        if (!empty($plan['p4_bonnie_raitt']['cp_db_id']) && empty($plan['p4_bonnie_raitt']['already_exists'])) {
+            try {
+                $newTxId = $this->createBonnieRaittRing(
+                    $business_id,
+                    $plan['p4_bonnie_raitt'],
+                    $now
+                );
+                if ($newTxId) {
+                    // Manual-match the freshly created ERP ring to the orphan Clover row.
+                    $map = SellPosController::loadCloverManualMatches($business_id);
+                    $map[$plan['p4_bonnie_raitt']['cp_db_id']] = $newTxId;
+                    SellPosController::saveCloverManualMatches($business_id, $map);
+
+                    $snapshot['rows'][] = [
+                        'kind' => 'ring_created',
+                        'transaction_id' => $newTxId,
+                        'invoice_no' => Transaction::where('id', $newTxId)->value('invoice_no'),
+                        'clover_payment_id' => $plan['p4_bonnie_raitt']['cp_payment_id'],
+                        'amount' => 8.78,
+                    ];
+                    $applied['rings_created'][] = [
+                        'tx_id' => $newTxId,
+                        'invoice_no' => Transaction::where('id', $newTxId)->value('invoice_no'),
+                        'short' => 'Bonnie Raitt s/t — Pico, Clark, $8.00',
+                    ];
+
+                    // Drop the matching Bonnie-Raitt-orphan note (the note was for
+                    // when the orphan was unresolved — superfluous once the ring
+                    // exists and is matched).
+                    $plan['p3_notes'] = array_values(array_filter($plan['p3_notes'], function ($n) {
+                        return !(($n['discrepancy_type'] ?? '') === 'no_erp' && empty($n['tx_id']));
+                    }));
+                }
+            } catch (\Throwable $e) {
+                // Don't fail the whole batch if ring creation breaks — log
+                // the error into the applied note so Sarah sees what went wrong.
+                $applied['rings_created'][] = [
+                    'tx_id' => null,
+                    'invoice_no' => null,
+                    'short' => 'Bonnie Raitt ring creation FAILED: ' . $e->getMessage(),
+                ];
+            }
+        }
+
         // 3 + 4) Reconciliation notes (JSON, outside the DB txn).
         foreach ($plan['p3_notes'] as $note) {
             SellPosController::appendCloverExplanation($business_id, [
@@ -160,6 +210,98 @@ class ApplyMay13ReconciliationController extends Controller
             'snapshot_key' => $snapshotKey,
             'applied' => $applied,
         ]);
+    }
+
+    /**
+     * Create the missing Bonnie Raitt s/t ERP sale at Pico under Clark,
+     * backdated to 2026-05-13 4:05pm. One manual line, one card payment.
+     *
+     * Returns the new transaction id, or null if any prerequisite
+     * (location / cashier / walk-in contact) couldn't be resolved.
+     */
+    private function createBonnieRaittRing(int $business_id, array $p, \Carbon\Carbon $now): ?int
+    {
+        if (empty($p['location_id']) || empty($p['user_id']) || empty($p['contact_id'])) {
+            throw new \RuntimeException('Missing location / user / contact lookup; cannot build the Bonnie Raitt ring automatically.');
+        }
+
+        $invoiceNo = $this->nextInvoiceNo($business_id, (int) $p['location_id']);
+
+        $txId = null;
+        DB::transaction(function () use ($business_id, $p, $invoiceNo, $now, &$txId) {
+            $txId = DB::table('transactions')->insertGetId([
+                'business_id' => $business_id,
+                'location_id' => (int) $p['location_id'],
+                'type' => 'sell',
+                'status' => 'final',
+                'payment_status' => 'paid',
+                'sub_status' => null,
+                'contact_id' => (int) $p['contact_id'],
+                'invoice_no' => $invoiceNo,
+                'ref_no' => '',
+                'transaction_date' => $p['transaction_date'],
+                'total_before_tax' => $p['pre_tax'],
+                'tax_amount' => $p['tax'],
+                'discount_amount' => 0,
+                'final_total' => $p['amount'],
+                'created_by' => (int) $p['user_id'],
+                'channel' => 'in_store',
+                'additional_notes' => 'Auto-created by 2026-05-13 register reconciliation: Clark rang on Sarah\'s POS session (logged as Zakary Baller). Paired with Clover ' . ($p['cp_payment_id'] ?? 'QN6AFFVTSP6VR') . '.',
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+            // One manual sell line — product_id null because there's no
+            // catalog entry for "Bonnie Raitt s/t" being rung this way.
+            DB::table('transaction_sell_lines')->insert([
+                'transaction_id' => $txId,
+                'product_id' => null,
+                'variation_id' => null,
+                'product_name' => mb_substr($p['product_name'], 0, 191),
+                'product_artist' => mb_substr($p['product_artist'] ?? '', 0, 191),
+                'quantity' => 1,
+                'unit_price' => $p['pre_tax'],
+                'unit_price_before_discount' => $p['pre_tax'],
+                'unit_price_inc_tax' => $p['amount'],
+                'item_tax' => $p['tax'],
+                'tax_id' => null,
+                'discount_amount' => 0,
+                'line_discount_type' => null,
+                'line_discount_amount' => 0,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+            DB::table('transaction_payments')->insert([
+                'business_id' => $business_id,
+                'transaction_id' => $txId,
+                'amount' => $p['amount'],
+                'method' => 'card',
+                'paid_on' => $p['transaction_date'],
+                'created_by' => (int) $p['user_id'],
+                'payment_for' => (int) $p['contact_id'],
+                'note' => 'Reconciliation auto-pay: Clover ' . ($p['cp_payment_id'] ?? 'QN6AFFVTSP6VR'),
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        });
+
+        return $txId;
+    }
+
+    /**
+     * Generate the next invoice_no for a sell at this location, mirroring
+     * the existing per-business sequencing without needing the full
+     * InvoiceScheme/TransactionUtil machinery.
+     */
+    private function nextInvoiceNo(int $business_id, int $location_id): string
+    {
+        $max = (int) DB::table('transactions')
+            ->where('business_id', $business_id)
+            ->where('type', 'sell')
+            ->whereRaw("invoice_no REGEXP '^[0-9]+$'")
+            ->max(DB::raw('CAST(invoice_no AS UNSIGNED)'));
+        return (string) ($max + 1);
     }
 
     /**
@@ -210,6 +352,26 @@ class ApplyMay13ReconciliationController extends Controller
             ->select('id', 'clover_payment_id', 'clover_order_id', 'amount', 'paid_at')
             ->first();
 
+        // Has the Bonnie Raitt ring already been created and matched?
+        $mmMap = SellPosController::loadCloverManualMatches($business_id);
+        $bonnieAlreadyMatched = $cpBonnieRaitt && isset($mmMap[$cpBonnieRaitt->id]);
+
+        // Pico location + Clark Easley user + Walk-In contact lookups for
+        // the Bonnie Raitt ring creation. Treated as advisory in the plan;
+        // the actual creation step is forgiving if any are missing.
+        $picoLocation = BusinessLocation::where('business_id', $business_id)
+            ->where(function ($q) { $q->where('name', 'like', '%pico%'); })
+            ->select('id', 'name')
+            ->first();
+        $clarkUser = User::where('first_name', 'like', '%Clark%')
+            ->where('last_name', 'like', '%Easley%')
+            ->select('id', 'first_name', 'last_name')
+            ->first();
+        $walkIn = Contact::where('business_id', $business_id)
+            ->where('name', 'like', 'Walk-In%')
+            ->select('id', 'name')
+            ->first();
+
         $plan = [
             'p1_payment_override' => [
                 'tx_id' => $tx18694->id ?? null,
@@ -224,6 +386,25 @@ class ApplyMay13ReconciliationController extends Controller
                 'invoice_no' => $tx18696->invoice_no ?? '18696',
                 'amount' => $cpInterpol->amount ?? null,
                 'reason' => 'luis rang Interpol pair after midnight (#18696, 12:05am); manual match across the date boundary.',
+            ],
+            'p4_bonnie_raitt' => [
+                'cp_db_id' => $cpBonnieRaitt->id ?? null,
+                'cp_payment_id' => $cpBonnieRaitt->clover_payment_id ?? 'QN6AFFVTSP6VR',
+                'amount' => 8.78,
+                'pre_tax' => 8.00,
+                'tax' => 0.78,
+                'location_id' => $picoLocation->id ?? null,
+                'location_name' => $picoLocation->name ?? 'Pico',
+                'user_id' => $clarkUser->id ?? null,
+                'user_name' => $clarkUser ? trim(($clarkUser->first_name ?? '') . ' ' . ($clarkUser->last_name ?? '')) : 'Clark Easley',
+                'contact_id' => $walkIn->id ?? null,
+                'product_name' => 'Bonnie Raitt — Bonnie Raitt (s/t)',
+                'product_artist' => 'Bonnie Raitt',
+                'transaction_date' => '2026-05-13 16:05:00',
+                'already_exists' => $bonnieAlreadyMatched,
+                'reason' => $bonnieAlreadyMatched
+                    ? 'Already created and matched on a previous Apply run.'
+                    : 'Create the missing Bonnie Raitt s/t sale at Pico ($8.00 + $0.78 tax = $8.78, card, cashier Clark) and pair it with the Clover orphan QN6AFFVTSP6VR.',
             ],
             'p5_exchange_match' => [
                 'cp_db_id' => $cpExchange->id ?? null,

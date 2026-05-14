@@ -30,6 +30,15 @@
             @foreach ($applied['matches'] as $m)
                 <li>Manually matched Clover <code>{{ $m['cp_payment_id'] }}</code> ↔ ERP #{{ $m['invoice_no'] }}.</li>
             @endforeach
+            @foreach ($applied['rings_created'] ?? [] as $r)
+                <li>
+                    @if($r['tx_id'])
+                        Created ERP ring #{{ $r['invoice_no'] }} ({{ $r['short'] }}).
+                    @else
+                        <span class="text-danger">{{ $r['short'] }}</span>
+                    @endif
+                </li>
+            @endforeach
             @foreach ($applied['notes'] as $n)
                 <li>Saved register-reconciliation note: <strong>{{ $n['short'] }}</strong>.</li>
             @endforeach
@@ -101,9 +110,33 @@
                     <td>{{ $plan['p5_exchange_match']['reason'] }}</td>
                     <td>{!! $plan['p5_exchange_match']['cp_db_id'] && $plan['p5_exchange_match']['tx_id'] ? '<span class="text-success">✓ ready</span>' : '<span class="text-danger">✗ skip</span>' !!}</td>
                 </tr>
+                <tr>
+                    <td>4</td>
+                    <td>Create missing ERP ring (Bonnie Raitt)</td>
+                    <td>
+                        New sale @ {{ $plan['p4_bonnie_raitt']['location_name'] }} · cashier <strong>{{ $plan['p4_bonnie_raitt']['user_name'] }}</strong> ·
+                        ${{ number_format($plan['p4_bonnie_raitt']['amount'], 2) }} inc tax · manual line "<em>{{ $plan['p4_bonnie_raitt']['product_name'] }}</em>" ·
+                        backdated to {{ \Carbon\Carbon::parse($plan['p4_bonnie_raitt']['transaction_date'])->format('M j g:i a') }} · pair w/ Clover <code>{{ $plan['p4_bonnie_raitt']['cp_payment_id'] }}</code>
+                    </td>
+                    <td>{{ $plan['p4_bonnie_raitt']['reason'] }}</td>
+                    <td>
+                        @if($plan['p4_bonnie_raitt']['already_exists'])
+                            <span class="text-success">✓ done previously</span>
+                        @elseif($plan['p4_bonnie_raitt']['cp_db_id'] && $plan['p4_bonnie_raitt']['location_id'] && $plan['p4_bonnie_raitt']['user_id'] && $plan['p4_bonnie_raitt']['contact_id'])
+                            <span class="text-success">✓ ready</span>
+                        @else
+                            <span class="text-danger">✗ missing lookup
+                                @if(empty($plan['p4_bonnie_raitt']['cp_db_id'])) · no Clover row @endif
+                                @if(empty($plan['p4_bonnie_raitt']['location_id'])) · no Pico location @endif
+                                @if(empty($plan['p4_bonnie_raitt']['user_id'])) · no Clark user @endif
+                                @if(empty($plan['p4_bonnie_raitt']['contact_id'])) · no Walk-In contact @endif
+                            </span>
+                        @endif
+                    </td>
+                </tr>
                 @foreach ($plan['p3_notes'] as $i => $note)
                     <tr>
-                        <td>{{ 4 + $i }}</td>
+                        <td>{{ 5 + $i }}</td>
                         <td>Save register-reconciliation note</td>
                         <td>
                             @if(!empty($note['invoice_no']))
