@@ -152,6 +152,7 @@ class StoreMistagFixController extends Controller
             ->whereDate('t.transaction_date', '<=', $end)
             ->select(
                 't.id', 't.invoice_no', 't.transaction_date', 't.final_total', 't.location_id',
+                't.created_by',
                 'bl.name as current_location_name',
                 DB::raw("TRIM(CONCAT_WS(' ', u.first_name, u.last_name)) as cashier")
             )
@@ -159,6 +160,28 @@ class StoreMistagFixController extends Controller
             ->get();
 
         if ($sales->isEmpty()) return [];
+
+        // Build cashier→{location_ids they've ever rung at} map so we
+        // can drop suggestions like "move Owen's HW sale to Pico" when
+        // Owen has never worked Pico — those are coincidence matches
+        // (different customer at the other store happened to buy a
+        // similarly-priced item within a few minutes). Looking across
+        // ALL transactions, not just the window, so a one-shot HW
+        // shift by a usually-Pico cashier doesn't get penalized.
+        $cashierLocations = [];
+        $cashierRows = DB::table('transactions')
+            ->where('business_id', $businessId)
+            ->where('type', 'sell')
+            ->where('status', 'final')
+            ->whereNull('import_source')
+            ->whereNotNull('created_by')
+            ->whereNotNull('location_id')
+            ->select('created_by', 'location_id')
+            ->distinct()
+            ->get();
+        foreach ($cashierRows as $r) {
+            $cashierLocations[(int) $r->created_by][(int) $r->location_id] = true;
+        }
 
         // Pull Clover charges in the same window (±1 day buffer for
         // overnight batch carryover).
@@ -200,6 +223,7 @@ class StoreMistagFixController extends Controller
             $erpCents = (int) round((float) $s->final_total * 100);
             $erpTs = strtotime((string) $s->transaction_date);
             $erpLoc = (int) $s->location_id;
+            $erpCashierLocs = $cashierLocations[(int) $s->created_by] ?? [];
 
             // Scan ±$0.20 amount neighborhood for Clover candidates.
             $best = null;
@@ -210,6 +234,11 @@ class StoreMistagFixController extends Controller
                     $cpTs = strtotime((string) $cp->paid_at);
                     $timeDelta = abs($cpTs - $erpTs);
                     if ($timeDelta > 300) continue; // 5 min window
+
+                    // Cashier sanity check — drop suggestions like
+                    // "move Owen's HW sale to Pico" when Owen has
+                    // never worked Pico. Those are coincidence matches.
+                    if (!isset($erpCashierLocs[$cpLoc])) continue;
 
                     // Avoid double-attribution: if an ERP row already
                     // exists at the Clover-side location with same
@@ -243,6 +272,7 @@ class StoreMistagFixController extends Controller
                     'suggested_location_id' => (int) $best['cp']->location_id,
                     'clover_payment_id' => $best['cp']->clover_payment_id,
                     'clover_paid_at' => $best['cp']->paid_at,
+                    'clover_amount' => (float) $best['cp']->amount,
                     'clover_employee' => $best['cp']->employee_name,
                     'amount_delta_cents' => $best['amount_delta_cents'],
                     'time_delta_sec' => $best['time_delta_sec'],

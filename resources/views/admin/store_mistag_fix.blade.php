@@ -71,12 +71,12 @@
                                 <th style="width:30px;"></th>
                                 <th style="width:80px;">Tx ID</th>
                                 <th style="width:100px;">Invoice</th>
-                                <th style="width:150px;">Date</th>
-                                <th style="width:90px;">Amount</th>
+                                <th style="width:150px;">ERP date</th>
+                                <th style="width:90px;">ERP amt</th>
+                                <th style="width:90px;">Clover amt</th>
                                 <th>Cashier</th>
                                 <th style="width:120px;">Current store</th>
                                 <th style="width:120px;">Should be</th>
-                                <th style="width:90px;">Δ amt</th>
                                 <th style="width:90px;">Δ time</th>
                                 <th>Clover ID</th>
                             </tr>
@@ -94,6 +94,14 @@
                                     <td>{{ $c['invoice_no'] }}</td>
                                     <td>{{ \Carbon\Carbon::parse($c['transaction_date'])->format('m/d/y g:i A') }}</td>
                                     <td>${{ number_format($c['final_total'], 2) }}</td>
+                                    <td>
+                                        ${{ number_format($c['clover_amount'], 2) }}
+                                        @if ($c['amount_delta_cents'] == 0)
+                                            <span style="color:#166534; font-size:11px;">✓ exact</span>
+                                        @else
+                                            <span style="color:#8B6A1A; font-size:11px;">(Δ ${{ number_format($c['amount_delta_cents'] / 100, 2) }})</span>
+                                        @endif
+                                    </td>
                                     <td>{{ $c['cashier'] ?: '—' }}</td>
                                     <td style="color:#b91c1c;">
                                         {{ $c['current_location_name'] ?: ('loc ' . $c['current_location_id']) }}
@@ -101,19 +109,12 @@
                                     <td style="color:#166534; font-weight:700;">
                                         {{ $business_locations[$c['suggested_location_id']] ?? ('loc ' . $c['suggested_location_id']) }}
                                     </td>
-                                    <td>
-                                        @if ($c['amount_delta_cents'] == 0)
-                                            <span style="color:#166534;">$0.00 exact</span>
-                                        @else
-                                            ${{ number_format($c['amount_delta_cents'] / 100, 2) }}
-                                        @endif
-                                    </td>
                                     <td>{{ $c['time_delta_sec'] }}s</td>
                                     <td><code style="font-size:11px;">{{ $c['clover_payment_id'] }}</code></td>
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="11" class="text-center text-muted" style="padding:20px;">
+                                    <td colspan="12" class="text-center text-muted" style="padding:20px;">
                                         No mistag candidates in this window — nothing to fix.
                                     </td>
                                 </tr>
@@ -128,7 +129,8 @@
                             Apply retags
                         </button>
                         <span class="help-block" style="display:inline-block;margin-left:12px;vertical-align:middle;">
-                            Check each row you want to fix. Δ amt = $0.00 + tiny Δ time = highest confidence.
+                            Each row's cashier has worked the target store before — coincidence pairs are filtered out.
+                            "ERP amt = Clover amt + ✓ exact" + tiny Δ time = highest confidence.
                         </span>
                     </div>
                 @endif
