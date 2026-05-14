@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 
 // One-shot fixer for ERP sales rung before the 2026-05-11 duty picker
@@ -161,14 +162,17 @@ class StoreMistagFixController extends Controller
 
         if ($sales->isEmpty()) return [];
 
-        // Build cashier→{location_ids they've ever rung at} map so we
-        // can drop suggestions like "move Owen's HW sale to Pico" when
-        // Owen has never worked Pico — those are coincidence matches
-        // (different customer at the other store happened to buy a
-        // similarly-priced item within a few minutes). Looking across
-        // ALL transactions, not just the window, so a one-shot HW
-        // shift by a usually-Pico cashier doesn't get penalized.
-        $cashierLocations = [];
+        // Build cashier→day→{location_ids rung at that day} map so we
+        // can drop coincidence suggestions: a cashier physically can
+        // only be at one store per shift, so if Manolo only rang HW
+        // sales on April 23, any Pico Clover charge that day with a
+        // similar amount is a DIFFERENT customer at Pico, not Manolo's
+        // mistagged HW sale. Pre-pulled across the window plus a 1-day
+        // buffer so an early-AM ring at the suggested store still
+        // counts as "was there that shift".
+        $cashierDayLocations = [];
+        $cashierWindowStart = (clone (new \DateTime($start)))->modify('-1 day')->format('Y-m-d');
+        $cashierWindowEnd   = (clone (new \DateTime($end)))->modify('+1 day')->format('Y-m-d');
         $cashierRows = DB::table('transactions')
             ->where('business_id', $businessId)
             ->where('type', 'sell')
@@ -176,11 +180,50 @@ class StoreMistagFixController extends Controller
             ->whereNull('import_source')
             ->whereNotNull('created_by')
             ->whereNotNull('location_id')
-            ->select('created_by', 'location_id')
+            ->whereDate('transaction_date', '>=', $cashierWindowStart)
+            ->whereDate('transaction_date', '<=', $cashierWindowEnd)
+            ->select(
+                'created_by',
+                'location_id',
+                DB::raw('DATE(transaction_date) as day')
+            )
             ->distinct()
             ->get();
         foreach ($cashierRows as $r) {
-            $cashierLocations[(int) $r->created_by][(int) $r->location_id] = true;
+            $cashierDayLocations[(int) $r->created_by][$r->day][(int) $r->location_id] = true;
+        }
+
+        // Sling-side check (Sarah 2026-05-13): if the cashier has any
+        // scheduled shifts in sling_shifts overlapping the sale time,
+        // that's the authoritative answer for which store they were
+        // physically at — beats inferring from ERP-side rings. Build
+        // a per-cashier shift list keyed by erp_user_id with location
+        // name normalized to lowercase for matching against ERP
+        // business_locations.name.
+        $cashierShifts = [];
+        $hasSling = Schema::hasTable('sling_shifts');
+        if ($hasSling) {
+            $shiftRows = DB::table('sling_shifts')
+                ->where('event_type', 'shift')
+                ->whereNotNull('erp_user_id')
+                ->whereNotNull('location_name')
+                ->whereDate('dtstart', '>=', $cashierWindowStart)
+                ->whereDate('dtstart', '<=', $cashierWindowEnd)
+                ->select('erp_user_id', 'location_name', 'dtstart', 'dtend')
+                ->get();
+            foreach ($shiftRows as $r) {
+                $cashierShifts[(int) $r->erp_user_id][] = [
+                    'start_ts' => @strtotime((string) $r->dtstart) ?: 0,
+                    'end_ts'   => @strtotime((string) ($r->dtend ?? $r->dtstart)) ?: 0,
+                    'loc_norm' => strtolower(trim((string) $r->location_name)),
+                ];
+            }
+        }
+        // Normalized location name lookup for matching Sling against
+        // ERP business_locations. Build once.
+        $locNameNormById = [];
+        foreach (\App\BusinessLocation::where('business_id', $businessId)->get(['id', 'name']) as $bl) {
+            $locNameNormById[(int) $bl->id] = strtolower(trim((string) $bl->name));
         }
 
         // Pull Clover charges in the same window (±1 day buffer for
@@ -223,7 +266,8 @@ class StoreMistagFixController extends Controller
             $erpCents = (int) round((float) $s->final_total * 100);
             $erpTs = strtotime((string) $s->transaction_date);
             $erpLoc = (int) $s->location_id;
-            $erpCashierLocs = $cashierLocations[(int) $s->created_by] ?? [];
+            $erpDay = substr((string) $s->transaction_date, 0, 10);
+            $erpCashierLocs = $cashierDayLocations[(int) $s->created_by][$erpDay] ?? [];
 
             // Scan ±$0.20 amount neighborhood for Clover candidates.
             $best = null;
@@ -235,10 +279,29 @@ class StoreMistagFixController extends Controller
                     $timeDelta = abs($cpTs - $erpTs);
                     if ($timeDelta > 300) continue; // 5 min window
 
-                    // Cashier sanity check — drop suggestions like
-                    // "move Owen's HW sale to Pico" when Owen has
-                    // never worked Pico. Those are coincidence matches.
-                    if (!isset($erpCashierLocs[$cpLoc])) continue;
+                    // Cashier sanity check, with Sling shift data as the
+                    // primary source: was the cashier scheduled at the
+                    // suggested store during this sale's time? If Sling
+                    // has any shifts for them, trust it absolutely. If
+                    // not, fall back to "did they ring at the suggested
+                    // store on the same day in ERP" — looser but still
+                    // catches obvious coincidences.
+                    $cashierUserId = (int) $s->created_by;
+                    $shifts = $cashierShifts[$cashierUserId] ?? [];
+                    $targetLocNorm = $locNameNormById[$cpLoc] ?? null;
+                    if (!empty($shifts)) {
+                        $atTarget = false;
+                        foreach ($shifts as $sh) {
+                            if ($targetLocNorm && $sh['loc_norm'] === $targetLocNorm
+                                && $sh['start_ts'] <= $erpTs && $erpTs <= $sh['end_ts']) {
+                                $atTarget = true;
+                                break;
+                            }
+                        }
+                        if (!$atTarget) continue;
+                    } else {
+                        if (!isset($erpCashierLocs[$cpLoc])) continue;
+                    }
 
                     // Avoid double-attribution: if an ERP row already
                     // exists at the Clover-side location with same
