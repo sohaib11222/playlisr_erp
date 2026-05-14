@@ -9266,6 +9266,7 @@ class ReportController extends Controller
             });
         }
         $cpRaw = $cpQ->selectRaw("{$xlsxDayExpr} as day,
+                cp.id as cp_id,
                 cp.location_id, bl.name as location_name,
                 cp.paid_at as ts,
                 cp.amount as amount,
@@ -9273,6 +9274,30 @@ class ReportController extends Controller
                 COALESCE(NULLIF(TRIM(cp.employee_name), ''), '') as employee_name")
             ->orderBy('cp.paid_at')
             ->get();
+
+        // Sarah 2026-05-13: honor manual Clover↔ERP cross-day pairings.
+        // When a cashier rings a card on Clover but doesn't enter the
+        // ERP sale until the next morning (Henry pattern), Sarah pairs
+        // them by hand on /pos/recent-feed. For the per-cashier Diff
+        // (Clover − ERP) to actually balance after pairing, the Clover
+        // swipe needs to attribute to the ERP txn's day + cashier
+        // rather than the swipe's natural day. Without this, today's
+        // card shows ERP up by the catch-up amount and yesterday's
+        // card shows Clover up by the same amount — exactly the
+        // opposite of what "matched" should mean.
+        $manualClvMatches = \App\Http\Controllers\SellPosController::loadCloverManualMatches((int) $business_id);
+        $manualClvToTxn = [];
+        if (!empty($manualClvMatches)) {
+            $manualClvToTxn = \DB::table('transactions as t')
+                ->leftJoin('users as u', 't.created_by', '=', 'u.id')
+                ->whereIn('t.id', array_values($manualClvMatches))
+                ->where('t.business_id', $business_id)
+                ->selectRaw("t.id, DATE(t.transaction_date) as day, t.location_id,
+                    COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, '') as cashier_name")
+                ->get()
+                ->keyBy('id')
+                ->all();
+        }
 
         // Pull cash_registers (with a 1-day buffer on each side) so we can
         // resolve "whose register was open at the moment of this swipe?".
@@ -9585,13 +9610,40 @@ class ReportController extends Controller
         // card-on-file / online charge ran.
         $cloverAgg = [];
         foreach ($cpRaw as $r) {
-            $emp = $r->employee_name !== '' ? $r->employee_name : 'Unknown';
-            $key = $r->day . '|' . ($r->location_id ?: 0) . '|' . strtolower($emp);
+            $effDay = $r->day;
+            $effLoc = $r->location_id;
+            $effEmp = $r->employee_name;
+            $effLocName = $r->location_name;
+            // Manual cross-day pair: re-attribute the swipe to the
+            // matched ERP txn's (day, location, cashier). Skips when
+            // the matched txn was deleted or admin-rung without a
+            // clean shift-window fallback.
+            if (isset($r->cp_id) && isset($manualClvMatches[(int) $r->cp_id])) {
+                $matchedTxId = (int) $manualClvMatches[(int) $r->cp_id];
+                if (isset($manualClvToTxn[$matchedTxId])) {
+                    $mm = $manualClvToTxn[$matchedTxId];
+                    $matchedFirst = strtolower(preg_split('/\s+/', trim((string) $mm->cashier_name))[0] ?? '');
+                    if (isset($adminSet[$matchedFirst])) {
+                        $sw = $findShiftCashier($r->ts, $mm->location_id);
+                        if ($sw !== null) {
+                            $effEmp = $sw;
+                            $effDay = $mm->day;
+                            $effLoc = (int) $mm->location_id;
+                        }
+                    } else {
+                        $effEmp = (string) $mm->cashier_name;
+                        $effDay = $mm->day;
+                        $effLoc = (int) $mm->location_id;
+                    }
+                }
+            }
+            $emp = $effEmp !== '' ? $effEmp : 'Unknown';
+            $key = $effDay . '|' . ($effLoc ?: 0) . '|' . strtolower($emp);
             if (!isset($cloverAgg[$key])) {
                 $cloverAgg[$key] = (object) [
-                    'day' => $r->day,
-                    'location_id' => $r->location_id,
-                    'location_name' => $r->location_name,
+                    'day' => $effDay,
+                    'location_id' => $effLoc,
+                    'location_name' => $effLocName,
                     'employee_name' => $emp,
                     'clover_count' => 0,
                     'clover_total' => 0.0,
