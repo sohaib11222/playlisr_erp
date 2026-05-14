@@ -272,7 +272,6 @@
             @endforeach
             <div style="margin-top:10px; font-size:12px; color:#6B5418;">
                 Have the cashier close their own shift. If they can't, the system auto-closes at 12h.
-                Admin escape hatch (snapshot + undo): <a href="{{ url('/admin/force-close-registers') }}" style="color:#7A4E0A; text-decoration:underline; font-weight:700;">/admin/force-close-registers</a>.
             </div>
         </div>
     @endif
