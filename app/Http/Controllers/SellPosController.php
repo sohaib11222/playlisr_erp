@@ -1639,6 +1639,11 @@ class SellPosController extends Controller
         // can close the abandoned shift and reconcile. Stale =
         //   (a) opened before today LA — overnight carry, OR
         //   (b) another cashier has since opened on top at same location.
+        //
+        // Filter to CURRENT staff only (status=active AND allow_login=1).
+        // Ex-employees with stale opens from months/years ago are noise —
+        // nobody is going back to close those, and they were drowning out
+        // the actually-actionable rows from today's cashiers.
         $stale_open_registers = [];
         try {
             $todayStartLa = \Carbon\Carbon::now($tz)->startOfDay();
@@ -1649,6 +1654,10 @@ class SellPosController extends Controller
             if ($openRegs->isNotEmpty()) {
                 $uIds = $openRegs->pluck('user_id')->unique()->all();
                 $uMap = User::whereIn('id', $uIds)
+                    ->where('business_id', $business_id)
+                    ->where('status', 'active')
+                    ->where('allow_login', 1)
+                    ->whereNull('deleted_at')
                     ->select('id', 'surname', 'first_name', 'last_name')
                     ->get()->keyBy('id');
                 $locIds = $openRegs->pluck('location_id')->unique()->filter()->all();
@@ -1656,6 +1665,8 @@ class SellPosController extends Controller
                     ? BusinessLocation::whereIn('id', $locIds)->pluck('name', 'id')
                     : collect();
                 foreach ($openRegs as $r) {
+                    // Skip ex-employees — current staff only.
+                    if (!$uMap->has($r->user_id)) continue;
                     $created = \Carbon\Carbon::parse($r->created_at);
                     $isOvernight = $created->copy()->setTimezone($tz)->lt($todayStartLa);
                     $hasNewerSameLoc = $openRegs->first(function ($x) use ($r) {
@@ -1665,9 +1676,7 @@ class SellPosController extends Controller
                     });
                     if (!$isOvernight && !$hasNewerSameLoc) continue;
                     $u = $uMap->get($r->user_id);
-                    $name = $u
-                        ? trim(($u->surname ?? '') . ' ' . ($u->first_name ?? '') . ' ' . ($u->last_name ?? ''))
-                        : ('User #' . $r->user_id);
+                    $name = trim(($u->surname ?? '') . ' ' . ($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
                     $name = preg_replace('/\s+/', ' ', $name) ?: ('User #' . $r->user_id);
                     $stale_open_registers[] = [
                         'id'         => $r->id,
