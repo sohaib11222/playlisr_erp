@@ -1088,14 +1088,26 @@ class ProductController extends Controller
             $product->name = $product_details['name'];
             $product->brand_id = $product_details['brand_id'];
             $product->artist = $product_details['artist'];
-            $product->unit_id = $product_details['unit_id'];
+            // unit_id + barcode_type are NOT NULL on the products table. The edit form
+            // ships them as hidden inputs pre-populated from the row — but legacy
+            // imports occasionally leave them blank, which then submits empty and
+            // makes the whole save roll back. Keep the existing value if the form
+            // didn't carry a new one.
+            $product->unit_id = !empty($product_details['unit_id']) ? $product_details['unit_id'] : $product->unit_id;
             $product->category_id = $product_details['category_id'];
             $product->sub_category_id = $request->input('sub_category_id');
             $product->tax = 1;
-            $product->barcode_type = $product_details['barcode_type'];
+            $product->barcode_type = !empty($product_details['barcode_type']) ? $product_details['barcode_type'] : ($product->barcode_type ?: 'C128');
             $product->sku = $product_details['sku'];
             $product->alert_quantity = null;
-            $product->tax_type = $product_details['tax_type'];
+            // products.tax_type is enum('inclusive','exclusive') NOT NULL with no default.
+            // The form's tax_type select is hidden via `.hide` for Nivessa (resale cert =
+            // no price-tax math) and an empty submission would otherwise cause the whole
+            // update to silently roll back. Default to whatever's already on the product,
+            // else 'exclusive' — the value is unused in our tax flow anyway.
+            $product->tax_type = !empty($product_details['tax_type'])
+                ? $product_details['tax_type']
+                : ($product->tax_type ?: 'exclusive');
             $product->tax_exempt = (!empty($request->input('tax_exempt')) && $request->input('tax_exempt') == 1) ? 1 : 0;
             $product->weight = $product_details['weight']??0;
             $product->product_description = $product_details['product_description'];
