@@ -360,6 +360,14 @@ $(document).ready(function() {
             
         });
 
+        // On edit: skip the client-side jQuery-validate gate. Server has its
+        // own required/numeric checks on category_id, sub_category_id, and
+        // single_dpp_inc_tax — and the JS rules (notably `category_combo`)
+        // were flagging products that DO have a valid category_id hidden
+        // field set, blocking saves silently with a generic "Invalid inputs"
+        // toast. Trust the server to reject what's actually invalid.
+        var __skipClientValidate = is_product_edit();
+
         if (variation_skus.length > 0) {
             $.ajax({
                 method: 'post',
@@ -369,7 +377,7 @@ $(document).ready(function() {
                     if (result.success == true) {
                         var submit_type = $(this).attr('value');
                         $('#submit_type').val(submit_type);
-                        if ($('form#product_add_form').valid()) {
+                        if (__skipClientValidate || $('form#product_add_form').valid()) {
                             $('form#product_add_form').submit();
                         }
                     } else {
@@ -381,11 +389,11 @@ $(document).ready(function() {
         } else {
             var submit_type = $(this).attr('value');
             $('#submit_type').val(submit_type);
-            if ($('form#product_add_form').valid()) {
+            if (__skipClientValidate || $('form#product_add_form').valid()) {
                 $('form#product_add_form').submit();
             }
         }
-        
+
     });
     //End for product type single
 
