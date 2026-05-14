@@ -767,6 +767,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/update-product-cost', 'UpdateProductCostController@index');
     Route::post('/admin/update-product-cost/run', 'UpdateProductCostController@run');
 
+    // Diagnostic viewer for ProductController@update — captures every attempt
+    // (cost fields, before/after, any exception) to storage/product-update-debug/
+    // so we can see why saves silently fail.
+    Route::get('/admin/product-update-debug', 'ProductUpdateDebugController@index');
+
     // Pinpoint the actual rows wiped by the 2026-04-27 backfill so Sohaib's
     // surgical restore from the 04-24 backup hits only the victims.
     Route::get('/admin/wipe-audit', 'WipeAuditController@index');

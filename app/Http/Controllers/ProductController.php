@@ -1052,6 +1052,37 @@ class ProductController extends Controller
             abort(403, 'Unauthorized action.');
         }
 
+        // Diagnostic: capture what every save attempt looks like, in case the
+        // cost edits keep silently rolling back. Drops one JSON file per
+        // attempt into storage/product-update-debug/ — viewable via
+        // /admin/product-update-debug. Trim once we know what's wrong.
+        $__debugKey = now()->format('Ymd_His') . '_p' . $id . '_u' . (auth()->id() ?: 'anon');
+        $__debugPayload = [
+            'timestamp' => now()->toDateTimeString(),
+            'product_id' => (int) $id,
+            'user_id' => auth()->id(),
+            'user_name' => auth()->user() ? trim((auth()->user()->first_name ?? '') . ' ' . (auth()->user()->last_name ?? '')) : null,
+            'submit_type' => $request->input('submit_type'),
+            'cost_fields' => [
+                'single_variation_id' => $request->input('single_variation_id'),
+                'single_dpp' => $request->input('single_dpp'),
+                'single_dpp_inc_tax' => $request->input('single_dpp_inc_tax'),
+                'single_dsp' => $request->input('single_dsp'),
+                'single_dsp_inc_tax' => $request->input('single_dsp_inc_tax'),
+                'profit_percent' => $request->input('profit_percent'),
+            ],
+            'identity_fields' => [
+                'name' => $request->input('name'),
+                'sku' => $request->input('sku'),
+                'category_id' => $request->input('category_id'),
+                'sub_category_id' => $request->input('sub_category_id'),
+                'tax_type' => $request->input('tax_type'),
+                'unit_id' => $request->input('unit_id'),
+                'barcode_type' => $request->input('barcode_type'),
+                'brand_id' => $request->input('brand_id'),
+            ],
+        ];
+
         // Validate required fields
         $request->validate([
             'category_id' => 'required|integer|exists:categories,id',
@@ -1266,13 +1297,34 @@ class ProductController extends Controller
             Media::uploadMedia($product->business_id, $product, $request, 'product_brochure', true);
             
             DB::commit();
+
+            // Diagnostic: also capture the AFTER state for cost columns so we
+            // can confirm the variation row actually got the new value.
+            if (isset($variation) && $variation && isset($variation->id)) {
+                $after = DB::table('variations')->where('id', $variation->id)
+                    ->select('default_purchase_price', 'dpp_inc_tax', 'default_sell_price', 'sell_price_inc_tax')
+                    ->first();
+                $__debugPayload['variation_after'] = $after ? (array) $after : null;
+            }
+            $__debugPayload['result'] = 'success';
+            \Storage::disk('local')->put("product-update-debug/{$__debugKey}.json", json_encode($__debugPayload, JSON_PRETTY_PRINT));
+
             $output = ['success' => 1,
                             'msg' => __('product.product_updated_success')
                         ];
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             DB::rollBack();
             \Log::emergency("File:" . $e->getFile(). "Line:" . $e->getLine(). "Message:" . $e->getMessage());
-            
+
+            $__debugPayload['result'] = 'exception';
+            $__debugPayload['exception'] = [
+                'class' => get_class($e),
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ];
+            \Storage::disk('local')->put("product-update-debug/{$__debugKey}.json", json_encode($__debugPayload, JSON_PRETTY_PRINT));
+
             $output = ['success' => 0,
                             'msg' => $e->getMessage()
                         ];
