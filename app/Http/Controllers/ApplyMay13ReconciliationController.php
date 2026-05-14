@@ -119,7 +119,7 @@ class ApplyMay13ReconciliationController extends Controller
         if (!empty($plan['p5_exchange_match']['tx_id'])) {
             $staffNotes[] = [
                 'tx_id' => $plan['p5_exchange_match']['tx_id'],
-                'note' => 'Exchange. Customer returned a different Daft Punk record and took Random Access Memories. Clark collected the $4 difference on Clover (NKV34AZFNRWKJ / 53SP1HEY9A58R, $4.39 inc tax). Return of the original record + inventory bring-back is PENDING (record TBD).',
+                'note' => 'Exchange / partial return. Customer brought back a different Daft Punk record and took Random Access Memories. Trade-in credit of $39.00 applied so the net charged ($4.39) matches Clover NKV34AZFNRWKJ / 53SP1HEY9A58R. Returned record TITLE PENDING from Clark — reshelve the physical copy under the correct SKU once known.',
             ];
         }
         foreach ($staffNotes as $sn) {
@@ -131,6 +131,23 @@ class ApplyMay13ReconciliationController extends Controller
                 'old_staff_note' => $existing,
                 'new_staff_note' => $sn['note'],
             ];
+        }
+
+        // Daft Punk exchange — snapshot the BEFORE totals on #18680 so
+        // the trade-in-credit line can be undone with the rest of the
+        // batch.
+        if (!empty($plan['p5_exchange_match']['tx_id'])) {
+            $b = Transaction::where('id', $plan['p5_exchange_match']['tx_id'])
+                ->select('total_before_tax', 'tax_amount', 'final_total')->first();
+            if ($b) {
+                $snapshot['rows'][] = [
+                    'kind' => 'exchange_line_added',
+                    'transaction_id' => $plan['p5_exchange_match']['tx_id'],
+                    'old_total_before_tax' => (float) $b->total_before_tax,
+                    'old_tax_amount' => (float) $b->tax_amount,
+                    'old_final_total' => (float) $b->final_total,
+                ];
+            }
         }
 
         // --- Mutations ---------------------------------------------------
@@ -163,6 +180,70 @@ class ApplyMay13ReconciliationController extends Controller
                     ->update(['staff_note' => $sn['note'], 'updated_at' => $now]);
                 if ($count) {
                     $applied['staff_notes'][] = $sn['tx_id'];
+                }
+            }
+
+            // 5b) Daft Punk exchange — rewrite #18680 to reflect the
+            // *actual* exchange (RAM out + trade-in credit in) so the
+            // ERP total matches the Clover $4.39 net. Idempotent: skip
+            // when the trade-in line is already there.
+            $applied['exchange_lines'] = [];
+            $tx18680Id = $plan['p5_exchange_match']['tx_id'] ?? null;
+            if ($tx18680Id) {
+                $tradeInExists = DB::table('transaction_sell_lines')
+                    ->where('transaction_id', $tx18680Id)
+                    ->whereNull('product_id')
+                    ->where('product_name', 'like', 'TRADE-IN%')
+                    ->exists();
+                if (!$tradeInExists) {
+                    // Snapshot the BEFORE totals + the line we're about to
+                    // add a sibling for, so undo can restore.
+                    $beforeTx = Transaction::where('id', $tx18680Id)
+                        ->select('id', 'total_before_tax', 'tax_amount', 'final_total', 'staff_note')
+                        ->first();
+                    DB::table('transaction_sell_lines')->insert([
+                        'transaction_id' => $tx18680Id,
+                        'product_id' => null,
+                        'variation_id' => null,
+                        'product_name' => 'TRADE-IN CREDIT — Daft Punk record (returned, title TBD)',
+                        'product_artist' => 'Daft Punk',
+                        'quantity' => 1,
+                        'unit_price' => -39.00,
+                        'unit_price_before_discount' => -39.00,
+                        'unit_price_inc_tax' => -42.80,
+                        'item_tax' => -3.80,
+                        'tax_id' => null,
+                        'discount_amount' => 0,
+                        'line_discount_type' => null,
+                        'line_discount_amount' => 0,
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ]);
+
+                    // Recompute totals: RAM ($43 + $4.19) − trade-in
+                    // ($39 + $3.80) = $4 + $0.39 = $4.39 inc tax.
+                    Transaction::where('id', $tx18680Id)->update([
+                        'total_before_tax' => 4.00,
+                        'tax_amount' => 0.39,
+                        'final_total' => 4.39,
+                        'updated_at' => $now,
+                    ]);
+
+                    // Match the existing $4.39 card payment to the new
+                    // total. (#18680 originally had a $47.19 card payment;
+                    // adjust it down to $4.39 so cash drawer math stops
+                    // double-counting the trade-in.)
+                    TransactionPayment::where('transaction_id', $tx18680Id)
+                        ->update([
+                            'amount' => 4.39,
+                            'updated_at' => $now,
+                        ]);
+
+                    $applied['exchange_lines'][] = [
+                        'tx_id' => $tx18680Id,
+                        'before_total' => (float) $beforeTx->final_total,
+                        'after_total' => 4.39,
+                    ];
                 }
             }
 

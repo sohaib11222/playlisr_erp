@@ -33,6 +33,9 @@
             @if(!empty($applied['staff_notes']))
                 <li>Wrote inline context note (staff_note) on {{ count($applied['staff_notes']) }} sale{{ count($applied['staff_notes']) === 1 ? '' : 's' }}.</li>
             @endif
+            @foreach ($applied['exchange_lines'] ?? [] as $el)
+                <li>Added <strong>trade-in credit line</strong> to ERP #{{ \App\Transaction::where('id', $el['tx_id'])->value('invoice_no') }} — total adjusted ${{ number_format($el['before_total'], 2) }} → ${{ number_format($el['after_total'], 2) }} to reflect the return.</li>
+            @endforeach
             @foreach ($applied['rings_created'] ?? [] as $r)
                 <li>
                     @if($r['tx_id'])
@@ -99,7 +102,14 @@
                     <td>{!! $plan['p2_manual_match']['cp_db_id'] && $plan['p2_manual_match']['tx_id'] ? '<span class="text-success">✓ ready</span>' : '<span class="text-danger">✗ skip</span>' !!}</td>
                 </tr>
                 <tr>
-                    <td>3</td>
+                    <td>3a</td>
+                    <td>Add <strong>trade-in credit line</strong> to ERP #{{ $plan['p5_exchange_match']['invoice_no'] }}</td>
+                    <td>New manual line "TRADE-IN CREDIT — Daft Punk record (returned, title TBD)" at <strong>−$39.00</strong> · totals adjusted to $4.39 inc tax · matches Clover $4.39.</td>
+                    <td>Shows the exchange as a return on the row instead of a $43 sale with a mystery mismatch. Returned record title still TBD from Clark.</td>
+                    <td>{!! $plan['p5_exchange_match']['tx_id'] ? '<span class="text-success">✓ ready (idempotent)</span>' : '<span class="text-danger">✗ skip</span>' !!}</td>
+                </tr>
+                <tr>
+                    <td>3b</td>
                     <td>Manual match Clover ↔ ERP (Daft Punk exchange)</td>
                     <td>
                         Clover <code>{{ $plan['p5_exchange_match']['cp_payment_id'] }}</code> ↔
