@@ -976,23 +976,14 @@
                 $orphanCashierName = $orphanCashierId ? ($cashierNameById[$orphanCashierId] ?? null) : null;
                 $isPending = !empty($item['pending']);
                 $dupOfTxId = $orphan_duplicate_of[$cp->id] ?? null;
-                // Sarah 2026-05-14: orphans with a register-reconciliation
-                // note render as ✓ Resolved instead of ⚠ Clover-only so the
-                // page reads as "everything's accounted for" once Sarah's
-                // worked through her daily sweep.
-                $orphanExKey = 'no_erp:0:' . (int) $cp->id;
-                $orphanExplanation = $clover_explanations[$orphanExKey] ?? null;
-                $isResolved = !empty($orphanExplanation) && (($orphanExplanation->source ?? null) === 'register_reconciliation');
             @endphp
-            <div class="rf-card {{ $isPending ? 'rf-clover-pending' : ($isResolved ? 'rf-clover-resolved' : 'rf-clover-orphan') }}">
+            <div class="rf-card {{ $isPending ? 'rf-clover-pending' : 'rf-clover-orphan' }}">
                 <div class="rf-head">
                     <div class="rf-head-left">
                         @if($isPending)
                             <span class="rf-invoice"><span class="rf-orphan-tag">⏱ Pending</span></span>
                         @elseif($dupOfTxId)
                             <span class="rf-invoice"><span class="rf-orphan-tag" style="background:#A88032;color:#fff;">⚠ DUPLICATE</span></span>
-                        @elseif($isResolved)
-                            <span class="rf-invoice"><span class="rf-orphan-tag" style="background:#2E6F40;color:#fff;">✓ Resolved</span></span>
                         @else
                             <span class="rf-invoice"><span class="rf-orphan-tag">Clover only</span></span>
                         @endif
@@ -1011,8 +1002,6 @@
                         Clover charged <strong>${{ number_format($cpAmount, 2) }}</strong> in the last 10 min — ERP ring not in yet. Give it a minute.
                     @elseif($dupOfTxId)
                         Clover charged <strong>${{ number_format($cpAmount, 2) }}</strong> — same Clover order as paired sale <a href="{{ url('sells/' . $dupOfTxId) }}" style="color:#1F1B16;text-decoration:underline;">#{{ $dupOfTxId }}</a>. Likely a sync-side duplicate (Clover API returned 2 payment records for one logical sale). Not a missed ring-up.
-                    @elseif($isResolved)
-                        Clover charged <strong>${{ number_format($cpAmount, 2) }}</strong> — resolved via register reconciliation (see note).
                     @else
                         Clover charged <strong>${{ number_format($cpAmount, 2) }}</strong> — no matching ERP ring.
                     @endif
@@ -1088,37 +1077,6 @@
                         </div>
                     </div>
                 </div>
-                @php
-                    $orphanExKey = 'no_erp:0:' . (int) $cp->id;
-                    $orphanExplanation = $clover_explanations[$orphanExKey] ?? null;
-                @endphp
-                @if(!empty($orphanExplanation))
-                    @php
-                        $isReg = ($orphanExplanation->source ?? null) === 'register_reconciliation';
-                    @endphp
-                    <div style="margin:0 16px 8px 16px; padding:8px 10px; background:#EEF7EC; border:1px solid #B7DDB3; border-radius:6px; font-size:12px; color:#2C4F2A;">
-                        <strong>{{ $isReg ? 'Register reconciliation:' : 'Cashier explained:' }}</strong>
-                        @if($isReg)
-                            <span style="display:inline-block; margin-left:4px; padding:0 6px; background:#1F5A2E; color:#FFFFFF; border-radius:999px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;">register recon</span>
-                        @endif
-                        <span style="white-space:pre-wrap;">{{ $orphanExplanation->reason }}</span>
-                        <span style="color:#5A7A5A; margin-left:6px;">— {{ \Carbon\Carbon::parse($orphanExplanation->created_at)->setTimezone('America/Los_Angeles')->format('M j g:i a') }}</span>
-                    </div>
-                @else
-                    <div style="margin:6px 16px 8px 16px; padding:10px 12px; background:#FAF6EE; border:2px dashed #1F5A2E; border-radius:6px;">
-                        <div style="font-size:12px; color:#1F5A2E; font-weight:700; margin-bottom:6px;">📝 Register reconciliation note</div>
-                        <form method="POST" action="{{ route('pos.mismatchExplain') }}">
-                            @csrf
-                            <input type="hidden" name="discrepancy_type" value="no_erp">
-                            <input type="hidden" name="clover_payment_id" value="{{ $cp->id }}">
-                            <input type="hidden" name="source" value="register_reconciliation">
-                            <textarea name="reason" rows="2" required placeholder="What was this charge? (e.g., 'exchange — collected $4 difference, see Clover NKV34…')" style="width:100%; padding:6px 8px; border:1px solid #DFD2B3; border-radius:5px; font-size:12px; font-family:inherit;"></textarea>
-                            <div style="margin-top:4px; text-align:right;">
-                                <button type="submit" style="padding:5px 14px; background:#1F5A2E; color:#fff; border:none; border-radius:5px; font-size:12px; font-weight:700; cursor:pointer;">Save register reconciliation note</button>
-                            </div>
-                        </form>
-                    </div>
-                @endif
             </div>
         @else
             @php
@@ -1261,32 +1219,9 @@
                     }
                 @endphp
                 @php
-                    // Sarah 2026-05-13: look up cashier explanation for
-                    // this row's discrepancy type. Mismatch shares
-                    // (tx, 0) key with the popup; no_clover keys to
-                    // (tx, 0) under no_clover type.
-                    $exMismatchKey = 'mismatch:' . (int) $sale->id . ':0';
-                    $exNoCloverKey = 'no_clover:' . (int) $sale->id . ':0';
-                    $rowExplanation = null;
-                    if ($cloverInfo && $cloverMismatch) {
-                        $rowExplanation = $clover_explanations[$exMismatchKey] ?? null;
-                    } elseif (!$cloverInfo) {
-                        $rowExplanation = $clover_explanations[$exNoCloverKey] ?? null;
-                    }
-                    // Sarah 2026-05-14: rows with a register-recon note
-                    // count as resolved — the page should read as "✓
-                    // accounted for" rather than red MISSING / mismatch
-                    // after the daily sweep. Also: a cash sale is never
-                    // expected to have a Clover swipe, so it shouldn't
-                    // render as MISSING in the first place.
-                    $rowIsResolved = !empty($rowExplanation) && (($rowExplanation->source ?? null) === 'register_reconciliation');
-                    $payMethods = is_array($sale->payment_lines ?? null)
-                        ? $sale->payment_lines
-                        : (method_exists($sale, 'payment_lines') ? $sale->payment_lines : null);
-                    // payment_methods is the JSON-ish concat the matcher
-                    // uses elsewhere; fall back to inspecting the relation
-                    // when present. Default to '' so the "expected card" branch
-                    // is the safe assumption.
+                    // Sarah 2026-05-14: a cash sale is never expected to
+                    // have a Clover swipe, so it shouldn't render as
+                    // MISSING. Inspect the payment row(s) for any method.
                     $rowPayMethod = '';
                     if (!empty($sale->payment_lines) && is_iterable($sale->payment_lines)) {
                         foreach ($sale->payment_lines as $pl) {
@@ -1308,7 +1243,7 @@
                          no Clover pair, render the Clover column as "—" so the
                          layout stays consistent and "did this ring in ERP" is
                          answerable at a glance for every row. --}}
-                    <div class="rf-recon {{ $cloverInfo && $cloverMismatch && !$rowIsResolved ? 'is-mismatch' : '' }}">
+                    <div class="rf-recon {{ $cloverInfo && $cloverMismatch ? 'is-mismatch' : '' }}">
                         <div class="rf-recon-col rf-recon-erp">
                             <div class="lbl">ERP</div>
                             <div class="amt">${{ number_format($total, 2) }}</div>
@@ -1316,8 +1251,7 @@
                         <div class="rf-recon-col rf-recon-clover">
                             <div class="lbl">
                                 Clover
-                                @if($cloverInfo && $cloverMismatch && !$rowIsResolved)<span class="rf-recon-mismatch-tag" title="Clover charged ≠ ERP total">mismatch</span>@endif
-                                @if($rowIsResolved)<span class="rf-recon-mismatch-tag" style="background:#2E6F40;" title="Resolved via register reconciliation note">resolved</span>@endif
+                                @if($cloverInfo && $cloverMismatch)<span class="rf-recon-mismatch-tag" title="Clover charged ≠ ERP total">mismatch</span>@endif
                             </div>
                             @if($cloverInfo)
                                 <div class="amt">${{ number_format($cloverInfo['amount_cents'] / 100, 2) }}</div>
@@ -1334,18 +1268,12 @@
                                     @endif
                                 </div>
                             @else
-                                {{-- Sarah 2026-05-14: suppress the red MISSING
-                                     pill when the sale is cash (no Clover
-                                     expected) or has a register-recon note
-                                     ("Sarah's already explained this, stop
-                                     flagging it"). Otherwise it stays red so
-                                     genuine missed Clover entries jump out. --}}
+                                {{-- Cash sales don't go through Clover, so
+                                     don't flag them as MISSING. Card sales
+                                     with no Clover pair stay red. --}}
                                 @if($rowIsCashOnly)
                                     <div class="amt" style="color:#5A5045; font-weight:600;">— cash</div>
                                     <div class="sub" style="color:#8A7C6A;">paid in cash — no Clover expected</div>
-                                @elseif($rowIsResolved)
-                                    <div class="amt" style="color:#2E6F40; font-weight:700;">✓ Resolved</div>
-                                    <div class="sub" style="color:#2E6F40; font-weight:600;">see register reconciliation note</div>
                                 @else
                                     <div class="amt" style="color:#8B2C2C; font-weight:700;">⚠ MISSING</div>
                                     <div class="sub" style="color:#8B2C2C; font-weight:600;">not in Clover</div>
@@ -1379,54 +1307,6 @@
                         @endif
                     </div>
                 </div>
-                @if(!empty($rowExplanation))
-                    @php
-                        $isReg = ($rowExplanation->source ?? null) === 'register_reconciliation';
-                    @endphp
-                    <div style="margin:0 16px 8px 16px; padding:8px 10px; background:#EEF7EC; border:1px solid #B7DDB3; border-radius:6px; font-size:12px; color:#2C4F2A;">
-                        <strong>{{ $isReg ? 'Register reconciliation:' : 'Cashier explained:' }}</strong>
-                        @if($isReg)
-                            <span style="display:inline-block; margin-left:4px; padding:0 6px; background:#1F5A2E; color:#FFFFFF; border-radius:999px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;">register recon</span>
-                        @endif
-                        <span style="white-space:pre-wrap;">{{ $rowExplanation->reason }}</span>
-                        <span style="color:#5A7A5A; margin-left:6px;">— {{ \Carbon\Carbon::parse($rowExplanation->created_at)->setTimezone('America/Los_Angeles')->format('M j g:i a') }}</span>
-                    </div>
-                @elseif(($cloverInfo && $cloverMismatch) || !$cloverInfo)
-                    @php
-                        $rowDtype = ($cloverInfo && $cloverMismatch) ? 'mismatch' : 'no_clover';
-                        $rowPrompt = $rowDtype === 'mismatch'
-                            ? "Why does Clover differ from ERP? (e.g., 'cashier rang Clover at \$14 instead of \$15 sticker — \$1.09 short')"
-                            : "Why is there no Clover swipe? (e.g., 'paid cash \$40', 'exchange — original record returned, only difference rung')";
-                    @endphp
-                    <div style="margin:6px 16px 8px 16px; padding:10px 12px; background:#FAF6EE; border:2px dashed #1F5A2E; border-radius:6px;">
-                        <div style="font-size:12px; color:#1F5A2E; font-weight:700; margin-bottom:6px;">📝 Register reconciliation note</div>
-                        <form method="POST" action="{{ route('pos.mismatchExplain') }}">
-                            @csrf
-                            <input type="hidden" name="discrepancy_type" value="{{ $rowDtype }}">
-                            <input type="hidden" name="transaction_id" value="{{ $sale->id }}">
-                            <input type="hidden" name="source" value="register_reconciliation">
-                            <textarea name="reason" rows="2" required placeholder="{{ $rowPrompt }}" style="width:100%; padding:6px 8px; border:1px solid #DFD2B3; border-radius:5px; font-size:12px; font-family:inherit;"></textarea>
-                            <div style="margin-top:4px; text-align:right;">
-                                <button type="submit" style="padding:5px 14px; background:#1F5A2E; color:#fff; border:none; border-radius:5px; font-size:12px; font-weight:700; cursor:pointer;">Save register reconciliation note</button>
-                            </div>
-                        </form>
-                        @if($rowDtype === 'no_clover')
-                            {{-- Quick "Mark as cash" for the canonical case: cashier rang
-                                 ERP as card but customer actually paid cash, so there's
-                                 no Clover swipe. Snapshots BEFORE state to
-                                 admin-snapshots/ — undo at /admin/admin-action-history. --}}
-                            <form method="POST" action="{{ route('pos.overridePaymentMethod') }}" style="margin-top:8px; padding-top:8px; border-top:1px dashed #1F5A2E;" onsubmit="return confirm('Mark ERP #{{ $sale->invoice_no }} as paid in CASH (overrides current method)? A snapshot is saved before the change.');">
-                                @csrf
-                                <input type="hidden" name="transaction_id" value="{{ $sale->id }}">
-                                <input type="hidden" name="method" value="cash">
-                                <div style="display:flex; gap:6px; align-items:center;">
-                                    <input type="text" name="reason" placeholder="Optional: short reason (logged on the snapshot)" style="flex:1; padding:5px 8px; border:1px solid #DFD2B3; border-radius:5px; font-size:11px; font-family:inherit;">
-                                    <button type="submit" style="padding:5px 12px; background:#FFFFFF; color:#1F5A2E; border:1px solid #1F5A2E; border-radius:5px; font-size:11px; font-weight:700; cursor:pointer; white-space:nowrap;">↻ Mark as cash</button>
-                                </div>
-                            </form>
-                        @endif
-                    </div>
-                @endif
                 @php $erpPairCands = $erp_only_pair_candidates[$sale->id] ?? []; @endphp
                 @if(!empty($erpPairCands))
                     <div style="margin:0 16px 8px 16px; padding:8px 10px; background:#FDF2D7; border:1px dashed #D9B95C; border-radius:6px; font-size:12px;">
