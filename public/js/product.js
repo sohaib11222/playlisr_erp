@@ -360,13 +360,22 @@ $(document).ready(function() {
             
         });
 
-        // On edit: skip the client-side jQuery-validate gate. Server has its
-        // own required/numeric checks on category_id, sub_category_id, and
-        // single_dpp_inc_tax — and the JS rules (notably `category_combo`)
-        // were flagging products that DO have a valid category_id hidden
-        // field set, blocking saves silently with a generic "Invalid inputs"
-        // toast. Trust the server to reject what's actually invalid.
-        var __skipClientValidate = is_product_edit();
+        // On edit: skip the client-side jQuery-validate gate entirely.
+        // jQuery validate hooks the form's submit event, so $(form).submit()
+        // still triggers it — use the native form.submit() which doesn't
+        // fire the submit event and so doesn't go through validate. The
+        // server has its own required/numeric checks (category_id,
+        // sub_category_id, single_dpp_inc_tax) and the only relevant
+        // failure surface is the controller; rely on that.
+        var __isEdit = is_product_edit();
+        var __doSubmit = function () {
+            var formEl = document.getElementById('product_add_form');
+            if (__isEdit && formEl) {
+                formEl.submit();   // native — bypasses jQuery validate
+            } else if ($('form#product_add_form').valid()) {
+                $('form#product_add_form').submit();
+            }
+        };
 
         if (variation_skus.length > 0) {
             $.ajax({
@@ -377,9 +386,7 @@ $(document).ready(function() {
                     if (result.success == true) {
                         var submit_type = $(this).attr('value');
                         $('#submit_type').val(submit_type);
-                        if (__skipClientValidate || $('form#product_add_form').valid()) {
-                            $('form#product_add_form').submit();
-                        }
+                        __doSubmit();
                     } else {
                         toastr.error(__translate('skus_already_exists', {sku: result.sku}));
                         return false;
@@ -389,9 +396,7 @@ $(document).ready(function() {
         } else {
             var submit_type = $(this).attr('value');
             $('#submit_type').val(submit_type);
-            if (__skipClientValidate || $('form#product_add_form').valid()) {
-                $('form#product_add_form').submit();
-            }
+            __doSubmit();
         }
 
     });
