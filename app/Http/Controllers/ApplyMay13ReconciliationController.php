@@ -391,7 +391,6 @@ class ApplyMay13ReconciliationController extends Controller
                 'unit_price_inc_tax' => $p['amount'],
                 'item_tax' => $p['tax'],
                 'tax_id' => null,
-                'discount_amount' => 0,
                 'line_discount_type' => null,
                 'line_discount_amount' => 0,
                 'created_at' => $now,
