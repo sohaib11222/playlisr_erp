@@ -179,7 +179,13 @@ $(document).ready(function() {
         __write_number($('input#profit_percent'), profit_percent);
     });
 
-    if ($('#product_add_form').length) {
+    // Don't attach jQuery validate to the EDIT form at all — the server's
+    // required/numeric checks already cover what matters (category_id,
+    // sub_category_id, single_dpp_inc_tax), and the client-side rules
+    // (notably category_combo) were rejecting valid edits with a generic
+    // "Invalid inputs" toast. Keep validate on the CREATE form so new
+    // products still get pre-flight SKU uniqueness etc.
+    if ($('#product_add_form').length && !is_product_edit()) {
         $('form#product_add_form').validate({
             rules: {
                 sku: {
