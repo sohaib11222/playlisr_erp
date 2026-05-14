@@ -2183,7 +2183,15 @@ class SellPosController extends Controller
         // Same widening trick the page uses: when filtering for rare
         // discrepancies, scan a bigger pool then trim post-match. Capped
         // higher than the page since exports often want the long tail.
-        $fetchLimit = $discrepancy ? min(max($limit, 50) * 20, 2000) : $limit;
+        // Sarah 2026-05-13: when month-scoped, bump the cap so a full
+        // calendar month doesn't get silently truncated to the latest
+        // ~1000 rows. 30k covers the busiest store-month plus headroom.
+        $isMonthScoped = !empty($start_date) && !empty($end_date) && $start_date !== $end_date;
+        if ($isMonthScoped) {
+            $fetchLimit = 30000;
+        } else {
+            $fetchLimit = $discrepancy ? min(max($limit, 50) * 20, 2000) : $limit;
+        }
 
         $sales = Transaction::where('transactions.business_id', $business_id)
             ->where('transactions.type', 'sell')
