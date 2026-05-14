@@ -792,6 +792,7 @@ class SellPosController extends Controller
         $clover_by_transaction = [];
         $cpRows = collect();
         $unclaimed_clover_payments = collect();
+        $unclaimed_clover_payments_all = collect();
         $matchedCpByTx = [];
         $claimedCpKeys = [];
         $orphan_duplicate_of = [];
@@ -1014,6 +1015,15 @@ class SellPosController extends Controller
                 return isset($claimedCpKeys[$key]);
             });
 
+            // Sarah 2026-05-13 #2: pre-day-filter copy used by the
+            // cross-day probable-pair detector below. When a cashier
+            // rings a card on Clover and forgets the ERP entry until
+            // the next morning, the Clover orphan is on yesterday's
+            // page but the ERP-only sale is on today's. Both pages
+            // need to see the other side's orphan to surface the
+            // pairing — the day-filtered list further down hides them.
+            $unclaimed_clover_payments_all = $unclaimed_clover_payments->values();
+
             // Sarah 2026-05-13: diagnostic — Clover's API sometimes returns
             // multiple payment records for one logical sale (auth + capture,
             // tip-adjustment, void-on-original, etc.), each with a unique
@@ -1092,13 +1102,27 @@ class SellPosController extends Controller
                     if (isset($claimedSaleIds[$sale->id])) continue; // unmatched only
                     $erTs = strtotime((string) $sale->transaction_date);
                     $timeDelta = abs($erTs - $cpTs);
-                    if ($timeDelta > 3600) continue; // ±1 hour hard cap
                     $erCents = $toCentsDiag($sale->final_total);
                     $amtDelta = abs($erCents - $cpCents);
                     $erLoc = $sale->location_id !== null ? (int) $sale->location_id : null;
+                    // ±1 hour by default. Late-entry catch-up: a cashier
+                    // who rung a card on Clover but forgot the ERP at
+                    // the time will key it in hours or days later. Allow
+                    // the window to stretch up to ±7 days when the
+                    // amount is within ±50¢ at the same store — handles
+                    // the case where the ERP entry is missing tax
+                    // (Henry, 2026-05-13).
+                    $sameStore = ($cpLoc === null || $erLoc === null || $cpLoc === $erLoc);
+                    $isLateCandidate = $sameStore && $amtDelta <= 50 && $timeDelta <= 7 * 86400;
+                    if ($timeDelta > 3600 && !$isLateCandidate) continue;
                     $why = [];
                     if ($amtDelta > 5) $why[] = '$' . number_format($amtDelta / 100, 2) . ' off';
                     if ($cpLoc !== null && $erLoc !== null && $cpLoc !== $erLoc) $why[] = 'wrong store';
+                    if ($timeDelta > 3600) {
+                        $why[] = $timeDelta >= 86400
+                            ? 'late entry · ' . round($timeDelta / 86400, 1) . 'd later'
+                            : 'late entry · ' . round($timeDelta / 3600, 1) . 'h later';
+                    }
                     $rows[] = [
                         'tx_id'       => $sale->id,
                         'invoice_no'  => $sale->invoice_no,
@@ -1132,7 +1156,10 @@ class SellPosController extends Controller
         // likely your match, just at the wrong store / wrong amount by
         // X". Answers Sarah's "do any of those 5+5 match?" directly.
         $erp_only_pair_candidates = [];
-        if (isset($matchSales) && $unclaimed_clover_payments->isNotEmpty()) {
+        // Use the pre-day-filter unclaimed list so a today-rung ERP
+        // sale can surface yesterday's Clover orphan as a candidate.
+        $crossDayPool = $unclaimed_clover_payments_all ?? $unclaimed_clover_payments;
+        if (isset($matchSales) && $crossDayPool->isNotEmpty()) {
             $toCentsCand = function ($x) { return (int) round(((float) $x) * 100); };
             foreach ($sales as $sale) {
                 // Only ERP-only sales — those that didn't pair.
@@ -1141,7 +1168,7 @@ class SellPosController extends Controller
                 $erCents = $toCentsCand($sale->final_total);
                 $erLoc = (int) $sale->location_id;
                 $cands = [];
-                foreach ($unclaimed_clover_payments as $cp) {
+                foreach ($crossDayPool as $cp) {
                     $cpCents = $toCentsCand($cp->amount);
                     if (abs($cpCents - $erCents) > 300) continue; // ±$3
                     try {
@@ -1150,14 +1177,24 @@ class SellPosController extends Controller
                         continue;
                     }
                     $timeDelta = abs($cpTs - $erTs);
-                    if ($timeDelta > 3600) continue; // ±1hr
                     $cpLoc = $cp->location_id !== null ? (int) $cp->location_id : null;
+                    // ±1hr default; allow ±7d when amount is within ±50¢
+                    // and same store — covers Henry-style late catch-up
+                    // entries (Clover rung on day N, ERP keyed on N+1).
+                    $sameStore = ($cpLoc === null || $cpLoc === $erLoc);
+                    $isLateCandidate = $sameStore && abs($cpCents - $erCents) <= 50 && $timeDelta <= 7 * 86400;
+                    if ($timeDelta > 3600 && !$isLateCandidate) continue;
                     $why = [];
                     if (abs($cpCents - $erCents) > 0) {
                         $why[] = '$' . number_format(abs($cpCents - $erCents) / 100, 2) . ' off';
                     }
                     if ($cpLoc !== null && $cpLoc !== $erLoc) {
                         $why[] = 'wrong store (' . ($business_locations[$cpLoc] ?? ('loc ' . $cpLoc)) . ')';
+                    }
+                    if ($timeDelta > 3600) {
+                        $why[] = $timeDelta >= 86400
+                            ? 'late entry · ' . round($timeDelta / 86400, 1) . 'd later'
+                            : 'late entry · ' . round($timeDelta / 3600, 1) . 'h later';
                     }
                     $cands[] = [
                         'cp_id'      => $cp->clover_payment_id,
