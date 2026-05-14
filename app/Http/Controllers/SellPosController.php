@@ -1982,7 +1982,7 @@ class SellPosController extends Controller
         }
     }
 
-    protected static function saveCloverManualMatches(int $business_id, array $map): void
+    public static function saveCloverManualMatches(int $business_id, array $map): void
     {
         $path = self::cloverManualMatchPath($business_id);
         $dir = dirname($path);
@@ -2087,7 +2087,7 @@ class SellPosController extends Controller
     }
 
     /** Append a note row to the JSON store. Atomic via Storage::put. */
-    protected static function appendCloverExplanation(int $business_id, array $row): void
+    public static function appendCloverExplanation(int $business_id, array $row): void
     {
         $path = self::cloverExplanationsPath($business_id);
         $rows = [];

@@ -705,6 +705,13 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/store-mistag-fix', 'StoreMistagFixController@index');
     Route::post('/admin/store-mistag-fix/run', 'StoreMistagFixController@run');
 
+    // One-shot: apply Sarah's 2026-05-13 register reconciliation findings
+    // (CARD→CASH on #18694, manual match #18696 ↔ Clover Interpol pair,
+    // notes on #18680 exchange + Bonnie Raitt orphan). Snapshots to
+    // /admin/admin-action-history.
+    Route::get('/admin/apply-may-13-reconciliation', 'ApplyMay13ReconciliationController@index');
+    Route::post('/admin/apply-may-13-reconciliation/run', 'ApplyMay13ReconciliationController@apply');
+
     // One-shot cleanup: clears future created_at / updated_at on products
     // (sync TZ drift wrote them). Snapshots the BEFORE state so it can be
     // undone via /admin/admin-action-history.
