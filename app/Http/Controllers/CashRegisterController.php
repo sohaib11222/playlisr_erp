@@ -65,7 +65,38 @@ class CashRegisterController extends Controller
         }
         $business_locations = BusinessLocation::forDropdown($business_id);
 
-        return view('cash_register.create')->with(compact('business_locations', 'sub_type'));
+        // Sarah 2026-05-13: surface other cashiers' open registers as a
+        // FYI banner on the open form. The new cashier still proceeds
+        // (the handover-close flow handles it), but giving them a
+        // heads-up means they can ask the prior cashier to close
+        // properly first instead of triggering the locked-amount confirm
+        // screen for the other person. Soft warning, not a block.
+        $other_open_cashiers = [];
+        try {
+            $others = CashRegister::where('business_id', $business_id)
+                ->where('status', 'open')
+                ->where('user_id', '!=', auth()->user()->id)
+                ->orderBy('created_at', 'asc')
+                ->get();
+            foreach ($others as $o) {
+                $u = \App\User::find($o->user_id);
+                $name = $u
+                    ? trim(($u->surname ?? '') . ' ' . ($u->first_name ?? '') . ' ' . ($u->last_name ?? ''))
+                    : ('User #' . $o->user_id);
+                $name = preg_replace('/\s+/', ' ', $name) ?: ('User #' . $o->user_id);
+                $loc = \DB::table('business_locations')->where('id', $o->location_id)->value('name');
+                $other_open_cashiers[] = [
+                    'name'     => $name,
+                    'location' => $loc ?: 'Unknown store',
+                    'opened'   => \Carbon::parse($o->created_at)
+                        ->setTimezone('America/Los_Angeles')->format('g:i A'),
+                ];
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('other-open-cashiers fetch failed: ' . $e->getMessage());
+        }
+
+        return view('cash_register.create')->with(compact('business_locations', 'sub_type', 'other_open_cashiers'));
     }
 
     /**

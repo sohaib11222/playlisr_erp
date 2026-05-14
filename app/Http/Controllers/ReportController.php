@@ -9286,12 +9286,48 @@ class ReportController extends Controller
         }
         $registers = $regQ->selectRaw("
                 cr.location_id,
+                cr.user_id,
                 cr.created_at as opened_at,
                 cr.closed_at,
                 COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, '') as user_name
             ")
             ->orderBy('cr.created_at')
             ->get();
+
+        // Sarah 2026-05-13: Sling clock-out is the truth about when a
+        // cashier physically left, not cash_registers.closed_at — they
+        // forget to close the drawer. Without this, a register opened in
+        // the morning and never closed absorbs evening swipes from the
+        // next cashier. Henry's $5.49 at 6:31pm landed on Manolo because
+        // Manolo's drawer row had closed_at=NULL; Sling shows him out
+        // at 2:30pm.
+        // Map: erp_user_id => max dtend per LA-day (latest punch-out).
+        $slingEndByUserDay = [];
+        if (\Schema::hasTable('sling_shifts') && $registers->isNotEmpty()) {
+            $userIds = $registers->pluck('user_id')->filter()->unique()->values()->all();
+            if (!empty($userIds)) {
+                $slingRows = \DB::table('sling_shifts')
+                    ->where('event_type', 'shift')
+                    ->whereIn('erp_user_id', $userIds)
+                    ->whereDate('dtstart', '>=', \Carbon::parse($start)->subDay())
+                    ->whereDate('dtstart', '<=', \Carbon::parse($end)->addDay())
+                    ->whereNotNull('dtend')
+                    ->select('erp_user_id', 'dtstart', 'dtend')
+                    ->get();
+                foreach ($slingRows as $sr) {
+                    $endTs = @strtotime((string) $sr->dtend) ?: 0;
+                    if ($endTs <= 0) continue;
+                    // Bucket by the LA-day the shift STARTED on so an
+                    // evening shift that crosses midnight stays attached
+                    // to its opening day (matches the register's day).
+                    $dayKey = (new \DateTime((string) $sr->dtstart, new \DateTimeZone('America/Los_Angeles')))->format('Y-m-d');
+                    $key = (int) $sr->erp_user_id . '|' . $dayKey;
+                    if (!isset($slingEndByUserDay[$key]) || $endTs > $slingEndByUserDay[$key]) {
+                        $slingEndByUserDay[$key] = $endTs;
+                    }
+                }
+            }
+        }
 
         // Pull raw ERP transactions for amount-based matching (same logic
         // as recentSalesFeed). Each Clover swipe is paired to the ERP
