@@ -30,6 +30,9 @@
             @foreach ($applied['matches'] as $m)
                 <li>Manually matched Clover <code>{{ $m['cp_payment_id'] }}</code> ↔ ERP #{{ $m['invoice_no'] }}.</li>
             @endforeach
+            @if(!empty($applied['staff_notes']))
+                <li>Wrote inline context note (staff_note) on {{ count($applied['staff_notes']) }} sale{{ count($applied['staff_notes']) === 1 ? '' : 's' }}.</li>
+            @endif
             @foreach ($applied['rings_created'] ?? [] as $r)
                 <li>
                     @if($r['tx_id'])

@@ -102,8 +102,39 @@ class ApplyMay13ReconciliationController extends Controller
             json_encode($snapshot, JSON_PRETTY_PRINT)
         );
 
+        // Staff_note context lines for the three affected sales — small
+        // italic gray text rendered under the line items so the row reads
+        // honestly without needing a separate note chip.
+        $staffNotes = [];
+        $staffNotes[] = [
+            'tx_id' => $plan['p1_payment_override']['tx_id'] ?? null,
+            'note' => 'Customer paid $40 cash; cashier (luis) miskeyed as card. Payment method corrected to CASH by register reconciliation 2026-05-14.',
+        ];
+        if (!empty($plan['p2_judas_priest']['tx_id'])) {
+            $staffNotes[] = [
+                'tx_id' => $plan['p2_judas_priest']['tx_id'],
+                'note' => 'Sticker price was $15. Cashier (luis) rang Clover at $14 by mistake — $1.09 underring. ERP price corrected to $15 by Sarah after the fact. Clover mismatch is the original underring, not a current ERP error.',
+            ];
+        }
+        if (!empty($plan['p5_exchange_match']['tx_id'])) {
+            $staffNotes[] = [
+                'tx_id' => $plan['p5_exchange_match']['tx_id'],
+                'note' => 'Exchange. Customer returned a different Daft Punk record and took Random Access Memories. Clark collected the $4 difference on Clover (NKV34AZFNRWKJ / 53SP1HEY9A58R, $4.39 inc tax). Return of the original record + inventory bring-back is PENDING (record TBD).',
+            ];
+        }
+        foreach ($staffNotes as $sn) {
+            if (!$sn['tx_id']) continue;
+            $existing = Transaction::where('id', $sn['tx_id'])->value('staff_note');
+            $snapshot['rows'][] = [
+                'kind' => 'transaction_staff_note',
+                'transaction_id' => $sn['tx_id'],
+                'old_staff_note' => $existing,
+                'new_staff_note' => $sn['note'],
+            ];
+        }
+
         // --- Mutations ---------------------------------------------------
-        DB::transaction(function () use ($plan, $business_id, $now, &$applied) {
+        DB::transaction(function () use ($plan, $business_id, $now, $staffNotes, &$applied) {
 
             // 1) Flip payment method to cash on #18694.
             if ($plan['p1_payment_override']['tx_id']) {
@@ -119,6 +150,20 @@ class ApplyMay13ReconciliationController extends Controller
                     'invoice_no' => $plan['p1_payment_override']['invoice_no'],
                     'rows_updated' => $count,
                 ];
+            }
+
+            // Apply staff_note context lines to the affected sales so the
+            // recent_feed reads as "yes, we noticed and here's why" without
+            // a separate note chip.
+            $applied['staff_notes'] = [];
+            foreach ($staffNotes as $sn) {
+                if (!$sn['tx_id']) continue;
+                $count = Transaction::where('id', $sn['tx_id'])
+                    ->where('business_id', $business_id)
+                    ->update(['staff_note' => $sn['note'], 'updated_at' => $now]);
+                if ($count) {
+                    $applied['staff_notes'][] = $sn['tx_id'];
+                }
             }
 
             // 2 + 5) Manual matches: Interpol pair + Daft Punk exchange.
@@ -323,6 +368,13 @@ class ApplyMay13ReconciliationController extends Controller
             ->select('id', 'invoice_no', 'final_total', 'transaction_date')
             ->first();
 
+        // #18690 — Hollywood, luis, Judas Priest CD — sticker $15, ERP
+        // was wrong before Sarah corrected, Clover undercharged by $1.09.
+        $tx18690 = Transaction::where('business_id', $business_id)
+            ->where('invoice_no', '18690')
+            ->select('id', 'invoice_no', 'final_total', 'transaction_date')
+            ->first();
+
         // Clover VN2H4Y21M170M — $43.90 Hollywood swipe at 10:00pm 5/13.
         $cpInterpol = \App\CloverPayment::where('business_id', $business_id)
             ->where('clover_payment_id', 'VN2H4Y21M170M')
@@ -386,6 +438,10 @@ class ApplyMay13ReconciliationController extends Controller
                 'invoice_no' => $tx18696->invoice_no ?? '18696',
                 'amount' => $cpInterpol->amount ?? null,
                 'reason' => 'luis rang Interpol pair after midnight (#18696, 12:05am); manual match across the date boundary.',
+            ],
+            'p2_judas_priest' => [
+                'tx_id' => $tx18690->id ?? null,
+                'invoice_no' => $tx18690->invoice_no ?? '18690',
             ],
             'p4_bonnie_raitt' => [
                 'cp_db_id' => $cpBonnieRaitt->id ?? null,

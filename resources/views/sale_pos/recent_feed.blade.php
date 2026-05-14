@@ -1206,6 +1206,21 @@
                 @endif
 
                 @php
+                    // Sarah 2026-05-14: surface staff_note / additional_notes
+                    // inline as small italic gray text under the line items.
+                    // No green box, no form — just the note. Lets the Apply
+                    // action drop contextual one-liners ("cashier rang $14
+                    // on Clover, sticker was $15", "exchange — return
+                    // pending", etc.) without bringing back the chip UI.
+                    $saleNoteText = trim((string) ($sale->staff_note ?? ''));
+                    if ($saleNoteText === '') {
+                        $saleNoteText = trim((string) ($sale->additional_notes ?? ''));
+                    }
+                @endphp
+                @if($saleNoteText !== '')
+                    <div style="margin:0 16px 4px 16px; font-size:11px; color:#8A7C6A; font-style:italic; white-space:pre-wrap; line-height:1.45;">{{ $saleNoteText }}</div>
+                @endif
+                @php
                     $cloverInfo = $clover_by_transaction[$sale->id] ?? null;
                     // Mismatch = ERP total ≠ Clover gross (amount, which
                     // already includes tax). Tip is separate so it doesn't
