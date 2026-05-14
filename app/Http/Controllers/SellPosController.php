@@ -315,8 +315,10 @@ class SellPosController extends Controller
             $name = $k && isset($businessLocations[$k]) ? $businessLocations[$k] : '(no location)';
             $ensure($byStore, $k, $name);
             $cloverGross = (float) $r->amount;
-            $cloverNet   = max(0.0, $cloverGross - ((int) ($r->tax_cents ?? 0)) / 100);
+            $cloverTax   = max(0.0, ((int) ($r->tax_cents ?? 0)) / 100);
+            $cloverNet   = max(0.0, $cloverGross - $cloverTax);
             $byStore[$k]['clover'] += $cloverGross;
+            $byStore[$k]['clover_tax'] = ($byStore[$k]['clover_tax'] ?? 0) + $cloverTax;
             $byStore[$k]['clover_count']++;
             $cardBits = [];
             if (!empty($r->card_type))  $cardBits[] = strtoupper($r->card_type);
@@ -333,8 +335,15 @@ class SellPosController extends Controller
         foreach ($byStore as &$s) {
             $s['erp_net']     = round($s['erp_net'], 2);
             $s['clover']      = round($s['clover'], 2);
+            $s['clover_tax']  = round((float) ($s['clover_tax'] ?? 0), 2);
             $s['whatnot_net'] = round($s['whatnot_net'], 2);
             $s['diff']        = round($s['clover'] - $s['erp_net'], 2);
+            // Sarah 2026-05-13: "pre-tax diff" — Clover net of tax vs ERP.
+            // For HW where ERP rings sticker pre-tax (tax_amount = 0 in
+            // ERP), this is the apples-to-apples reconciliation. For Pico
+            // where ERP rings tax-inclusive, this'll OVER-correct so the
+            // view labels it explicitly to avoid confusion.
+            $s['diff_pretax'] = round($s['clover'] - $s['clover_tax'] - $s['erp_net'], 2);
         }
         unset($s);
         uasort($byStore, function ($a, $b) {

@@ -495,6 +495,26 @@
                                     <div style="font-size:26px; font-weight:800; color:{{ $accent }}; font-variant-numeric: tabular-nums;">{{ $sDiff > 0 ? '+' : '' }}${{ number_format($sDiff, 2) }}</div>
                                     <div style="font-size:11px; color:{{ $accent }}; font-weight:700;">{{ $sDiff > 0 ? 'Clover ahead' : 'ERP ahead' }} · {{ number_format($sPct * 100, 1) }}%</div>
                                 @endif
+                                @php
+                                    // Sarah 2026-05-13: show pre-tax-net diff when
+                                    // Clover collected meaningful tax but ERP didn't
+                                    // (HW pattern — sticker prices rung pre-tax in
+                                    // ERP while Clover adds tax at swipe). Drops the
+                                    // gap from gross-vs-gross down to the real
+                                    // workflow gap. Hidden when the gross diff
+                                    // already matches pre-tax (Pico — tax-inclusive
+                                    // ERP rings).
+                                    $cloverTaxVal = (float) ($s['clover_tax'] ?? 0);
+                                    $preTaxDiff   = (float) ($s['diff_pretax'] ?? $sDiff);
+                                    $showPreTax = $cloverTaxVal > 1.00
+                                        && abs($preTaxDiff) < abs($sDiff) - 5;
+                                @endphp
+                                @if($showPreTax)
+                                    <div style="font-size:11px; color:#5A5045; margin-top:6px; padding-top:6px; border-top:1px dotted #DFD2B3;">
+                                        After Clover tax (${{ number_format($cloverTaxVal, 2) }}):
+                                        <strong style="color:{{ abs($preTaxDiff) < 5 ? '#2E6F40' : '#5A5045' }}; font-variant-numeric:tabular-nums;">{{ $preTaxDiff >= 0 ? '+' : '' }}${{ number_format($preTaxDiff, 2) }}</strong>
+                                    </div>
+                                @endif
                             </div>
                         </div>
                     @endforeach
