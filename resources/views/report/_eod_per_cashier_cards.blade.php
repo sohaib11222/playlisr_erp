@@ -51,16 +51,26 @@
         .cc-flag.muted { background:#f3f4f6; color:#6b7280; }
         .cc-foot { margin-top:10px; padding-top:10px; border-top:1px solid #e5e7eb; }
 
-        .cc-card.cc-collapsed { padding:10px 14px; cursor:pointer; opacity:.65; background:#f9fafb; }
+        /* Collapsed reconciled cards: thin horizontal strip with the
+           Clover total dominant. Sarah 2026-05-14: collapsed state was
+           the same height as expanded — wanted long rectangles with the
+           dollar amount as the focal point, not a half-empty card. */
+        .cc-card.cc-collapsed { padding:6px 14px; cursor:pointer; opacity:.8; background:#f9fafb; grid-column:span 1; }
         .cc-card.cc-collapsed.flag,
         .cc-card.cc-collapsed.warn { background:#f9fafb; border-color:#e5e7eb; }
-        .cc-card.cc-collapsed .cc-head { margin-bottom:0; padding-bottom:0; border-bottom:none; }
+        .cc-card.cc-collapsed .cc-head { margin-bottom:0; padding-bottom:0; border-bottom:none; align-items:center; flex-wrap:wrap; gap:14px; }
+        .cc-card.cc-collapsed .cc-title { font-size:13px; font-weight:600; color:#374151; }
         .cc-card.cc-collapsed .cc-section,
         .cc-card.cc-collapsed .cc-foot,
         .cc-card.cc-collapsed .cc-details,
         .cc-card.cc-collapsed .cc-sub { display:none; }
-        .cc-card.cc-collapsed .cc-collapsed-summary { display:block; }
+        .cc-card.cc-collapsed .cc-collapsed-summary { display:flex; align-items:baseline; gap:8px; line-height:1.1; }
+        .cc-card.cc-collapsed .cc-collapsed-amt { font-size:22px; font-weight:800; color:#111827; font-variant-numeric: tabular-nums; }
+        .cc-card.cc-collapsed .cc-collapsed-lbl { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:#6b7280; }
         .cc-collapsed-summary { display:none; font-size:12px; color:#6b7280; margin-top:4px; font-variant-numeric: tabular-nums; }
+        /* Reconciled cards span the full row so they read as one
+           continuous "done" strip rather than fragmented half-cards. */
+        .cc-grid .cc-card.cc-collapsed { grid-column:1 / -1; }
     </style>
 
     @foreach($employee_breakdown_by_day as $dayBlock)
@@ -157,7 +167,7 @@
                                 <div style="flex:1; min-width:0;">
                                     <div class="cc-title">{{ $e['display_name'] }}</div>
                                     <div class="cc-sub">{{ $locNameDisplay }}@if($shiftLabel) · {{ $shiftLabel }}@endif</div>
-                                    <div class="cc-collapsed-summary">${{ number_format($cardClover, 2) }} Clover sales</div>
+                                    <div class="cc-collapsed-summary"><span class="cc-collapsed-amt">${{ number_format($cardClover, 2) }}</span> <span class="cc-collapsed-lbl">Clover sales</span></div>
                                 </div>
                                 <label class="eod-recon-toggle" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; cursor:pointer; color:{{ $isReconciled ? '#166534' : '#374151' }}; white-space:nowrap;" onclick="event.stopPropagation();">
                                     <input type="checkbox" class="eod-recon-checkbox" {{ $isReconciled ? 'checked' : '' }}>
