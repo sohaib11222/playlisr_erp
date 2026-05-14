@@ -78,7 +78,7 @@ class AdminActionHistoryController extends Controller
         // line, marks the auto-created product inactive, and flips the
         // linked transaction back to draft. Skips any line that's already
         // had stock sold against it.
-        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register'];
+        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'backfill-cash-buys'];
         if (!in_array($action, $supportedActions, true)) {
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 0, 'msg' => "Don't know how to undo action: " . $action]);
@@ -167,6 +167,20 @@ class AdminActionHistoryController extends Controller
                 ->delete();
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 1, 'msg' => "Deleted $deleted imported expense row(s) from snapshot $key."]);
+        }
+
+        // backfill-cash-buys: snapshot rows = [{tx_id, offer_id, ...}].
+        // Delete the offer row first (FK to transactions ON DELETE SET NULL
+        // but we'd rather remove it outright), then the purchase txn.
+        if ($action === 'backfill-cash-buys') {
+            $offerIds = array_filter(array_map(function ($r) { return $r['offer_id'] ?? null; }, $data['rows']));
+            $txIds    = array_filter(array_map(function ($r) { return $r['tx_id']    ?? null; }, $data['rows']));
+            $offersDeleted = $offerIds ? DB::table('buy_customer_offers')->whereIn('id', $offerIds)->delete() : 0;
+            $txnsDeleted = $txIds
+                ? DB::table('transactions')->whereIn('id', $txIds)->where('type', 'purchase')->delete()
+                : 0;
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 1, 'msg' => "Removed {$offersDeleted} offer(s) + {$txnsDeleted} purchase(s) from snapshot $key."]);
         }
 
         // whatnot-statement-import: snapshot rows = inserted transaction IDs

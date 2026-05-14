@@ -720,6 +720,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/purchase-price-mismatch', 'PurchasePriceMismatchController@index');
     Route::post('/admin/purchase-price-mismatch/run', 'PurchasePriceMismatchController@run');
 
+    // One-time backfill for the 6 Slack-only cash buys on 2026-05-13.
+    // Idempotent — already-filed entries are skipped on re-run.
+    Route::get('/admin/backfill-cash-buys', 'BackfillCashBuysController@index');
+    Route::post('/admin/backfill-cash-buys/run', 'BackfillCashBuysController@run');
+
     // Sister page: variations whose POS sticker (default_sell_price) is below
     // the price entered on the Add Purchase form (sell_price_inc_tax) — the
     // signature of the May 1, 2026 tax-deflation bug. Shows estimated lost
