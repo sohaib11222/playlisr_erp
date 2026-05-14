@@ -1337,10 +1337,16 @@
     </div>
 </section>
 
+@endsection
+
 {{-- Per-cashier reconciliation handlers (Sarah 2026-05-13: same POST
      endpoints that powered /reports/clover-eod-reconciliation, just
      wired up on this page too). POSTs land on the existing
-     /reports/clover-eod/* routes so nothing on the server side moved. --}}
+     /reports/clover-eod/* routes so nothing on the server side moved.
+     Must live in @section('javascript') so it renders AFTER jQuery; if
+     inlined inside @section('content') the `$` symbol is undefined and
+     none of the recon/notes/recat handlers bind. --}}
+@section('javascript')
 @if(!empty($employee_breakdown_by_day))
 <script>
 $(function () {
@@ -1459,5 +1465,4 @@ $(function () {
 });
 </script>
 @endif
-
 @endsection
