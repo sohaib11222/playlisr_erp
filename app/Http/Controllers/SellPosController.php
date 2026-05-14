@@ -1733,13 +1733,12 @@ class SellPosController extends Controller
                     // Skip ex-employees — current staff only.
                     if (!$uMap->has($r->user_id)) continue;
                     $created = \Carbon\Carbon::parse($r->created_at);
+                    // Sarah 2026-05-13: only overnight carries warrant the
+                    // banner. "Opened on top at same location" is normal at
+                    // Nivessa (multiple cashiers all day) and the warning
+                    // was just noise — drop that trigger entirely.
                     $isOvernight = $created->copy()->setTimezone($tz)->lt($todayStartLa);
-                    $hasNewerSameLoc = $openRegs->first(function ($x) use ($r) {
-                        return (int) $x->id !== (int) $r->id
-                            && (int) $x->location_id === (int) $r->location_id
-                            && strtotime((string) $x->created_at) > strtotime((string) $r->created_at);
-                    });
-                    if (!$isOvernight && !$hasNewerSameLoc) continue;
+                    if (!$isOvernight) continue;
                     $u = $uMap->get($r->user_id);
                     $name = trim(($u->surname ?? '') . ' ' . ($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
                     $name = preg_replace('/\s+/', ' ', $name) ?: ('User #' . $r->user_id);
@@ -1748,7 +1747,7 @@ class SellPosController extends Controller
                         'cashier'        => $name,
                         'location'       => $locMap[$r->location_id] ?? 'Unknown location',
                         'opened_at'      => $created->copy()->setTimezone($tz)->format('M j, g:i A'),
-                        'reason'         => $hasNewerSameLoc ? 'opened_on_top' : 'overnight',
+                        'reason'         => 'overnight',
                         'auto_close_at'  => $created->copy()->addHours(12)
                             ->setTimezone($tz)->format('M j, g:i A'),
                     ];
