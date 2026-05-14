@@ -377,6 +377,11 @@ $(document).ready(function() {
         var __doSubmit = function () {
             var formEl = document.getElementById('product_add_form');
             if (__isEdit && formEl) {
+                // Native submit doesn't fire the submit event, so the
+                // beforeunload hook installed by __page_leave_confirmation
+                // doesn't get cleared and Chrome asks "Leave site?". Kill
+                // it explicitly before submitting.
+                window.onbeforeunload = null;
                 formEl.submit();   // native — bypasses jQuery validate
             } else if ($('form#product_add_form').valid()) {
                 $('form#product_add_form').submit();
