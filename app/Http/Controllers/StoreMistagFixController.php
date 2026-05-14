@@ -139,8 +139,23 @@ class StoreMistagFixController extends Controller
      */
     private function findCandidates(int $businessId, string $start, string $end): array
     {
-        // Pull candidate ERP sells in the window. Exclude Whatnot since
-        // those don't go through Clover.
+        // Sarah 2026-05-13: orphan-first matching. Start from Clover
+        // charges with no same-store ERP match, then use Sling to find
+        // who was scheduled at the Clover store during the swipe. Look
+        // for any ERP sale by those cashiers on that LA day with the
+        // same amount (any location, any time). If exactly one match
+        // and it's at the wrong store → that's the mistag.
+        //
+        // This bypasses the 5-min time window that the previous
+        // sale-first matcher used — pre-May-11 cashiers often
+        // batch-entered ERP sales at end of shift, so time-deltas
+        // were huge and the tight match window missed them.
+
+        // Pull ERP sells in the window (with a 1-day buffer for late
+        // batch entry that lands past midnight). Indexed by
+        // (created_by, day, cents) so the orphan loop can probe in O(1).
+        $erpWindowStart = (clone (new \DateTime($start)))->modify('-1 day')->format('Y-m-d');
+        $erpWindowEnd   = (clone (new \DateTime($end)))->modify('+1 day')->format('Y-m-d');
         $sales = DB::table('transactions as t')
             ->leftJoin('users as u', 'u.id', '=', 't.created_by')
             ->leftJoin('business_locations as bl', 'bl.id', '=', 't.location_id')
@@ -149,8 +164,8 @@ class StoreMistagFixController extends Controller
             ->where('t.status', 'final')
             ->whereNull('t.import_source')
             ->where(function ($q) { $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); })
-            ->whereDate('t.transaction_date', '>=', $start)
-            ->whereDate('t.transaction_date', '<=', $end)
+            ->whereDate('t.transaction_date', '>=', $erpWindowStart)
+            ->whereDate('t.transaction_date', '<=', $erpWindowEnd)
             ->select(
                 't.id', 't.invoice_no', 't.transaction_date', 't.final_total', 't.location_id',
                 't.created_by',
@@ -160,74 +175,61 @@ class StoreMistagFixController extends Controller
             ->orderBy('t.transaction_date')
             ->get();
 
-        if ($sales->isEmpty()) return [];
-
-        // Build cashier→day→{location_ids rung at that day} map so we
-        // can drop coincidence suggestions: a cashier physically can
-        // only be at one store per shift, so if Manolo only rang HW
-        // sales on April 23, any Pico Clover charge that day with a
-        // similar amount is a DIFFERENT customer at Pico, not Manolo's
-        // mistagged HW sale. Pre-pulled across the window plus a 1-day
-        // buffer so an early-AM ring at the suggested store still
-        // counts as "was there that shift".
-        $cashierDayLocations = [];
-        $cashierWindowStart = (clone (new \DateTime($start)))->modify('-1 day')->format('Y-m-d');
-        $cashierWindowEnd   = (clone (new \DateTime($end)))->modify('+1 day')->format('Y-m-d');
-        $cashierRows = DB::table('transactions')
-            ->where('business_id', $businessId)
-            ->where('type', 'sell')
-            ->where('status', 'final')
-            ->whereNull('import_source')
-            ->whereNotNull('created_by')
-            ->whereNotNull('location_id')
-            ->whereDate('transaction_date', '>=', $cashierWindowStart)
-            ->whereDate('transaction_date', '<=', $cashierWindowEnd)
-            ->select(
-                'created_by',
-                'location_id',
-                DB::raw('DATE(transaction_date) as day')
-            )
-            ->distinct()
-            ->get();
-        foreach ($cashierRows as $r) {
-            $cashierDayLocations[(int) $r->created_by][$r->day][(int) $r->location_id] = true;
+        // Index ERP sales by (cashier_id, day, cents) → list of sale rows.
+        // 'day' is the LA date string from transaction_date — assumes app
+        // TZ is LA (matches the rest of the controller's assumptions).
+        $erpByCashierDayCents = [];
+        // Also index ERP sales by clover_id-style lookup so we can detect
+        // already-correctly-tagged sales (cashier rang at right store with
+        // matching amount/day → skip).
+        $erpByLocDayCents = [];
+        foreach ($sales as $s) {
+            $day = substr((string) $s->transaction_date, 0, 10);
+            $cents = (int) round((float) $s->final_total * 100);
+            $cashier = (int) ($s->created_by ?? 0);
+            $loc = (int) ($s->location_id ?? 0);
+            if ($cashier > 0) {
+                $erpByCashierDayCents[$cashier][$day][$cents][] = $s;
+            }
+            $erpByLocDayCents[$loc][$day][$cents] = ($erpByLocDayCents[$loc][$day][$cents] ?? 0) + 1;
         }
 
-        // Sling-side check (Sarah 2026-05-13): if the cashier has any
-        // scheduled shifts in sling_shifts overlapping the sale time,
-        // that's the authoritative answer for which store they were
-        // physically at — beats inferring from ERP-side rings. Build
-        // a per-cashier shift list keyed by erp_user_id with location
-        // name normalized to lowercase for matching against ERP
-        // business_locations.name.
-        $cashierShifts = [];
+        if ($sales->isEmpty()) return [];
+
+        // Load Sling shifts spanning the window so we can ask "who was
+        // scheduled at this store at this time?". Indexed per
+        // normalized location name → list of {start_ts, end_ts,
+        // erp_user_id} so the orphan loop can probe by store + time.
+        $shiftsByLocNorm = [];
         $hasSling = Schema::hasTable('sling_shifts');
         if ($hasSling) {
             $shiftRows = DB::table('sling_shifts')
                 ->where('event_type', 'shift')
                 ->whereNotNull('erp_user_id')
                 ->whereNotNull('location_name')
-                ->whereDate('dtstart', '>=', $cashierWindowStart)
-                ->whereDate('dtstart', '<=', $cashierWindowEnd)
+                ->whereDate('dtstart', '>=', $erpWindowStart)
+                ->whereDate('dtstart', '<=', $erpWindowEnd)
                 ->select('erp_user_id', 'location_name', 'dtstart', 'dtend')
                 ->get();
             foreach ($shiftRows as $r) {
-                $cashierShifts[(int) $r->erp_user_id][] = [
+                $key = strtolower(trim((string) $r->location_name));
+                $shiftsByLocNorm[$key][] = [
                     'start_ts' => @strtotime((string) $r->dtstart) ?: 0,
                     'end_ts'   => @strtotime((string) ($r->dtend ?? $r->dtstart)) ?: 0,
-                    'loc_norm' => strtolower(trim((string) $r->location_name)),
+                    'erp_user_id' => (int) $r->erp_user_id,
                 ];
             }
         }
-        // Normalized location name lookup for matching Sling against
-        // ERP business_locations. Build once.
+
+        // location_id → normalized name (for matching Sling shifts).
         $locNameNormById = [];
         foreach (\App\BusinessLocation::where('business_id', $businessId)->get(['id', 'name']) as $bl) {
             $locNameNormById[(int) $bl->id] = strtolower(trim((string) $bl->name));
         }
 
-        // Pull Clover charges in the same window (±1 day buffer for
-        // overnight batch carryover).
+        // Pull Clover orphans — charges that have no same-store ERP
+        // sale within ±$0.20 / ±10 min. These are the ones we want to
+        // reassign by looking up the right ERP sale via Sling.
         $cpStart = (clone (new \DateTime($start)))->modify('-1 day')->format('Y-m-d');
         $cpEnd   = (clone (new \DateTime($end)))->modify('+1 day')->format('Y-m-d');
         $cpRows = DB::table('clover_payments')
@@ -237,108 +239,88 @@ class StoreMistagFixController extends Controller
             ->whereDate('paid_at', '<=', $cpEnd)
             ->whereNotNull('location_id')
             ->where('location_id', '!=', 0)
+            ->where('amount', '>', 0)
             ->select('id', 'location_id', 'amount', 'paid_at', 'employee_name', 'clover_payment_id')
             ->orderBy('paid_at')
             ->get();
 
         if ($cpRows->isEmpty()) return [];
 
-        // Index Clover by location and minute-bucket for fast lookup.
-        $cpByCents = [];
-        foreach ($cpRows as $cp) {
-            $cents = (int) round((float) $cp->amount * 100);
-            $cpByCents[$cents][] = $cp;
-        }
-
-        // Also index ERP sales by location+cents+minute so we can
-        // detect "already correctly attributed at the other store"
-        // and skip those (avoid double-attribution).
-        $erpByLocCentsMinute = [];
-        foreach ($sales as $s) {
-            $cents = (int) round((float) $s->final_total * 100);
-            $minute = substr((string) $s->transaction_date, 0, 16); // YYYY-MM-DD HH:MM
-            $key = $s->location_id . '|' . $cents . '|' . $minute;
-            $erpByLocCentsMinute[$key] = true;
-        }
-
+        // For each Clover row, decide if it's orphan at its store.
+        // "Orphan" = no ERP sale at the same store + same day + same
+        // cents (±$0.20 tolerance for bag fees). Closer time isn't
+        // required since cashiers batch-entered ERP at end of shift.
         $candidates = [];
-        foreach ($sales as $s) {
-            $erpCents = (int) round((float) $s->final_total * 100);
-            $erpTs = strtotime((string) $s->transaction_date);
-            $erpLoc = (int) $s->location_id;
-            $erpDay = substr((string) $s->transaction_date, 0, 10);
-            $erpCashierLocs = $cashierDayLocations[(int) $s->created_by][$erpDay] ?? [];
+        $claimedErpTxIds = []; // avoid double-attributing the same ERP sale to two orphans
+        foreach ($cpRows as $cp) {
+            $cpLoc = (int) $cp->location_id;
+            $cpCents = (int) round((float) $cp->amount * 100);
+            $cpDay = substr((string) $cp->paid_at, 0, 10);
+            $cpTs = @strtotime((string) $cp->paid_at) ?: 0;
 
-            // Scan ±$0.20 amount neighborhood for Clover candidates.
-            $best = null;
+            // Is this Clover charge already cleanly matched at its own
+            // store? Same store + same day + same cents = treat as
+            // matched (the existing same-store matcher claims it).
+            $sameStoreMatchCount = 0;
             for ($d = -20; $d <= 20; $d++) {
-                foreach (($cpByCents[$erpCents + $d] ?? []) as $cp) {
-                    $cpLoc = (int) $cp->location_id;
-                    if ($cpLoc === $erpLoc) continue; // same store — not a mistag
-                    $cpTs = strtotime((string) $cp->paid_at);
-                    $timeDelta = abs($cpTs - $erpTs);
-                    if ($timeDelta > 300) continue; // 5 min window
+                $sameStoreMatchCount += $erpByLocDayCents[$cpLoc][$cpDay][$cpCents + $d] ?? 0;
+            }
+            if ($sameStoreMatchCount > 0) continue;
 
-                    // Cashier sanity check, with Sling shift data as the
-                    // primary source: was the cashier scheduled at the
-                    // suggested store during this sale's time? If Sling
-                    // has any shifts for them, trust it absolutely. If
-                    // not, fall back to "did they ring at the suggested
-                    // store on the same day in ERP" — looser but still
-                    // catches obvious coincidences.
-                    $cashierUserId = (int) $s->created_by;
-                    $shifts = $cashierShifts[$cashierUserId] ?? [];
-                    $targetLocNorm = $locNameNormById[$cpLoc] ?? null;
-                    if (!empty($shifts)) {
-                        $atTarget = false;
-                        foreach ($shifts as $sh) {
-                            if ($targetLocNorm && $sh['loc_norm'] === $targetLocNorm
-                                && $sh['start_ts'] <= $erpTs && $erpTs <= $sh['end_ts']) {
-                                $atTarget = true;
-                                break;
-                            }
+            // Look up cashiers scheduled at the Clover's store during
+            // this swipe. If no Sling data, skip — we don't want to
+            // guess at retags without authoritative shift data.
+            $targetLocNorm = $locNameNormById[$cpLoc] ?? null;
+            $scheduledCashiers = [];
+            foreach (($shiftsByLocNorm[$targetLocNorm] ?? []) as $sh) {
+                if ($sh['start_ts'] <= $cpTs && $cpTs <= $sh['end_ts']) {
+                    $scheduledCashiers[$sh['erp_user_id']] = true;
+                }
+            }
+            if (empty($scheduledCashiers)) continue;
+
+            // For each scheduled cashier, look for ERP sales they rang
+            // on the same LA day with matching amount (±$0.20). Prefer
+            // ones currently tagged at the WRONG store (those are the
+            // mistags we want to fix).
+            $best = null;
+            foreach (array_keys($scheduledCashiers) as $cashierId) {
+                $dayBucket = $erpByCashierDayCents[$cashierId][$cpDay] ?? null;
+                if ($dayBucket === null) continue;
+                for ($d = -20; $d <= 20; $d++) {
+                    foreach (($dayBucket[$cpCents + $d] ?? []) as $s) {
+                        if ((int) $s->location_id === $cpLoc) continue; // already correct
+                        if (isset($claimedErpTxIds[$s->id])) continue; // already paired
+                        $score = abs($d) * 1000;
+                        if ($best === null || $score < $best['score']) {
+                            $best = [
+                                'sale' => $s,
+                                'score' => $score,
+                                'amount_delta_cents' => abs($d),
+                            ];
                         }
-                        if (!$atTarget) continue;
-                    } else {
-                        if (!isset($erpCashierLocs[$cpLoc])) continue;
-                    }
-
-                    // Avoid double-attribution: if an ERP row already
-                    // exists at the Clover-side location with same
-                    // amount + same minute, skip (that one already
-                    // accounts for the Clover charge).
-                    $cpMinute = substr((string) $cp->paid_at, 0, 16);
-                    $dupKey = $cpLoc . '|' . $erpCents . '|' . $cpMinute;
-                    if (isset($erpByLocCentsMinute[$dupKey])) continue;
-
-                    $score = abs($d) * 1000 + $timeDelta;
-                    if ($best === null || $score < $best['score']) {
-                        $best = [
-                            'cp' => $cp,
-                            'score' => $score,
-                            'amount_delta_cents' => abs($d),
-                            'time_delta_sec' => $timeDelta,
-                        ];
                     }
                 }
             }
 
             if ($best !== null) {
+                $s = $best['sale'];
+                $claimedErpTxIds[$s->id] = true;
                 $candidates[] = [
                     'tx_id' => $s->id,
                     'invoice_no' => $s->invoice_no,
                     'transaction_date' => $s->transaction_date,
                     'final_total' => (float) $s->final_total,
-                    'current_location_id' => $erpLoc,
+                    'current_location_id' => (int) $s->location_id,
                     'current_location_name' => $s->current_location_name,
                     'cashier' => $s->cashier,
-                    'suggested_location_id' => (int) $best['cp']->location_id,
-                    'clover_payment_id' => $best['cp']->clover_payment_id,
-                    'clover_paid_at' => $best['cp']->paid_at,
-                    'clover_amount' => (float) $best['cp']->amount,
-                    'clover_employee' => $best['cp']->employee_name,
+                    'suggested_location_id' => $cpLoc,
+                    'clover_payment_id' => $cp->clover_payment_id,
+                    'clover_paid_at' => $cp->paid_at,
+                    'clover_amount' => (float) $cp->amount,
+                    'clover_employee' => $cp->employee_name,
                     'amount_delta_cents' => $best['amount_delta_cents'],
-                    'time_delta_sec' => $best['time_delta_sec'],
+                    'time_delta_sec' => abs(@strtotime((string) $s->transaction_date) - $cpTs),
                 ];
             }
         }
