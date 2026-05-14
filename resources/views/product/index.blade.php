@@ -447,7 +447,10 @@
                         { data: 'total_sold', searchable: false},
                         { data: 'sku', name: 'products.sku'},
                         { data: 'created_at', name: 'products.created_at'},
-                        { data: 'updated_at', name: 'real_updated_at', orderable: true},
+                        // real_updated_at is a SELECT alias (GREATEST(...)), not a real
+                        // column — MySQL rejects aliases in WHERE, so leaving this
+                        // searchable made global search 500 and return zero rows.
+                        { data: 'updated_at', name: 'real_updated_at', orderable: true, searchable: false},
                         { data: 'created_by_name', name: 'u.first_name' }
                     ],
                     createdRow: function( row, data, dataIndex ) {
