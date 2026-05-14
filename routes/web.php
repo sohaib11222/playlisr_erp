@@ -519,6 +519,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/cash-register/register-details', 'CashRegisterController@getRegisterDetails');
     Route::get('/cash-register/close-register/{id?}', 'CashRegisterController@getCloseRegister');
     Route::post('/cash-register/close-register', 'CashRegisterController@postCloseRegister');
+    // Handover confirm screen — the prior cashier acknowledges that the
+    // next cashier opened with a fresh count of their drawer. Locked
+    // closing_amount + required reason field. Sarah 2026-05-13.
+    Route::get('/cash-register/handover-confirm/{id}', 'HandoverConfirmController@show');
+    Route::post('/cash-register/handover-confirm/{id}', 'HandoverConfirmController@confirm');
+
     Route::resource('cash-register', 'CashRegisterController');
 
     //Import products

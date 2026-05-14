@@ -155,6 +155,39 @@ class CashRegisterController extends Controller
 
             $register = CashRegister::create($registerData);
 
+            // Sarah 2026-05-13: handover auto-close. If a DIFFERENT cashier
+            // had an unclosed shift at THIS store, the cash in the drawer
+            // at this moment IS what the new cashier just counted (Luis
+            // can't count yesterday's drawer; only the human counting
+            // RIGHT NOW can). So we close the prior shift with
+            // closing_amount = $counted_amount (Luis's "Cash in hand"
+            // pre-drop). The prior cashier hits a confirm screen on their
+            // next login — they acknowledge + explain why they didn't
+            // close, but they don't type the count (theft surface).
+            $priorOpens = CashRegister::where('business_id', $business_id)
+                ->where('status', 'open')
+                ->where('location_id', $location_id)
+                ->where('user_id', '!=', $user_id)
+                ->where('id', '!=', $register->id)
+                ->get();
+            $newCashierName = trim(((auth()->user()->surname ?? '') . ' ' . (auth()->user()->first_name ?? '') . ' ' . (auth()->user()->last_name ?? '')));
+            $newCashierName = preg_replace('/\s+/', ' ', $newCashierName) ?: (auth()->user()->username ?: ('user#' . $user_id));
+            $locLabel = \DB::table('business_locations')->where('id', $location_id)->value('name') ?: 'this store';
+            $nowLa = \Carbon::now()->setTimezone('America/Los_Angeles')->format('M j, Y g:i A');
+            foreach ($priorOpens as $prior) {
+                // Marker prefix flags this register for the confirm-on-next-
+                // login flow. The prefix is stripped when the prior cashier
+                // confirms via HandoverConfirmController@confirm.
+                $handoverNote = "[HANDOVER_PENDING] Auto-closed on handover at {$nowLa} when {$newCashierName} opened a new shift at {$locLabel}. Drawer count at handover = \${$counted_amount} (counted by {$newCashierName} as their cash-in-hand at open). Pending confirmation + reason from original cashier on next login.";
+                $prior->status = 'close';
+                $prior->closed_at = \Carbon::now()->format('Y-m-d H:i:s');
+                $prior->closing_amount = $counted_amount;
+                $prior->closing_note = $prior->closing_note
+                    ? $handoverNote . "\n\nPrior note: " . trim($prior->closing_note)
+                    : $handoverNote;
+                $prior->save();
+            }
+
             if (!empty($initial_amount)) {
                 $register->cash_register_transactions()->create([
                             'amount' => $initial_amount,

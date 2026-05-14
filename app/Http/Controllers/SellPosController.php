@@ -2570,15 +2570,31 @@ class SellPosController extends Controller
             \Log::error('Auto close cash registers failed: ' . $e->getMessage());
         }
 
+        // Sarah 2026-05-13: handover-confirm gate. If this cashier's shift
+        // was auto-closed when the next cashier took over the drawer,
+        // route them to the confirm screen. They can't ring sales until
+        // they acknowledge the handover + explain why they didn't close.
+        // closing_amount stays locked (the next cashier's count is
+        // authoritative — this cashier wasn't there to count).
+        try {
+            $handover = \App\CashRegister::where('business_id', $business_id)
+                ->where('user_id', auth()->user()->id)
+                ->where('status', 'close')
+                ->where('closing_note', 'like', \App\Http\Controllers\HandoverConfirmController::MARKER . '%')
+                ->orderBy('id', 'desc')
+                ->first();
+            if ($handover) {
+                return redirect('/cash-register/handover-confirm/' . $handover->id);
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('handover-confirm gate failed: ' . $e->getMessage());
+        }
+
         // Sarah 2026-05-13: force-close gate for the cashier's OWN prior-day
-        // open shift. If a cashier left without closing yesterday (or
-        // earlier), their next /pos/create lands on the close form and
-        // they can't ring sales until they record their closing count +
-        // safe drop. This is how we make people close their own
-        // registers without blocking the next cashier from opening — the
-        // prior cashier hits this gate at their next login. Different
-        // cashiers' opens at the same store don't fire this; only the
-        // owner gets routed to their own close form.
+        // open shift (no handover happened — they just left and nobody
+        // took over). They hit the regular close form on next login and
+        // can't ring sales until they record their closing count + safe
+        // drop themselves.
         try {
             $todayStartUtc = \Carbon\Carbon::now('America/Los_Angeles')->startOfDay()->copy()->setTimezone(config('app.timezone'));
             $priorShift = \App\CashRegister::where('business_id', $business_id)
