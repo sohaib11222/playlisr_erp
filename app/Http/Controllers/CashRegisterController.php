@@ -121,27 +121,39 @@ class CashRegisterController extends Controller
                 ->first();
             if ($existing_open) {
                 $isSelf = ((int) $existing_open->user_id === (int) $user_id);
+                $opened = \Carbon::parse($existing_open->created_at)
+                    ->setTimezone('America/Los_Angeles')->format('g:i A');
+                $openedLoc = \DB::table('business_locations')
+                    ->where('id', $existing_open->location_id)
+                    ->value('name');
+                // Same cashier: one register per shift policy (Sarah 2026-05-13).
+                // Don't ask them to close it — just send them back to POS with
+                // a "register is already open" note. They keep using the open
+                // register; no second register is created.
+                if ($isSelf) {
+                    return redirect()->action('SellPosController@create', ['sub_type' => $sub_type])
+                        ->with('status', [
+                            'success' => 1,
+                            'msg' => 'Register is already open'
+                                . ($openedLoc ? " at {$openedLoc}" : '')
+                                . ' (since ' . $opened . '). One register per shift — keep ringing here.',
+                        ]);
+                }
+                // Different cashier still has the register open at this
+                // location — keep the explicit "close their shift first"
+                // path so the prior cashier's closing count + safe drop
+                // actually get recorded.
                 $other = \App\User::find($existing_open->user_id);
                 $otherName = $other
                     ? trim(($other->surname ?? '') . ' ' . ($other->first_name ?? '') . ' ' . ($other->last_name ?? ''))
                     : ('User #' . $existing_open->user_id);
                 $otherName = preg_replace('/\s+/', ' ', $otherName) ?: ('User #' . $existing_open->user_id);
-                $opened = \Carbon::parse($existing_open->created_at)
-                    ->setTimezone('America/Los_Angeles')->format('M j, g:i A');
-                $openedLoc = \DB::table('business_locations')
-                    ->where('id', $existing_open->location_id)
-                    ->value('name');
-                $msg = $isSelf
-                    ? ("You already have an open register"
-                        . ($openedLoc ? " at {$openedLoc}" : "")
-                        . " from " . $opened . ". Close that shift first (record your closing cash + safe drop) before starting a new one.")
-                    : ($otherName . " still has the register open at this store from "
-                        . $opened . ". Close their shift first (record their closing cash + safe drop) before starting a new one.");
                 return redirect()->back()->withInput()
-                    ->with('error', $msg)
+                    ->with('error', $otherName . " still has the register open at this store from "
+                        . $opened . ". Close their shift first (record their closing cash + safe drop) before starting a new one.")
                     ->with('blocked_open_register_id', $existing_open->id)
-                    ->with('blocked_open_cashier', $isSelf ? null : $otherName)
-                    ->with('blocked_open_self', $isSelf);
+                    ->with('blocked_open_cashier', $otherName)
+                    ->with('blocked_open_self', false);
             }
 
             $registerData = [

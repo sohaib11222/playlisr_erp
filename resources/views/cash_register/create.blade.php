@@ -130,12 +130,12 @@
 
 <!-- Main content -->
 <section class="content">
-{{-- Sarah 2026-05-13: a register is still open and must be closed first.
-     Two cases: (a) this cashier has their own open shift from earlier
-     ("close your own first") or (b) another cashier at this store has
-     an open shift ("close their shift first"). Either way the prior
-     register's closing count + safe drop must be recorded before the
-     new open is allowed. --}}
+{{-- Sarah 2026-05-13: another cashier already has a register open at
+     this store. Block the new open until that shift is closed so the
+     prior cashier's closing count + safe drop get recorded.
+     (Same-cashier double-open is handled in the controller — they're
+     just redirected back to POS rather than shown this banner, since
+     one-register-per-shift policy means "keep using the one you have".) --}}
 @if(session('error'))
     <div style="background:#FDECCB; border:2px solid #E0A93A; border-radius:12px; padding:18px 22px; margin:18px auto; max-width:780px; color:#3A2E0F;">
         <div style="font-size:12px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; color:#7A4E0A; margin-bottom:8px;">
@@ -145,14 +145,9 @@
             {{ session('error') }}
         </div>
         @if(session('blocked_open_register_id'))
-            @php
-                $btnLabel = session('blocked_open_self')
-                    ? 'Close my earlier register'
-                    : 'Close ' . (session('blocked_open_cashier') ?: 'their') . "'s register";
-            @endphp
             <a href="{{ url('/cash-register/close-register/' . session('blocked_open_register_id')) }}"
                style="display:inline-block; margin-top:12px; padding:10px 18px; background:#1F1B16; color:#fff; text-decoration:none; border-radius:8px; font-weight:700; font-size:14px;">
-                {{ $btnLabel }}
+                Close {{ session('blocked_open_cashier') ?: 'their' }}'s register
             </a>
         @endif
     </div>
