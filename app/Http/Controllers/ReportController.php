@@ -9251,15 +9251,59 @@ class ReportController extends Controller
         // looking up which cashier's register was open at (paid_at, location)
         // for each pin-less swipe and attributing it to them — same logic
         // already used in cloverEodXlsxLayout.
+        // Sarah 2026-05-13: honor manual Clover↔ERP cross-day pairings.
+        // When a cashier rings a card on Clover but doesn't enter the
+        // ERP sale until the next morning (Henry pattern), Sarah pairs
+        // them by hand on /pos/recent-feed. For the per-cashier Diff
+        // (Clover − ERP) to actually balance after pairing, the Clover
+        // swipe needs to attribute to the ERP txn's day + cashier
+        // rather than the swipe's natural day. Without this, today's
+        // card shows ERP up by the catch-up amount and yesterday's
+        // card shows Clover up by the same amount — exactly the
+        // opposite of what "matched" should mean.
+        $manualClvMatches = \App\Http\Controllers\SellPosController::loadCloverManualMatches((int) $business_id);
+        $manualClvToTxn = [];
+        $crossDayClvPullIds = [];
+        if (!empty($manualClvMatches)) {
+            $manualClvToTxn = \DB::table('transactions as t')
+                ->leftJoin('users as u', 't.created_by', '=', 'u.id')
+                ->whereIn('t.id', array_values($manualClvMatches))
+                ->where('t.business_id', $business_id)
+                ->selectRaw("t.id, DATE(t.transaction_date) as day, t.location_id,
+                    COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, '') as cashier_name")
+                ->get()
+                ->keyBy('id')
+                ->all();
+            // Find Clover IDs that pair to an ERP txn inside the viewed
+            // window — pull them into cpRaw even if their own LA-day
+            // falls outside the default window. Otherwise the day-
+            // scoped cpQ silently drops them and the re-attribution
+            // below has nothing to act on (today's view never sees
+            // yesterday's Clover orphan that pairs to today's ERP).
+            foreach ($manualClvMatches as $cpId => $txId) {
+                if (!isset($manualClvToTxn[(int) $txId])) continue;
+                $mm = $manualClvToTxn[(int) $txId];
+                if ($mm->day >= $start && $mm->day <= $end) {
+                    $crossDayClvPullIds[] = (int) $cpId;
+                }
+            }
+        }
+
         $xlsxWin = $this->cloverPaidAtIstWindow($start, $end);
         $xlsxDayExpr = $this->cloverLaDateSql($xlsxWin, 'cp');
+        $windowSql = $this->cloverCreatedInWindowSql($xlsxWin, 'cp');
         $cpQ = \DB::table('clover_payments as cp')
             ->leftJoin('business_locations as bl', 'cp.location_id', '=', 'bl.id')
             ->where('cp.business_id', $business_id)
             ->where(function ($q) {
                 $q->whereNull('cp.result')->orWhere('cp.result', 'SUCCESS')->orWhere('cp.result', 'APPROVED');
             })
-            ->whereRaw($this->cloverCreatedInWindowSql($xlsxWin, 'cp'));
+            ->where(function ($q) use ($windowSql, $crossDayClvPullIds) {
+                $q->whereRaw($windowSql);
+                if (!empty($crossDayClvPullIds)) {
+                    $q->orWhereIn('cp.id', $crossDayClvPullIds);
+                }
+            });
         if (!empty($location_id)) {
             $cpQ->where(function ($q) use ($location_id) {
                 $q->where('cp.location_id', $location_id)->orWhereNull('cp.location_id');
@@ -9274,30 +9318,6 @@ class ReportController extends Controller
                 COALESCE(NULLIF(TRIM(cp.employee_name), ''), '') as employee_name")
             ->orderBy('cp.paid_at')
             ->get();
-
-        // Sarah 2026-05-13: honor manual Clover↔ERP cross-day pairings.
-        // When a cashier rings a card on Clover but doesn't enter the
-        // ERP sale until the next morning (Henry pattern), Sarah pairs
-        // them by hand on /pos/recent-feed. For the per-cashier Diff
-        // (Clover − ERP) to actually balance after pairing, the Clover
-        // swipe needs to attribute to the ERP txn's day + cashier
-        // rather than the swipe's natural day. Without this, today's
-        // card shows ERP up by the catch-up amount and yesterday's
-        // card shows Clover up by the same amount — exactly the
-        // opposite of what "matched" should mean.
-        $manualClvMatches = \App\Http\Controllers\SellPosController::loadCloverManualMatches((int) $business_id);
-        $manualClvToTxn = [];
-        if (!empty($manualClvMatches)) {
-            $manualClvToTxn = \DB::table('transactions as t')
-                ->leftJoin('users as u', 't.created_by', '=', 'u.id')
-                ->whereIn('t.id', array_values($manualClvMatches))
-                ->where('t.business_id', $business_id)
-                ->selectRaw("t.id, DATE(t.transaction_date) as day, t.location_id,
-                    COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, '') as cashier_name")
-                ->get()
-                ->keyBy('id')
-                ->all();
-        }
 
         // Pull cash_registers (with a 1-day buffer on each side) so we can
         // resolve "whose register was open at the moment of this swipe?".
