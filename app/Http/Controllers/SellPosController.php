@@ -2160,6 +2160,26 @@ class SellPosController extends Controller
         $created_by = $request->get('created_by');
         $discrepancy = $request->get('discrepancy', '');
         if (!in_array($discrepancy, ['', 'mismatch', 'no_clover', 'no_erp', 'any'], true)) $discrepancy = '';
+
+        // Sarah 2026-05-13: scope export by date/month the same way the
+        // page does so an export from the monthly view returns the
+        // month, not all-time. Accepts ?date= (single day), ?month=
+        // (YYYY-MM), or explicit ?start_date=/?end_date=.
+        $start_date = $request->get('start_date');
+        $end_date   = $request->get('end_date');
+        $dateStr    = $request->get('date');
+        $monthStr   = $request->get('month');
+        if ($monthStr && preg_match('/^\d{4}-\d{2}$/', (string) $monthStr)) {
+            $tz = 'America/Los_Angeles';
+            $m  = \Carbon\Carbon::createFromFormat('Y-m-d', $monthStr . '-01', $tz);
+            if ($m !== false) {
+                $start_date = $start_date ?: $m->copy()->startOfMonth()->format('Y-m-d');
+                $end_date   = $end_date   ?: $m->copy()->endOfMonth()->format('Y-m-d');
+            }
+        } elseif ($dateStr && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $dateStr)) {
+            $start_date = $start_date ?: $dateStr;
+            $end_date   = $end_date   ?: $dateStr;
+        }
         // Same widening trick the page uses: when filtering for rare
         // discrepancies, scan a bigger pool then trim post-match. Capped
         // higher than the page since exports often want the long tail.
