@@ -776,6 +776,14 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // to highlight a row.
     Route::get('/admin/staff-pos-access', 'StaffPosAccessController@index');
 
+    // Read-only diagnostic for cash-register openings. Each row shows what
+    // got saved (initial credit + safe_drop_amount) AND what the cashier
+    // typed in the duty-picker opening_cash field (pulled from activity_log).
+    // A non-zero Δ flags rows where the prefill was overridden on
+    // /cash-register/create. Built 2026-05-13 after Manolo's $1,028 open
+    // didn't match his reported ~$600 count + $100 safe drop.
+    Route::get('/admin/cash-register-debug', 'CashRegisterDebugController@index');
+
     // Companion to /admin/cost-price-rules: lists every category that still
     // has $0-cost products, lets Sarah enter a cost per category inline,
     // applies the lot in one go with snapshot-for-undo.
