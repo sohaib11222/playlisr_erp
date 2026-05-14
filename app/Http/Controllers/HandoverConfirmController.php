@@ -22,7 +22,10 @@ use Illuminate\Support\Facades\DB;
 // route Manolo here on his next /pos/create.
 class HandoverConfirmController extends Controller
 {
-    const MARKER = '[HANDOVER_PENDING]';
+    // Hyphen, not underscore: '_' is a single-char wildcard in MySQL LIKE,
+    // which would let unrelated notes match the gate query in
+    // SellPosController. Hyphen is a literal character in LIKE patterns.
+    const MARKER = '[HANDOVER-PENDING]';
 
     public function show($id)
     {

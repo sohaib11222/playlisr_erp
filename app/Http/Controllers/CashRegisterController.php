@@ -178,7 +178,7 @@ class CashRegisterController extends Controller
                 // Marker prefix flags this register for the confirm-on-next-
                 // login flow. The prefix is stripped when the prior cashier
                 // confirms via HandoverConfirmController@confirm.
-                $handoverNote = "[HANDOVER_PENDING] Auto-closed on handover at {$nowLa} when {$newCashierName} opened a new shift at {$locLabel}. Drawer count at handover = \${$counted_amount} (counted by {$newCashierName} as their cash-in-hand at open). Pending confirmation + reason from original cashier on next login.";
+                $handoverNote = \App\Http\Controllers\HandoverConfirmController::MARKER . " Auto-closed on handover at {$nowLa} when {$newCashierName} opened a new shift at {$locLabel}. Drawer count at handover = \${$counted_amount} (counted by {$newCashierName} as their cash-in-hand at open). Pending confirmation + reason from original cashier on next login.";
                 $prior->status = 'close';
                 $prior->closed_at = \Carbon::now()->format('Y-m-d H:i:s');
                 $prior->closing_amount = $counted_amount;
