@@ -297,8 +297,29 @@ $(document).ready(function() {
         }
     });
 
+    // Nivessa: strip `required` from any field that's effectively invisible
+    // before validating. Several form sections (tax_type, variable-product
+    // price columns, hidden mirror inputs) are wrapped in `.hide` /
+    // display:none for our resale-cert setup, and Chrome silently refuses to
+    // submit a form when a required+invisible field is empty. Server-side
+    // validation still covers what actually needs to be set
+    // (single_dpp_inc_tax, category_id, sub_category_id).
+    function __nivessaStripRequiredFromHidden() {
+        $('form#product_add_form').find('[required]').each(function () {
+            var el = this;
+            // offsetParent is null when the element (or any ancestor) is
+            // display:none. Disabled fields aren't submitted anyway.
+            if (el.disabled) return;
+            if (el.offsetParent === null) {
+                $(el).removeAttr('required');
+            }
+        });
+    }
+
     $(document).on('click', '.submit_product_form', function(e) {
         e.preventDefault();
+
+        __nivessaStripRequiredFromHidden();
 
         var is_valid_product_form = true;
 
