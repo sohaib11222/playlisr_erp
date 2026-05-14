@@ -1330,6 +1330,13 @@ class ProductController extends Controller
                         ];
         }
 
+        // AJAX clients (the edit page's Update button) just want the status —
+        // skip the redirect-to-products-list round trip that takes seconds on
+        // a large catalog.
+        if ($request->ajax() || $request->wantsJson()) {
+            return response()->json($output, $output['success'] ? 200 : 422);
+        }
+
         if ($request->input('submit_type') == 'update_n_edit_opening_stock') {
             return redirect()->action(
                 'OpeningStockController@add',
