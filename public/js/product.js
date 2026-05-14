@@ -377,13 +377,42 @@ $(document).ready(function() {
         var __doSubmit = function () {
             var formEl = document.getElementById('product_add_form');
             if (__isEdit && formEl) {
-                // Native submit doesn't fire the submit event, so the
-                // beforeunload hook installed by __page_leave_confirmation
-                // doesn't get cleared and Chrome asks "Leave site?". Kill
-                // it explicitly before submitting.
+                // AJAX-submit so we can: (1) bypass jQuery validate entirely
+                // (no submit event fired), (2) avoid the beforeunload prompt,
+                // (3) surface server-side validation messages inline instead
+                // of redirect-and-toast which keeps getting missed.
                 window.onbeforeunload = null;
-                formEl.submit();   // native — bypasses jQuery validate
-            } else if ($('form#product_add_form').valid()) {
+                var $btn = $(e.currentTarget);
+                $btn.prop('disabled', true).append(' …');
+                var formData = new FormData(formEl);
+                $.ajax({
+                    url: formEl.action,
+                    type: 'POST',                       // _method=PUT is inside FormData
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                }).done(function () {
+                    toastr.success('Saved.');
+                    setTimeout(function () { window.location.reload(); }, 400);
+                }).fail(function (xhr) {
+                    var msg = 'Save failed (HTTP ' + xhr.status + ')';
+                    try {
+                        var j = JSON.parse(xhr.responseText);
+                        if (j && j.errors) {
+                            msg = Object.keys(j.errors).map(function (k) {
+                                return j.errors[k].join('; ');
+                            }).join(' · ');
+                        } else if (j && j.message) {
+                            msg = j.message;
+                        }
+                    } catch (_) {}
+                    toastr.error(msg);
+                    $btn.prop('disabled', false);
+                });
+                return;
+            }
+            if ($('form#product_add_form').valid()) {
                 $('form#product_add_form').submit();
             }
         };
