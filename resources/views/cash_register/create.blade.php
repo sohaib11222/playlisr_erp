@@ -176,21 +176,21 @@
      from opening a new shift until they type why. Reason is stamped
      to the prior register's closing_note. --}}
 @if(!empty($prior_unclosed))
-    <div style="background:#FFEFD5; border:2px solid #E68A2E; border-radius:12px; padding:18px 22px; margin:18px auto; max-width:780px; color:#5C3A0E;">
-        <div style="font-size:12px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; color:#7A4E0A; margin-bottom:8px;">
-            ⚠ Required — your last shift wasn't closed
+    <div style="background:#F1F4FA; border:2px solid #8FA4C7; border-radius:12px; padding:18px 22px; margin:18px auto; max-width:780px; color:#1F2C4D;">
+        <div style="font-size:12px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; color:#3A52A0; margin-bottom:8px;">
+            Quick note before you open
         </div>
         <div style="font-size:15px; line-height:1.55; margin-bottom:10px;">
-            Your register at <strong>{{ $prior_unclosed['location'] }}</strong>
-            opened {{ $prior_unclosed['opened_at'] }} was auto-closed by the
-            system {{ $prior_unclosed['closed_at'] }} because you didn't close
-            it yourself. <strong>Why didn't you close it?</strong>
+            Your last register at <strong>{{ $prior_unclosed['location'] }}</strong>
+            (opened {{ $prior_unclosed['opened_at'] }}) was auto-closed
+            {{ $prior_unclosed['closed_at'] }} because it stayed open past
+            12 hours. Anything we should know about how your shift ended?
         </div>
         <textarea name="prev_close_reason" rows="2" required
-            placeholder="e.g. I forgot"
-            style="width:100%; font-size:15px; padding:10px 12px; border:1.5px solid #C68A3E; border-radius:8px; background:#FFFCF5; color:#1F1B16; resize:vertical;"></textarea>
-        <div style="font-size:11px; color:#6B5418; margin-top:6px;">
-            Saved to your shift record. One sentence is fine.
+            placeholder="e.g. forgot to close, had to leave early"
+            style="width:100%; font-size:15px; padding:10px 12px; border:1.5px solid #8FA4C7; border-radius:8px; background:#FFFFFF; color:#1F1B16; resize:vertical;"></textarea>
+        <div style="font-size:11px; color:#5A6987; margin-top:6px;">
+            One sentence is fine — just so we can match up the drawer count.
         </div>
     </div>
 @endif

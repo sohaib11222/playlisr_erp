@@ -194,10 +194,21 @@ class PosQuickReceiveController extends Controller
                 $vld->qty_available = (float) $vld->qty_available + (float) $qty;
                 $vld->save();
 
+                // Without a matching purchase_line at the same location,
+                // TransactionUtil's sell-allocation throws "Mismatch between
+                // sold and purchase quantity" at checkout — the qty is on
+                // the shelf but the sale won't go through. Mirror the
+                // stock bump with a purchase trail so the item is actually
+                // sellable, not just visible in the cart.
+                $tx_id = self::createPurchaseTrail(
+                    $variation, $product, $location_id, $qty,
+                    $business_id, $user_id
+                );
+
                 DB::table('pos_quick_receives')->insert([
                     'business_id' => $business_id,
                     'business_location_id' => $location_id,
-                    'transaction_id' => null,
+                    'transaction_id' => $tx_id,
                     'product_id' => $product->id,
                     'variation_id' => $variation->id,
                     'product_name' => mb_substr((string) ($product->name ?? ''), 0, 191),

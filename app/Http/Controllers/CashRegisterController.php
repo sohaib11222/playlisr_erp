@@ -204,7 +204,7 @@ class CashRegisterController extends Controller
                     return redirect()->back()
                         ->with('status', [
                             'success' => 0,
-                            'msg' => 'You left your previous register open. Please type why you didn\'t close it before opening a new one.',
+                            'msg' => 'Please add a quick note about your last shift before opening a new one.',
                         ])
                         ->withInput();
                 }
