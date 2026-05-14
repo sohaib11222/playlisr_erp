@@ -148,14 +148,13 @@
 @endif
 
 {{-- Sarah 2026-05-13: FYI heads-up — another cashier still has an open
-     register somewhere. Soft warning, not a block. If the user is the
-     cashier taking over, this nudges them to ask the prior cashier to
-     close properly first (so the prior cashier types their own closing
-     count) rather than triggering the locked-amount handover-close. --}}
+     register somewhere. Purely informational; both registers will stay
+     open if you proceed. Useful when you're the cashier taking over so
+     you know to ask the prior cashier to close their own shift. --}}
 @if(!empty($other_open_cashiers))
     <div style="background:#E8F0FE; border:2px solid #6A8FD1; border-radius:12px; padding:18px 22px; margin:18px auto; max-width:780px; color:#1F2C4D;">
         <div style="font-size:12px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; color:#3A52A0; margin-bottom:8px;">
-            ℹ Heads up — other cashier(s) still open
+            ℹ FYI — other cashier(s) currently open
         </div>
         <div style="font-size:15px; line-height:1.55;">
             @foreach($other_open_cashiers as $c)
@@ -165,9 +164,7 @@
                 </div>
             @endforeach
             <div style="margin-top:10px; font-weight:600;">
-                If you're the cashier taking over, please ask them to close their register first
-                so they count out their own drawer. If you proceed anyway, the system will
-                close their shift using <em>your</em> count of the drawer.
+                If you're the cashier taking over, please ask them to close their register before you start.
             </div>
         </div>
     </div>
