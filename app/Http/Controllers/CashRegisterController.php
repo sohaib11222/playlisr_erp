@@ -94,20 +94,33 @@ class CashRegisterController extends Controller
             $business_id = $request->session()->get('user.business_id');
             $location_id = $request->input('location_id');
 
-            // Sarah 2026-05-13: block opening on top of another cashier's
-            // still-open register at the same location. Manolo opened with
-            // $1,028 and never closed; Henry opened on top with $484 so
-            // Manolo's closing count + safe drop were never recorded.
-            // We're single-cashier-per-store until further notice — when
-            // we onboard a second concurrent cashier this gate gets a
-            // business-setting toggle.
+            // Sarah 2026-05-13: block opening on top of an already-open
+            // register. Two cases caught:
+            //   1. SAME cashier with a still-open shift (any location).
+            //      Manolo opened reg 622 at 9:33am ($514+$100 drop) and never
+            //      closed it, then opened reg 625 at 1:24pm with the same
+            //      counts — totals were double-counted as $1,028 on reports.
+            //   2. DIFFERENT cashier with an open shift at the SAME location.
+            //      Henry opened reg 626 on top of Manolo's 625 at hollywood
+            //      so Manolo's closing count + safe drop were never recorded.
+            // We're single-cashier-per-store until further notice. Both
+            // cases force a deliberate close (record closing cash + safe
+            // drop) before a new open is allowed.
             $existing_open = CashRegister::where('business_id', $business_id)
                 ->where('status', 'open')
-                ->where('location_id', $location_id)
-                ->where('user_id', '!=', $user_id)
+                ->where(function ($q) use ($user_id, $location_id) {
+                    // Same cashier, any location.
+                    $q->where('user_id', $user_id)
+                      // OR another cashier at the same location.
+                      ->orWhere(function ($q2) use ($user_id, $location_id) {
+                          $q2->where('location_id', $location_id)
+                             ->where('user_id', '!=', $user_id);
+                      });
+                })
                 ->latest('id')
                 ->first();
             if ($existing_open) {
+                $isSelf = ((int) $existing_open->user_id === (int) $user_id);
                 $other = \App\User::find($existing_open->user_id);
                 $otherName = $other
                     ? trim(($other->surname ?? '') . ' ' . ($other->first_name ?? '') . ' ' . ($other->last_name ?? ''))
@@ -115,11 +128,20 @@ class CashRegisterController extends Controller
                 $otherName = preg_replace('/\s+/', ' ', $otherName) ?: ('User #' . $existing_open->user_id);
                 $opened = \Carbon::parse($existing_open->created_at)
                     ->setTimezone('America/Los_Angeles')->format('M j, g:i A');
+                $openedLoc = \DB::table('business_locations')
+                    ->where('id', $existing_open->location_id)
+                    ->value('name');
+                $msg = $isSelf
+                    ? ("You already have an open register"
+                        . ($openedLoc ? " at {$openedLoc}" : "")
+                        . " from " . $opened . ". Close that shift first (record your closing cash + safe drop) before starting a new one.")
+                    : ($otherName . " still has the register open at this store from "
+                        . $opened . ". Close their shift first (record their closing cash + safe drop) before starting a new one.");
                 return redirect()->back()->withInput()
-                    ->with('error', $otherName . " still has the register open at this store from "
-                        . $opened . ". Close their shift first (record their closing cash + safe drop) before starting a new one.")
+                    ->with('error', $msg)
                     ->with('blocked_open_register_id', $existing_open->id)
-                    ->with('blocked_open_cashier', $otherName);
+                    ->with('blocked_open_cashier', $isSelf ? null : $otherName)
+                    ->with('blocked_open_self', $isSelf);
             }
 
             $registerData = [
