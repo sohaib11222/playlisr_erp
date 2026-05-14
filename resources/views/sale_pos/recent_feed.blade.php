@@ -623,9 +623,15 @@
 <section class="content">
     <div class="rf-wrap">
         <form method="GET" action="{{ action('SellPosController@recentSalesFeed') }}" class="rf-filters">
-            {{-- Persist the chosen date through filter changes so picking
-                 a different employee doesn't bounce back to today. --}}
-            <input type="hidden" name="date" value="{{ $dateStr }}">
+            {{-- Persist the chosen date / month through filter changes so
+                 picking a different employee doesn't bounce back to today,
+                 and the Export CSV button scopes to the month when in
+                 monthly view (was dropping back to single-day export). --}}
+            @if($is_month_mode && !empty($monthStr))
+                <input type="hidden" name="month" value="{{ $monthStr }}">
+            @else
+                <input type="hidden" name="date" value="{{ $dateStr }}">
+            @endif
             <div style="min-width: 180px;">
                 <label for="rf-location">Store</label>
                 <select name="location_id" id="rf-location" class="form-control" onchange="this.form.submit()">
