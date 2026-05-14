@@ -483,10 +483,26 @@
                                 <div style="font-size:26px; font-weight:700; color:#1F1B16; font-variant-numeric: tabular-nums;">${{ number_format($s['erp_net'], 2) }}</div>
                                 <div style="font-size:11px; color:#8A7C6A;">{{ $s['erp_count'] ?? 0 }} sale{{ ($s['erp_count'] ?? 0) === 1 ? '' : 's' }}</div>
                             </div>
+                            @php
+                                // When the per-store Diff is on pre-tax
+                                // basis (HW pattern), show Clover net-of-tax
+                                // here too so the math reconciles by eye:
+                                // ERP Sales − Clover Sales = Diff. Gross
+                                // total stays visible as a small footnote.
+                                $cloverDisplayBasis = $s['diff_basis'] ?? 'gross';
+                                $cloverDisplay = $cloverDisplayBasis === 'pre-tax'
+                                    ? ($s['clover'] - (float) ($s['clover_tax'] ?? 0))
+                                    : $s['clover'];
+                            @endphp
                             <div style="flex:1; min-width:140px;">
                                 <div style="font-size:11px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Clover Sales</div>
-                                <div style="font-size:26px; font-weight:700; color:#1F1B16; font-variant-numeric: tabular-nums;">${{ number_format($s['clover'], 2) }}</div>
+                                <div style="font-size:26px; font-weight:700; color:#1F1B16; font-variant-numeric: tabular-nums;">${{ number_format($cloverDisplay, 2) }}</div>
                                 <div style="font-size:11px; color:#8A7C6A;">{{ $s['clover_count'] ?? 0 }} charge{{ ($s['clover_count'] ?? 0) === 1 ? '' : 's' }}</div>
+                                @if($cloverDisplayBasis === 'pre-tax')
+                                    <div style="font-size:10px; color:#8A7C6A; margin-top:2px;" title="Clover charged ${{ number_format($s['clover'], 2) }} gross to customers; ${{ number_format((float)($s['clover_tax'] ?? 0), 2) }} of that is sales tax the terminal added on top. Shown here net of tax so it lines up with ERP final_total.">
+                                        gross ${{ number_format($s['clover'], 2) }} − ${{ number_format((float)($s['clover_tax'] ?? 0), 2) }} tax
+                                    </div>
+                                @endif
                             </div>
                             <div style="flex:1; min-width:140px;">
                                 <div style="font-size:11px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Diff</div>
@@ -496,11 +512,6 @@
                                 @else
                                     <div style="font-size:26px; font-weight:800; color:{{ $accent }}; font-variant-numeric: tabular-nums;">{{ $sDiff > 0 ? '+' : '' }}${{ number_format($sDiff, 2) }}</div>
                                     <div style="font-size:11px; color:{{ $accent }}; font-weight:700;">{{ $sDiff > 0 ? 'Clover ahead' : 'ERP ahead' }} · {{ number_format($sPct * 100, 1) }}%</div>
-                                @endif
-                                @if(($s['diff_basis'] ?? 'gross') === 'pre-tax')
-                                    <div style="font-size:10px; color:#8A7C6A; margin-top:3px;" title="ERP rings sticker pre-tax at this store; Clover adds tax at swipe. Diff shown is Clover net-of-tax vs ERP — the real reconciliation.">
-                                        net of ${{ number_format((float)($s['clover_tax'] ?? 0), 2) }} Clover tax
-                                    </div>
                                 @endif
                             </div>
                         </div>
