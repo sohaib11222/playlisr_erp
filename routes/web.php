@@ -784,6 +784,15 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // didn't match his reported ~$600 count + $100 safe drop.
     Route::get('/admin/cash-register-debug', 'CashRegisterDebugController@index');
 
+    // Force-close cash registers that cashiers left open. Per-row close +
+    // bulk "close all >20h" button. Each close snapshots the row first so
+    // it's undoable via /admin/admin-action-history (action
+    // 'force-close-register'). Closing_amount defaults to initial_amount
+    // and closing_note flags the row as admin-force-closed.
+    Route::get('/admin/force-close-registers', 'ForceCloseRegisterController@index');
+    Route::post('/admin/force-close-registers/close-one', 'ForceCloseRegisterController@closeOne');
+    Route::post('/admin/force-close-registers/close-stale', 'ForceCloseRegisterController@closeStale');
+
     // Companion to /admin/cost-price-rules: lists every category that still
     // has $0-cost products, lets Sarah enter a cost per category inline,
     // applies the lot in one go with snapshot-for-undo.

@@ -78,7 +78,7 @@ class AdminActionHistoryController extends Controller
         // line, marks the auto-created product inactive, and flips the
         // linked transaction back to draft. Skips any line that's already
         // had stock sold against it.
-        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import'];
+        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register'];
         if (!in_array($action, $supportedActions, true)) {
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 0, 'msg' => "Don't know how to undo action: " . $action]);
@@ -86,6 +86,47 @@ class AdminActionHistoryController extends Controller
 
         if ($action === 'bfc-receive') {
             return $this->undoBfcReceive($data, $key);
+        }
+
+        // force-close-register: snapshot rows hold the full cash_registers
+        // row as it was BEFORE the force-close. Undo restores status='open'
+        // and clears the close fields. We don't touch rows that have since
+        // been closed again with a real closing count by a real cashier —
+        // those are detected by closing_note NOT containing the snapshot key.
+        if ($action === 'force-close-register') {
+            $restored = 0;
+            $skipped = 0;
+            foreach ($data['rows'] as $row) {
+                $id = $row['id'] ?? null;
+                if (!$id) continue;
+                $current = DB::table('cash_registers')->where('id', $id)->first();
+                if (!$current) { $skipped++; continue; }
+                // Only undo if this row still bears our force-close note
+                // (i.e. the cashier hasn't since re-closed it for real).
+                $note = $current->closing_note ?? '';
+                if (stripos($note, $key) === false) {
+                    $skipped++;
+                    continue;
+                }
+                DB::table('cash_registers')
+                    ->where('id', $id)
+                    ->update([
+                        'status'         => 'open',
+                        'closed_at'      => $row['closed_at'] ?? null,
+                        'closing_amount' => $row['closing_amount'] ?? null,
+                        'closing_note'   => $row['closing_note'] ?? null,
+                        'updated_at'     => now(),
+                    ]);
+                $restored++;
+            }
+            $msg = "Reopened $restored register(s) from snapshot $key";
+            if ($skipped > 0) {
+                $msg .= "; skipped $skipped that had been re-closed for real since.";
+            } else {
+                $msg .= '.';
+            }
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 1, 'msg' => $msg]);
         }
 
         // qb-expense-import: snapshot rows hold inserted transaction IDs.
