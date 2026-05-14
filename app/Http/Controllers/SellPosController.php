@@ -1624,7 +1624,7 @@ class SellPosController extends Controller
                         if (!empty($visible_cp_ids)) $q->orWhereIn('clover_payment_id', $visible_cp_ids);
                     })
                     ->orderBy('created_at', 'desc')
-                    ->get(['transaction_id', 'clover_payment_id', 'discrepancy_type', 'reason', 'explained_by', 'created_at']);
+                    ->get(['transaction_id', 'clover_payment_id', 'discrepancy_type', 'reason', 'source', 'explained_by', 'created_at']);
                 foreach ($exRows as $row) {
                     $key = $row->discrepancy_type . ':' . (int) ($row->transaction_id ?? 0) . ':' . (int) ($row->clover_payment_id ?? 0);
                     if (!isset($clover_explanations[$key])) {

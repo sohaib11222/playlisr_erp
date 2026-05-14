@@ -1082,11 +1082,33 @@
                     $orphanExplanation = $clover_explanations[$orphanExKey] ?? null;
                 @endphp
                 @if(!empty($orphanExplanation))
+                    @php
+                        $isReg = ($orphanExplanation->source ?? null) === 'register_reconciliation';
+                    @endphp
                     <div style="margin:0 16px 8px 16px; padding:8px 10px; background:#EEF7EC; border:1px solid #B7DDB3; border-radius:6px; font-size:12px; color:#2C4F2A;">
-                        <strong>Cashier explained:</strong>
+                        <strong>{{ $isReg ? 'Register reconciliation:' : 'Cashier explained:' }}</strong>
+                        @if($isReg)
+                            <span style="display:inline-block; margin-left:4px; padding:0 6px; background:#1F5A2E; color:#FFFFFF; border-radius:999px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;">register recon</span>
+                        @endif
                         <span style="white-space:pre-wrap;">{{ $orphanExplanation->reason }}</span>
                         <span style="color:#5A7A5A; margin-left:6px;">— {{ \Carbon\Carbon::parse($orphanExplanation->created_at)->setTimezone('America/Los_Angeles')->format('M j g:i a') }}</span>
                     </div>
+                @else
+                    @if(auth()->user()->can('sell.create'))
+                        <details style="margin:0 16px 8px 16px;">
+                            <summary style="cursor:pointer; font-size:11px; color:#5A5045; font-weight:600; padding:4px 0;">+ Add register reconciliation note</summary>
+                            <form method="POST" action="{{ route('pos.mismatchExplain') }}" style="margin-top:6px;">
+                                @csrf
+                                <input type="hidden" name="discrepancy_type" value="no_erp">
+                                <input type="hidden" name="clover_payment_id" value="{{ $cp->id }}">
+                                <input type="hidden" name="source" value="register_reconciliation">
+                                <textarea name="reason" rows="2" required placeholder="What was this charge? (e.g., 'exchange — collected $4 difference, see Clover NKV34…')" style="width:100%; padding:6px 8px; border:1px solid #DFD2B3; border-radius:5px; font-size:12px; font-family:inherit;"></textarea>
+                                <div style="margin-top:4px; text-align:right;">
+                                    <button type="submit" style="padding:4px 12px; background:#1F5A2E; color:#fff; border:none; border-radius:5px; font-size:11px; font-weight:700; cursor:pointer;">Save register reconciliation note</button>
+                                </div>
+                            </form>
+                        </details>
+                    @endif
                 @endif
             </div>
         @else
@@ -1314,11 +1336,56 @@
                     </div>
                 </div>
                 @if(!empty($rowExplanation))
+                    @php
+                        $isReg = ($rowExplanation->source ?? null) === 'register_reconciliation';
+                    @endphp
                     <div style="margin:0 16px 8px 16px; padding:8px 10px; background:#EEF7EC; border:1px solid #B7DDB3; border-radius:6px; font-size:12px; color:#2C4F2A;">
-                        <strong>Cashier explained:</strong>
+                        <strong>{{ $isReg ? 'Register reconciliation:' : 'Cashier explained:' }}</strong>
+                        @if($isReg)
+                            <span style="display:inline-block; margin-left:4px; padding:0 6px; background:#1F5A2E; color:#FFFFFF; border-radius:999px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;">register recon</span>
+                        @endif
                         <span style="white-space:pre-wrap;">{{ $rowExplanation->reason }}</span>
                         <span style="color:#5A7A5A; margin-left:6px;">— {{ \Carbon\Carbon::parse($rowExplanation->created_at)->setTimezone('America/Los_Angeles')->format('M j g:i a') }}</span>
                     </div>
+                @elseif(($cloverInfo && $cloverMismatch) || !$cloverInfo)
+                    @if(auth()->user()->can('sell.create'))
+                        @php
+                            $rowDtype = ($cloverInfo && $cloverMismatch) ? 'mismatch' : 'no_clover';
+                            $rowPrompt = $rowDtype === 'mismatch'
+                                ? "Why does Clover differ from ERP? (e.g., 'cashier rang Clover at \$14 instead of \$15 sticker — \$1.09 short')"
+                                : "Why is there no Clover swipe? (e.g., 'paid cash \$40', 'exchange — original record returned, only difference rung')";
+                        @endphp
+                        <details style="margin:0 16px 8px 16px;">
+                            <summary style="cursor:pointer; font-size:11px; color:#5A5045; font-weight:600; padding:4px 0;">+ Add register reconciliation note</summary>
+                            <div style="margin-top:6px;">
+                                <form method="POST" action="{{ route('pos.mismatchExplain') }}">
+                                    @csrf
+                                    <input type="hidden" name="discrepancy_type" value="{{ $rowDtype }}">
+                                    <input type="hidden" name="transaction_id" value="{{ $sale->id }}">
+                                    <input type="hidden" name="source" value="register_reconciliation">
+                                    <textarea name="reason" rows="2" required placeholder="{{ $rowPrompt }}" style="width:100%; padding:6px 8px; border:1px solid #DFD2B3; border-radius:5px; font-size:12px; font-family:inherit;"></textarea>
+                                    <div style="margin-top:4px; text-align:right;">
+                                        <button type="submit" style="padding:4px 12px; background:#1F5A2E; color:#fff; border:none; border-radius:5px; font-size:11px; font-weight:700; cursor:pointer;">Save register reconciliation note</button>
+                                    </div>
+                                </form>
+                                @if($rowDtype === 'no_clover' && auth()->user()->can('sell.update'))
+                                    {{-- Quick "Mark as cash" for the canonical case: cashier rang
+                                         ERP as card but customer actually paid cash, so there's
+                                         no Clover swipe. Snapshots BEFORE state to
+                                         admin-snapshots/ — undo at /admin/admin-action-history. --}}
+                                    <form method="POST" action="{{ route('pos.overridePaymentMethod') }}" style="margin-top:6px; padding-top:6px; border-top:1px dashed #DFD2B3;" onsubmit="return confirm('Mark ERP #{{ $sale->invoice_no }} as paid in CASH (overrides current method)? A snapshot is saved before the change.');">
+                                        @csrf
+                                        <input type="hidden" name="transaction_id" value="{{ $sale->id }}">
+                                        <input type="hidden" name="method" value="cash">
+                                        <div style="display:flex; gap:6px; align-items:center;">
+                                            <input type="text" name="reason" placeholder="Optional: short reason (logged on the snapshot)" style="flex:1; padding:5px 8px; border:1px solid #DFD2B3; border-radius:5px; font-size:11px; font-family:inherit;">
+                                            <button type="submit" style="padding:5px 12px; background:#FFFFFF; color:#1F5A2E; border:1px solid #1F5A2E; border-radius:5px; font-size:11px; font-weight:700; cursor:pointer; white-space:nowrap;">↻ Mark as cash</button>
+                                        </div>
+                                    </form>
+                                @endif
+                            </div>
+                        </details>
+                    @endif
                 @endif
                 @php $erpPairCands = $erp_only_pair_candidates[$sale->id] ?? []; @endphp
                 @if(!empty($erpPairCands))
