@@ -1,16 +1,17 @@
 @extends('layouts.app')
-@section('title', 'Force-Close Registers')
+@section('title', 'Force-Close / Delete Registers')
 
 @section('content')
 <section class="content-header">
-    <h1>Force-Close Registers</h1>
+    <h1>Force-Close / Delete Registers</h1>
     <p class="text-muted">
-        Closes registers that cashiers left open. Each close writes a snapshot
-        to <code>storage/admin-snapshots/</code> first — undo any time at
+        Lists currently-open registers plus any closed in the last 48h.
+        <strong>Close</strong> marks the register status as closed (closing
+        amount defaults to the initial count). <strong>Delete</strong> removes
+        the register row and its cash_register_transactions outright — use
+        this for duplicate same-day opens that are polluting totals. Both
+        actions snapshot first; undo at
         <a href="{{ url('/admin/admin-action-history') }}">/admin/admin-action-history</a>.
-        Closing amount defaults to the register's <em>initial</em> count (we don't
-        know what the cashier counted at close) and the closing note flags the
-        row as admin-force-closed so the reconciliation trail stays honest.
     </p>
 </section>
 
@@ -33,7 +34,7 @@
             </button>
         </form>
         <span style="margin-left:14px; color:#666; font-size:13px;">
-            Bulk action — useful for clearing months of ex-employee leftovers.
+            Bulk close — useful for clearing months of ex-employee leftovers.
         </span>
     </div>
 </div>
@@ -47,19 +48,23 @@
                     <th>Cashier</th>
                     <th>Store</th>
                     <th>Opened</th>
+                    <th>Status</th>
                     <th style="text-align:right;">Age (h)</th>
-                    <th style="text-align:right;">Initial (will be closing)</th>
-                    <th>Staff status</th>
-                    <th style="text-align:center;">Close</th>
+                    <th style="text-align:right;">Initial</th>
+                    <th>Notes</th>
+                    <th style="text-align:center; min-width:160px;">Actions</th>
                 </tr>
             </thead>
             <tbody>
                 @forelse($rows as $r)
-                    <tr style="{{ $r->is_stale ? 'background:#fde8e8;' : '' }}">
+                    <tr style="{{ $r->is_stale ? 'background:#fde8e8;' : ($r->is_duplicate ? 'background:#fff4d6;' : '') }}">
                         <td><code>{{ $r->id }}</code></td>
                         <td><strong>{{ $r->name }}</strong></td>
                         <td>{{ $r->location_name }}</td>
                         <td><small>{{ $r->opened_at }}</small></td>
+                        <td>
+                            <span class="label label-{{ $r->status === 'open' ? 'success' : 'default' }}">{{ $r->status }}</span>
+                        </td>
                         <td style="text-align:right; font-variant-numeric:tabular-nums;">
                             {{ number_format($r->age_hours, 1) }}
                         </td>
@@ -67,25 +72,36 @@
                             ${{ number_format($r->initial_amount, 2) }}
                         </td>
                         <td>
-                            @if($r->is_current_staff)
-                                <span class="label label-success">current</span>
-                            @else
-                                <span class="label label-default">ex-staff</span>
+                            @if(!$r->is_current_staff)
+                                <span class="label label-default" style="margin-right:4px;">ex-staff</span>
+                            @endif
+                            @if($r->is_duplicate)
+                                <span class="label label-warning">duplicate same-day open</span>
                             @endif
                         </td>
                         <td style="text-align:center;">
-                            <form method="POST" action="{{ url('/admin/force-close-registers/close-one') }}" style="display:inline;">
+                            @if($r->status === 'open')
+                                <form method="POST" action="{{ url('/admin/force-close-registers/close-one') }}" style="display:inline;">
+                                    {!! csrf_field() !!}
+                                    <input type="hidden" name="register_id" value="{{ $r->id }}">
+                                    <button type="submit" class="btn btn-xs btn-warning"
+                                        onclick="return confirm('Close {{ addslashes($r->name) }}\'s register #{{ $r->id }}? Snapshot will be saved.');">
+                                        Close
+                                    </button>
+                                </form>
+                            @endif
+                            <form method="POST" action="{{ url('/admin/force-close-registers/delete-one') }}" style="display:inline;">
                                 {!! csrf_field() !!}
                                 <input type="hidden" name="register_id" value="{{ $r->id }}">
                                 <button type="submit" class="btn btn-xs btn-danger"
-                                    onclick="return confirm('Close {{ $r->name }}\'s register #{{ $r->id }}? Snapshot will be saved.');">
-                                    Close
+                                    onclick="return confirm('DELETE register #{{ $r->id }} ({{ addslashes($r->name) }})? This removes the row + all its cash_register_transactions. Snapshot will be saved for undo.');">
+                                    Delete
                                 </button>
                             </form>
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="8" class="text-center text-muted">No open registers. Everyone closed their shifts cleanly.</td></tr>
+                    <tr><td colspan="9" class="text-center text-muted">No open or recently-closed registers.</td></tr>
                 @endforelse
             </tbody>
         </table>

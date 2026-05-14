@@ -792,6 +792,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/force-close-registers', 'ForceCloseRegisterController@index');
     Route::post('/admin/force-close-registers/close-one', 'ForceCloseRegisterController@closeOne');
     Route::post('/admin/force-close-registers/close-stale', 'ForceCloseRegisterController@closeStale');
+    Route::post('/admin/force-close-registers/delete-one', 'ForceCloseRegisterController@deleteOne');
 
     // Companion to /admin/cost-price-rules: lists every category that still
     // has $0-cost products, lets Sarah enter a cost per category inline,

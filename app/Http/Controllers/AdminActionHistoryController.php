@@ -78,7 +78,7 @@ class AdminActionHistoryController extends Controller
         // line, marks the auto-created product inactive, and flips the
         // linked transaction back to draft. Skips any line that's already
         // had stock sold against it.
-        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register'];
+        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register'];
         if (!in_array($action, $supportedActions, true)) {
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 0, 'msg' => "Don't know how to undo action: " . $action]);
@@ -86,6 +86,34 @@ class AdminActionHistoryController extends Controller
 
         if ($action === 'bfc-receive') {
             return $this->undoBfcReceive($data, $key);
+        }
+
+        // delete-register: snapshot holds the full cash_registers row +
+        // every cash_register_transactions row that was attached. Undo
+        // re-inserts both (skips if a row with the same id already exists,
+        // which would mean the register was somehow recreated since).
+        if ($action === 'delete-register') {
+            $reg = $data['register'] ?? null;
+            $txns = $data['transactions'] ?? [];
+            if (!$reg || empty($reg['id'])) {
+                return redirect('/admin/admin-action-history')
+                    ->with('status', ['success' => 0, 'msg' => 'Snapshot missing register row.']);
+            }
+            $exists = DB::table('cash_registers')->where('id', $reg['id'])->exists();
+            if ($exists) {
+                return redirect('/admin/admin-action-history')
+                    ->with('status', ['success' => 0, 'msg' => "Register #{$reg['id']} already exists — cannot restore."]);
+            }
+            DB::table('cash_registers')->insert($reg);
+            $restoredTxns = 0;
+            foreach ($txns as $t) {
+                if (empty($t['id'])) continue;
+                if (DB::table('cash_register_transactions')->where('id', $t['id'])->exists()) continue;
+                DB::table('cash_register_transactions')->insert($t);
+                $restoredTxns++;
+            }
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 1, 'msg' => "Restored register #{$reg['id']} + {$restoredTxns} transaction row(s) from snapshot $key."]);
         }
 
         // force-close-register: snapshot rows hold the full cash_registers

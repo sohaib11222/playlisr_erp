@@ -28,20 +28,32 @@ class ForceCloseRegisterController extends Controller
         $business_id = (int) request()->session()->get('user.business_id');
         $hasSafeDrop = Schema::hasColumn('cash_registers', 'safe_drop_amount');
 
-        $opens = DB::table('cash_registers as cr')
+        // Include both currently-open registers AND recently-closed ones
+        // (last 48h) so admins can also DELETE duplicate registers that
+        // were already closed but are still polluting daily totals
+        // (e.g. Manolo's same-day double-open on 2026-05-13).
+        $recentCutoff = \Carbon::now()->subHours(48)->toDateTimeString();
+        $regs = DB::table('cash_registers as cr')
             ->leftJoin('users as u', 'u.id', '=', 'cr.user_id')
             ->leftJoin('business_locations as bl', 'bl.id', '=', 'cr.location_id')
             ->where('cr.business_id', $business_id)
-            ->where('cr.status', 'open')
+            ->where(function ($q) use ($recentCutoff) {
+                $q->where('cr.status', 'open')
+                  ->orWhere(function ($q2) use ($recentCutoff) {
+                      $q2->where('cr.status', 'close')
+                         ->where('cr.created_at', '>=', $recentCutoff);
+                  });
+            })
             ->orderBy('cr.created_at', 'desc')
             ->get([
-                'cr.id', 'cr.user_id', 'cr.location_id', 'cr.created_at',
+                'cr.id', 'cr.user_id', 'cr.location_id', 'cr.status',
+                'cr.created_at', 'cr.closed_at',
                 'u.surname', 'u.first_name', 'u.last_name',
                 'u.status as user_status', 'u.allow_login',
                 'bl.name as location_name',
             ]);
 
-        $registerIds = $opens->pluck('id')->all();
+        $registerIds = $regs->pluck('id')->all();
         $initials = empty($registerIds)
             ? collect()
             : DB::table('cash_register_transactions')
@@ -50,9 +62,30 @@ class ForceCloseRegisterController extends Controller
                 ->get(['cash_register_id', 'amount'])
                 ->keyBy('cash_register_id');
 
+        // Flag same-cashier-same-day duplicates: for each (user_id, store, date)
+        // group with >1 register, mark the NEWER ones as duplicates so admins
+        // can delete them cleanly.
+        $dupKeyToCount = [];
+        foreach ($regs as $r) {
+            $day = substr((string) $r->created_at, 0, 10);
+            $key = $r->user_id . '|' . $r->location_id . '|' . $day;
+            $dupKeyToCount[$key] = ($dupKeyToCount[$key] ?? 0) + 1;
+        }
+
         $now = \Carbon::now('America/Los_Angeles');
         $rows = [];
-        foreach ($opens as $r) {
+        // Track the OLDEST register per (user, store, day) — only NEWER ones
+        // get the "duplicate" flag.
+        $oldestPerKey = [];
+        foreach ($regs->reverse() as $r) {
+            $day = substr((string) $r->created_at, 0, 10);
+            $key = $r->user_id . '|' . $r->location_id . '|' . $day;
+            if (!isset($oldestPerKey[$key])) {
+                $oldestPerKey[$key] = $r->id;
+            }
+        }
+
+        foreach ($regs as $r) {
             $name = trim(($r->surname ?? '') . ' ' . ($r->first_name ?? '') . ' ' . ($r->last_name ?? ''));
             $name = preg_replace('/\s+/', ' ', $name) ?: ('User #' . $r->user_id);
 
@@ -63,15 +96,23 @@ class ForceCloseRegisterController extends Controller
             $initial = $initials->get($r->id);
             $initialAmount = $initial ? (float) $initial->amount : 0.0;
 
+            $day = substr((string) $r->created_at, 0, 10);
+            $key = $r->user_id . '|' . $r->location_id . '|' . $day;
+            $isDuplicate = ($dupKeyToCount[$key] ?? 0) > 1
+                && ($oldestPerKey[$key] ?? null) !== $r->id;
+
             $rows[] = (object) [
                 'id'              => $r->id,
+                'status'          => $r->status,
                 'name'            => $name,
                 'location_name'   => $r->location_name ?: 'Unknown location',
                 'opened_at'       => $opened->setTimezone('America/Los_Angeles')->format('M j, Y g:i A'),
+                'closed_at'       => $r->closed_at,
                 'age_hours'       => round($ageH, 1),
-                'is_stale'        => $ageH > self::STALE_HOURS,
+                'is_stale'        => $r->status === 'open' && $ageH > self::STALE_HOURS,
                 'is_current_staff'=> $isCurrentStaff,
                 'initial_amount'  => $initialAmount,
+                'is_duplicate'    => $isDuplicate,
             ];
         }
 
@@ -103,6 +144,49 @@ class ForceCloseRegisterController extends Controller
 
         return redirect('/admin/force-close-registers')
             ->with('status', ['success' => 1, 'msg' => "Closed register #{$id}. Undo at /admin/admin-action-history."]);
+    }
+
+    /** Delete ONE register by id. Snapshot the row + all its
+     *  cash_register_transactions first so it's undoable. Used to remove
+     *  duplicate same-day same-cashier registers that were polluting
+     *  totals (e.g. Manolo's reg 625 on 2026-05-13 — second open on top
+     *  of his own reg 622 from earlier the same day). */
+    public function deleteOne(Request $request)
+    {
+        $id = (int) $request->input('register_id');
+        $business_id = (int) $request->session()->get('user.business_id');
+
+        $reg = DB::table('cash_registers')
+            ->where('id', $id)
+            ->where('business_id', $business_id)
+            ->first();
+        if (!$reg) {
+            return redirect('/admin/force-close-registers')
+                ->with('status', ['success' => 0, 'msg' => "Register #{$id} not found."]);
+        }
+
+        $txns = DB::table('cash_register_transactions')
+            ->where('cash_register_id', $id)
+            ->get();
+
+        $key = 'delete_register_' . date('Ymd_His') . '_' . substr(bin2hex(random_bytes(3)), 0, 6);
+        $payload = [
+            'action'    => 'delete-register',
+            'timestamp' => now()->toIso8601String(),
+            'causer_id' => auth()->check() ? auth()->id() : null,
+            'register'  => (array) $reg,
+            'transactions' => $txns->map(function ($t) { return (array) $t; })->all(),
+        ];
+        Storage::disk('local')->put("admin-snapshots/{$key}.json", json_encode($payload));
+
+        DB::table('cash_register_transactions')->where('cash_register_id', $id)->delete();
+        DB::table('cash_registers')->where('id', $id)->delete();
+
+        return redirect('/admin/force-close-registers')
+            ->with('status', [
+                'success' => 1,
+                'msg' => "Deleted register #{$id} (" . count($txns) . " transaction row(s) also removed). Undo at /admin/admin-action-history (snapshot {$key}).",
+            ]);
     }
 
     /** Close every register older than STALE_HOURS. */
