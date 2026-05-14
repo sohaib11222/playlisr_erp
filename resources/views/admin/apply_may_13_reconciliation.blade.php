@@ -73,7 +73,7 @@
                 </tr>
                 <tr>
                     <td>2</td>
-                    <td>Manual match Clover ↔ ERP</td>
+                    <td>Manual match Clover ↔ ERP (Interpol)</td>
                     <td>
                         Clover <code>{{ $plan['p2_manual_match']['cp_payment_id'] }}</code> ↔
                         @if($plan['p2_manual_match']['tx_id'])
@@ -86,9 +86,24 @@
                     <td>{{ $plan['p2_manual_match']['reason'] }}</td>
                     <td>{!! $plan['p2_manual_match']['cp_db_id'] && $plan['p2_manual_match']['tx_id'] ? '<span class="text-success">✓ ready</span>' : '<span class="text-danger">✗ skip</span>' !!}</td>
                 </tr>
+                <tr>
+                    <td>3</td>
+                    <td>Manual match Clover ↔ ERP (Daft Punk exchange)</td>
+                    <td>
+                        Clover <code>{{ $plan['p5_exchange_match']['cp_payment_id'] }}</code> ↔
+                        @if($plan['p5_exchange_match']['tx_id'])
+                            ERP #{{ $plan['p5_exchange_match']['invoice_no'] }} (id {{ $plan['p5_exchange_match']['tx_id'] }})
+                        @else
+                            <span class="text-danger">#18680 not found</span>
+                        @endif
+                        @if($plan['p5_exchange_match']['amount']) · ${{ number_format($plan['p5_exchange_match']['amount'], 2) }} @endif
+                    </td>
+                    <td>{{ $plan['p5_exchange_match']['reason'] }}</td>
+                    <td>{!! $plan['p5_exchange_match']['cp_db_id'] && $plan['p5_exchange_match']['tx_id'] ? '<span class="text-success">✓ ready</span>' : '<span class="text-danger">✗ skip</span>' !!}</td>
+                </tr>
                 @foreach ($plan['p3_notes'] as $i => $note)
                     <tr>
-                        <td>{{ 3 + $i }}</td>
+                        <td>{{ 4 + $i }}</td>
                         <td>Save register-reconciliation note</td>
                         <td>
                             @if(!empty($note['invoice_no']))

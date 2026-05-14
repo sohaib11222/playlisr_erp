@@ -77,16 +77,19 @@ class ApplyMay13ReconciliationController extends Controller
             }
         }
 
-        // --- 2. Manual match #18696 ↔ Clover VN2H4Y21M170M --------------
+        // --- 2 + 5. Manual matches (Interpol pair + Daft Punk exchange) -
         $manualMatchBefore = SellPosController::loadCloverManualMatches($business_id);
-        if ($plan['p2_manual_match']['cp_db_id'] && $plan['p2_manual_match']['tx_id']) {
-            $snapshot['rows'][] = [
-                'kind' => 'clover_manual_match',
-                'clover_payment_db_id' => $plan['p2_manual_match']['cp_db_id'],
-                'clover_payment_id' => $plan['p2_manual_match']['cp_payment_id'],
-                'old_transaction_id' => $manualMatchBefore[$plan['p2_manual_match']['cp_db_id']] ?? null,
-                'new_transaction_id' => $plan['p2_manual_match']['tx_id'],
-            ];
+        foreach (['p2_manual_match', 'p5_exchange_match'] as $key) {
+            $m = $plan[$key] ?? null;
+            if (!empty($m['cp_db_id']) && !empty($m['tx_id'])) {
+                $snapshot['rows'][] = [
+                    'kind' => 'clover_manual_match',
+                    'clover_payment_db_id' => $m['cp_db_id'],
+                    'clover_payment_id' => $m['cp_payment_id'],
+                    'old_transaction_id' => $manualMatchBefore[$m['cp_db_id']] ?? null,
+                    'new_transaction_id' => $m['tx_id'],
+                ];
+            }
         }
 
         // Write the snapshot before doing ANY mutation.
@@ -114,16 +117,25 @@ class ApplyMay13ReconciliationController extends Controller
                 ];
             }
 
-            // 2) Manual match #18696 ↔ Clover.
-            if ($plan['p2_manual_match']['cp_db_id'] && $plan['p2_manual_match']['tx_id']) {
-                $map = SellPosController::loadCloverManualMatches($business_id);
-                $map[$plan['p2_manual_match']['cp_db_id']] = $plan['p2_manual_match']['tx_id'];
+            // 2 + 5) Manual matches: Interpol pair + Daft Punk exchange.
+            $map = SellPosController::loadCloverManualMatches($business_id);
+            $mapDirty = false;
+            foreach (['p2_manual_match', 'p5_exchange_match'] as $key) {
+                $m = $plan[$key] ?? null;
+                if (!empty($m['cp_db_id']) && !empty($m['tx_id'])) {
+                    if (($map[$m['cp_db_id']] ?? null) !== $m['tx_id']) {
+                        $map[$m['cp_db_id']] = $m['tx_id'];
+                        $mapDirty = true;
+                    }
+                    $applied['matches'][] = [
+                        'cp_payment_id' => $m['cp_payment_id'],
+                        'tx_id' => $m['tx_id'],
+                        'invoice_no' => $m['invoice_no'],
+                    ];
+                }
+            }
+            if ($mapDirty) {
                 SellPosController::saveCloverManualMatches($business_id, $map);
-                $applied['matches'][] = [
-                    'cp_payment_id' => $plan['p2_manual_match']['cp_payment_id'],
-                    'tx_id' => $plan['p2_manual_match']['tx_id'],
-                    'invoice_no' => $plan['p2_manual_match']['invoice_no'],
-                ];
             }
         });
 
@@ -212,6 +224,14 @@ class ApplyMay13ReconciliationController extends Controller
                 'invoice_no' => $tx18696->invoice_no ?? '18696',
                 'amount' => $cpInterpol->amount ?? null,
                 'reason' => 'luis rang Interpol pair after midnight (#18696, 12:05am); manual match across the date boundary.',
+            ],
+            'p5_exchange_match' => [
+                'cp_db_id' => $cpExchange->id ?? null,
+                'cp_payment_id' => $cpExchange->clover_payment_id ?? '53SP1HEY9A58R',
+                'tx_id' => $tx18680->id ?? null,
+                'invoice_no' => $tx18680->invoice_no ?? '18680',
+                'amount' => $cpExchange->amount ?? null,
+                'reason' => 'Daft Punk exchange — pair #18680 ($47.19 ERP) with Clover $4.39 ($4 diff actually collected). Resolves the orphan even though amounts differ.',
             ],
             'p3_notes' => array_values(array_filter([
                 $tx18680 ? [

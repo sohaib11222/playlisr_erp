@@ -976,14 +976,23 @@
                 $orphanCashierName = $orphanCashierId ? ($cashierNameById[$orphanCashierId] ?? null) : null;
                 $isPending = !empty($item['pending']);
                 $dupOfTxId = $orphan_duplicate_of[$cp->id] ?? null;
+                // Sarah 2026-05-14: orphans with a register-reconciliation
+                // note render as ✓ Resolved instead of ⚠ Clover-only so the
+                // page reads as "everything's accounted for" once Sarah's
+                // worked through her daily sweep.
+                $orphanExKey = 'no_erp:0:' . (int) $cp->id;
+                $orphanExplanation = $clover_explanations[$orphanExKey] ?? null;
+                $isResolved = !empty($orphanExplanation) && (($orphanExplanation->source ?? null) === 'register_reconciliation');
             @endphp
-            <div class="rf-card {{ $isPending ? 'rf-clover-pending' : 'rf-clover-orphan' }}">
+            <div class="rf-card {{ $isPending ? 'rf-clover-pending' : ($isResolved ? 'rf-clover-resolved' : 'rf-clover-orphan') }}">
                 <div class="rf-head">
                     <div class="rf-head-left">
                         @if($isPending)
                             <span class="rf-invoice"><span class="rf-orphan-tag">⏱ Pending</span></span>
                         @elseif($dupOfTxId)
                             <span class="rf-invoice"><span class="rf-orphan-tag" style="background:#A88032;color:#fff;">⚠ DUPLICATE</span></span>
+                        @elseif($isResolved)
+                            <span class="rf-invoice"><span class="rf-orphan-tag" style="background:#2E6F40;color:#fff;">✓ Resolved</span></span>
                         @else
                             <span class="rf-invoice"><span class="rf-orphan-tag">Clover only</span></span>
                         @endif
@@ -1002,6 +1011,8 @@
                         Clover charged <strong>${{ number_format($cpAmount, 2) }}</strong> in the last 10 min — ERP ring not in yet. Give it a minute.
                     @elseif($dupOfTxId)
                         Clover charged <strong>${{ number_format($cpAmount, 2) }}</strong> — same Clover order as paired sale <a href="{{ url('sells/' . $dupOfTxId) }}" style="color:#1F1B16;text-decoration:underline;">#{{ $dupOfTxId }}</a>. Likely a sync-side duplicate (Clover API returned 2 payment records for one logical sale). Not a missed ring-up.
+                    @elseif($isResolved)
+                        Clover charged <strong>${{ number_format($cpAmount, 2) }}</strong> — resolved via register reconciliation (see note).
                     @else
                         Clover charged <strong>${{ number_format($cpAmount, 2) }}</strong> — no matching ERP ring.
                     @endif
@@ -1262,6 +1273,31 @@
                     } elseif (!$cloverInfo) {
                         $rowExplanation = $clover_explanations[$exNoCloverKey] ?? null;
                     }
+                    // Sarah 2026-05-14: rows with a register-recon note
+                    // count as resolved — the page should read as "✓
+                    // accounted for" rather than red MISSING / mismatch
+                    // after the daily sweep. Also: a cash sale is never
+                    // expected to have a Clover swipe, so it shouldn't
+                    // render as MISSING in the first place.
+                    $rowIsResolved = !empty($rowExplanation) && (($rowExplanation->source ?? null) === 'register_reconciliation');
+                    $payMethods = is_array($sale->payment_lines ?? null)
+                        ? $sale->payment_lines
+                        : (method_exists($sale, 'payment_lines') ? $sale->payment_lines : null);
+                    // payment_methods is the JSON-ish concat the matcher
+                    // uses elsewhere; fall back to inspecting the relation
+                    // when present. Default to '' so the "expected card" branch
+                    // is the safe assumption.
+                    $rowPayMethod = '';
+                    if (!empty($sale->payment_lines) && is_iterable($sale->payment_lines)) {
+                        foreach ($sale->payment_lines as $pl) {
+                            $rowPayMethod = strtolower((string) ($pl->method ?? ''));
+                            if ($rowPayMethod !== '') break;
+                        }
+                    }
+                    if ($rowPayMethod === '' && !empty($sale->payment_methods)) {
+                        $rowPayMethod = strtolower((string) $sale->payment_methods);
+                    }
+                    $rowIsCashOnly = $rowPayMethod === 'cash';
                 @endphp
                 <div class="rf-foot">
                     <div class="rf-foot-meta">
@@ -1272,7 +1308,7 @@
                          no Clover pair, render the Clover column as "—" so the
                          layout stays consistent and "did this ring in ERP" is
                          answerable at a glance for every row. --}}
-                    <div class="rf-recon {{ $cloverInfo && $cloverMismatch ? 'is-mismatch' : '' }}">
+                    <div class="rf-recon {{ $cloverInfo && $cloverMismatch && !$rowIsResolved ? 'is-mismatch' : '' }}">
                         <div class="rf-recon-col rf-recon-erp">
                             <div class="lbl">ERP</div>
                             <div class="amt">${{ number_format($total, 2) }}</div>
@@ -1280,7 +1316,8 @@
                         <div class="rf-recon-col rf-recon-clover">
                             <div class="lbl">
                                 Clover
-                                @if($cloverInfo && $cloverMismatch)<span class="rf-recon-mismatch-tag" title="Clover charged ≠ ERP total">mismatch</span>@endif
+                                @if($cloverInfo && $cloverMismatch && !$rowIsResolved)<span class="rf-recon-mismatch-tag" title="Clover charged ≠ ERP total">mismatch</span>@endif
+                                @if($rowIsResolved)<span class="rf-recon-mismatch-tag" style="background:#2E6F40;" title="Resolved via register reconciliation note">resolved</span>@endif
                             </div>
                             @if($cloverInfo)
                                 <div class="amt">${{ number_format($cloverInfo['amount_cents'] / 100, 2) }}</div>
@@ -1297,13 +1334,22 @@
                                     @endif
                                 </div>
                             @else
-                                {{-- Sarah 2026-05-13: Clover records cash too,
-                                     so "no Clover match" is a real reconcile
-                                     gap (cashier rang ERP but didn't enter on
-                                     Clover terminal). Treat with the same
-                                     severity as a Clover-only orphan. --}}
-                                <div class="amt" style="color:#8B2C2C; font-weight:700;">⚠ MISSING</div>
-                                <div class="sub" style="color:#8B2C2C; font-weight:600;">not in Clover</div>
+                                {{-- Sarah 2026-05-14: suppress the red MISSING
+                                     pill when the sale is cash (no Clover
+                                     expected) or has a register-recon note
+                                     ("Sarah's already explained this, stop
+                                     flagging it"). Otherwise it stays red so
+                                     genuine missed Clover entries jump out. --}}
+                                @if($rowIsCashOnly)
+                                    <div class="amt" style="color:#5A5045; font-weight:600;">— cash</div>
+                                    <div class="sub" style="color:#8A7C6A;">paid in cash — no Clover expected</div>
+                                @elseif($rowIsResolved)
+                                    <div class="amt" style="color:#2E6F40; font-weight:700;">✓ Resolved</div>
+                                    <div class="sub" style="color:#2E6F40; font-weight:600;">see register reconciliation note</div>
+                                @else
+                                    <div class="amt" style="color:#8B2C2C; font-weight:700;">⚠ MISSING</div>
+                                    <div class="sub" style="color:#8B2C2C; font-weight:600;">not in Clover</div>
+                                @endif
                             @endif
                         </div>
                         {{-- Sarah 2026-05-13: per-sale Diff column. Shows every
