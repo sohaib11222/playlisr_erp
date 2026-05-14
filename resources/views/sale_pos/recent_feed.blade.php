@@ -373,12 +373,14 @@
             $roundingStores = [];
             $pendingStores = [];
             foreach ($byStore as $sk => $sv) {
-                // Headline Diff = raw Clover_total − ERP_total, which
-                // equals the literal sum of per-sale Diff cells when
-                // there are no orphans. Sarah (2026-05-13) prefers
-                // every-cent visibility over actionable-only filtering
-                // so the headline and the cards reconcile by eye.
-                $rawDiff = round($sv['clover'] - $sv['erp_net'], 2);
+                // Headline Diff uses the per-store "true diff" from
+                // dayByStoreTotals — auto-picks gross-vs-gross (Pico) or
+                // Clover-net-vs-ERP (HW) so tax-accounting differences
+                // don't fire false "STORE OFF" alarms. Falls back to the
+                // raw gross diff if the helper hasn't populated 'diff'.
+                $rawDiff = isset($sv['diff'])
+                    ? (float) $sv['diff']
+                    : round($sv['clover'] - $sv['erp_net'], 2);
                 $pendAmt = (float) ($pending_amount_by_store[$sk] ?? 0);
                 $pendCnt = (int) ($pending_count_by_store[$sk] ?? 0);
                 $adjDiff = round($rawDiff - $pendAmt, 2);
@@ -495,24 +497,9 @@
                                     <div style="font-size:26px; font-weight:800; color:{{ $accent }}; font-variant-numeric: tabular-nums;">{{ $sDiff > 0 ? '+' : '' }}${{ number_format($sDiff, 2) }}</div>
                                     <div style="font-size:11px; color:{{ $accent }}; font-weight:700;">{{ $sDiff > 0 ? 'Clover ahead' : 'ERP ahead' }} · {{ number_format($sPct * 100, 1) }}%</div>
                                 @endif
-                                @php
-                                    // Sarah 2026-05-13: show pre-tax-net diff when
-                                    // Clover collected meaningful tax but ERP didn't
-                                    // (HW pattern — sticker prices rung pre-tax in
-                                    // ERP while Clover adds tax at swipe). Drops the
-                                    // gap from gross-vs-gross down to the real
-                                    // workflow gap. Hidden when the gross diff
-                                    // already matches pre-tax (Pico — tax-inclusive
-                                    // ERP rings).
-                                    $cloverTaxVal = (float) ($s['clover_tax'] ?? 0);
-                                    $preTaxDiff   = (float) ($s['diff_pretax'] ?? $sDiff);
-                                    $showPreTax = $cloverTaxVal > 1.00
-                                        && abs($preTaxDiff) < abs($sDiff) - 5;
-                                @endphp
-                                @if($showPreTax)
-                                    <div style="font-size:11px; color:#5A5045; margin-top:6px; padding-top:6px; border-top:1px dotted #DFD2B3;">
-                                        After Clover tax (${{ number_format($cloverTaxVal, 2) }}):
-                                        <strong style="color:{{ abs($preTaxDiff) < 5 ? '#2E6F40' : '#5A5045' }}; font-variant-numeric:tabular-nums;">{{ $preTaxDiff >= 0 ? '+' : '' }}${{ number_format($preTaxDiff, 2) }}</strong>
+                                @if(($s['diff_basis'] ?? 'gross') === 'pre-tax')
+                                    <div style="font-size:10px; color:#8A7C6A; margin-top:3px;" title="ERP rings sticker pre-tax at this store; Clover adds tax at swipe. Diff shown is Clover net-of-tax vs ERP — the real reconciliation.">
+                                        net of ${{ number_format((float)($s['clover_tax'] ?? 0), 2) }} Clover tax
                                     </div>
                                 @endif
                             </div>

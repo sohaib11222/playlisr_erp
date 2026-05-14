@@ -337,13 +337,21 @@ class SellPosController extends Controller
             $s['clover']      = round($s['clover'], 2);
             $s['clover_tax']  = round((float) ($s['clover_tax'] ?? 0), 2);
             $s['whatnot_net'] = round($s['whatnot_net'], 2);
-            $s['diff']        = round($s['clover'] - $s['erp_net'], 2);
-            // Sarah 2026-05-13: "pre-tax diff" — Clover net of tax vs ERP.
-            // For HW where ERP rings sticker pre-tax (tax_amount = 0 in
-            // ERP), this is the apples-to-apples reconciliation. For Pico
-            // where ERP rings tax-inclusive, this'll OVER-correct so the
-            // view labels it explicitly to avoid confusion.
-            $s['diff_pretax'] = round($s['clover'] - $s['clover_tax'] - $s['erp_net'], 2);
+
+            // Sarah 2026-05-13: report ONE "true" diff per store. Some
+            // stores ring tax-inclusive in ERP (Pico — gross-vs-gross
+            // matches Clover); others ring sticker pre-tax (HW — needs
+            // Clover net-of-tax to reconcile). Auto-detect from the data:
+            // whichever basis gives the smaller absolute discrepancy is
+            // the basis this store actually uses. The tax-accounting
+            // 12% noise on HW gross stops polluting the headline.
+            $diffGross = $s['clover'] - $s['erp_net'];
+            $diffNet   = ($s['clover'] - $s['clover_tax']) - $s['erp_net'];
+            $useNet    = $s['clover_tax'] > 1.00 && abs($diffNet) < abs($diffGross);
+            $s['diff']        = round($useNet ? $diffNet : $diffGross, 2);
+            $s['diff_basis']  = $useNet ? 'pre-tax' : 'gross';
+            $s['diff_gross']  = round($diffGross, 2);
+            $s['diff_pretax'] = round($diffNet, 2);
         }
         unset($s);
         uasort($byStore, function ($a, $b) {
