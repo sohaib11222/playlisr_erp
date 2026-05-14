@@ -184,13 +184,15 @@
             Your last register at <strong>{{ $prior_unclosed['location'] }}</strong>
             (opened {{ $prior_unclosed['opened_at'] }}) was auto-closed
             {{ $prior_unclosed['closed_at'] }} because it stayed open past
-            12 hours. Anything we should know about how your shift ended?
+            12 hours. Please make sure to close your register and count
+            the cash daily. Anything we should know about how your shift
+            ended?
         </div>
         <textarea name="prev_close_reason" rows="2" required
             placeholder="e.g. forgot to close, had to leave early"
             style="width:100%; font-size:15px; padding:10px 12px; border:1.5px solid #8FA4C7; border-radius:8px; background:#FFFFFF; color:#1F1B16; resize:vertical;"></textarea>
         <div style="font-size:11px; color:#5A6987; margin-top:6px;">
-            One sentence is fine — just so we can match up the drawer count.
+            One sentence is fine — so we can match up the drawer count.
         </div>
     </div>
 @endif
