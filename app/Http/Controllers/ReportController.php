@@ -9397,9 +9397,13 @@ class ReportController extends Controller
         // happened to also have a register open. Also caps how stale a
         // still-"open" register can be — 18h — so yesterday's register
         // that was never closed doesn't absorb today's swipes.
-        $findShiftCashier = function ($ts, $locId) use ($registers, $adminSet) {
+        $findShiftCashier = function ($ts, $locId) use ($registers, $adminSet, $slingEndByUserDay) {
             $cpTs = strtotime((string) $ts);
-            // 1) Strict pass: a register actually open at $cpTs.
+            // 1) Strict pass: a register actually open at $cpTs. When two
+            //    registers at the same store both cover $cpTs, prefer the
+            //    one opened later — the older one is almost always
+            //    someone who forgot to close before leaving.
+            $bestName = null; $bestOpenTs = -1;
             foreach ($registers as $reg) {
                 if ((int) ($reg->location_id ?? 0) !== (int) ($locId ?? 0)) continue;
                 if ($reg->user_name === '') continue;
@@ -9407,11 +9411,26 @@ class ReportController extends Controller
                 if (isset($adminSet[$rfn])) continue;
                 $openTs  = strtotime((string) $reg->opened_at);
                 $open    = $openTs - 60;
-                $close   = $reg->closed_at ? (strtotime((string) $reg->closed_at) + 60) : PHP_INT_MAX;
-                $stale   = !$reg->closed_at && ($cpTs - $openTs > 18 * 3600);
+                // Effective close = min(register.closed_at, sling dtend).
+                // Sling dtend is the cashier's actual punch-out and beats
+                // a forgotten-to-close drawer. +5min slack on Sling so a
+                // swipe rung right at clock-out still attributes.
+                $regCloseTs = $reg->closed_at ? (strtotime((string) $reg->closed_at) + 60) : PHP_INT_MAX;
+                $slingKey = ((int) ($reg->user_id ?? 0)) . '|' . date('Y-m-d', $openTs);
+                $slingCloseTs = isset($slingEndByUserDay[$slingKey])
+                    ? ($slingEndByUserDay[$slingKey] + 300)
+                    : PHP_INT_MAX;
+                $close = min($regCloseTs, $slingCloseTs);
+                $stale = !$reg->closed_at && !isset($slingEndByUserDay[$slingKey]) && ($cpTs - $openTs > 18 * 3600);
                 if (!$stale && $cpTs >= $open && $cpTs <= $close) {
-                    return $reg->user_name;
+                    if ($openTs > $bestOpenTs) {
+                        $bestOpenTs = $openTs;
+                        $bestName   = $reg->user_name;
+                    }
                 }
+            }
+            if ($bestName !== null) {
+                return $bestName;
             }
             // 2) Sarah 2026-05-11: Zak's first Pico swipe of the day was
             //    at 12:05pm but he opened his register at 12:13pm — strict
