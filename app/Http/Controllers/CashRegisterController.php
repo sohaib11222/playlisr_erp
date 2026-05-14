@@ -96,7 +96,48 @@ class CashRegisterController extends Controller
             \Log::warning('other-open-cashiers fetch failed: ' . $e->getMessage());
         }
 
-        return view('cash_register.create')->with(compact('business_locations', 'sub_type', 'other_open_cashiers'));
+        // Sarah 2026-05-14: if this cashier has a recent auto-closed
+        // register (system swept it past 12h because they forgot to
+        // close), require them to type why before they can open a
+        // new shift. Reason goes into the prior register's
+        // closing_note so /admin/admin-action-history + the recon
+        // page can see it. Skips registers that already carry a
+        // reason — one prompt per missed close.
+        $prior_unclosed = null;
+        try {
+            $userId = (int) auth()->user()->id;
+            $sevenDaysAgo = \Carbon::now()->subDays(7)->format('Y-m-d H:i:s');
+            $candidate = CashRegister::where('business_id', $business_id)
+                ->where('user_id', $userId)
+                ->where('status', 'close')
+                ->where('closed_at', '>=', $sevenDaysAgo)
+                ->where('closing_note', 'like', '%Auto-closed by system%')
+                ->where(function ($q) {
+                    $q->whereNull('closing_note')
+                      ->orWhere('closing_note', 'not like', '%Cashier reason:%');
+                })
+                ->orderBy('closed_at', 'desc')
+                ->first();
+            if ($candidate) {
+                $opened = \Carbon::parse($candidate->created_at)
+                    ->setTimezone('America/Los_Angeles');
+                $closed = \Carbon::parse($candidate->closed_at)
+                    ->setTimezone('America/Los_Angeles');
+                $loc = \DB::table('business_locations')
+                    ->where('id', $candidate->location_id)
+                    ->value('name');
+                $prior_unclosed = [
+                    'register_id' => (int) $candidate->id,
+                    'location'    => $loc ?: 'Unknown store',
+                    'opened_at'   => $opened->format('M j, g:i A'),
+                    'closed_at'   => $closed->format('M j, g:i A'),
+                ];
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('prior-unclosed lookup failed: ' . $e->getMessage());
+        }
+
+        return view('cash_register.create')->with(compact('business_locations', 'sub_type', 'other_open_cashiers', 'prior_unclosed'));
     }
 
     /**
@@ -138,6 +179,42 @@ class CashRegisterController extends Controller
             // so they don't block the next cashier. System-only close —
             // no human closes another human's register.
             $this->cashRegisterUtil->autoCloseStaleOpenRegisters($business_id, 12);
+
+            // Sarah 2026-05-14: if this cashier has a recent auto-closed
+            // register with no written reason, require the reason here
+            // before letting them open a new shift. Mirrors the lookup
+            // in create() above. Writing it back to the prior register's
+            // closing_note keeps the audit trail on the row it belongs
+            // to (not on the new register, which is unrelated).
+            $sevenDaysAgo = \Carbon::now()->subDays(7)->format('Y-m-d H:i:s');
+            $priorUnclosed = CashRegister::where('business_id', $business_id)
+                ->where('user_id', $user_id)
+                ->where('status', 'close')
+                ->where('closed_at', '>=', $sevenDaysAgo)
+                ->where('closing_note', 'like', '%Auto-closed by system%')
+                ->where(function ($q) {
+                    $q->whereNull('closing_note')
+                      ->orWhere('closing_note', 'not like', '%Cashier reason:%');
+                })
+                ->orderBy('closed_at', 'desc')
+                ->first();
+            if ($priorUnclosed) {
+                $reason = trim((string) $request->input('prev_close_reason', ''));
+                if ($reason === '') {
+                    return redirect()->back()
+                        ->with('status', [
+                            'success' => 0,
+                            'msg' => 'You left your previous register open. Please type why you didn\'t close it before opening a new one.',
+                        ])
+                        ->withInput();
+                }
+                $nowLa = \Carbon::now()->setTimezone('America/Los_Angeles')->format('M j, g:i A');
+                $stamped = "Cashier reason: {$reason} (typed at {$nowLa})";
+                $priorUnclosed->closing_note = $priorUnclosed->closing_note
+                    ? trim($priorUnclosed->closing_note) . "\n" . $stamped
+                    : $stamped;
+                $priorUnclosed->save();
+            }
 
             // Sarah 2026-05-13: only block the SAME cashier from opening
             // twice (one register per shift policy). DIFFERENT cashiers at

@@ -171,6 +171,29 @@
 @endif
 {!! Form::open(['url' => action('CashRegisterController@store'), 'method' => 'post',
 'id' => 'add_cash_register_form' ]) !!}
+{{-- Sarah 2026-05-14: if this cashier has a recent register that
+     was auto-closed (they forgot to close it manually), block them
+     from opening a new shift until they type why. Reason is stamped
+     to the prior register's closing_note. --}}
+@if(!empty($prior_unclosed))
+    <div style="background:#FFEFD5; border:2px solid #E68A2E; border-radius:12px; padding:18px 22px; margin:18px auto; max-width:780px; color:#5C3A0E;">
+        <div style="font-size:12px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; color:#7A4E0A; margin-bottom:8px;">
+            ⚠ Required — your last shift wasn't closed
+        </div>
+        <div style="font-size:15px; line-height:1.55; margin-bottom:10px;">
+            Your register at <strong>{{ $prior_unclosed['location'] }}</strong>
+            opened {{ $prior_unclosed['opened_at'] }} was auto-closed by the
+            system {{ $prior_unclosed['closed_at'] }} because you didn't close
+            it yourself. <strong>Why didn't you close it?</strong>
+        </div>
+        <textarea name="prev_close_reason" rows="2" required
+            placeholder="e.g. I forgot"
+            style="width:100%; font-size:15px; padding:10px 12px; border:1.5px solid #C68A3E; border-radius:8px; background:#FFFCF5; color:#1F1B16; resize:vertical;"></textarea>
+        <div style="font-size:11px; color:#6B5418; margin-top:6px;">
+            Saved to your shift record. One sentence is fine.
+        </div>
+    </div>
+@endif
   <div class="box box-solid">
     <div class="box-body">
     <br><br><br>
