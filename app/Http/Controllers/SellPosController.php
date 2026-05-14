@@ -2570,6 +2570,36 @@ class SellPosController extends Controller
             \Log::error('Auto close cash registers failed: ' . $e->getMessage());
         }
 
+        // Sarah 2026-05-13: force-close gate for the cashier's OWN prior-day
+        // open shift. If a cashier left without closing yesterday (or
+        // earlier), their next /pos/create lands on the close form and
+        // they can't ring sales until they record their closing count +
+        // safe drop. This is how we make people close their own
+        // registers without blocking the next cashier from opening — the
+        // prior cashier hits this gate at their next login. Different
+        // cashiers' opens at the same store don't fire this; only the
+        // owner gets routed to their own close form.
+        try {
+            $todayStartUtc = \Carbon\Carbon::now('America/Los_Angeles')->startOfDay()->copy()->setTimezone(config('app.timezone'));
+            $priorShift = \App\CashRegister::where('business_id', $business_id)
+                ->where('user_id', auth()->user()->id)
+                ->where('status', 'open')
+                ->where('created_at', '<', $todayStartUtc->toDateTimeString())
+                ->orderBy('id', 'desc')
+                ->first();
+            if ($priorShift) {
+                $opened = \Carbon::parse($priorShift->created_at)
+                    ->setTimezone('America/Los_Angeles')->format('M j, g:i A');
+                return redirect('/cash-register/close-register/' . $priorShift->id)
+                    ->with('status', [
+                        'success' => 0,
+                        'msg' => "You didn't close your shift from {$opened}. Count the drawer and record the closing cash + safe drop before starting a new shift.",
+                    ]);
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('prior-shift-close gate failed: ' . $e->getMessage());
+        }
+
         //Check if there is a open register, if no then redirect to Create Register screen.
         if ($this->cashRegisterUtil->countOpenedRegister() == 0) {
             return redirect()->action('CashRegisterController@create', ['sub_type' => $sub_type]);

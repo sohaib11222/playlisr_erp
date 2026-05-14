@@ -108,77 +108,34 @@ class CashRegisterController extends Controller
             // no human closes another human's register.
             $this->cashRegisterUtil->autoCloseStaleOpenRegisters($business_id, 12);
 
-            // Sarah 2026-05-13: block opening on top of an already-open
-            // register. Two cases caught:
-            //   1. SAME cashier with a still-open shift (any location).
-            //      Manolo opened reg 622 at 9:33am ($514+$100 drop) and never
-            //      closed it, then opened reg 625 at 1:24pm with the same
-            //      counts — totals were double-counted as $1,028 on reports.
-            //   2. DIFFERENT cashier with an open shift at the SAME location.
-            //      Henry opened reg 626 on top of Manolo's 625 at hollywood
-            //      so Manolo's closing count + safe drop were never recorded.
-            // We're single-cashier-per-store until further notice. Both
-            // cases force a deliberate close (record closing cash + safe
-            // drop) before a new open is allowed.
-            $existing_open = CashRegister::where('business_id', $business_id)
+            // Sarah 2026-05-13: only block the SAME cashier from opening
+            // twice (one register per shift policy). DIFFERENT cashiers at
+            // the same store are now allowed to open — we don't have
+            // managers onsite to clear a stuck register, and blocking the
+            // next cashier means the floor stops working. The prior
+            // cashier (who left without closing) gets force-routed to
+            // their close form on their next login via the gate in
+            // SellPosController@create — so "make them close it" is
+            // enforced at their next session, not at the next cashier's
+            // expense.
+            $existing_open_self = CashRegister::where('business_id', $business_id)
                 ->where('status', 'open')
-                ->where(function ($q) use ($user_id, $location_id) {
-                    // Same cashier, any location.
-                    $q->where('user_id', $user_id)
-                      // OR another cashier at the same location.
-                      ->orWhere(function ($q2) use ($user_id, $location_id) {
-                          $q2->where('location_id', $location_id)
-                             ->where('user_id', '!=', $user_id);
-                      });
-                })
+                ->where('user_id', $user_id)
                 ->latest('id')
                 ->first();
-            if ($existing_open) {
-                $isSelf = ((int) $existing_open->user_id === (int) $user_id);
-                $opened = \Carbon::parse($existing_open->created_at)
+            if ($existing_open_self) {
+                $opened = \Carbon::parse($existing_open_self->created_at)
                     ->setTimezone('America/Los_Angeles')->format('g:i A');
                 $openedLoc = \DB::table('business_locations')
-                    ->where('id', $existing_open->location_id)
+                    ->where('id', $existing_open_self->location_id)
                     ->value('name');
-                // Same cashier: one register per shift policy (Sarah 2026-05-13).
-                // Don't ask them to close it — just send them back to POS with
-                // a "register is already open" note. They keep using the open
-                // register; no second register is created.
-                if ($isSelf) {
-                    return redirect()->action('SellPosController@create', ['sub_type' => $sub_type])
-                        ->with('status', [
-                            'success' => 1,
-                            'msg' => 'Register is already open'
-                                . ($openedLoc ? " at {$openedLoc}" : '')
-                                . ' (since ' . $opened . '). One register per shift — keep ringing here.',
-                        ]);
-                }
-                // Different cashier still has the register open at this
-                // location. Sarah 2026-05-13: do NOT expose a "close
-                // their register" button to the new cashier — typing a
-                // closing_amount on someone else's drawer is a theft
-                // surface (cashier could under-count and pocket the
-                // difference). Two safe paths instead:
-                //   1. Original cashier comes back and closes their own.
-                //   2. Shift hits 12h, system auto-closes (no human-typed
-                //      closing amount; reconciliation flags count missing).
-                //   3. Admin uses /admin/force-close-registers, which
-                //      snapshots BEFORE and defaults closing_amount to
-                //      initial_amount with a full audit trail.
-                $other = \App\User::find($existing_open->user_id);
-                $otherName = $other
-                    ? trim(($other->surname ?? '') . ' ' . ($other->first_name ?? '') . ' ' . ($other->last_name ?? ''))
-                    : ('User #' . $existing_open->user_id);
-                $otherName = preg_replace('/\s+/', ' ', $otherName) ?: ('User #' . $existing_open->user_id);
-                $autoCloseAt = \Carbon::parse($existing_open->created_at)
-                    ->addHours(12)->setTimezone('America/Los_Angeles')->format('M j, g:i A');
-                return redirect()->back()->withInput()
-                    ->with('error', $otherName . " still has the register open at this store from "
-                        . $opened . ". They need to come back and close their own shift "
-                        . "(typing someone else's closing count is a theft risk, so it's not allowed). "
-                        . "If they can't, the system will auto-close it at {$autoCloseAt}.")
-                    ->with('blocked_open_cashier', $otherName)
-                    ->with('blocked_open_self', false);
+                return redirect()->action('SellPosController@create', ['sub_type' => $sub_type])
+                    ->with('status', [
+                        'success' => 1,
+                        'msg' => 'Register is already open'
+                            . ($openedLoc ? " at {$openedLoc}" : '')
+                            . ' (since ' . $opened . '). One register per shift — keep ringing here.',
+                    ]);
             }
 
             $registerData = [
