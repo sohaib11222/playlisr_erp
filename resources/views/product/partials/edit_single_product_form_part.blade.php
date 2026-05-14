@@ -49,10 +49,11 @@
                         <input type="hidden" name="single_variation_id" value="{{$variation->id}}">
 
                         {{-- Nivessa has a resale certificate — purchase prices have no sales tax,
-                             so the ex-tax field is kept hidden and mirrored to inc-tax on save. --}}
+                             so the ex-tax field is kept hidden and mirrored to inc-tax on save.
+                             Do NOT mark this `required` — Chrome silently refuses to submit when a
+                             required field is display:none and empty (e.g. legacy rows with NULL dpp). --}}
                         {!! Form::text('single_dpp', @num_format($variation->default_purchase_price), [
                             'class' => 'form-control input-sm dpp input_number',
-                            'required' => true,
                             'style' => 'display:none;',
                         ]) !!}
 
