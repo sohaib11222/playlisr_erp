@@ -1604,38 +1604,13 @@ class SellPosController extends Controller
             if (!in_array($k, $store_order, true)) $store_order[] = $k;
         }
 
-        // Sarah 2026-05-13: pull any saved cashier explanations for the
-        // visible rows so the view can show them inline next to MISMATCH /
-        // NO-ERP / NO-CLOVER chips. Most recent reason wins per (type,
-        // tx, cp) key.
-        $visible_tx_ids = $sales->pluck('id')->all();
-        $visible_cp_ids = $unclaimed_clover_payments->pluck('id')->all();
-        // Skip the lookup if the model class hasn't been added to the repo
-        // yet (Sarah's commit referenced \App\CloverMismatchExplanation but
-        // the model file isn't there). The view tolerates an empty map, so
-        // the page renders cleanly until the model ships.
-        $clover_explanations = [];
-        if (class_exists('\App\CloverMismatchExplanation')
-            && (!empty($visible_tx_ids) || !empty($visible_cp_ids))) {
-            try {
-                $exRows = \App\CloverMismatchExplanation::where('business_id', $business_id)
-                    ->where(function ($q) use ($visible_tx_ids, $visible_cp_ids) {
-                        if (!empty($visible_tx_ids)) $q->orWhereIn('transaction_id', $visible_tx_ids);
-                        if (!empty($visible_cp_ids)) $q->orWhereIn('clover_payment_id', $visible_cp_ids);
-                    })
-                    ->orderBy('created_at', 'desc')
-                    ->get(['transaction_id', 'clover_payment_id', 'discrepancy_type', 'reason', 'source', 'explained_by', 'created_at']);
-                foreach ($exRows as $row) {
-                    $key = $row->discrepancy_type . ':' . (int) ($row->transaction_id ?? 0) . ':' . (int) ($row->clover_payment_id ?? 0);
-                    if (!isset($clover_explanations[$key])) {
-                        $clover_explanations[$key] = $row;
-                    }
-                }
-            } catch (\Throwable $e) {
-                // Missing table or query error — degrade silently.
-                $clover_explanations = [];
-            }
-        }
+        // Sarah 2026-05-14: pull saved reconciliation notes for the
+        // visible rows so the view can render them inline next to
+        // MISMATCH / NO-ERP / NO-CLOVER chips. Stored as JSON in
+        // storage/app/clover-explanations/{business_id}.json — same
+        // pattern as cloverManualMatch — so no migration is needed.
+        // Most recent note wins per ("type:tx:cp") key.
+        $clover_explanations = self::loadCloverExplanations($business_id);
 
         // Sarah 2026-05-13: per-cashier daily reconciliation cards. Was on
         // /reports/clover-eod-reconciliation; moved here so cash drawer +
@@ -2072,10 +2047,67 @@ class SellPosController extends Controller
         return redirect($back)->with('status', '✓ Cleared manual pairing.');
     }
 
+    /** Path of the JSON file holding all reconciliation notes for a business. */
+    protected static function cloverExplanationsPath(int $business_id): string
+    {
+        return 'clover-explanations/' . $business_id . '.json';
+    }
+
+    /**
+     * Load reconciliation notes as a ("type:tx:cp" → note-as-object) map
+     * matching the shape the recent_feed view expects. Most recent wins.
+     * Returns [] if the file doesn't exist yet so the view stays clean.
+     */
+    public static function loadCloverExplanations(int $business_id): array
+    {
+        $path = self::cloverExplanationsPath($business_id);
+        if (!\Illuminate\Support\Facades\Storage::disk('local')->exists($path)) {
+            return [];
+        }
+        try {
+            $raw = \Illuminate\Support\Facades\Storage::disk('local')->get($path);
+            $rows = json_decode($raw, true);
+            if (!is_array($rows)) return [];
+        } catch (\Throwable $e) {
+            return [];
+        }
+
+        // The on-disk format is a list ordered oldest-first. Reduce to a
+        // (type:tx:cp → most-recent) map so the view's lookups stay O(1).
+        $map = [];
+        foreach ($rows as $r) {
+            $type = (string) ($r['discrepancy_type'] ?? '');
+            $tx = (int) ($r['transaction_id'] ?? 0);
+            $cp = (int) ($r['clover_payment_id'] ?? 0);
+            if ($type === '' || ($tx <= 0 && $cp <= 0)) continue;
+            $key = $type . ':' . $tx . ':' . $cp;
+            $map[$key] = (object) $r; // overwrite — latest wins
+        }
+        return $map;
+    }
+
+    /** Append a note row to the JSON store. Atomic via Storage::put. */
+    protected static function appendCloverExplanation(int $business_id, array $row): void
+    {
+        $path = self::cloverExplanationsPath($business_id);
+        $rows = [];
+        if (\Illuminate\Support\Facades\Storage::disk('local')->exists($path)) {
+            try {
+                $raw = \Illuminate\Support\Facades\Storage::disk('local')->get($path);
+                $decoded = json_decode($raw, true);
+                if (is_array($decoded)) $rows = $decoded;
+            } catch (\Throwable $e) {
+                $rows = [];
+            }
+        }
+        $rows[] = $row;
+        \Illuminate\Support\Facades\Storage::disk('local')->put($path, json_encode($rows, JSON_PRETTY_PRINT));
+    }
+
     /**
      * Save a cashier / admin note explaining a Clover ↔ ERP reconciliation
-     * row. Three discrepancy_types correspond to the chip-keys the
-     * recent_feed view already builds in $clover_explanations:
+     * row. discrepancy_type corresponds to the chip-keys the recent_feed
+     * view already builds in $clover_explanations:
      *
      *   no_erp     → Clover-only orphan (transaction_id null, cp_id set)
      *   mismatch   → paired but amount differs (transaction_id set, cp_id 0)
@@ -2084,6 +2116,9 @@ class SellPosController extends Controller
      * source is stamped 'register_reconciliation' when the note comes from
      * the daily reconcile sweep so the UI can chip those notes separately
      * from in-the-moment cashier explanations on the live POS feed.
+     *
+     * Stored as JSON (storage/app/clover-explanations/{business_id}.json)
+     * because Sarah doesn't run migrations on a per-PR basis.
      */
     public function mismatchExplain(Request $request)
     {
@@ -2132,7 +2167,7 @@ class SellPosController extends Controller
             }
         }
 
-        \App\CloverMismatchExplanation::create([
+        self::appendCloverExplanation($business_id, [
             'business_id' => $business_id,
             'transaction_id' => $txId > 0 ? $txId : null,
             'clover_payment_id' => $cpId > 0 ? $cpId : null,
@@ -2140,6 +2175,7 @@ class SellPosController extends Controller
             'reason' => $reason,
             'source' => $source,
             'explained_by' => (int) auth()->id() ?: null,
+            'created_at' => \Carbon\Carbon::now()->toDateTimeString(),
         ]);
 
         $chip = $source === 'register_reconciliation' ? 'register reconciliation note' : 'note';
@@ -2255,18 +2291,18 @@ class SellPosController extends Controller
         // asked for every reconciliation edit to be visibly labelled.
         if ($reason !== '') {
             try {
-                \App\CloverMismatchExplanation::create([
+                self::appendCloverExplanation($business_id, [
                     'business_id' => $business_id,
                     'transaction_id' => $txId,
                     'clover_payment_id' => null,
                     'discrepancy_type' => 'no_clover',
-                    'reason' => 'Payment method overridden CARD/CASH → ' . strtoupper($newMethod) . '. ' . $reason,
+                    'reason' => 'Payment method overridden → ' . strtoupper($newMethod) . '. ' . $reason,
                     'source' => 'register_reconciliation',
                     'explained_by' => (int) auth()->id() ?: null,
+                    'created_at' => $now->toDateTimeString(),
                 ]);
             } catch (\Throwable $e) {
-                // Note table may not be migrated yet on first deploy —
-                // don't fail the override if logging fails.
+                // Don't fail the override if note logging fails.
             }
         }
 
