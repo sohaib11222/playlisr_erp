@@ -49,11 +49,20 @@ class CashRegisterController extends Controller
         //like:repair
         $sub_type = request()->get('sub_type');
 
+        $business_id = request()->session()->get('user.business_id');
+
+        // Sarah 2026-05-13: sweep abandoned (>12h open) shifts before the
+        // gate runs, so yesterday's leftover open doesn't block today's
+        // opening. No human closes another human's register (theft
+        // surface); only the system does, when the shift has clearly
+        // been abandoned. closing_amount stays NULL on purpose so the
+        // reconciliation banner can flag "count missing".
+        $this->cashRegisterUtil->autoCloseStaleOpenRegisters($business_id, 12);
+
         //Check if there is a open register, if yes then redirect to POS screen.
         if ($this->cashRegisterUtil->countOpenedRegister() != 0) {
             return redirect()->action('SellPosController@create', ['sub_type' => $sub_type]);
         }
-        $business_id = request()->session()->get('user.business_id');
         $business_locations = BusinessLocation::forDropdown($business_id);
 
         return view('cash_register.create')->with(compact('business_locations', 'sub_type'));
@@ -93,6 +102,11 @@ class CashRegisterController extends Controller
             $user_id = $request->session()->get('user.id');
             $business_id = $request->session()->get('user.business_id');
             $location_id = $request->input('location_id');
+
+            // Sarah 2026-05-13: sweep >12h abandoned shifts BEFORE the gate
+            // so they don't block the next cashier. System-only close —
+            // no human closes another human's register.
+            $this->cashRegisterUtil->autoCloseStaleOpenRegisters($business_id, 12);
 
             // Sarah 2026-05-13: block opening on top of an already-open
             // register. Two cases caught:
@@ -140,18 +154,29 @@ class CashRegisterController extends Controller
                         ]);
                 }
                 // Different cashier still has the register open at this
-                // location — keep the explicit "close their shift first"
-                // path so the prior cashier's closing count + safe drop
-                // actually get recorded.
+                // location. Sarah 2026-05-13: do NOT expose a "close
+                // their register" button to the new cashier — typing a
+                // closing_amount on someone else's drawer is a theft
+                // surface (cashier could under-count and pocket the
+                // difference). Two safe paths instead:
+                //   1. Original cashier comes back and closes their own.
+                //   2. Shift hits 12h, system auto-closes (no human-typed
+                //      closing amount; reconciliation flags count missing).
+                //   3. Admin uses /admin/force-close-registers, which
+                //      snapshots BEFORE and defaults closing_amount to
+                //      initial_amount with a full audit trail.
                 $other = \App\User::find($existing_open->user_id);
                 $otherName = $other
                     ? trim(($other->surname ?? '') . ' ' . ($other->first_name ?? '') . ' ' . ($other->last_name ?? ''))
                     : ('User #' . $existing_open->user_id);
                 $otherName = preg_replace('/\s+/', ' ', $otherName) ?: ('User #' . $existing_open->user_id);
+                $autoCloseAt = \Carbon::parse($existing_open->created_at)
+                    ->addHours(12)->setTimezone('America/Los_Angeles')->format('M j, g:i A');
                 return redirect()->back()->withInput()
                     ->with('error', $otherName . " still has the register open at this store from "
-                        . $opened . ". Close their shift first (record their closing cash + safe drop) before starting a new one.")
-                    ->with('blocked_open_register_id', $existing_open->id)
+                        . $opened . ". They need to come back and close their own shift "
+                        . "(typing someone else's closing count is a theft risk, so it's not allowed). "
+                        . "If they can't, the system will auto-close it at {$autoCloseAt}.")
                     ->with('blocked_open_cashier', $otherName)
                     ->with('blocked_open_self', false);
             }

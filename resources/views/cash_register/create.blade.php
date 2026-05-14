@@ -144,12 +144,6 @@
         <div style="font-size:15px; line-height:1.55; font-weight:600;">
             {{ session('error') }}
         </div>
-        @if(session('blocked_open_register_id'))
-            <a href="{{ url('/cash-register/close-register/' . session('blocked_open_register_id')) }}"
-               style="display:inline-block; margin-top:12px; padding:10px 18px; background:#1F1B16; color:#fff; text-decoration:none; border-radius:8px; font-weight:700; font-size:14px;">
-                Close {{ session('blocked_open_cashier') ?: 'their' }}'s register
-            </a>
-        @endif
     </div>
 @endif
 {!! Form::open(['url' => action('CashRegisterController@store'), 'method' => 'post',

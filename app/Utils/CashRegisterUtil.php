@@ -26,6 +26,50 @@ class CashRegisterUtil extends Util
     }
 
     /**
+     * Sarah 2026-05-13: auto-close any register that's been open longer
+     * than $hours. Sarah's rule: no human can close another human's
+     * register (theft surface), so abandoned shifts get force-closed by
+     * the system instead. closing_amount stays NULL so the reconciliation
+     * page can flag "count wasn't recorded" — we are NOT inventing a
+     * closing total, just stopping the shift so the next cashier can open.
+     *
+     * Called lazily from the open-register flow + /pos/recent-feed so it
+     * sweeps without needing a cron. Returns the IDs that were closed
+     * (so the caller can surface a banner if desired).
+     *
+     * @param int $business_id
+     * @param int $hours
+     * @return array<int>
+     */
+    public function autoCloseStaleOpenRegisters($business_id, $hours = 12)
+    {
+        try {
+            $cutoff = \Carbon::now()->subHours($hours)->format('Y-m-d H:i:s');
+            $stale = CashRegister::where('business_id', $business_id)
+                ->where('status', 'open')
+                ->where('created_at', '<=', $cutoff)
+                ->get();
+            $closedIds = [];
+            $nowLa = \Carbon::now()->setTimezone('America/Los_Angeles')->format('M j, g:i A');
+            $nowDb = \Carbon::now()->format('Y-m-d H:i:s');
+            foreach ($stale as $r) {
+                $r->status = 'close';
+                $r->closed_at = $nowDb;
+                $note = "Auto-closed by system at {$nowLa} — shift exceeded {$hours}h with no manual close. Closing cash + safe drop NOT counted by cashier.";
+                $r->closing_note = $r->closing_note
+                    ? trim($r->closing_note) . "\n" . $note
+                    : $note;
+                $r->save();
+                $closedIds[] = (int) $r->id;
+            }
+            return $closedIds;
+        } catch (\Throwable $e) {
+            \Log::warning('autoCloseStaleOpenRegisters failed: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
      * Get all open registers for the current user that were opened
      * at least $hours hours ago.
      *

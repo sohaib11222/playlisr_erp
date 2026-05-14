@@ -1644,6 +1644,17 @@ class SellPosController extends Controller
         // Ex-employees with stale opens from months/years ago are noise —
         // nobody is going back to close those, and they were drowning out
         // the actually-actionable rows from today's cashiers.
+        // Sarah 2026-05-13: sweep >12h abandoned shifts BEFORE we read
+        // open registers, so anything that aged past the auto-close
+        // threshold drops out of the banner naturally. System-only
+        // close — no human-typed closing amount (theft surface).
+        try {
+            app(\App\Utils\CashRegisterUtil::class)
+                ->autoCloseStaleOpenRegisters($business_id, 12);
+        } catch (\Throwable $e) {
+            \Log::warning('recent_feed: autoCloseStaleOpenRegisters failed: ' . $e->getMessage());
+        }
+
         $stale_open_registers = [];
         try {
             $todayStartLa = \Carbon\Carbon::now($tz)->startOfDay();
@@ -1679,16 +1690,66 @@ class SellPosController extends Controller
                     $name = trim(($u->surname ?? '') . ' ' . ($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
                     $name = preg_replace('/\s+/', ' ', $name) ?: ('User #' . $r->user_id);
                     $stale_open_registers[] = [
-                        'id'         => $r->id,
-                        'cashier'    => $name,
-                        'location'   => $locMap[$r->location_id] ?? 'Unknown location',
-                        'opened_at'  => $created->copy()->setTimezone($tz)->format('M j, g:i A'),
-                        'reason'     => $hasNewerSameLoc ? 'opened_on_top' : 'overnight',
+                        'id'             => $r->id,
+                        'cashier'        => $name,
+                        'location'       => $locMap[$r->location_id] ?? 'Unknown location',
+                        'opened_at'      => $created->copy()->setTimezone($tz)->format('M j, g:i A'),
+                        'reason'         => $hasNewerSameLoc ? 'opened_on_top' : 'overnight',
+                        'auto_close_at'  => $created->copy()->addHours(12)
+                            ->setTimezone($tz)->format('M j, g:i A'),
                     ];
                 }
             }
         } catch (\Throwable $e) {
             \Log::warning('stale_open_registers detection failed: ' . $e->getMessage());
+        }
+
+        // Sarah 2026-05-13: also surface registers that were auto-closed
+        // in the last 7 days WITHOUT a counted closing amount. The shift
+        // ended but reconciliation is incomplete (we don't know what was
+        // actually in the drawer). Lets Sarah catch up on missed counts
+        // without re-opening the registers (which would be a theft risk).
+        try {
+            $cutoff7d = \Carbon\Carbon::now()->subDays(7)->format('Y-m-d H:i:s');
+            $autoClosed = \App\CashRegister::where('business_id', $business_id)
+                ->where('status', 'close')
+                ->whereNotNull('closed_at')
+                ->where('closed_at', '>=', $cutoff7d)
+                ->whereNull('closing_amount')
+                ->where('closing_note', 'like', '%Auto-closed by system%')
+                ->orderBy('closed_at', 'desc')
+                ->limit(20)
+                ->get();
+            if ($autoClosed->isNotEmpty()) {
+                $aUserIds = $autoClosed->pluck('user_id')->unique()->all();
+                $aUserMap = User::whereIn('id', $aUserIds)
+                    ->select('id', 'surname', 'first_name', 'last_name')
+                    ->get()->keyBy('id');
+                $aLocIds = $autoClosed->pluck('location_id')->unique()->filter()->all();
+                $aLocMap = !empty($aLocIds)
+                    ? BusinessLocation::whereIn('id', $aLocIds)->pluck('name', 'id')
+                    : collect();
+                foreach ($autoClosed as $r) {
+                    $u = $aUserMap->get($r->user_id);
+                    $name = $u
+                        ? trim(($u->surname ?? '') . ' ' . ($u->first_name ?? '') . ' ' . ($u->last_name ?? ''))
+                        : ('User #' . $r->user_id);
+                    $name = preg_replace('/\s+/', ' ', $name) ?: ('User #' . $r->user_id);
+                    $stale_open_registers[] = [
+                        'id'             => $r->id,
+                        'cashier'        => $name,
+                        'location'       => $aLocMap[$r->location_id] ?? 'Unknown location',
+                        'opened_at'      => \Carbon\Carbon::parse($r->created_at)
+                            ->setTimezone($tz)->format('M j, g:i A'),
+                        'closed_at'      => \Carbon\Carbon::parse($r->closed_at)
+                            ->setTimezone($tz)->format('M j, g:i A'),
+                        'reason'         => 'auto_closed',
+                        'auto_close_at'  => null,
+                    ];
+                }
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('auto_closed detection failed: ' . $e->getMessage());
         }
 
         return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'orphan_by_loc', 'orphan_null_loc', 'orphan_refund_count', 'orphan_voided_count', 'orphan_real_count', 'orphan_nearmatch_count', 'orphan_dup_cluster_count', 'orphan_dup_cluster_rows', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'pending_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store', 'tz_debug', 'dateStr', 'day_label', 'prev_date', 'next_date', 'is_today', 'allow_next', 'dayMode', 'is_month_mode', 'month_label', 'prev_month', 'next_month', 'allow_next_month', 'monthStr', 'sales_by_store', 'orphans_by_store', 'pending_by_store', 'pending_amount_by_store', 'pending_count_by_store', 'store_order', 'orphan_duplicate_of', 'erp_only_pair_candidates', 'clover_explanations', 'employee_breakdown_by_day', 'reconciliations', 'stale_open_registers'));

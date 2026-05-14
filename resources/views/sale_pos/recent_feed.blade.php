@@ -234,9 +234,11 @@
     @endphp
     {{-- Sarah 2026-05-13: shout when a cashier left the register open.
          Triggered when a shift was carried overnight or when a second
-         cashier opened on top at the same store (Manolo→Henry case).
-         Manager clicks through to /cash-register/close-register/{id} to
-         record the missing closing count + safe drop. --}}
+         cashier opened on top at the same store. Informational only —
+         no "close their register" button (typing someone else's closing
+         count is a theft risk). The cashier closes their own shift; if
+         they can't, the system auto-closes at 12h; admin's escape hatch
+         is /admin/force-close-registers (snapshot + undo). --}}
     @if(!empty($stale_open_registers))
         <div style="background:#FDECCB; border:2px solid #E0A93A; border-radius:10px; padding:14px 18px; margin-bottom:14px;">
             <div style="font-size:12px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; color:#7A4E0A; margin-bottom:8px;">
@@ -245,19 +247,33 @@
             @foreach($stale_open_registers as $r)
                 <div style="margin-top:6px; font-size:14px; color:#3A2E0F; line-height:1.5;">
                     <strong>{{ $r['cashier'] }}</strong>
-                    opened the register at <strong>{{ $r['location'] }}</strong>
-                    on {{ $r['opened_at'] }} and never closed it
-                    @if($r['reason'] === 'opened_on_top')
-                        — another cashier opened on top, so this shift's closing cash + safe drop weren't recorded.
+                    @if($r['reason'] === 'auto_closed')
+                        opened at <strong>{{ $r['location'] }}</strong>
+                        on {{ $r['opened_at'] }} — system auto-closed at {{ $r['closed_at'] }}
+                        because the shift went past 12h with no manual close.
+                        <span style="display:inline-block; margin-left:6px; padding:2px 8px; background:#F2C9C9; color:#6B1F1F; border-radius:6px; font-size:11px; font-weight:700;">
+                            Count not recorded
+                        </span>
                     @else
-                        — the shift was carried overnight.
+                        opened the register at <strong>{{ $r['location'] }}</strong>
+                        on {{ $r['opened_at'] }} and never closed it
+                        @if($r['reason'] === 'opened_on_top')
+                            — another cashier opened on top, so this shift's closing cash + safe drop weren't recorded.
+                        @else
+                            — the shift was carried overnight.
+                        @endif
+                        @if(!empty($r['auto_close_at']))
+                            <span style="display:inline-block; margin-left:6px; padding:2px 8px; background:#FBE3A6; color:#5C3F08; border-radius:6px; font-size:11px; font-weight:700;">
+                                Auto-closes {{ $r['auto_close_at'] }}
+                            </span>
+                        @endif
                     @endif
-                    <a href="{{ url('/cash-register/close-register/' . $r['id']) }}"
-                       style="margin-left:8px; padding:5px 12px; background:#1F1B16; color:#fff; text-decoration:none; border-radius:6px; font-weight:700; font-size:12px; display:inline-block;">
-                        Close {{ $r['cashier'] }}'s register
-                    </a>
                 </div>
             @endforeach
+            <div style="margin-top:10px; font-size:12px; color:#6B5418;">
+                Have the cashier close their own shift. If they can't, the system auto-closes at 12h.
+                Admin escape hatch (snapshot + undo): <a href="{{ url('/admin/force-close-registers') }}" style="color:#7A4E0A; text-decoration:underline; font-weight:700;">/admin/force-close-registers</a>.
+            </div>
         </div>
     @endif
 
