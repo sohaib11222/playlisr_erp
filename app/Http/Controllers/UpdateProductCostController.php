@@ -28,15 +28,19 @@ class UpdateProductCostController extends Controller
         $rows = collect();
 
         if ($q !== '') {
+            // Case-insensitive LIKE in case the column collation is binary.
+            // SKU/sub_sku get substring match too (not just prefix) since
+            // partial SKUs are a common way Sarah hunts for a row.
+            $needle = '%' . mb_strtolower($q) . '%';
             $rows = DB::table('variations as v')
                 ->join('products as p', 'p.id', '=', 'v.product_id')
                 ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
                 ->where('p.business_id', $businessId)
                 ->whereNull('v.deleted_at')
-                ->where(function ($w) use ($q) {
-                    $w->where('p.sku', 'like', $q . '%')
-                      ->orWhere('v.sub_sku', 'like', $q . '%')
-                      ->orWhere('p.name', 'like', '%' . $q . '%');
+                ->where(function ($w) use ($needle) {
+                    $w->whereRaw('LOWER(p.sku) LIKE ?', [$needle])
+                      ->orWhereRaw('LOWER(v.sub_sku) LIKE ?', [$needle])
+                      ->orWhereRaw('LOWER(p.name) LIKE ?', [$needle]);
                 })
                 ->orderBy('p.name')
                 ->limit(50)

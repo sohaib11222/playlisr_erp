@@ -2072,6 +2072,207 @@ class SellPosController extends Controller
         return redirect($back)->with('status', '✓ Cleared manual pairing.');
     }
 
+    /**
+     * Save a cashier / admin note explaining a Clover ↔ ERP reconciliation
+     * row. Three discrepancy_types correspond to the chip-keys the
+     * recent_feed view already builds in $clover_explanations:
+     *
+     *   no_erp     → Clover-only orphan (transaction_id null, cp_id set)
+     *   mismatch   → paired but amount differs (transaction_id set, cp_id 0)
+     *   no_clover  → ERP-only sale, no Clover swipe (transaction_id set, cp_id 0)
+     *
+     * source is stamped 'register_reconciliation' when the note comes from
+     * the daily reconcile sweep so the UI can chip those notes separately
+     * from in-the-moment cashier explanations on the live POS feed.
+     */
+    public function mismatchExplain(Request $request)
+    {
+        if (!auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = (int) $request->session()->get('user.business_id');
+        $back = $request->headers->get('referer') ?: route('pos.recentFeed');
+
+        $discrepancyType = (string) $request->input('discrepancy_type', '');
+        $reason = trim((string) $request->input('reason', ''));
+        $txId = (int) $request->input('transaction_id', 0);
+        $cpId = (int) $request->input('clover_payment_id', 0);
+        $source = (string) $request->input('source', 'register_reconciliation');
+
+        if (!in_array($discrepancyType, ['no_erp', 'mismatch', 'no_clover'], true)) {
+            return redirect($back)->with('error', 'Unknown discrepancy type.');
+        }
+        if ($reason === '') {
+            return redirect($back)->with('error', 'Reason is required.');
+        }
+        if ($txId <= 0 && $cpId <= 0) {
+            return redirect($back)->with('error', 'Need either a transaction or a Clover payment to attach the note to.');
+        }
+        if (!in_array($source, ['register_reconciliation', 'pos_feed'], true)) {
+            $source = 'register_reconciliation';
+        }
+
+        // Validate the references belong to this business — guards against
+        // a hand-crafted POST attaching a note to someone else's row.
+        if ($txId > 0) {
+            $exists = Transaction::where('id', $txId)
+                ->where('business_id', $business_id)
+                ->exists();
+            if (!$exists) {
+                return redirect($back)->with('error', 'ERP transaction not found.');
+            }
+        }
+        if ($cpId > 0) {
+            $exists = \App\CloverPayment::where('id', $cpId)
+                ->where('business_id', $business_id)
+                ->exists();
+            if (!$exists) {
+                return redirect($back)->with('error', 'Clover payment not found.');
+            }
+        }
+
+        \App\CloverMismatchExplanation::create([
+            'business_id' => $business_id,
+            'transaction_id' => $txId > 0 ? $txId : null,
+            'clover_payment_id' => $cpId > 0 ? $cpId : null,
+            'discrepancy_type' => $discrepancyType,
+            'reason' => $reason,
+            'source' => $source,
+            'explained_by' => (int) auth()->id() ?: null,
+        ]);
+
+        $chip = $source === 'register_reconciliation' ? 'register reconciliation note' : 'note';
+        return redirect($back)->with('status', '✓ Saved ' . $chip . '.');
+    }
+
+    /**
+     * Stub: the route exists ahead of the feature so the link in the nav
+     * doesn't 404. Returns to the recent feed for now. Sarah will flesh
+     * out the dedicated pending-mismatch queue view later.
+     */
+    public function mismatchPending(Request $request)
+    {
+        return redirect()->route('pos.recentFeed');
+    }
+
+    /**
+     * Override the payment method on a single transaction's payment record
+     * (typically CARD → CASH or CASH → CARD when a cashier rang the wrong
+     * tender). Snapshots BEFORE state to admin-snapshots/ first so the
+     * change is visible at /admin/admin-action-history with an Undo
+     * button — Sarah's snapshot rule after the 2026-04-27 wipe.
+     *
+     * Scoped to a single payment per call so it's safe to expose inline
+     * next to a reconciliation row. The drawer-side accounting picks up
+     * the new method on the next cashier shift roll-up.
+     */
+    public function overridePaymentMethod(Request $request)
+    {
+        if (!auth()->user()->can('sell.update')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = (int) $request->session()->get('user.business_id');
+        $back = $request->headers->get('referer') ?: route('pos.recentFeed');
+
+        $txId = (int) $request->input('transaction_id', 0);
+        $newMethod = strtolower((string) $request->input('method', ''));
+        $reason = trim((string) $request->input('reason', ''));
+
+        $allowed = ['cash', 'card'];
+        if (!in_array($newMethod, $allowed, true)) {
+            return redirect($back)->with('error', 'Unsupported payment method override.');
+        }
+        if ($txId <= 0) {
+            return redirect($back)->with('error', 'Missing transaction id.');
+        }
+
+        $tx = Transaction::where('id', $txId)
+            ->where('business_id', $business_id)
+            ->first();
+        if (!$tx) {
+            return redirect($back)->with('error', 'ERP transaction not found.');
+        }
+
+        $payments = \App\TransactionPayment::where('transaction_id', $txId)
+            ->get(['id', 'method', 'amount', 'card_transaction_number']);
+        if ($payments->isEmpty()) {
+            return redirect($back)->with('error', 'No payment rows on that transaction to override.');
+        }
+
+        // Skip work + skip snapshot if every row is already on the target
+        // method — keeps the admin-history feed clean of no-op entries
+        // when Sarah accidentally clicks twice.
+        $needsChange = $payments->contains(fn($p) => strtolower((string) $p->method) !== $newMethod);
+        if (!$needsChange) {
+            return redirect($back)->with('status', '✓ Payment method already ' . strtoupper($newMethod) . ' — nothing to change.');
+        }
+
+        $now = \Carbon\Carbon::now();
+        $snapshotRows = $payments->map(function ($p) use ($newMethod, $txId) {
+            return [
+                'transaction_payment_id' => $p->id,
+                'transaction_id' => $txId,
+                'old_method' => $p->method,
+                'new_method' => $newMethod,
+                'amount' => (float) $p->amount,
+                'card_transaction_number' => $p->card_transaction_number,
+            ];
+        })->all();
+
+        $snapshotKey = 'payment-method-override-' . $now->format('Y-m-d_His') . '-tx' . $txId;
+        \Illuminate\Support\Facades\Storage::disk('local')->put(
+            "admin-snapshots/{$snapshotKey}.json",
+            json_encode([
+                'timestamp' => $now->toDateTimeString(),
+                'action' => 'payment-method-override',
+                'business_id' => $business_id,
+                'transaction_id' => $txId,
+                'invoice_no' => $tx->invoice_no,
+                'new_method' => $newMethod,
+                'reason' => $reason !== '' ? $reason : null,
+                'explained_by' => (int) auth()->id() ?: null,
+                'rows' => $snapshotRows,
+            ], JSON_PRETTY_PRINT)
+        );
+
+        $updated = 0;
+        foreach ($payments as $p) {
+            if (strtolower((string) $p->method) === $newMethod) continue;
+            // Card transaction numbers are nonsense once the method
+            // becomes cash; null them out to keep reports honest.
+            $patch = ['method' => $newMethod, 'updated_at' => $now];
+            if ($newMethod === 'cash') {
+                $patch['card_transaction_number'] = null;
+            }
+            $count = \App\TransactionPayment::where('id', $p->id)->update($patch);
+            $updated += $count;
+        }
+
+        // Drop a register-reconciliation note alongside so the audit
+        // surface on recent_feed shows WHY the override happened — Sarah
+        // asked for every reconciliation edit to be visibly labelled.
+        if ($reason !== '') {
+            try {
+                \App\CloverMismatchExplanation::create([
+                    'business_id' => $business_id,
+                    'transaction_id' => $txId,
+                    'clover_payment_id' => null,
+                    'discrepancy_type' => 'no_clover',
+                    'reason' => 'Payment method overridden CARD/CASH → ' . strtoupper($newMethod) . '. ' . $reason,
+                    'source' => 'register_reconciliation',
+                    'explained_by' => (int) auth()->id() ?: null,
+                ]);
+            } catch (\Throwable $e) {
+                // Note table may not be migrated yet on first deploy —
+                // don't fail the override if logging fails.
+            }
+        }
+
+        return redirect($back)->with('status', '✓ Payment method on #' . $tx->invoice_no . ' set to ' . strtoupper($newMethod) . ' (' . $updated . ' payment row' . ($updated === 1 ? '' : 's') . ' updated). Snapshot saved — undo at /admin/admin-action-history.');
+    }
+
     public function recentRings(Request $request)
     {
         try {
