@@ -316,10 +316,34 @@ $(document).ready(function() {
         });
     }
 
+    // Belt-and-suspenders: copy the visible inc-tax cost value into the
+    // hidden ex-tax mirror right before save, in case the user typed and
+    // clicked Update without ever triggering a `change` event (which is
+    // what normally fires the mirror). The server saves both columns from
+    // the request; if `single_dpp` is empty/zero the historical
+    // `default_purchase_price` gets clobbered to 0.
+    function __nivessaSyncPriceMirrors() {
+        var $form = $('form#product_add_form');
+        if (!$form.length) return;
+        var $dppInc = $form.find('input#single_dpp_inc_tax');
+        var $dpp    = $form.find('input#single_dpp');
+        if ($dppInc.length && $dpp.length) {
+            var v = $.trim($dppInc.val() || '');
+            if (v !== '') $dpp.val(v);
+        }
+        var $dsp    = $form.find('input#single_dsp');
+        var $dspInc = $form.find('input#single_dsp_inc_tax');
+        if ($dsp.length && $dspInc.length) {
+            var v = $.trim($dsp.val() || '');
+            if (v !== '') $dspInc.val(v);
+        }
+    }
+
     $(document).on('click', '.submit_product_form', function(e) {
         e.preventDefault();
 
         __nivessaStripRequiredFromHidden();
+        __nivessaSyncPriceMirrors();
 
         var is_valid_product_form = true;
 
