@@ -991,9 +991,11 @@
                         <span class="rf-store-badge">{{ $cpStore }}</span>
                         @if($cpCardLabel)<span class="rf-customer">· {{ $cpCardLabel }}</span>@endif
                         @if($orphanCashierName)
-                            <span class="rf-cashier" title="Cashier whose pos_duty was 'cashier' at this store within 4h of the charge">· <strong>Cashier: {{ $orphanCashierName }}</strong></span>
+                            <span class="rf-cashier" title="Cashier whose pos_duty was 'cashier' at this store within 8h of the charge">· <strong>Cashier: {{ $orphanCashierName }}</strong></span>
+                        @elseif(!empty($cp->employee_name))
+                            <span class="rf-cashier" style="color:#7c2d12;" title="Fell back to Clover's own employee pin — no ERP pos_duty=cashier event found for this store in the 8h before the swipe. If this name is wrong, the cashier needs to set their duty in /pos/select-duty at shift start.">· <strong>Clover clock: {{ $cp->employee_name }}</strong></span>
                         @else
-                            <span class="rf-cashier" style="color:#8A7C6A;">· cashier unknown</span>
+                            <span class="rf-cashier" style="color:#8A7C6A;" title="No ERP pos_duty=cashier event at this store in the 8h before the swipe, and Clover didn't record a terminal pin either.">· cashier unknown</span>
                         @endif
                     </div>
                 </div>
