@@ -9436,26 +9436,31 @@ class ReportController extends Controller
 
         // Admin/owner detection — Sarah 2026-05-05: "Jonathan rings up
         // customers sometimes but the sale should attribute to the
-        // cashier on shift, not him." We pull the admin-permission
-        // first-name set once and use it on both sides:
+        // cashier on shift, not him." We pull the admin first-name set
+        // once and use it on both sides:
         //   - Clover amount-match: if the matched ERP txn was rung by
         //     an admin, fall back to shift-window attribution.
         //   - ERP aggregation: admin-rung sales get re-attributed to
         //     whoever's register was open at the time, before bucketing.
-        // Sarah 2026-05-06: "what is total sales for jon? he wasn't the
-        // cashier." The previous raw permissions-table query missed
-        // role-derived admins (Jonathan held Admin via a role, not a
-        // direct permission). Use Spatie's HasRoles scope which walks
-        // both paths.
+        //   - Bucket pruning: drop any cashier card whose first name is
+        //     in this set so Jonathan/Sarah never appear as a cashier.
+        // Sarah 2026-05-15: was using User::permission('Admin#X'), but
+        // 'Admin#X' is a Spatie ROLE not a permission (see BusinessUtil
+        // ::newBusinessDefaultResources where Role::create('Admin#X')
+        // happens). The permission scope was returning zero users so
+        // adminSet was empty — Jonathan's card showed up on /pos/recent
+        // -feed with phantom Clover totals because nothing was dropping
+        // him. Switched to User::role() which is what the rest of the
+        // codebase uses (Util::is_admin, ManageUserController, etc.).
         try {
-            $adminFirstNames = \App\User::permission('Admin#' . $business_id)
+            $adminFirstNames = \App\User::role('Admin#' . $business_id)
                 ->where('users.business_id', $business_id)
                 ->pluck('first_name')
                 ->map(function ($n) { $n = trim((string) $n); $parts = $n === '' ? [] : preg_split('/\s+/', $n); return strtolower($parts[0] ?? ''); })
                 ->filter()->unique()->values()->all();
         } catch (\Throwable $ex) {
-            // Permission name may not exist on a fresh install — fall
-            // back to no admins rather than crash the whole report.
+            // Role name may not exist on a fresh install — fall back
+            // to no admins rather than crash the whole report.
             $adminFirstNames = [];
         }
         $adminSet = array_flip($adminFirstNames);
