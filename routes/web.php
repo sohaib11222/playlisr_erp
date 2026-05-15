@@ -679,6 +679,17 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/admin/nivessa-backend-import/chunk', 'NivessaBackendImportController@chunk');
     Route::post('/admin/nivessa-backend-import/run', 'NivessaBackendImportController@run');
 
+    // Sarah 2026-05-15 — Discogs inventory bulk import. Browser drives the
+    // 60-req/min rate limit by serializing one page per AJAX call, snapshots
+    // to storage/app/discogs-inventory-snapshots/{id}/listings.ndjson, then
+    // bulk-inserts one ERP product per listing into a dedicated location.
+    Route::get('/admin/discogs-import-inventory', 'DiscogsInventoryImportController@index');
+    Route::post('/admin/discogs-import-inventory/snapshot-start', 'DiscogsInventoryImportController@snapshotStart');
+    Route::post('/admin/discogs-import-inventory/snapshot-page', 'DiscogsInventoryImportController@snapshotPage');
+    Route::post('/admin/discogs-import-inventory/preview', 'DiscogsInventoryImportController@preview');
+    Route::post('/admin/discogs-import-inventory/apply', 'DiscogsInventoryImportController@apply');
+    Route::get('/admin/discogs-import-inventory/dupes/{snapshotId}', 'DiscogsInventoryImportController@downloadDupes');
+
     // Flat-rate cost price rules (accountant punch list). Backfills missing
     // default_purchase_price on variations by category. Preview then Apply.
     Route::get('/admin/cost-price-rules', 'CostPriceRulesController@index');

@@ -379,6 +379,71 @@ class DiscogsService
     }
 
     /**
+     * Pull a page of the configured seller's marketplace inventory.
+     *
+     * Sarah 2026-05-15: the 55k-listing nivessa store inventory dump goes
+     * through here. Discogs paginates at per_page=100 max, sort=listed,desc
+     * so re-runs that pick up new listings only need the first few pages.
+     * Status defaults to "For Sale" — drafts and sold get filtered server
+     * side so we never page through history.
+     *
+     * Returns the decoded response array (with 'pagination' + 'listings').
+     * On error, returns ['error' => '...'] — caller decides retry/abort.
+     */
+    public function fetchInventoryPage($username, $page = 1, $per_page = 100, $status = 'For Sale')
+    {
+        if (empty($this->token)) {
+            return ['error' => 'Discogs API token not configured'];
+        }
+        $username = trim((string) $username);
+        if ($username === '') {
+            return ['error' => 'Discogs username not provided'];
+        }
+
+        $params = [
+            'token' => $this->token,
+            'status' => $status,
+            'page' => max(1, (int) $page),
+            'per_page' => min(100, max(1, (int) $per_page)),
+            'sort' => 'listed',
+            'sort_order' => 'desc',
+        ];
+
+        $url = $this->baseUrl . 'users/' . rawurlencode($username) . '/inventory?' . http_build_query($params);
+
+        try {
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'User-Agent: NivessaPlaylist/1.0 +https://playlist.nivessa.com',
+                'Accept: application/json',
+                'Authorization: Discogs token=' . $this->token,
+            ]);
+            $body = curl_exec($ch);
+            $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $err = curl_error($ch);
+            curl_close($ch);
+
+            if ($err) {
+                return ['error' => 'cURL: ' . $err];
+            }
+            if ($code === 429) {
+                return ['error' => 'Discogs rate limit hit (HTTP 429)', 'retry' => true];
+            }
+            if ($code !== 200) {
+                return ['error' => 'Discogs HTTP ' . $code, 'body' => substr((string) $body, 0, 500)];
+            }
+            $data = json_decode($body, true);
+            return is_array($data) ? $data : ['error' => 'Invalid JSON from Discogs'];
+        } catch (\Exception $e) {
+            return ['error' => $e->getMessage()];
+        }
+    }
+
+    /**
      * Pull a page of marketplace orders from Discogs.
      *
      * Discogs paginates with ?page=N, default per_page=50 (max 100). We

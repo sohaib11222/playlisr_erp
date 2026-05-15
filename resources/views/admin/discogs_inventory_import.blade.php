@@ -1,0 +1,236 @@
+@extends('layouts.app')
+@section('title', 'Discogs Inventory Import')
+
+@section('content')
+<section class="content-header">
+    <h1>Discogs Inventory Import</h1>
+    <p class="text-muted">Bulk-pull "For Sale" listings from Discogs and create one ERP product per listing in a dedicated location. Rate-limited paging happens in the browser — leave the tab open until it finishes.</p>
+</section>
+
+<section class="content">
+
+<div class="row">
+    <div class="col-md-5">
+        <div class="box box-solid">
+            <div class="box-header"><h3 class="box-title">1. Snapshot inventory</h3></div>
+            <div class="box-body">
+                <div class="form-group">
+                    <label>Discogs username</label>
+                    <input type="text" id="dii-username" class="form-control" value="nivessa" />
+                </div>
+                <button id="dii-start" class="btn btn-default btn-lg">Start snapshot</button>
+                <button id="dii-resume" class="btn btn-default" style="display:none;">Resume</button>
+                <p class="help-block" style="margin-top:10px;">
+                    Discogs caps authenticated requests at 60/min. For 55k listings (~550 pages) this runs ~10 minutes.
+                </p>
+            </div>
+        </div>
+
+        <div class="box box-solid">
+            <div class="box-header"><h3 class="box-title">2. Preview dupes</h3></div>
+            <div class="box-body">
+                <button id="dii-preview" class="btn btn-default" disabled>Run preview</button>
+                <div id="dii-preview-stats" style="margin-top:10px; font-size:13px;"></div>
+            </div>
+        </div>
+
+        <div class="box box-solid">
+            <div class="box-header"><h3 class="box-title">3. Apply</h3></div>
+            <div class="box-body">
+                <div class="form-group">
+                    <label>Target business location</label>
+                    <select id="dii-location" class="form-control">
+                        <option value="0">Auto-create "{{ $default_location_name }}"</option>
+                        @foreach($locations as $loc)
+                            <option value="{{ $loc->id }}">{{ $loc->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <button id="dii-apply" class="btn btn-primary btn-lg" disabled>Apply (create products)</button>
+                <p class="help-block" style="margin-top:10px;">
+                    Skips listings whose Discogs <code>release_id</code> already matches an existing ERP product. Skipped rows are in the dupes CSV from step 2.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-7">
+        <div class="box box-solid">
+            <div class="box-header"><h3 class="box-title">Progress</h3></div>
+            <div class="box-body" style="padding:0;">
+                <pre id="dii-output" style="margin:0; max-height:700px; overflow:auto; padding:12px; background:#1e1e1e; color:#d4d4d4; font-size:12px; line-height:1.45; white-space:pre-wrap;">Ready.</pre>
+            </div>
+        </div>
+
+        @if(!empty($snapshots))
+        <div class="box box-solid">
+            <div class="box-header"><h3 class="box-title">Recent snapshots</h3></div>
+            <div class="box-body" style="padding:0;">
+                <table class="table table-condensed" style="margin:0;">
+                    <thead><tr><th>Snapshot</th><th>Started</th><th>User</th><th>Items</th><th>Status</th><th>Resume</th></tr></thead>
+                    <tbody>
+                    @foreach($snapshots as $s)
+                        <tr>
+                            <td><code>{{ $s['snapshot_id'] ?? '' }}</code></td>
+                            <td>{{ $s['started_at'] ?? '' }}</td>
+                            <td>{{ $s['username'] ?? '' }}</td>
+                            <td>{{ $s['rows_written'] ?? 0 }} / {{ $s['total_items'] ?? '?' }}</td>
+                            <td>{{ $s['status'] ?? '' }} @if(!empty($s['apply_status'])) · {{ $s['apply_status'] }}@endif</td>
+                            <td>
+                                <button class="btn btn-xs btn-default dii-resume-btn" data-snap="{{ $s['snapshot_id'] ?? '' }}" data-user="{{ $s['username'] ?? '' }}">Load</button>
+                            </td>
+                        </tr>
+                    @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        @endif
+    </div>
+</div>
+
+</section>
+
+<script>
+(function () {
+    const CSRF = "{{ csrf_token() }}";
+    const out = document.getElementById('dii-output');
+    let currentSnap = null;
+
+    function log(msg) {
+        out.textContent += msg + "\n";
+        out.scrollTop = out.scrollHeight;
+    }
+    function setSnap(id, meta) {
+        currentSnap = id;
+        document.getElementById('dii-preview').disabled = !id;
+        document.getElementById('dii-apply').disabled = !id;
+        document.getElementById('dii-resume').style.display = id ? 'inline-block' : 'none';
+    }
+
+    async function postJson(url, body) {
+        const resp = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': CSRF,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+            },
+            body: JSON.stringify(body || {}),
+        });
+        const j = await resp.json().catch(() => ({ok:false, error: 'Bad JSON ' + resp.status}));
+        return { status: resp.status, body: j };
+    }
+
+    async function startSnapshot() {
+        const username = document.getElementById('dii-username').value.trim();
+        if (!username) { alert('Enter a Discogs username'); return; }
+        log('▶ Starting snapshot for @' + username + '…');
+        const r = await postJson('/admin/discogs-import-inventory/snapshot-start', { username });
+        if (!r.body.ok) { log('  ✗ ' + (r.body.error || 'failed')); return; }
+        setSnap(r.body.snapshot_id);
+        log('  snapshot=' + r.body.snapshot_id + '  total_items=' + r.body.total_items + '  total_pages=' + r.body.total_pages);
+        log('  page 1 done (' + r.body.rows_written + ' rows)');
+        await pageLoop(2, r.body.total_pages);
+    }
+
+    async function pageLoop(startPage, totalPages) {
+        let page = startPage;
+        // Discogs auth'd rate limit is 60/min — pace at 1.1s between requests
+        // (~54/min, comfortable buffer for ngrok/proxy jitter).
+        const SLEEP_MS = 1100;
+        while (true) {
+            const r = await postJson('/admin/discogs-import-inventory/snapshot-page', {
+                snapshot_id: currentSnap,
+                page: page,
+            });
+            if (r.status === 429) {
+                log('  ⏸ rate-limited at page ' + page + ' — backing off 65s');
+                await new Promise(rs => setTimeout(rs, 65000));
+                continue;
+            }
+            if (!r.body.ok) { log('  ✗ page ' + page + ' failed: ' + (r.body.error || r.status)); return; }
+            totalPages = r.body.total_pages || totalPages;
+            if (page % 10 === 0 || r.body.done) {
+                log('  page ' + page + '/' + totalPages + '  rows=' + r.body.rows_written);
+            }
+            if (r.body.done) {
+                log('✓ snapshot complete: ' + r.body.rows_written + ' rows across ' + r.body.pages_fetched + ' pages');
+                return;
+            }
+            page++;
+            await new Promise(rs => setTimeout(rs, SLEEP_MS));
+        }
+    }
+
+    async function preview() {
+        if (!currentSnap) { alert('Start or load a snapshot first.'); return; }
+        log('▶ Running preview (scanning snapshot for dupes vs existing products)…');
+        const r = await postJson('/admin/discogs-import-inventory/preview', { snapshot_id: currentSnap });
+        if (!r.body.ok) { log('  ✗ ' + (r.body.error || 'failed')); return; }
+        const html = `
+            <div><strong>Total in snapshot:</strong> ${r.body.total}</div>
+            <div><strong>New (will be created):</strong> ${r.body.new}</div>
+            <div><strong>Skipped — already imported:</strong> ${r.body.already_applied}</div>
+            <div><strong>Skipped — release_id already in ERP:</strong> ${r.body.dupes}
+                ${r.body.dupes > 0 ? ' <a href="' + r.body.dupes_csv_url + '">download dupes CSV</a>' : ''}
+            </div>
+        `;
+        document.getElementById('dii-preview-stats').innerHTML = html;
+        log('✓ preview: total=' + r.body.total + ' new=' + r.body.new + ' dupes=' + r.body.dupes + ' already_applied=' + r.body.already_applied);
+    }
+
+    async function apply() {
+        if (!currentSnap) { alert('Start or load a snapshot first.'); return; }
+        const locId = parseInt(document.getElementById('dii-location').value || '0', 10);
+        log('▶ Applying snapshot ' + currentSnap + (locId > 0 ? '  → location_id=' + locId : '  → auto-create location'));
+        let offset = 0;
+        let totalCreated = 0;
+        let totalSkipped = 0;
+        const batch = 100;
+        while (true) {
+            const r = await postJson('/admin/discogs-import-inventory/apply', {
+                snapshot_id: currentSnap,
+                offset: offset,
+                batch_size: batch,
+                location_id: locId,
+            });
+            if (!r.body.ok) { log('  ✗ ' + (r.body.error || 'failed')); return; }
+            totalCreated += r.body.created || 0;
+            totalSkipped += r.body.skipped || 0;
+            log('  offset ' + offset + '..' + r.body.next_offset + '  +' + r.body.created + ' created, ' + r.body.skipped + ' skipped' + ((r.body.errors||[]).length ? ' (' + r.body.errors.length + ' errors)' : ''));
+            if ((r.body.errors || []).length) {
+                for (const e of r.body.errors.slice(0, 5)) {
+                    log('    ✗ listing ' + e.listing_id + ': ' + e.error);
+                }
+            }
+            if (r.body.done) {
+                log('✓ apply complete  total created=' + totalCreated + '  skipped=' + totalSkipped + '  → "' + r.body.location_name + '" (id ' + r.body.location_id + ')');
+                return;
+            }
+            offset = r.body.next_offset;
+        }
+    }
+
+    document.getElementById('dii-start').addEventListener('click', startSnapshot);
+    document.getElementById('dii-preview').addEventListener('click', preview);
+    document.getElementById('dii-apply').addEventListener('click', apply);
+    document.getElementById('dii-resume').addEventListener('click', async () => {
+        if (!currentSnap) return;
+        // Pull current page state from the resume snapshot
+        log('▶ Resuming snapshot ' + currentSnap);
+        await pageLoop(2, 9999); // server tells us the real total
+    });
+
+    document.querySelectorAll('.dii-resume-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const snap = btn.getAttribute('data-snap');
+            const user = btn.getAttribute('data-user');
+            setSnap(snap);
+            document.getElementById('dii-username').value = user || 'nivessa';
+            log('▶ Loaded snapshot ' + snap + ' (user=' + user + '). Use Preview or Apply, or Resume to keep fetching.');
+        });
+    });
+})();
+</script>
+@endsection
