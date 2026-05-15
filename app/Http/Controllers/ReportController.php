@@ -9507,17 +9507,24 @@ class ReportController extends Controller
         // Henry's drilldowns: $6.59 Clover at 2:07 vs $6.71 ERP at
         // 2:08 is the same sale undercharged by 12¢ on Clover. Tax-
         // rounding gaps of up to ~25¢ are real here. Match within
-        // ±25¢ AND within 30 minutes (Sarah 2026-05-07: "luis is slow
-        // to type" — Luis's $41.71 Clover at 9:33pm paired to $41.71
-        // ERP at 9:44pm, 11min apart, was missing the cut).
+        // ±25¢ AND within 12 hours.
         // Score = amount-cents × 1000 + time-seconds so exact matches
         // still beat off-by-cents matches even at longer time gaps.
         // Pairs with >5¢ drift surface as "amount mismatch" rather
         // than hidden as clean matches.
+        // Sarah 2026-05-15: time window matches the recent-feed matcher
+        // (12hr, not 30min). Clover batch-settles overnight so an
+        // afternoon sale can carry a paid_at hours later; the 30-min
+        // window was rejecting those pairs, leaving the swipes to fall
+        // back to shift-window attribution. When the fallback resolved
+        // to a different cashier (or "Unknown" and got dropped), the
+        // cashier's clover_total undercounted by the missed ticket
+        // amount — Jacob's card showed −$128.36 even though every
+        // ticket on the per-sale feed reconciled cleanly.
         $cpForMatch = $cpRaw->sortByDesc('ts')->values();
         $matchAmountCents     = 25;
         $cleanMatchCents      = 5;
-        $matchTimeWindow      = 1800; // seconds (30 min)
+        $matchTimeWindow      = 43200; // seconds (12 hr)
         foreach ($cpForMatch as $r) {
             $cpTs    = strtotime((string) $r->ts);
             $cpCents = $toCents($r->amount);

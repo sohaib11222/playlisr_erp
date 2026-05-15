@@ -17,8 +17,41 @@
             background:#fff7ed; border:2px solid #f97316; border-radius:8px;
             box-shadow:0 2px 6px rgba(249,115,22,.18);
             font-size:13px; color:#7c2d12;">
-    {{-- Clover-only section: card was swiped on the terminal, no ERP ring. --}}
-    <div id="con_block" style="display:none;">
+    {{-- 1. ERP-only — most urgent. Cashier rang card payment but the
+         actual swipe never happened. Did the customer leave without
+         paying? --}}
+    <div id="eon_block" style="display:none;">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <div style="font-weight:800; font-size:14px; color:#7c2d12; white-space:nowrap;">
+                <i class="fa fa-exclamation-triangle"></i>
+                <span id="eon_count">0</span> ERP card sale<span id="eon_plural">s</span> not on Clover
+            </div>
+            <div style="font-size:12px; color:#9a3412; flex:1; min-width:240px;">
+                Sale rung in ERP as card but no Clover charge yet — did the customer pay? Run the card on Clover now, or correct the ERP payment method if it was cash.
+            </div>
+        </div>
+        <div id="eon_list" style="margin-top:8px; display:flex; flex-wrap:wrap; gap:8px;"></div>
+    </div>
+
+    {{-- 2. Mismatches — paired sales whose ERP total ≠ Clover total by >$0.01.
+         Could be a price-typo, sticker disagreement, etc. Cashier should
+         leave a short explanation so reconciliation knows what happened. --}}
+    <div id="mis_block" style="display:none; margin-top:10px; padding-top:10px; border-top:1px dashed #fdba74;">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <div style="font-weight:800; font-size:14px; color:#7c2d12; white-space:nowrap;">
+                <i class="fa fa-balance-scale"></i>
+                <span id="mis_count">0</span> mismatch<span id="mis_plural">es</span> — ERP vs Clover
+            </div>
+            <div style="font-size:12px; color:#9a3412; flex:1; min-width:240px;">
+                ERP total doesn't match Clover total. Be accurate when entering prices, and please leave a short explanation so reconciliation knows what happened.
+            </div>
+        </div>
+        <div id="mis_list" style="margin-top:8px; display:flex; flex-direction:column; gap:8px;"></div>
+    </div>
+
+    {{-- 3. Clover-only — card swiped, no ERP ring. Cashier needs to ring
+         the item so inventory is decremented. --}}
+    <div id="con_block" style="display:none; margin-top:10px; padding-top:10px; border-top:1px dashed #fdba74;">
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <div style="font-weight:800; font-size:14px; color:#7c2d12; white-space:nowrap;">
                 <i class="fa fa-credit-card"></i>
@@ -30,27 +63,20 @@
         </div>
         <div id="con_list" style="margin-top:8px; display:flex; flex-wrap:wrap; gap:8px;"></div>
     </div>
-
-    {{-- ERP-only section: cashier rang a card sale in ERP but no Clover swipe. --}}
-    <div id="eon_block" style="display:none; margin-top:10px; padding-top:10px; border-top:1px dashed #fdba74;">
-        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-            <div style="font-weight:800; font-size:14px; color:#7c2d12; white-space:nowrap;">
-                <i class="fa fa-exclamation-triangle"></i>
-                <span id="eon_count">0</span> ERP card sale<span id="eon_plural">s</span> not on Clover
-            </div>
-            <div style="font-size:12px; color:#9a3412; flex:1; min-width:240px;">
-                Sale was rung in ERP as card but no Clover charge yet — did the customer actually pay? Run the card on Clover now, or correct the ERP payment method if it was cash.
-            </div>
-        </div>
-        <div id="eon_list" style="margin-top:8px; display:flex; flex-wrap:wrap; gap:8px;"></div>
-    </div>
 </div>
 
 <style>
-    /* Banner spans full content width — the rings widget is now a
-       collapsed pill at bottom-left, so no gutter needed. */
+    /* Sit to the right of the fixed 'Recently rung up' panel at wide
+       widths (same 220px gutter the cart form uses). Full width on
+       narrow viewports where the rings panel hides itself. */
     #clover_orphan_nag {
         margin: 12px 16px 10px 16px;
+    }
+    @media (min-width: 1200px) {
+        #clover_orphan_nag {
+            margin-left: 220px !important;
+            margin-right: 16px !important;
+        }
     }
     .con-chip {
         background:#fff; border:1px solid #fdba74; border-radius:6px;
@@ -90,6 +116,11 @@
             var $eonCount  = $('#eon_count');
             var $eonPlural = $('#eon_plural');
 
+            var $misBlock  = $('#mis_block');
+            var $misList   = $('#mis_list');
+            var $misCount  = $('#mis_count');
+            var $misPlural = $('#mis_plural');
+
             function locationId() {
                 var loc = $('input[name="location_id"]').val() || '';
                 if (!loc) loc = $('#location_id').val() || '';
@@ -114,7 +145,8 @@
             function render(payload) {
                 var orphans = (payload && payload.orphans) || [];
                 var erpOrphans = (payload && payload.erp_orphans) || [];
-                var any = orphans.length + erpOrphans.length;
+                var mismatches = (payload && payload.mismatches) || [];
+                var any = orphans.length + erpOrphans.length + mismatches.length;
                 if (!any) { $panel.hide(); return; }
 
                 // Clover-only chips
@@ -138,6 +170,36 @@
                     $conBlock.show();
                 } else {
                     $conBlock.hide();
+                }
+
+                // Mismatch chips — each gets an inline "Why?" textarea
+                if (mismatches.length) {
+                    $misCount.text(mismatches.length);
+                    $misPlural.text(mismatches.length === 1 ? '' : 'es');
+                    var mhtml = '';
+                    for (var k = 0; k < mismatches.length; k++) {
+                        var m = mismatches[k];
+                        var diff = (m.diff || 0);
+                        var diffStr = (diff >= 0 ? '+' : '−') + '$' + Math.abs(diff).toFixed(2);
+                        mhtml += '<div class="con-chip" style="flex:1; min-width:100%; display:flex; flex-direction:row; flex-wrap:wrap; gap:10px; align-items:center;" data-tx-id="' + m.tx_id + '">';
+                        mhtml +=   '<div style="display:flex; flex-direction:column; min-width:160px;">';
+                        mhtml +=     '<div class="con-amt">ERP $' + m.erp_total.toFixed(2) + ' · Clover $' + m.clover_total.toFixed(2) + '</div>';
+                        mhtml +=     '<div class="con-meta">';
+                        mhtml +=       '<span class="con-age">Diff ' + diffStr + '</span> · ' + ageLabel(m.age_seconds);
+                        if (m.location_name) mhtml += ' · ' + m.location_name;
+                        if (m.invoice_no) mhtml += ' · #' + escapeAttr(m.invoice_no);
+                        mhtml +=     '</div>';
+                        mhtml +=   '</div>';
+                        mhtml +=   '<form class="con-mis-form" data-tx-id="' + m.tx_id + '" style="display:flex; flex:1; gap:6px; min-width:280px; align-items:center;">';
+                        mhtml +=     '<input type="text" class="con-mis-reason" placeholder="Why? (e.g., \'rang Clover at $14 instead of $15 sticker\')" required style="flex:1; padding:5px 8px; border:1px solid #fdba74; border-radius:5px; font-size:11px;">';
+                        mhtml +=     '<button type="submit" class="con-btn" style="margin-top:0; padding:5px 12px;">Save</button>';
+                        mhtml +=   '</form>';
+                        mhtml += '</div>';
+                    }
+                    $misList.html(mhtml);
+                    $misBlock.show();
+                } else {
+                    $misBlock.hide();
                 }
 
                 // ERP-only chips
@@ -185,6 +247,39 @@
             // input and prefill with the pre-tax amount. Cashier fills
             // in the item name + finishes the sale; next poll auto-
             // clears the chip once the new ERP ring matches.
+            // Mismatch "Why?" form submit — POSTs to the existing
+            // mismatchExplain endpoint with source=register_reconciliation
+            // so reconciliation logs pick it up.
+            $misList.on('submit', '.con-mis-form', function (e) {
+                e.preventDefault();
+                var $form = $(this);
+                var txId = $form.data('tx-id');
+                var reason = $.trim($form.find('.con-mis-reason').val() || '');
+                if (!reason) return;
+                $.ajax({
+                    url: "{{ route('pos.mismatchExplain') }}",
+                    method: 'POST',
+                    data: {
+                        _token: "{{ csrf_token() }}",
+                        discrepancy_type: 'mismatch',
+                        transaction_id: txId,
+                        source: 'register_reconciliation',
+                        reason: reason
+                    },
+                    timeout: 8000
+                }).done(function () {
+                    // Optimistic remove — next poll will confirm the chip stays gone.
+                    $form.closest('.con-chip').fadeOut(150, function(){ $(this).remove(); poll(); });
+                    if (window.toastr && typeof toastr.success === 'function') {
+                        toastr.success('Saved.');
+                    }
+                }).fail(function () {
+                    if (window.toastr && typeof toastr.error === 'function') {
+                        toastr.error('Could not save the note. Try again?');
+                    }
+                });
+            });
+
             $list.on('click', '.con-ring', function (e) {
                 e.preventDefault();
                 var amount = parseFloat($(this).data('amount') || '0');

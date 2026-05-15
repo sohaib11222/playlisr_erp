@@ -2457,13 +2457,54 @@ class SellPosController extends Controller
                 ];
             }
 
+            // === Mismatches: today's paired sales whose ERP total
+            // disagrees with the Clover swipe by more than $0.01. Skip
+            // anything that already has a register-reconciliation note
+            // (cashier already explained it).
+            $existingNotes = self::loadCloverExplanations($business_id);
+            $mismatches = [];
+            foreach ($erpCardSells as $tx) {
+                $txCents = (int) round($tx->final_total * 100);
+                $pairedCp = null;
+                foreach ($cps as $cp) {
+                    if ($cp->location_id && (int) $cp->location_id !== (int) $tx->location_id) continue;
+                    $cpCents = (int) round($cp->amount * 100);
+                    // Pair anything within $5 — the chip needs to know
+                    // the diff, so we don't require exact match here.
+                    if (abs($cpCents - $txCents) <= 500 && abs($cpCents - $txCents) > 1) {
+                        $pairedCp = $cp; break;
+                    }
+                }
+                if (!$pairedCp) continue;
+
+                // Skip if cashier already left an explanation for this tx.
+                $key = 'mismatch:' . (int) $tx->id . ':0';
+                if (isset($existingNotes[$key])) continue;
+
+                $locName = ($tx->location_id && \App\BusinessLocation::where('id', $tx->location_id)->exists())
+                    ? \App\BusinessLocation::where('id', $tx->location_id)->value('name')
+                    : null;
+
+                $mismatches[] = [
+                    'tx_id'         => (int) $tx->id,
+                    'invoice_no'    => $tx->invoice_no,
+                    'erp_total'     => (float) $tx->final_total,
+                    'clover_total'  => (float) $pairedCp->amount,
+                    'diff'          => round(((float) $pairedCp->amount) - ((float) $tx->final_total), 2),
+                    'age_seconds'   => max(0, \Carbon\Carbon::now()->diffInSeconds(\Carbon\Carbon::parse($tx->transaction_date))),
+                    'location_id'   => (int) ($tx->location_id ?? 0) ?: null,
+                    'location_name' => $locName,
+                ];
+            }
+
             return response()->json([
                 'orphans'      => $orphans,       // Clover-only — card swiped, no ERP ring
                 'erp_orphans'  => $erpOrphans,    // ERP-only card sale — no Clover swipe
+                'mismatches'   => $mismatches,    // Paired but totals differ > $0.01
             ]);
         } catch (\Throwable $e) {
             \Log::warning('cloverOrphansRecent failed: ' . $e->getMessage());
-            return response()->json(['orphans' => [], 'erp_orphans' => [], 'error' => $e->getMessage()]);
+            return response()->json(['orphans' => [], 'erp_orphans' => [], 'mismatches' => [], 'error' => $e->getMessage()]);
         }
     }
 
