@@ -345,6 +345,56 @@ class HomeController extends Controller
             ->whereBetween('transaction_date', [$today_start, $today_end])
             ->count();
 
+        // ---- Earnings widget (2% of USED items sold from products I barcoded) ----
+        // Sarah, 2026-05-15: each employee earns 2% of the sale value of items
+        // they personally barcoded/priced. USED only — sealed vinyl / sealed CD /
+        // sealed cassette / new equipment categories are excluded. Counts forward
+        // from rollout (2026-05-15) so we don't backfill commission on legacy
+        // inventory.
+        $earnings_rollout = '2026-05-15 00:00:00';
+        $earnings_two_weeks_start = \Carbon::today()->subDays(13)->toDateTimeString();
+
+        // Category names that DO NOT count toward earnings. Anything else is
+        // treated as "used" (Used Vinyl/CD/Cassettes, 7"/45, 8 track, VHS,
+        // DVD/Blu Ray, Laser Disc, Movies, Magazines, Books & Magazines, etc.).
+        $excludedCategoryPatterns = ['%sealed%', '%new vinyl%', '%new cd%', '%new cassette%'];
+        $excludedCategoryNames = [
+            'audio gear', 'record players', 'record player',
+            'trading cards', 'apparel', 'clothing', 'video games',
+            'gift items', 'toys', 'accessories & novelties',
+            'acessories & novelties', 'pictures & posters',
+        ];
+
+        $earningsQueryFor = function ($from, $to) use (
+            $business_id, $me_id, $earnings_rollout,
+            $excludedCategoryPatterns, $excludedCategoryNames
+        ) {
+            return (float) \DB::table('transaction_sell_lines as tsl')
+                ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+                ->join('products as p', 'tsl.product_id', '=', 'p.id')
+                ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
+                ->leftJoin('categories as sc', 'p.sub_category_id', '=', 'sc.id')
+                ->where('t.business_id', $business_id)
+                ->where('t.type', 'sell')
+                ->where('t.status', 'final')
+                ->whereNull('t.import_source')
+                ->whereBetween('t.transaction_date', [$from, $to])
+                ->where('p.created_by', $me_id)
+                ->where('p.created_at', '>=', $earnings_rollout)
+                ->where(function ($q) use ($excludedCategoryPatterns, $excludedCategoryNames) {
+                    foreach ($excludedCategoryPatterns as $pat) {
+                        $q->where(\DB::raw('LOWER(c.name)'), 'NOT LIKE', $pat)
+                          ->where(\DB::raw('LOWER(COALESCE(sc.name, \'\'))'), 'NOT LIKE', $pat);
+                    }
+                    $q->whereNotIn(\DB::raw('LOWER(TRIM(c.name))'), $excludedCategoryNames)
+                      ->whereNotIn(\DB::raw('LOWER(TRIM(COALESCE(sc.name, \'\')))'), $excludedCategoryNames);
+                })
+                ->sum(\DB::raw('tsl.quantity * tsl.unit_price_inc_tax')) * 0.02;
+        };
+
+        $my_earnings_today = round($earningsQueryFor($today_start, $today_end), 2);
+        $my_earnings_2wk = round($earningsQueryFor($earnings_two_weeks_start, $today_end), 2);
+
         // ---- YoY + MoM progress stats (business-wide) ----
         $now = \Carbon::now();
         $mtd_start = $now->copy()->startOfMonth()->toDateString();
@@ -936,6 +986,7 @@ class HomeController extends Controller
             'last_sold_items', 'top_expensive_items',
             'rewards_today', 'rewards_today_total',
             'my_priced_today', 'my_pos_items_today', 'my_pos_tx_today',
+            'my_earnings_today', 'my_earnings_2wk',
             'sales_scope', 'sales_scope_keys',
             'my_mtd_rung', 'my_lm_rung', 'my_rung_pct',
             'my_mtd_priced', 'my_lm_priced', 'my_priced_pct',
