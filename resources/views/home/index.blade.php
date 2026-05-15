@@ -129,21 +129,37 @@
         </div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
             <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:14px 18px;">
-                <div class="pp-muted" style="margin-bottom:4px;">Today</div>
-                <div style="font-size:28px; font-weight:600; color:#15803d; line-height:1;">
-                    ${{ number_format($my_earnings_today, 2) }}
-                </div>
-                <div class="pp-micro" style="margin-top:6px;">
-                    {{ number_format($my_used_barcoded_today) }} used item{{ $my_used_barcoded_today == 1 ? '' : 's' }} barcoded
+                <div class="pp-muted" style="margin-bottom:8px;">Today</div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                    <div>
+                        <div style="font-size:28px; font-weight:600; color:#15803d; line-height:1;">
+                            ${{ number_format($my_earnings_today, 2) }}
+                        </div>
+                        <div class="pp-micro" style="margin-top:6px;">earnings</div>
+                    </div>
+                    <div>
+                        <div style="font-size:28px; font-weight:600; color:#15803d; line-height:1;">
+                            {{ number_format($my_used_barcoded_today) }}
+                        </div>
+                        <div class="pp-micro" style="margin-top:6px;">used item{{ $my_used_barcoded_today == 1 ? '' : 's' }} barcoded</div>
+                    </div>
                 </div>
             </div>
             <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:14px 18px;">
-                <div class="pp-muted" style="margin-bottom:4px;">Last 2 weeks</div>
-                <div style="font-size:28px; font-weight:600; color:#15803d; line-height:1;">
-                    ${{ number_format($my_earnings_2wk, 2) }}
-                </div>
-                <div class="pp-micro" style="margin-top:6px;">
-                    {{ number_format($my_used_barcoded_2wk) }} used item{{ $my_used_barcoded_2wk == 1 ? '' : 's' }} barcoded
+                <div class="pp-muted" style="margin-bottom:8px;">Last 2 weeks</div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                    <div>
+                        <div style="font-size:28px; font-weight:600; color:#15803d; line-height:1;">
+                            ${{ number_format($my_earnings_2wk, 2) }}
+                        </div>
+                        <div class="pp-micro" style="margin-top:6px;">earnings</div>
+                    </div>
+                    <div>
+                        <div style="font-size:28px; font-weight:600; color:#15803d; line-height:1;">
+                            {{ number_format($my_used_barcoded_2wk) }}
+                        </div>
+                        <div class="pp-micro" style="margin-top:6px;">used item{{ $my_used_barcoded_2wk == 1 ? '' : 's' }} barcoded</div>
+                    </div>
                 </div>
             </div>
         </div>

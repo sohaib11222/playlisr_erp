@@ -2026,6 +2026,167 @@ class SellPosController extends Controller
         return redirect($back)->with('status', '✓ Manually paired Clover ' . $cp->clover_payment_id . ' with ERP #' . $tx->invoice_no . '.');
     }
 
+    /**
+     * One-click: create an ERP ring from a Clover-only orphan and pair
+     * them. Used when the cashier never finalized the ERP side (or rang
+     * it as a sales_order hold the auto-pairer can't see).
+     *
+     * Defaults the channel to 'discogs' because that's the canonical use
+     * case Sarah called out 2026-05-15 (Manolo's $73.15 Hollywood swipe).
+     * Sale is backdated to the Clover swipe time, located at the Clover
+     * store, attributed to the Clover-pin holder when we can resolve
+     * them — falls back to the admin invoking the action.
+     */
+    public function createRingFromOrphan(Request $request)
+    {
+        if (!auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = (int) $request->session()->get('user.business_id');
+        $back = $request->headers->get('referer') ?: route('pos.recentFeed');
+
+        $cpId = (int) $request->input('clover_payment_id', 0);
+        $channel = strtolower((string) $request->input('channel', 'discogs'));
+        $itemName = trim((string) $request->input('item_name', ''));
+        if ($itemName === '') $itemName = ucfirst($channel) . ' catalogue — pickup';
+
+        $allowed = ['in_store', 'discogs', 'whatnot', 'ebay'];
+        if (!in_array($channel, $allowed, true)) {
+            return redirect($back)->with('error', 'Unsupported channel: ' . $channel);
+        }
+        if ($cpId <= 0) {
+            return redirect($back)->with('error', 'Missing clover_payment_id.');
+        }
+
+        $cp = \App\CloverPayment::where('id', $cpId)
+            ->where('business_id', $business_id)
+            ->first();
+        if (!$cp) {
+            return redirect($back)->with('error', 'Clover payment not found.');
+        }
+
+        $map = self::loadCloverManualMatches($business_id);
+        if (isset($map[$cp->id])) {
+            return redirect($back)->with('status', '✓ Already paired with ERP transaction ' . (int) $map[$cp->id] . '.');
+        }
+
+        $locationId = (int) ($cp->location_id ?: 0);
+        if ($locationId <= 0) {
+            $locationId = (int) ($request->session()->get('user.business_location_id', 0) ?: 0);
+        }
+        if ($locationId <= 0) {
+            return redirect($back)->with('error', 'Could not resolve a location for the new ring.');
+        }
+
+        $walkIn = \App\Contact::where('business_id', $business_id)
+            ->where('name', 'like', 'Walk-In%')
+            ->select('id')->first();
+        if (!$walkIn) {
+            return redirect($back)->with('error', 'No Walk-In Customer contact found.');
+        }
+
+        $userId = (int) auth()->id();
+        if (!empty($cp->employee_name)) {
+            $parts = preg_split('/\s+/', trim((string) $cp->employee_name));
+            if ($parts && !empty($parts[0])) {
+                $u = User::where('first_name', 'like', $parts[0] . '%')->select('id')->first();
+                if ($u) $userId = (int) $u->id;
+            }
+        }
+
+        $finalTotal = (float) $cp->amount;
+        $tax = round(((int) ($cp->tax_cents ?? 0)) / 100, 2);
+        $preTax = round($finalTotal - $tax, 2);
+        if ($preTax < 0) $preTax = $finalTotal;
+
+        $when = \Carbon\Carbon::parse($cp->paid_at);
+        $now = \Carbon\Carbon::now();
+
+        $invoiceNo = (string) ((int) (DB::table('transactions')
+            ->where('business_id', $business_id)
+            ->where('type', 'sell')
+            ->whereRaw("invoice_no REGEXP '^[0-9]+$'")
+            ->max(DB::raw('CAST(invoice_no AS UNSIGNED)')) ?? 0) + 1);
+
+        $snapshotKey = 'ring-from-clover-' . $now->format('Y-m-d_His') . '-cp' . $cp->id;
+        \Illuminate\Support\Facades\Storage::disk('local')->put(
+            "admin-snapshots/{$snapshotKey}.json",
+            json_encode([
+                'timestamp' => $now->toDateTimeString(),
+                'action' => 'ring-from-clover',
+                'business_id' => $business_id,
+                'clover_payment_id' => $cp->clover_payment_id,
+                'clover_payment_db_id' => $cp->id,
+                'channel' => $channel,
+                'invoice_no' => $invoiceNo,
+                'final_total' => $finalTotal,
+            ], JSON_PRETTY_PRINT)
+        );
+
+        $txId = null;
+        DB::transaction(function () use ($business_id, $locationId, $walkIn, $userId, $invoiceNo, $when, $now, $preTax, $tax, $finalTotal, $channel, $itemName, $cp, &$txId) {
+            $txId = DB::table('transactions')->insertGetId([
+                'business_id' => $business_id,
+                'location_id' => $locationId,
+                'type' => 'sell',
+                'status' => 'final',
+                'payment_status' => 'paid',
+                'sub_status' => null,
+                'contact_id' => (int) $walkIn->id,
+                'invoice_no' => $invoiceNo,
+                'ref_no' => '',
+                'transaction_date' => $when->format('Y-m-d H:i:s'),
+                'total_before_tax' => $preTax,
+                'tax_amount' => $tax,
+                'discount_amount' => 0,
+                'final_total' => $finalTotal,
+                'created_by' => $userId,
+                'channel' => $channel,
+                'additional_notes' => 'Auto-created from Clover-only orphan ' . ($cp->clover_payment_id ?? '?') . ' via /pos/ring-from-clover.',
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+            DB::table('transaction_sell_lines')->insert([
+                'transaction_id' => $txId,
+                'product_id' => null,
+                'variation_id' => null,
+                'product_name' => mb_substr($itemName, 0, 191),
+                'product_artist' => null,
+                'quantity' => 1,
+                'unit_price' => $preTax,
+                'unit_price_before_discount' => $preTax,
+                'unit_price_inc_tax' => $finalTotal,
+                'item_tax' => $tax,
+                'tax_id' => null,
+                'line_discount_type' => null,
+                'line_discount_amount' => 0,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+            DB::table('transaction_payments')->insert([
+                'business_id' => $business_id,
+                'transaction_id' => $txId,
+                'amount' => $finalTotal,
+                'method' => 'card',
+                'paid_on' => $when->format('Y-m-d H:i:s'),
+                'created_by' => $userId,
+                'payment_for' => (int) $walkIn->id,
+                'note' => 'Auto-pay from Clover ' . ($cp->clover_payment_id ?? ''),
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        });
+
+        $map = self::loadCloverManualMatches($business_id);
+        $map[$cp->id] = $txId;
+        self::saveCloverManualMatches($business_id, $map);
+
+        return redirect($back)->with('status', '✓ Created ERP ring #' . $invoiceNo . ' (channel=' . $channel . ', $' . number_format($finalTotal, 2) . ') and paired with Clover ' . ($cp->clover_payment_id ?? '?') . '. Undo at /admin/admin-action-history.');
+    }
+
     /** Clear a manual Clover ↔ ERP link. */
     public function cloverManualUnmatch(Request $request)
     {

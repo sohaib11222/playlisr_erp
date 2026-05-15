@@ -10014,6 +10014,7 @@ class ReportController extends Controller
                         'clover_unmatched' => [],
                         'erp_unmatched'    => [],
                         'amount_mismatch'  => [],
+                        'matched_clean'    => [],
                         'buys'             => [],
                         'other_channels'   => $otherChannelByEmp[$day . '|' . $k] ?? [],
                     ];
@@ -10059,6 +10060,19 @@ class ReportController extends Controller
                         'transaction_id' => $erpTxnId,
                     ];
                 }
+            } else {
+                // Cleanly-matched pair — same store, same amount, within 5¢.
+                // Listed in the drill-down so Sarah can audit every swipe
+                // that's contributing to a cashier's Clover total and spot
+                // phantoms (e.g. a swipe credited via Clover terminal pin
+                // that doesn't actually belong to this cashier).
+                $erpTxnId = (int) $r->matched_txn_id;
+                $buckets[$day][$locKey]['employees'][$emp]['details']['matched_clean'][] = (object) [
+                    'ts' => $r->ts,
+                    'amount' => round((float) $r->amount, 2),
+                    'transaction_id' => $erpTxnId,
+                    'source' => 'amount-match',
+                ];
             }
         }
 

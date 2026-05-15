@@ -1054,6 +1054,28 @@
                     @else
                         <div style="color:#8B2C2C; font-weight:600;">⚠ No unmatched ERP sale within 1 hour — this is a real missing ring-up.</div>
                     @endif
+
+                    {{-- One-click "create the missing ERP ring + pair it"
+                         action — covers cases where the cashier created a
+                         sales_order hold (excluded from the candidate
+                         finder) or never finalized the sale at all.
+                         Sarah 2026-05-15: needed for Manolo's $73.15
+                         Hollywood Discogs swipe. --}}
+                    <form method="POST" action="{{ route('pos.ringFromClover') }}" style="margin-top:8px; padding-top:8px; border-top:1px dashed #DFD2B3;" onsubmit="return confirm('Create a new ERP ring at $' + ({{ (float) $cpAmount }}).toFixed(2) + ' on channel `' + this.channel.value + '` and pair it with this Clover swipe? Snapshot saved for undo.');">
+                        @csrf
+                        <input type="hidden" name="clover_payment_id" value="{{ $cp->id }}">
+                        <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                            <label style="font-size:11px; color:#5A5045;">Channel
+                                <select name="channel" style="padding:3px 6px; font-size:11px; border:1px solid #DFD2B3; border-radius:4px;">
+                                    <option value="discogs" selected>discogs</option>
+                                    <option value="in_store">in_store</option>
+                                    <option value="ebay">ebay</option>
+                                </select>
+                            </label>
+                            <input type="text" name="item_name" placeholder="Item name (optional)" style="flex:1; min-width:160px; padding:4px 8px; border:1px solid #DFD2B3; border-radius:5px; font-size:11px;">
+                            <button type="submit" style="padding:5px 12px; background:#1F5A2E; color:#fff; border:none; border-radius:5px; font-size:11px; font-weight:700; cursor:pointer; white-space:nowrap;">+ Ring this in ERP</button>
+                        </div>
+                    </form>
                 </div>
                 <div class="rf-foot">
                     <div class="rf-foot-meta">
