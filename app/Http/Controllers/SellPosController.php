@@ -2420,16 +2420,12 @@ class SellPosController extends Controller
                 ->get(['id', 'invoice_no', 'location_id', 'final_total', 'transaction_date', 'created_by']);
 
             foreach ($erpCardSells as $tx) {
-                // Skip if any payment row is cash — cash sales legitimately
-                // don't show on Clover.
-                $hasCash = false; $hasCard = false;
-                foreach ($tx->payment_lines as $pl) {
-                    $m = strtolower((string) ($pl->method ?? ''));
-                    if ($m === 'cash')  $hasCash = true;
-                    if ($m === 'card')  $hasCard = true;
-                }
-                if ($hasCash && !$hasCard) continue;
-                if (!$hasCard) continue; // no card payment recorded → not an ERP-card orphan
+                // Sarah's policy: cashiers ring EVERY sale on Clover —
+                // cash and card. So every ERP sale should pair to a
+                // Clover entry; the only exclusion is the manual-match
+                // map (handled below) and channel=whatnot (already
+                // excluded from $erpCardSells query). Don't skip on
+                // payment method.
 
                 // Does any Clover swipe match? Same store + same total within 1¢.
                 $txCents = (int) round($tx->final_total * 100);

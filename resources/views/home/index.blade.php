@@ -152,12 +152,15 @@
         </div>
     </div>
 
-    {{-- Last calendar month — used items barcoded per employee.
-         Historical baseline (no rollout cutoff). --}}
+    {{-- Last calendar month — per-employee baseline (no rollout cutoff).
+         "Items barcoded" = used items each person added that month.
+         "Items sold" + "Earnings (2%)" = sales that actually happened last
+         month against products that person barcoded (any time). Earnings is
+         what each cashier would have collected if the program had been live. --}}
     <div class="pp-card">
         <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px;">
-            <div style="font-size:14px; font-weight:600;">Used items barcoded — {{ $last_month_label }}</div>
-            <div class="pp-muted">Per employee</div>
+            <div style="font-size:14px; font-weight:600;">Barcoding & earnings — {{ $last_month_label }}</div>
+            <div class="pp-muted">2% commission on used items sold</div>
         </div>
         @if($used_barcoded_last_month->isEmpty())
             <div class="pp-micro" style="padding:6px 0;">No used items barcoded last month.</div>
@@ -167,7 +170,10 @@
                     <tr style="text-align:left; color:#6b7280; font-size:12px;">
                         <th style="padding:6px 8px;">#</th>
                         <th style="padding:6px 8px;">Employee</th>
-                        <th style="padding:6px 8px; text-align:right;">Used items</th>
+                        <th style="padding:6px 8px; text-align:right;">Items barcoded</th>
+                        <th style="padding:6px 8px; text-align:right;">Items sold</th>
+                        <th style="padding:6px 8px; text-align:right;">Sale value</th>
+                        <th style="padding:6px 8px; text-align:right;">Earnings (2%)</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -175,11 +181,17 @@
                         <tr style="border-top:1px solid #f1f2f4;">
                             <td style="padding:6px 8px; color:#6b7280;">{{ $i + 1 }}</td>
                             <td style="padding:6px 8px;">{{ trim($row->employee) ?: 'Unknown (#'.$row->created_by.')' }}</td>
-                            <td style="padding:6px 8px; text-align:right; font-weight:600;">{{ number_format($row->cnt) }}</td>
+                            <td style="padding:6px 8px; text-align:right;">{{ number_format($row->cnt) }}</td>
+                            <td style="padding:6px 8px; text-align:right;">{{ number_format($row->items_sold) }}</td>
+                            <td style="padding:6px 8px; text-align:right; color:#6b7280;">${{ number_format($row->gross, 2) }}</td>
+                            <td style="padding:6px 8px; text-align:right; font-weight:600; color:#15803d;">${{ number_format($row->earnings, 2) }}</td>
                         </tr>
                     @endforeach
                 </tbody>
             </table>
+            <div class="pp-micro" style="margin-top:8px;">
+                Sales counted = sells finalized last month against items the employee barcoded (any time). Excludes sealed and new-equipment categories.
+            </div>
         @endif
     </div>
 

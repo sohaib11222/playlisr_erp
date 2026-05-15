@@ -1235,22 +1235,6 @@
                         $cloverMismatch = abs($cloverInfo['amount_cents'] - $saleCents) > 1;
                     }
                 @endphp
-                @php
-                    // Sarah 2026-05-14: a cash sale is never expected to
-                    // have a Clover swipe, so it shouldn't render as
-                    // MISSING. Inspect the payment row(s) for any method.
-                    $rowPayMethod = '';
-                    if (!empty($sale->payment_lines) && is_iterable($sale->payment_lines)) {
-                        foreach ($sale->payment_lines as $pl) {
-                            $rowPayMethod = strtolower((string) ($pl->method ?? ''));
-                            if ($rowPayMethod !== '') break;
-                        }
-                    }
-                    if ($rowPayMethod === '' && !empty($sale->payment_methods)) {
-                        $rowPayMethod = strtolower((string) $sale->payment_methods);
-                    }
-                    $rowIsCashOnly = $rowPayMethod === 'cash';
-                @endphp
                 <div class="rf-foot">
                     <div class="rf-foot-meta">
                         {{ ucfirst(str_replace('_', ' ', $sale->payment_status ?? '')) }}
@@ -1285,16 +1269,12 @@
                                     @endif
                                 </div>
                             @else
-                                {{-- Cash sales don't go through Clover, so
-                                     don't flag them as MISSING. Card sales
-                                     with no Clover pair stay red. --}}
-                                @if($rowIsCashOnly)
-                                    <div class="amt" style="color:#5A5045; font-weight:600;">— cash</div>
-                                    <div class="sub" style="color:#8A7C6A;">paid in cash — no Clover expected</div>
-                                @else
-                                    <div class="amt" style="color:#8B2C2C; font-weight:700;">⚠ MISSING</div>
-                                    <div class="sub" style="color:#8B2C2C; font-weight:600;">not in Clover</div>
-                                @endif
+                                {{-- Cashiers ring EVERY sale on Clover at
+                                     Nivessa — cash + card. Any ERP sale
+                                     without a paired Clover swipe is a
+                                     missed entry on the terminal. --}}
+                                <div class="amt" style="color:#8B2C2C; font-weight:700;">⚠ MISSING</div>
+                                <div class="sub" style="color:#8B2C2C; font-weight:600;">not in Clover</div>
                             @endif
                         </div>
                         {{-- Sarah 2026-05-13: per-sale Diff column. Shows every

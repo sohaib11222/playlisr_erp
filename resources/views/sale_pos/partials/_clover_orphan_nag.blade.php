@@ -27,7 +27,7 @@
                 <span id="eon_count">0</span> ERP card sale<span id="eon_plural">s</span> not on Clover
             </div>
             <div style="font-size:12px; color:#9a3412; flex:1; min-width:240px;">
-                Sale rung in ERP as card but no Clover charge yet — did the customer pay? Run the card on Clover now, or correct the ERP payment method if it was cash.
+                Sale rung in ERP but no Clover entry yet — every sale (cash OR card) must be entered on Clover. Ring it on the terminal now.
             </div>
         </div>
         <div id="eon_list" style="margin-top:8px; display:flex; flex-wrap:wrap; gap:8px;"></div>
