@@ -38,21 +38,40 @@ class FixSaleChannelController extends Controller
                 ->where('invoice_no', $invoice)
                 ->select('id', 'invoice_no', 'transaction_date', 'final_total', 'channel', 'location_id', 'created_by')
                 ->first();
-        } elseif ($amount !== '' || $date !== '') {
-            // Amount/date lookup — find candidates that match either field.
-            // Defaults to today when no date given.
+        } elseif ($amount !== '' || $date !== '' || $request->get('channel_filter')) {
+            // Amount/date/channel lookup. Looser by default — ±$5 amount,
+            // include draft sales, +/- 1 day around the chosen date to
+            // absorb timezone edges. The right ring is almost never an
+            // exact $0.50 match because cashiers ring pre-tax stickers,
+            // tax adds a few bucks, etc.
             $q = Transaction::where('business_id', $business_id)
                 ->where('type', 'sell')
-                ->where('status', 'final')
+                ->whereIn('status', ['final', 'draft'])
                 ->select('id', 'invoice_no', 'transaction_date', 'final_total', 'channel', 'location_id', 'created_by');
-            $day = $date !== '' ? $date : \Carbon\Carbon::now()->format('Y-m-d');
-            $q->whereDate('transaction_date', $day);
+
+            if ($date !== '') {
+                $d = \Carbon\Carbon::parse($date);
+                $q->whereBetween('transaction_date', [
+                    $d->copy()->subDay()->startOfDay(),
+                    $d->copy()->addDay()->endOfDay(),
+                ]);
+            } else {
+                // Default: anything in the last 3 days when no date given,
+                // so an 11:37am sale near a UTC/LA boundary is still found.
+                $q->where('transaction_date', '>=', \Carbon\Carbon::now()->subDays(3));
+            }
+
             if ($amount !== '') {
                 $a = (float) str_replace(['$', ','], '', $amount);
-                // Match within ±$0.50 to absorb tax/rounding variation.
-                $q->whereBetween('final_total', [$a - 0.50, $a + 0.50]);
+                $q->whereBetween('final_total', [$a - 5.00, $a + 5.00]);
             }
-            $candidates = $q->orderBy('transaction_date', 'desc')->limit(25)->get();
+
+            $cf = $request->get('channel_filter');
+            if (is_string($cf) && $cf !== '') {
+                $q->where('channel', $cf);
+            }
+
+            $candidates = $q->orderBy('transaction_date', 'desc')->limit(50)->get();
         }
 
         // Helpful location lookup so the table can show 'Hollywood' instead of '7'.

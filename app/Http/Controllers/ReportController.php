@@ -9542,7 +9542,10 @@ class ReportController extends Controller
         $cleanMatchCents      = 5;
         $matchTimeWindow      = 43200; // seconds (12 hr)
         foreach ($cpForMatch as $r) {
-            $cpTs    = strtotime((string) $r->ts);
+            // cp_ts_epoch is built from raw_payload.createdTime (UTC ms,
+            // unambiguous) — see selectRaw above. Falls back to
+            // UNIX_TIMESTAMP(paid_at) only when createdTime is missing.
+            $cpTs    = (int) ($r->cp_ts_epoch ?? strtotime((string) $r->ts));
             $cpCents = $toCents($r->amount);
             $cpLoc   = $r->location_id;
 
@@ -9594,8 +9597,13 @@ class ReportController extends Controller
             // have a matching ERP sale OR matched to an admin-rung sale.
             // Only override pin-less rows here so a Clover-pinned swipe
             // with no ERP match still keeps Clover's pin.
+            // Use the createdTime-derived epoch so batch-settled swipes
+            // (paid_at = next-morning) attribute to the cashier on shift
+            // at the real swipe time, not whoever happens to be there
+            // when Clover batched.
             if ($r->employee_name !== '') continue;
-            $sw = $findShiftCashier($r->ts, $r->location_id);
+            $cpTsForShift = (int) ($r->cp_ts_epoch ?? strtotime((string) $r->ts));
+            $sw = $findShiftCashier(date('Y-m-d H:i:s', $cpTsForShift), $r->location_id);
             if ($sw) {
                 $r->employee_name = $sw;
             }
@@ -9613,7 +9621,7 @@ class ReportController extends Controller
         $sameTimeWindow = 120; // seconds (±2 min)
         foreach ($cpForMatch as $r) {
             if (!empty($r->matched_txn_id)) continue;
-            $cpTs    = strtotime((string) $r->ts);
+            $cpTs    = (int) ($r->cp_ts_epoch ?? strtotime((string) $r->ts));
             $cpCents = $toCents($r->amount);
             $cpLoc   = $r->location_id;
             $bestId = null; $bestTd = PHP_INT_MAX; $bestSignedDelta = 0;
@@ -9667,7 +9675,8 @@ class ReportController extends Controller
                     $mm = $manualClvToTxn[$matchedTxId];
                     $matchedFirst = strtolower(preg_split('/\s+/', trim((string) $mm->cashier_name))[0] ?? '');
                     if (isset($adminSet[$matchedFirst])) {
-                        $sw = $findShiftCashier($r->ts, $mm->location_id);
+                        $cpTsForShift = (int) ($r->cp_ts_epoch ?? strtotime((string) $r->ts));
+                        $sw = $findShiftCashier(date('Y-m-d H:i:s', $cpTsForShift), $mm->location_id);
                         if ($sw !== null) {
                             $effEmp = $sw;
                             $effDay = $mm->day;

@@ -49,14 +49,30 @@
                     <input type="text" name="amount" id="amount" value="{{ $amount ?? '' }}" class="form-control" placeholder="e.g. 73.15" style="min-width:120px;">
                 </div>
                 <div>
-                    <label for="date">Date <em style="color:#9ca3af; font-weight:400;">(default today)</em></label>
+                    <label for="date">Date <em style="color:#9ca3af; font-weight:400;">(default last 3 days)</em></label>
                     <input type="date" name="date" id="date" value="{{ $date ?? '' }}" class="form-control" style="min-width:160px;">
+                </div>
+                <div>
+                    <label for="channel_filter">Channel</label>
+                    <select name="channel_filter" id="channel_filter" class="form-control" style="min-width:140px;">
+                        <option value="">(any)</option>
+                        @foreach($allowed_channels as $c)
+                            <option value="{{ $c }}" {{ request('channel_filter') === $c ? 'selected' : '' }}>{{ $c }}</option>
+                        @endforeach
+                    </select>
                 </div>
                 <div>
                     <button class="btn btn-default" type="submit">Look up</button>
                 </div>
             </div>
         </form>
+
+        <div style="margin-top:10px; font-size:12px; color:#6b7280;">
+            Shortcuts:
+            <a href="{{ url('/admin/fix-channel?channel_filter=whatnot') }}">today + last 3d · whatnot only</a>
+            ·
+            <a href="{{ url('/admin/fix-channel?channel_filter=in_store') }}">in_store</a>
+        </div>
 
         @if($invoice && !$tx)
             <p class="text-danger" style="margin-top:14px;">No ERP sale found with invoice <code>{{ $invoice }}</code>.</p>
