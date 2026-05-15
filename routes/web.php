@@ -313,6 +313,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
 
     Route::get('/sells/pos/recent-rings', 'SellPosController@recentRings')->name('pos.recentRings');
 
+    // Luis's nag: Clover swipes in the last 5 min with no matching ERP
+    // ring at the same store. Powers the sticky orphan panel on /pos.
+    Route::get('/sells/pos/clover-orphans-recent', 'SellPosController@cloverOrphansRecent')->name('pos.cloverOrphansRecent');
+
     Route::resource('roles', 'RoleController');
 
     Route::resource('users', 'ManageUserController');

@@ -99,6 +99,7 @@
      tan area to the left of the cart on wide screens, hidden under 1200px.
      Pulled out of layout flow so it cannot affect the locked cart layout. --}}
 @include('sale_pos.partials._recent_rings_panel')
+@include('sale_pos.partials._clover_orphan_nag')
 
 @include('sale_pos.partials.recent_transactions_modal')
 

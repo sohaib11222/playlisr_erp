@@ -2309,6 +2309,107 @@ class SellPosController extends Controller
         return redirect($back)->with('status', '✓ Payment method on #' . $tx->invoice_no . ' set to ' . strtoupper($newMethod) . ' (' . $updated . ' payment row' . ($updated === 1 ? '' : 's') . ' updated). Snapshot saved — undo at /admin/admin-action-history.');
     }
 
+    /**
+     * Real-time "Clover charged something you haven't rung yet" feed for
+     * the POS create page. Polled every ~30s. Returns Clover payments in
+     * the last 5 minutes (default) that don't have a corresponding ERP
+     * sell at the same location + amount within the same window.
+     *
+     * Luis's idea, Sarah 2026-05-15: surface unmatched Clover charges
+     * directly on /pos so cashiers see "you swiped X — ring the item in
+     * ERP now" while it's still fresh, instead of finding out the next
+     * morning when reconciliation runs.
+     */
+    public function cloverOrphansRecent(Request $request)
+    {
+        try {
+            if (!auth()->user()->can('sell.create') && !auth()->user()->can('sell.view')) {
+                return response()->json(['orphans' => []]);
+            }
+
+            $business_id = (int) $request->session()->get('user.business_id');
+            $location_id = $request->get('location_id');
+            $minutes = (int) $request->get('minutes', 5);
+            if ($minutes < 1)   { $minutes = 1; }
+            if ($minutes > 60)  { $minutes = 60; }
+
+            $since = \Carbon\Carbon::now()->subMinutes($minutes);
+
+            $cpQuery = \App\CloverPayment::where('business_id', $business_id)
+                ->where('paid_at', '>=', $since)
+                ->orderByDesc('paid_at')
+                ->limit(20);
+            if (!empty($location_id)) {
+                $cpQuery->where(function ($q) use ($location_id) {
+                    $q->where('location_id', (int) $location_id)
+                      ->orWhereNull('location_id');
+                });
+            }
+            $cps = $cpQuery->get(['id', 'clover_payment_id', 'clover_order_id', 'amount', 'tax_cents', 'paid_at', 'location_id', 'card_type', 'card_last4', 'employee_name']);
+
+            if ($cps->isEmpty()) {
+                return response()->json(['orphans' => []]);
+            }
+
+            // Same-window ERP sells we can pair against. Match key is
+            // (location, amount in cents). Use a slightly wider time
+            // window (15 min) so a Clover swipe at T and ERP ring at T+8
+            // are still considered paired.
+            $erpWindowStart = \Carbon\Carbon::now()->subMinutes($minutes + 10);
+            $erpRows = Transaction::where('business_id', $business_id)
+                ->where('type', 'sell')
+                ->where('status', 'final')
+                ->where('transaction_date', '>=', $erpWindowStart)
+                ->get(['id', 'invoice_no', 'location_id', 'final_total', 'transaction_date']);
+
+            $manual = self::loadCloverManualMatches($business_id);
+
+            $orphans = [];
+            foreach ($cps as $cp) {
+                // Already manually matched? Skip.
+                if (isset($manual[$cp->id])) continue;
+
+                $cpCents = (int) round($cp->amount * 100);
+                $matched = false;
+                foreach ($erpRows as $tx) {
+                    if ((int) $tx->location_id !== (int) ($cp->location_id ?: $tx->location_id)) {
+                        // Allow matching when Clover has no location set
+                        // (online checkout style); otherwise require same store.
+                        if ($cp->location_id) continue;
+                    }
+                    $txCents = (int) round($tx->final_total * 100);
+                    if (abs($cpCents - $txCents) <= 1) { $matched = true; break; }
+                }
+                if ($matched) continue;
+
+                $locName = ($cp->location_id && \App\BusinessLocation::where('id', $cp->location_id)->exists())
+                    ? \App\BusinessLocation::where('id', $cp->location_id)->value('name')
+                    : null;
+
+                $orphans[] = [
+                    'id'                => (int) $cp->id,
+                    'clover_payment_id' => $cp->clover_payment_id,
+                    'clover_order_id'   => $cp->clover_order_id,
+                    'amount'            => (float) $cp->amount,
+                    'pre_tax'           => round(((float) $cp->amount) - ((int) ($cp->tax_cents ?? 0)) / 100, 2),
+                    'tax'               => round(((int) ($cp->tax_cents ?? 0)) / 100, 2),
+                    'paid_at'           => \Carbon\Carbon::parse($cp->paid_at)->setTimezone(config('app.timezone'))->format('g:i:s a'),
+                    'paid_at_iso'       => \Carbon\Carbon::parse($cp->paid_at)->toIso8601String(),
+                    'age_seconds'       => max(0, \Carbon\Carbon::now()->diffInSeconds(\Carbon\Carbon::parse($cp->paid_at))),
+                    'location_id'       => (int) ($cp->location_id ?? 0) ?: null,
+                    'location_name'     => $locName,
+                    'card_label'        => trim(($cp->card_type ? strtoupper($cp->card_type) : '') . ' ' . ($cp->card_last4 ? '••' . $cp->card_last4 : '')),
+                    'employee_name'     => $cp->employee_name,
+                ];
+            }
+
+            return response()->json(['orphans' => $orphans, 'minutes' => $minutes]);
+        } catch (\Throwable $e) {
+            \Log::warning('cloverOrphansRecent failed: ' . $e->getMessage());
+            return response()->json(['orphans' => [], 'error' => $e->getMessage()]);
+        }
+    }
+
     public function recentRings(Request $request)
     {
         try {
