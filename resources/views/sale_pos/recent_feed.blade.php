@@ -1076,6 +1076,22 @@
                             <button type="submit" style="padding:5px 12px; background:#1F5A2E; color:#fff; border:none; border-radius:5px; font-size:11px; font-weight:700; cursor:pointer; white-space:nowrap;">+ Ring this in ERP</button>
                         </div>
                     </form>
+
+                    {{-- Pair to an ERP invoice that already exists — for the
+                         case where the cashier rang the sale (correct total,
+                         maybe wrong day or method) but the auto-matcher
+                         can't see it because it's outside the ±1h same-day
+                         window. Sarah 2026-05-15: needed to pair Fatteen's
+                         VHS backfill ring (today) to Luis's 5/13 swipe. --}}
+                    <form method="POST" action="{{ route('pos.cloverManualMatch') }}" style="margin-top:8px; padding-top:8px; border-top:1px dashed #DFD2B3;" onsubmit="return confirm('Manually pair this Clover charge with ERP invoice #' + this.invoice_no.value + '? Cross-day or method mismatches will be flagged.');">
+                        @csrf
+                        <input type="hidden" name="clover_payment_id" value="{{ $cp->id }}">
+                        <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                            <label style="font-size:11px; color:#5A5045;">Or pair to ERP invoice #</label>
+                            <input type="text" name="invoice_no" placeholder="e.g. 18748" required style="width:110px; padding:4px 8px; border:1px solid #DFD2B3; border-radius:5px; font-size:11px;">
+                            <button type="submit" style="padding:5px 12px; background:#1F1B16; color:#fff; border:none; border-radius:5px; font-size:11px; font-weight:700; cursor:pointer; white-space:nowrap;">↔ Match</button>
+                        </div>
+                    </form>
                 </div>
                 <div class="rf-foot">
                     <div class="rf-foot-meta">

@@ -2006,13 +2006,30 @@ class SellPosController extends Controller
 
         $cpId = (int) $request->input('clover_payment_id');
         $txId = (int) $request->input('transaction_id');
+        $invoiceNo = trim((string) $request->input('invoice_no', ''));
         $back = $request->headers->get('referer') ?: route('pos.recentFeed');
 
-        if (!$cpId || !$txId) {
-            return redirect($back)->with('error', 'Manual match requires both clover_payment_id and transaction_id.');
+        $business_id = (int) $request->session()->get('user.business_id');
+
+        // Allow callers to identify the ERP sale by invoice_no (the human
+        // number visible on the recent_feed card) when transaction_id
+        // isn't handy. Used by the "Or pair to ERP invoice #" input on
+        // Clover-only orphan cards (Sarah 2026-05-15 — needed to pair
+        // Fatteen's backfill ring across days).
+        if (!$txId && $invoiceNo !== '') {
+            $found = Transaction::where('business_id', $business_id)
+                ->where('invoice_no', $invoiceNo)
+                ->first(['id']);
+            if ($found) {
+                $txId = (int) $found->id;
+            }
         }
 
-        $business_id = (int) $request->session()->get('user.business_id');
+        if (!$cpId || !$txId) {
+            $hint = $invoiceNo !== '' ? (' (no ERP sale found with invoice #' . $invoiceNo . ')') : '';
+            return redirect($back)->with('error', 'Manual match requires a Clover payment and an ERP transaction (or invoice #).' . $hint);
+        }
+
         $cp = \App\CloverPayment::where('id', $cpId)->where('business_id', $business_id)->first();
         $tx = Transaction::where('id', $txId)->where('business_id', $business_id)->first();
         if (!$cp || !$tx) {
