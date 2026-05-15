@@ -23,7 +23,7 @@
             <span id="con_count">0</span> Clover swipe<span id="con_plural">s</span> need ringing
         </div>
         <div style="font-size:12px; color:#9a3412; flex:1; min-width:240px;">
-            Cashier swiped a card on Clover in the last 5 min — ring the item in ERP now so inventory + reports stay accurate.
+            Please ring the item in ERP now so inventory + reports stay accurate.
         </div>
     </div>
     <div id="con_list" style="margin-top:8px; display:flex; flex-wrap:wrap; gap:8px;"></div>
