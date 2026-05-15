@@ -709,6 +709,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/store-mistag-fix', 'StoreMistagFixController@index');
     Route::post('/admin/store-mistag-fix/run', 'StoreMistagFixController@run');
 
+    // Flip the channel on a single ERP sale (e.g. whatnot → discogs)
+    // with snapshot to admin-snapshots. Manolo's Discogs-pickup case
+    // 2026-05-15 was the trigger.
+    Route::get('/admin/fix-channel', 'FixSaleChannelController@index');
+    Route::post('/admin/fix-channel/apply', 'FixSaleChannelController@apply');
+
     // One-shot: apply Sarah's 2026-05-13 register reconciliation findings
     // (CARD→CASH on #18694, manual match #18696 ↔ Clover Interpol pair,
     // notes on #18680 exchange + Bonnie Raitt orphan). Snapshots to
