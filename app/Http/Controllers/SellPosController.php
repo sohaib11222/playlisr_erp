@@ -2404,10 +2404,66 @@ class SellPosController extends Controller
                 ];
             }
 
-            return response()->json(['orphans' => $orphans]);
+            // === ERP-orphans: card sales rung in ERP today that don't
+            // have a matching Clover swipe. Cashier collected card payment
+            // intent in ERP but never charged the card on the terminal —
+            // customer might've walked out, or paid via another method
+            // without the ERP reflecting that. Cash sales are excluded
+            // (they're not expected to have a Clover swipe).
+            $erpOrphans = [];
+            $erpCardSells = Transaction::where('business_id', $business_id)
+                ->where('type', 'sell')
+                ->where('status', 'final')
+                ->where('transaction_date', '>=', $since)
+                ->when($location_id, fn($q) => $q->where('location_id', (int) $location_id))
+                ->with(['payment_lines:id,transaction_id,method,amount'])
+                ->get(['id', 'invoice_no', 'location_id', 'final_total', 'transaction_date', 'created_by']);
+
+            foreach ($erpCardSells as $tx) {
+                // Skip if any payment row is cash — cash sales legitimately
+                // don't show on Clover.
+                $hasCash = false; $hasCard = false;
+                foreach ($tx->payment_lines as $pl) {
+                    $m = strtolower((string) ($pl->method ?? ''));
+                    if ($m === 'cash')  $hasCash = true;
+                    if ($m === 'card')  $hasCard = true;
+                }
+                if ($hasCash && !$hasCard) continue;
+                if (!$hasCard) continue; // no card payment recorded → not an ERP-card orphan
+
+                // Does any Clover swipe match? Same store + same total within 1¢.
+                $txCents = (int) round($tx->final_total * 100);
+                $paired = false;
+                foreach ($cps as $cp) {
+                    if ($cp->location_id && (int) $cp->location_id !== (int) $tx->location_id) continue;
+                    $cpCents = (int) round($cp->amount * 100);
+                    if (abs($cpCents - $txCents) <= 1) { $paired = true; break; }
+                }
+                if ($paired) continue;
+
+                $locName = ($tx->location_id && \App\BusinessLocation::where('id', $tx->location_id)->exists())
+                    ? \App\BusinessLocation::where('id', $tx->location_id)->value('name')
+                    : null;
+
+                $erpOrphans[] = [
+                    'kind'           => 'erp_orphan',
+                    'tx_id'          => (int) $tx->id,
+                    'invoice_no'     => $tx->invoice_no,
+                    'amount'         => (float) $tx->final_total,
+                    'transaction_date' => \Carbon\Carbon::parse($tx->transaction_date)->setTimezone(config('app.timezone'))->format('g:i:s a'),
+                    'age_seconds'    => max(0, \Carbon\Carbon::now()->diffInSeconds(\Carbon\Carbon::parse($tx->transaction_date))),
+                    'location_id'    => (int) ($tx->location_id ?? 0) ?: null,
+                    'location_name'  => $locName,
+                ];
+            }
+
+            return response()->json([
+                'orphans'      => $orphans,       // Clover-only — card swiped, no ERP ring
+                'erp_orphans'  => $erpOrphans,    // ERP-only card sale — no Clover swipe
+            ]);
         } catch (\Throwable $e) {
             \Log::warning('cloverOrphansRecent failed: ' . $e->getMessage());
-            return response()->json(['orphans' => [], 'error' => $e->getMessage()]);
+            return response()->json(['orphans' => [], 'erp_orphans' => [], 'error' => $e->getMessage()]);
         }
     }
 

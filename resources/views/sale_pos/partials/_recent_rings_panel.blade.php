@@ -10,39 +10,42 @@
 {{-- position:fixed so it floats in the tan area to the left of the cart
      box without touching the locked POS column layout. Hidden on narrow
      screens so it doesn't overlap the form. --}}
+<div id="recent_rings_pill"
+     title="Show recently rung-up sales"
+     style="position:fixed; bottom:14px; left:14px; z-index:50;
+            background:#fffaf0; border:1px solid #d4a574; border-radius:999px;
+            padding:6px 12px; font-size:11px; font-weight:700; color:#7c2d12;
+            cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.08); user-select:none;">
+    <i class="fa fa-history"></i> Recent <span id="rr_pill_count" style="opacity:.6;"></span>
+</div>
+
 <div id="recent_rings_panel"
-     style="position:fixed; top:96px; left:10px; width:200px; z-index:50;
+     style="display:none; position:fixed; bottom:14px; left:14px; width:240px; z-index:51;
             background:#fffaf0; border:1px solid #d4a574; border-radius:10px;
-            padding:8px 10px; font-size:12px; box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+            padding:8px 10px; font-size:12px; box-shadow:0 4px 12px rgba(0,0,0,0.12);">
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
         <div style="font-size:10px; text-transform:uppercase; letter-spacing:1px; color:#7c2d12; font-weight:700;">
             <i class="fa fa-history"></i> Recently rung up
         </div>
-        <a href="#" id="rr_refresh" style="font-size:10px; color:#0ea5e9; text-decoration:none;">refresh</a>
+        <div>
+            <a href="#" id="rr_refresh" style="font-size:10px; color:#0ea5e9; text-decoration:none; margin-right:8px;">refresh</a>
+            <a href="#" id="rr_collapse" style="font-size:14px; color:#7c2d12; text-decoration:none; font-weight:700;" title="Collapse">×</a>
+        </div>
     </div>
-    <div id="rr_list"></div>
+    <div id="rr_list" style="max-height:340px; overflow-y:auto;"></div>
     <div id="rr_empty" style="color:#94a3b8; font-style:italic; font-size:11px;">Loading…</div>
 </div>
-{{-- Hide on narrow viewports so the widget can never overlap the cart.
-     2026-04-30 v2: the POS form has `max-width:1500px; margin:0 auto`
-     so it CENTERS within section.content. At ~1200–1500px viewports
-     the form spans the whole width and the fixed widget paints over
-     the cart inputs. Override the form's left margin so it stops
-     centering and instead leaves a fixed 220px gutter on the left
-     for the widget — same effect as 80% zoom, where the centered
-     form happens to leave room. !important is required because
-     _redesign_v2.blade.php sets `margin: 0 auto` with high
-     specificity. Scoped to /pos/create only. --}}
+
+{{-- Sarah 2026-05-15: previously this panel was a permanently-pinned
+     200px column at top-left, which forced a 220px left gutter on the
+     cart form to avoid overlap. Sarah called the layout "always in the
+     way" — switch to a collapsed pill at bottom-left + on-demand panel
+     overlay. Cart form gets its full width back, and the new Clover
+     orphan banner above no longer needs a left gutter either. The
+     duplicate-detection banner is unchanged. --}}
 <style>
     @media (max-width: 1199.98px) {
-        #recent_rings_panel { display: none !important; }
-    }
-    @media (min-width: 1200px) {
-        body.pos-v2 section.content > form#add_pos_sell_form {
-            margin-left: 220px !important;
-            margin-right: 0 !important;
-            max-width: calc(100% - 220px) !important;
-        }
+        #recent_rings_pill, #recent_rings_panel { display: none !important; }
     }
 </style>
 
@@ -191,6 +194,21 @@
             });
 
             $('#rr_refresh').on('click', function(e){ e.preventDefault(); fetchRings(); });
+
+            // Collapse/expand toggle. Default state = collapsed (pill
+            // visible, panel hidden). Sarah 2026-05-15: the pinned panel
+            // was always in the way; on-demand reveal restores cart room.
+            var $pill = $('#recent_rings_pill');
+            var $pillCount = $('#rr_pill_count');
+            function setCount() {
+                var n = rings && rings.length ? rings.length : 0;
+                $pillCount.text(n ? '· ' + Math.min(n, 8) : '');
+            }
+            $pill.on('click', function(){ $pill.hide(); $panel.show(); setCount(); });
+            $('#rr_collapse').on('click', function(e){ e.preventDefault(); $panel.hide(); $pill.show(); });
+            // Keep the pill count fresh after every fetch.
+            var _origRender = render;
+            render = function(now_unix){ _origRender(now_unix); setCount(); };
 
             // Watch for new product rows being inserted into the cart so we
             // can match them against the cached recent rings list. Using

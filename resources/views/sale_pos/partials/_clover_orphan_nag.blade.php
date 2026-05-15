@@ -17,32 +17,40 @@
             background:#fff7ed; border:2px solid #f97316; border-radius:8px;
             box-shadow:0 2px 6px rgba(249,115,22,.18);
             font-size:13px; color:#7c2d12;">
-    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-        <div style="font-weight:800; font-size:14px; color:#7c2d12; white-space:nowrap;">
-            <i class="fa fa-exclamation-triangle"></i>
-            <span id="con_count">0</span> Clover swipe<span id="con_plural">s</span> need ringing
+    {{-- Clover-only section: card was swiped on the terminal, no ERP ring. --}}
+    <div id="con_block" style="display:none;">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <div style="font-weight:800; font-size:14px; color:#7c2d12; white-space:nowrap;">
+                <i class="fa fa-credit-card"></i>
+                <span id="con_count">0</span> Clover swipe<span id="con_plural">s</span> need ringing
+            </div>
+            <div style="font-size:12px; color:#9a3412; flex:1; min-width:240px;">
+                Card was charged on Clover but no ERP ring yet — please ring the item in ERP so inventory + reports stay accurate.
+            </div>
         </div>
-        <div style="font-size:12px; color:#9a3412; flex:1; min-width:240px;">
-            Please ring the item in ERP now so inventory + reports stay accurate.
-        </div>
+        <div id="con_list" style="margin-top:8px; display:flex; flex-wrap:wrap; gap:8px;"></div>
     </div>
-    <div id="con_list" style="margin-top:8px; display:flex; flex-wrap:wrap; gap:8px;"></div>
+
+    {{-- ERP-only section: cashier rang a card sale in ERP but no Clover swipe. --}}
+    <div id="eon_block" style="display:none; margin-top:10px; padding-top:10px; border-top:1px dashed #fdba74;">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <div style="font-weight:800; font-size:14px; color:#7c2d12; white-space:nowrap;">
+                <i class="fa fa-exclamation-triangle"></i>
+                <span id="eon_count">0</span> ERP card sale<span id="eon_plural">s</span> not on Clover
+            </div>
+            <div style="font-size:12px; color:#9a3412; flex:1; min-width:240px;">
+                Sale was rung in ERP as card but no Clover charge yet — did the customer actually pay? Run the card on Clover now, or correct the ERP payment method if it was cash.
+            </div>
+        </div>
+        <div id="eon_list" style="margin-top:8px; display:flex; flex-wrap:wrap; gap:8px;"></div>
+    </div>
 </div>
 
 <style>
-    /* Position the banner so it never overlaps the fixed "Recently rung
-       up" widget on the left. On wide screens the rings panel takes 200px
-       at left:10px — match the cart form's 220px gutter (see
-       pos-create-layout.css). On narrow screens the rings panel hides
-       itself, so the banner can span full width. */
+    /* Banner spans full content width — the rings widget is now a
+       collapsed pill at bottom-left, so no gutter needed. */
     #clover_orphan_nag {
         margin: 12px 16px 10px 16px;
-    }
-    @media (min-width: 1200px) {
-        #clover_orphan_nag {
-            margin-left: 220px !important;
-            margin-right: 16px !important;
-        }
     }
     .con-chip {
         background:#fff; border:1px solid #fdba74; border-radius:6px;
@@ -72,9 +80,15 @@
             var $panel  = $('#clover_orphan_nag');
             if (!$panel.length) return;
 
-            var $list    = $('#con_list');
-            var $count   = $('#con_count');
-            var $plural  = $('#con_plural');
+            var $conBlock  = $('#con_block');
+            var $list      = $('#con_list');
+            var $count     = $('#con_count');
+            var $plural    = $('#con_plural');
+
+            var $eonBlock  = $('#eon_block');
+            var $eonList   = $('#eon_list');
+            var $eonCount  = $('#eon_count');
+            var $eonPlural = $('#eon_plural');
 
             function locationId() {
                 var loc = $('input[name="location_id"]').val() || '';
@@ -82,38 +96,73 @@
                 return loc;
             }
 
-            function render(orphans) {
-                if (!orphans || !orphans.length) {
-                    $panel.hide();
-                    return;
-                }
-                $count.text(orphans.length);
-                $plural.text(orphans.length === 1 ? '' : 's');
+            function ageLabel(seconds) {
+                var s = Math.max(0, seconds || 0);
+                if (s < 60) return 'just now';
+                var m = Math.round(s / 60);
+                if (m < 60) return m + ' min ago';
+                var h = Math.floor(m / 60);
+                var rem = m % 60;
+                return rem ? (h + ' hr ' + rem + ' min ago') : (h + ' hr ago');
+            }
 
-                var html = '';
-                function ageLabel(seconds) {
-                    var s = Math.max(0, seconds || 0);
-                    if (s < 60) return 'just now';
-                    var m = Math.round(s / 60);
-                    if (m < 60) return m + ' min ago';
-                    var h = Math.floor(m / 60);
-                    var rem = m % 60;
-                    return rem ? (h + ' hr ' + rem + ' min ago') : (h + ' hr ago');
+            function escapeAttr(s) {
+                return String(s == null ? '' : s)
+                    .replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+            }
+
+            function render(payload) {
+                var orphans = (payload && payload.orphans) || [];
+                var erpOrphans = (payload && payload.erp_orphans) || [];
+                var any = orphans.length + erpOrphans.length;
+                if (!any) { $panel.hide(); return; }
+
+                // Clover-only chips
+                if (orphans.length) {
+                    $count.text(orphans.length);
+                    $plural.text(orphans.length === 1 ? '' : 's');
+                    var html = '';
+                    for (var i = 0; i < orphans.length; i++) {
+                        var o = orphans[i];
+                        html += '<div class="con-chip" data-cp-id="' + o.id + '">';
+                        html +=   '<div class="con-amt">$' + o.amount.toFixed(2) + '</div>';
+                        html +=   '<div class="con-meta">';
+                        html +=     '<span class="con-age">' + ageLabel(o.age_seconds) + '</span> · ' + (o.paid_at || '');
+                        if (o.location_name) html += ' · ' + o.location_name;
+                        if (o.card_label) html += ' · ' + o.card_label;
+                        html +=   '</div>';
+                        html +=   '<button type="button" class="con-btn con-ring" data-amount="' + o.pre_tax + '" data-clover-id="' + escapeAttr(o.clover_payment_id || '') + '">+ Ring this in ERP</button>';
+                        html += '</div>';
+                    }
+                    $list.html(html);
+                    $conBlock.show();
+                } else {
+                    $conBlock.hide();
                 }
-                for (var i = 0; i < orphans.length; i++) {
-                    var o = orphans[i];
-                    var ageLbl = ageLabel(o.age_seconds);
-                    html += '<div class="con-chip" data-cp-id="' + o.id + '">';
-                    html +=   '<div class="con-amt">$' + o.amount.toFixed(2) + '</div>';
-                    html +=   '<div class="con-meta">';
-                    html +=     '<span class="con-age">' + ageLbl + '</span> · ' + (o.paid_at || '');
-                    if (o.location_name) html += ' · ' + o.location_name;
-                    if (o.card_label) html += ' · ' + o.card_label;
-                    html +=   '</div>';
-                    html +=   '<button type="button" class="con-btn con-ring" data-amount="' + o.pre_tax + '" data-clover-id="' + (o.clover_payment_id || '') + '">+ Ring this in ERP</button>';
-                    html += '</div>';
+
+                // ERP-only chips
+                if (erpOrphans.length) {
+                    $eonCount.text(erpOrphans.length);
+                    $eonPlural.text(erpOrphans.length === 1 ? '' : 's');
+                    var ehtml = '';
+                    for (var j = 0; j < erpOrphans.length; j++) {
+                        var e = erpOrphans[j];
+                        ehtml += '<div class="con-chip" data-tx-id="' + e.tx_id + '">';
+                        ehtml +=   '<div class="con-amt">$' + e.amount.toFixed(2) + '</div>';
+                        ehtml +=   '<div class="con-meta">';
+                        ehtml +=     '<span class="con-age">' + ageLabel(e.age_seconds) + '</span> · ' + (e.transaction_date || '');
+                        if (e.location_name) ehtml += ' · ' + e.location_name;
+                        if (e.invoice_no) ehtml += ' · #' + escapeAttr(e.invoice_no);
+                        ehtml +=   '</div>';
+                        ehtml +=   '<a class="con-btn" style="display:block; text-decoration:none;" href="/sells/' + e.tx_id + '/edit">Open in ERP</a>';
+                        ehtml += '</div>';
+                    }
+                    $eonList.html(ehtml);
+                    $eonBlock.show();
+                } else {
+                    $eonBlock.hide();
                 }
-                $list.html(html);
+
                 $panel.show();
             }
 
@@ -126,7 +175,7 @@
                     dataType: 'json',
                     timeout: 8000
                 }).done(function (r) {
-                    render(r && r.orphans ? r.orphans : []);
+                    render(r || {});
                 }).fail(function () {
                     /* silent — POS sell flow must never break on this widget */
                 });
