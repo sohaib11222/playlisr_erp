@@ -198,6 +198,7 @@
                                 $cashTransfersOut = (float) ($e['cash_transfers_out'] ?? 0);
                                 $cashTransfersIn  = (float) ($e['cash_transfers_in']  ?? 0);
                                 $cashOtherNet     = (float) ($e['cash_other_net']     ?? 0);
+                                $safeDrop         = (float) ($e['safe_drop_amount']    ?? 0);
                                 $noDrawerCounts   = is_null($opening) && is_null($expected) && is_null($reported) && is_null($cashVar);
                                 $cashRung = (float) ($e['cash_rung'] ?? 0);
                             @endphp

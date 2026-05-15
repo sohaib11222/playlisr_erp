@@ -156,7 +156,10 @@
          "Items barcoded" = used items each person added that month.
          "Items sold" + "Earnings (2%)" = sales that actually happened last
          month against products that person barcoded (any time). Earnings is
-         what each cashier would have collected if the program had been live. --}}
+         what each cashier would have collected if the program had been live.
+         OWNER-ONLY: shows cross-employee data, so gated to Jon (the owner) — no
+         one else sees teammates' numbers. --}}
+    @if(auth()->user()->first_name === 'Jon')
     <div class="pp-card">
         <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px;">
             <div style="font-size:14px; font-weight:600;">Barcoding & earnings — {{ $last_month_label }}</div>
@@ -194,6 +197,7 @@
             </div>
         @endif
     </div>
+    @endif
 
     {{-- 7-day streak --}}
     <div class="pp-card">

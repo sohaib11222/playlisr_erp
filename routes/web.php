@@ -307,6 +307,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
         Route::get('/pos/mismatch-pending', 'SellPosController@mismatchPending')->name('pos.mismatchPending');
         Route::post('/pos/mismatch-explain', 'SellPosController@mismatchExplain')->name('pos.mismatchExplain');
         Route::post('/pos/override-payment-method', 'SellPosController@overridePaymentMethod')->name('pos.overridePaymentMethod');
+        Route::post('/pos/sale-backdate', 'SellPosController@backdateSale')->name('pos.backdateSale');
 
         Route::resource('pos', 'SellPosController');
     });

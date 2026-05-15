@@ -69,9 +69,11 @@
 
         <div style="margin-top:10px; font-size:12px; color:#6b7280;">
             Shortcuts:
-            <a href="{{ url('/admin/fix-channel?channel_filter=whatnot') }}">today + last 3d · whatnot only</a>
+            <a href="{{ url('/admin/fix-channel?channel_filter=whatnot') }}">whatnot last 3d</a>
             ·
-            <a href="{{ url('/admin/fix-channel?channel_filter=in_store') }}">in_store</a>
+            <a href="{{ url('/admin/fix-channel?channel_filter=in_store') }}">in_store last 3d</a>
+            ·
+            <a href="{{ url('/admin/fix-channel?date=' . now()->format('Y-m-d')) }}">all sales today</a>
         </div>
 
         @if($invoice && !$tx)

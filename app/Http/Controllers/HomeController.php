@@ -424,12 +424,18 @@ class HomeController extends Controller
         $my_used_barcoded_2wk = $usedBarcodedQueryFor($earnings_two_weeks_start, $today_end);
 
         // Last-calendar-month leaderboard — used items barcoded per employee.
-        // No rollout cutoff here so Sarah can see the historical baseline of
+        // No rollout cutoff here so Jon can see the historical baseline of
         // who barcodes what (rollout date only governs commission eligibility).
+        // OWNER-ONLY: cross-employee numbers are private to Jon. Other staff
+        // see their own widget above but not this table — skip the queries
+        // entirely for everyone else so we don't burn DB cycles on data
+        // they'll never render.
         $lm_start = \Carbon::now()->subMonthNoOverflow()->startOfMonth()->toDateTimeString();
         $lm_end = \Carbon::now()->subMonthNoOverflow()->endOfMonth()->toDateTimeString();
         $last_month_label = \Carbon::now()->subMonthNoOverflow()->format('F Y');
+        $used_barcoded_last_month = collect();
 
+        if (auth()->user()->first_name === 'Jon') {
         $used_barcoded_last_month = \DB::table('products as p')
             ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
             ->leftJoin('categories as sc', 'p.sub_category_id', '=', 'sc.id')
@@ -490,6 +496,7 @@ class HomeController extends Controller
             $row->earnings = round($row->gross * 0.02, 2);
             return $row;
         })->sortByDesc('earnings')->values();
+        }
 
         // ---- YoY + MoM progress stats (business-wide) ----
         $now = \Carbon::now();

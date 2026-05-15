@@ -9085,6 +9085,7 @@ class ReportController extends Controller
      */
     private function cloverEodShiftData($business_id, $start, $end, $location_id)
     {
+        $hasSafeDrop = \Schema::hasColumn('cash_registers', 'safe_drop_amount');
         $q = \DB::table('cash_registers as cr')
             ->leftJoin('users as u', 'cr.user_id', '=', 'u.id')
             ->leftJoin('cash_register_transactions as crt', 'cr.id', '=', 'crt.cash_register_id')
@@ -9094,6 +9095,10 @@ class ReportController extends Controller
         if (!empty($location_id)) {
             $q->where('cr.location_id', $location_id);
         }
+        // Wrapped in MAX() so the column is aggregate-safe under strict
+        // ONLY_FULL_GROUP_BY (cr.id is in GROUP BY so MAX picks the one
+        // value per register without needing GROUP BY widening).
+        $safeDropSelect = $hasSafeDrop ? 'MAX(COALESCE(cr.safe_drop_amount, 0))' : '0';
         $rows = $q->selectRaw("
                 DATE(cr.created_at) as day,
                 cr.location_id,
@@ -9102,6 +9107,7 @@ class ReportController extends Controller
                 cr.created_at as opened_at,
                 cr.closed_at as closed_at,
                 cr.closing_amount as reported_ending_cash,
+                {$safeDropSelect} as safe_drop_amount,
                 SUM(CASE WHEN crt.pay_method='cash' AND crt.transaction_type='initial' THEN crt.amount ELSE 0 END) as opening_cash,
                 SUM(CASE WHEN crt.pay_method='cash' AND crt.transaction_type='sell' AND crt.type='credit' THEN crt.amount ELSE 0 END) as cash_sales,
                 SUM(CASE WHEN crt.transaction_type='purchase' AND crt.type='debit' THEN crt.amount ELSE 0 END) as collection_buys_all,
@@ -9143,6 +9149,7 @@ class ReportController extends Controller
                     'cash_other_net' => 0.0,
                     'collection_buys_all' => 0.0,
                     'expected_ending_cash' => 0.0, 'reported_ending_cash' => 0.0,
+                    'safe_drop_amount' => 0.0,
                 ];
             }
             $row = &$out[$day][$locKey][$empKey];
@@ -9160,6 +9167,7 @@ class ReportController extends Controller
             $row['collection_buys_all'] += (float) $s->collection_buys_all;
             $row['expected_ending_cash'] += (float) $s->cash_net;
             $row['reported_ending_cash'] += (float) $s->reported_ending_cash;
+            $row['safe_drop_amount'] += (float) ($s->safe_drop_amount ?? 0);
             unset($row);
         }
         return $out;
@@ -9728,6 +9736,7 @@ class ReportController extends Controller
             'cash_buys' => 0.0, 'collection_buys_all' => 0.0,
             'expected_ending_cash' => null, 'reported_ending_cash' => null,
             'cash_variance' => null, 'has_shift' => false,
+            'safe_drop_amount' => 0.0,
         ];
         foreach ($erpRows as $r) {
             $day = $r->day;
@@ -9863,6 +9872,7 @@ class ReportController extends Controller
                     $e['cash_other_net'] = (float) ($shift['cash_other_net'] ?? 0);
                     $e['collection_buys_all'] = (float) $shift['collection_buys_all'];
                     $e['reported_ending_cash'] = (float) $shift['reported_ending_cash'];
+                    $e['safe_drop_amount'] = (float) ($shift['safe_drop_amount'] ?? 0);
                     // cash_sales is intentionally derived from total_sales −
                     // clover_total below, NOT from crt.cash_sales: cashiers
                     // ring every sale as 'cash' regardless of how the

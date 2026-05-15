@@ -68,7 +68,28 @@ class FixSaleChannelController extends Controller
 
             $cf = $request->get('channel_filter');
             if (is_string($cf) && $cf !== '') {
-                $q->where('channel', $cf);
+                // Legacy rows may have channel=NULL with is_whatnot=1
+                // (pre-2026-04-22 migration); match those under 'whatnot'
+                // too. Similarly NULL channel + is_whatnot=0 = 'in_store'.
+                if ($cf === 'whatnot') {
+                    $q->where(function ($w) {
+                        $w->where('channel', 'whatnot')
+                          ->orWhere(function ($w2) {
+                              $w2->whereNull('channel')->where('is_whatnot', 1);
+                          });
+                    });
+                } elseif ($cf === 'in_store') {
+                    $q->where(function ($w) {
+                        $w->where('channel', 'in_store')
+                          ->orWhere(function ($w2) {
+                              $w2->whereNull('channel')->where(function ($w3) {
+                                  $w3->whereNull('is_whatnot')->orWhere('is_whatnot', 0);
+                              });
+                          });
+                    });
+                } else {
+                    $q->where('channel', $cf);
+                }
             }
 
             $candidates = $q->orderBy('transaction_date', 'desc')->limit(50)->get();

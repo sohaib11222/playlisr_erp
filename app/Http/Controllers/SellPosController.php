@@ -2310,6 +2310,85 @@ class SellPosController extends Controller
     }
 
     /**
+     * Reset transaction_date on a single sale so backfilled Clover-only
+     * rings (rung in ERP today but referring to a charge from days ago)
+     * can be moved onto the correct business day. Snapshots old date to
+     * admin-snapshots/ before writing — same audit pattern as the cash↔
+     * card override above (Sarah's snapshot rule).
+     */
+    public function backdateSale(Request $request)
+    {
+        if (!auth()->user()->can('sell.update')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = (int) $request->session()->get('user.business_id');
+        $back = $request->headers->get('referer') ?: route('pos.recentFeed');
+
+        $txId = (int) $request->input('transaction_id', 0);
+        $newDateRaw = trim((string) $request->input('new_transaction_date', ''));
+        $reason = trim((string) $request->input('reason', ''));
+
+        if ($txId <= 0 || $newDateRaw === '') {
+            return redirect($back)->with('error', 'Missing transaction or date.');
+        }
+
+        try {
+            $newDate = \Carbon\Carbon::parse($newDateRaw);
+        } catch (\Throwable $e) {
+            return redirect($back)->with('error', 'Could not parse date: ' . $newDateRaw);
+        }
+
+        $tx = Transaction::where('id', $txId)
+            ->where('business_id', $business_id)
+            ->first();
+        if (!$tx) {
+            return redirect($back)->with('error', 'ERP transaction not found.');
+        }
+
+        $oldDate = (string) $tx->transaction_date;
+        $now = \Carbon\Carbon::now();
+
+        $snapshotKey = 'sale-backdate-' . $now->format('Y-m-d_His') . '-tx' . $txId;
+        \Illuminate\Support\Facades\Storage::disk('local')->put(
+            "admin-snapshots/{$snapshotKey}.json",
+            json_encode([
+                'timestamp' => $now->toDateTimeString(),
+                'action' => 'sale-backdate',
+                'business_id' => $business_id,
+                'transaction_id' => $txId,
+                'invoice_no' => $tx->invoice_no,
+                'old_transaction_date' => $oldDate,
+                'new_transaction_date' => $newDate->toDateTimeString(),
+                'reason' => $reason !== '' ? $reason : null,
+                'changed_by' => (int) auth()->id() ?: null,
+            ], JSON_PRETTY_PRINT)
+        );
+
+        $tx->transaction_date = $newDate->toDateTimeString();
+        $tx->save();
+
+        // Drop a register-reconciliation note so the audit chip surfaces
+        // on recent_feed next to the sale.
+        try {
+            self::appendCloverExplanation($business_id, [
+                'business_id' => $business_id,
+                'transaction_id' => $txId,
+                'clover_payment_id' => null,
+                'discrepancy_type' => 'no_clover',
+                'reason' => 'Sale backdated: ' . $oldDate . ' → ' . $newDate->toDateTimeString() . ($reason !== '' ? ('. ' . $reason) : ''),
+                'source' => 'register_reconciliation',
+                'explained_by' => (int) auth()->id() ?: null,
+                'created_at' => $now->toDateTimeString(),
+            ]);
+        } catch (\Throwable $e) {
+            // Don't fail the backdate if note logging fails.
+        }
+
+        return redirect($back)->with('status', '✓ #' . $tx->invoice_no . ' moved to ' . $newDate->format('M j · g:i a') . '. Snapshot saved — undo at /admin/admin-action-history.');
+    }
+
+    /**
      * Real-time "Clover charged something you haven't rung yet" feed for
      * the POS create page. Polled every ~30s. Returns *today's* Clover
      * payments (LA business day) that don't have a corresponding ERP
