@@ -818,10 +818,29 @@ class SellPosController extends Controller
         if ($sales->isNotEmpty()) {
             $minDate = $sales->min('transaction_date');
             $maxDate = $sales->max('transaction_date');
+
+            // Sarah 2026-05-15: load manual matches first so the cpRows
+            // query below can include any manually-paired Clover row
+            // even when its paid_at falls outside the sale-window ±1 day
+            // envelope. Without this, a backfill ring (today's ERP sale
+            // paired to a 2-day-old Clover swipe via "Or pair to ERP
+            // invoice #") keeps rendering as MISSING because the 5/13
+            // cp never lands in cpRows — so the manual-match loop has
+            // nothing to claim and the page falls through to MISSING.
+            $manualMatches = self::loadCloverManualMatches((int) $business_id);
+            $manualCpIds = array_keys($manualMatches);
+
             $cpRows = \App\CloverPayment::where('business_id', $business_id)
                 ->where('result', 'SUCCESS')
-                ->where('paid_at', '>=', \Carbon\Carbon::parse($minDate)->subDay())
-                ->where('paid_at', '<=', \Carbon\Carbon::parse($maxDate)->addDay())
+                ->where(function ($q) use ($minDate, $maxDate, $manualCpIds) {
+                    $q->where(function ($q2) use ($minDate, $maxDate) {
+                        $q2->where('paid_at', '>=', \Carbon\Carbon::parse($minDate)->subDay())
+                           ->where('paid_at', '<=', \Carbon\Carbon::parse($maxDate)->addDay());
+                    });
+                    if (!empty($manualCpIds)) {
+                        $q->orWhereIn('id', $manualCpIds);
+                    }
+                })
                 ->orderBy('paid_at')
                 ->get();
 
@@ -905,8 +924,9 @@ class SellPosController extends Controller
             // Manual links live in storage/app/clover-manual-matches-*.json
             // (no DB column — Sarah doesn't run migrations). A Clover
             // row appearing in the map claims its ERP sale unconditionally,
-            // bypassing amount/time/store checks.
-            $manualMatches = self::loadCloverManualMatches((int) $business_id);
+            // bypassing amount/time/store checks. $manualMatches is loaded
+            // above (before the cpRows query) so cross-day manual pairs
+            // get included in cpRows regardless of paid_at.
             foreach ($cpRows as $key => $cp) {
                 $manualTxId = $manualMatches[(int) $cp->id] ?? null;
                 if ($manualTxId) {
@@ -2973,10 +2993,25 @@ class SellPosController extends Controller
         if ($sales->isNotEmpty()) {
             $minDate = $sales->min('transaction_date');
             $maxDate = $sales->max('transaction_date');
+
+            // Same cross-day manual-match fix as recentSalesFeed
+            // (Sarah 2026-05-15): include manually-paired Clover rows
+            // regardless of paid_at so the export matches what the page
+            // shows.
+            $manualMatches = self::loadCloverManualMatches((int) $business_id);
+            $manualCpIds = array_keys($manualMatches);
+
             $cpRows = \App\CloverPayment::where('business_id', $business_id)
                 ->where('result', 'SUCCESS')
-                ->where('paid_at', '>=', \Carbon\Carbon::parse($minDate)->subDay())
-                ->where('paid_at', '<=', \Carbon\Carbon::parse($maxDate)->addDay())
+                ->where(function ($q) use ($minDate, $maxDate, $manualCpIds) {
+                    $q->where(function ($q2) use ($minDate, $maxDate) {
+                        $q2->where('paid_at', '>=', \Carbon\Carbon::parse($minDate)->subDay())
+                           ->where('paid_at', '<=', \Carbon\Carbon::parse($maxDate)->addDay());
+                    });
+                    if (!empty($manualCpIds)) {
+                        $q->orWhereIn('id', $manualCpIds);
+                    }
+                })
                 ->orderBy('paid_at')
                 ->get();
 
@@ -3025,8 +3060,9 @@ class SellPosController extends Controller
             // Manual links live in storage/app/clover-manual-matches-*.json
             // (no DB column — Sarah doesn't run migrations). A Clover
             // row appearing in the map claims its ERP sale unconditionally,
-            // bypassing amount/time/store checks.
-            $manualMatches = self::loadCloverManualMatches((int) $business_id);
+            // bypassing amount/time/store checks. $manualMatches is loaded
+            // above (before the cpRows query) so cross-day manual pairs
+            // get included in cpRows regardless of paid_at.
             foreach ($cpRows as $key => $cp) {
                 $manualTxId = $manualMatches[(int) $cp->id] ?? null;
                 if ($manualTxId) {
