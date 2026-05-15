@@ -152,13 +152,10 @@
         </div>
     </div>
 
-    {{-- Last calendar month — per-employee baseline (no rollout cutoff).
-         "Items barcoded" = used items each person added that month.
-         "Items sold" + "Earnings (2%)" = sales that actually happened last
-         month against products that person barcoded (any time). Earnings is
-         what each cashier would have collected if the program had been live.
-         OWNER-ONLY: shows cross-employee data, so gated to Jon (the owner) — no
-         one else sees teammates' numbers. --}}
+    {{-- Program-to-date per-employee leaderboard.
+         All columns share the same rollout gate (p.created_at >= 2026-05-15)
+         so "Items barcoded" and "Items sold" cover the same set of products.
+         OWNER-ONLY: cross-employee data, gated to Jon. --}}
     @if(auth()->user()->first_name === 'Jon')
     <div class="pp-card">
         <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px;">
@@ -166,7 +163,7 @@
             <div class="pp-muted">2% commission on used items sold</div>
         </div>
         @if($used_barcoded_last_month->isEmpty())
-            <div class="pp-micro" style="padding:6px 0;">No used items barcoded last month.</div>
+            <div class="pp-micro" style="padding:6px 0;">Nobody's barcoded a used item since the {{ $last_month_label }} rollout yet. This populates as items get tagged from today on.</div>
         @else
             <table style="width:100%; font-size:13px;">
                 <thead>
@@ -193,7 +190,7 @@
                 </tbody>
             </table>
             <div class="pp-micro" style="margin-top:8px;">
-                Sales counted = sells finalized last month against items the employee barcoded (any time). Excludes sealed and new-equipment categories.
+                Counts items barcoded on/after the rollout. "Items sold" = items from that same set that have already sold. Excludes sealed and new-equipment categories.
             </div>
         @endif
     </div>

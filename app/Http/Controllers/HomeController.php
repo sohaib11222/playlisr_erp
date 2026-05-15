@@ -423,26 +423,22 @@ class HomeController extends Controller
         $my_used_barcoded_today = $usedBarcodedQueryFor($today_start, $today_end);
         $my_used_barcoded_2wk = $usedBarcodedQueryFor($earnings_two_weeks_start, $today_end);
 
-        // Last-calendar-month leaderboard — used items barcoded per employee.
-        // No rollout cutoff here so Jon can see the historical baseline of
-        // who barcodes what (rollout date only governs commission eligibility).
-        // OWNER-ONLY: cross-employee numbers are private to Jon. Other staff
-        // see their own widget above but not this table — skip the queries
-        // entirely for everyone else so we don't burn DB cycles on data
-        // they'll never render.
-        $lm_start = \Carbon::now()->subMonthNoOverflow()->startOfMonth()->toDateTimeString();
-        $lm_end = \Carbon::now()->subMonthNoOverflow()->endOfMonth()->toDateTimeString();
-        $last_month_label = \Carbon::now()->subMonthNoOverflow()->format('F Y');
+        // Program-to-date leaderboard — used items each employee has barcoded
+        // SINCE rollout (2026-05-15) and the commission they've earned on those
+        // that sold. Eligibility starts today: every column on this table is
+        // gated by p.created_at >= rollout so "items barcoded" and "items sold"
+        // refer to the same set of products. OWNER-ONLY (Jon).
+        $last_month_label = 'since ' . \Carbon::parse($earnings_rollout)->format('M j');
         $used_barcoded_last_month = collect();
 
         if (auth()->user()->first_name === 'Jon') {
-        $used_barcoded_last_month = \DB::table('products as p')
+        $barcoded_since_rollout = \DB::table('products as p')
             ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
             ->leftJoin('categories as sc', 'p.sub_category_id', '=', 'sc.id')
             ->leftJoin('users as u', 'p.created_by', '=', 'u.id')
             ->where('p.business_id', $business_id)
             ->whereNotNull('p.created_by')
-            ->whereBetween('p.created_at', [$lm_start, $lm_end])
+            ->where('p.created_at', '>=', $earnings_rollout)
             ->where(function ($q) use ($excludedCategoryPatterns, $excludedCategoryNames) {
                 foreach ($excludedCategoryPatterns as $pat) {
                     $q->where(\DB::raw('LOWER(c.name)'), 'NOT LIKE', $pat)
@@ -455,24 +451,23 @@ class HomeController extends Controller
                 CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as employee,
                 COUNT(*) as cnt")
             ->groupBy('p.created_by', 'u.first_name', 'u.last_name')
-            ->orderByDesc('cnt')
             ->get();
 
-        // Earnings (2% commission) on sells that happened last month, attributed
-        // to whoever barcoded each item — used categories only, no rollout cutoff.
-        // This is the "what would commissions have looked like last month" view.
-        $earnings_last_month = \DB::table('transaction_sell_lines as tsl')
+        // Sales of those rollout-barcoded products that have closed since
+        // rollout. Same rollout gate on p.created_at, plus the transaction
+        // must be a finalized sell.
+        $sales_since_rollout = \DB::table('transaction_sell_lines as tsl')
             ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
             ->join('products as p', 'tsl.product_id', '=', 'p.id')
             ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
             ->leftJoin('categories as sc', 'p.sub_category_id', '=', 'sc.id')
-            ->leftJoin('users as u', 'p.created_by', '=', 'u.id')
             ->where('t.business_id', $business_id)
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
             ->whereNull('t.import_source')
-            ->whereBetween('t.transaction_date', [$lm_start, $lm_end])
+            ->where('t.transaction_date', '>=', $earnings_rollout)
             ->whereNotNull('p.created_by')
+            ->where('p.created_at', '>=', $earnings_rollout)
             ->where(function ($q) use ($excludedCategoryPatterns, $excludedCategoryNames) {
                 foreach ($excludedCategoryPatterns as $pat) {
                     $q->where(\DB::raw('LOWER(c.name)'), 'NOT LIKE', $pat)
@@ -482,20 +477,19 @@ class HomeController extends Controller
                   ->whereNotIn(\DB::raw('LOWER(TRIM(COALESCE(sc.name, \'\')))'), $excludedCategoryNames);
             })
             ->selectRaw("p.created_by,
-                CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as employee,
                 SUM(tsl.quantity * tsl.unit_price_inc_tax) as gross,
                 SUM(tsl.quantity) as items_sold")
-            ->groupBy('p.created_by', 'u.first_name', 'u.last_name')
-            ->get();
+            ->groupBy('p.created_by')
+            ->get()
+            ->keyBy('created_by');
 
-        $earningsByUser = $earnings_last_month->keyBy('created_by');
-        $used_barcoded_last_month = $used_barcoded_last_month->map(function ($row) use ($earningsByUser) {
-            $e = $earningsByUser->get($row->created_by);
+        $used_barcoded_last_month = $barcoded_since_rollout->map(function ($row) use ($sales_since_rollout) {
+            $e = $sales_since_rollout->get($row->created_by);
             $row->gross = $e ? (float) $e->gross : 0.0;
             $row->items_sold = $e ? (int) $e->items_sold : 0;
             $row->earnings = round($row->gross * 0.02, 2);
             return $row;
-        })->sortByDesc('earnings')->values();
+        })->sortByDesc('earnings')->sortByDesc('cnt')->values();
         }
 
         // ---- YoY + MoM progress stats (business-wide) ----
