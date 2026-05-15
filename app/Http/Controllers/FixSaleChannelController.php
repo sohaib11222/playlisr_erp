@@ -44,10 +44,16 @@ class FixSaleChannelController extends Controller
             // absorb timezone edges. The right ring is almost never an
             // exact $0.50 match because cashiers ring pre-tax stickers,
             // tax adds a few bucks, etc.
+            // Sarah 2026-05-15: Manolo's Discogs-pickup case rang as a
+            // sales_order (customer picking up tomorrow), so the strict
+            // type='sell' + status='final|draft' filter missed it. Drop
+            // the type filter, allow any sell-side status, exclude only
+            // expense/purchase/opening_stock transactions that aren't
+            // relevant here.
             $q = Transaction::where('business_id', $business_id)
-                ->where('type', 'sell')
-                ->whereIn('status', ['final', 'draft'])
-                ->select('id', 'invoice_no', 'transaction_date', 'final_total', 'channel', 'location_id', 'created_by');
+                ->whereIn('type', ['sell', 'sales_order'])
+                ->whereIn('status', ['final', 'draft', 'pending', 'ordered', 'received'])
+                ->select('id', 'type', 'invoice_no', 'transaction_date', 'final_total', 'channel', 'location_id', 'created_by', 'is_suspend', 'status');
 
             if ($date !== '') {
                 $d = \Carbon\Carbon::parse($date);

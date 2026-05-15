@@ -85,6 +85,8 @@
                 <thead>
                     <tr>
                         <th>Invoice</th>
+                        <th>Type</th>
+                        <th>Status</th>
                         <th>Date</th>
                         <th class="text-right">Total</th>
                         <th>Channel</th>
@@ -96,6 +98,8 @@
                     @foreach($candidates as $c)
                         <tr>
                             <td><strong>#{{ $c->invoice_no }}</strong></td>
+                            <td><code>{{ $c->type ?? 'sell' }}</code></td>
+                            <td><code>{{ $c->status ?? '' }}</code></td>
                             <td>{{ \Carbon\Carbon::parse($c->transaction_date)->format('M j g:i a') }}</td>
                             <td class="text-right">${{ number_format($c->final_total, 2) }}</td>
                             <td><code>{{ $c->channel ?? 'in_store' }}</code></td>

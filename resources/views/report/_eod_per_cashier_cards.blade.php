@@ -226,6 +226,9 @@
                                 @if(abs($cashOtherNet) >= 0.01)
                                     <div class="cc-line"><span class="cc-label minor">{{ $cashOtherNet >= 0 ? '+' : '−' }} Other movements</span><span class="cc-val">${{ number_format(abs($cashOtherNet), 2) }}</span></div>
                                 @endif
+                                @if($safeDrop > 0)
+                                    <div class="cc-line"><span class="cc-label minor" title="Safe drops physically remove cash from the drawer mid-shift (Sarah's >$500 → drop excess in $100 rule). Subtracted from expected because the drawer doesn't have this cash at close.">− Safe drops</span><span class="cc-val">${{ number_format($safeDrop, 2) }}</span></div>
+                                @endif
                                 @if($noDrawerCounts)
                                     <div class="cc-line" style="margin-top:6px; color:#9ca3af; font-size:12px;">
                                         <span class="cc-label minor">Register not opened/closed — no drawer to reconcile. Leave a note below if expected.</span>

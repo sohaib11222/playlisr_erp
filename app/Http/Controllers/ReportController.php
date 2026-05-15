@@ -10183,7 +10183,8 @@ class ReportController extends Controller
                         $cashOut = ((float) ($e['cash_buys']           ?? 0))
                                  + ((float) ($e['cash_refunds']        ?? 0))
                                  + ((float) ($e['cash_expenses']       ?? 0))
-                                 + ((float) ($e['cash_transfers_out']  ?? 0));
+                                 + ((float) ($e['cash_transfers_out']  ?? 0))
+                                 + ((float) ($e['safe_drop_amount']    ?? 0));
                         $cashIn  = ((float) ($e['cash_transfers_in']   ?? 0))
                                  + ((float) ($e['cash_other_net']      ?? 0));
                         $e['expected_ending_cash'] = round(

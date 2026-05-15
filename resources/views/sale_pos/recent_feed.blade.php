@@ -1304,6 +1304,49 @@
                         @endif
                     </div>
                 </div>
+
+                {{-- Admin-only "Fix sale" controls for reconciling backfilled
+                     rings — set the right transaction date (so the sale
+                     lands on the day the Clover swipe happened) and override
+                     the payment method (cash↔card) when the cashier rang
+                     the wrong tender. Both routes snapshot to admin-snapshots/
+                     before writing so /admin/admin-action-history can undo. --}}
+                @if($can_see_reconciliation ?? false)
+                    @php
+                        $saleDtLocal = \Carbon\Carbon::parse($sale->transaction_date)->setTimezone(config('app.timezone') ?: 'America/Los_Angeles');
+                        $saleDtInput = $saleDtLocal->format('Y-m-d\TH:i');
+                        $currentMethod = $methods->count() === 1 ? strtolower((string) $methods->first()) : '';
+                    @endphp
+                    <details style="margin:0 16px 8px 16px;">
+                        <summary style="cursor:pointer; font-size:11px; color:#6b7280; font-weight:600; text-transform:uppercase; letter-spacing:.04em; list-style:none; padding:4px 0;">▸ Fix sale (date / method) — admin</summary>
+                        <div style="margin-top:6px; padding:8px 10px; background:#FFFBF2; border:1px solid #E8DCB8; border-radius:6px; display:flex; flex-direction:column; gap:8px;">
+                            <form method="POST" action="{{ route('pos.backdateSale') }}" style="margin:0; display:flex; gap:6px; align-items:center; flex-wrap:wrap;" onsubmit="return confirm('Move #{{ $sale->invoice_no }} to the new date? Old date will be snapshotted for undo.');">
+                                @csrf
+                                <input type="hidden" name="transaction_id" value="{{ $sale->id }}">
+                                <label style="font-size:11px; color:#6b7280; font-weight:600; margin:0;">Date</label>
+                                <input type="datetime-local" name="new_transaction_date" value="{{ $saleDtInput }}" required
+                                    style="font-size:12px; padding:4px 6px; border:1px solid #DFD2B3; border-radius:4px; background:#fff;">
+                                <input type="text" name="reason" placeholder="reason (optional)"
+                                    style="flex:1; min-width:140px; font-size:12px; padding:4px 8px; border:1px solid #DFD2B3; border-radius:4px; background:#fff;">
+                                <button type="submit" style="padding:5px 10px; background:#1F1B16; color:#fff; border:none; border-radius:4px; font-size:11px; font-weight:700; cursor:pointer;">Set date</button>
+                            </form>
+                            <form method="POST" action="{{ route('pos.overridePaymentMethod') }}" style="margin:0; display:flex; gap:6px; align-items:center; flex-wrap:wrap;" onsubmit="return confirm('Override payment method on #{{ $sale->invoice_no }}? Old method will be snapshotted for undo.');">
+                                @csrf
+                                <input type="hidden" name="transaction_id" value="{{ $sale->id }}">
+                                <label style="font-size:11px; color:#6b7280; font-weight:600; margin:0;">Method</label>
+                                <select name="method" style="font-size:12px; padding:4px 6px; border:1px solid #DFD2B3; border-radius:4px; background:#fff;">
+                                    <option value="cash" {{ $currentMethod === 'cash' ? 'selected' : '' }}>Cash</option>
+                                    <option value="card" {{ $currentMethod === 'card' ? 'selected' : '' }}>Card</option>
+                                </select>
+                                <input type="text" name="reason" placeholder="reason (optional)"
+                                    style="flex:1; min-width:140px; font-size:12px; padding:4px 8px; border:1px solid #DFD2B3; border-radius:4px; background:#fff;">
+                                <button type="submit" style="padding:5px 10px; background:#1F1B16; color:#fff; border:none; border-radius:4px; font-size:11px; font-weight:700; cursor:pointer;">Set method</button>
+                            </form>
+                            <div style="font-size:11px; color:#8A7C6A;">Currently: {{ $saleDtLocal->format('M j · g:i a') }} · {{ $currentMethod ? strtoupper($currentMethod) : ($methods->count() > 1 ? 'split' : '—') }}</div>
+                        </div>
+                    </details>
+                @endif
+
                 @php $erpPairCands = $erp_only_pair_candidates[$sale->id] ?? []; @endphp
                 @if(!empty($erpPairCands))
                     <div style="margin:0 16px 8px 16px; padding:8px 10px; background:#FDF2D7; border:1px dashed #D9B95C; border-radius:6px; font-size:12px;">
