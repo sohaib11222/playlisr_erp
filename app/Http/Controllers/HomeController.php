@@ -423,6 +423,35 @@ class HomeController extends Controller
         $my_used_barcoded_today = $usedBarcodedQueryFor($today_start, $today_end);
         $my_used_barcoded_2wk = $usedBarcodedQueryFor($earnings_two_weeks_start, $today_end);
 
+        // Last-calendar-month leaderboard — used items barcoded per employee.
+        // No rollout cutoff here so Sarah can see the historical baseline of
+        // who barcodes what (rollout date only governs commission eligibility).
+        $lm_start = \Carbon::now()->subMonthNoOverflow()->startOfMonth()->toDateTimeString();
+        $lm_end = \Carbon::now()->subMonthNoOverflow()->endOfMonth()->toDateTimeString();
+        $last_month_label = \Carbon::now()->subMonthNoOverflow()->format('F Y');
+
+        $used_barcoded_last_month = \DB::table('products as p')
+            ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
+            ->leftJoin('categories as sc', 'p.sub_category_id', '=', 'sc.id')
+            ->leftJoin('users as u', 'p.created_by', '=', 'u.id')
+            ->where('p.business_id', $business_id)
+            ->whereNotNull('p.created_by')
+            ->whereBetween('p.created_at', [$lm_start, $lm_end])
+            ->where(function ($q) use ($excludedCategoryPatterns, $excludedCategoryNames) {
+                foreach ($excludedCategoryPatterns as $pat) {
+                    $q->where(\DB::raw('LOWER(c.name)'), 'NOT LIKE', $pat)
+                      ->where(\DB::raw('LOWER(COALESCE(sc.name, \'\'))'), 'NOT LIKE', $pat);
+                }
+                $q->whereNotIn(\DB::raw('LOWER(TRIM(c.name))'), $excludedCategoryNames)
+                  ->whereNotIn(\DB::raw('LOWER(TRIM(COALESCE(sc.name, \'\')))'), $excludedCategoryNames);
+            })
+            ->selectRaw("p.created_by,
+                CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as employee,
+                COUNT(*) as cnt")
+            ->groupBy('p.created_by', 'u.first_name', 'u.last_name')
+            ->orderByDesc('cnt')
+            ->get();
+
         // ---- YoY + MoM progress stats (business-wide) ----
         $now = \Carbon::now();
         $mtd_start = $now->copy()->startOfMonth()->toDateString();
@@ -1016,6 +1045,7 @@ class HomeController extends Controller
             'my_priced_today', 'my_pos_items_today', 'my_pos_tx_today',
             'my_earnings_today', 'my_earnings_2wk',
             'my_used_barcoded_today', 'my_used_barcoded_2wk',
+            'used_barcoded_last_month', 'last_month_label',
             'sales_scope', 'sales_scope_keys',
             'my_mtd_rung', 'my_lm_rung', 'my_rung_pct',
             'my_mtd_priced', 'my_lm_priced', 'my_priced_pct',

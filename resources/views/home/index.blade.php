@@ -152,6 +152,37 @@
         </div>
     </div>
 
+    {{-- Last calendar month — used items barcoded per employee.
+         Historical baseline (no rollout cutoff). --}}
+    <div class="pp-card">
+        <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px;">
+            <div style="font-size:14px; font-weight:600;">Used items barcoded — {{ $last_month_label }}</div>
+            <div class="pp-muted">Per employee</div>
+        </div>
+        @if($used_barcoded_last_month->isEmpty())
+            <div class="pp-micro" style="padding:6px 0;">No used items barcoded last month.</div>
+        @else
+            <table style="width:100%; font-size:13px;">
+                <thead>
+                    <tr style="text-align:left; color:#6b7280; font-size:12px;">
+                        <th style="padding:6px 8px;">#</th>
+                        <th style="padding:6px 8px;">Employee</th>
+                        <th style="padding:6px 8px; text-align:right;">Used items</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($used_barcoded_last_month as $i => $row)
+                        <tr style="border-top:1px solid #f1f2f4;">
+                            <td style="padding:6px 8px; color:#6b7280;">{{ $i + 1 }}</td>
+                            <td style="padding:6px 8px;">{{ trim($row->employee) ?: 'Unknown (#'.$row->created_by.')' }}</td>
+                            <td style="padding:6px 8px; text-align:right; font-weight:600;">{{ number_format($row->cnt) }}</td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        @endif
+    </div>
+
     {{-- 7-day streak --}}
     <div class="pp-card">
         <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px;">
