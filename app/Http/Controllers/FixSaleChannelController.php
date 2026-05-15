@@ -27,18 +27,50 @@ class FixSaleChannelController extends Controller
     {
         $business_id = (int) $request->session()->get('user.business_id');
         $invoice = trim((string) $request->get('invoice', ''));
+        $amount = trim((string) $request->get('amount', ''));
+        $date = trim((string) $request->get('date', ''));
 
         $tx = null;
+        $candidates = collect();
+
         if ($invoice !== '') {
             $tx = Transaction::where('business_id', $business_id)
                 ->where('invoice_no', $invoice)
                 ->select('id', 'invoice_no', 'transaction_date', 'final_total', 'channel', 'location_id', 'created_by')
                 ->first();
+        } elseif ($amount !== '' || $date !== '') {
+            // Amount/date lookup — find candidates that match either field.
+            // Defaults to today when no date given.
+            $q = Transaction::where('business_id', $business_id)
+                ->where('type', 'sell')
+                ->where('status', 'final')
+                ->select('id', 'invoice_no', 'transaction_date', 'final_total', 'channel', 'location_id', 'created_by');
+            $day = $date !== '' ? $date : \Carbon\Carbon::now()->format('Y-m-d');
+            $q->whereDate('transaction_date', $day);
+            if ($amount !== '') {
+                $a = (float) str_replace(['$', ','], '', $amount);
+                // Match within ±$0.50 to absorb tax/rounding variation.
+                $q->whereBetween('final_total', [$a - 0.50, $a + 0.50]);
+            }
+            $candidates = $q->orderBy('transaction_date', 'desc')->limit(25)->get();
+        }
+
+        // Helpful location lookup so the table can show 'Hollywood' instead of '7'.
+        $locationNames = [];
+        $locIds = $candidates->pluck('location_id')->filter()->unique()
+            ->merge($tx ? [$tx->location_id] : [])->filter()->unique()->all();
+        if (!empty($locIds)) {
+            $locationNames = \App\BusinessLocation::whereIn('id', $locIds)
+                ->pluck('name', 'id')->all();
         }
 
         return view('admin.fix_sale_channel', [
             'tx' => $tx,
             'invoice' => $invoice,
+            'amount' => $amount,
+            'date' => $date,
+            'candidates' => $candidates,
+            'location_names' => $locationNames,
             'allowed_channels' => ['in_store', 'discogs', 'whatnot', 'ebay'],
             'mode' => 'preview',
             'snapshot_key' => null,

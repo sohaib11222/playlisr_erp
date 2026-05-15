@@ -286,6 +286,7 @@
 					@php
 						$pos_channels = [
 							'in_store' => ['label' => 'In Store', 'icon' => 'fa-store'],
+							'discogs'  => ['label' => 'Discogs',  'icon' => null],
 							'whatnot'  => ['label' => 'Whatnot',  'icon' => null],
 						];
 					@endphp
@@ -303,6 +304,7 @@
 					@endforeach
 					{{-- Kept in sync by JS; legacy code reads this directly. --}}
 					<input type="hidden" name="is_whatnot" id="is_whatnot" value="0">
+					<div class="pos-channel-hint">Discogs catalogue item picked up in-store? Pick <strong>Discogs</strong>, not Whatnot.</div>
 				</div>
 			</div>
 			<style>

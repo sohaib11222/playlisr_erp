@@ -34,19 +34,63 @@
 
 <div class="box">
     <div class="box-header with-border">
-        <h3 class="box-title">Look up by invoice number</h3>
+        <h3 class="box-title">Find the sale</h3>
     </div>
     <div class="box-body">
-        <form method="GET" action="{{ url('/admin/fix-channel') }}" class="form-inline">
-            <div class="form-group">
-                <label for="invoice" style="margin-right:8px;">Invoice #</label>
-                <input type="text" name="invoice" id="invoice" value="{{ $invoice }}" class="form-control" placeholder="e.g. 18712" style="min-width:180px;">
-                <button class="btn btn-default" type="submit">Look up</button>
+        <form method="GET" action="{{ url('/admin/fix-channel') }}">
+            <div style="display:flex; flex-wrap:wrap; gap:14px; align-items:end;">
+                <div>
+                    <label for="invoice">Invoice # <em style="color:#9ca3af; font-weight:400;">(exact)</em></label>
+                    <input type="text" name="invoice" id="invoice" value="{{ $invoice }}" class="form-control" placeholder="e.g. 18712" style="min-width:160px;">
+                </div>
+                <div style="color:#9ca3af; font-size:12px; padding-bottom:8px;">— or —</div>
+                <div>
+                    <label for="amount">Amount <em style="color:#9ca3af; font-weight:400;">(±$0.50)</em></label>
+                    <input type="text" name="amount" id="amount" value="{{ $amount ?? '' }}" class="form-control" placeholder="e.g. 73.15" style="min-width:120px;">
+                </div>
+                <div>
+                    <label for="date">Date <em style="color:#9ca3af; font-weight:400;">(default today)</em></label>
+                    <input type="date" name="date" id="date" value="{{ $date ?? '' }}" class="form-control" style="min-width:160px;">
+                </div>
+                <div>
+                    <button class="btn btn-default" type="submit">Look up</button>
+                </div>
             </div>
         </form>
 
         @if($invoice && !$tx)
             <p class="text-danger" style="margin-top:14px;">No ERP sale found with invoice <code>{{ $invoice }}</code>.</p>
+        @endif
+
+        @if(($candidates ?? null) && $candidates->count() > 0)
+            <table class="table table-striped" style="margin-top:14px;">
+                <thead>
+                    <tr>
+                        <th>Invoice</th>
+                        <th>Date</th>
+                        <th class="text-right">Total</th>
+                        <th>Channel</th>
+                        <th>Store</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($candidates as $c)
+                        <tr>
+                            <td><strong>#{{ $c->invoice_no }}</strong></td>
+                            <td>{{ \Carbon\Carbon::parse($c->transaction_date)->format('M j g:i a') }}</td>
+                            <td class="text-right">${{ number_format($c->final_total, 2) }}</td>
+                            <td><code>{{ $c->channel ?? 'in_store' }}</code></td>
+                            <td>{{ $location_names[$c->location_id] ?? '—' }}</td>
+                            <td>
+                                <a href="{{ url('/admin/fix-channel?invoice=' . urlencode($c->invoice_no)) }}" class="btn btn-xs btn-primary">Open</a>
+                            </td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        @elseif(($amount ?? '') !== '' || ($date ?? '') !== '')
+            <p class="text-muted" style="margin-top:14px;">No matching sales for those filters.</p>
         @endif
 
         @if($tx)

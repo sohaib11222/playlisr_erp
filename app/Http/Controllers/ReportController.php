@@ -9309,10 +9309,26 @@ class ReportController extends Controller
                 $q->where('cp.location_id', $location_id)->orWhereNull('cp.location_id');
             });
         }
+        // Sarah 2026-05-15: select cp_created_ms (the actual swipe instant
+        // from raw_payload.createdTime) so the matcher can compute the
+        // ERP↔Clover time delta from the real terminal swipe time, not
+        // cp.paid_at — which Clover overwrites with the next-morning
+        // batch-settlement timestamp for sales rung late in the day.
+        // Without this, Jacob's 2:10pm $13.17 swipe (paid_at batched to
+        // 4am the next morning) sat 14h off from its ERP txn and never
+        // paired in the per-cashier aggregator, even though the recent
+        // feed (which uses createdTime via parseCloverPaidAtLa) showed
+        // it correctly. Fallback to UNIX_TIMESTAMP(paid_at) for the rare
+        // legacy row without createdTime; that path is the same TZ as
+        // the strtotime path it replaces, so behavior is unchanged.
         $cpRaw = $cpQ->selectRaw("{$xlsxDayExpr} as day,
                 cp.id as cp_id,
                 cp.location_id, bl.name as location_name,
                 cp.paid_at as ts,
+                COALESCE(
+                    CAST(JSON_UNQUOTE(JSON_EXTRACT(cp.raw_payload, '$.createdTime')) AS UNSIGNED) / 1000,
+                    UNIX_TIMESTAMP(cp.paid_at)
+                ) as cp_ts_epoch,
                 cp.amount as amount,
                 COALESCE(cp.tax_cents, 0) as tax_cents,
                 COALESCE(NULLIF(TRIM(cp.employee_name), ''), '') as employee_name")
