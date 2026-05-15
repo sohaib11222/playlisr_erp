@@ -395,6 +395,34 @@ class HomeController extends Controller
         $my_earnings_today = round($earningsQueryFor($today_start, $today_end), 2);
         $my_earnings_2wk = round($earningsQueryFor($earnings_two_weeks_start, $today_end), 2);
 
+        // Count of USED products this user barcoded in the same window. Same
+        // category exclusions as the earnings query — so the count is the
+        // actual eligible workload that's driving the dollar number.
+        $usedBarcodedQueryFor = function ($from, $to) use (
+            $business_id, $me_id, $earnings_rollout,
+            $excludedCategoryPatterns, $excludedCategoryNames
+        ) {
+            return (int) \DB::table('products as p')
+                ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
+                ->leftJoin('categories as sc', 'p.sub_category_id', '=', 'sc.id')
+                ->where('p.business_id', $business_id)
+                ->where('p.created_by', $me_id)
+                ->where('p.created_at', '>=', $earnings_rollout)
+                ->whereBetween('p.created_at', [$from, $to])
+                ->where(function ($q) use ($excludedCategoryPatterns, $excludedCategoryNames) {
+                    foreach ($excludedCategoryPatterns as $pat) {
+                        $q->where(\DB::raw('LOWER(c.name)'), 'NOT LIKE', $pat)
+                          ->where(\DB::raw('LOWER(COALESCE(sc.name, \'\'))'), 'NOT LIKE', $pat);
+                    }
+                    $q->whereNotIn(\DB::raw('LOWER(TRIM(c.name))'), $excludedCategoryNames)
+                      ->whereNotIn(\DB::raw('LOWER(TRIM(COALESCE(sc.name, \'\')))'), $excludedCategoryNames);
+                })
+                ->count('p.id');
+        };
+
+        $my_used_barcoded_today = $usedBarcodedQueryFor($today_start, $today_end);
+        $my_used_barcoded_2wk = $usedBarcodedQueryFor($earnings_two_weeks_start, $today_end);
+
         // ---- YoY + MoM progress stats (business-wide) ----
         $now = \Carbon::now();
         $mtd_start = $now->copy()->startOfMonth()->toDateString();
@@ -987,6 +1015,7 @@ class HomeController extends Controller
             'rewards_today', 'rewards_today_total',
             'my_priced_today', 'my_pos_items_today', 'my_pos_tx_today',
             'my_earnings_today', 'my_earnings_2wk',
+            'my_used_barcoded_today', 'my_used_barcoded_2wk',
             'sales_scope', 'sales_scope_keys',
             'my_mtd_rung', 'my_lm_rung', 'my_rung_pct',
             'my_mtd_priced', 'my_lm_priced', 'my_priced_pct',
