@@ -46,6 +46,12 @@
                         @endforeach
                     </select>
                 </div>
+                <div class="checkbox" style="margin-top:6px;">
+                    <label>
+                        <input type="checkbox" id="dii-hide-pos" checked />
+                        Hide imported products from POS (recommended — keeps cashier search fast)
+                    </label>
+                </div>
                 <button id="dii-apply" class="btn btn-primary btn-lg" disabled>Apply (create products)</button>
                 <p class="help-block" style="margin-top:10px;">
                     Skips listings whose Discogs <code>release_id</code> already matches an existing ERP product. Skipped rows are in the dupes CSV from step 2.
@@ -183,7 +189,8 @@
     async function apply() {
         if (!currentSnap) { alert('Start or load a snapshot first.'); return; }
         const locId = parseInt(document.getElementById('dii-location').value || '0', 10);
-        log('▶ Applying snapshot ' + currentSnap + (locId > 0 ? '  → location_id=' + locId : '  → auto-create location'));
+        const hidePos = document.getElementById('dii-hide-pos').checked;
+        log('▶ Applying snapshot ' + currentSnap + (locId > 0 ? '  → location_id=' + locId : '  → auto-create location') + (hidePos ? '  (hidden from POS)' : '  (visible in POS)'));
         let offset = 0;
         let totalCreated = 0;
         let totalSkipped = 0;
@@ -194,6 +201,7 @@
                 offset: offset,
                 batch_size: batch,
                 location_id: locId,
+                hide_from_pos: hidePos,
             });
             if (!r.body.ok) { log('  ✗ ' + (r.body.error || 'failed')); return; }
             totalCreated += r.body.created || 0;

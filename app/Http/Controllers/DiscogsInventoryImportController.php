@@ -302,6 +302,11 @@ class DiscogsInventoryImportController extends Controller
         $batchSize = min(500, max(10, (int) $request->input('batch_size', 100)));
         $locationName = trim((string) $request->input('location_name', self::DEFAULT_LOCATION_NAME));
         $explicitLocationId = (int) $request->input('location_id', 0);
+        // Sarah 2026-05-15: default-hide from POS so the bulk import can
+        // run during open hours without 50k Discogs-warehouse rows polluting
+        // cashier product search. Cashiers shouldn't be ringing Discogs
+        // stock at the register anyway. Flip later via /products if needed.
+        $hideFromPos = filter_var($request->input('hide_from_pos', true), FILTER_VALIDATE_BOOLEAN);
 
         @set_time_limit(0);
         @ini_set('memory_limit', '512M');
@@ -360,7 +365,7 @@ class DiscogsInventoryImportController extends Controller
             if ($releaseId > 0 && isset($existingReleaseIds[$releaseId])) { $skipped++; continue; }
 
             try {
-                $newProductId = $this->createProductFromListing($business_id, $userId, $locationId, $row, $mapper);
+                $newProductId = $this->createProductFromListing($business_id, $userId, $locationId, $row, $mapper, $hideFromPos);
                 if ($newProductId) {
                     $created++;
                     $newAppliedIds[$listingId] = $newProductId;
@@ -409,7 +414,7 @@ class DiscogsInventoryImportController extends Controller
         ]);
     }
 
-    private function createProductFromListing(int $businessId, int $userId, int $locationId, array $row, DiscogsReleaseImportMapper $mapper): ?int
+    private function createProductFromListing(int $businessId, int $userId, int $locationId, array $row, DiscogsReleaseImportMapper $mapper, bool $hideFromPos = true): ?int
     {
         $listingId = (int) ($row['id'] ?? 0);
         $releaseId = (int) ($row['release']['id'] ?? 0);
@@ -471,7 +476,7 @@ class DiscogsInventoryImportController extends Controller
 
         return DB::transaction(function () use (
             $businessId, $userId, $locationId, $listingId, $releaseId,
-            $name, $artist, $title, $bin, $price, $description, $categoryId, $subCategoryId, $sku
+            $name, $artist, $title, $bin, $price, $description, $categoryId, $subCategoryId, $sku, $hideFromPos
         ) {
             // products row
             $now = now();
@@ -492,7 +497,7 @@ class DiscogsInventoryImportController extends Controller
                 'bin_position' => null,
                 'listing_location' => $bin !== '' ? mb_substr($bin, 0, 255) : null,
                 'discogs_release_id' => $releaseId > 0 ? $releaseId : null,
-                'is_inactive' => 0,
+                'is_inactive' => $hideFromPos ? 1 : 0,
                 'created_by' => $userId,
                 'added_via' => 'discogs_inventory_import',
                 'created_at' => $now,
