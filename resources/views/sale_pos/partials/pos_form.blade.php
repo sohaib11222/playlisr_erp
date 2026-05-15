@@ -304,7 +304,6 @@
 					@endforeach
 					{{-- Kept in sync by JS; legacy code reads this directly. --}}
 					<input type="hidden" name="is_whatnot" id="is_whatnot" value="0">
-					<div class="pos-channel-hint">Discogs catalogue item picked up in-store? Pick <strong>Discogs</strong>, not Whatnot.</div>
 				</div>
 			</div>
 			<style>
@@ -317,13 +316,7 @@
 					display: inline-flex; align-items: center; gap: 6px;
 					flex-wrap: wrap;
 				}
-				.pos-channel-hint {
-						font-size: 11px;
-						color: #8A7C6A;
-						font-style: italic;
-						text-align: right;
-					}
-					.pos-channel-chip {
+				.pos-channel-chip {
 					display: inline-flex; align-items: center; gap: 6px;
 					padding: 5px 12px;
 					background: #fff;
