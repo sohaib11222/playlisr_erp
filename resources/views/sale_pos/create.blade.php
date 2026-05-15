@@ -16,6 +16,10 @@
      OPcache / Blade compile cache out of the loop entirely. --}}
 <link rel="stylesheet" href="{{ asset('css/pos-create-layout.css?v=' . $asset_v) }}">
 @include('sale_pos.partials.pos_duty_banner')
+{{-- Luis's idea, Sarah 2026-05-15: nag banner at the very top of /pos
+     when Clover swiped a card in the last 5 min without a matching ERP
+     ring. Non-dismissible — auto-clears the moment the ring goes in. --}}
+@include('sale_pos.partials._clover_orphan_nag')
 <section class="content no-print">
 	<input type="hidden" id="amount_rounding_method" value="{{$pos_settings['amount_rounding_method'] ?? ''}}">
 	@if(!empty($pos_settings['allow_overselling']))
@@ -99,7 +103,6 @@
      tan area to the left of the cart on wide screens, hidden under 1200px.
      Pulled out of layout flow so it cannot affect the locked cart layout. --}}
 @include('sale_pos.partials._recent_rings_panel')
-@include('sale_pos.partials._clover_orphan_nag')
 
 @include('sale_pos.partials.recent_transactions_modal')
 
