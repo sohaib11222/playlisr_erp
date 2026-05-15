@@ -2311,14 +2311,14 @@ class SellPosController extends Controller
 
     /**
      * Real-time "Clover charged something you haven't rung yet" feed for
-     * the POS create page. Polled every ~30s. Returns Clover payments in
-     * the last 5 minutes (default) that don't have a corresponding ERP
-     * sell at the same location + amount within the same window.
+     * the POS create page. Polled every ~30s. Returns *today's* Clover
+     * payments (LA business day) that don't have a corresponding ERP
+     * sell at the same location + amount.
      *
-     * Luis's idea, Sarah 2026-05-15: surface unmatched Clover charges
-     * directly on /pos so cashiers see "you swiped X — ring the item in
-     * ERP now" while it's still fresh, instead of finding out the next
-     * morning when reconciliation runs.
+     * Sarah 2026-05-15 (Luis's idea): persistent until rung — the banner
+     * stays up for every unmatched Clover swipe today, not just the last
+     * 5 min, so a cashier walking away mid-shift doesn't make the nag
+     * disappear without the ring going in.
      */
     public function cloverOrphansRecent(Request $request)
     {
@@ -2329,16 +2329,17 @@ class SellPosController extends Controller
 
             $business_id = (int) $request->session()->get('user.business_id');
             $location_id = $request->get('location_id');
-            $minutes = (int) $request->get('minutes', 5);
-            if ($minutes < 1)   { $minutes = 1; }
-            if ($minutes > 60)  { $minutes = 60; }
 
-            $since = \Carbon\Carbon::now()->subMinutes($minutes);
+            // Scope: today in the business timezone. Persistent until the
+            // ring goes in OR the day rolls over (morning reconciliation
+            // catches anything still unrung at midnight).
+            $tz = config('app.timezone') ?: 'America/Los_Angeles';
+            $since = \Carbon\Carbon::now($tz)->startOfDay()->setTimezone(config('app.timezone'));
 
             $cpQuery = \App\CloverPayment::where('business_id', $business_id)
                 ->where('paid_at', '>=', $since)
                 ->orderByDesc('paid_at')
-                ->limit(20);
+                ->limit(50);
             if (!empty($location_id)) {
                 $cpQuery->where(function ($q) use ($location_id) {
                     $q->where('location_id', (int) $location_id)
@@ -2351,11 +2352,11 @@ class SellPosController extends Controller
                 return response()->json(['orphans' => []]);
             }
 
-            // Same-window ERP sells we can pair against. Match key is
-            // (location, amount in cents). Use a slightly wider time
-            // window (15 min) so a Clover swipe at T and ERP ring at T+8
-            // are still considered paired.
-            $erpWindowStart = \Carbon\Carbon::now()->subMinutes($minutes + 10);
+            // ERP sells to pair against. Match key is (location, amount
+            // in cents). Pull today's ERP sells + a half-day-back buffer
+            // so a Clover swipe rung as a same-amount ERP sale a couple
+            // hours earlier still pairs without nagging.
+            $erpWindowStart = (clone $since)->subHours(12);
             $erpRows = Transaction::where('business_id', $business_id)
                 ->where('type', 'sell')
                 ->where('status', 'final')
@@ -2403,7 +2404,7 @@ class SellPosController extends Controller
                 ];
             }
 
-            return response()->json(['orphans' => $orphans, 'minutes' => $minutes]);
+            return response()->json(['orphans' => $orphans]);
         } catch (\Throwable $e) {
             \Log::warning('cloverOrphansRecent failed: ' . $e->getMessage());
             return response()->json(['orphans' => [], 'error' => $e->getMessage()]);

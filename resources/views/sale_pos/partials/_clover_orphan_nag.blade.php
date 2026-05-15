@@ -13,7 +13,7 @@
      jQuery detect; if the endpoint 404s or the script throws, the
      banner just stays hidden and POS keeps working. --}}
 <div id="clover_orphan_nag"
-     style="display:none; width:100%; margin:0 0 10px 0; padding:10px 14px;
+     style="display:none; padding:10px 14px;
             background:#fff7ed; border:2px solid #f97316; border-radius:8px;
             box-shadow:0 2px 6px rgba(249,115,22,.18);
             font-size:13px; color:#7c2d12;">
@@ -30,6 +30,20 @@
 </div>
 
 <style>
+    /* Position the banner so it never overlaps the fixed "Recently rung
+       up" widget on the left. On wide screens the rings panel takes 200px
+       at left:10px — match the cart form's 220px gutter (see
+       pos-create-layout.css). On narrow screens the rings panel hides
+       itself, so the banner can span full width. */
+    #clover_orphan_nag {
+        margin: 12px 16px 10px 16px;
+    }
+    @media (min-width: 1200px) {
+        #clover_orphan_nag {
+            margin-left: 220px !important;
+            margin-right: 16px !important;
+        }
+    }
     .con-chip {
         background:#fff; border:1px solid #fdba74; border-radius:6px;
         padding:6px 10px; min-width:200px; display:flex; flex-direction:column; gap:2px;
@@ -77,14 +91,22 @@
                 $plural.text(orphans.length === 1 ? '' : 's');
 
                 var html = '';
+                function ageLabel(seconds) {
+                    var s = Math.max(0, seconds || 0);
+                    if (s < 60) return 'just now';
+                    var m = Math.round(s / 60);
+                    if (m < 60) return m + ' min ago';
+                    var h = Math.floor(m / 60);
+                    var rem = m % 60;
+                    return rem ? (h + ' hr ' + rem + ' min ago') : (h + ' hr ago');
+                }
                 for (var i = 0; i < orphans.length; i++) {
                     var o = orphans[i];
-                    var ageMin = Math.max(0, Math.round(o.age_seconds / 60));
-                    var ageLabel = ageMin <= 0 ? 'just now' : (ageMin + ' min ago');
+                    var ageLbl = ageLabel(o.age_seconds);
                     html += '<div class="con-chip" data-cp-id="' + o.id + '">';
                     html +=   '<div class="con-amt">$' + o.amount.toFixed(2) + '</div>';
                     html +=   '<div class="con-meta">';
-                    html +=     '<span class="con-age">' + ageLabel + '</span> · ' + (o.paid_at || '');
+                    html +=     '<span class="con-age">' + ageLbl + '</span> · ' + (o.paid_at || '');
                     if (o.location_name) html += ' · ' + o.location_name;
                     if (o.card_label) html += ' · ' + o.card_label;
                     html +=   '</div>';
@@ -100,7 +122,7 @@
                 $.ajax({
                     url: "{{ route('pos.cloverOrphansRecent') }}",
                     method: 'GET',
-                    data: { location_id: loc, minutes: 5 },
+                    data: { location_id: loc },
                     dataType: 'json',
                     timeout: 8000
                 }).done(function (r) {
