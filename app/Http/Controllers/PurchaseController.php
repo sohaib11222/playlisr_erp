@@ -1070,7 +1070,19 @@ class PurchaseController extends Controller
                 $product = Product::where('id', $product_id)
                                     ->with(['unit', 'second_unit'])
                                     ->first();
-                
+
+                // Without this guard, a missing product or a product whose
+                // unit relation is null (deleted/orphaned unit_id) would fatal
+                // on $product->unit->id below — the AJAX would 500 and any
+                // sequential mass-add chain on the client would silently stall
+                // at the first bad id (the "Save & send to add purchase only
+                // adds 2" report). Bail with an empty row instead so the
+                // chain skips this id and keeps going.
+                if (empty($product) || empty($product->unit)) {
+                    \Log::warning('getPurchaseEntryRow: skipping product_id=' . $product_id . ' (missing product or unit)');
+                    return '';
+                }
+
                 $sub_units = $this->productUtil->getSubUnits($business_id, $product->unit->id, false, $product_id);
 
                 $query = Variation::where('product_id', $product_id)

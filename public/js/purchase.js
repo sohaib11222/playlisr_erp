@@ -825,39 +825,54 @@ $(document).ready(function() {
 });
 
 function get_purchase_entry_row(product_id, variation_id, callback, row_count_override, options) {
-    if (product_id) {
-        var row_count = typeof row_count_override !== 'undefined' ? row_count_override : ($('#row_count').val() || 0);
-        var location_id = $('#location_id').val();
-        var supplier_id = $('#supplier_id').val();
-        var data = { 
-            product_id: product_id, 
-            row_count: row_count, 
-            variation_id: variation_id,
-            location_id: location_id,
-            supplier_id: supplier_id
-        };
-
-        if ($('#is_purchase_order').length) {
-            data.is_purchase_order = true;
+    if (!product_id) {
+        // Falsy id (0, '', undefined): nothing to do, but still resolve the
+        // callback so a sequential mass-add chain can keep going.
+        if (typeof callback === 'function') {
+            callback(0);
         }
-        $.ajax({
-            method: 'POST',
-            url: '/purchases/get_purchase_entry_row',
-            dataType: 'html',
-            data: data,
-            success: function(result) {
-                var added_count = append_purchase_lines(
-                    result,
-                    row_count,
-                    options && options.trigger_change ? true : false,
-                    options || {}
-                );
-                if (typeof callback === 'function') {
-                    callback(added_count);
-                }
-            },
-        });
+        return;
     }
+    var row_count = typeof row_count_override !== 'undefined' ? row_count_override : ($('#row_count').val() || 0);
+    var location_id = $('#location_id').val();
+    var supplier_id = $('#supplier_id').val();
+    var data = {
+        product_id: product_id,
+        row_count: row_count,
+        variation_id: variation_id,
+        location_id: location_id,
+        supplier_id: supplier_id
+    };
+
+    if ($('#is_purchase_order').length) {
+        data.is_purchase_order = true;
+    }
+    $.ajax({
+        method: 'POST',
+        url: '/purchases/get_purchase_entry_row',
+        dataType: 'html',
+        data: data,
+        success: function(result) {
+            var added_count = append_purchase_lines(
+                result,
+                row_count,
+                options && options.trigger_change ? true : false,
+                options || {}
+            );
+            if (typeof callback === 'function') {
+                callback(added_count);
+            }
+        },
+        error: function() {
+            // Without this handler, a single failed lookup mid-chain would
+            // silently stall mass-add (Save & send to add purchase) at that
+            // product — every subsequent id never got fetched. Resolve with
+            // 0 so the chain keeps going; the caller surfaces a summary.
+            if (typeof callback === 'function') {
+                callback(0, true);
+            }
+        },
+    });
 }
 
 function append_purchase_lines(data, row_count, trigger_change = false, options = {}) {
@@ -917,6 +932,7 @@ function add_mass_products_sequentially(product_ids) {
 
     var start_row_count = parseInt($('#row_count').val() || 0);
     var index = 0;
+    var failed_ids = [];
 
     function process_next() {
         if (index >= product_ids.length) {
@@ -939,11 +955,21 @@ function add_mass_products_sequentially(product_ids) {
                     }
                 });
             });
+            if (failed_ids.length && typeof toastr !== 'undefined') {
+                toastr.warning(
+                    'Added ' + (product_ids.length - failed_ids.length) +
+                    ' of ' + product_ids.length +
+                    ' products. Could not load: ' + failed_ids.join(', ')
+                );
+            }
             return;
         }
 
         var product_id = product_ids[index];
-        get_purchase_entry_row(product_id, 0, function(added_count) {
+        get_purchase_entry_row(product_id, 0, function(added_count, errored) {
+            if (errored || !added_count) {
+                failed_ids.push(product_id);
+            }
             start_row_count += (added_count || 0);
             index++;
             process_next();
