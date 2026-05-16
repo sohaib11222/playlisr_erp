@@ -33,20 +33,23 @@
         <div id="eon_list" style="margin-top:8px; display:flex; flex-wrap:wrap; gap:8px;"></div>
     </div>
 
-    {{-- 2. Mismatches — paired sales whose ERP total ≠ Clover total by >$0.01.
-         Could be a price-typo, sticker disagreement, etc. Cashier should
-         leave a short explanation so reconciliation knows what happened. --}}
+    {{-- 2. Mismatches — paired sales whose ERP total ≠ Clover total by
+         >$0.01. Sarah 2026-05-15: collapsed from per-row form list to
+         a single summary nudge. The 18-row list with "Why?" inputs +
+         tiny Save buttons was overwhelming and unreadable; cashiers
+         just need a gentle reminder to type the exact ERP total into
+         Clover. Reconciliation still happens off-screen (admins audit
+         per-row on the EOD reconciliation page). --}}
     <div id="mis_block" style="display:none; margin-top:10px; padding-top:10px; border-top:1px dashed #fdba74;">
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <div style="font-weight:800; font-size:14px; color:#7c2d12; white-space:nowrap;">
                 <i class="fa fa-balance-scale"></i>
-                <span id="mis_count">0</span> mismatch<span id="mis_plural">es</span> — ERP vs Clover
+                <span id="mis_count">0</span> small-cent mismatch<span id="mis_plural">es</span> today
             </div>
             <div style="font-size:12px; color:#9a3412; flex:1; min-width:240px;">
-                ERP total doesn't match Clover total. Be accurate when entering prices, and please leave a short explanation so reconciliation knows what happened.
+                Your Clover total didn't match the ERP total on a few sales. Please make sure you type the <strong>exact</strong> ERP amount into Clover so totals reconcile cleanly.
             </div>
         </div>
-        <div id="mis_list" style="margin-top:8px; display:flex; flex-direction:column; gap:8px;"></div>
     </div>
 
     {{-- 3. Clover-only — card swiped, no ERP ring. Cashier needs to ring
@@ -117,7 +120,6 @@
             var $eonPlural = $('#eon_plural');
 
             var $misBlock  = $('#mis_block');
-            var $misList   = $('#mis_list');
             var $misCount  = $('#mis_count');
             var $misPlural = $('#mis_plural');
 
@@ -172,31 +174,10 @@
                     $conBlock.hide();
                 }
 
-                // Mismatch chips — each gets an inline "Why?" textarea
+                // Mismatch summary — just a count + nudge, no per-row form.
                 if (mismatches.length) {
                     $misCount.text(mismatches.length);
                     $misPlural.text(mismatches.length === 1 ? '' : 'es');
-                    var mhtml = '';
-                    for (var k = 0; k < mismatches.length; k++) {
-                        var m = mismatches[k];
-                        var diff = (m.diff || 0);
-                        var diffStr = (diff >= 0 ? '+' : '−') + '$' + Math.abs(diff).toFixed(2);
-                        mhtml += '<div class="con-chip" style="flex:1; min-width:100%; display:flex; flex-direction:row; flex-wrap:wrap; gap:10px; align-items:center;" data-tx-id="' + m.tx_id + '">';
-                        mhtml +=   '<div style="display:flex; flex-direction:column; min-width:160px;">';
-                        mhtml +=     '<div class="con-amt">ERP $' + m.erp_total.toFixed(2) + ' · Clover $' + m.clover_total.toFixed(2) + '</div>';
-                        mhtml +=     '<div class="con-meta">';
-                        mhtml +=       '<span class="con-age">Diff ' + diffStr + '</span> · ' + ageLabel(m.age_seconds);
-                        if (m.location_name) mhtml += ' · ' + m.location_name;
-                        if (m.invoice_no) mhtml += ' · #' + escapeAttr(m.invoice_no);
-                        mhtml +=     '</div>';
-                        mhtml +=   '</div>';
-                        mhtml +=   '<form class="con-mis-form" data-tx-id="' + m.tx_id + '" style="display:flex; flex:1; gap:6px; min-width:280px; align-items:center;">';
-                        mhtml +=     '<input type="text" class="con-mis-reason" placeholder="Why? (e.g., \'rang Clover at $14 instead of $15 sticker\')" required style="flex:1; padding:5px 8px; border:1px solid #fdba74; border-radius:5px; font-size:11px;">';
-                        mhtml +=     '<button type="submit" class="con-btn" style="margin-top:0; padding:5px 12px;">Save</button>';
-                        mhtml +=   '</form>';
-                        mhtml += '</div>';
-                    }
-                    $misList.html(mhtml);
                     $misBlock.show();
                 } else {
                     $misBlock.hide();
@@ -247,39 +228,6 @@
             // input and prefill with the pre-tax amount. Cashier fills
             // in the item name + finishes the sale; next poll auto-
             // clears the chip once the new ERP ring matches.
-            // Mismatch "Why?" form submit — POSTs to the existing
-            // mismatchExplain endpoint with source=register_reconciliation
-            // so reconciliation logs pick it up.
-            $misList.on('submit', '.con-mis-form', function (e) {
-                e.preventDefault();
-                var $form = $(this);
-                var txId = $form.data('tx-id');
-                var reason = $.trim($form.find('.con-mis-reason').val() || '');
-                if (!reason) return;
-                $.ajax({
-                    url: "{{ route('pos.mismatchExplain') }}",
-                    method: 'POST',
-                    data: {
-                        _token: "{{ csrf_token() }}",
-                        discrepancy_type: 'mismatch',
-                        transaction_id: txId,
-                        source: 'register_reconciliation',
-                        reason: reason
-                    },
-                    timeout: 8000
-                }).done(function () {
-                    // Optimistic remove — next poll will confirm the chip stays gone.
-                    $form.closest('.con-chip').fadeOut(150, function(){ $(this).remove(); poll(); });
-                    if (window.toastr && typeof toastr.success === 'function') {
-                        toastr.success('Saved.');
-                    }
-                }).fail(function () {
-                    if (window.toastr && typeof toastr.error === 'function') {
-                        toastr.error('Could not save the note. Try again?');
-                    }
-                });
-            });
-
             $list.on('click', '.con-ring', function (e) {
                 e.preventDefault();
                 var amount = parseFloat($(this).data('amount') || '0');
