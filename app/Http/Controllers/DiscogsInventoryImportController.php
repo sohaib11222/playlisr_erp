@@ -691,45 +691,70 @@ class DiscogsInventoryImportController extends Controller
     }
 
     /**
-     * Load the frozen baseline release_id set for dedup. Preview writes
-     * dedup_release_ids.json the first time it runs; apply reads from
-     * there so multi-copies inside the same snapshot all become
-     * separate ERP products instead of dedup'ing against each other.
+     * Build the dedup set fresh from DB on every apply batch — file-cached
+     * versions kept biting us when stale state from earlier preview/fix
+     * iterations leaked in. Excludes products already created by THIS
+     * snapshot's apply runs (so multi-copies of the same release each
+     * become their own ERP product on subsequent batches).
      *
-     * Fallback (preview never ran or file is missing): query current
-     * products table and SUBTRACT product IDs already in applied.json,
-     * which gives us the pre-import baseline.
+     * Performance: at 50k snapshot items this query runs ~500 times. We
+     * only fetch release_ids that ALSO appear in the snapshot via the
+     * cached snapshot-release-id set (read once per HTTP request).
      */
     private function loadFrozenDedupSet(int $businessId, string $dir, array $appliedListingIds): array
     {
-        $path = $dir . '/dedup_release_ids.json';
-        if (is_file($path)) {
-            $ids = json_decode((string) @file_get_contents($path), true);
-            $set = [];
-            if (is_array($ids)) {
-                foreach ($ids as $rid) {
-                    $rid = (int) $rid;
-                    if ($rid > 0) $set[$rid] = true;
-                }
-            }
-            return $set;
+        $appliedProductIds = array_map('intval', array_values($appliedListingIds));
+        $snapshotReleaseIds = $this->loadSnapshotReleaseIds($dir);
+
+        if (empty($snapshotReleaseIds)) {
+            return [];
         }
 
-        $appliedProductIds = array_map('intval', array_values($appliedListingIds));
         $set = [];
-        DB::table('products')
-            ->where('business_id', $businessId)
-            ->whereNotNull('discogs_release_id')
-            ->when($appliedProductIds, function ($q) use ($appliedProductIds) {
+        $chunks = array_chunk(array_keys($snapshotReleaseIds), 1000);
+        foreach ($chunks as $chunk) {
+            $q = DB::table('products')
+                ->where('business_id', $businessId)
+                ->whereNotNull('discogs_release_id')
+                ->whereIn('discogs_release_id', $chunk);
+            if ($appliedProductIds) {
                 $q->whereNotIn('id', $appliedProductIds);
-            })
-            ->orderBy('discogs_release_id')
-            ->chunk(5000, function ($rows) use (&$set) {
-                foreach ($rows as $r) {
-                    $set[(int) $r->discogs_release_id] = true;
-                }
-            });
-        @file_put_contents($path, json_encode(array_keys($set)));
+            }
+            $rows = $q->pluck('discogs_release_id')->all();
+            foreach ($rows as $r) {
+                $set[(int) $r] = true;
+            }
+        }
+        return $set;
+    }
+
+    /**
+     * Cache snapshot release_ids in memory (once per HTTP request) so
+     * apply doesn't re-scan the 50k-line NDJSON every batch just to
+     * build the dedup query's IN clause.
+     */
+    private function loadSnapshotReleaseIds(string $dir): array
+    {
+        static $cache = [];
+        if (isset($cache[$dir])) return $cache[$dir];
+
+        $set = [];
+        $path = $dir . '/listings.ndjson';
+        if (!is_file($path)) {
+            $cache[$dir] = $set;
+            return $set;
+        }
+        $fh = fopen($path, 'rb');
+        while (($line = fgets($fh)) !== false) {
+            $line = trim($line);
+            if ($line === '') continue;
+            $row = json_decode($line, true);
+            if (!is_array($row)) continue;
+            $rid = (int) ($row['release']['id'] ?? 0);
+            if ($rid > 0) $set[$rid] = true;
+        }
+        fclose($fh);
+        $cache[$dir] = $set;
         return $set;
     }
 
