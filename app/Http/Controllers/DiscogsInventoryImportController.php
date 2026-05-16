@@ -368,11 +368,12 @@ class DiscogsInventoryImportController extends Controller
         }
 
         $appliedListingIds = $this->loadAppliedListingIds($dir);
-        // Read frozen baseline written at preview time. If preview was
-        // never run (or pre-dates this fix), fall back to current DB
-        // minus already-applied product IDs so we don't dedup against
-        // products this same import created in earlier batches.
-        $existingReleaseIds = $this->loadFrozenDedupSet($business_id, $dir, $appliedListingIds);
+        // Cross-snapshot dedup: every variation we create gets sub_sku
+        // 'DG-{listing_id}', so a single DB scan tells us every Discogs
+        // listing already imported by ANY snapshot. This replaces the
+        // brittle release_id dedup, which kept treating legitimate
+        // multi-copies of the same release as duplicates.
+        $importedListingIds = $this->loadImportedListingIdsFromDb();
 
         $mapper = new DiscogsReleaseImportMapper();
         $created = 0;
@@ -399,7 +400,9 @@ class DiscogsInventoryImportController extends Controller
             $releaseId = (int) ($row['release']['id'] ?? 0);
 
             if ($listingId > 0 && isset($appliedListingIds[$listingId])) { $skipped++; continue; }
-            if ($releaseId > 0 && isset($existingReleaseIds[$releaseId])) { $skipped++; continue; }
+            // Cross-snapshot: was this listing already imported under a
+            // different snapshot's apply? sub_sku check catches that.
+            if ($listingId > 0 && isset($importedListingIds[$listingId])) { $skipped++; continue; }
 
             try {
                 $newProductId = $this->createProductFromListing($business_id, $userId, $locationId, $row, $mapper, $hideFromPos);
@@ -688,6 +691,29 @@ class DiscogsInventoryImportController extends Controller
         $current = $this->loadAppliedListingIds($dir);
         $merged = $current + $newPairs;
         @file_put_contents($path, json_encode($merged));
+    }
+
+    /**
+     * Pull every Discogs listing_id that's already been imported as an
+     * ERP variation (sub_sku 'DG-{listing_id}'). Re-queried per HTTP
+     * batch so concurrent fixes/retries can't get out of sync. With an
+     * index on variations.sub_sku this is fast even at 50k rows.
+     */
+    private function loadImportedListingIdsFromDb(): array
+    {
+        $set = [];
+        DB::table('variations')
+            ->where('sub_sku', 'like', 'DG-%')
+            ->orderBy('id')
+            ->select('sub_sku')
+            ->chunk(5000, function ($rows) use (&$set) {
+                foreach ($rows as $r) {
+                    if (preg_match('/^DG-(\d+)$/', (string) $r->sub_sku, $m)) {
+                        $set[(int) $m[1]] = true;
+                    }
+                }
+            });
+        return $set;
     }
 
     /**
