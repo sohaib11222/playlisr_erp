@@ -1334,7 +1334,8 @@
                 success: function(response) {
                     if(response.success) {
                         toastr.success(response.msg);
-                        document.getElementById('success-audio').play();
+                        // toastr.success already triggers the gentle chime via
+                        // common.js — no extra .play() needed (it'd be loud).
                         const product_ids = response.product_ids;
                         var fromPurchase = window !== window.top && /from_purchase=1/.test(window.location.search);
                         if (fromPurchase && product_ids && product_ids.length) {

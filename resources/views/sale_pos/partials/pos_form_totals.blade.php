@@ -787,23 +787,20 @@
                 });
 
                 // Sarah 2026-04-22: "apply that cute ding sound [on cash] on
-                // all button sounds please". Reuses the existing #success-audio
-                // element (from layouts/app.blade.php) so we don't ship a new
-                // asset. 250ms debounce prevents stacking when a button click
-                // is followed by a toastr.success (which also dings).
+                // all button sounds please". Sarah 2026-05-15: routed
+                // through window.playNivessaDing (defined in common.js) —
+                // a gentle Web Audio sine chime instead of success.mp3,
+                // which was too loud at the register. 250ms debounce
+                // prevents stacking when a button click is followed by a
+                // toastr.success (which also dings).
                 var lastDing = 0;
                 function pingDing() {
                     var now = Date.now();
                     if (now - lastDing < 250) return;
                     lastDing = now;
-                    var audio = $('#success-audio')[0];
-                    if (!audio) return;
-                    try {
-                        audio.volume = 0.18;
-                        audio.currentTime = 0;
-                        var p = audio.play();
-                        if (p && typeof p.catch === 'function') p.catch(function(){});
-                    } catch (e) {}
+                    if (typeof window.playNivessaDing === 'function') {
+                        window.playNivessaDing();
+                    }
                 }
                 // Scoped to the POS action surfaces (quick-add tiles, pay
                 // buttons, adjustment chips, bag toggle, customer CTAs) so

@@ -48,18 +48,40 @@ $(document).ready(function() {
     toastr.options.preventDuplicates = true;
     toastr.options.timeOut = "3000";
 
+    // Soft chime generated via Web Audio API — replaces the loud stock
+    // success.mp3 that's been ringing on every add-to-cart and toast.
+    // A single 880Hz sine wave with a quick attack and ~180ms decay
+    // sounds like a gentle "bing" instead of a register beep. Reused
+    // by the toastr success hook and the POS button-ping in
+    // pos_form_totals.blade.php (window.playNivessaDing).
+    window.playNivessaDing = function () {
+        try {
+            var AC = window.AudioContext || window.webkitAudioContext;
+            if (!AC) return;
+            if (!window.__nivessaAudioCtx) window.__nivessaAudioCtx = new AC();
+            var ctx = window.__nivessaAudioCtx;
+            if (ctx.state === 'suspended') { try { ctx.resume(); } catch (e) {} }
+            var osc = ctx.createOscillator();
+            var gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.value = 880; // A5 — soft, bell-like
+            var now = ctx.currentTime;
+            gain.gain.setValueAtTime(0, now);
+            gain.gain.linearRampToValueAtTime(0.05, now + 0.012);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+            osc.connect(gain).connect(ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.2);
+        } catch (e) {}
+    };
+
     //Play notification sound on success, error and warning
-    // Volumes tuned down per Sarah's request — the stock audio files are
-    // quite loud, especially on speakers near the register. Success is the
-    // most frequent (rings on every add-to-cart) so it's the quietest.
-    // Error/warning stay a bit louder since they actually need attention.
+    // Success is the most frequent (rings on every add-to-cart) — use
+    // the gentle generated chime. Error/warning stay on the mp3 assets
+    // (a bit louder) because they actually need to grab attention.
     toastr.options.onShown = function() {
         if ($(this).hasClass('toast-success')) {
-            var audio = $('#success-audio')[0];
-            if (audio !== undefined) {
-                audio.volume = 0.18;
-                audio.play();
-            }
+            window.playNivessaDing();
         } else if ($(this).hasClass('toast-error')) {
             var audio = $('#error-audio')[0];
             if (audio !== undefined) {
