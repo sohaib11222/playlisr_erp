@@ -2607,6 +2607,16 @@ class SellPosController extends Controller
             $business_id = (int) $request->session()->get('user.business_id');
             $location_id = $request->get('location_id');
 
+            // Sarah 2026-05-15: scope ERP-side errors (ERP-only sales +
+            // mismatches) to the LOGGED-IN cashier so Henry doesn't see
+            // Clyde's mistakes nagging him on his own POS screen. Admins
+            // (Sarah / Jon / Fatteen) keep the global view for auditing.
+            // Clover-only orphans (section 3) stay global — those are
+            // "ring me now" todos for whoever's at the register, not
+            // attributable mistakes.
+            $userId = (int) auth()->id();
+            $isAdmin = $this->businessUtil->is_admin(auth()->user());
+
             // Scope: today in the business timezone. Persistent until the
             // ring goes in OR the day rolls over (morning reconciliation
             // catches anything still unrung at midnight).
@@ -2693,6 +2703,7 @@ class SellPosController extends Controller
                 ->where('status', 'final')
                 ->where('transaction_date', '>=', $since)
                 ->when($location_id, fn($q) => $q->where('location_id', (int) $location_id))
+                ->when(!$isAdmin, fn($q) => $q->where('created_by', $userId))
                 ->with(['payment_lines:id,transaction_id,method,amount'])
                 ->get(['id', 'invoice_no', 'location_id', 'final_total', 'transaction_date', 'created_by']);
 
