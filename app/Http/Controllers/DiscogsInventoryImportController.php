@@ -259,6 +259,17 @@ class DiscogsInventoryImportController extends Controller
         fclose($cf);
         fclose($fh);
 
+        // Sarah 2026-05-15: snapshot the baseline release_id set so apply()
+        // doesn't drift — once apply starts inserting new products with
+        // release_ids, a "live" DB query would treat the second/third
+        // copies of the same release as dupes of the first. The point of
+        // the import is to create one ERP product per Discogs listing,
+        // multi-copies included.
+        $dedupPath = $dir . '/dedup_release_ids.json';
+        if (!is_file($dedupPath)) {
+            @file_put_contents($dedupPath, json_encode(array_keys($existingReleaseIds)));
+        }
+
         $this->updateMeta($dir, [
             'preview_at' => date('c'),
             'preview_total' => $total,
@@ -350,7 +361,11 @@ class DiscogsInventoryImportController extends Controller
         }
 
         $appliedListingIds = $this->loadAppliedListingIds($dir);
-        $existingReleaseIds = $this->loadCachedExistingReleaseIds($business_id, $dir);
+        // Read frozen baseline written at preview time. If preview was
+        // never run (or pre-dates this fix), fall back to current DB
+        // minus already-applied product IDs so we don't dedup against
+        // products this same import created in earlier batches.
+        $existingReleaseIds = $this->loadFrozenDedupSet($business_id, $dir, $appliedListingIds);
 
         $mapper = new DiscogsReleaseImportMapper();
         $created = 0;
@@ -384,9 +399,9 @@ class DiscogsInventoryImportController extends Controller
                 if ($newProductId) {
                     $created++;
                     $newAppliedIds[$listingId] = $newProductId;
-                    if ($releaseId > 0) {
-                        $existingReleaseIds[$releaseId] = true;
-                    }
+                    // Don't add to existingReleaseIds — multi-copies of the
+                    // same release in this snapshot should each become
+                    // their own ERP product.
                 } else {
                     $skipped++;
                 }
@@ -668,28 +683,46 @@ class DiscogsInventoryImportController extends Controller
         @file_put_contents($path, json_encode($merged));
     }
 
-    private function loadCachedExistingReleaseIds(int $businessId, string $dir): array
+    /**
+     * Load the frozen baseline release_id set for dedup. Preview writes
+     * dedup_release_ids.json the first time it runs; apply reads from
+     * there so multi-copies inside the same snapshot all become
+     * separate ERP products instead of dedup'ing against each other.
+     *
+     * Fallback (preview never ran or file is missing): query current
+     * products table and SUBTRACT product IDs already in applied.json,
+     * which gives us the pre-import baseline.
+     */
+    private function loadFrozenDedupSet(int $businessId, string $dir, array $appliedListingIds): array
     {
-        // Re-query each apply call would be slow at 55k rows; cache the
-        // set in-memory per request. The dedup is best-effort — once we
-        // start inserting new products with release_ids, the cache picks
-        // up rows we created in this same apply pass.
-        static $cache = [];
-        $key = $businessId . ':' . $dir;
-        if (isset($cache[$key])) return $cache[$key];
+        $path = $dir . '/dedup_release_ids.json';
+        if (is_file($path)) {
+            $ids = json_decode((string) @file_get_contents($path), true);
+            $set = [];
+            if (is_array($ids)) {
+                foreach ($ids as $rid) {
+                    $rid = (int) $rid;
+                    if ($rid > 0) $set[$rid] = true;
+                }
+            }
+            return $set;
+        }
 
+        $appliedProductIds = array_map('intval', array_values($appliedListingIds));
         $set = [];
         DB::table('products')
             ->where('business_id', $businessId)
             ->whereNotNull('discogs_release_id')
+            ->when($appliedProductIds, function ($q) use ($appliedProductIds) {
+                $q->whereNotIn('id', $appliedProductIds);
+            })
             ->orderBy('discogs_release_id')
             ->chunk(5000, function ($rows) use (&$set) {
                 foreach ($rows as $r) {
                     $set[(int) $r->discogs_release_id] = true;
                 }
             });
-
-        $cache[$key] = $set;
+        @file_put_contents($path, json_encode(array_keys($set)));
         return $set;
     }
 
