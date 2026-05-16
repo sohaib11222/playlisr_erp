@@ -201,16 +201,22 @@ class DiscogsInventoryImportController extends Controller
         fclose($fh);
 
         // Find which release_ids already exist as ERP products. Chunk to
-        // keep the IN clause under MySQL's max_allowed_packet.
+        // keep the IN clause under MySQL's max_allowed_packet. Exclude
+        // products this snapshot's previous apply runs already created
+        // — without that, multi-copies of the same release would self-
+        // report as dupes once the first copy lands in the DB.
+        $appliedProductIds = array_map('intval', array_values($this->loadAppliedListingIds($dir)));
         $existingReleaseIds = [];
         $chunks = array_chunk(array_keys($releaseIds), 1000);
         foreach ($chunks as $chunk) {
-            $rows = DB::table('products')
+            $q = DB::table('products')
                 ->where('business_id', $business_id)
                 ->whereNotNull('discogs_release_id')
-                ->whereIn('discogs_release_id', $chunk)
-                ->pluck('discogs_release_id')
-                ->all();
+                ->whereIn('discogs_release_id', $chunk);
+            if ($appliedProductIds) {
+                $q->whereNotIn('id', $appliedProductIds);
+            }
+            $rows = $q->pluck('discogs_release_id')->all();
             foreach ($rows as $r) {
                 $existingReleaseIds[(int) $r] = true;
             }
@@ -265,10 +271,11 @@ class DiscogsInventoryImportController extends Controller
         // copies of the same release as dupes of the first. The point of
         // the import is to create one ERP product per Discogs listing,
         // multi-copies included.
+        // Always overwrite so re-running preview after a partial apply
+        // refreshes the baseline correctly (we already excluded
+        // applied product IDs above).
         $dedupPath = $dir . '/dedup_release_ids.json';
-        if (!is_file($dedupPath)) {
-            @file_put_contents($dedupPath, json_encode(array_keys($existingReleaseIds)));
-        }
+        @file_put_contents($dedupPath, json_encode(array_keys($existingReleaseIds)));
 
         $this->updateMeta($dir, [
             'preview_at' => date('c'),
