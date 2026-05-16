@@ -476,19 +476,22 @@
       });
 
       // The Current Stock inputs live in a separate form, so the main
-      // "Update" button at the bottom would otherwise drop them. If the
-      // user edited a stock value and is saving the main form, save the
-      // stock first, then continue with the product save.
-      $('#product_add_form').on('submit', function (e) {
-        if (this.__stockSavedThisSubmit || !$('#set_current_stock_form').length || !__stockChanged()) {
-          return;
-        }
+      // "Update" button at the bottom would otherwise drop them. The
+      // button click is intercepted by public/js/product.js (delegated on
+      // document) which AJAX-submits the main form directly — no form
+      // `submit` event fires. Attach our own click handler directly on
+      // the button so it runs before the delegated one; stop the click
+      // until the stock AJAX returns, then re-trigger it.
+      $('.submit_product_form').on('click', function (e) {
+        if (e.currentTarget.__stockSavedForThisClick) return;
+        if (!$('#set_current_stock_form').length || !__stockChanged()) return;
+        e.stopImmediatePropagation();
         e.preventDefault();
-        var form = this;
+        var btn = e.currentTarget;
         runSetCurrentStock(function (ok) {
           if (!ok) return; // toastr already surfaced the error
-          form.__stockSavedThisSubmit = true;
-          form.submit();
+          btn.__stockSavedForThisClick = true;
+          $(btn).trigger('click');
         });
       });
 
