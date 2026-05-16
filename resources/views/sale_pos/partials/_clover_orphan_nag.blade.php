@@ -33,26 +33,14 @@
         <div id="eon_list" style="margin-top:8px; display:flex; flex-wrap:wrap; gap:8px;"></div>
     </div>
 
-    {{-- 2. Mismatches — paired sales whose ERP total ≠ Clover total by
-         >$0.01. Sarah 2026-05-15: collapsed from per-row form list to
-         a single summary nudge. The 18-row list with "Why?" inputs +
-         tiny Save buttons was overwhelming and unreadable; cashiers
-         just need a gentle reminder to type the exact ERP total into
-         Clover. Reconciliation still happens off-screen (admins audit
-         per-row on the EOD reconciliation page). --}}
-    <div id="mis_block" style="display:none; margin-top:10px; padding-top:10px; border-top:1px dashed #fdba74;">
-        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-            <div style="font-weight:800; font-size:14px; color:#7c2d12; white-space:nowrap;">
-                <i class="fa fa-balance-scale"></i>
-                <span id="mis_count">0</span> small-cent mismatch<span id="mis_plural">es</span> today
-            </div>
-            <div style="font-size:12px; color:#9a3412; flex:1; min-width:240px;">
-                Your Clover total didn't match the ERP total on a few sales. Please make sure you type the <strong>exact</strong> ERP amount into Clover so totals reconcile cleanly.
-            </div>
-        </div>
-    </div>
+    {{-- Sarah 2026-05-15: mismatch banner removed entirely. The vast
+         majority of small-cent diffs are the known $0.12 bag-fee gap
+         (suppressed server-side), and the remaining real typos aren't
+         worth nagging the floor about — Sarah wants to motivate
+         cashiers, not pile on. Admins still audit mismatches on the
+         EOD reconciliation page. --}}
 
-    {{-- 3. Clover-only — card swiped, no ERP ring. Cashier needs to ring
+    {{-- Clover-only — card swiped, no ERP ring. Cashier needs to ring
          the item so inventory is decremented. --}}
     <div id="con_block" style="display:none; margin-top:10px; padding-top:10px; border-top:1px dashed #fdba74;">
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
@@ -119,10 +107,6 @@
             var $eonCount  = $('#eon_count');
             var $eonPlural = $('#eon_plural');
 
-            var $misBlock  = $('#mis_block');
-            var $misCount  = $('#mis_count');
-            var $misPlural = $('#mis_plural');
-
             function locationId() {
                 var loc = $('input[name="location_id"]').val() || '';
                 if (!loc) loc = $('#location_id').val() || '';
@@ -147,8 +131,11 @@
             function render(payload) {
                 var orphans = (payload && payload.orphans) || [];
                 var erpOrphans = (payload && payload.erp_orphans) || [];
-                var mismatches = (payload && payload.mismatches) || [];
-                var any = orphans.length + erpOrphans.length + mismatches.length;
+                // Mismatches still come back in the payload but we no
+                // longer surface them on the floor — Sarah wants to
+                // motivate cashiers, not nag for cents. Admins see the
+                // detail on the EOD reconciliation page.
+                var any = orphans.length + erpOrphans.length;
                 if (!any) { $panel.hide(); return; }
 
                 // Clover-only chips
@@ -172,15 +159,6 @@
                     $conBlock.show();
                 } else {
                     $conBlock.hide();
-                }
-
-                // Mismatch summary — just a count + nudge, no per-row form.
-                if (mismatches.length) {
-                    $misCount.text(mismatches.length);
-                    $misPlural.text(mismatches.length === 1 ? '' : 'es');
-                    $misBlock.show();
-                } else {
-                    $misBlock.hide();
                 }
 
                 // ERP-only chips
