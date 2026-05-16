@@ -2737,6 +2737,31 @@ class SellPosController extends Controller
             // sell, find the unclaimed Clover same-loc within ±$5 but
             // >1¢, closest in time. 1-to-1 so one Clover row can't
             // "explain" multiple ERP rows.
+            //
+            // Sarah 2026-05-15: bag-fee gap suppression. Per memory
+            // (project_clover_erp_sync.md): small-cent deltas at Nivessa
+            // are almost always the cashier ringing the bag fee in ERP
+            // but not adding it on Clover — NOT a cashier-typo bug.
+            // Skip mismatches whose diff is a near-exact multiple of
+            // the bag price (1–5 bags, ±2¢ slop). Andy and other careful
+            // cashiers were getting nagged for the known bag-fee gap.
+            $bagPrice = 0.12; // Nivessa default per memory
+            try {
+                $bizDetails = $this->businessUtil->getDetails($business_id);
+                $posSet = !empty($bizDetails->pos_settings) ? json_decode($bizDetails->pos_settings, true) : [];
+                if (is_array($posSet) && !empty($posSet['plastic_bag_price'])) {
+                    $bagPrice = (float) $posSet['plastic_bag_price'];
+                }
+            } catch (\Throwable $e) { /* keep default */ }
+            $bagPriceCents = (int) round($bagPrice * 100);
+            $isBagFeeGap = function ($deltaCents) use ($bagPriceCents) {
+                if ($bagPriceCents <= 0) return false;
+                for ($n = 1; $n <= 5; $n++) {
+                    if (abs($deltaCents - ($n * $bagPriceCents)) <= 2) return true;
+                }
+                return false;
+            };
+
             $mismatches = [];
             $graceCutoffTs = $graceCutoff->getTimestamp();
             foreach ($erpCardSells as $tx) {
@@ -2762,6 +2787,16 @@ class SellPosController extends Controller
                     if ($gap < $bestGap) { $bestGap = $gap; $bestCp = $cp; }
                 }
                 if (!$bestCp) continue;
+
+                // Known bag-fee gap (ERP rang the bag, Clover didn't).
+                // Claim the pair so neither side leaks into orphans, but
+                // don't surface it as a cashier-error mismatch.
+                $bestCpCents = (int) round($bestCp->amount * 100);
+                if ($isBagFeeGap(abs($bestCpCents - $txCents))) {
+                    $claimedTx[$tx->id] = true;
+                    $claimedCp[$bestCp->id] = true;
+                    continue;
+                }
 
                 // Skip if cashier already left an explanation for this tx.
                 $key = 'mismatch:' . (int) $tx->id . ':0';
