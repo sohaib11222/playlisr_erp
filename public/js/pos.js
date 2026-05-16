@@ -5116,16 +5116,26 @@ function calculateManualProductSubtotal() {
 }
 
 // Handle bag fee charge toggle
+// Sarah 2026-05-15: in-flight guard. Two init paths both fire
+// `change` on #add_plastic_bag (pos.js:42 at 100ms, refreshBagRow
+// in pos_form_totals.blade at 300ms). The second one sees the
+// first's AJAX still pending — bagFeeRow.length is still 0 — and
+// appends a SECOND bag row. Result: subtotal $0.24 for a single
+// bag at $0.12. Guard with a window-scoped flag so concurrent
+// triggers collapse to one AJAX call. Also defensively de-dupe
+// after the row lands, in case some other path races us.
+window.__addingBagRow = window.__addingBagRow || false;
 $(document).on('change', '#add_plastic_bag', function() {
     var isChecked = $(this).is(':checked');
     var bagFeeRow = $('#pos_table tbody tr[data-plastic-bag="true"]');
-    
+
     if (isChecked) {
-        // Add bag fee row if not already present
-        if (bagFeeRow.length === 0) {
+        // Add bag fee row if not already present and no add is in flight.
+        if (bagFeeRow.length === 0 && !window.__addingBagRow) {
+            window.__addingBagRow = true;
             var location_id = $('#location_id').val();
             var currentRowCount = $('#pos_table tbody tr.product_row').length;
-            
+
             $.ajax({
                 url: '/sells/pos/get_plastic_bag_row',
                 method: 'POST',
@@ -5137,34 +5147,45 @@ $(document).on('change', '#add_plastic_bag', function() {
                 dataType: 'json',
                 success: function(result) {
                     if (result.success && result.html_content) {
-                        // Add the bag fee row
-                        $('#pos_table tbody').append(result.html_content);
-                        
-                        // Mark it as bag fee row
-                        var newRow = $('#pos_table tbody tr').last();
-                        newRow.attr('data-plastic-bag', 'true');
-                        
-                        // Set tax to "No Tax" for bag fee (tax-exempt)
-                        var taxSelect = newRow.find('select.tax_id');
-                        if (taxSelect.length) {
-                            taxSelect.val('').trigger('change');
+                        // Last-chance dedupe: if another path already
+                        // appended a row while this AJAX was in flight,
+                        // skip the append.
+                        var existing = $('#pos_table tbody tr[data-plastic-bag="true"]');
+                        if (existing.length === 0) {
+                            $('#pos_table tbody').append(result.html_content);
+
+                            var newRow = $('#pos_table tbody tr').last();
+                            newRow.attr('data-plastic-bag', 'true');
+
+                            var taxSelect = newRow.find('select.tax_id');
+                            if (taxSelect.length) {
+                                taxSelect.val('').trigger('change');
+                            }
+
+                            pos_each_row(newRow);
+                            pos_total_row();
                         }
-                        
-                        // Initialize the row - this will populate tax and calculate prices
-                        pos_each_row(newRow);
-                        
-                        // Recalculate totals
-                        pos_total_row();
+                        // Final belt-and-suspenders: collapse any duplicate
+                        // plastic-bag rows down to one. Keeps the cart sane
+                        // even if a future code path slips through.
+                        var allBags = $('#pos_table tbody tr[data-plastic-bag="true"]');
+                        if (allBags.length > 1) {
+                            allBags.slice(1).remove();
+                            pos_total_row();
+                        }
                     }
                 },
                 error: function() {
                     toastr.error('Failed to add bag fee charge');
                     $('#add_plastic_bag').prop('checked', false);
+                },
+                complete: function() {
+                    window.__addingBagRow = false;
                 }
             });
         }
     } else {
-        // Remove bag fee row
+        // Remove bag fee row(s) — remove all in case duplicates slipped in.
         if (bagFeeRow.length > 0) {
             bagFeeRow.remove();
             pos_total_row();
