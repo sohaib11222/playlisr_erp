@@ -448,6 +448,23 @@
 
       __page_leave_confirmation('#product_add_form');
 
+      // Snapshot initial stock values so we can detect changes the user made
+      // before submitting the main product form.
+      var __initialStock = {};
+      $('#set_current_stock_form').find('input[name^="current_stock["]').each(function () {
+        __initialStock[$(this).attr('name')] = $(this).val();
+      });
+
+      function __stockChanged() {
+        var changed = false;
+        $('#set_current_stock_form').find('input[name^="current_stock["]').each(function () {
+          if ($(this).val() !== __initialStock[$(this).attr('name')]) {
+            changed = true;
+          }
+        });
+        return changed;
+      }
+
       $('#set_current_stock_form').on('submit', function (e) {
         e.preventDefault();
         runSetCurrentStock();
@@ -458,7 +475,24 @@
         runSetCurrentStock();
       });
 
-      function runSetCurrentStock() {
+      // The Current Stock inputs live in a separate form, so the main
+      // "Update" button at the bottom would otherwise drop them. If the
+      // user edited a stock value and is saving the main form, save the
+      // stock first, then continue with the product save.
+      $('#product_add_form').on('submit', function (e) {
+        if (this.__stockSavedThisSubmit || !$('#set_current_stock_form').length || !__stockChanged()) {
+          return;
+        }
+        e.preventDefault();
+        var form = this;
+        runSetCurrentStock(function (ok) {
+          if (!ok) return; // toastr already surfaced the error
+          form.__stockSavedThisSubmit = true;
+          form.submit();
+        });
+      });
+
+      function runSetCurrentStock(done) {
         var $form = $('#set_current_stock_form');
         var $btn = $('#btn_set_current_stock');
         var currentStock = {};
@@ -490,17 +524,21 @@
                   var $input = $form.find('input[name="current_stock[' + locId + '][' + varId + ']"]');
                   if ($input.length) {
                     $input.val(val);
+                    __initialStock[$input.attr('name')] = String(val);
                     $input.closest('tr').find('td').eq(-2).text(val);
                   }
                 });
               });
+              if (typeof done === 'function') done(true);
             } else {
               toastr.error(data.msg || '{{ __("messages.something_went_wrong") }}');
+              if (typeof done === 'function') done(false);
             }
           },
           error: function (xhr) {
             var msg = (xhr.responseJSON && xhr.responseJSON.msg) ? xhr.responseJSON.msg : '{{ __("messages.something_went_wrong") }}';
             toastr.error(msg);
+            if (typeof done === 'function') done(false);
           },
           complete: function () {
             $btn.prop('disabled', false);
