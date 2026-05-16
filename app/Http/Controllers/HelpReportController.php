@@ -39,12 +39,12 @@ class HelpReportController extends Controller
         }
 
         $base = DB::table('help_searches')
-            ->where('business_id', $business_id)
-            ->whereBetween('created_at', [$start_str, $end_str]);
+            ->where('help_searches.business_id', $business_id)
+            ->whereBetween('help_searches.created_at', [$start_str, $end_str]);
 
         $total_searches = (clone $base)->count();
-        $unique_users   = (clone $base)->whereNotNull('user_id')->distinct('user_id')->count('user_id');
-        $zero_result_total = (clone $base)->where('result_count', 0)->count();
+        $unique_users   = (clone $base)->whereNotNull('help_searches.user_id')->distinct('help_searches.user_id')->count('help_searches.user_id');
+        $zero_result_total = (clone $base)->where('help_searches.result_count', 0)->count();
 
         $top_queries = (clone $base)
             ->select('query', DB::raw('COUNT(*) as hits'), DB::raw('MAX(created_at) as last_searched'), DB::raw('AVG(result_count) as avg_results'))
