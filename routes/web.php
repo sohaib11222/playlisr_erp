@@ -686,6 +686,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/discogs-import-inventory', 'DiscogsInventoryImportController@index');
     Route::post('/admin/discogs-import-inventory/snapshot-start', 'DiscogsInventoryImportController@snapshotStart');
     Route::post('/admin/discogs-import-inventory/snapshot-page', 'DiscogsInventoryImportController@snapshotPage');
+    Route::post('/admin/discogs-import-inventory/status', 'DiscogsInventoryImportController@status');
     Route::post('/admin/discogs-import-inventory/preview', 'DiscogsInventoryImportController@preview');
     Route::post('/admin/discogs-import-inventory/apply', 'DiscogsInventoryImportController@apply');
     Route::get('/admin/discogs-import-inventory/dupes/{snapshotId}', 'DiscogsInventoryImportController@downloadDupes');

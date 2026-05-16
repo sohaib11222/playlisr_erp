@@ -277,6 +277,21 @@ class DiscogsInventoryImportController extends Controller
         ]);
     }
 
+    /**
+     * Return current snapshot meta (pages_fetched, total_pages, status).
+     * Browser uses this on Resume so it picks up at pages_fetched+1
+     * instead of refetching from page 2.
+     */
+    public function status(Request $request)
+    {
+        $snapshotId = $this->safeSnapshotId($request->input('snapshot_id'));
+        $meta = $this->readMeta($this->snapshotDir($snapshotId));
+        if (!$meta) {
+            return response()->json(['ok' => false, 'error' => 'snapshot not found'], 404);
+        }
+        return response()->json(['ok' => true, 'meta' => $meta]);
+    }
+
     public function downloadDupes(Request $request, $snapshotId)
     {
         $snapshotId = $this->safeSnapshotId($snapshotId);

@@ -223,12 +223,23 @@
     document.getElementById('dii-start').addEventListener('click', startSnapshot);
     document.getElementById('dii-preview').addEventListener('click', preview);
     document.getElementById('dii-apply').addEventListener('click', apply);
-    document.getElementById('dii-resume').addEventListener('click', async () => {
-        if (!currentSnap) return;
-        // Pull current page state from the resume snapshot
-        log('▶ Resuming snapshot ' + currentSnap);
-        await pageLoop(2, 9999); // server tells us the real total
-    });
+    async function resumeFromServer() {
+        if (!currentSnap) { alert('Load a snapshot first.'); return; }
+        log('▶ Asking server where to resume snapshot ' + currentSnap + '…');
+        const r = await postJson('/admin/discogs-import-inventory/status', { snapshot_id: currentSnap });
+        if (!r.body.ok) { log('  ✗ ' + (r.body.error || 'failed')); return; }
+        const meta = r.body.meta || {};
+        const pagesFetched = meta.pages_fetched || 1;
+        const totalPages = meta.total_pages || 9999;
+        if (pagesFetched >= totalPages) {
+            log('  snapshot already complete (' + pagesFetched + '/' + totalPages + '). Skip to Preview.');
+            return;
+        }
+        log('  resuming at page ' + (pagesFetched + 1) + ' of ' + totalPages + ' (' + (meta.rows_written || 0) + ' rows already written)');
+        await pageLoop(pagesFetched + 1, totalPages);
+    }
+
+    document.getElementById('dii-resume').addEventListener('click', resumeFromServer);
 
     document.querySelectorAll('.dii-resume-btn').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -236,7 +247,7 @@
             const user = btn.getAttribute('data-user');
             setSnap(snap);
             document.getElementById('dii-username').value = user || 'nivessa';
-            log('▶ Loaded snapshot ' + snap + ' (user=' + user + '). Use Preview or Apply, or Resume to keep fetching.');
+            log('▶ Loaded snapshot ' + snap + ' (user=' + user + '). Click Resume to continue fetching, or Preview/Apply if it\'s complete.');
         });
     });
 })();
