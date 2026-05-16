@@ -2623,6 +2623,15 @@ class SellPosController extends Controller
             $tz = config('app.timezone') ?: 'America/Los_Angeles';
             $since = \Carbon\Carbon::now($tz)->startOfDay()->setTimezone(config('app.timezone'));
 
+            // Sarah 2026-05-15: 5-min grace period. A sale rung 30s ago
+            // hasn't had time for the cashier to enter the other side
+            // (Clover swipe or ERP ring). Nagging within the grace
+            // window creates flicker — chip appears, cashier rings the
+            // other side, chip disappears on the next poll. Cleaner UX
+            // to just stay silent for the first 5 min.
+            $graceSeconds = 300;
+            $graceCutoff  = \Carbon\Carbon::now()->subSeconds($graceSeconds);
+
             // Sarah 2026-05-15: matcher rewrite. Old logic ran three
             // independent loops (orphan / erp_orphan / mismatch) that
             // each picked the FIRST same-amount Clover row without
@@ -2729,8 +2738,12 @@ class SellPosController extends Controller
             // >1¢, closest in time. 1-to-1 so one Clover row can't
             // "explain" multiple ERP rows.
             $mismatches = [];
+            $graceCutoffTs = $graceCutoff->getTimestamp();
             foreach ($erpCardSells as $tx) {
                 if (isset($claimedTx[$tx->id])) continue;
+                // Grace period: skip ERP sales rung in the last 5 min —
+                // the matching Clover swipe could still be in flight.
+                if (($txTs[$tx->id] ?? 0) > $graceCutoffTs) continue;
                 $txCents = (int) round($tx->final_total * 100);
                 $bestCp = null;
                 $bestGap = PHP_INT_MAX;
@@ -2788,6 +2801,8 @@ class SellPosController extends Controller
                 // surface on the morning shift's POS.
                 $cpStartTs = $cpTs[$cp->id] ?? 0;
                 if ($cpStartTs && $cpStartTs < $since->getTimestamp()) continue;
+                // Grace period: cashier may still be entering the ERP ring.
+                if ($cpStartTs > $graceCutoffTs) continue;
 
                 $locName = ($cp->location_id && \App\BusinessLocation::where('id', $cp->location_id)->exists())
                     ? \App\BusinessLocation::where('id', $cp->location_id)->value('name')
@@ -2818,6 +2833,8 @@ class SellPosController extends Controller
                 if (isset($claimedTx[$tx->id])) continue;
                 $txStartTs = $txTs[$tx->id] ?? 0;
                 if ($txStartTs && $txStartTs < $since->getTimestamp()) continue;
+                // Grace period: cashier may still be entering on Clover.
+                if ($txStartTs > $graceCutoffTs) continue;
 
                 $locName = ($tx->location_id && \App\BusinessLocation::where('id', $tx->location_id)->exists())
                     ? \App\BusinessLocation::where('id', $tx->location_id)->value('name')
