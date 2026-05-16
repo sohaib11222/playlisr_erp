@@ -2623,10 +2623,30 @@ class SellPosController extends Controller
             $tz = config('app.timezone') ?: 'America/Los_Angeles';
             $since = \Carbon\Carbon::now($tz)->startOfDay()->setTimezone(config('app.timezone'));
 
+            // Sarah 2026-05-15: matcher rewrite. Old logic ran three
+            // independent loops (orphan / erp_orphan / mismatch) that
+            // each picked the FIRST same-amount Clover row without
+            // tracking who'd claimed what. Result: the same Clover
+            // swipe got "paired" to multiple ERP sales (inflating the
+            // mismatch count), and the same ERP sale showed up as
+            // BOTH an orphan AND a mismatch (e.g. #18773 $51.19
+            // appeared as "ERP not on Clover" AND "ERP $51.19 ·
+            // Clover $48.28" on 2026-05-15). Also: no manual-match
+            // honoring, no Whatnot/import filter, no refund/void
+            // exclusion — all sources of phantom alerts.
+            //
+            // New approach mirrors recentSalesFeed's matcher:
+            //   1. Drop manual matches (already reconciled).
+            //   2. Pass 1 — greedy 1-to-1 EXACT pair (±1¢, same loc).
+            //   3. Pass 2 — pair unclaimed ERP to unclaimed Clover
+            //      within ±$5 (closest in time wins) → mismatch.
+            //   4. Remaining unclaimed → real orphans.
             $cpQuery = \App\CloverPayment::where('business_id', $business_id)
                 ->where('paid_at', '>=', $since)
+                ->where('result', 'SUCCESS')   // skip voided/declined
+                ->where('amount', '>', 0)      // skip refunds
                 ->orderByDesc('paid_at')
-                ->limit(50);
+                ->limit(200);
             if (!empty($location_id)) {
                 $cpQuery->where(function ($q) use ($location_id) {
                     $q->where('location_id', (int) $location_id)
@@ -2635,40 +2655,139 @@ class SellPosController extends Controller
             }
             $cps = $cpQuery->get(['id', 'clover_payment_id', 'clover_order_id', 'amount', 'tax_cents', 'paid_at', 'location_id', 'card_type', 'card_last4', 'employee_name']);
 
-            if ($cps->isEmpty()) {
-                return response()->json(['orphans' => []]);
-            }
-
-            // ERP sells to pair against. Match key is (location, amount
-            // in cents). Pull today's ERP sells + a half-day-back buffer
-            // so a Clover swipe rung as a same-amount ERP sale a couple
-            // hours earlier still pairs without nagging.
+            // ERP card sells to pair against. Half-day buffer so a Clover
+            // swipe rung as a same-amount ERP sale a couple hours earlier
+            // still pairs. Mirror recentSalesFeed's exclusions: drop
+            // historical xlsx imports + Whatnot livestream sales (those
+            // don't go through Clover and would falsely become orphans).
             $erpWindowStart = (clone $since)->subHours(12);
-            $erpRows = Transaction::where('business_id', $business_id)
+            $erpCardSells = Transaction::where('business_id', $business_id)
                 ->where('type', 'sell')
                 ->where('status', 'final')
+                ->whereNull('import_source')
+                ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
                 ->where('transaction_date', '>=', $erpWindowStart)
-                ->get(['id', 'invoice_no', 'location_id', 'final_total', 'transaction_date']);
+                ->when($location_id, fn($q) => $q->where('location_id', (int) $location_id))
+                ->when(!$isAdmin, fn($q) => $q->where('created_by', $userId))
+                ->get(['id', 'invoice_no', 'location_id', 'final_total', 'transaction_date', 'created_by']);
 
             $manual = self::loadCloverManualMatches($business_id);
+            $existingNotes = self::loadCloverExplanations($business_id);
 
+            // Pre-mark manually-matched Clover rows + their ERP rows.
+            $claimedCp = []; // [cp_id => true]
+            $claimedTx = []; // [tx_id => true]
+            foreach ($manual as $cpId => $txId) {
+                $claimedCp[(int) $cpId] = true;
+                $claimedTx[(int) $txId] = true;
+            }
+
+            // Helper: are these the same location? (Clover with NULL
+            // location matches any ERP location — online-checkout style.)
+            $sameLoc = function ($cp, $tx) {
+                if (!$cp->location_id) return true;
+                return (int) $cp->location_id === (int) $tx->location_id;
+            };
+
+            // Pass 1 — EXACT 1-to-1 pairing. For each Clover (newest
+            // first), claim the unclaimed ERP same-loc within ±1¢
+            // closest in time. Closest-time tiebreaker matches the
+            // recentSalesFeed matcher's rule.
+            $cpTs = [];
+            foreach ($cps as $cp) {
+                $cpTs[$cp->id] = strtotime((string) $cp->paid_at);
+            }
+            $txTs = [];
+            foreach ($erpCardSells as $tx) {
+                $txTs[$tx->id] = strtotime((string) $tx->transaction_date);
+            }
+            $exactPairTxByCp = []; // [cp_id => tx_id]
+            $exactPairCpByTx = []; // [tx_id => cp_id]
+            foreach ($cps as $cp) {
+                if (isset($claimedCp[$cp->id])) continue;
+                $cpCents = (int) round($cp->amount * 100);
+                $bestTx = null;
+                $bestGap = PHP_INT_MAX;
+                foreach ($erpCardSells as $tx) {
+                    if (isset($claimedTx[$tx->id])) continue;
+                    if (!$sameLoc($cp, $tx)) continue;
+                    $txCents = (int) round($tx->final_total * 100);
+                    if (abs($cpCents - $txCents) > 1) continue;
+                    $gap = abs(($cpTs[$cp->id] ?? 0) - ($txTs[$tx->id] ?? 0));
+                    if ($gap < $bestGap) { $bestGap = $gap; $bestTx = $tx; }
+                }
+                if ($bestTx) {
+                    $claimedCp[$cp->id] = true;
+                    $claimedTx[$bestTx->id] = true;
+                    $exactPairTxByCp[$cp->id] = $bestTx->id;
+                    $exactPairCpByTx[$bestTx->id] = $cp->id;
+                }
+            }
+
+            // Pass 2 — MISMATCH pairing. For each unclaimed ERP card
+            // sell, find the unclaimed Clover same-loc within ±$5 but
+            // >1¢, closest in time. 1-to-1 so one Clover row can't
+            // "explain" multiple ERP rows.
+            $mismatches = [];
+            foreach ($erpCardSells as $tx) {
+                if (isset($claimedTx[$tx->id])) continue;
+                $txCents = (int) round($tx->final_total * 100);
+                $bestCp = null;
+                $bestGap = PHP_INT_MAX;
+                foreach ($cps as $cp) {
+                    if (isset($claimedCp[$cp->id])) continue;
+                    if (!$sameLoc($cp, $tx)) continue;
+                    $cpCents = (int) round($cp->amount * 100);
+                    $delta = abs($cpCents - $txCents);
+                    if ($delta <= 1 || $delta > 500) continue;
+                    $gap = abs(($cpTs[$cp->id] ?? 0) - ($txTs[$tx->id] ?? 0));
+                    // Time-proximity guard: don't claim a Clover swipe
+                    // from a totally different hour as a "mismatch" for
+                    // this sale — that's noise, not a typo. 90-minute
+                    // window covers normal cashier-typo lag.
+                    if ($gap > 5400) continue;
+                    if ($gap < $bestGap) { $bestGap = $gap; $bestCp = $cp; }
+                }
+                if (!$bestCp) continue;
+
+                // Skip if cashier already left an explanation for this tx.
+                $key = 'mismatch:' . (int) $tx->id . ':0';
+                if (isset($existingNotes[$key])) {
+                    $claimedTx[$tx->id] = true;
+                    $claimedCp[$bestCp->id] = true;
+                    continue;
+                }
+
+                $claimedTx[$tx->id] = true;
+                $claimedCp[$bestCp->id] = true;
+
+                $locName = ($tx->location_id && \App\BusinessLocation::where('id', $tx->location_id)->exists())
+                    ? \App\BusinessLocation::where('id', $tx->location_id)->value('name')
+                    : null;
+
+                $mismatches[] = [
+                    'tx_id'         => (int) $tx->id,
+                    'invoice_no'    => $tx->invoice_no,
+                    'erp_total'     => (float) $tx->final_total,
+                    'clover_total'  => (float) $bestCp->amount,
+                    'diff'          => round(((float) $bestCp->amount) - ((float) $tx->final_total), 2),
+                    'age_seconds'   => max(0, \Carbon\Carbon::now()->diffInSeconds(\Carbon\Carbon::parse($tx->transaction_date))),
+                    'location_id'   => (int) ($tx->location_id ?? 0) ?: null,
+                    'location_name' => $locName,
+                ];
+            }
+
+            // Remaining unclaimed Clover swipes → real orphans (card
+            // charged, no ERP ring). Cap age at start-of-day; older rows
+            // belong to yesterday's reconciliation, not today's nag.
             $orphans = [];
             foreach ($cps as $cp) {
-                // Already manually matched? Skip.
-                if (isset($manual[$cp->id])) continue;
-
-                $cpCents = (int) round($cp->amount * 100);
-                $matched = false;
-                foreach ($erpRows as $tx) {
-                    if ((int) $tx->location_id !== (int) ($cp->location_id ?: $tx->location_id)) {
-                        // Allow matching when Clover has no location set
-                        // (online checkout style); otherwise require same store.
-                        if ($cp->location_id) continue;
-                    }
-                    $txCents = (int) round($tx->final_total * 100);
-                    if (abs($cpCents - $txCents) <= 1) { $matched = true; break; }
-                }
-                if ($matched) continue;
+                if (isset($claimedCp[$cp->id])) continue;
+                // Only nag for today's swipes — the 12hr ERP buffer above
+                // can pull in late-night Clover rows we don't want to
+                // surface on the morning shift's POS.
+                $cpStartTs = $cpTs[$cp->id] ?? 0;
+                if ($cpStartTs && $cpStartTs < $since->getTimestamp()) continue;
 
                 $locName = ($cp->location_id && \App\BusinessLocation::where('id', $cp->location_id)->exists())
                     ? \App\BusinessLocation::where('id', $cp->location_id)->value('name')
@@ -2691,93 +2810,28 @@ class SellPosController extends Controller
                 ];
             }
 
-            // === ERP-orphans: card sales rung in ERP today that don't
-            // have a matching Clover swipe. Cashier collected card payment
-            // intent in ERP but never charged the card on the terminal —
-            // customer might've walked out, or paid via another method
-            // without the ERP reflecting that. Cash sales are excluded
-            // (they're not expected to have a Clover swipe).
+            // Remaining unclaimed ERP card sells from TODAY → real ERP
+            // orphans (sale rung, no Clover swipe). Skip the half-day
+            // buffer rows; those were just there to absorb pairing.
             $erpOrphans = [];
-            $erpCardSells = Transaction::where('business_id', $business_id)
-                ->where('type', 'sell')
-                ->where('status', 'final')
-                ->where('transaction_date', '>=', $since)
-                ->when($location_id, fn($q) => $q->where('location_id', (int) $location_id))
-                ->when(!$isAdmin, fn($q) => $q->where('created_by', $userId))
-                ->with(['payment_lines:id,transaction_id,method,amount'])
-                ->get(['id', 'invoice_no', 'location_id', 'final_total', 'transaction_date', 'created_by']);
-
             foreach ($erpCardSells as $tx) {
-                // Sarah's policy: cashiers ring EVERY sale on Clover —
-                // cash and card. So every ERP sale should pair to a
-                // Clover entry; the only exclusion is the manual-match
-                // map (handled below) and channel=whatnot (already
-                // excluded from $erpCardSells query). Don't skip on
-                // payment method.
-
-                // Does any Clover swipe match? Same store + same total within 1¢.
-                $txCents = (int) round($tx->final_total * 100);
-                $paired = false;
-                foreach ($cps as $cp) {
-                    if ($cp->location_id && (int) $cp->location_id !== (int) $tx->location_id) continue;
-                    $cpCents = (int) round($cp->amount * 100);
-                    if (abs($cpCents - $txCents) <= 1) { $paired = true; break; }
-                }
-                if ($paired) continue;
+                if (isset($claimedTx[$tx->id])) continue;
+                $txStartTs = $txTs[$tx->id] ?? 0;
+                if ($txStartTs && $txStartTs < $since->getTimestamp()) continue;
 
                 $locName = ($tx->location_id && \App\BusinessLocation::where('id', $tx->location_id)->exists())
                     ? \App\BusinessLocation::where('id', $tx->location_id)->value('name')
                     : null;
 
                 $erpOrphans[] = [
-                    'kind'           => 'erp_orphan',
-                    'tx_id'          => (int) $tx->id,
-                    'invoice_no'     => $tx->invoice_no,
-                    'amount'         => (float) $tx->final_total,
+                    'kind'             => 'erp_orphan',
+                    'tx_id'            => (int) $tx->id,
+                    'invoice_no'       => $tx->invoice_no,
+                    'amount'           => (float) $tx->final_total,
                     'transaction_date' => \Carbon\Carbon::parse($tx->transaction_date)->setTimezone(config('app.timezone'))->format('g:i:s a'),
-                    'age_seconds'    => max(0, \Carbon\Carbon::now()->diffInSeconds(\Carbon\Carbon::parse($tx->transaction_date))),
-                    'location_id'    => (int) ($tx->location_id ?? 0) ?: null,
-                    'location_name'  => $locName,
-                ];
-            }
-
-            // === Mismatches: today's paired sales whose ERP total
-            // disagrees with the Clover swipe by more than $0.01. Skip
-            // anything that already has a register-reconciliation note
-            // (cashier already explained it).
-            $existingNotes = self::loadCloverExplanations($business_id);
-            $mismatches = [];
-            foreach ($erpCardSells as $tx) {
-                $txCents = (int) round($tx->final_total * 100);
-                $pairedCp = null;
-                foreach ($cps as $cp) {
-                    if ($cp->location_id && (int) $cp->location_id !== (int) $tx->location_id) continue;
-                    $cpCents = (int) round($cp->amount * 100);
-                    // Pair anything within $5 — the chip needs to know
-                    // the diff, so we don't require exact match here.
-                    if (abs($cpCents - $txCents) <= 500 && abs($cpCents - $txCents) > 1) {
-                        $pairedCp = $cp; break;
-                    }
-                }
-                if (!$pairedCp) continue;
-
-                // Skip if cashier already left an explanation for this tx.
-                $key = 'mismatch:' . (int) $tx->id . ':0';
-                if (isset($existingNotes[$key])) continue;
-
-                $locName = ($tx->location_id && \App\BusinessLocation::where('id', $tx->location_id)->exists())
-                    ? \App\BusinessLocation::where('id', $tx->location_id)->value('name')
-                    : null;
-
-                $mismatches[] = [
-                    'tx_id'         => (int) $tx->id,
-                    'invoice_no'    => $tx->invoice_no,
-                    'erp_total'     => (float) $tx->final_total,
-                    'clover_total'  => (float) $pairedCp->amount,
-                    'diff'          => round(((float) $pairedCp->amount) - ((float) $tx->final_total), 2),
-                    'age_seconds'   => max(0, \Carbon\Carbon::now()->diffInSeconds(\Carbon\Carbon::parse($tx->transaction_date))),
-                    'location_id'   => (int) ($tx->location_id ?? 0) ?: null,
-                    'location_name' => $locName,
+                    'age_seconds'      => max(0, \Carbon\Carbon::now()->diffInSeconds(\Carbon\Carbon::parse($tx->transaction_date))),
+                    'location_id'      => (int) ($tx->location_id ?? 0) ?: null,
+                    'location_name'    => $locName,
                 ];
             }
 
