@@ -2611,11 +2611,21 @@ class SellPosController extends Controller
             // mismatches) to the LOGGED-IN cashier so Henry doesn't see
             // Clyde's mistakes nagging him on his own POS screen. Admins
             // (Sarah / Jon / Fatteen) keep the global view for auditing.
-            // Clover-only orphans (section 3) stay global — those are
-            // "ring me now" todos for whoever's at the register, not
-            // attributable mistakes.
+            //
+            // Jon 2026-05-17: also scope Clover-only orphans by Clover's
+            // employee_name → ERP user first-name match (same matcher the
+            // EOD report uses). Swipes with BLANK employee_name still go
+            // to everyone — somebody has to ring them, and we'd rather
+            // double-nag than lose a sale to inventory.
             $userId = (int) auth()->id();
             $isAdmin = $this->businessUtil->is_admin(auth()->user());
+            $userFirst = strtolower(trim((string) (auth()->user()->first_name ?? '')));
+            $orphanFirstName = function ($full) {
+                $full = trim((string) $full);
+                if ($full === '') return '';
+                $parts = preg_split('/\s+/', $full);
+                return strtolower($parts[0] ?? '');
+            };
 
             // Scope: today in the business timezone. Persistent until the
             // ring goes in OR the day rolls over (morning reconciliation
@@ -2838,6 +2848,15 @@ class SellPosController extends Controller
                 if ($cpStartTs && $cpStartTs < $since->getTimestamp()) continue;
                 // Grace period: cashier may still be entering the ERP ring.
                 if ($cpStartTs > $graceCutoffTs) continue;
+
+                // Per-cashier scoping (Jon 2026-05-17): non-admins only see
+                // their own swipes + unattributed ones. Match by first name
+                // (same rule as cloverEodShiftAudit). Blank employee_name
+                // → show to everyone so it doesn't get lost.
+                if (!$isAdmin) {
+                    $cpFirst = $orphanFirstName($cp->employee_name);
+                    if ($cpFirst !== '' && $cpFirst !== $userFirst) continue;
+                }
 
                 $locName = ($cp->location_id && \App\BusinessLocation::where('id', $cp->location_id)->exists())
                     ? \App\BusinessLocation::where('id', $cp->location_id)->value('name')
