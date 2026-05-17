@@ -2612,11 +2612,13 @@ class SellPosController extends Controller
             // Clyde's mistakes nagging him on his own POS screen. Admins
             // (Sarah / Jon / Fatteen) keep the global view for auditing.
             //
-            // Jon 2026-05-17: also scope Clover-only orphans by Clover's
-            // employee_name → ERP user first-name match (same matcher the
-            // EOD report uses). Swipes with BLANK employee_name still go
-            // to everyone — somebody has to ring them, and we'd rather
-            // double-nag than lose a sale to inventory.
+            // Jon 2026-05-17: Clover-only orphans now use STRICT per-
+            // cashier scoping — employee_name first-name MUST match the
+            // logged-in user's first name. Admins do not get a global
+            // view here; these are operational "ring me now" todos, not
+            // audit items. Blank employee_name → no match → hidden from
+            // POS; morning EOD reconciliation catches anything still
+            // unrung at day-end.
             $userId = (int) auth()->id();
             $isAdmin = $this->businessUtil->is_admin(auth()->user());
             $userFirst = strtolower(trim((string) (auth()->user()->first_name ?? '')));
@@ -2849,14 +2851,12 @@ class SellPosController extends Controller
                 // Grace period: cashier may still be entering the ERP ring.
                 if ($cpStartTs > $graceCutoffTs) continue;
 
-                // Per-cashier scoping (Jon 2026-05-17): non-admins only see
-                // their own swipes + unattributed ones. Match by first name
-                // (same rule as cloverEodShiftAudit). Blank employee_name
-                // → show to everyone so it doesn't get lost.
-                if (!$isAdmin) {
-                    $cpFirst = $orphanFirstName($cp->employee_name);
-                    if ($cpFirst !== '' && $cpFirst !== $userFirst) continue;
-                }
+                // Per-cashier scoping (Jon 2026-05-17): strict first-name
+                // match against Clover employee_name. Admins included.
+                // Blank/unattributed swipes are hidden from POS; the EOD
+                // reconciliation report still surfaces them at day-end.
+                $cpFirst = $orphanFirstName($cp->employee_name);
+                if ($userFirst === '' || $cpFirst !== $userFirst) continue;
 
                 $locName = ($cp->location_id && \App\BusinessLocation::where('id', $cp->location_id)->exists())
                     ? \App\BusinessLocation::where('id', $cp->location_id)->value('name')
