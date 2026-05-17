@@ -614,10 +614,10 @@ HTML,
                 'summary' => 'Who to call when the front-desk computer or label printer stops working.',
                 'page_keys' => ['home', 'labels'],
                 'body_html' => <<<'HTML'
-<p>If the computer or label printer at the front desk isn't working, get in touch with Muhammad — he handles tech support for the stores via AnyDesk.</p>
+<p>If the computer or label printer at the front desk isn't working, get in touch with Muhammad — he's based in Bangladesh and handles tech support for the stores remotely via AnyDesk.</p>
 
 <div class="help-must-do">
-    <strong>Reach Muhammad on AnyDesk</strong> for any computer or printer issue. He can take remote control and fix most problems on the spot.
+    <strong>Message Muhammad on WhatsApp at <a href="https://wa.me/8801723948653">+880 1723-948653</a></strong> for any computer or printer issue. He can take remote control and fix most problems on the spot.
 </div>
 
 <h3>Before You Reach Out</h3>
@@ -627,8 +627,15 @@ HTML,
     <li><strong>Check the cable.</strong> USB unplugged is the most common label-print issue.</li>
 </ul>
 
-<h3>If You're Still Stuck</h3>
-<p>Reach Muhammad with what you've already tried, what you saw on screen, and which device. The more specific you are, the faster he can fix it.</p>
+<h3>How to Reach Muhammad</h3>
+<ol>
+    <li><strong>Open WhatsApp</strong> and message Muhammad at <strong>+880 1723-948653</strong>. Tell him what's broken, what you've already tried, and which device.</li>
+    <li><strong>He'll ask for your AnyDesk code.</strong> On the front-desk computer, hit the Windows key and search for <strong>AnyDesk</strong> — the program is already installed. Open it.</li>
+    <li><strong>Read him the 9-digit "Your Address" code</strong> shown in AnyDesk. Send it on WhatsApp.</li>
+    <li><strong>Accept the incoming connection</strong> when his request pops up. He'll take over the computer remotely and work on the issue.</li>
+</ol>
+
+<p>Stay near the computer while he's connected in case he needs you to physically check a cable, swap a label roll, or power-cycle the printer.</p>
 
 <h3>If the Whole System Is Down</h3>
 <p>If you can't ring sales because the ERP itself is down, get a manager <strong>immediately</strong> — don't keep ringing on Clover only. Lost ERP transactions break inventory and reporting.</p>
