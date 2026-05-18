@@ -135,7 +135,12 @@
                             </td>
                             <td class="text-right">${{ number_format($r['revenue'], 2) }}</td>
                             <td style="min-width:180px;">
-                                @if(!is_null($r['target_pct']))
+                                @php
+                                    $is_rollup = isset($r['target_store']) && $r['label'] !== $r['target_store'];
+                                @endphp
+                                @if($is_rollup)
+                                    <small class="text-muted"><em>rolled into {{ $r['target_store'] }}</em></small>
+                                @elseif(!is_null($r['target_pct']))
                                     @php
                                         $pct = max(0, $r['target_pct']);
                                         $bar_w = min(100, $pct);
@@ -144,15 +149,15 @@
                                         elseif ($pct >= 50)   { $bar_class = 'progress-bar-warning'; }
                                         else                  { $bar_class = 'progress-bar-danger'; }
                                         $combined = isset($r['target_revenue']) ? (float) $r['target_revenue'] : (float) $r['revenue'];
-                                        $is_rollup = isset($r['target_store']) && $r['label'] !== $r['target_store'];
+                                        $has_rollup_revenue = $combined > (float) $r['revenue'] + 0.01;
                                     @endphp
-                                    <div class="progress" style="margin-bottom:4px; height:14px;" title="${{ number_format($combined, 0) }} of ${{ number_format($r['target'], 0) }} {{ $target_period_label }}{{ $is_rollup ? ' (rolled into ' . $r['target_store'] . ')' : '' }}">
+                                    <div class="progress" style="margin-bottom:4px; height:14px;" title="${{ number_format($combined, 0) }} of ${{ number_format($r['target'], 0) }} {{ $target_period_label }}{{ $has_rollup_revenue ? ' (incl. Whatnot)' : '' }}">
                                         <div class="progress-bar {{ $bar_class }}" role="progressbar" style="width: {{ $bar_w }}%;" aria-valuenow="{{ $bar_w }}" aria-valuemin="0" aria-valuemax="100"></div>
                                     </div>
                                     <small class="text-muted">
                                         {{ number_format($pct, 0) }}% of ${{ number_format($r['target'], 0) }}
-                                        @if($is_rollup)
-                                            <em>· {{ $r['target_store'] }} total</em>
+                                        @if($has_rollup_revenue)
+                                            <em>· incl. Whatnot</em>
                                         @endif
                                     </small>
                                 @else
