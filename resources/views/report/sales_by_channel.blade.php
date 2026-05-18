@@ -143,11 +143,18 @@
                                         elseif ($pct >= 75)   { $bar_class = 'progress-bar-primary'; }
                                         elseif ($pct >= 50)   { $bar_class = 'progress-bar-warning'; }
                                         else                  { $bar_class = 'progress-bar-danger'; }
+                                        $combined = isset($r['target_revenue']) ? (float) $r['target_revenue'] : (float) $r['revenue'];
+                                        $is_rollup = isset($r['target_store']) && $r['label'] !== $r['target_store'];
                                     @endphp
-                                    <div class="progress" style="margin-bottom:4px; height:14px;" title="${{ number_format($r['revenue'], 0) }} of ${{ number_format($r['target'], 0) }} {{ $target_period_label }}">
+                                    <div class="progress" style="margin-bottom:4px; height:14px;" title="${{ number_format($combined, 0) }} of ${{ number_format($r['target'], 0) }} {{ $target_period_label }}{{ $is_rollup ? ' (rolled into ' . $r['target_store'] . ')' : '' }}">
                                         <div class="progress-bar {{ $bar_class }}" role="progressbar" style="width: {{ $bar_w }}%;" aria-valuenow="{{ $bar_w }}" aria-valuemin="0" aria-valuemax="100"></div>
                                     </div>
-                                    <small class="text-muted">{{ number_format($pct, 0) }}% of ${{ number_format($r['target'], 0) }}</small>
+                                    <small class="text-muted">
+                                        {{ number_format($pct, 0) }}% of ${{ number_format($r['target'], 0) }}
+                                        @if($is_rollup)
+                                            <em>· {{ $r['target_store'] }} total</em>
+                                        @endif
+                                    </small>
                                 @else
                                     <span class="text-muted">—</span>
                                 @endif
