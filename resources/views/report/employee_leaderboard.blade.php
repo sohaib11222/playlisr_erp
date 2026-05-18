@@ -88,6 +88,8 @@
                         {!! $colHead('tx_per_hour', 'Tx / hr', 'text-right', 'background:#ecfdf5;') !!}
                         {!! $colHead('hours_worked', 'Hours', 'text-right') !!}
                         {!! $colHead('revenue', 'Total $', 'text-right') !!}
+                        {!! $colHead('non_whatnot_revenue', 'Non-Whatnot $', 'text-right') !!}
+                        {!! $colHead('whatnot_revenue', 'Whatnot $', 'text-right') !!}
                         {!! $colHead('items_rung', 'Items rung', 'text-right') !!}
                         {!! $colHead('avg_tx', 'Avg $/tx', 'text-right') !!}
                         {!! $colHead('priced_count', 'Items priced', 'text-right') !!}
@@ -127,12 +129,20 @@
                                 @if($r->hours_worked > 0) {{ number_format($r->hours_worked, 1) }}h @else <span class="text-muted">—</span> @endif
                             </td>
                             <td class="text-right">${{ number_format($r->revenue, 0) }}</td>
+                            <td class="text-right">${{ number_format($r->non_whatnot_revenue, 0) }}</td>
+                            <td class="text-right">
+                                @if($r->whatnot_revenue > 0)
+                                    <span class="label label-warning" style="font-weight:600;">${{ number_format($r->whatnot_revenue, 0) }}</span>
+                                @else
+                                    <span class="text-muted">—</span>
+                                @endif
+                            </td>
                             <td class="text-right">{{ number_format($r->items_rung) }}</td>
                             <td class="text-right">${{ number_format($r->avg_tx, 2) }}</td>
                             <td class="text-right">{{ number_format($r->priced_count) }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="10" class="text-center text-muted">No activity in this window.</td></tr>
+                        <tr><td colspan="12" class="text-center text-muted">No activity in this window.</td></tr>
                     @endforelse
                 </tbody>
             </table>
