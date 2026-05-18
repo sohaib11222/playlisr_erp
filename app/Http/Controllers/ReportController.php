@@ -5331,7 +5331,7 @@ class ReportController extends Controller
             ->where('description', 'shipping_edited')
             ->where('business_id', $business_id)
             ->where('subject_type', 'App\\Transaction')
-            ->whereBetween('created_at', [$window_start, $window_end])
+            ->whereBetween('created_at', [$start_date . ' 00:00:00', $end_date . ' 23:59:59'])
             ->whereNotNull('causer_id')
             ->select('causer_id', 'subject_id', 'properties')
             ->get();
