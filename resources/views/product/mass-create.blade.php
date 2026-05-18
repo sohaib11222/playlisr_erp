@@ -595,7 +595,10 @@
                 <tr class="tr">
                     <th class="th col-name">@lang('product.product_name')*</th>
                     <th class="th col-artist">Artist</th>
-                    <th class="th col-sku">@lang('product.sku')</th>
+                    <th class="th col-sku">
+                        @lang('product.sku')
+                        <a href="#" id="clear_all_skus" class="text-muted" style="font-size: 10px; font-weight: normal; margin-left: 4px;" title="Clear all SKU values">clear skus</a>
+                    </th>
                     <th class="th col-select">@lang('product.category') / @lang('product.sub_category')</th>
                     <th class="th col-locations">@lang('business.business_locations')</th>
                     <th class="th price-col">Purchase Price</th>
@@ -1549,6 +1552,11 @@
 
     $(document).on('keyup', '.sku-input', function() {
         window.getSubcategorySuggestions($(this).attr('data-row-index'));
+    });
+
+    $(document).on('click', '#clear_all_skus', function(e) {
+        e.preventDefault();
+        $('#product_rows_container').find('input.sku-input').val('').trigger('change');
     });
 
     window.setupProductNameSelect2 = function () {
