@@ -114,12 +114,28 @@ class ProductController extends Controller
             //Filter by location
             $location_id = request()->get('location_id', null);
             $permitted_locations = auth()->user()->permitted_locations();
-            $soldTotalsSubquery = DB::table('transaction_sell_lines as tsl')
-                ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
-                ->where('t.type', 'sell')
-                ->where('t.status', 'final')
-                ->select('tsl.product_id', DB::raw('SUM(tsl.quantity) as total_sold_qty'))
-                ->groupBy('tsl.product_id');
+
+            // Sarah 2026-05-18: cache the all-time sold-totals aggregate
+            // for 5 minutes. The subquery used to materialize every row
+            // of transaction_sell_lines on every filter click which was
+            // tanking /products at 50k+ products. The cache is keyed per
+            // business so it stays correct on multi-tenant; cashier sales
+            // become visible after at most 5 min.
+            $soldTotalsMap = \Cache::remember(
+                'products_index_sold_totals:' . $business_id,
+                300,
+                function () use ($business_id) {
+                    return DB::table('transaction_sell_lines as tsl')
+                        ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+                        ->where('t.business_id', $business_id)
+                        ->where('t.type', 'sell')
+                        ->where('t.status', 'final')
+                        ->select('tsl.product_id', DB::raw('SUM(tsl.quantity) as total_sold_qty'))
+                        ->groupBy('tsl.product_id')
+                        ->pluck('total_sold_qty', 'product_id')
+                        ->toArray();
+                }
+            );
 
             $query = Product::with(['media'])
                 ->leftJoin('brands', 'products.brand_id', '=', 'brands.id')
@@ -129,9 +145,6 @@ class ProductController extends Controller
                 ->leftJoin('tax_rates', 'products.tax', '=', 'tax_rates.id')
                 ->leftJoin('users as u', 'products.created_by', '=', 'u.id')
                 ->join('variations as v', 'v.product_id', '=', 'products.id')
-                ->leftJoinSub($soldTotalsSubquery, 'sold_totals', function ($join) {
-                    $join->on('sold_totals.product_id', '=', 'products.id');
-                })
                 ->leftJoin('variation_location_details as vld', function($join) use ($permitted_locations, $location_id){
                     $join->on('vld.variation_id', '=', 'v.id');
                     if ($permitted_locations != 'all') {
@@ -190,7 +203,6 @@ class ProductController extends Controller
                 'v.id as vid',
                 'products.alert_quantity',
                 DB::raw("CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as created_by_name"),
-                DB::raw('COALESCE(MAX(sold_totals.total_sold_qty), 0) as total_sold_qty'),
                 DB::raw('SUM(vld.qty_available) as current_stock'),
                 DB::raw('MAX(v.sell_price_inc_tax) as max_price'),
                 DB::raw('MIN(v.sell_price_inc_tax) as min_price'),
@@ -295,8 +307,9 @@ class ProductController extends Controller
                         return $row->product_locations->implode('name', ', ');
                     }
                 )
-                ->addColumn('total_sold', function ($q) {
-                    return number_format((int) round((float) $q->total_sold_qty), 0);
+                ->addColumn('total_sold', function ($q) use ($soldTotalsMap) {
+                    $val = $soldTotalsMap[$q->id] ?? 0;
+                    return number_format((int) round((float) $val), 0);
                 })
                 ->editColumn('category', '{{$category}}')
                 ->addColumn('subcategory', function ($row) {
