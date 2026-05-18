@@ -87,6 +87,114 @@ class DiscogsInventoryImportController extends Controller
     }
 
     /**
+     * List all roles for this business with a flag showing whether they
+     * currently have permission to see the Discogs Warehouse location at
+     * POS (i.e., whether they hold the location.{id} Spatie permission).
+     */
+    public function rolesForLocation(Request $request)
+    {
+        $business_id = (int) $request->session()->get('user.business_id');
+
+        $loc = BusinessLocation::where('business_id', $business_id)
+            ->where('name', self::DEFAULT_LOCATION_NAME)
+            ->first();
+        if (!$loc) {
+            return response()->json(['ok' => false, 'error' => 'Discogs Warehouse location not found yet — apply at least once first.'], 422);
+        }
+        $permName = 'location.' . $loc->id;
+
+        $roles = DB::table('roles')->where('business_id', $business_id)
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        $grantedRoleIds = DB::table('role_has_permissions as rhp')
+            ->join('permissions as p', 'p.id', '=', 'rhp.permission_id')
+            ->where('p.name', $permName)
+            ->pluck('rhp.role_id')
+            ->all();
+        $grantedSet = array_flip(array_map('intval', $grantedRoleIds));
+
+        $out = $roles->map(function ($r) use ($grantedSet) {
+            return [
+                'id' => (int) $r->id,
+                'name' => $r->name,
+                'has_access' => isset($grantedSet[(int) $r->id]),
+            ];
+        });
+
+        return response()->json([
+            'ok' => true,
+            'location_id' => (int) $loc->id,
+            'permission_name' => $permName,
+            'roles' => $out,
+        ]);
+    }
+
+    /**
+     * Grant or revoke the Discogs Warehouse location permission for a
+     * given role. Creates the permission row if it doesn't yet exist.
+     * Cashiers in that role then see Discogs Warehouse stock in POS.
+     */
+    public function setPosAccess(Request $request)
+    {
+        $business_id = (int) $request->session()->get('user.business_id');
+        $roleId = (int) $request->input('role_id', 0);
+        $grant = filter_var($request->input('grant', true), FILTER_VALIDATE_BOOLEAN);
+
+        $loc = BusinessLocation::where('business_id', $business_id)
+            ->where('name', self::DEFAULT_LOCATION_NAME)
+            ->first();
+        if (!$loc) {
+            return response()->json(['ok' => false, 'error' => 'Discogs Warehouse location not found.'], 422);
+        }
+        if ($roleId <= 0) {
+            return response()->json(['ok' => false, 'error' => 'role_id required'], 422);
+        }
+        $role = DB::table('roles')->where('id', $roleId)->where('business_id', $business_id)->first();
+        if (!$role) {
+            return response()->json(['ok' => false, 'error' => 'role not found in this business'], 404);
+        }
+
+        $permName = 'location.' . $loc->id;
+        $perm = DB::table('permissions')->where('name', $permName)->first();
+        if (!$perm) {
+            $permId = DB::table('permissions')->insertGetId([
+                'name' => $permName,
+                'guard_name' => 'web',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        } else {
+            $permId = (int) $perm->id;
+        }
+
+        if ($grant) {
+            $exists = DB::table('role_has_permissions')
+                ->where('permission_id', $permId)
+                ->where('role_id', $roleId)
+                ->exists();
+            if (!$exists) {
+                DB::table('role_has_permissions')->insert([
+                    'permission_id' => $permId,
+                    'role_id' => $roleId,
+                ]);
+            }
+        } else {
+            DB::table('role_has_permissions')
+                ->where('permission_id', $permId)
+                ->where('role_id', $roleId)
+                ->delete();
+        }
+
+        return response()->json([
+            'ok' => true,
+            'role_id' => $roleId,
+            'role_name' => $role->name,
+            'access' => $grant ? 'granted' : 'revoked',
+        ]);
+    }
+
+    /**
      * Bulk toggle is_inactive on every Discogs-import product so they
      * show (or hide) in /products. POS is unaffected because Discogs
      * Warehouse isn't in any cashier role's location permission set —

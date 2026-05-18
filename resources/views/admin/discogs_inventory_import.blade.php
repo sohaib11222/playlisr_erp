@@ -26,6 +26,14 @@
     </div>
     @endif
 
+    <div class="callout" style="margin-top:8px; background:#f4ecf7;">
+        <strong>POS access for cashier roles</strong>
+        — Discogs Warehouse is normally invisible to cashiers at the register. Grant per-role access here so they can ring Discogs items if a customer asks.
+        <div id="dii-roles-list" style="margin-top:8px; font-size:13px;">
+            <button id="dii-roles-load" class="btn btn-default btn-sm">Load roles</button>
+        </div>
+    </div>
+
     <div class="callout callout-primary" style="margin-top:8px;">
         <strong>Show in /products list</strong>
         — Discogs imports are <code>is_inactive=1</code> so they don't clog POS search. Flip to visible to manage them under /products. POS is unaffected (cashiers have no Discogs Warehouse location permission).
@@ -302,6 +310,35 @@
             dedupStatus.textContent = '✓ Deleted ' + r.body.deleted.toLocaleString() + '. Snapshot: ' + r.body.snapshot + '. Reload the page to refresh counts.';
         });
     }
+
+    const rolesListEl = document.getElementById('dii-roles-list');
+    async function loadRoles() {
+        rolesListEl.innerHTML = 'loading…';
+        const resp = await fetch('/admin/discogs-import-inventory/roles', {
+            headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF },
+        });
+        const j = await resp.json().catch(() => ({ok:false, error: 'Bad JSON ' + resp.status}));
+        if (!j.ok) { rolesListEl.textContent = 'error: ' + (j.error || resp.status); return; }
+        const rows = j.roles.map(r => {
+            const checked = r.has_access ? 'checked' : '';
+            return `<label style="display:block; padding:3px 0;">
+                <input type="checkbox" class="dii-role-toggle" data-role-id="${r.id}" ${checked} />
+                ${r.name}
+            </label>`;
+        }).join('');
+        rolesListEl.innerHTML = rows + '<div style="font-size:11px; color:#888; margin-top:6px;">Check = role can see Discogs Warehouse in POS. Changes take effect on next login.</div>';
+        document.querySelectorAll('.dii-role-toggle').forEach(cb => {
+            cb.addEventListener('change', async () => {
+                const r = await postJson('/admin/discogs-import-inventory/set-pos-access', {
+                    role_id: parseInt(cb.getAttribute('data-role-id'), 10),
+                    grant: cb.checked,
+                });
+                if (!r.body.ok) { alert('error: ' + (r.body.error || r.status)); cb.checked = !cb.checked; }
+            });
+        });
+    }
+    const rolesLoadBtn = document.getElementById('dii-roles-load');
+    if (rolesLoadBtn) rolesLoadBtn.addEventListener('click', loadRoles);
 
     const visShowBtn = document.getElementById('dii-vis-show');
     const visHideBtn = document.getElementById('dii-vis-hide');
