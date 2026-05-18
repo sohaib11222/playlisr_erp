@@ -104,13 +104,18 @@ class DiscogsInventoryImportController extends Controller
 
         // Map detected format → ERP category name (must match what
         // /admin/cost-price-rules expects). Order matters for fallback.
+        // "Sealed Vinyl" path: anything with Media condition "Mint (M)"
+        // on Discogs is treated as sealed/new — Sarah 2026-05-18.
         $formatToCategoryName = [
-            '7" / 45 RPM'  => '7", 45 RPM',
-            '8 track'      => '8 track',
-            'CD'           => 'Used CD',
-            'Cassette'     => 'Cassettes',
-            'VHS'          => 'VHS',
-            'LP / Vinyl'   => 'Used Vinyl',
+            '7" / 45 RPM'      => '7", 45 RPM',
+            '8 track'          => '8 track',
+            'CD'               => 'Used CD',
+            'Sealed CD'        => 'Sealed CD / CD (Sealed)',
+            'Cassette'         => 'Cassettes',
+            'Sealed Cassette'  => 'Cassettes - Sealed',
+            'VHS'              => 'VHS',
+            'Sealed LP / Vinyl'=> 'Sealed Vinyl',
+            'LP / Vinyl'       => 'Used Vinyl',
         ];
 
         $categoryIdByName = DB::table('categories')
@@ -213,32 +218,39 @@ class DiscogsInventoryImportController extends Controller
      */
     private function detectFormatKey(string $description): string
     {
-        $line = '';
+        $formatLine = '';
         if (preg_match('/^Format:\s*(.+)$/mi', $description, $m)) {
-            $line = mb_strtolower($m[1]);
+            $formatLine = mb_strtolower($m[1]);
         } else {
-            $line = mb_strtolower($description);
+            $formatLine = mb_strtolower($description);
         }
 
-        if (mb_strpos($line, '8 track') !== false || mb_strpos($line, '8-track') !== false) {
+        // Discogs media condition "Mint (M)" = sealed/never played (Sarah's
+        // convention 2026-05-18). Pulled from the "Media: ..." line we
+        // wrote during import. Anything else (NM, VG+, VG, G, etc.) is used.
+        $isSealed = false;
+        if (preg_match('/^Media:\s*Mint\s*\(M\)/mi', $description)) {
+            $isSealed = true;
+        }
+
+        if (mb_strpos($formatLine, '8 track') !== false || mb_strpos($formatLine, '8-track') !== false) {
             return '8 track';
         }
-        if (mb_strpos($line, 'cassette') !== false) {
-            return 'Cassette';
+        if (mb_strpos($formatLine, 'cassette') !== false) {
+            return $isSealed ? 'Sealed Cassette' : 'Cassette';
         }
-        if (mb_strpos($line, 'vhs') !== false) {
+        if (mb_strpos($formatLine, 'vhs') !== false) {
             return 'VHS';
         }
-        if (mb_strpos($line, 'cd') !== false && mb_strpos($line, 'vinyl') === false) {
-            // Disambiguate: "CD" must not be the substring of "vinyl" (it isn't)
-            // but skip if vinyl also present — multi-format release.
-            return 'CD';
+        if (mb_strpos($formatLine, 'cd') !== false && mb_strpos($formatLine, 'vinyl') === false) {
+            // Disambiguate: skip if vinyl also present — multi-format release.
+            return $isSealed ? 'Sealed CD' : 'CD';
         }
         // 7" detection — also catches "7 inch" or "45 rpm"
-        if (preg_match('/(^|[^0-9])7\s*"|7\s*inch|45\s*rpm/u', $line)) {
+        if (preg_match('/(^|[^0-9])7\s*"|7\s*inch|45\s*rpm/u', $formatLine)) {
             return '7" / 45 RPM';
         }
-        return 'LP / Vinyl';
+        return $isSealed ? 'Sealed LP / Vinyl' : 'LP / Vinyl';
     }
 
     /**
