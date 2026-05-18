@@ -110,6 +110,45 @@
 
     <div class="box box-solid">
         <div class="box-header with-border">
+            <h3 class="box-title">Targets <small class="text-muted">({{ $target_period_label }})</small></h3>
+        </div>
+        <div class="box-body">
+            <div class="row">
+                @foreach($buckets as $b)
+                    @php
+                        $bpct = is_null($b['target_pct']) ? 0 : max(0, $b['target_pct']);
+                        $bw = min(100, $bpct);
+                        if ($bpct >= 100)      { $bclass = 'progress-bar-success'; }
+                        elseif ($bpct >= 75)   { $bclass = 'progress-bar-primary'; }
+                        elseif ($bpct >= 50)   { $bclass = 'progress-bar-warning'; }
+                        else                   { $bclass = 'progress-bar-danger'; }
+                    @endphp
+                    <div class="col-md-4">
+                        <div style="padding:12px 14px; background:#f8fafc; border:1px solid #e5e7eb; border-radius:6px; margin-bottom:10px;">
+                            <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px;">
+                                <strong style="font-size:14px;">{{ $b['label'] }}</strong>
+                                <span style="font-size:12px; color:#64748b;">{{ number_format($bpct, 0) }}%</span>
+                            </div>
+                            <div class="progress" style="margin-bottom:6px; height:16px;" title="${{ number_format($b['revenue'], 0) }} of ${{ number_format($b['target'], 0) }} {{ $target_period_label }}">
+                                <div class="progress-bar {{ $bclass }}" role="progressbar" style="width: {{ $bw }}%;" aria-valuenow="{{ $bw }}" aria-valuemin="0" aria-valuemax="100"></div>
+                            </div>
+                            <div style="font-size:12px; color:#475569;">
+                                <strong>${{ number_format($b['revenue'], 0) }}</strong> of ${{ number_format($b['target'], 0) }}
+                            </div>
+                            @if(!empty($b['channels']))
+                                <div style="font-size:11px; color:#94a3b8; margin-top:4px;">
+                                    {{ implode(' + ', $b['channels']) }}
+                                </div>
+                            @endif
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+        </div>
+    </div>
+
+    <div class="box box-solid">
+        <div class="box-header with-border">
             <h3 class="box-title">Breakdown</h3>
         </div>
         <div class="box-body table-responsive">
@@ -118,7 +157,6 @@
                     <tr>
                         <th>Channel</th>
                         <th class="text-right">Revenue</th>
-                        <th>Progress <small class="text-muted">({{ $target_period_label }})</small></th>
                         <th class="text-right">Share</th>
                         <th class="text-right">Transactions</th>
                         <th class="text-right">Gross Profit</th>
@@ -134,36 +172,6 @@
                                 <strong>{{ $r['label'] }}</strong>
                             </td>
                             <td class="text-right">${{ number_format($r['revenue'], 2) }}</td>
-                            <td style="min-width:180px;">
-                                @php
-                                    $is_rollup = isset($r['target_store']) && $r['label'] !== $r['target_store'];
-                                @endphp
-                                @if($is_rollup)
-                                    <small class="text-muted"><em>rolled into {{ $r['target_store'] }}</em></small>
-                                @elseif(!is_null($r['target_pct']))
-                                    @php
-                                        $pct = max(0, $r['target_pct']);
-                                        $bar_w = min(100, $pct);
-                                        if ($pct >= 100)      { $bar_class = 'progress-bar-success'; }
-                                        elseif ($pct >= 75)   { $bar_class = 'progress-bar-primary'; }
-                                        elseif ($pct >= 50)   { $bar_class = 'progress-bar-warning'; }
-                                        else                  { $bar_class = 'progress-bar-danger'; }
-                                        $combined = isset($r['target_revenue']) ? (float) $r['target_revenue'] : (float) $r['revenue'];
-                                        $has_rollup_revenue = $combined > (float) $r['revenue'] + 0.01;
-                                    @endphp
-                                    <div class="progress" style="margin-bottom:4px; height:14px;" title="${{ number_format($combined, 0) }} of ${{ number_format($r['target'], 0) }} {{ $target_period_label }}{{ $has_rollup_revenue ? ' (incl. Whatnot)' : '' }}">
-                                        <div class="progress-bar {{ $bar_class }}" role="progressbar" style="width: {{ $bar_w }}%;" aria-valuenow="{{ $bar_w }}" aria-valuemin="0" aria-valuemax="100"></div>
-                                    </div>
-                                    <small class="text-muted">
-                                        {{ number_format($pct, 0) }}% of ${{ number_format($r['target'], 0) }}
-                                        @if($has_rollup_revenue)
-                                            <em>· incl. Whatnot</em>
-                                        @endif
-                                    </small>
-                                @else
-                                    <span class="text-muted">—</span>
-                                @endif
-                            </td>
                             <td class="text-right">{{ number_format($r['share_pct'], 1) }}%</td>
                             <td class="text-right">{{ (int)$r['cnt'] }}</td>
                             @if(!empty($r['cost_unknown']))
@@ -177,7 +185,7 @@
                             <td class="text-right text-muted">—</td>
                         </tr>
                     @empty
-                        <tr><td colspan="9" class="text-center text-muted">No sales in this period.</td></tr>
+                        <tr><td colspan="8" class="text-center text-muted">No sales in this period.</td></tr>
                     @endforelse
                 </tbody>
                 @if(!empty($rows))
@@ -185,24 +193,6 @@
                         <tr style="font-weight:700; background:#f8fafc;">
                             <td>TOTAL</td>
                             <td class="text-right">${{ number_format($totals['revenue'], 2) }}</td>
-                            <td style="min-width:180px;">
-                                @if(!is_null($totals['target_pct']))
-                                    @php
-                                        $tpct = max(0, $totals['target_pct']);
-                                        $tbar_w = min(100, $tpct);
-                                        if ($tpct >= 100)     { $tbar_class = 'progress-bar-success'; }
-                                        elseif ($tpct >= 75)  { $tbar_class = 'progress-bar-primary'; }
-                                        elseif ($tpct >= 50)  { $tbar_class = 'progress-bar-warning'; }
-                                        else                  { $tbar_class = 'progress-bar-danger'; }
-                                    @endphp
-                                    <div class="progress" style="margin-bottom:4px; height:14px;" title="${{ number_format($totals['revenue'], 0) }} of ${{ number_format($totals['target'], 0) }} {{ $totals['target_period_label'] }}">
-                                        <div class="progress-bar {{ $tbar_class }}" role="progressbar" style="width: {{ $tbar_w }}%;" aria-valuenow="{{ $tbar_w }}" aria-valuemin="0" aria-valuemax="100"></div>
-                                    </div>
-                                    <small class="text-muted">{{ number_format($tpct, 0) }}% of ${{ number_format($totals['target'], 0) }}</small>
-                                @else
-                                    <span class="text-muted">—</span>
-                                @endif
-                            </td>
                             <td class="text-right">100.0%</td>
                             <td class="text-right">{{ (int)$totals['cnt'] }}</td>
                             <td class="text-right">${{ number_format($totals['gross_profit'], 2) }}</td>

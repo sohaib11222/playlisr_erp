@@ -6195,54 +6195,49 @@ class ReportController extends Controller
         // in for ranges ≤ 10 days, monthly otherwise — so the "this month"
         // default and a "last 7 days" filter both make sense without
         // needing a separate period switcher.
-        // Targets are per-STORE, not per-channel: Whatnot - Pico revenue
-        // rolls into Pico's target, Whatnot Hollywood into Hollywood's
-        // (Sarah 2026-05-18). Discogs stands alone since it isn't tied to
-        // a store.
-        $store_targets = [
+        // Bucket targets — three groups (HW Store, Pico Store, Online).
+        // Whatnot Hollywood rolls into HW, Whatnot - Pico into Pico, and
+        // every other non-store channel (Discogs, eBay, web ship/pickup,
+        // space rentals) lands in Online (Sarah 2026-05-18).
+        $bucket_targets = [
             'hollywood' => ['label' => 'Hollywood Store', 'weekly' => 14000, 'monthly' => 60000],
             'pico'      => ['label' => 'Pico Store',      'weekly' => 6400,  'monthly' => 27500],
-            'discogs'   => ['label' => 'Discogs',         'weekly' => 2200,  'monthly' => 9500],
+            'online'    => ['label' => 'Online',          'weekly' => 2200,  'monthly' => 9500],
         ];
-        $row_to_store = function ($row) {
+        $row_to_bucket = function ($row) {
             $label_lower = strtolower($row['label']);
             if (strpos($label_lower, 'hollywood') !== false) return 'hollywood';
             if (strpos($label_lower, 'pico') !== false)      return 'pico';
-            if ($row['channel'] === 'discogs')               return 'discogs';
+            // Everything else that isn't a physical store is "Online".
+            if (!in_array($row['channel'], ['in_store', 'whatnot'], true)) return 'online';
             return null;
         };
         $days_in_range = \Carbon::parse($start_date)->diffInDays(\Carbon::parse($end_date)) + 1;
         $target_period = $days_in_range <= 10 ? 'weekly' : 'monthly';
         $target_period_label = $target_period === 'weekly' ? 'weekly target' : 'monthly target';
 
-        // Combined revenue per store group (Pico Store + Whatnot - Pico, etc.).
-        $store_revenue = ['hollywood' => 0.0, 'pico' => 0.0, 'discogs' => 0.0];
+        $buckets = [];
+        foreach ($bucket_targets as $key => $cfg) {
+            $buckets[$key] = [
+                'key'      => $key,
+                'label'    => $cfg['label'],
+                'target'   => $cfg[$target_period],
+                'revenue'  => 0.0,
+                'channels' => [],
+            ];
+        }
         foreach ($rows as $row) {
-            $store = $row_to_store($row);
-            if ($store !== null) {
-                $store_revenue[$store] += (float) $row['revenue'];
-            }
+            $b = $row_to_bucket($row);
+            if ($b === null) continue;
+            $buckets[$b]['revenue']    += (float) $row['revenue'];
+            $buckets[$b]['channels'][]  = $row['label'];
         }
-
-        foreach ($rows as &$row) {
-            $store = $row_to_store($row);
-            if ($store === null || !isset($store_targets[$store])) {
-                $row['target']     = null;
-                $row['target_pct'] = null;
-                continue;
-            }
-            $target  = $store_targets[$store][$target_period];
-            $revenue = $store_revenue[$store];
-            $row['target']           = $target;
-            $row['target_pct']       = ($target > 0) ? ($revenue / $target) * 100 : null;
-            $row['target_revenue']   = $revenue; // combined across store's channels
-            $row['target_store']     = $store_targets[$store]['label'];
+        foreach ($buckets as &$b) {
+            $b['target_pct'] = $b['target'] > 0 ? ($b['revenue'] / $b['target']) * 100 : null;
         }
-        unset($row);
+        unset($b);
 
-        $total_target = array_sum(array_map(function ($t) use ($target_period) {
-            return $t[$target_period];
-        }, $store_targets));
+        $total_target = array_sum(array_column($buckets, 'target'));
         $totals['target']     = $total_target;
         $totals['target_pct'] = $total_target > 0 ? ($overall_revenue / $total_target) * 100 : null;
         $totals['target_period_label'] = $target_period_label;
@@ -6283,7 +6278,7 @@ class ReportController extends Controller
         $diagnostics = $this->channelDiagnostics ?? [];
 
         return view('report.sales_by_channel')->with(compact(
-            'rows', 'totals', 'start_date', 'end_date', 'business_locations', 'diagnostics', 'target_period_label'
+            'rows', 'totals', 'start_date', 'end_date', 'business_locations', 'diagnostics', 'target_period_label', 'buckets'
         ));
     }
 
