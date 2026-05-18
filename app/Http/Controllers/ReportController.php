@@ -6191,6 +6191,31 @@ class ReportController extends Controller
         $totals['gross_margin'] = $known_gp_revenue > 0
             ? ($totals['gross_profit'] / $known_gp_revenue) * 100 : 0;
 
+        // Sales targets per channel (Sarah 2026-05-18). Weekly target kicks
+        // in for ranges ≤ 10 days, monthly otherwise — so the "this month"
+        // default and a "last 7 days" filter both make sense without
+        // needing a separate period switcher.
+        $channel_targets = [
+            'Hollywood Store' => ['weekly' => 14000,  'monthly' => 60000],
+            'Pico Store'      => ['weekly' => 6400,   'monthly' => 27500],
+            'Discogs'         => ['weekly' => 2200,   'monthly' => 9500],
+        ];
+        $days_in_range = \Carbon::parse($start_date)->diffInDays(\Carbon::parse($end_date)) + 1;
+        $target_period = $days_in_range <= 10 ? 'weekly' : 'monthly';
+        $target_period_label = $target_period === 'weekly' ? 'weekly target' : 'monthly target';
+        foreach ($rows as &$row) {
+            $target = $channel_targets[$row['label']][$target_period] ?? null;
+            $row['target']     = $target;
+            $row['target_pct'] = ($target && $target > 0) ? ($row['revenue'] / $target) * 100 : null;
+        }
+        unset($row);
+        $total_target = array_sum(array_map(function ($t) use ($target_period) {
+            return $t[$target_period];
+        }, $channel_targets));
+        $totals['target']     = $total_target;
+        $totals['target_pct'] = $total_target > 0 ? ($overall_revenue / $total_target) * 100 : null;
+        $totals['target_period_label'] = $target_period_label;
+
         // CSV export — same data, no view chrome.
         if ($request->input('export') === 'csv') {
             $filename = 'sales-by-channel_' . $start_date . '_to_' . $end_date . '.csv';
@@ -6227,7 +6252,7 @@ class ReportController extends Controller
         $diagnostics = $this->channelDiagnostics ?? [];
 
         return view('report.sales_by_channel')->with(compact(
-            'rows', 'totals', 'start_date', 'end_date', 'business_locations', 'diagnostics'
+            'rows', 'totals', 'start_date', 'end_date', 'business_locations', 'diagnostics', 'target_period_label'
         ));
     }
 
