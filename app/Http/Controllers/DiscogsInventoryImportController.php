@@ -43,10 +43,30 @@ class DiscogsInventoryImportController extends Controller
             ->orderBy('name')
             ->get();
 
+        // Live counts so Sarah can see how complete the import is without
+        // grepping logs. DG-{listing_id} sub_sku is unique per Discogs
+        // listing across every snapshot run.
+        $importedCount = DB::table('variations')
+            ->join('products', 'products.id', '=', 'variations.product_id')
+            ->where('products.business_id', $business_id)
+            ->where('variations.sub_sku', 'like', 'DG-%')
+            ->count();
+
+        $byLocation = DB::table('product_locations')
+            ->join('products', 'products.id', '=', 'product_locations.product_id')
+            ->join('business_locations', 'business_locations.id', '=', 'product_locations.location_id')
+            ->where('products.business_id', $business_id)
+            ->where('products.added_via', 'discogs_inventory_import')
+            ->select('business_locations.name', DB::raw('COUNT(*) as cnt'))
+            ->groupBy('business_locations.name')
+            ->get();
+
         return view('admin.discogs_inventory_import', [
             'snapshots' => $snapshots,
             'locations' => $locations,
             'default_location_name' => self::DEFAULT_LOCATION_NAME,
+            'imported_count' => $importedCount,
+            'by_location' => $byLocation,
         ]);
     }
 

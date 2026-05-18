@@ -5,6 +5,15 @@
 <section class="content-header">
     <h1>Discogs Inventory Import</h1>
     <p class="text-muted">Bulk-pull "For Sale" listings from Discogs and create one ERP product per listing in a dedicated location. Rate-limited paging happens in the browser — leave the tab open until it finishes.</p>
+    <div class="callout callout-info" style="margin-top:8px;">
+        <strong>Currently imported:</strong> {{ number_format($imported_count) }} Discogs listings
+        @if(count($by_location))
+            ·
+            @foreach($by_location as $row)
+                {{ $row->name }}: {{ number_format($row->cnt) }}@if(!$loop->last), @endif
+            @endforeach
+        @endif
+    </div>
 </section>
 
 <section class="content">
