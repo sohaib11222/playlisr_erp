@@ -45,10 +45,12 @@ class DiscogsInventoryImportController extends Controller
 
         // Live counts so Sarah can see how complete the import is without
         // grepping logs. DG-{listing_id} sub_sku is unique per Discogs
-        // listing across every snapshot run.
+        // listing across every snapshot run. Soft-deleted products are
+        // excluded so the cleanup action immediately reflects in the count.
         $importedCount = DB::table('variations')
             ->join('products', 'products.id', '=', 'variations.product_id')
             ->where('products.business_id', $business_id)
+            ->whereNull('products.deleted_at')
             ->where('variations.sub_sku', 'like', 'DG-%')
             ->count();
 
@@ -56,10 +58,25 @@ class DiscogsInventoryImportController extends Controller
             ->join('products', 'products.id', '=', 'product_locations.product_id')
             ->join('business_locations', 'business_locations.id', '=', 'product_locations.location_id')
             ->where('products.business_id', $business_id)
+            ->whereNull('products.deleted_at')
             ->where('products.added_via', 'discogs_inventory_import')
             ->select('business_locations.name', DB::raw('COUNT(*) as cnt'))
             ->groupBy('business_locations.name')
             ->get();
+
+        // How many DG-{id} sub_skus appear more than once → concurrent-
+        // apply dupes from before the listing_id dedup fix landed.
+        $dupeReport = DB::table('variations')
+            ->join('products', 'products.id', '=', 'variations.product_id')
+            ->where('products.business_id', $business_id)
+            ->whereNull('products.deleted_at')
+            ->where('variations.sub_sku', 'like', 'DG-%')
+            ->select('variations.sub_sku', DB::raw('COUNT(*) as cnt'))
+            ->groupBy('variations.sub_sku')
+            ->havingRaw('COUNT(*) > 1')
+            ->get();
+        $dupeSubSkus = $dupeReport->count();
+        $extraRows = $dupeReport->sum(function ($r) { return $r->cnt - 1; });
 
         return view('admin.discogs_inventory_import', [
             'snapshots' => $snapshots,
@@ -67,6 +84,87 @@ class DiscogsInventoryImportController extends Controller
             'default_location_name' => self::DEFAULT_LOCATION_NAME,
             'imported_count' => $importedCount,
             'by_location' => $byLocation,
+            'dupe_sub_skus' => $dupeSubSkus,
+            'extra_rows' => $extraRows,
+        ]);
+    }
+
+    /**
+     * Soft-delete duplicate DG-{listing_id} products created by overlapping
+     * apply runs (concurrent snapshots before the listing_id dedup fix
+     * landed). Keeps the OLDEST variation per sub_sku, snapshots the
+     * deleted set, and only marks the parent product as deleted — leaves
+     * variations / pivot rows intact so an undo just clears deleted_at.
+     */
+    public function cleanupDuplicates(Request $request)
+    {
+        $business_id = (int) $request->session()->get('user.business_id');
+        $confirm = filter_var($request->input('confirm', false), FILTER_VALIDATE_BOOLEAN);
+
+        @set_time_limit(0);
+        @ini_set('memory_limit', '512M');
+
+        // For each duplicate sub_sku, list every variation EXCEPT the
+        // oldest one. The corresponding product_ids are what we'll soft-
+        // delete.
+        $rowsToDelete = DB::select(
+            "SELECT v.id AS variation_id, v.product_id, v.sub_sku
+             FROM variations v
+             JOIN products p ON p.id = v.product_id
+             WHERE p.business_id = ?
+               AND p.deleted_at IS NULL
+               AND v.sub_sku LIKE 'DG-%'
+               AND v.id > (
+                   SELECT MIN(v2.id)
+                   FROM variations v2
+                   JOIN products p2 ON p2.id = v2.product_id
+                   WHERE p2.business_id = ?
+                     AND p2.deleted_at IS NULL
+                     AND v2.sub_sku = v.sub_sku
+               )",
+            [$business_id, $business_id]
+        );
+
+        $productIds = array_values(array_unique(array_map(function ($r) {
+            return (int) $r->product_id;
+        }, $rowsToDelete)));
+        $count = count($productIds);
+
+        if (!$confirm) {
+            return response()->json([
+                'ok' => true,
+                'preview' => true,
+                'product_ids_to_delete' => $count,
+                'sample' => array_slice($rowsToDelete, 0, 10),
+            ]);
+        }
+
+        // Snapshot before mutation (per the never-wipe-without-snapshot rule).
+        $snapDir = storage_path('app/admin-snapshots');
+        if (!is_dir($snapDir)) {
+            @mkdir($snapDir, 0775, true);
+        }
+        $snapPath = $snapDir . '/' . date('Ymd_His') . '_discogs_dedup_cleanup.json';
+        @file_put_contents($snapPath, json_encode([
+            'business_id' => $business_id,
+            'at' => date('c'),
+            'rows' => $rowsToDelete,
+        ]));
+
+        // Soft-delete in chunks so a huge IN clause doesn't strain MySQL.
+        $now = now();
+        $deleted = 0;
+        foreach (array_chunk($productIds, 1000) as $chunk) {
+            $deleted += DB::table('products')
+                ->whereIn('id', $chunk)
+                ->update(['deleted_at' => $now]);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'preview' => false,
+            'deleted' => $deleted,
+            'snapshot' => str_replace(storage_path('app') . '/', '', $snapPath),
         ]);
     }
 

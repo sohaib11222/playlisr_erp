@@ -14,6 +14,17 @@
             @endforeach
         @endif
     </div>
+    @if($extra_rows > 0)
+    <div class="callout callout-warning" style="margin-top:8px;">
+        <strong>{{ number_format($extra_rows) }} duplicate products found</strong>
+        ({{ number_format($dupe_sub_skus) }} unique listing_ids with more than one ERP row — from concurrent apply runs before the listing_id dedup fix).
+        <div style="margin-top:8px;">
+            <button id="dii-dedup-preview" class="btn btn-default btn-sm">Preview cleanup</button>
+            <button id="dii-dedup-apply" class="btn btn-danger btn-sm">Soft-delete duplicates</button>
+            <span id="dii-dedup-status" style="margin-left:10px;"></span>
+        </div>
+    </div>
+    @endif
 </section>
 
 <section class="content">
@@ -249,6 +260,27 @@
     }
 
     document.getElementById('dii-resume').addEventListener('click', resumeFromServer);
+
+    const dedupPreviewBtn = document.getElementById('dii-dedup-preview');
+    const dedupApplyBtn = document.getElementById('dii-dedup-apply');
+    const dedupStatus = document.getElementById('dii-dedup-status');
+    if (dedupPreviewBtn) {
+        dedupPreviewBtn.addEventListener('click', async () => {
+            dedupStatus.textContent = 'scanning…';
+            const r = await postJson('/admin/discogs-import-inventory/cleanup-duplicates', { confirm: false });
+            if (!r.body.ok) { dedupStatus.textContent = 'error: ' + (r.body.error || r.status); return; }
+            dedupStatus.textContent = 'Would soft-delete ' + r.body.product_ids_to_delete.toLocaleString() + ' products.';
+        });
+    }
+    if (dedupApplyBtn) {
+        dedupApplyBtn.addEventListener('click', async () => {
+            if (!confirm('Soft-delete duplicate Discogs products? Snapshot will be written to storage/app/admin-snapshots first.')) return;
+            dedupStatus.textContent = 'deleting…';
+            const r = await postJson('/admin/discogs-import-inventory/cleanup-duplicates', { confirm: true });
+            if (!r.body.ok) { dedupStatus.textContent = 'error: ' + (r.body.error || r.status); return; }
+            dedupStatus.textContent = '✓ Deleted ' + r.body.deleted.toLocaleString() + '. Snapshot: ' + r.body.snapshot + '. Reload the page to refresh counts.';
+        });
+    }
 
     document.querySelectorAll('.dii-resume-btn').forEach(btn => {
         btn.addEventListener('click', () => {
