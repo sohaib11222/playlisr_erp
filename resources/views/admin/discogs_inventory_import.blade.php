@@ -20,11 +20,22 @@
         ({{ number_format($dupe_sub_skus) }} unique listing_ids with more than one ERP row — from concurrent apply runs before the listing_id dedup fix).
         <div style="margin-top:8px;">
             <button id="dii-dedup-preview" class="btn btn-default btn-sm">Preview cleanup</button>
-            <button id="dii-dedup-apply" class="btn btn-danger btn-sm">Soft-delete duplicates</button>
+            <button id="dii-dedup-apply" class="btn btn-danger btn-sm">Delete duplicates</button>
             <span id="dii-dedup-status" style="margin-left:10px;"></span>
         </div>
     </div>
     @endif
+
+    <div class="callout callout-success" style="margin-top:8px;">
+        <strong>Reconcile against current Discogs inventory CSV</strong>
+        — upload your latest Discogs "Export Inventory" CSV; any ERP DG-{listing_id} product whose listing_id is not in the CSV gets deleted.
+        <div style="margin-top:8px;">
+            <input type="file" id="dii-reconcile-file" accept=".csv" style="display:inline-block;" />
+            <button id="dii-reconcile-preview" class="btn btn-default btn-sm">Preview delta</button>
+            <button id="dii-reconcile-apply" class="btn btn-danger btn-sm">Delete orphans</button>
+            <span id="dii-reconcile-status" style="margin-left:10px;"></span>
+        </div>
+    </div>
 </section>
 
 <section class="content">
@@ -269,7 +280,7 @@
             dedupStatus.textContent = 'scanning…';
             const r = await postJson('/admin/discogs-import-inventory/cleanup-duplicates', { confirm: false });
             if (!r.body.ok) { dedupStatus.textContent = 'error: ' + (r.body.error || r.status); return; }
-            dedupStatus.textContent = 'Would soft-delete ' + r.body.product_ids_to_delete.toLocaleString() + ' products.';
+            dedupStatus.textContent = 'Would delete ' + r.body.product_ids_to_delete.toLocaleString() + ' products.';
         });
     }
     if (dedupApplyBtn) {
@@ -281,6 +292,43 @@
             dedupStatus.textContent = '✓ Deleted ' + r.body.deleted.toLocaleString() + '. Snapshot: ' + r.body.snapshot + '. Reload the page to refresh counts.';
         });
     }
+
+    const reconcileFile = document.getElementById('dii-reconcile-file');
+    const reconcilePreviewBtn = document.getElementById('dii-reconcile-preview');
+    const reconcileApplyBtn = document.getElementById('dii-reconcile-apply');
+    const reconcileStatus = document.getElementById('dii-reconcile-status');
+
+    async function runReconcile(confirm) {
+        if (!reconcileFile.files || !reconcileFile.files[0]) {
+            alert('Pick a CSV first.');
+            return;
+        }
+        const fd = new FormData();
+        fd.append('csv', reconcileFile.files[0]);
+        fd.append('confirm', confirm ? '1' : '0');
+        reconcileStatus.textContent = confirm ? 'deleting…' : 'analyzing…';
+        const resp = await fetch('/admin/discogs-import-inventory/reconcile-csv', {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' },
+            body: fd,
+        });
+        const j = await resp.json().catch(() => ({ok:false, error: 'Bad JSON ' + resp.status}));
+        if (!j.ok) { reconcileStatus.textContent = 'error: ' + (j.error || resp.status); return; }
+        if (j.preview) {
+            reconcileStatus.innerHTML = 'CSV listings: ' + j.csv_listings.toLocaleString()
+                + ' · ERP listings: ' + j.erp_listings.toLocaleString()
+                + ' · <strong>Would delete: ' + j.to_delete.toLocaleString() + '</strong>'
+                + ' · Missing from ERP (need import): ' + j.missing_from_erp.toLocaleString();
+        } else {
+            reconcileStatus.innerHTML = '✓ Deleted ' + j.deleted.toLocaleString() + ' orphan products. Snapshot: ' + j.snapshot + '. Reload to refresh counts.';
+        }
+    }
+
+    if (reconcilePreviewBtn) reconcilePreviewBtn.addEventListener('click', () => runReconcile(false));
+    if (reconcileApplyBtn) reconcileApplyBtn.addEventListener('click', () => {
+        if (!confirm('Delete ERP products whose Discogs listing_id is not in the CSV? Snapshot saved first.')) return;
+        runReconcile(true);
+    });
 
     document.querySelectorAll('.dii-resume-btn').forEach(btn => {
         btn.addEventListener('click', () => {

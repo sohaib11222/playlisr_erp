@@ -50,16 +50,14 @@ class DiscogsInventoryImportController extends Controller
         $importedCount = DB::table('variations')
             ->join('products', 'products.id', '=', 'variations.product_id')
             ->where('products.business_id', $business_id)
-            ->whereNull('products.deleted_at')
-            ->where('variations.sub_sku', 'like', 'DG-%')
+->where('variations.sub_sku', 'like', 'DG-%')
             ->count();
 
         $byLocation = DB::table('product_locations')
             ->join('products', 'products.id', '=', 'product_locations.product_id')
             ->join('business_locations', 'business_locations.id', '=', 'product_locations.location_id')
             ->where('products.business_id', $business_id)
-            ->whereNull('products.deleted_at')
-            ->where('products.added_via', 'discogs_inventory_import')
+->where('products.added_via', 'discogs_inventory_import')
             ->select('business_locations.name', DB::raw('COUNT(*) as cnt'))
             ->groupBy('business_locations.name')
             ->get();
@@ -69,8 +67,7 @@ class DiscogsInventoryImportController extends Controller
         $dupeReport = DB::table('variations')
             ->join('products', 'products.id', '=', 'variations.product_id')
             ->where('products.business_id', $business_id)
-            ->whereNull('products.deleted_at')
-            ->where('variations.sub_sku', 'like', 'DG-%')
+->where('variations.sub_sku', 'like', 'DG-%')
             ->select('variations.sub_sku', DB::raw('COUNT(*) as cnt'))
             ->groupBy('variations.sub_sku')
             ->havingRaw('COUNT(*) > 1')
@@ -90,11 +87,146 @@ class DiscogsInventoryImportController extends Controller
     }
 
     /**
-     * Soft-delete duplicate DG-{listing_id} products created by overlapping
+     * Reconcile ERP against an uploaded Discogs inventory CSV (Sarah's
+     * direct export from the Discogs seller dashboard). Any ERP product
+     * with sub_sku DG-{listing_id} whose listing_id is NOT in the CSV
+     * gets deleted (it's no longer for sale on Discogs).
+     *
+     * Two-phase: dry-run by default, deletes only when confirm=true.
+     * Snapshots the deletion set first.
+     */
+    public function reconcileCsv(Request $request)
+    {
+        $business_id = (int) $request->session()->get('user.business_id');
+        $confirm = filter_var($request->input('confirm', false), FILTER_VALIDATE_BOOLEAN);
+
+        if (!$request->hasFile('csv')) {
+            return response()->json(['ok' => false, 'error' => 'CSV file required (field name: csv)'], 422);
+        }
+
+        @set_time_limit(0);
+        @ini_set('memory_limit', '512M');
+
+        $file = $request->file('csv');
+        $path = $file->getRealPath();
+        $fh = fopen($path, 'rb');
+        if (!$fh) {
+            return response()->json(['ok' => false, 'error' => 'Could not open CSV'], 500);
+        }
+
+        // Pick the column that holds the Discogs listing id. Discogs
+        // export uses "listing_id" but defensively match other variants.
+        $header = fgetcsv($fh);
+        if (!$header) {
+            fclose($fh);
+            return response()->json(['ok' => false, 'error' => 'Empty CSV'], 422);
+        }
+        $listingCol = null;
+        foreach ($header as $i => $col) {
+            $c = mb_strtolower(trim((string) $col));
+            if ($c === 'listing_id' || $c === 'discogs listing id' || $c === 'id' || $c === 'listingid') {
+                $listingCol = $i;
+                break;
+            }
+        }
+        if ($listingCol === null) {
+            fclose($fh);
+            return response()->json([
+                'ok' => false,
+                'error' => 'CSV has no listing_id column. Header was: ' . implode(', ', $header),
+            ], 422);
+        }
+
+        $csvListingIds = [];
+        while (($row = fgetcsv($fh)) !== false) {
+            $val = isset($row[$listingCol]) ? trim((string) $row[$listingCol]) : '';
+            if ($val === '') continue;
+            $id = (int) $val;
+            if ($id > 0) $csvListingIds[$id] = true;
+        }
+        fclose($fh);
+        $csvCount = count($csvListingIds);
+
+        // Walk every live DG-{id} variation and bucket as keep / delete.
+        $erpListingIds = [];
+        $variationToProduct = [];
+        DB::table('variations')
+            ->join('products', 'products.id', '=', 'variations.product_id')
+            ->where('products.business_id', $business_id)
+->where('variations.sub_sku', 'like', 'DG-%')
+            ->select('variations.id as variation_id', 'variations.product_id', 'variations.sub_sku')
+            ->orderBy('variations.id')
+            ->chunk(5000, function ($rows) use (&$erpListingIds, &$variationToProduct) {
+                foreach ($rows as $r) {
+                    if (preg_match('/^DG-(\d+)$/', (string) $r->sub_sku, $m)) {
+                        $lid = (int) $m[1];
+                        $erpListingIds[$lid][] = (int) $r->product_id;
+                        $variationToProduct[(int) $r->variation_id] = (int) $r->product_id;
+                    }
+                }
+            });
+
+        $productIdsToDelete = [];
+        $missingFromErp = [];
+        foreach ($erpListingIds as $lid => $productIds) {
+            if (!isset($csvListingIds[$lid])) {
+                foreach ($productIds as $pid) {
+                    $productIdsToDelete[] = $pid;
+                }
+            }
+        }
+        foreach ($csvListingIds as $lid => $_) {
+            if (!isset($erpListingIds[$lid])) {
+                $missingFromErp[] = $lid;
+            }
+        }
+        $productIdsToDelete = array_values(array_unique($productIdsToDelete));
+
+        if (!$confirm) {
+            return response()->json([
+                'ok' => true,
+                'preview' => true,
+                'csv_listings' => $csvCount,
+                'erp_listings' => count($erpListingIds),
+                'to_delete' => count($productIdsToDelete),
+                'missing_from_erp' => count($missingFromErp),
+                'sample_missing' => array_slice($missingFromErp, 0, 10),
+            ]);
+        }
+
+        // Snapshot before mutation (Sarah's never-wipe-without-snapshot rule).
+        $snapDir = storage_path('app/admin-snapshots');
+        if (!is_dir($snapDir)) {
+            @mkdir($snapDir, 0775, true);
+        }
+        $snapPath = $snapDir . '/' . date('Ymd_His') . '_discogs_csv_reconcile.json';
+        @file_put_contents($snapPath, json_encode([
+            'business_id' => $business_id,
+            'at' => date('c'),
+            'csv_count' => $csvCount,
+            'erp_count' => count($erpListingIds),
+            'deleted_product_ids' => $productIdsToDelete,
+        ]));
+
+        $deleted = $this->cascadeDeleteProducts($productIdsToDelete);
+
+        return response()->json([
+            'ok' => true,
+            'preview' => false,
+            'csv_listings' => $csvCount,
+            'erp_listings' => count($erpListingIds),
+            'deleted' => $deleted,
+            'missing_from_erp' => count($missingFromErp),
+            'snapshot' => str_replace(storage_path('app') . '/', '', $snapPath),
+        ]);
+    }
+
+    /**
+     * Delete duplicate DG-{listing_id} products created by overlapping
      * apply runs (concurrent snapshots before the listing_id dedup fix
      * landed). Keeps the OLDEST variation per sub_sku, snapshots the
-     * deleted set, and only marks the parent product as deleted — leaves
-     * variations / pivot rows intact so an undo just clears deleted_at.
+     * deleted set first, then cascades through variation_location_details,
+     * variations, product_variations, product_locations, products.
      */
     public function cleanupDuplicates(Request $request)
     {
@@ -112,15 +244,13 @@ class DiscogsInventoryImportController extends Controller
              FROM variations v
              JOIN products p ON p.id = v.product_id
              WHERE p.business_id = ?
-               AND p.deleted_at IS NULL
-               AND v.sub_sku LIKE 'DG-%'
+AND v.sub_sku LIKE 'DG-%'
                AND v.id > (
                    SELECT MIN(v2.id)
                    FROM variations v2
                    JOIN products p2 ON p2.id = v2.product_id
                    WHERE p2.business_id = ?
-                     AND p2.deleted_at IS NULL
-                     AND v2.sub_sku = v.sub_sku
+AND v2.sub_sku = v.sub_sku
                )",
             [$business_id, $business_id]
         );
@@ -151,14 +281,7 @@ class DiscogsInventoryImportController extends Controller
             'rows' => $rowsToDelete,
         ]));
 
-        // Soft-delete in chunks so a huge IN clause doesn't strain MySQL.
-        $now = now();
-        $deleted = 0;
-        foreach (array_chunk($productIds, 1000) as $chunk) {
-            $deleted += DB::table('products')
-                ->whereIn('id', $chunk)
-                ->update(['deleted_at' => $now]);
-        }
+        $deleted = $this->cascadeDeleteProducts($productIds);
 
         return response()->json([
             'ok' => true,
@@ -166,6 +289,51 @@ class DiscogsInventoryImportController extends Controller
             'deleted' => $deleted,
             'snapshot' => str_replace(storage_path('app') . '/', '', $snapPath),
         ]);
+    }
+
+    /**
+     * Hard-delete products + every dependent row in the variation tree.
+     * Used for both duplicate-cleanup and CSV-reconcile flows. Caller
+     * is responsible for writing a snapshot file first.
+     *
+     * Order matters because there are FK constraints:
+     *   variation_location_details → variations → product_variations
+     *   product_locations → products
+     */
+    private function cascadeDeleteProducts(array $productIds): int
+    {
+        if (empty($productIds)) return 0;
+
+        $totalDeleted = 0;
+        foreach (array_chunk($productIds, 1000) as $chunk) {
+            DB::transaction(function () use ($chunk, &$totalDeleted) {
+                // Pull variation IDs for this chunk so we can clean up
+                // their dependent rows before the FK trips.
+                $variationIds = DB::table('variations')
+                    ->whereIn('product_id', $chunk)
+                    ->pluck('id')
+                    ->all();
+
+                if ($variationIds) {
+                    DB::table('variation_location_details')
+                        ->whereIn('variation_id', $variationIds)
+                        ->delete();
+                    DB::table('variations')
+                        ->whereIn('id', $variationIds)
+                        ->delete();
+                }
+                DB::table('product_variations')
+                    ->whereIn('product_id', $chunk)
+                    ->delete();
+                DB::table('product_locations')
+                    ->whereIn('product_id', $chunk)
+                    ->delete();
+                $totalDeleted += DB::table('products')
+                    ->whereIn('id', $chunk)
+                    ->delete();
+            });
+        }
+        return $totalDeleted;
     }
 
     /**
