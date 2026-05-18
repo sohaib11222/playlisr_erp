@@ -26,6 +26,16 @@
     </div>
     @endif
 
+    <div class="callout callout-primary" style="margin-top:8px;">
+        <strong>Show in /products list</strong>
+        — Discogs imports are <code>is_inactive=1</code> so they don't clog POS search. Flip to visible to manage them under /products. POS is unaffected (cashiers have no Discogs Warehouse location permission).
+        <div style="margin-top:8px;">
+            <button id="dii-vis-show" class="btn btn-primary btn-sm">Show in /products</button>
+            <button id="dii-vis-hide" class="btn btn-default btn-sm">Hide again</button>
+            <span id="dii-vis-status" style="margin-left:10px;"></span>
+        </div>
+    </div>
+
     <div class="callout callout-success" style="margin-top:8px;">
         <strong>Reconcile against current Discogs inventory CSV</strong>
         — upload your latest Discogs "Export Inventory" CSV; any ERP DG-{listing_id} product whose listing_id is not in the CSV gets deleted.
@@ -292,6 +302,18 @@
             dedupStatus.textContent = '✓ Deleted ' + r.body.deleted.toLocaleString() + '. Snapshot: ' + r.body.snapshot + '. Reload the page to refresh counts.';
         });
     }
+
+    const visShowBtn = document.getElementById('dii-vis-show');
+    const visHideBtn = document.getElementById('dii-vis-hide');
+    const visStatus = document.getElementById('dii-vis-status');
+    async function toggleVis(show) {
+        visStatus.textContent = '…';
+        const r = await postJson('/admin/discogs-import-inventory/toggle-visibility', { show: show });
+        if (!r.body.ok) { visStatus.textContent = 'error: ' + (r.body.error || r.status); return; }
+        visStatus.textContent = '✓ ' + r.body.updated.toLocaleString() + ' products now ' + r.body.now + '. Visit /products to see them.';
+    }
+    if (visShowBtn) visShowBtn.addEventListener('click', () => toggleVis(true));
+    if (visHideBtn) visHideBtn.addEventListener('click', () => toggleVis(false));
 
     const reconcileFile = document.getElementById('dii-reconcile-file');
     const reconcilePreviewBtn = document.getElementById('dii-reconcile-preview');

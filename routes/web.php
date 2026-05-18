@@ -692,6 +692,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/discogs-import-inventory/dupes/{snapshotId}', 'DiscogsInventoryImportController@downloadDupes');
     Route::post('/admin/discogs-import-inventory/cleanup-duplicates', 'DiscogsInventoryImportController@cleanupDuplicates');
     Route::post('/admin/discogs-import-inventory/reconcile-csv', 'DiscogsInventoryImportController@reconcileCsv');
+    Route::post('/admin/discogs-import-inventory/toggle-visibility', 'DiscogsInventoryImportController@toggleVisibility');
 
     // Flat-rate cost price rules (accountant punch list). Backfills missing
     // default_purchase_price on variations by category. Preview then Apply.

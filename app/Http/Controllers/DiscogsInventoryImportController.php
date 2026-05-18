@@ -87,6 +87,29 @@ class DiscogsInventoryImportController extends Controller
     }
 
     /**
+     * Bulk toggle is_inactive on every Discogs-import product so they
+     * show (or hide) in /products. POS is unaffected because Discogs
+     * Warehouse isn't in any cashier role's location permission set —
+     * the register's product search filters by location join.
+     */
+    public function toggleVisibility(Request $request)
+    {
+        $business_id = (int) $request->session()->get('user.business_id');
+        $show = filter_var($request->input('show', true), FILTER_VALIDATE_BOOLEAN);
+
+        $updated = DB::table('products')
+            ->where('business_id', $business_id)
+            ->where('added_via', 'discogs_inventory_import')
+            ->update(['is_inactive' => $show ? 0 : 1]);
+
+        return response()->json([
+            'ok' => true,
+            'updated' => $updated,
+            'now' => $show ? 'visible' : 'hidden',
+        ]);
+    }
+
+    /**
      * Reconcile ERP against an uploaded Discogs inventory CSV (Sarah's
      * direct export from the Discogs seller dashboard). Any ERP product
      * with sub_sku DG-{listing_id} whose listing_id is NOT in the CSV
