@@ -26,6 +26,16 @@
     </div>
     @endif
 
+    <div class="callout" style="margin-top:8px; background:#fff8e1;">
+        <strong>Set purchase prices (categorize → run cost rules)</strong>
+        — Defaults all uncategorized Discogs products to "Used Vinyl"; smart-detects 7"/45, CDs, cassettes, 8-track, VHS from each product's format line. After running, click <a href="/admin/cost-price-rules" target="_blank">/admin/cost-price-rules</a> → Commit to backfill cost prices.
+        <div style="margin-top:8px;">
+            <button id="dii-cat-preview" class="btn btn-default btn-sm">Preview categorization</button>
+            <button id="dii-cat-apply" class="btn btn-warning btn-sm">Apply categories</button>
+            <span id="dii-cat-status" style="margin-left:10px;"></span>
+        </div>
+    </div>
+
     <div class="callout" style="margin-top:8px; background:#f4ecf7;">
         <strong>POS access for cashier roles</strong>
         — Discogs Warehouse is normally invisible to cashiers at the register. Grant per-role access here so they can ring Discogs items if a customer asks.
@@ -310,6 +320,28 @@
             dedupStatus.textContent = '✓ Deleted ' + r.body.deleted.toLocaleString() + '. Snapshot: ' + r.body.snapshot + '. Reload the page to refresh counts.';
         });
     }
+
+    const catPreviewBtn = document.getElementById('dii-cat-preview');
+    const catApplyBtn = document.getElementById('dii-cat-apply');
+    const catStatus = document.getElementById('dii-cat-status');
+    async function runCat(confirm) {
+        catStatus.textContent = confirm ? 'applying…' : 'analyzing…';
+        const r = await postJson('/admin/discogs-import-inventory/backfill-categories', { confirm: confirm });
+        if (!r.body.ok) { catStatus.textContent = 'error: ' + (r.body.error || r.status); return; }
+        const breakdown = Object.entries(r.body.breakdown || {})
+            .map(([k, v]) => k + ': ' + v.toLocaleString())
+            .join(' · ');
+        if (r.body.preview) {
+            catStatus.innerHTML = 'Would categorize ' + r.body.total.toLocaleString() + ' products → ' + breakdown;
+        } else {
+            catStatus.innerHTML = '✓ Updated ' + r.body.updated.toLocaleString() + '. ' + breakdown + '. ' + r.body.next_step;
+        }
+    }
+    if (catPreviewBtn) catPreviewBtn.addEventListener('click', () => runCat(false));
+    if (catApplyBtn) catApplyBtn.addEventListener('click', () => {
+        if (!confirm('Assign category_id to all uncategorized Discogs products? Snapshot saved first.')) return;
+        runCat(true);
+    });
 
     const rolesListEl = document.getElementById('dii-roles-list');
     async function loadRoles() {

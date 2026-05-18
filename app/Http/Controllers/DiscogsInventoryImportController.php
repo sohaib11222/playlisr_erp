@@ -87,6 +87,161 @@ class DiscogsInventoryImportController extends Controller
     }
 
     /**
+     * Backfill products.category_id on Discogs imports so the existing
+     * /admin/cost-price-rules can apply purchase prices by category.
+     *
+     * Default: Used Vinyl (Sarah confirmed essentially all Discogs is
+     * vinyl). Smart-detects 7"/45, 12"/LP, CD, cassette, 8-track, VHS
+     * from the "Format:" line stored in product_description.
+     */
+    public function backfillCategories(Request $request)
+    {
+        $business_id = (int) $request->session()->get('user.business_id');
+        $confirm = filter_var($request->input('confirm', false), FILTER_VALIDATE_BOOLEAN);
+
+        @set_time_limit(0);
+        @ini_set('memory_limit', '512M');
+
+        // Map detected format → ERP category name (must match what
+        // /admin/cost-price-rules expects). Order matters for fallback.
+        $formatToCategoryName = [
+            '7" / 45 RPM'  => '7", 45 RPM',
+            '8 track'      => '8 track',
+            'CD'           => 'Used CD',
+            'Cassette'     => 'Cassettes',
+            'VHS'          => 'VHS',
+            'LP / Vinyl'   => 'Used Vinyl',
+        ];
+
+        $categoryIdByName = DB::table('categories')
+            ->where('business_id', $business_id)
+            ->where('parent_id', 0)
+            ->whereIn('name', array_values($formatToCategoryName))
+            ->pluck('id', 'name')
+            ->toArray();
+
+        $defaultCategoryId = $categoryIdByName['Used Vinyl'] ?? null;
+        if (!$defaultCategoryId) {
+            return response()->json([
+                'ok' => false,
+                'error' => 'No "Used Vinyl" category in this business — create one first (or rename an existing parent).',
+            ], 422);
+        }
+
+        // Pull every uncategorized Discogs import in chunks.
+        $bucket = [];
+        $perCategory = [];
+        DB::table('products')
+            ->where('business_id', $business_id)
+            ->where('added_via', 'discogs_inventory_import')
+            ->whereNull('category_id')
+            ->select('id', 'product_description')
+            ->orderBy('id')
+            ->chunk(5000, function ($rows) use (&$bucket, &$perCategory, $formatToCategoryName, $categoryIdByName, $defaultCategoryId) {
+                foreach ($rows as $r) {
+                    $key = $this->detectFormatKey((string) $r->product_description);
+                    $name = $formatToCategoryName[$key] ?? 'Used Vinyl';
+                    $cid = $categoryIdByName[$name] ?? $defaultCategoryId;
+                    $bucket[$cid][] = (int) $r->id;
+                    $perCategory[$name] = ($perCategory[$name] ?? 0) + 1;
+                }
+            });
+
+        $total = array_sum($perCategory);
+
+        if (!$confirm) {
+            return response()->json([
+                'ok' => true,
+                'preview' => true,
+                'total' => $total,
+                'breakdown' => $perCategory,
+            ]);
+        }
+
+        // Snapshot pre-update state for undo via /admin/admin-action-history
+        $snapDir = storage_path('app/admin-snapshots');
+        if (!is_dir($snapDir)) {
+            @mkdir($snapDir, 0775, true);
+        }
+        $allIds = [];
+        foreach ($bucket as $ids) {
+            foreach ($ids as $id) $allIds[] = $id;
+        }
+        $beforeRows = [];
+        foreach (array_chunk($allIds, 5000) as $chunk) {
+            $rows = DB::table('products')
+                ->whereIn('id', $chunk)
+                ->select('id', 'category_id', 'sub_category_id')
+                ->get();
+            foreach ($rows as $r) {
+                $beforeRows[] = ['id' => (int) $r->id, 'category_id' => $r->category_id, 'sub_category_id' => $r->sub_category_id];
+            }
+        }
+        $snapPath = $snapDir . '/' . date('Ymd_His') . '_discogs_categorize.json';
+        @file_put_contents($snapPath, json_encode([
+            'business_id' => $business_id,
+            'at' => date('c'),
+            'rows' => $beforeRows,
+        ]));
+
+        $updated = 0;
+        foreach ($bucket as $categoryId => $ids) {
+            foreach (array_chunk($ids, 1000) as $chunk) {
+                $updated += DB::table('products')
+                    ->whereIn('id', $chunk)
+                    ->update([
+                        'category_id' => $categoryId,
+                        'updated_at' => now(),
+                    ]);
+            }
+        }
+
+        return response()->json([
+            'ok' => true,
+            'preview' => false,
+            'updated' => $updated,
+            'breakdown' => $perCategory,
+            'snapshot' => str_replace(storage_path('app') . '/', '', $snapPath),
+            'next_step' => 'Visit /admin/cost-price-rules and click "Commit" — costs will backfill onto these newly-categorized products.',
+        ]);
+    }
+
+    /**
+     * Quick format detector — looks at the "Format: ..." line we wrote
+     * to product_description during import and returns a stable key
+     * matching the formatToCategoryName map.
+     */
+    private function detectFormatKey(string $description): string
+    {
+        $line = '';
+        if (preg_match('/^Format:\s*(.+)$/mi', $description, $m)) {
+            $line = mb_strtolower($m[1]);
+        } else {
+            $line = mb_strtolower($description);
+        }
+
+        if (mb_strpos($line, '8 track') !== false || mb_strpos($line, '8-track') !== false) {
+            return '8 track';
+        }
+        if (mb_strpos($line, 'cassette') !== false) {
+            return 'Cassette';
+        }
+        if (mb_strpos($line, 'vhs') !== false) {
+            return 'VHS';
+        }
+        if (mb_strpos($line, 'cd') !== false && mb_strpos($line, 'vinyl') === false) {
+            // Disambiguate: "CD" must not be the substring of "vinyl" (it isn't)
+            // but skip if vinyl also present — multi-format release.
+            return 'CD';
+        }
+        // 7" detection — also catches "7 inch" or "45 rpm"
+        if (preg_match('/(^|[^0-9])7\s*"|7\s*inch|45\s*rpm/u', $line)) {
+            return '7" / 45 RPM';
+        }
+        return 'LP / Vinyl';
+    }
+
+    /**
      * List all roles for this business with a flag showing whether they
      * currently have permission to see the Discogs Warehouse location at
      * POS (i.e., whether they hold the location.{id} Spatie permission).

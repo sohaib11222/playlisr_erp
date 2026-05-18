@@ -695,6 +695,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/admin/discogs-import-inventory/toggle-visibility', 'DiscogsInventoryImportController@toggleVisibility');
     Route::get('/admin/discogs-import-inventory/roles', 'DiscogsInventoryImportController@rolesForLocation');
     Route::post('/admin/discogs-import-inventory/set-pos-access', 'DiscogsInventoryImportController@setPosAccess');
+    Route::post('/admin/discogs-import-inventory/backfill-categories', 'DiscogsInventoryImportController@backfillCategories');
 
     // Flat-rate cost price rules (accountant punch list). Backfills missing
     // default_purchase_price on variations by category. Preview then Apply.
