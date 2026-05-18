@@ -355,7 +355,20 @@
         
         $(document).ready( function(){
             console.log('Document ready - setting up handlers');
-            
+
+            // Re-init the Store Location select2 with allowClear so users can
+            // return to "All" after picking a specific store. The global
+            // __select2() init in app.js does not pass allowClear.
+            if ($('#location_id').length) {
+                if ($('#location_id').data('select2')) {
+                    $('#location_id').select2('destroy');
+                }
+                $('#location_id').select2({
+                    placeholder: @json(__('lang_v1.all')),
+                    allowClear: true
+                });
+            }
+
             // Check if table exists before initializing
             if ($('#product_table').length === 0) {
                 console.error('Product table not found!');
