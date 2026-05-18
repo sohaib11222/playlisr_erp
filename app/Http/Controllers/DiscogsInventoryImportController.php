@@ -87,12 +87,13 @@ class DiscogsInventoryImportController extends Controller
     }
 
     /**
-     * Backfill products.category_id on Discogs imports so the existing
-     * /admin/cost-price-rules can apply purchase prices by category.
+     * Categorize Discogs imports AND set their variation cost in one
+     * pass. Always re-categorizes DG-* products (since the categorize
+     * heuristic improves over time — e.g., the Sealed Vinyl detection
+     * shipped after the first runs). Cost only updates when the
+     * current variation cost is 0/NULL so manual edits survive.
      *
-     * Default: Used Vinyl (Sarah confirmed essentially all Discogs is
-     * vinyl). Smart-detects 7"/45, 12"/LP, CD, cassette, 8-track, VHS
-     * from the "Format:" line stored in product_description.
+     * Snapshot captures pre-change category_id + cost for undo.
      */
     public function backfillCategories(Request $request)
     {
@@ -102,53 +103,54 @@ class DiscogsInventoryImportController extends Controller
         @set_time_limit(0);
         @ini_set('memory_limit', '512M');
 
-        // Map detected format → ERP category name (must match what
-        // /admin/cost-price-rules expects). Order matters for fallback.
-        // "Sealed Vinyl" path: anything with Media condition "Mint (M)"
-        // on Discogs is treated as sealed/new — Sarah 2026-05-18.
-        $formatToCategoryName = [
-            '7" / 45 RPM'      => '7", 45 RPM',
-            '8 track'          => '8 track',
-            'CD'               => 'Used CD',
-            'Sealed CD'        => 'Sealed CD / CD (Sealed)',
-            'Cassette'         => 'Cassettes',
-            'Sealed Cassette'  => 'Cassettes - Sealed',
-            'VHS'              => 'VHS',
-            'Sealed LP / Vinyl'=> 'Sealed Vinyl',
-            'LP / Vinyl'       => 'Used Vinyl',
+        // Format key → [ERP category name, cost per /admin/cost-price-rules].
+        // Sealed paths trigger when Discogs Media condition = "Mint (M)".
+        $formatRules = [
+            '7" / 45 RPM'       => ['name' => '7", 45 RPM',              'cost' => 0.15],
+            '8 track'           => ['name' => '8 track',                 'cost' => 0.25],
+            'CD'                => ['name' => 'Used CD',                 'cost' => 0.10],
+            'Sealed CD'         => ['name' => 'Sealed CD / CD (Sealed)', 'cost' => 6.00],
+            'Cassette'          => ['name' => 'Cassettes',               'cost' => 0.30],
+            'Sealed Cassette'   => ['name' => 'Cassettes - Sealed',      'cost' => 6.00],
+            'VHS'               => ['name' => 'VHS',                     'cost' => 0.10],
+            'Sealed LP / Vinyl' => ['name' => 'Sealed Vinyl',            'cost' => 17.00],
+            'LP / Vinyl'        => ['name' => 'Used Vinyl',              'cost' => 0.35],
         ];
 
         $categoryIdByName = DB::table('categories')
             ->where('business_id', $business_id)
             ->where('parent_id', 0)
-            ->whereIn('name', array_values($formatToCategoryName))
+            ->whereIn('name', array_column($formatRules, 'name'))
             ->pluck('id', 'name')
             ->toArray();
 
-        $defaultCategoryId = $categoryIdByName['Used Vinyl'] ?? null;
-        if (!$defaultCategoryId) {
+        if (empty($categoryIdByName['Used Vinyl'])) {
             return response()->json([
                 'ok' => false,
                 'error' => 'No "Used Vinyl" category in this business — create one first (or rename an existing parent).',
             ], 422);
         }
 
-        // Pull every uncategorized Discogs import in chunks.
-        $bucket = [];
-        $perCategory = [];
+        // Walk every Discogs import — no NULL category_id filter, so a
+        // re-run will re-evaluate them all (esp. moving Mint (M) rows
+        // out of Used Vinyl into Sealed Vinyl after the detection
+        // upgrade landed).
+        $bucket = [];        // [category_id => [product_id, ...]]
+        $costByCategory = []; // [category_id => cost]
+        $perCategory = [];   // [name => count]
         DB::table('products')
             ->where('business_id', $business_id)
             ->where('added_via', 'discogs_inventory_import')
-            ->whereNull('category_id')
             ->select('id', 'product_description')
             ->orderBy('id')
-            ->chunk(5000, function ($rows) use (&$bucket, &$perCategory, $formatToCategoryName, $categoryIdByName, $defaultCategoryId) {
+            ->chunk(5000, function ($rows) use (&$bucket, &$costByCategory, &$perCategory, $formatRules, $categoryIdByName) {
                 foreach ($rows as $r) {
                     $key = $this->detectFormatKey((string) $r->product_description);
-                    $name = $formatToCategoryName[$key] ?? 'Used Vinyl';
-                    $cid = $categoryIdByName[$name] ?? $defaultCategoryId;
+                    $rule = $formatRules[$key] ?? $formatRules['LP / Vinyl'];
+                    $cid = $categoryIdByName[$rule['name']] ?? $categoryIdByName['Used Vinyl'];
                     $bucket[$cid][] = (int) $r->id;
-                    $perCategory[$name] = ($perCategory[$name] ?? 0) + 1;
+                    $costByCategory[$cid] = (float) $rule['cost'];
+                    $perCategory[$rule['name']] = ($perCategory[$rule['name']] ?? 0) + 1;
                 }
             });
 
@@ -163,7 +165,6 @@ class DiscogsInventoryImportController extends Controller
             ]);
         }
 
-        // Snapshot pre-update state for undo via /admin/admin-action-history
         $snapDir = storage_path('app/admin-snapshots');
         if (!is_dir($snapDir)) {
             @mkdir($snapDir, 0775, true);
@@ -172,14 +173,21 @@ class DiscogsInventoryImportController extends Controller
         foreach ($bucket as $ids) {
             foreach ($ids as $id) $allIds[] = $id;
         }
-        $beforeRows = [];
+        $beforeRows = ['products' => [], 'variations' => []];
         foreach (array_chunk($allIds, 5000) as $chunk) {
             $rows = DB::table('products')
                 ->whereIn('id', $chunk)
                 ->select('id', 'category_id', 'sub_category_id')
                 ->get();
             foreach ($rows as $r) {
-                $beforeRows[] = ['id' => (int) $r->id, 'category_id' => $r->category_id, 'sub_category_id' => $r->sub_category_id];
+                $beforeRows['products'][] = ['id' => (int) $r->id, 'category_id' => $r->category_id, 'sub_category_id' => $r->sub_category_id];
+            }
+            $vrows = DB::table('variations')
+                ->whereIn('product_id', $chunk)
+                ->select('id', 'product_id', 'default_purchase_price', 'dpp_inc_tax')
+                ->get();
+            foreach ($vrows as $vr) {
+                $beforeRows['variations'][] = ['id' => (int) $vr->id, 'product_id' => (int) $vr->product_id, 'default_purchase_price' => $vr->default_purchase_price, 'dpp_inc_tax' => $vr->dpp_inc_tax];
             }
         }
         $snapPath = $snapDir . '/' . date('Ymd_His') . '_discogs_categorize.json';
@@ -189,13 +197,28 @@ class DiscogsInventoryImportController extends Controller
             'rows' => $beforeRows,
         ]));
 
-        $updated = 0;
+        $productsUpdated = 0;
+        $variationsUpdated = 0;
         foreach ($bucket as $categoryId => $ids) {
+            $cost = $costByCategory[$categoryId];
             foreach (array_chunk($ids, 1000) as $chunk) {
-                $updated += DB::table('products')
+                $productsUpdated += DB::table('products')
                     ->whereIn('id', $chunk)
                     ->update([
                         'category_id' => $categoryId,
+                        'updated_at' => now(),
+                    ]);
+                // Only stamp cost where it's still the import-time
+                // placeholder (0/NULL). Skipping non-zero rows preserves
+                // any manual cost adjustments Sarah's made later.
+                $variationsUpdated += DB::table('variations')
+                    ->whereIn('product_id', $chunk)
+                    ->where(function ($q) {
+                        $q->whereNull('default_purchase_price')->orWhere('default_purchase_price', 0);
+                    })
+                    ->update([
+                        'default_purchase_price' => $cost,
+                        'dpp_inc_tax' => $cost,
                         'updated_at' => now(),
                     ]);
             }
@@ -204,10 +227,10 @@ class DiscogsInventoryImportController extends Controller
         return response()->json([
             'ok' => true,
             'preview' => false,
-            'updated' => $updated,
+            'products_updated' => $productsUpdated,
+            'variations_updated' => $variationsUpdated,
             'breakdown' => $perCategory,
             'snapshot' => str_replace(storage_path('app') . '/', '', $snapPath),
-            'next_step' => 'Visit /admin/cost-price-rules and click "Commit" — costs will backfill onto these newly-categorized products.',
         ]);
     }
 

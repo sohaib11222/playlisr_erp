@@ -27,11 +27,11 @@
     @endif
 
     <div class="callout" style="margin-top:8px; background:#fff8e1;">
-        <strong>Set purchase prices (categorize → run cost rules)</strong>
-        — Defaults all uncategorized Discogs products to "Used Vinyl"; smart-detects 7"/45, CDs, cassettes, 8-track, VHS from each product's format line. After running, click <a href="/admin/cost-price-rules" target="_blank">/admin/cost-price-rules</a> → Commit to backfill cost prices.
+        <strong>Categorize + set purchase prices</strong>
+        — Re-evaluates every Discogs product's format & Mint(M) condition, assigns the right ERP category (Sealed Vinyl / Used Vinyl / 7"/45 / CD / Cassette / 8-track / VHS), and stamps the matching cost ($17 / $0.35 / $0.15 / etc.) onto its variation. Skips variations with non-zero cost so manual edits survive.
         <div style="margin-top:8px;">
             <button id="dii-cat-preview" class="btn btn-default btn-sm">Preview categorization</button>
-            <button id="dii-cat-apply" class="btn btn-warning btn-sm">Apply categories</button>
+            <button id="dii-cat-apply" class="btn btn-warning btn-sm">Apply categories + costs</button>
             <span id="dii-cat-status" style="margin-left:10px;"></span>
         </div>
     </div>
@@ -334,7 +334,7 @@
         if (r.body.preview) {
             catStatus.innerHTML = 'Would categorize ' + r.body.total.toLocaleString() + ' products → ' + breakdown;
         } else {
-            catStatus.innerHTML = '✓ Updated ' + r.body.updated.toLocaleString() + '. ' + breakdown + '. ' + r.body.next_step;
+            catStatus.innerHTML = '✓ Updated ' + r.body.products_updated.toLocaleString() + ' products + ' + r.body.variations_updated.toLocaleString() + ' variation costs. ' + breakdown;
         }
     }
     if (catPreviewBtn) catPreviewBtn.addEventListener('click', () => runCat(false));
