@@ -1836,8 +1836,60 @@ class ReportController extends Controller
         $suppliers = Contact::suppliersDropdown($business_id);
         $brands = Brands::forDropdown($business_id);
 
+        $permitted_locations = auth()->user()->permitted_locations();
+        $today = \Carbon::now()->format('Y-m-d');
+        $mtd_start = \Carbon::now()->startOfMonth()->format('Y-m-d');
+        $ytd_start = \Carbon::now()->startOfYear()->format('Y-m-d');
+        $summary_mtd = $this->productPurchaseSummaryBuckets($business_id, $mtd_start, $today, $permitted_locations);
+        $summary_ytd = $this->productPurchaseSummaryBuckets($business_id, $ytd_start, $today, $permitted_locations);
+
         return view('report.product_purchase_report')
-            ->with(compact('business_locations', 'suppliers', 'brands'));
+            ->with(compact('business_locations', 'suppliers', 'brands', 'summary_mtd', 'summary_ytd'));
+    }
+
+    /**
+     * Buckets purchase totals into AMS / Alliance / Audio Technica / in-store
+     * buys for the product-purchase-report top summary. Supplier buckets match
+     * by contact name LIKE (same convention as InventoryCheckService). In-store
+     * buys are purchases linked via buy_customer_offers.accepted_purchase_id —
+     * those are buy-from-customer offers (/buy-from-customer) that staff have
+     * accepted.
+     */
+    private function productPurchaseSummaryBuckets($business_id, $start, $end, $permitted_locations)
+    {
+        $baseQuery = function () use ($business_id, $start, $end, $permitted_locations) {
+            $q = DB::table('transactions as t')
+                ->where('t.business_id', $business_id)
+                ->where('t.type', 'purchase')
+                ->whereBetween(DB::raw('date(t.transaction_date)'), [$start, $end]);
+            if ($permitted_locations !== 'all') {
+                $q->whereIn('t.location_id', $permitted_locations);
+            }
+            return $q;
+        };
+
+        $bySupplier = function (array $patterns) use ($baseQuery) {
+            return (float) $baseQuery()
+                ->join('contacts as c', 't.contact_id', '=', 'c.id')
+                ->where(function ($q2) use ($patterns) {
+                    foreach ($patterns as $p) {
+                        $q2->orWhere('c.name', 'like', '%' . $p . '%')
+                           ->orWhere('c.supplier_business_name', 'like', '%' . $p . '%');
+                    }
+                })
+                ->sum('t.final_total');
+        };
+
+        $bfc = (float) $baseQuery()
+            ->join('buy_customer_offers as o', 'o.accepted_purchase_id', '=', 't.id')
+            ->sum('t.final_total');
+
+        return [
+            ['key' => 'ams',      'label' => 'AMS',            'total' => $bySupplier(['AMS', 'All Media Supply'])],
+            ['key' => 'alliance', 'label' => 'Alliance',       'total' => $bySupplier(['Alliance'])],
+            ['key' => 'at',       'label' => 'Audio Technica', 'total' => $bySupplier(['Audio Technica', 'Audio-Technica'])],
+            ['key' => 'bfc',      'label' => 'In-store buys',  'total' => $bfc],
+        ];
     }
 
     /**

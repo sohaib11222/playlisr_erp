@@ -12,6 +12,38 @@
 <section class="content">
     <div class="row">
         <div class="col-md-12">
+            <div class="box box-solid">
+                <div class="box-header with-border">
+                    <h3 class="box-title">Spending by source</h3>
+                </div>
+                <div class="box-body">
+                    <div class="row">
+                        @foreach($summary_mtd as $i => $b)
+                            @php $ytd = $summary_ytd[$i]['total']; @endphp
+                            <div class="col-md-3 col-sm-6">
+                                <div style="padding:12px 14px; background:#f8fafc; border:1px solid #e5e7eb; border-radius:6px; margin-bottom:10px;">
+                                    <div style="font-size:13px; color:#475569; margin-bottom:4px;">
+                                        <strong>{{ $b['label'] }}</strong>
+                                    </div>
+                                    <div style="font-size:20px; font-weight:600; color:#0f172a;">
+                                        ${{ number_format($b['total'], 2) }}
+                                    </div>
+                                    <div style="font-size:11px; color:#94a3b8; margin-top:2px;">
+                                        this month
+                                    </div>
+                                    <div style="border-top:1px dashed #e5e7eb; margin:8px 0;"></div>
+                                    <div style="font-size:14px; color:#334155;">
+                                        ${{ number_format($ytd, 2) }}
+                                    </div>
+                                    <div style="font-size:11px; color:#94a3b8;">
+                                        year-to-date
+                                    </div>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            </div>
             @component('components.filters', ['title' => __('report.filters')])
           {!! Form::open(['url' => action('ReportController@getStockReport'), 'method' => 'get', 'id' => 'product_purchase_report_form' ]) !!}
             <div class="col-md-3">
