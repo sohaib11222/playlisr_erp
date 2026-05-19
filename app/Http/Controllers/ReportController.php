@@ -1843,8 +1843,73 @@ class ReportController extends Controller
         $summary_mtd = $this->productPurchaseSummaryBuckets($business_id, $mtd_start, $today, $permitted_locations);
         $summary_ytd = $this->productPurchaseSummaryBuckets($business_id, $ytd_start, $today, $permitted_locations);
 
+        $current_week_budget = $this->currentWeekPurchaseBudget($today);
+        $current_week_actual = null;
+        if ($current_week_budget) {
+            $current_week_actual = $this->weeklyPurchaseActual(
+                $business_id,
+                $current_week_budget['start'],
+                $current_week_budget['end'],
+                $permitted_locations
+            );
+        }
+
         return view('report.product_purchase_report')
-            ->with(compact('business_locations', 'suppliers', 'brands', 'summary_mtd', 'summary_ytd'));
+            ->with(compact(
+                'business_locations',
+                'suppliers',
+                'brands',
+                'summary_mtd',
+                'summary_ytd',
+                'current_week_budget',
+                'current_week_actual'
+            ));
+    }
+
+    /**
+     * Weekly purchase spending budget from the 13-week cash flow plan
+     * (1st scenario). Past actuals on the spreadsheet are not budgets so
+     * they're not represented here — only the forward-looking 13 weeks.
+     */
+    private function purchaseBudgetSchedule()
+    {
+        return [
+            ['week_no' => 1,  'start' => '2026-05-18', 'end' => '2026-05-24', 'budget' => 10954],
+            ['week_no' => 2,  'start' => '2026-05-25', 'end' => '2026-05-31', 'budget' => 10954],
+            ['week_no' => 3,  'start' => '2026-06-01', 'end' => '2026-06-07', 'budget' => 11238],
+            ['week_no' => 4,  'start' => '2026-06-08', 'end' => '2026-06-14', 'budget' => 11238],
+            ['week_no' => 5,  'start' => '2026-06-15', 'end' => '2026-06-21', 'budget' => 11238],
+            ['week_no' => 6,  'start' => '2026-06-22', 'end' => '2026-06-28', 'budget' => 11238],
+            ['week_no' => 7,  'start' => '2026-06-29', 'end' => '2026-07-05', 'budget' => 10954],
+            ['week_no' => 8,  'start' => '2026-07-06', 'end' => '2026-07-12', 'budget' => 10954],
+            ['week_no' => 9,  'start' => '2026-07-13', 'end' => '2026-07-19', 'budget' => 10954],
+            ['week_no' => 10, 'start' => '2026-07-20', 'end' => '2026-07-26', 'budget' => 10954],
+            ['week_no' => 11, 'start' => '2026-07-27', 'end' => '2026-08-02', 'budget' => 15000],
+            ['week_no' => 12, 'start' => '2026-08-03', 'end' => '2026-08-09', 'budget' => 15000],
+            ['week_no' => 13, 'start' => '2026-08-10', 'end' => '2026-08-16', 'budget' => 15000],
+        ];
+    }
+
+    private function currentWeekPurchaseBudget($today)
+    {
+        foreach ($this->purchaseBudgetSchedule() as $week) {
+            if ($today >= $week['start'] && $today <= $week['end']) {
+                return $week;
+            }
+        }
+        return null;
+    }
+
+    private function weeklyPurchaseActual($business_id, $start, $end, $permitted_locations)
+    {
+        $q = DB::table('transactions as t')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'purchase')
+            ->whereBetween(DB::raw('date(t.transaction_date)'), [$start, $end]);
+        if ($permitted_locations !== 'all') {
+            $q->whereIn('t.location_id', $permitted_locations);
+        }
+        return (float) $q->sum('t.final_total');
     }
 
     /**

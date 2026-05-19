@@ -12,6 +12,45 @@
 <section class="content">
     <div class="row">
         <div class="col-md-12">
+            @if($current_week_budget)
+                @php
+                    $budget = (float) $current_week_budget['budget'];
+                    $actual = (float) $current_week_actual;
+                    $remaining = $budget - $actual;
+                    $pct = $budget > 0 ? ($actual / $budget) * 100 : 0;
+                    $bar_w = min(100, max(0, $pct));
+                    $over = $actual > $budget;
+                    if ($over)            { $bar_class = 'progress-bar-danger';  $status_color = '#b91c1c'; $status_bg = '#fef2f2'; $status_border = '#fecaca'; $status_label = 'Over budget'; }
+                    elseif ($pct >= 90)   { $bar_class = 'progress-bar-warning'; $status_color = '#a16207'; $status_bg = '#fefce8'; $status_border = '#fde68a'; $status_label = 'Near budget'; }
+                    else                  { $bar_class = 'progress-bar-success'; $status_color = '#15803d'; $status_bg = '#f0fdf4'; $status_border = '#bbf7d0'; $status_label = 'Within budget'; }
+                @endphp
+                <div class="box box-solid">
+                    <div class="box-header with-border">
+                        <h3 class="box-title">This week's purchase budget
+                            <small class="text-muted">(Week {{ $current_week_budget['week_no'] }} of 13 · {{ \Carbon::parse($current_week_budget['start'])->format('M j') }}–{{ \Carbon::parse($current_week_budget['end'])->format('M j') }})</small>
+                        </h3>
+                    </div>
+                    <div class="box-body">
+                        <div style="display:flex; flex-wrap:wrap; align-items:center; gap:16px; margin-bottom:10px;">
+                            <span style="display:inline-block; padding:4px 12px; background:{{ $status_bg }}; color:{{ $status_color }}; border:1px solid {{ $status_border }}; border-radius:999px; font-weight:600; font-size:13px;">
+                                {{ $status_label }}
+                            </span>
+                            <span style="font-size:13px; color:#475569;">
+                                <strong style="font-size:18px; color:#0f172a;">${{ number_format($actual, 2) }}</strong>
+                                spent of
+                                <strong>${{ number_format($budget, 2) }}</strong>
+                                ({{ number_format($pct, 0) }}%)
+                            </span>
+                            <span style="font-size:13px; color:{{ $over ? '#b91c1c' : '#475569' }};">
+                                {{ $over ? '$' . number_format(abs($remaining), 2) . ' over' : '$' . number_format($remaining, 2) . ' left' }}
+                            </span>
+                        </div>
+                        <div class="progress" style="height:18px; margin-bottom:0;">
+                            <div class="progress-bar {{ $bar_class }}" role="progressbar" style="width: {{ $bar_w }}%;" aria-valuenow="{{ $bar_w }}" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                    </div>
+                </div>
+            @endif
             <div class="box box-solid">
                 <div class="box-header with-border">
                     <h3 class="box-title">Spending by source</h3>
