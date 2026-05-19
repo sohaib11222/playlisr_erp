@@ -1752,6 +1752,8 @@ class ReportController extends Controller
                     ->join('contacts as c', 't.contact_id', '=', 'c.id')
                     ->join('products as p', 'pv.product_id', '=', 'p.id')
                     ->leftjoin('units as u', 'p.unit_id', '=', 'u.id')
+                    ->leftJoin('categories as cat', 'p.category_id', '=', 'cat.id')
+                    ->leftJoin('categories as subcat', 'p.sub_category_id', '=', 'subcat.id')
                     ->leftJoin('buy_customer_offers as bfc_o', 'bfc_o.accepted_purchase_id', '=', 't.id')
                     ->leftJoin('users as added_by_u', 'added_by_u.id', '=', 't.created_by')
                     ->where('t.business_id', $business_id)
@@ -1774,7 +1776,9 @@ class ReportController extends Controller
                         'u.short_name as unit',
                         DB::raw('((purchase_lines.quantity - purchase_lines.quantity_returned - purchase_lines.quantity_adjusted) * purchase_lines.purchase_price_inc_tax) as subtotal'),
                         DB::raw("TRIM(CONCAT(COALESCE(added_by_u.first_name, ''), ' ', COALESCE(added_by_u.last_name, ''))) as added_by"),
-                        DB::raw('(SELECT GROUP_CONCAT(DISTINCT tp.method ORDER BY tp.method SEPARATOR ",") FROM transaction_payments tp WHERE tp.transaction_id = t.id) as payment_methods')
+                        DB::raw('(SELECT GROUP_CONCAT(DISTINCT tp.method ORDER BY tp.method SEPARATOR ",") FROM transaction_payments tp WHERE tp.transaction_id = t.id) as payment_methods'),
+                        'cat.name as category_name',
+                        'subcat.name as sub_category_name'
                     )
                     ->groupBy('purchase_lines.id');
             if (!empty($variation_id)) {
@@ -1835,6 +1839,14 @@ class ReportController extends Controller
                 ->editColumn('supplier', '@if(!empty($supplier_business_name)) {{$supplier_business_name}},<br>@endif {{$supplier}}')
                 ->addColumn('added_by', function ($row) {
                     return $row->added_by ?: '—';
+                })
+                ->addColumn('category_label', function ($row) {
+                    if (empty($row->category_name) && empty($row->sub_category_name)) {
+                        return '—';
+                    }
+                    $cat = $row->category_name ?: '—';
+                    $sub = $row->sub_category_name ? ' › ' . $row->sub_category_name : '';
+                    return e($cat) . e($sub);
                 })
                 ->addColumn('payment_methods_label', function ($row) {
                     if (empty($row->payment_methods)) {

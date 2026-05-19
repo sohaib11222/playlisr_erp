@@ -797,6 +797,7 @@ $(document).ready(function() {
         columns: [
             { data: 'product_name', name: 'p.name' },
             { data: 'sub_sku', name: 'v.sub_sku' },
+            { data: 'category_label', name: 'cat.name', orderable: false },
             { data: 'supplier', name: 'c.name' },
             { data: 'ref_no', name: 't.ref_no' },
             { data: 'transaction_date', name: 't.transaction_date' },
