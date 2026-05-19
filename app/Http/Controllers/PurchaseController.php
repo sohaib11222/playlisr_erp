@@ -500,6 +500,14 @@ class PurchaseController extends Controller
             $output = ['success' => 1,
                             'msg' => __('purchase.purchase_add_success')
                         ];
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            // Let Laravel render validation errors back to the form. The
+            // generic Exception catch below was previously swallowing these
+            // (silently sending "something went wrong" to /purchases), which
+            // is why $0 line prices appeared to "proceed" — they didn't, but
+            // the user never saw why. (Sarah 2026-05-19)
+            try { DB::rollBack(); } catch (\Throwable $tx) {}
+            throw $e;
         } catch (\Exception $e) {
             DB::rollBack();
             \Log::emergency("File:" . $e->getFile(). "Line:" . $e->getLine(). "Message:" . $e->getMessage());
@@ -882,10 +890,14 @@ class PurchaseController extends Controller
             $output = ['success' => 1,
                             'msg' => __('purchase.purchase_update_success')
                         ];
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            // Let Laravel render validation errors back to the form (Sarah 2026-05-19).
+            try { DB::rollBack(); } catch (\Throwable $tx) {}
+            throw $e;
         } catch (\Exception $e) {
             DB::rollBack();
             \Log::emergency("File:" . $e->getFile(). "Line:" . $e->getLine(). "Message:" . $e->getMessage());
-            
+
             $output = ['success' => 0,
                             'msg' => $e->getMessage()
                         ];

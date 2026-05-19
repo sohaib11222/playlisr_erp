@@ -668,14 +668,30 @@
 				.on('input change keyup',
 					'#purchase_entry_table .purchase_unit_cost, ' +
 					'#purchase_entry_table .purchase_unit_cost_after_tax, ' +
-					'#purchase_entry_table .purchase_unit_cost_without_discount',
+					'#purchase_entry_table .purchase_unit_cost_without_discount, ' +
+					'#purchase_entry_table .purchase_quantity',
 					refreshPriceGuard)
 				.on('change', '#is_donated_checkbox', refreshPriceGuard)
-				.on('click', '.pos_remove_row', function () { setTimeout(refreshPriceGuard, 50); });
-			$(document).on('DOMNodeInserted', '#purchase_entry_table tbody', function () {
-				clearTimeout(window.__pprGuardTimer);
-				window.__pprGuardTimer = setTimeout(refreshPriceGuard, 80);
-			});
+				.on('click', '.pos_remove_row, .remove_purchase_entry_row', function () {
+					setTimeout(refreshPriceGuard, 80);
+				});
+
+			// MutationObserver is more reliable than DOMNodeInserted (which is
+			// deprecated and inconsistently fires for inserts done by complex
+			// AJAX chains like the mass-add modal).
+			var tbody = document.querySelector('#purchase_entry_table tbody');
+			if (tbody && typeof MutationObserver !== 'undefined') {
+				new MutationObserver(function () {
+					clearTimeout(window.__pprGuardTimer);
+					window.__pprGuardTimer = setTimeout(refreshPriceGuard, 60);
+				}).observe(tbody, { childList: true, subtree: true });
+			}
+
+			// Belt-and-suspenders: also poll every 1s so even a row added by a
+			// channel my listeners can't catch (jQuery .html(), iframe → parent
+			// postMessage, etc.) is re-evaluated.
+			setInterval(refreshPriceGuard, 1000);
+
 			$(refreshPriceGuard);
 		})();
 
