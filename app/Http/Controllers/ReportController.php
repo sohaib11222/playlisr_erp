@@ -1838,6 +1838,13 @@ class ReportController extends Controller
                 })
                 ->addColumn('payment_methods_label', function ($row) {
                     if (empty($row->payment_methods)) {
+                        // AMS bills are always paid via ACH/bank — when no
+                        // transaction_payments row exists, show the default
+                        // Bank Account pill instead of a blank dash.
+                        $supplier_blob = strtolower(($row->supplier ?? '') . ' ' . ($row->supplier_business_name ?? ''));
+                        if (strpos($supplier_blob, 'ams') !== false || strpos($supplier_blob, 'all media supply') !== false) {
+                            return $this->purchasePaymentPill('bank_transfer') . ' <span style="font-size:10px;color:#94a3b8;font-style:italic;">default</span>';
+                        }
                         return '—';
                     }
                     $methods = array_filter(array_map('trim', explode(',', $row->payment_methods)));
@@ -2024,7 +2031,7 @@ class ReportController extends Controller
             'cash_in_store'  => ['Cash',          '#DCFCE7', '#166534', '#BBF7D0'],
             'card'           => ['Card',          '#E0E7FF', '#3730A3', '#C7D2FE'],
             'cheque'         => ['Check',         '#FEF3C7', '#92400E', '#FDE68A'],
-            'bank_transfer'  => ['Bank transfer', '#DBEAFE', '#1E3A8A', '#BFDBFE'],
+            'bank_transfer'  => ['Bank Account',  '#DBEAFE', '#1E3A8A', '#BFDBFE'],
             'store_credit'   => ['Store credit',  '#FFF2B3', '#5A4410', '#F0DC7A'],
             'zelle_venmo'    => ['Zelle / Venmo', '#EDE9FE', '#5B21B6', '#DDD6FE'],
             'zelle'          => ['Zelle',         '#EDE9FE', '#5B21B6', '#DDD6FE'],
