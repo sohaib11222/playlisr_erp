@@ -1871,6 +1871,13 @@ class ProductUtil extends Util
                     
                     if (in_array('sku', $search_fields)) {
                         $query->orWhere('sku', 'like', '%' . $search_term .'%');
+
+                        // Also match the product's incremental DB id when the
+                        // term is a plain integer, so cashiers can ring up by
+                        // either the alphanumeric SKU or the numeric id.
+                        if (ctype_digit((string) $search_term)) {
+                            $query->orWhere('products.id', (int) $search_term);
+                        }
                     }
 
                     if (in_array('artist', $search_fields)) {
@@ -1910,6 +1917,10 @@ class ProductUtil extends Util
                     
                     if (in_array('sku', $search_fields)) {
                         $query->orWhere('sku', $search_term);
+
+                        if (ctype_digit((string) $search_term)) {
+                            $query->orWhere('products.id', (int) $search_term);
+                        }
                     }
 
                     if (in_array('sub_sku', $search_fields)) {
