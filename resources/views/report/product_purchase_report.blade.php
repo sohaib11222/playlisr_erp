@@ -349,7 +349,7 @@
                     <small class="text-muted">— individual transactions from /buy-from-customer</small>
                 @endslot
                 <p class="text-muted" style="margin: 0 0 10px; font-size: 12px;">
-                    Sourced from accepted buy-from-customer offers. Includes draft purchases without materialized line items (Slack backfills + no-title BFC lines) that the main product report above can't show.
+                    Sourced from accepted buy-from-customer offers. These are excluded from the main report above to avoid double-counting.
                 </p>
                 <div class="table-responsive">
                     <table class="table table-bordered table-striped" id="in_store_buys_table">
@@ -362,6 +362,7 @@
                                 <th>Cashier</th>
                                 <th class="text-right">Items</th>
                                 <th>Payout</th>
+                                <th>Paid with</th>
                                 <th class="text-right">@lang('lang_v1.total')</th>
                             </tr>
                         </thead>
@@ -369,7 +370,7 @@
                             <tr class="bg-gray font-17 footer-total text-center">
                                 <td colspan="5"><strong>@lang('sale.total'):</strong></td>
                                 <td id="in_store_buys_footer_items"></td>
-                                <td></td>
+                                <td colspan="2"></td>
                                 <td><span class="display_currency" id="in_store_buys_footer_total" data-currency_symbol="true"></span></td>
                             </tr>
                         </tfoot>
@@ -419,6 +420,7 @@
                     { data: 'cashier', name: 'u.first_name', orderable: false },
                     { data: 'line_count', name: 'line_count', searchable: false, orderable: false, className: 'text-right' },
                     { data: 'payout_type', name: 'o.payout_type' },
+                    { data: 'payment_method_label', name: 'o.payment_method', orderable: false, searchable: false },
                     { data: 'final_total', name: 't.final_total', className: 'text-right' },
                 ],
                 fnDrawCallback: function () {
@@ -426,9 +428,9 @@
                     var totalAmount = 0;
                     $('#in_store_buys_table tbody tr').each(function () {
                         var $cells = $(this).find('td');
-                        if ($cells.length < 8) return;
+                        if ($cells.length < 9) return;
                         totalItems += parseFloat($cells.eq(5).text()) || 0;
-                        var $amt = $cells.eq(7).find('.display_currency');
+                        var $amt = $cells.eq(8).find('.display_currency');
                         totalAmount += parseFloat($amt.data('orig-value') ?? $amt.text().replace(/[^0-9.\-]/g, '')) || 0;
                     });
                     $('#in_store_buys_footer_items').text(totalItems);

@@ -1756,6 +1756,7 @@ class ReportController extends Controller
                     ->leftJoin('users as added_by_u', 'added_by_u.id', '=', 't.created_by')
                     ->where('t.business_id', $business_id)
                     ->where('t.type', 'purchase')
+                    ->whereNull('bfc_o.id')
                     ->select(
                         'p.name as product_name',
                         'p.type as product_type',
@@ -1772,7 +1773,6 @@ class ReportController extends Controller
                         'purchase_lines.quantity_adjusted',
                         'u.short_name as unit',
                         DB::raw('((purchase_lines.quantity - purchase_lines.quantity_returned - purchase_lines.quantity_adjusted) * purchase_lines.purchase_price_inc_tax) as subtotal'),
-                        DB::raw('(bfc_o.id IS NOT NULL) as is_in_store_buy'),
                         DB::raw("TRIM(CONCAT(COALESCE(added_by_u.first_name, ''), ' ', COALESCE(added_by_u.last_name, ''))) as added_by")
                     )
                     ->groupBy('purchase_lines.id');
@@ -1831,18 +1831,7 @@ class ReportController extends Controller
                 ->editColumn('unit_purchase_price', function ($row) {
                     return '<span class="display_currency" data-currency_symbol = true>' . $row->unit_purchase_price . '</span>';
                 })
-                ->editColumn('supplier', function ($row) {
-                    $badge = '';
-                    if ($row->is_in_store_buy) {
-                        $badge = '<span style="display:inline-block;padding:2px 8px;background:#FFF2B3;color:#5A4410;border:1px solid #F0DC7A;border-radius:999px;font-size:10px;font-weight:800;letter-spacing:.08em;margin-right:6px;">IN-STORE BUY</span><br>';
-                    }
-                    $line = '';
-                    if (!empty($row->supplier_business_name)) {
-                        $line .= e($row->supplier_business_name) . ',<br>';
-                    }
-                    $line .= e($row->supplier);
-                    return $badge . $line;
-                })
+                ->editColumn('supplier', '@if(!empty($supplier_business_name)) {{$supplier_business_name}},<br>@endif {{$supplier}}')
                 ->addColumn('added_by', function ($row) {
                     return $row->added_by ?: '—';
                 })
@@ -1985,9 +1974,32 @@ class ReportController extends Controller
                 return e($row->seller_name ?: ($row->contact_name ?: '—'));
             })
             ->editColumn('payout_type', function ($row) {
-                $payout = $row->payout_type === 'store_credit' ? 'Store credit' : 'Cash';
-                $method = $row->payment_method ? ' · ' . str_replace('_', ' ', $row->payment_method) : '';
-                return e($payout . $method);
+                return $row->payout_type === 'store_credit' ? 'Store credit' : 'Cash';
+            })
+            ->addColumn('payment_method_label', function ($row) {
+                if (empty($row->payment_method)) {
+                    return '—';
+                }
+                $method = strtolower($row->payment_method);
+                $map = [
+                    'cash'           => ['Cash',         '#DCFCE7', '#166534', '#BBF7D0'],
+                    'cash_in_store'  => ['Cash',         '#DCFCE7', '#166534', '#BBF7D0'],
+                    'zelle'          => ['Zelle',        '#EDE9FE', '#5B21B6', '#DDD6FE'],
+                    'venmo'          => ['Venmo',        '#DBEAFE', '#1E40AF', '#BFDBFE'],
+                    'cashapp'        => ['Cash App',     '#D1FAE5', '#065F46', '#A7F3D0'],
+                    'cash_app'       => ['Cash App',     '#D1FAE5', '#065F46', '#A7F3D0'],
+                    'paypal'         => ['PayPal',       '#DBEAFE', '#1E3A8A', '#BFDBFE'],
+                    'check'          => ['Check',        '#FEF3C7', '#92400E', '#FDE68A'],
+                    'store_credit'   => ['Store credit', '#FFF2B3', '#5A4410', '#F0DC7A'],
+                    'card'           => ['Card',         '#E0E7FF', '#3730A3', '#C7D2FE'],
+                ];
+                if (isset($map[$method])) {
+                    [$label, $bg, $fg, $border] = $map[$method];
+                } else {
+                    $label = ucwords(str_replace('_', ' ', $row->payment_method));
+                    $bg = '#F1F5F9'; $fg = '#334155'; $border = '#CBD5E1';
+                }
+                return '<span style="display:inline-block;padding:2px 9px;background:' . $bg . ';color:' . $fg . ';border:1px solid ' . $border . ';border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.04em;">' . e($label) . '</span>';
             })
             ->editColumn('line_count', function ($row) {
                 return (int) $row->line_count;
@@ -1998,7 +2010,7 @@ class ReportController extends Controller
             ->editColumn('location_name', function ($row) {
                 return e($row->location_name ?: '—');
             })
-            ->rawColumns(['buy_record_number', 'final_total'])
+            ->rawColumns(['buy_record_number', 'final_total', 'payment_method_label'])
             ->make(true);
     }
 
