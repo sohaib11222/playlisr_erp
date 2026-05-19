@@ -1810,6 +1810,11 @@ class ReportController extends Controller
                 $query->where('p.brand_id', $brand_id);
             }
 
+            $created_by = $request->get('created_by', null);
+            if (!empty($created_by)) {
+                $query->where('t.created_by', $created_by);
+            }
+
             return Datatables::of($query)
                 ->editColumn('product_name', function ($row) {
                     $product_name = $row->product_name;
@@ -1873,6 +1878,7 @@ class ReportController extends Controller
         $business_locations = BusinessLocation::forDropdown($business_id);
         $suppliers = Contact::suppliersDropdown($business_id);
         $brands = Brands::forDropdown($business_id);
+        $users = User::forDropdown($business_id, false);
 
         $permitted_locations = auth()->user()->permitted_locations();
         $today = \Carbon::now()->format('Y-m-d');
@@ -1900,6 +1906,7 @@ class ReportController extends Controller
                 'business_locations',
                 'suppliers',
                 'brands',
+                'users',
                 'summary_mtd',
                 'summary_ytd',
                 'current_week_budget',

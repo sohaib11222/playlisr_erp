@@ -302,6 +302,17 @@
                     {!! Form::select('ppr_brand_id', $brands, null, ['class' => 'form-control select2', 'placeholder' => __('lang_v1.all')]); !!}
                 </div>
             </div>
+            <div class="col-md-3">
+                <div class="form-group">
+                    {!! Form::label('ppr_created_by', 'Added by:') !!}
+                    <div class="input-group">
+                        <span class="input-group-addon">
+                            <i class="fa fa-user-circle"></i>
+                        </span>
+                        {!! Form::select('ppr_created_by', $users, null, ['class' => 'form-control select2', 'id' => 'ppr_created_by', 'placeholder' => __('lang_v1.all')]); !!}
+                    </div>
+                </div>
+            </div>
             {!! Form::close() !!}
             @endcomponent
         </div>

@@ -765,7 +765,7 @@ $(document).ready(function() {
         #product_purchase_report_form #location_id, \
         #product_purchase_report_form #supplier_id, \
         #product_purchase_report_form \
-        #product_pr_date_filter, #ppr_brand_id'
+        #product_pr_date_filter, #ppr_brand_id, #ppr_created_by'
     ).change(function() {
         product_purchase_report.ajax.reload();
     });
@@ -792,6 +792,7 @@ $(document).ready(function() {
                 d.supplier_id = $('select#supplier_id').val();
                 d.location_id = $('select#location_id').val();
                 d.brand_id = $('select#ppr_brand_id').val();
+                d.created_by = $('select#ppr_created_by').val();
             },
         },
         columns: [
