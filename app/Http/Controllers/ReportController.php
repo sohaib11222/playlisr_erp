@@ -1905,6 +1905,85 @@ class ReportController extends Controller
         return null;
     }
 
+    /**
+     * DataTable feed for the In-store buys section of the product purchase
+     * report. Sources from buy_customer_offers joined to transactions so that
+     * offers WITHOUT materialized purchase_lines (the Slack backfill and
+     * no-title BFC lines) still appear — the existing report only joins
+     * purchase_lines so those orphan-purchase transactions get hidden.
+     */
+    public function getInStoreBuysData(Request $request)
+    {
+        $business_id = $request->session()->get('user.business_id');
+        if (!$request->ajax()) {
+            abort(404);
+        }
+
+        $query = DB::table('buy_customer_offers as o')
+            ->join('transactions as t', 't.id', '=', 'o.accepted_purchase_id')
+            ->leftJoin('contacts as c', 't.contact_id', '=', 'c.id')
+            ->leftJoin('users as u', 'o.created_by', '=', 'u.id')
+            ->leftJoin('business_locations as bl', 't.location_id', '=', 'bl.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'purchase')
+            ->select(
+                't.id as transaction_id',
+                't.transaction_date',
+                't.final_total',
+                't.location_id',
+                'bl.name as location_name',
+                'o.buy_record_number',
+                'o.payout_type',
+                'o.payment_method',
+                'o.seller_name',
+                'c.name as contact_name',
+                DB::raw("CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as cashier"),
+                DB::raw('(SELECT COUNT(*) FROM buy_customer_offer_lines bol WHERE bol.offer_id = o.id) as line_count')
+            );
+
+        $permitted_locations = auth()->user()->permitted_locations();
+        if ($permitted_locations != 'all') {
+            $query->whereIn('t.location_id', $permitted_locations);
+        }
+
+        $start_date = $request->get('start_date');
+        $end_date = $request->get('end_date');
+        if (!empty($start_date) && !empty($end_date)) {
+            $query->whereBetween(DB::raw('date(t.transaction_date)'), [$start_date, $end_date]);
+        }
+
+        $location_id = $request->get('location_id');
+        if (!empty($location_id)) {
+            $query->where('t.location_id', $location_id);
+        }
+
+        return Datatables::of($query)
+            ->editColumn('transaction_date', '{{@format_date($transaction_date)}}')
+            ->editColumn('buy_record_number', function ($row) {
+                $label = $row->buy_record_number ?: ('BFC-' . $row->transaction_id);
+                return '<span style="display:inline-block;padding:2px 8px;background:#FFF2B3;color:#5A4410;border:1px solid #F0DC7A;border-radius:999px;font-size:10px;font-weight:800;letter-spacing:.08em;margin-right:6px;">IN-STORE BUY</span> <strong>' . e($label) . '</strong>';
+            })
+            ->editColumn('contact_name', function ($row) {
+                return e($row->seller_name ?: ($row->contact_name ?: '—'));
+            })
+            ->editColumn('payout_type', function ($row) {
+                $payout = $row->payout_type === 'store_credit' ? 'Store credit' : 'Cash';
+                $method = $row->payment_method ? ' · ' . str_replace('_', ' ', $row->payment_method) : '';
+                return e($payout . $method);
+            })
+            ->editColumn('line_count', function ($row) {
+                return (int) $row->line_count;
+            })
+            ->editColumn('final_total', function ($row) {
+                return '<span class="display_currency" data-currency_symbol="true">' . $row->final_total . '</span>';
+            })
+            ->editColumn('location_name', function ($row) {
+                return e($row->location_name ?: '—');
+            })
+            ->rawColumns(['buy_record_number', 'final_total'])
+            ->make(true);
+    }
+
     private function weeklyPurchaseActual($business_id, $start, $end, $permitted_locations)
     {
         $q = DB::table('transactions as t')
