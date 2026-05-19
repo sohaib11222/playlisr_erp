@@ -1854,6 +1854,9 @@ class ReportController extends Controller
             );
         }
 
+        $total_mtd = $this->weeklyPurchaseActual($business_id, $mtd_start, $today, $permitted_locations);
+        $total_ytd = $this->weeklyPurchaseActual($business_id, $ytd_start, $today, $permitted_locations);
+
         return view('report.product_purchase_report')
             ->with(compact(
                 'business_locations',
@@ -1862,7 +1865,9 @@ class ReportController extends Controller
                 'summary_mtd',
                 'summary_ytd',
                 'current_week_budget',
-                'current_week_actual'
+                'current_week_actual',
+                'total_mtd',
+                'total_ytd'
             ));
     }
 

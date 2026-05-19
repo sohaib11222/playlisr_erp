@@ -12,75 +12,244 @@
 <section class="content">
     <div class="row">
         <div class="col-md-12">
-            @if($current_week_budget)
-                @php
-                    $budget = (float) $current_week_budget['budget'];
-                    $actual = (float) $current_week_actual;
-                    $remaining = $budget - $actual;
-                    $pct = $budget > 0 ? ($actual / $budget) * 100 : 0;
-                    $bar_w = min(100, max(0, $pct));
-                    $over = $actual > $budget;
-                    if ($over)            { $bar_class = 'progress-bar-danger';  $status_color = '#b91c1c'; $status_bg = '#fef2f2'; $status_border = '#fecaca'; $status_label = 'Over budget'; }
-                    elseif ($pct >= 90)   { $bar_class = 'progress-bar-warning'; $status_color = '#a16207'; $status_bg = '#fefce8'; $status_border = '#fde68a'; $status_label = 'Near budget'; }
-                    else                  { $bar_class = 'progress-bar-success'; $status_color = '#15803d'; $status_bg = '#f0fdf4'; $status_border = '#bbf7d0'; $status_label = 'Within budget'; }
-                @endphp
-                <div class="box box-solid">
-                    <div class="box-header with-border">
-                        <h3 class="box-title">This week's purchase budget
-                            <small class="text-muted">(Week {{ $current_week_budget['week_no'] }} of 13 · {{ \Carbon::parse($current_week_budget['start'])->format('M j') }}–{{ \Carbon::parse($current_week_budget['end'])->format('M j') }})</small>
-                        </h3>
-                    </div>
-                    <div class="box-body">
-                        <div style="display:flex; flex-wrap:wrap; align-items:center; gap:16px; margin-bottom:10px;">
-                            <span style="display:inline-block; padding:4px 12px; background:{{ $status_bg }}; color:{{ $status_color }}; border:1px solid {{ $status_border }}; border-radius:999px; font-weight:600; font-size:13px;">
-                                {{ $status_label }}
-                            </span>
-                            <span style="font-size:13px; color:#475569;">
-                                <strong style="font-size:18px; color:#0f172a;">${{ number_format($actual, 2) }}</strong>
-                                spent of
-                                <strong>${{ number_format($budget, 2) }}</strong>
-                                ({{ number_format($pct, 0) }}%)
-                            </span>
-                            <span style="font-size:13px; color:{{ $over ? '#b91c1c' : '#475569' }};">
+            <style>
+                /* Purchase report — POS-styled summary panel. Cream/amber palette
+                   matches /pos/create so reports feel like part of the same family. */
+                .ppr-panel {
+                    background: #FAF6EE;
+                    border: 1px solid #DFD2B3;
+                    border-radius: 12px;
+                    padding: 18px;
+                    margin-bottom: 18px;
+                    box-shadow: 0 1px 0 rgba(31, 27, 22, 0.04);
+                }
+                .ppr-panel-head {
+                    display: flex; align-items: baseline; justify-content: space-between;
+                    margin-bottom: 12px; gap: 12px; flex-wrap: wrap;
+                }
+                .ppr-panel-title {
+                    font-weight: 800; color: #1F1B16; font-size: 13px;
+                    text-transform: uppercase; letter-spacing: 0.14em;
+                }
+                .ppr-panel-meta {
+                    font-size: 12px; color: #5A4410; opacity: 0.85;
+                }
+
+                /* Hero mustard budget bar — same family as POS Pre-Tax → Clover. */
+                .ppr-budget-bar {
+                    position: relative;
+                    background: #FFF2B3;
+                    border: 2px solid #F0DC7A;
+                    border-radius: 10px;
+                    padding: 16px 18px 14px;
+                    margin-bottom: 16px;
+                    box-shadow: 0 0 0 3px rgba(255, 242, 179, 0.4);
+                }
+                .ppr-budget-bar::before {
+                    content: "THIS WEEK'S BUDGET";
+                    position: absolute; top: -9px; left: 14px;
+                    background: #1F1B16; color: #FFF2B3;
+                    font-size: 9px; font-weight: 800;
+                    letter-spacing: 0.14em; padding: 3px 9px;
+                    border-radius: 999px; line-height: 1.2;
+                }
+                .ppr-budget-row {
+                    display: flex; align-items: center; justify-content: space-between;
+                    gap: 14px; flex-wrap: wrap; margin-bottom: 8px;
+                }
+                .ppr-budget-left {
+                    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+                }
+                .ppr-status-pill {
+                    display: inline-flex; align-items: center; gap: 6px;
+                    padding: 4px 12px; border-radius: 999px;
+                    font-weight: 700; font-size: 11px;
+                    text-transform: uppercase; letter-spacing: 0.1em;
+                }
+                .ppr-status-pill::before {
+                    content: ""; width: 7px; height: 7px; border-radius: 50%;
+                    background: currentColor;
+                }
+                .ppr-status-ok    { background: #DCFCE7; color: #166534; border: 1px solid #BBF7D0; }
+                .ppr-status-warn  { background: #FEF3C7; color: #92400E; border: 1px solid #FDE68A; }
+                .ppr-status-over  { background: #FEE2E2; color: #991B1B; border: 1px solid #FECACA; }
+                .ppr-budget-week {
+                    color: #5A4410; font-weight: 700;
+                    font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+                }
+                .ppr-budget-week small { font-weight: 500; opacity: 0.75; }
+                .ppr-budget-amounts {
+                    color: #5A4410; font-weight: 800;
+                    font-size: 22px; line-height: 1.1;
+                    font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+                    white-space: nowrap;
+                }
+                .ppr-budget-amounts .of {
+                    color: #8B6914; font-size: 14px; font-weight: 600;
+                    padding: 0 4px;
+                }
+                .ppr-budget-amounts .target {
+                    color: #5A4410; font-size: 18px; font-weight: 700;
+                }
+                .ppr-budget-amounts .pct {
+                    color: #8B6914; font-size: 13px; font-weight: 600;
+                    margin-left: 4px;
+                }
+                .ppr-budget-remaining {
+                    font-size: 13px; font-weight: 600;
+                    font-variant-numeric: tabular-nums;
+                }
+                .ppr-budget-remaining.left { color: #5A4410; }
+                .ppr-budget-remaining.over { color: #991B1B; }
+                .ppr-progress {
+                    height: 12px; background: rgba(31, 27, 22, 0.08);
+                    border-radius: 999px; overflow: hidden;
+                }
+                .ppr-progress > div {
+                    height: 100%; border-radius: 999px;
+                    transition: width 0.3s ease;
+                }
+                .ppr-bar-ok   { background: linear-gradient(90deg, #4ADE80, #16A34A); }
+                .ppr-bar-warn { background: linear-gradient(90deg, #FBBF24, #D97706); }
+                .ppr-bar-over { background: linear-gradient(90deg, #F87171, #DC2626); }
+
+                /* Total spending — receipt-style grand total. */
+                .ppr-total {
+                    display: flex; align-items: baseline; justify-content: space-between;
+                    gap: 12px; flex-wrap: wrap;
+                    padding: 14px 0;
+                    border-top: 2px dashed #DFD2B3;
+                    border-bottom: 2px dashed #DFD2B3;
+                    margin-bottom: 14px;
+                }
+                .ppr-total-label {
+                    font-weight: 800; color: #1F1B16;
+                    font-size: 13px; text-transform: uppercase; letter-spacing: 0.14em;
+                }
+                .ppr-total-figs {
+                    display: flex; gap: 22px; flex-wrap: wrap;
+                }
+                .ppr-total-fig {
+                    display: flex; flex-direction: column; align-items: flex-end;
+                }
+                .ppr-total-fig .amt {
+                    color: #1F1B16; font-weight: 800;
+                    font-size: 24px; line-height: 1.1;
+                    font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+                }
+                .ppr-total-fig .lbl {
+                    font-size: 10px; font-weight: 700;
+                    text-transform: uppercase; letter-spacing: 0.12em;
+                    color: #8B6914; margin-top: 2px;
+                }
+
+                /* Source breakdown tiles — same cream family. */
+                .ppr-sources {
+                    display: grid;
+                    grid-template-columns: repeat(4, 1fr);
+                    gap: 10px;
+                }
+                @media (max-width: 900px) {
+                    .ppr-sources { grid-template-columns: repeat(2, 1fr); }
+                }
+                .ppr-source {
+                    background: #fff;
+                    border: 1px solid #DFD2B3;
+                    border-radius: 8px;
+                    padding: 12px 14px;
+                }
+                .ppr-source-label {
+                    font-size: 11px; font-weight: 700; color: #5A4410;
+                    text-transform: uppercase; letter-spacing: 0.1em;
+                    margin-bottom: 6px;
+                }
+                .ppr-source-amt {
+                    color: #1F1B16; font-weight: 800;
+                    font-size: 18px; line-height: 1.1;
+                    font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+                }
+                .ppr-source-sub {
+                    font-size: 10px; font-weight: 600;
+                    text-transform: uppercase; letter-spacing: 0.1em;
+                    color: #8B6914; margin-top: 2px;
+                }
+                .ppr-source-divider {
+                    border-top: 1px dashed #E8DCBF; margin: 8px 0;
+                }
+                .ppr-source-ytd {
+                    color: #3F2F12; font-weight: 700;
+                    font-size: 14px; font-variant-numeric: tabular-nums;
+                }
+            </style>
+            <div class="ppr-panel">
+                <div class="ppr-panel-head">
+                    <span class="ppr-panel-title">Purchasing summary</span>
+                    <span class="ppr-panel-meta">As of {{ \Carbon::now()->format('M j, Y') }}</span>
+                </div>
+
+                @if($current_week_budget)
+                    @php
+                        $budget = (float) $current_week_budget['budget'];
+                        $actual = (float) $current_week_actual;
+                        $remaining = $budget - $actual;
+                        $pct = $budget > 0 ? ($actual / $budget) * 100 : 0;
+                        $bar_w = min(100, max(0, $pct));
+                        $over = $actual > $budget;
+                        if ($over)          { $bar_class = 'ppr-bar-over'; $pill_class = 'ppr-status-over'; $pill_label = 'Over budget'; }
+                        elseif ($pct >= 90) { $bar_class = 'ppr-bar-warn'; $pill_class = 'ppr-status-warn'; $pill_label = 'Near budget'; }
+                        else                { $bar_class = 'ppr-bar-ok';   $pill_class = 'ppr-status-ok';   $pill_label = 'Within budget'; }
+                    @endphp
+                    <div class="ppr-budget-bar">
+                        <div class="ppr-budget-row">
+                            <div class="ppr-budget-left">
+                                <span class="ppr-status-pill {{ $pill_class }}">{{ $pill_label }}</span>
+                                <span class="ppr-budget-week">
+                                    Week {{ $current_week_budget['week_no'] }} of 13
+                                    <small>· {{ \Carbon::parse($current_week_budget['start'])->format('M j') }}–{{ \Carbon::parse($current_week_budget['end'])->format('M j') }}</small>
+                                </span>
+                            </div>
+                            <span class="ppr-budget-remaining {{ $over ? 'over' : 'left' }}">
                                 {{ $over ? '$' . number_format(abs($remaining), 2) . ' over' : '$' . number_format($remaining, 2) . ' left' }}
                             </span>
                         </div>
-                        <div class="progress" style="height:18px; margin-bottom:0;">
-                            <div class="progress-bar {{ $bar_class }}" role="progressbar" style="width: {{ $bar_w }}%;" aria-valuenow="{{ $bar_w }}" aria-valuemin="0" aria-valuemax="100"></div>
+                        <div class="ppr-budget-amounts">
+                            ${{ number_format($actual, 2) }}
+                            <span class="of">of</span>
+                            <span class="target">${{ number_format($budget, 2) }}</span>
+                            <span class="pct">({{ number_format($pct, 0) }}%)</span>
+                        </div>
+                        <div class="ppr-progress" style="margin-top:10px;">
+                            <div class="{{ $bar_class }}" style="width: {{ $bar_w }}%;"></div>
+                        </div>
+                    </div>
+                @endif
+
+                <div class="ppr-total">
+                    <span class="ppr-total-label">Total spending · all sources</span>
+                    <div class="ppr-total-figs">
+                        <div class="ppr-total-fig">
+                            <span class="amt">${{ number_format($total_mtd, 2) }}</span>
+                            <span class="lbl">Month-to-date</span>
+                        </div>
+                        <div class="ppr-total-fig">
+                            <span class="amt">${{ number_format($total_ytd, 2) }}</span>
+                            <span class="lbl">Year-to-date</span>
                         </div>
                     </div>
                 </div>
-            @endif
-            <div class="box box-solid">
-                <div class="box-header with-border">
-                    <h3 class="box-title">Spending by source</h3>
-                </div>
-                <div class="box-body">
-                    <div class="row">
-                        @foreach($summary_mtd as $i => $b)
-                            @php $ytd = $summary_ytd[$i]['total']; @endphp
-                            <div class="col-md-3 col-sm-6">
-                                <div style="padding:12px 14px; background:#f8fafc; border:1px solid #e5e7eb; border-radius:6px; margin-bottom:10px;">
-                                    <div style="font-size:13px; color:#475569; margin-bottom:4px;">
-                                        <strong>{{ $b['label'] }}</strong>
-                                    </div>
-                                    <div style="font-size:20px; font-weight:600; color:#0f172a;">
-                                        ${{ number_format($b['total'], 2) }}
-                                    </div>
-                                    <div style="font-size:11px; color:#94a3b8; margin-top:2px;">
-                                        this month
-                                    </div>
-                                    <div style="border-top:1px dashed #e5e7eb; margin:8px 0;"></div>
-                                    <div style="font-size:14px; color:#334155;">
-                                        ${{ number_format($ytd, 2) }}
-                                    </div>
-                                    <div style="font-size:11px; color:#94a3b8;">
-                                        year-to-date
-                                    </div>
-                                </div>
-                            </div>
-                        @endforeach
-                    </div>
+
+                <div class="ppr-sources">
+                    @foreach($summary_mtd as $i => $b)
+                        @php $ytd = $summary_ytd[$i]['total']; @endphp
+                        <div class="ppr-source">
+                            <div class="ppr-source-label">{{ $b['label'] }}</div>
+                            <div class="ppr-source-amt">${{ number_format($b['total'], 2) }}</div>
+                            <div class="ppr-source-sub">This month</div>
+                            <div class="ppr-source-divider"></div>
+                            <div class="ppr-source-ytd">${{ number_format($ytd, 2) }}</div>
+                            <div class="ppr-source-sub">Year-to-date</div>
+                        </div>
+                    @endforeach
                 </div>
             </div>
             @component('components.filters', ['title' => __('report.filters')])
