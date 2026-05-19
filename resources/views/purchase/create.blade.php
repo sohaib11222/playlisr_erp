@@ -41,10 +41,9 @@
 					</div>
 					<p class="help-block">Type <strong>walkin</strong> and select the Walk-in supplier for a used collection.</p>
 				</div>
-				<strong>
-					@lang('business.address'):
-				</strong>
-				<div id="supplier_address_div"></div>
+				{{-- supplier address block removed (Sarah 2026-05-19) — kept the hidden
+				     div so any legacy JS that targets #supplier_address_div is harmless. --}}
+				<div id="supplier_address_div" style="display:none;"></div>
 			</div>
 			<div class="@if(!empty($default_purchase_status)) col-sm-4 @else hide col-sm-3 @endif">
 				<div class="form-group">
@@ -77,8 +76,12 @@
 					$search_disable = false;
 				@endphp
 			@else
-				@php $default_location = null;
-				$search_disable = true;
+				@php
+					// Prefer the location the user is signed in / on duty at.
+					// Falls back to null (no default) only if neither session
+					// value is set, which keeps the original behavior.
+					$default_location = !empty($user_default_location_id) ? $user_default_location_id : null;
+					$search_disable = true;
 				@endphp
 			@endif
 			<div class="col-sm-3">
@@ -562,12 +565,10 @@
 	@endcomponent
 	@component('components.widget', ['class' => 'box-primary', 'title' => __('purchase.add_payment')])
 		<div class="box-body payment_row">
-			<div class="row">
-				<div class="col-md-12">
-					<strong>@lang('lang_v1.advance_balance'):</strong> <span id="advance_balance_text">0</span>
-					{!! Form::hidden('advance_balance', null, ['id' => 'advance_balance', 'data-error-msg' => __('lang_v1.required_advance_balance_not_available')]); !!}
-				</div>
-			</div>
+			{{-- "Advance Balance: 0" hidden (Sarah 2026-05-19). The hidden input
+			     is kept because some pages JS depends on #advance_balance. --}}
+			{!! Form::hidden('advance_balance', null, ['id' => 'advance_balance', 'data-error-msg' => __('lang_v1.required_advance_balance_not_available')]); !!}
+			<span id="advance_balance_text" style="display:none;">0</span>
 			@include('sale_pos.partials.payment_row_form', ['row_index' => 0, 'show_date' => true, 'show_denomination' => true])
 			<hr>
 			<div class="row">
@@ -662,6 +663,116 @@
 
 @section('css')
 <style>
+    /* ============================================================
+       /purchases/create — POS-create palette overlay.
+       Cream backdrop, warm amber accents, unified typography so the
+       purchase form feels like /pos/create's sibling. Scoped to
+       section.content so the rest of the ERP is unaffected.
+       ============================================================ */
+    section.content,
+    section.content .box-body,
+    section.content .form-group,
+    section.content label,
+    section.content p,
+    section.content td,
+    section.content th,
+    section.content .control-label,
+    section.content .help-block,
+    section.content small {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        font-size: 14px;
+        line-height: 1.45;
+        color: #2b3440;
+    }
+    section.content .form-control {
+        font-family: inherit;
+        font-size: 14px;
+        height: 38px;
+        padding: 6px 12px;
+        border-radius: 6px;
+        border: 1px solid #DFD2B3;
+    }
+    section.content .form-control:focus {
+        border-color: #F0DC7A;
+        box-shadow: 0 0 0 3px rgba(255, 242, 179, 0.4);
+    }
+    section.content label,
+    section.content .control-label {
+        font-weight: 600;
+        font-size: 13px;
+        letter-spacing: 0.2px;
+        color: #1F1B16;
+    }
+    section.content small,
+    section.content .help-block {
+        font-size: 12px;
+        color: #8B6914;
+    }
+    /* Card surfaces mirror POS-create cream tones */
+    section.content .box.box-primary {
+        border-top-color: #F0DC7A;
+        border-radius: 10px;
+        box-shadow: 0 1px 0 rgba(31, 27, 22, 0.04);
+    }
+    section.content .box.box-primary > .box-header {
+        background: #FAF6EE;
+        border-bottom: 1px solid #DFD2B3;
+        border-radius: 10px 10px 0 0;
+    }
+    section.content .box.box-primary > .box-header .box-title {
+        color: #1F1B16;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+    }
+    /* Button normalization — match POS-create one-size + radius */
+    section.content .btn:not(.btn-lg):not(#search_product):not(.input-group-btn > .btn) {
+        font-family: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        padding: 7px 14px;
+        height: 36px;
+        line-height: 1.2;
+        border-radius: 6px;
+        letter-spacing: 0.2px;
+    }
+    /* Save / Save & Print Labels — the prominent finalize pair */
+    section.content #submit_purchase_form,
+    section.content #submit_purchase_form_print_labels {
+        font-size: 15px;
+        font-weight: 700;
+        padding: 10px 18px;
+        min-height: 44px;
+        border-radius: 8px;
+        letter-spacing: 0.3px;
+    }
+    section.content #submit_purchase_form {
+        background: #1F1B16;
+        border-color: #1F1B16;
+        color: #FAF6EE;
+    }
+    section.content #submit_purchase_form:hover,
+    section.content #submit_purchase_form:focus {
+        background: #0F0A06;
+        border-color: #0F0A06;
+        color: #FAF6EE;
+    }
+    section.content #submit_purchase_form_print_labels {
+        background: #2F6B3E;
+        border-color: #2F6B3E;
+        color: #fff;
+    }
+    section.content #submit_purchase_form_print_labels:hover,
+    section.content #submit_purchase_form_print_labels:focus {
+        background: #235530;
+        border-color: #235530;
+        color: #fff;
+    }
+    /* Hide the page footer like POS does — every pixel counts */
+    body footer.main-footer,
+    body > footer.no-print {
+        display: none !important;
+    }
+
     /* Make purchase entry rows single-line and compact */
     #purchase_entry_table tbody tr {
         height: auto !important;

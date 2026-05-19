@@ -45,12 +45,9 @@
                   </span>
                 </div>
               </div>
-              <strong>
-                @lang('business.address'):
-              </strong>
-              <div id="supplier_address_div">
-                {!! $purchase->contact->contact_address !!}
-              </div>
+              {{-- supplier address removed (Sarah 2026-05-19) — hidden div
+                   preserved so any legacy JS keeps working. --}}
+              <div id="supplier_address_div" style="display:none;">{!! $purchase->contact->contact_address !!}</div>
             </div>
 
             <div class="@if(!empty($default_purchase_status)) col-sm-4 @else col-sm-3 @endif hide">

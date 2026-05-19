@@ -434,6 +434,14 @@ class PosQuickReceiveController extends Controller
         $purchase_price_inc_tax = isset($variation->dpp_inc_tax)
             ? (float) $variation->dpp_inc_tax : $purchase_price;
 
+        // Sarah's rule (2026-05-19): no $0 purchase prices anywhere. If the
+        // variation has no cost on file, refuse the quick-receive so the
+        // manager fixes the product cost first — the cashier can still ring
+        // the sale untouched.
+        if ($purchase_price <= 0 && $purchase_price_inc_tax <= 0) {
+            throw new \RuntimeException('This product has no cost on file. Set the unit cost on the product before receiving it at the till.');
+        }
+
         $transaction = Transaction::create([
             'type' => 'purchase',
             'status' => 'received',

@@ -231,6 +231,16 @@ class PurchaseController extends Controller
         $bl_attributes = $business_locations['attributes'];
         $business_locations = $business_locations['locations'];
 
+        // Default purchase location to whatever store the user is currently
+        // signed-in / on duty at — POS duty wins, then their assigned home
+        // location. Falls back to null so the existing single-location
+        // shortcut in the view still kicks in.
+        $user_default_location_id = (int) (request()->session()->get('pos_duty_location_id', 0));
+        if (!$user_default_location_id) {
+            $user_default_location_id = (int) (request()->session()->get('user.business_location_id', 0));
+        }
+        $user_default_location_id = $user_default_location_id ?: null;
+
         $currency_details = $this->transactionUtil->purchaseCurrencyDetails($business_id);
 
         $default_purchase_status = null;
@@ -269,7 +279,7 @@ class PurchaseController extends Controller
         }
 
         return view('purchase.create')
-            ->with(compact('taxes', 'orderStatuses', 'business_locations', 'currency_details', 'default_purchase_status', 'customer_groups', 'types', 'shortcuts', 'payment_line', 'payment_types', 'accounts', 'bl_attributes', 'common_settings', 'from_product_ids'));
+            ->with(compact('taxes', 'orderStatuses', 'business_locations', 'currency_details', 'default_purchase_status', 'customer_groups', 'types', 'shortcuts', 'payment_line', 'payment_types', 'accounts', 'bl_attributes', 'common_settings', 'from_product_ids', 'user_default_location_id'));
     }
 
     /**
@@ -301,8 +311,11 @@ class PurchaseController extends Controller
 
             //TODO: Check for "Undefined index: total_before_tax" issue
             //Adding temporary fix by validating
+            // Sarah's rule: purchase price must be > 0 everywhere unless the
+            // purchase is explicitly flagged as donated. Bare min:0 used to
+            // allow phantom $0 lines; min:0.01 closes that.
             $is_donated = filter_var($request->input('is_donated'), FILTER_VALIDATE_BOOLEAN);
-            $price_rule = $is_donated ? 'nullable|numeric|min:0' : 'required|numeric|min:0';
+            $price_rule = $is_donated ? 'nullable|numeric|min:0' : 'required|numeric|min:0.01';
             $request->validate([
                 'status' => 'required',
                 'contact_id' => 'required',
@@ -324,6 +337,9 @@ class PurchaseController extends Controller
                 'purchases.*.purchase_price.required' => 'Purchase price is required on every line. Check "These items were donated" if this is free stock.',
                 'purchases.*.pp_without_discount.required' => 'Purchase price is required on every line. Check "These items were donated" if this is free stock.',
                 'purchases.*.purchase_price_inc_tax.required' => 'Purchase price (incl. tax) is required on every line. Check "These items were donated" if this is free stock.',
+                'purchases.*.purchase_price.min' => 'Purchase price must be greater than $0. Check "These items were donated" for free stock.',
+                'purchases.*.pp_without_discount.min' => 'Purchase price must be greater than $0. Check "These items were donated" for free stock.',
+                'purchases.*.purchase_price_inc_tax.min' => 'Purchase price (incl. tax) must be greater than $0. Check "These items were donated" for free stock.',
             ]);
 
             // Tag donated purchases in additional_notes so the [DONATED]
@@ -676,8 +692,11 @@ class PurchaseController extends Controller
             $transaction = Transaction::findOrFail($id);
 
             //Validate document size + line-item purchase prices.
+            // Sarah's rule: purchase price must be > 0 everywhere unless the
+            // purchase is explicitly flagged as donated. Bare min:0 used to
+            // allow phantom $0 lines; min:0.01 closes that.
             $is_donated = filter_var($request->input('is_donated'), FILTER_VALIDATE_BOOLEAN);
-            $price_rule = $is_donated ? 'nullable|numeric|min:0' : 'required|numeric|min:0';
+            $price_rule = $is_donated ? 'nullable|numeric|min:0' : 'required|numeric|min:0.01';
             $request->validate([
                 'document' => 'file|max:'. (config('constants.document_size_limit') / 1000),
                 'purchases'   => 'required|array|min:1',
@@ -688,6 +707,9 @@ class PurchaseController extends Controller
                 'purchases.*.purchase_price.required' => 'Purchase price is required on every line. Check "These items were donated" if this is free stock.',
                 'purchases.*.pp_without_discount.required' => 'Purchase price is required on every line. Check "These items were donated" if this is free stock.',
                 'purchases.*.purchase_price_inc_tax.required' => 'Purchase price (incl. tax) is required on every line. Check "These items were donated" if this is free stock.',
+                'purchases.*.purchase_price.min' => 'Purchase price must be greater than $0. Check "These items were donated" for free stock.',
+                'purchases.*.pp_without_discount.min' => 'Purchase price must be greater than $0. Check "These items were donated" for free stock.',
+                'purchases.*.purchase_price_inc_tax.min' => 'Purchase price (incl. tax) must be greater than $0. Check "These items were donated" for free stock.',
             ]);
 
             // Tag / untag donated purchases in additional_notes so the marker
