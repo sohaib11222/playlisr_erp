@@ -25,6 +25,23 @@
 
 	{!! Form::open(['url' => action('PurchaseController@store'), 'method' => 'post', 'id' => 'add_purchase_form', 'files' => true ]) !!}
 	{!! Form::hidden('save_action', 'save', ['id' => 'purchase_save_action']) !!}
+
+	{{-- Purchase-price guardrail banner. Every line must have a price > $0
+	     unless this purchase is donated stock. JS in this view watches the
+	     purchase entry table and disables Save when violations exist. --}}
+	<div id="purchase_price_guard" style="background:#FFF2B3; border:2px solid #F0DC7A; border-radius:10px; padding:14px 18px; margin-bottom:14px; box-shadow: 0 0 0 3px rgba(255, 242, 179, 0.4);">
+		<div style="display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;">
+			<label style="margin:0; font-weight:700; color:#1F1B16; cursor:pointer; font-size:14px;">
+				{!! Form::checkbox('is_donated', 1, false, ['id' => 'is_donated_checkbox', 'style' => 'margin-right:8px; transform:scale(1.2);']) !!}
+				These items were donated (free stock)
+			</label>
+			<span id="purchase_price_guard_status" style="font-size:13px; font-weight:600; color:#5A4410;"></span>
+		</div>
+		<div style="font-size:12px; color:#5A4410; margin-top:6px;">
+			Purchase price must be greater than <strong>$0</strong> on every line. Check the box above to skip this rule for donated / free stock.
+		</div>
+	</div>
+
 	@component('components.widget', ['class' => 'box-primary'])
 		<div class="row">
 			<div class="@if(!empty($default_purchase_status)) col-sm-4 @else col-sm-3 @endif">
@@ -375,20 +392,6 @@
 						</div>
 					</td>
 				</tr>
-				<tr>
-					<td colspan="4">
-						<div class="form-group" style="background:#FFF8E1; border:1px solid #F0DC7A; border-radius:6px; padding:10px 14px;">
-							<label style="margin:0; font-weight:600; color:#5A4410; cursor:pointer;">
-								{!! Form::checkbox('is_donated', 1, false, ['id' => 'is_donated_checkbox', 'style' => 'margin-right:8px;']) !!}
-								These items were donated (skip purchase-price requirement)
-							</label>
-							<div style="font-size:12px; color:#8B6914; margin-top:4px; margin-left:24px;">
-								Check this for free / donated stock. The save will allow blank or $0 line prices and tag the purchase with <strong>[DONATED]</strong> in notes.
-							</div>
-						</div>
-					</td>
-				</tr>
-
 			</table>
 			</div>
 		</div>
@@ -618,6 +621,62 @@
 	<script src="{{ asset('js/purchase.js?v=' . $asset_v) }}"></script>
 	<script src="{{ asset('js/product.js?v=' . $asset_v) }}"></script>
 	<script type="text/javascript">
+		// Purchase-price guardrail (Sarah 2026-05-19). Watches every line in
+		// the entry table — if any price is <= $0 and "donated" is unchecked,
+		// marks the line red and disables Save. Re-evaluates on input change,
+		// row add/remove, and donated checkbox toggle.
+		(function () {
+			function parseMoney($el) {
+				var raw = String($el.val() || '').replace(/[^0-9.\-]/g, '');
+				var n = parseFloat(raw);
+				return isNaN(n) ? 0 : n;
+			}
+			function refreshPriceGuard() {
+				var $rows = $('#purchase_entry_table tbody tr');
+				var donated = $('#is_donated_checkbox').is(':checked');
+				var bad = 0;
+				$rows.each(function () {
+					var $row = $(this);
+					var $price = $row.find('.purchase_unit_cost').first();
+					if ($price.length === 0) return;
+					var amount = parseMoney($price);
+					var rowBad = !donated && amount <= 0;
+					$row.find('.purchase_unit_cost, .purchase_unit_cost_after_tax, .purchase_unit_cost_without_discount')
+						.css('border-color', rowBad ? '#DC2626' : '')
+						.css('background', rowBad ? '#FEE2E2' : '');
+					if (rowBad) bad++;
+				});
+				var $status = $('#purchase_price_guard_status');
+				var $buttons = $('#submit_purchase_form, #submit_purchase_form_print_labels');
+				if (donated) {
+					$status.html('<span style="color:#5A4410;">Donated — $0 prices allowed</span>');
+					$buttons.prop('disabled', false);
+				} else if (bad > 0) {
+					$status.html('<span style="color:#991B1B;">' + bad + ' line' + (bad === 1 ? '' : 's') + ' missing a price — save disabled</span>');
+					$buttons.prop('disabled', true);
+				} else if ($rows.length === 0) {
+					$status.html('<span style="color:#8B6914;">Add a product to begin.</span>');
+					$buttons.prop('disabled', false);
+				} else {
+					$status.html('<span style="color:#166534;">✓ All ' + $rows.length + ' line' + ($rows.length === 1 ? '' : 's') + ' priced</span>');
+					$buttons.prop('disabled', false);
+				}
+			}
+			$(document)
+				.on('input change keyup',
+					'#purchase_entry_table .purchase_unit_cost, ' +
+					'#purchase_entry_table .purchase_unit_cost_after_tax, ' +
+					'#purchase_entry_table .purchase_unit_cost_without_discount',
+					refreshPriceGuard)
+				.on('change', '#is_donated_checkbox', refreshPriceGuard)
+				.on('click', '.pos_remove_row', function () { setTimeout(refreshPriceGuard, 50); });
+			$(document).on('DOMNodeInserted', '#purchase_entry_table tbody', function () {
+				clearTimeout(window.__pprGuardTimer);
+				window.__pprGuardTimer = setTimeout(refreshPriceGuard, 80);
+			});
+			$(refreshPriceGuard);
+		})();
+
 		$(document).ready( function(){
       		__page_leave_confirmation('#add_purchase_form');
       		$('.paid_on').datetimepicker({

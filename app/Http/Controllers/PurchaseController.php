@@ -339,6 +339,21 @@ class PurchaseController extends Controller
             // Sarah's rule: purchase price must be > 0 everywhere unless the
             // purchase is explicitly flagged as donated. Bare min:0 used to
             // allow phantom $0 lines; min:0.01 closes that.
+            // Strip thousand separators from line prices BEFORE validate —
+            // the form submits formatted values like "1,234.56" which fail
+            // `numeric` until the commas are removed. (num_uf below handles
+            // it later, but validate runs first.)
+            $purchases_input = $request->input('purchases', []);
+            if (is_array($purchases_input)) {
+                foreach ($purchases_input as $idx => $line) {
+                    foreach (['purchase_price', 'pp_without_discount', 'purchase_price_inc_tax'] as $field) {
+                        if (isset($line[$field]) && is_string($line[$field])) {
+                            $purchases_input[$idx][$field] = str_replace(',', '', $line[$field]);
+                        }
+                    }
+                }
+                $request->merge(['purchases' => $purchases_input]);
+            }
             $is_donated = filter_var($request->input('is_donated'), FILTER_VALIDATE_BOOLEAN);
             $price_rule = $is_donated ? 'nullable|numeric|min:0' : 'required|numeric|min:0.01';
             $request->validate([
@@ -721,6 +736,18 @@ class PurchaseController extends Controller
             // Sarah's rule: purchase price must be > 0 everywhere unless the
             // purchase is explicitly flagged as donated. Bare min:0 used to
             // allow phantom $0 lines; min:0.01 closes that.
+            // Strip thousand separators ("1,234.56" → "1234.56") so numeric/min pass.
+            $purchases_input = $request->input('purchases', []);
+            if (is_array($purchases_input)) {
+                foreach ($purchases_input as $idx => $line) {
+                    foreach (['purchase_price', 'pp_without_discount', 'purchase_price_inc_tax'] as $field) {
+                        if (isset($line[$field]) && is_string($line[$field])) {
+                            $purchases_input[$idx][$field] = str_replace(',', '', $line[$field]);
+                        }
+                    }
+                }
+                $request->merge(['purchases' => $purchases_input]);
+            }
             $is_donated = filter_var($request->input('is_donated'), FILTER_VALIDATE_BOOLEAN);
             $price_rule = $is_donated ? 'nullable|numeric|min:0' : 'required|numeric|min:0.01';
             $request->validate([
