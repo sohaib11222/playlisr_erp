@@ -264,7 +264,13 @@ class PurchaseController extends Controller
         $shortcuts = json_decode($business_details->keyboard_shortcuts, true);
 
         $payment_line = $this->dummyPaymentLine;
-        $payment_types = $this->productUtil->payment_types(null, true, $business_id);
+        // Purchases pay vendors / suppliers — Sarah's vetted payout channels
+        // are Cash, Card, Zelle, Venmo. Constrain the dropdown to those four
+        // so cashiers can't pick "Advance / Cheque / Bank Transfer / Other /
+        // Custom Payment X" and pollute the data. (transaction_payments.method
+        // is VARCHAR since the 2020-07-09 migration so zelle/venmo just save
+        // as their string values.)
+        $payment_types = $this->purchasePaymentTypes();
 
         //Accounts
         $accounts = $this->moduleUtil->accountsDropdown($business_id, true);
@@ -280,6 +286,25 @@ class PurchaseController extends Controller
 
         return view('purchase.create')
             ->with(compact('taxes', 'orderStatuses', 'business_locations', 'currency_details', 'default_purchase_status', 'customer_groups', 'types', 'shortcuts', 'payment_line', 'payment_types', 'accounts', 'bl_attributes', 'common_settings', 'from_product_ids', 'user_default_location_id'));
+    }
+
+    /**
+     * Payment methods allowed on the purchase create / edit forms.
+     * Sarah locked this list down to Cash / Card / Zelle / Venmo on
+     * 2026-05-19 — the default Util::payment_types() set (Advance,
+     * Cheque, Bank Transfer, Other, Custom Payment 1-7) was confusing
+     * cashiers and producing junk transaction_payments rows. The
+     * transaction_payments.method column has been VARCHAR since the
+     * 2020-07-09 migration so 'zelle' / 'venmo' save as-is.
+     */
+    private function purchasePaymentTypes()
+    {
+        return [
+            'cash'  => 'Cash',
+            'card'  => 'Card',
+            'zelle' => 'Zelle',
+            'venmo' => 'Venmo',
+        ];
     }
 
     /**
@@ -517,7 +542,8 @@ class PurchaseController extends Controller
             }
         }
         
-        $payment_methods = $this->productUtil->payment_types($purchase->location_id, true);
+        // Constrained to Cash/Card/Zelle/Venmo on the purchase edit form too.
+        $payment_methods = $this->purchasePaymentTypes();
 
         $purchase_taxes = [];
         if (!empty($purchase->tax)) {
