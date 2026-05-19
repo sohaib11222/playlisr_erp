@@ -308,7 +308,18 @@ class PurchaseController extends Controller
                 'total_before_tax' => 'required',
                 'location_id' => 'required',
                 'final_total' => 'required',
-                'document' => 'file|max:'. (config('constants.document_size_limit') / 1000)
+                'document' => 'file|max:'. (config('constants.document_size_limit') / 1000),
+                // Backstop for the HTML5 `required` on the purchase_price /
+                // pp_without_discount / purchase_price_inc_tax inputs. Sarah
+                // asked to make purchase price mandatory at save time (2026-05-19).
+                'purchases'   => 'required|array|min:1',
+                'purchases.*.purchase_price' => 'required|numeric|min:0',
+                'purchases.*.pp_without_discount' => 'required|numeric|min:0',
+                'purchases.*.purchase_price_inc_tax' => 'required|numeric|min:0',
+            ], [
+                'purchases.*.purchase_price.required' => 'Purchase price is required on every line.',
+                'purchases.*.pp_without_discount.required' => 'Purchase price is required on every line.',
+                'purchases.*.purchase_price_inc_tax.required' => 'Purchase price (incl. tax) is required on every line.',
             ]);
 
             $user_id = $request->session()->get('user.id');
@@ -647,9 +658,17 @@ class PurchaseController extends Controller
         try {
             $transaction = Transaction::findOrFail($id);
 
-            //Validate document size
+            //Validate document size + line-item purchase prices.
             $request->validate([
-                'document' => 'file|max:'. (config('constants.document_size_limit') / 1000)
+                'document' => 'file|max:'. (config('constants.document_size_limit') / 1000),
+                'purchases'   => 'required|array|min:1',
+                'purchases.*.purchase_price' => 'required|numeric|min:0',
+                'purchases.*.pp_without_discount' => 'required|numeric|min:0',
+                'purchases.*.purchase_price_inc_tax' => 'required|numeric|min:0',
+            ], [
+                'purchases.*.purchase_price.required' => 'Purchase price is required on every line.',
+                'purchases.*.pp_without_discount.required' => 'Purchase price is required on every line.',
+                'purchases.*.purchase_price_inc_tax.required' => 'Purchase price (incl. tax) is required on every line.',
             ]);
 
             $transaction = Transaction::findOrFail($id);
