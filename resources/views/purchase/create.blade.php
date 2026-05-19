@@ -26,22 +26,6 @@
 	{!! Form::open(['url' => action('PurchaseController@store'), 'method' => 'post', 'id' => 'add_purchase_form', 'files' => true ]) !!}
 	{!! Form::hidden('save_action', 'save', ['id' => 'purchase_save_action']) !!}
 
-	{{-- Purchase-price guardrail banner. Every line must have a price > $0
-	     unless this purchase is donated stock. JS in this view watches the
-	     purchase entry table and disables Save when violations exist. --}}
-	<div id="purchase_price_guard" style="background:#FFF2B3; border:2px solid #F0DC7A; border-radius:10px; padding:14px 18px; margin-bottom:14px; box-shadow: 0 0 0 3px rgba(255, 242, 179, 0.4);">
-		<div style="display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;">
-			<label style="margin:0; font-weight:700; color:#1F1B16; cursor:pointer; font-size:14px;">
-				{!! Form::checkbox('is_donated', 1, false, ['id' => 'is_donated_checkbox', 'style' => 'margin-right:8px; transform:scale(1.2);']) !!}
-				These items were donated (free stock)
-			</label>
-			<span id="purchase_price_guard_status" style="font-size:13px; font-weight:600; color:#5A4410;"></span>
-		</div>
-		<div style="font-size:12px; color:#5A4410; margin-top:6px;">
-			Purchase price must be greater than <strong>$0</strong> on every line. Check the box above to skip this rule for donated / free stock.
-		</div>
-	</div>
-
 	@component('components.widget', ['class' => 'box-primary'])
 		<div class="row">
 			<div class="@if(!empty($default_purchase_status)) col-sm-4 @else col-sm-3 @endif">
@@ -572,6 +556,24 @@
 			     is kept because some pages JS depends on #advance_balance. --}}
 			{!! Form::hidden('advance_balance', null, ['id' => 'advance_balance', 'data-error-msg' => __('lang_v1.required_advance_balance_not_available')]); !!}
 			<span id="advance_balance_text" style="display:none;">0</span>
+
+			{{-- Purchase-price guardrail banner — lives next to the payment
+			     method row so cashiers see it right when they're finalizing.
+			     JS in this view watches every line in the entry table and
+			     disables Save when any line is $0 (unless donated is checked). --}}
+			<div id="purchase_price_guard" style="background:#FFF2B3; border:2px solid #F0DC7A; border-radius:10px; padding:12px 16px; margin-bottom:14px; box-shadow: 0 0 0 3px rgba(255, 242, 179, 0.4);">
+				<div style="display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;">
+					<label style="margin:0; font-weight:700; color:#1F1B16; cursor:pointer; font-size:14px;">
+						{!! Form::checkbox('is_donated', 1, false, ['id' => 'is_donated_checkbox', 'style' => 'margin-right:8px; transform:scale(1.2);']) !!}
+						These items were donated (free stock)
+					</label>
+					<span id="purchase_price_guard_status" style="font-size:13px; font-weight:600; color:#5A4410;"></span>
+				</div>
+				<div style="font-size:12px; color:#5A4410; margin-top:6px;">
+					Purchase price must be greater than <strong>$0</strong> on every line. Check the box above to skip this rule for donated / free stock.
+				</div>
+			</div>
+
 			@include('sale_pos.partials.payment_row_form', ['row_index' => 0, 'show_date' => true, 'show_denomination' => true])
 			<hr>
 			<div class="row">
