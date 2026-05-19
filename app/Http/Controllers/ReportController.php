@@ -1977,21 +1977,19 @@ class ReportController extends Controller
                 return $row->payout_type === 'store_credit' ? 'Store credit' : 'Cash';
             })
             ->addColumn('payment_method_label', function ($row) {
+                // Allowed values from BuyFromCustomerController validation:
+                // cash_in_store | store_credit | zelle_venmo
                 if (empty($row->payment_method)) {
                     return '—';
                 }
                 $method = strtolower($row->payment_method);
                 $map = [
-                    'cash'           => ['Cash',         '#DCFCE7', '#166534', '#BBF7D0'],
-                    'cash_in_store'  => ['Cash',         '#DCFCE7', '#166534', '#BBF7D0'],
-                    'zelle'          => ['Zelle',        '#EDE9FE', '#5B21B6', '#DDD6FE'],
-                    'venmo'          => ['Venmo',        '#DBEAFE', '#1E40AF', '#BFDBFE'],
-                    'cashapp'        => ['Cash App',     '#D1FAE5', '#065F46', '#A7F3D0'],
-                    'cash_app'       => ['Cash App',     '#D1FAE5', '#065F46', '#A7F3D0'],
-                    'paypal'         => ['PayPal',       '#DBEAFE', '#1E3A8A', '#BFDBFE'],
-                    'check'          => ['Check',        '#FEF3C7', '#92400E', '#FDE68A'],
-                    'store_credit'   => ['Store credit', '#FFF2B3', '#5A4410', '#F0DC7A'],
-                    'card'           => ['Card',         '#E0E7FF', '#3730A3', '#C7D2FE'],
+                    'cash_in_store' => ['Cash',          '#DCFCE7', '#166534', '#BBF7D0'],
+                    'cash'          => ['Cash',          '#DCFCE7', '#166534', '#BBF7D0'],
+                    'store_credit'  => ['Store credit',  '#FFF2B3', '#5A4410', '#F0DC7A'],
+                    'zelle_venmo'   => ['Zelle / Venmo', '#EDE9FE', '#5B21B6', '#DDD6FE'],
+                    'zelle'         => ['Zelle',         '#EDE9FE', '#5B21B6', '#DDD6FE'],
+                    'venmo'         => ['Venmo',         '#DBEAFE', '#1E40AF', '#BFDBFE'],
                 ];
                 if (isset($map[$method])) {
                     [$label, $bg, $fg, $border] = $map[$method];
