@@ -1752,6 +1752,8 @@ class ReportController extends Controller
                     ->join('contacts as c', 't.contact_id', '=', 'c.id')
                     ->join('products as p', 'pv.product_id', '=', 'p.id')
                     ->leftjoin('units as u', 'p.unit_id', '=', 'u.id')
+                    ->leftJoin('buy_customer_offers as bfc_o', 'bfc_o.accepted_purchase_id', '=', 't.id')
+                    ->leftJoin('users as added_by_u', 'added_by_u.id', '=', 't.created_by')
                     ->where('t.business_id', $business_id)
                     ->where('t.type', 'purchase')
                     ->select(
@@ -1769,7 +1771,9 @@ class ReportController extends Controller
                         DB::raw('(purchase_lines.quantity - purchase_lines.quantity_returned) as purchase_qty'),
                         'purchase_lines.quantity_adjusted',
                         'u.short_name as unit',
-                        DB::raw('((purchase_lines.quantity - purchase_lines.quantity_returned - purchase_lines.quantity_adjusted) * purchase_lines.purchase_price_inc_tax) as subtotal')
+                        DB::raw('((purchase_lines.quantity - purchase_lines.quantity_returned - purchase_lines.quantity_adjusted) * purchase_lines.purchase_price_inc_tax) as subtotal'),
+                        DB::raw('(bfc_o.id IS NOT NULL) as is_in_store_buy'),
+                        DB::raw("TRIM(CONCAT(COALESCE(added_by_u.first_name, ''), ' ', COALESCE(added_by_u.last_name, ''))) as added_by")
                     )
                     ->groupBy('purchase_lines.id');
             if (!empty($variation_id)) {
@@ -1827,7 +1831,21 @@ class ReportController extends Controller
                 ->editColumn('unit_purchase_price', function ($row) {
                     return '<span class="display_currency" data-currency_symbol = true>' . $row->unit_purchase_price . '</span>';
                 })
-                ->editColumn('supplier', '@if(!empty($supplier_business_name)) {{$supplier_business_name}},<br>@endif {{$supplier}}')
+                ->editColumn('supplier', function ($row) {
+                    $badge = '';
+                    if ($row->is_in_store_buy) {
+                        $badge = '<span style="display:inline-block;padding:2px 8px;background:#FFF2B3;color:#5A4410;border:1px solid #F0DC7A;border-radius:999px;font-size:10px;font-weight:800;letter-spacing:.08em;margin-right:6px;">IN-STORE BUY</span><br>';
+                    }
+                    $line = '';
+                    if (!empty($row->supplier_business_name)) {
+                        $line .= e($row->supplier_business_name) . ',<br>';
+                    }
+                    $line .= e($row->supplier);
+                    return $badge . $line;
+                })
+                ->addColumn('added_by', function ($row) {
+                    return $row->added_by ?: '—';
+                })
                 ->rawColumns(['ref_no', 'unit_purchase_price', 'subtotal', 'purchase_qty', 'quantity_adjusted', 'supplier'])
                 ->make(true);
         }

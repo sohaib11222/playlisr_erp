@@ -319,6 +319,7 @@
                                 <th>@lang('purchase.supplier')</th>
                                 <th>@lang('purchase.ref_no')</th>
                                 <th>@lang('messages.date')</th>
+                                <th>Added by</th>
                                 <th>@lang('sale.qty')</th>
                                 <th>@lang('lang_v1.total_unit_adjusted')</th>
                                 <th>@lang('lang_v1.unit_perchase_price')</th>
@@ -327,7 +328,7 @@
                         </thead>
                         <tfoot>
                             <tr class="bg-gray font-17 footer-total text-center">
-                                <td colspan="5"><strong>@lang('sale.total'):</strong></td>
+                                <td colspan="6"><strong>@lang('sale.total'):</strong></td>
                                 <td id="footer_total_purchase"></td>
                                 <td id="footer_total_adjusted"></td>
                                 <td></td>
