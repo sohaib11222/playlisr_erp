@@ -801,6 +801,7 @@ $(document).ready(function() {
             { data: 'ref_no', name: 't.ref_no' },
             { data: 'transaction_date', name: 't.transaction_date' },
             { data: 'added_by', name: 'added_by_u.first_name', orderable: false },
+            { data: 'payment_methods_label', name: 'payment_methods', orderable: false, searchable: false },
             { data: 'purchase_qty', name: 'purchase_lines.quantity' },
             { data: 'quantity_adjusted', name: 'purchase_lines.quantity_adjusted' },
             { data: 'unit_purchase_price', name: 'purchase_lines.purchase_price_inc_tax' },

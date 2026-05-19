@@ -1773,7 +1773,8 @@ class ReportController extends Controller
                         'purchase_lines.quantity_adjusted',
                         'u.short_name as unit',
                         DB::raw('((purchase_lines.quantity - purchase_lines.quantity_returned - purchase_lines.quantity_adjusted) * purchase_lines.purchase_price_inc_tax) as subtotal'),
-                        DB::raw("TRIM(CONCAT(COALESCE(added_by_u.first_name, ''), ' ', COALESCE(added_by_u.last_name, ''))) as added_by")
+                        DB::raw("TRIM(CONCAT(COALESCE(added_by_u.first_name, ''), ' ', COALESCE(added_by_u.last_name, ''))) as added_by"),
+                        DB::raw('(SELECT GROUP_CONCAT(DISTINCT tp.method ORDER BY tp.method SEPARATOR ",") FROM transaction_payments tp WHERE tp.transaction_id = t.id) as payment_methods')
                     )
                     ->groupBy('purchase_lines.id');
             if (!empty($variation_id)) {
@@ -1835,7 +1836,18 @@ class ReportController extends Controller
                 ->addColumn('added_by', function ($row) {
                     return $row->added_by ?: '—';
                 })
-                ->rawColumns(['ref_no', 'unit_purchase_price', 'subtotal', 'purchase_qty', 'quantity_adjusted', 'supplier'])
+                ->addColumn('payment_methods_label', function ($row) {
+                    if (empty($row->payment_methods)) {
+                        return '—';
+                    }
+                    $methods = array_filter(array_map('trim', explode(',', $row->payment_methods)));
+                    $pills = [];
+                    foreach ($methods as $m) {
+                        $pills[] = $this->purchasePaymentPill($m);
+                    }
+                    return implode(' ', $pills);
+                })
+                ->rawColumns(['ref_no', 'unit_purchase_price', 'subtotal', 'purchase_qty', 'quantity_adjusted', 'supplier', 'payment_methods_label'])
                 ->make(true);
         }
 
@@ -1982,22 +1994,7 @@ class ReportController extends Controller
                 if (empty($row->payment_method)) {
                     return '—';
                 }
-                $method = strtolower($row->payment_method);
-                $map = [
-                    'cash_in_store' => ['Cash',          '#DCFCE7', '#166534', '#BBF7D0'],
-                    'cash'          => ['Cash',          '#DCFCE7', '#166534', '#BBF7D0'],
-                    'store_credit'  => ['Store credit',  '#FFF2B3', '#5A4410', '#F0DC7A'],
-                    'zelle_venmo'   => ['Zelle / Venmo', '#EDE9FE', '#5B21B6', '#DDD6FE'],
-                    'zelle'         => ['Zelle',         '#EDE9FE', '#5B21B6', '#DDD6FE'],
-                    'venmo'         => ['Venmo',         '#DBEAFE', '#1E40AF', '#BFDBFE'],
-                ];
-                if (isset($map[$method])) {
-                    [$label, $bg, $fg, $border] = $map[$method];
-                } else {
-                    $label = ucwords(str_replace('_', ' ', $row->payment_method));
-                    $bg = '#F1F5F9'; $fg = '#334155'; $border = '#CBD5E1';
-                }
-                return '<span style="display:inline-block;padding:2px 9px;background:' . $bg . ';color:' . $fg . ';border:1px solid ' . $border . ';border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.04em;">' . e($label) . '</span>';
+                return $this->purchasePaymentPill($row->payment_method);
             })
             ->editColumn('line_count', function ($row) {
                 return (int) $row->line_count;
@@ -2010,6 +2007,37 @@ class ReportController extends Controller
             })
             ->rawColumns(['buy_record_number', 'final_total', 'payment_method_label'])
             ->make(true);
+    }
+
+    /**
+     * Color-coded payment-method pill used by both the main product purchase
+     * report (sourced from transaction_payments.method — cash/card/cheque/
+     * bank_transfer/other) and the In-store buys table (sourced from
+     * buy_customer_offers.payment_method — cash_in_store/store_credit/
+     * zelle_venmo). Keeps the visual language consistent across the report.
+     */
+    private function purchasePaymentPill($method)
+    {
+        $method = strtolower((string) $method);
+        $map = [
+            'cash'           => ['Cash',          '#DCFCE7', '#166534', '#BBF7D0'],
+            'cash_in_store'  => ['Cash',          '#DCFCE7', '#166534', '#BBF7D0'],
+            'card'           => ['Card',          '#E0E7FF', '#3730A3', '#C7D2FE'],
+            'cheque'         => ['Check',         '#FEF3C7', '#92400E', '#FDE68A'],
+            'bank_transfer'  => ['Bank transfer', '#DBEAFE', '#1E3A8A', '#BFDBFE'],
+            'store_credit'   => ['Store credit',  '#FFF2B3', '#5A4410', '#F0DC7A'],
+            'zelle_venmo'    => ['Zelle / Venmo', '#EDE9FE', '#5B21B6', '#DDD6FE'],
+            'zelle'          => ['Zelle',         '#EDE9FE', '#5B21B6', '#DDD6FE'],
+            'venmo'          => ['Venmo',         '#DBEAFE', '#1E40AF', '#BFDBFE'],
+            'other'          => ['Other',         '#F1F5F9', '#334155', '#CBD5E1'],
+        ];
+        if (isset($map[$method])) {
+            [$label, $bg, $fg, $border] = $map[$method];
+        } else {
+            $label = ucwords(str_replace('_', ' ', $method));
+            $bg = '#F1F5F9'; $fg = '#334155'; $border = '#CBD5E1';
+        }
+        return '<span style="display:inline-block;padding:2px 9px;background:' . $bg . ';color:' . $fg . ';border:1px solid ' . $border . ';border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.04em;">' . e($label) . '</span>';
     }
 
     private function weeklyPurchaseActual($business_id, $start, $end, $permitted_locations)
