@@ -301,6 +301,8 @@ class PurchaseController extends Controller
 
             //TODO: Check for "Undefined index: total_before_tax" issue
             //Adding temporary fix by validating
+            $is_donated = filter_var($request->input('is_donated'), FILTER_VALIDATE_BOOLEAN);
+            $price_rule = $is_donated ? 'nullable|numeric|min:0' : 'required|numeric|min:0';
             $request->validate([
                 'status' => 'required',
                 'contact_id' => 'required',
@@ -312,15 +314,30 @@ class PurchaseController extends Controller
                 // Backstop for the HTML5 `required` on the purchase_price /
                 // pp_without_discount / purchase_price_inc_tax inputs. Sarah
                 // asked to make purchase price mandatory at save time (2026-05-19).
+                // The "Items were donated" checkbox relaxes this to nullable
+                // so genuinely free stock can still be received.
                 'purchases'   => 'required|array|min:1',
-                'purchases.*.purchase_price' => 'required|numeric|min:0',
-                'purchases.*.pp_without_discount' => 'required|numeric|min:0',
-                'purchases.*.purchase_price_inc_tax' => 'required|numeric|min:0',
+                'purchases.*.purchase_price' => $price_rule,
+                'purchases.*.pp_without_discount' => $price_rule,
+                'purchases.*.purchase_price_inc_tax' => $price_rule,
             ], [
-                'purchases.*.purchase_price.required' => 'Purchase price is required on every line.',
-                'purchases.*.pp_without_discount.required' => 'Purchase price is required on every line.',
-                'purchases.*.purchase_price_inc_tax.required' => 'Purchase price (incl. tax) is required on every line.',
+                'purchases.*.purchase_price.required' => 'Purchase price is required on every line. Check "These items were donated" if this is free stock.',
+                'purchases.*.pp_without_discount.required' => 'Purchase price is required on every line. Check "These items were donated" if this is free stock.',
+                'purchases.*.purchase_price_inc_tax.required' => 'Purchase price (incl. tax) is required on every line. Check "These items were donated" if this is free stock.',
             ]);
+
+            // Tag donated purchases in additional_notes so the [DONATED]
+            // marker is searchable in reports and the edit form can recall it.
+            // $transaction_data was populated above (line ~295) BEFORE this
+            // block, so we have to update both it and the request.
+            if ($is_donated) {
+                $note = (string) $request->input('additional_notes', '');
+                if (strpos($note, '[DONATED]') === false) {
+                    $tagged = trim('[DONATED] ' . $note);
+                    $request->merge(['additional_notes' => $tagged]);
+                    $transaction_data['additional_notes'] = $tagged;
+                }
+            }
 
             $user_id = $request->session()->get('user.id');
             $enable_product_editing = $request->session()->get('business.enable_editing_product_from_purchase');
@@ -659,17 +676,30 @@ class PurchaseController extends Controller
             $transaction = Transaction::findOrFail($id);
 
             //Validate document size + line-item purchase prices.
+            $is_donated = filter_var($request->input('is_donated'), FILTER_VALIDATE_BOOLEAN);
+            $price_rule = $is_donated ? 'nullable|numeric|min:0' : 'required|numeric|min:0';
             $request->validate([
                 'document' => 'file|max:'. (config('constants.document_size_limit') / 1000),
                 'purchases'   => 'required|array|min:1',
-                'purchases.*.purchase_price' => 'required|numeric|min:0',
-                'purchases.*.pp_without_discount' => 'required|numeric|min:0',
-                'purchases.*.purchase_price_inc_tax' => 'required|numeric|min:0',
+                'purchases.*.purchase_price' => $price_rule,
+                'purchases.*.pp_without_discount' => $price_rule,
+                'purchases.*.purchase_price_inc_tax' => $price_rule,
             ], [
-                'purchases.*.purchase_price.required' => 'Purchase price is required on every line.',
-                'purchases.*.pp_without_discount.required' => 'Purchase price is required on every line.',
-                'purchases.*.purchase_price_inc_tax.required' => 'Purchase price (incl. tax) is required on every line.',
+                'purchases.*.purchase_price.required' => 'Purchase price is required on every line. Check "These items were donated" if this is free stock.',
+                'purchases.*.pp_without_discount.required' => 'Purchase price is required on every line. Check "These items were donated" if this is free stock.',
+                'purchases.*.purchase_price_inc_tax.required' => 'Purchase price (incl. tax) is required on every line. Check "These items were donated" if this is free stock.',
             ]);
+
+            // Tag / untag donated purchases in additional_notes so the marker
+            // is searchable in reports and the edit form can recall it.
+            $note = (string) $request->input('additional_notes', '');
+            $has_tag = strpos($note, '[DONATED]') !== false;
+            if ($is_donated && !$has_tag) {
+                $request->merge(['additional_notes' => trim('[DONATED] ' . $note)]);
+            } elseif (!$is_donated && $has_tag) {
+                $stripped = trim(preg_replace('/\[DONATED\]\s*/', '', $note));
+                $request->merge(['additional_notes' => $stripped]);
+            }
 
             $transaction = Transaction::findOrFail($id);
             $before_status = $transaction->status;

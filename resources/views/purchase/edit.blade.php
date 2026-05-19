@@ -342,6 +342,20 @@
                       </div>
                     </td>
                   </tr>
+                  @php $was_donated = strpos((string) $purchase->additional_notes, '[DONATED]') !== false; @endphp
+                  <tr>
+                    <td colspan="4">
+                      <div class="form-group" style="background:#FFF8E1; border:1px solid #F0DC7A; border-radius:6px; padding:10px 14px;">
+                        <label style="margin:0; font-weight:600; color:#5A4410; cursor:pointer;">
+                          {!! Form::checkbox('is_donated', 1, $was_donated, ['id' => 'is_donated_checkbox', 'style' => 'margin-right:8px;']) !!}
+                          These items were donated (skip purchase-price requirement)
+                        </label>
+                        <div style="font-size:12px; color:#8B6914; margin-top:4px; margin-left:24px;">
+                          Check this for free / donated stock. The save will allow blank or $0 line prices and tag the purchase with <strong>[DONATED]</strong> in notes.
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
 
                 </table>
             </div>
