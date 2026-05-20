@@ -5,7 +5,7 @@
 <section class="content-header">
     <h1>Order for this Week</h1>
     <p class="text-muted ica-lead">
-        <strong>1.</strong> Pick a store below. <strong>2.</strong> Review the 🔥 Fast sellers list (Jon's focus — items that sold &lt;90 days and are out of stock). <strong>3.</strong> Export.
+        <strong>1.</strong> Pick a store below. <strong>2.</strong> Review the Fast sellers list (Jon's focus — items that sold &lt;90 days and are out of stock). <strong>3.</strong> Export.
         Everything else (charts, events, ABC, frozen, customer wants) lives behind the “Show all the other reorder lists” toggle once the list builds.
     </p>
 </section>
@@ -28,7 +28,7 @@
     @endphp
     <div class="ica-budget-banner">
         <div class="ica-budget-head">
-            <span class="ica-budget-title">💰 Purchasing budget — week {{ $pb['week_no'] }} of 13 <small class="text-muted">({{ \Carbon\Carbon::parse($pb['start'])->format('M j') }} – {{ \Carbon\Carbon::parse($pb['end'])->format('M j') }})</small></span>
+            <span class="ica-budget-title">Purchasing budget — week {{ $pb['week_no'] }} of 13 <small class="text-muted">({{ \Carbon\Carbon::parse($pb['start'])->format('M j') }} – {{ \Carbon\Carbon::parse($pb['end'])->format('M j') }})</small></span>
             <span class="ica-budget-figures">
                 <span class="ica-budget-spent">Spent <strong>${{ number_format($pb['spent'], 0) }}</strong></span>
                 <span class="ica-budget-sep">·</span>
@@ -54,10 +54,10 @@
             <div class="ica-store-picker">
                 <span class="ica-store-picker-label">What store?</span>
                 <button type="button" class="btn btn-lg btn-default ica-store-btn" data-preset="hollywood_all">
-                    🎸 Hollywood
+                    Hollywood
                 </button>
                 <button type="button" class="btn btn-lg btn-default ica-store-btn" data-preset="pico_all">
-                    🌴 Pico
+                    Pico
                 </button>
                 <a class="btn btn-link btn-sm pull-right" data-toggle="collapse" href="#ica_advanced_filters" role="button">
                     vinyl/CDs only? ▾
@@ -99,10 +99,10 @@
 
     {{-- ── More options (chart imports + inbox pull, collapsed by default) ── --}}
     <details class="ica-more-options no-print">
-        <summary>⚙️ More options — chart imports, inbox auto-fetch, saved sessions</summary>
+        <summary>More options — chart imports, inbox auto-fetch, saved sessions</summary>
         <div class="row" id="ica_freshness_banner" style="margin-top:8px;">
             <div class="col-md-6">
-                @component('components.widget', ['class' => 'box-solid', 'title' => '📬 Street Pulse / Luminate chart'])
+                @component('components.widget', ['class' => 'box-solid', 'title' => 'Street Pulse / Luminate chart'])
                 <p class="text-muted small" id="ica_sp_freshness">Not yet imported.</p>
                 <button type="button" class="btn btn-default btn-sm" data-toggle="modal" data-target="#ica_sp_modal">
                     <i class="fa fa-upload"></i> Upload this week's chart
@@ -110,7 +110,7 @@
                 @endcomponent
             </div>
             <div class="col-md-6">
-                @component('components.widget', ['class' => 'box-solid', 'title' => '🌍 UMe / Universal chart'])
+                @component('components.widget', ['class' => 'box-solid', 'title' => 'UMe / Universal chart'])
                 <p class="text-muted small" id="ica_ut_freshness">Not yet imported.</p>
                 <button type="button" class="btn btn-default btn-sm" data-toggle="modal" data-target="#ica_ut_modal">
                     <i class="fa fa-upload"></i> Upload this week's chart
@@ -120,8 +120,8 @@
         </div>
         <div class="row">
             <div class="col-md-12">
-                @component('components.widget', ['class' => 'box-warning', 'title' => '🗒️ Manager picks — stock-up suggestions'])
-                <p class="text-muted small">Lashyn or any manager can flag a category to stock up on. The 🗒️ Manager picks bucket surfaces low-stock candidates matching it.</p>
+                @component('components.widget', ['class' => 'box-warning', 'title' => 'Manager picks — stock-up suggestions'])
+                <p class="text-muted small">Lashyn or any manager can flag a category to stock up on. The Manager picks bucket surfaces low-stock candidates matching it.</p>
                 <div id="ica_mgrpicks_list" class="ica-mgrpicks-list">
                     <p class="text-muted small">Loading current picks…</p>
                 </div>
@@ -153,7 +153,7 @@
         </div>
         <div class="row">
             <div class="col-md-12">
-                @component('components.widget', ['class' => 'box-info', 'title' => '📥 Auto-fetch from inbox'])
+                @component('components.widget', ['class' => 'box-info', 'title' => 'Auto-fetch from inbox'])
                 <p class="text-muted small">Auto-pulls Street Pulse + UMe emails from sarah@nivessa.com every Wednesday 08:15 PST. Trigger manually below.</p>
                 <button type="button" class="btn btn-primary btn-sm" id="ica_run_import" data-dry-run="1">
                     <i class="fa fa-bolt"></i> Run test (dry-run)
@@ -162,7 +162,7 @@
                     <i class="fa fa-download"></i> Run for real
                 </button>
                 <button type="button" class="btn btn-info btn-sm" id="ica_run_apple" style="margin-left:12px;">
-                    🍎 Run Apple Music pull now
+                    Run Apple Music pull now
                 </button>
                 <pre id="ica_run_import_output" style="display:none; margin-top:12px; max-height:300px; overflow:auto; font-size:11px; background:#f9f9f9; padding:8px;"></pre>
                 @endcomponent

@@ -167,7 +167,7 @@ class InventoryCheckController extends Controller
             if (!$locationId) {
                 return response()->json([
                     'bucket' => [
-                        'label' => '🎤 Upcoming events — stock up',
+                        'label' => 'Upcoming events — stock up',
                         'why' => 'Pick a store first.',
                         'items' => [],
                         'count' => 0,
@@ -185,7 +185,7 @@ class InventoryCheckController extends Controller
             ]);
             return response()->json([
                 'bucket' => [
-                    'label' => '🎤 Upcoming events — stock up',
+                    'label' => 'Upcoming events — stock up',
                     'why' => 'Events feed failed to load: ' . $e->getMessage(),
                     'items' => [],
                     'count' => 0,
@@ -213,7 +213,7 @@ class InventoryCheckController extends Controller
             $locationId = !empty($input['location_id']) ? (int) $input['location_id'] : null;
             if (!$locationId) {
                 return response()->json(['bucket' => [
-                    'label' => '💎 A-class items — restock priority',
+                    'label' => 'A-class items — restock priority',
                     'why' => 'Pick a store first.',
                     'items' => [], 'count' => 0,
                 ]]);
@@ -227,7 +227,7 @@ class InventoryCheckController extends Controller
                 'file' => $e->getFile() . ':' . $e->getLine(),
             ]);
             return response()->json(['bucket' => [
-                'label' => '💎 A-class items — restock priority',
+                'label' => 'A-class items — restock priority',
                 'why' => 'ABC analysis failed to load: ' . $e->getMessage(),
                 'items' => [], 'count' => 0, 'empty_reason' => 'fetch_error',
             ]]);
@@ -251,7 +251,7 @@ class InventoryCheckController extends Controller
             $locationId = !empty($input['location_id']) ? (int) $input['location_id'] : null;
             if (!$locationId) {
                 return response()->json(['bucket' => [
-                    'label' => '❄️ Frozen inventory — DO NOT reorder',
+                    'label' => 'Frozen inventory — DO NOT reorder',
                     'why' => 'Pick a store first.',
                     'items' => [], 'count' => 0,
                 ]]);
@@ -265,7 +265,7 @@ class InventoryCheckController extends Controller
                 'file' => $e->getFile() . ':' . $e->getLine(),
             ]);
             return response()->json(['bucket' => [
-                'label' => '❄️ Frozen inventory — DO NOT reorder',
+                'label' => 'Frozen inventory — DO NOT reorder',
                 'why' => 'Frozen-inventory scan failed: ' . $e->getMessage(),
                 'items' => [], 'count' => 0, 'empty_reason' => 'fetch_error',
             ]]);
@@ -290,7 +290,7 @@ class InventoryCheckController extends Controller
             $locationId = !empty($input['location_id']) ? (int) $input['location_id'] : null;
             if (!$locationId) {
                 return response()->json(['bucket' => [
-                    'label' => '🗒️ Manager picks',
+                    'label' => 'Manager picks',
                     'why' => 'Pick a store first.',
                     'items' => [], 'count' => 0,
                 ]]);
@@ -304,7 +304,7 @@ class InventoryCheckController extends Controller
                 'file' => $e->getFile() . ':' . $e->getLine(),
             ]);
             return response()->json(['bucket' => [
-                'label' => '🗒️ Manager picks',
+                'label' => 'Manager picks',
                 'why' => 'Manager picks failed to load: ' . $e->getMessage(),
                 'items' => [], 'count' => 0, 'empty_reason' => 'fetch_error',
             ]]);

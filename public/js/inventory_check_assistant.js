@@ -219,7 +219,7 @@
         host.innerHTML = `
             <div class="ica-frozen-insight ica-frozen-insight-${sev}">
                 <div class="ica-frozen-head">
-                    <span>❄️ <strong>$${tied.toLocaleString('en-US', {maximumFractionDigits:0})}</strong> tied up in frozen inventory</span>
+                    <span><strong>$${tied.toLocaleString('en-US', {maximumFractionDigits:0})}</strong> tied up in frozen inventory</span>
                     <span class="text-muted small">${count} items haven't sold in ${days}+ days · ${sev === 'high' ? 'review before reordering anything from chart picks' : (sev === 'med' ? 'cross-check before adding more chart titles' : 'OK for now')}</span>
                 </div>
                 <div class="ica-frozen-cta">
@@ -362,14 +362,9 @@
     function renderBucketSection(key, b) {
         const countClass = (b.count || 0) === 0 ? 'zero' : '';
         const rows = (b.items || []).map((it) => renderRow(key, it)).join('');
-        // Sell Speed column shown on fast_oos so Clyde sees the same number
-        // his old ChatGPT step produced. Other buckets keep the wider Reason
-        // column (no sell-speed concept).
-        const showSellSpeed = key === 'fast_oos';
-        const headRow = showSellSpeed
-            ? `<th><input type="checkbox" class="ica-select-all" data-bucket="${escapeHtml(key)}"></th>
-               <th>Product</th><th>Artist</th><th>Format</th><th>Stock</th><th>Sold (window)</th><th>Sell Speed</th><th>Reason</th><th>Tags</th><th>Qty</th><th></th>`
-            : `<th><input type="checkbox" class="ica-select-all" data-bucket="${escapeHtml(key)}"></th>
+        // Sell Speed column dropped 2026-05-20 — the underlying query was
+        // the page's biggest perf cost. Uniform column set for all buckets.
+        const headRow = `<th><input type="checkbox" class="ica-select-all" data-bucket="${escapeHtml(key)}"></th>
                <th>Product</th><th>Artist</th><th>Format</th><th>Stock</th><th>Sold (window)</th><th>Reason</th><th>Tags</th><th>Qty</th><th></th>`;
         const body = (b.count || 0) === 0
             ? `<div class="ica-bucket-empty">No items in this bucket${b.empty_reason ? ' (' + b.empty_reason.replace(/_/g, ' ') + ')' : ''}.</div>`
@@ -416,10 +411,8 @@
             ? `<button type="button" class="btn btn-xs btn-success ica-fulfill-want" data-want-id="${it.customer_want_id}"><i class="fa fa-check"></i> Fulfilled</button>`
             : (bucket === 'events_upcoming' && it.event_name ? `<small class="text-muted">${escapeHtml(it.event_name)} — ${escapeHtml(it.event_date)}</small>` : '');
 
-        const showSellSpeed = bucket === 'fast_oos';
-        const sellSpeedCell = showSellSpeed
-            ? `<td>${(it.avg_sell_days !== null && it.avg_sell_days !== undefined) ? escapeHtml(it.avg_sell_days + 'd') : '—'}</td>`
-            : '';
+        // Sell Speed column dropped 2026-05-20 (perf).
+        const sellSpeedCell = '';
 
         // Frozen rows are a warning list — qty stays 0, checkbox starts
         // unchecked, qty input disabled so a careless export can't bulk-
@@ -502,7 +495,7 @@
         if (!list) return;
         const active = (picks || []).filter((p) => !p.dismissed);
         if (!active.length) {
-            list.innerHTML = '<p class="text-muted small">No active picks. Add one below to surface candidates in the 🗒️ Manager picks bucket.</p>';
+            list.innerHTML = '<p class="text-muted small">No active picks. Add one below to surface candidates in the Manager picks bucket.</p>';
             return;
         }
         list.innerHTML = active.map((p) => `

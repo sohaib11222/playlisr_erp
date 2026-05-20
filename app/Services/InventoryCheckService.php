@@ -190,7 +190,7 @@ class InventoryCheckService
             // them inline blocked the whole page (Sarah was stuck on the
             // spinner). JS fires separate requests after the page paints.
             'events_upcoming' => [
-                'label' => '🎤 Upcoming events — stock up',
+                'label' => 'Upcoming events — stock up',
                 'why' => 'Loading separately from server.nivessa.com + Ticketmaster feed…',
                 'items' => [], 'count' => 0, 'lazy' => true,
             ],
@@ -198,17 +198,17 @@ class InventoryCheckService
             'hot_used_oos' => $this->bucketHotUsedOos($business_id, $locationId, $permittedLocations),
             'customer_wants' => $this->bucketCustomerWants($business_id, $locationId),
             'manager_picks' => [
-                'label' => '🗒️ Manager picks',
+                'label' => 'Manager picks',
                 'why' => 'Loading separately (Lashyn et al stock-up suggestions)…',
                 'items' => [], 'count' => 0, 'lazy' => true,
             ],
             'abc_a_restock' => [
-                'label' => '💎 A-class items — restock priority',
+                'label' => 'A-class items — restock priority',
                 'why' => 'Loading separately (ABC analysis scans the full product catalog)…',
                 'items' => [], 'count' => 0, 'lazy' => true,
             ],
             'frozen_inventory' => [
-                'label' => '❄️ Frozen inventory — DO NOT reorder',
+                'label' => 'Frozen inventory — DO NOT reorder',
                 'why' => 'Loading separately (dead-stock scan crosses transaction history)…',
                 'items' => [], 'count' => 0, 'lazy' => true,
             ],
@@ -326,8 +326,8 @@ class InventoryCheckService
 
         if (empty($picks)) {
             return [
-                'label' => '🗒️ Manager picks',
-                'why' => 'No active manager picks. Managers can add one in ⚙️ More options.',
+                'label' => 'Manager picks',
+                'why' => 'No active manager picks. Managers can add one in More options.',
                 'items' => [], 'count' => 0, 'empty_reason' => 'no_active_picks',
             ];
         }
@@ -378,7 +378,7 @@ class InventoryCheckService
         $items = $this->dedupeByVariation($items);
 
         return [
-            'label' => '🗒️ Manager picks',
+            'label' => 'Manager picks',
             'why' => count($picks) . ' active pick' . (count($picks) === 1 ? '' : 's') . ' · ' . implode(' · ', $pickSummaries),
             'items' => $items,
             'count' => count($items),
@@ -442,13 +442,14 @@ class InventoryCheckService
             $saleStart = Carbon::now()->subDays((int) ($rules['sale_days'] ?? 60))->format('Y-m-d');
             $saleEnd = Carbon::now()->format('Y-m-d');
 
-            // Pull PSC rows first so we can scope the avg-sell-days query
-            // to only the variation_ids we're going to consider.
+            // Drop the avg-sell-days query entirely (Sarah 2026-05-20).
+            // Even scoped to ≤2000 variation IDs it was the bottleneck
+            // making the page "take forever". The Sell Speed column was
+            // Clyde's preference; current users (Sarah/Jon) just need
+            // sold-qty + stock to decide a reorder.
             $rows = $this->queryPscRows($business_id, $locationId, $catIds, $permittedLocations);
-            $variationIds = array_map(fn ($r) => (int) $r->variation_id, $rows->all());
-
             $sold = $this->getSoldQtyByVariation($business_id, $locationId, $saleStart, $saleEnd, $permittedLocations);
-            $avgDaysMap = $this->getAvgSellDaysByVariation($business_id, $locationId, $saleStart, $saleEnd, null, true, $permittedLocations, $variationIds);
+
             foreach ($rows as $row) {
                 $vid = (int) $row->variation_id;
                 $stock = (float) ($row->stock ?? 0);
@@ -461,70 +462,23 @@ class InventoryCheckService
                     continue;
                 }
 
-                $avgDays = isset($avgDaysMap[$vid]['avg_days']) ? round($avgDaysMap[$vid]['avg_days'], 1) : null;
                 $items[] = $this->rowToCandidate($row, $stock, $sold_in_window, $rules['target_stock'] ?? 3, [
                     'bucket' => 'fast_oos',
                     'reason' => 'sold ' . (int) $sold_in_window . ' in last ' . ($rules['sale_days'] ?? 60) . 'd, stock ' . (int) $stock,
-                    // Backfill avg sell speed too so Clyde sees the same
-                    // number the old ChatGPT detour produced.
-                    'avg_sell_days' => $avgDays,
                 ]);
             }
         }
 
-        // Fast sellers (any category) — avg sell days ≤ threshold
-        $rules = $cfg['fast_seller'] ?? null;
-        if ($rules) {
-            $saleStart = Carbon::now()->subDays((int) ($rules['sale_days'] ?? 90))->format('Y-m-d');
-            $saleEnd = Carbon::now()->format('Y-m-d');
-
-            // Pull candidate PSC rows first (any category at this location),
-            // then scope the heavy avg-sell-days query to just those vids.
-            // Was the slowest single query on the page before this scoping.
-            $rows = $this->queryPscRows($business_id, $locationId, [], $permittedLocations);
-            $variationIds = array_map(fn ($r) => (int) $r->variation_id, $rows->all());
-            $fast = $this->getAvgSellDaysByVariation($business_id, $locationId, $saleStart, $saleEnd, null, true, $permittedLocations, $variationIds);
-
-            if (!empty($fast)) {
-                foreach ($rows as $row) {
-                    $vid = (int) $row->variation_id;
-                    if (!isset($fast[$vid])) {
-                        continue;
-                    }
-                    $stock = (float) ($row->stock ?? 0);
-                    if ($stock > ($rules['max_stock'] ?? 2)) {
-                        continue;
-                    }
-                    if ($fast[$vid]['avg_days'] > ($rules['max_avg_sell_days'] ?? 21)) {
-                        continue;
-                    }
-
-                    $items[] = $this->rowToCandidate($row, $stock, 0, $rules['target_stock'] ?? 3, [
-                        'bucket' => 'fast_oos',
-                        'reason' => 'avg sell speed ' . round($fast[$vid]['avg_days'], 1) . 'd',
-                        'avg_sell_days' => round($fast[$vid]['avg_days'], 1),
-                    ]);
-                }
-            }
-        }
+        // The old "fast_seller (any category)" sub-bucket was dropped
+        // 2026-05-20 — it queried avg-sell-days across 2000 PSC rows in
+        // any category and was the page's biggest single perf cost. The
+        // vinyl/CD sub-buckets above cover the actual reorder candidates.
 
         $items = $this->dedupeByVariation($items);
-        // Sort fastest-moving first by avg sell-days, then by recent sold qty.
-        // Matches Clyde's mental model: lowest sell-speed = "Sell Speed" col
-        // ascending, which is exactly what the old ChatGPT step produced.
+        // Sort by recent sold-qty descending — items that moved the most
+        // in the window land at the top. Simple, fast, no avg-days math.
         usort($items, function ($a, $b) {
-            $aDays = $a['avg_sell_days'] ?? null;
-            $bDays = $b['avg_sell_days'] ?? null;
-            if ($aDays !== null && $bDays !== null && $aDays !== $bDays) {
-                return $aDays <=> $bDays;
-            }
-            if ($aDays !== null && $bDays === null) {
-                return -1;
-            }
-            if ($aDays === null && $bDays !== null) {
-                return 1;
-            }
-            return $b['sold_qty_window'] <=> $a['sold_qty_window'];
+            return ($b['sold_qty_window'] ?? 0) <=> ($a['sold_qty_window'] ?? 0);
         });
 
         // Enrich rows with "last ordered" info — employees asked for
@@ -549,7 +503,7 @@ class InventoryCheckService
         }
 
         return [
-            'label' => '🔥 Fast-moving, out of stock',
+            'label' => 'Fast-moving, out of stock',
             'why' => 'Sold fast in the last 60-90 days; we have zero or near-zero on shelf. Each row shows what we last ordered + when, so you can judge if the previous order was right-sized.',
             'items' => $items,
             'count' => count($items),
@@ -704,9 +658,9 @@ class InventoryCheckService
     protected function chartSourceLabel(string $source): string
     {
         switch ($source) {
-            case 'street_pulse': return '📬 Street Pulse picks';
-            case 'universal_top': return '🌍 Universal top';
-            case 'apple_music_top': return '🍎 Apple Music top 100';
+            case 'street_pulse': return 'Street Pulse picks';
+            case 'universal_top': return 'Universal top';
+            case 'apple_music_top': return 'Apple Music top 100';
             default: return ucwords(str_replace('_', ' ', $source));
         }
     }
@@ -819,7 +773,7 @@ class InventoryCheckService
     {
         if (!Schema::hasTable('chart_picks')) {
             return [
-                'label' => '🎵 New releases from your top artists',
+                'label' => 'New releases from your top artists',
                 'why' => 'chart_picks table not yet migrated — run php artisan migrate.',
                 'items' => [],
                 'count' => 0,
@@ -834,7 +788,7 @@ class InventoryCheckService
 
         if ($latestWeeks->isEmpty() || empty($topArtists)) {
             return [
-                'label' => '🎵 New releases from your top artists',
+                'label' => 'New releases from your top artists',
                 'why' => 'Cross-references your top-selling artists with the week\'s charts. Populates once a chart is pasted.',
                 'items' => [],
                 'count' => 0,
@@ -898,7 +852,7 @@ class InventoryCheckService
         }
 
         return [
-            'label' => '🎵 New releases from your top artists',
+            'label' => 'New releases from your top artists',
             'why' => 'Artists popular in-store who have a new release (or a title we don\'t yet carry) on this week\'s charts.',
             'items' => $deduped,
             'count' => count($deduped),
@@ -927,7 +881,7 @@ class InventoryCheckService
 
         if (empty($events)) {
             return [
-                'label' => '🎤 Upcoming events — stock up',
+                'label' => 'Upcoming events — stock up',
                 'why' => 'Pulled from nivessa.com/events + UMe anniversaries. Set NIVESSA_EVENTS_API_URL in .env or import a UMe xlsx to enable.',
                 'items' => [],
                 'count' => 0,
@@ -972,7 +926,7 @@ class InventoryCheckService
         $concertCount = count($events) - count($annivEvents);
 
         return [
-            'label' => '🎤 Upcoming events — stock up',
+            'label' => 'Upcoming events — stock up',
             'why' => 'LA concerts + listening parties + UMe artist moments (biopics, anniversaries, birthdays) in the next ' . $lookahead . ' days.',
             'items' => $items,
             'count' => count($items),
@@ -1142,7 +1096,7 @@ class InventoryCheckService
     {
         if (empty($abcMap)) {
             return [
-                'label' => '💎 A-class items — restock priority',
+                'label' => 'A-class items — restock priority',
                 'why' => 'ABC classification empty — no stocked products with value.',
                 'items' => [],
                 'count' => 0,
@@ -1160,7 +1114,7 @@ class InventoryCheckService
         }
         if (empty($aPidsSet)) {
             return [
-                'label' => '💎 A-class items — restock priority',
+                'label' => 'A-class items — restock priority',
                 'why' => 'No A-class products at this location.',
                 'items' => [],
                 'count' => 0,
@@ -1192,7 +1146,7 @@ class InventoryCheckService
         $items = $this->dedupeByVariation($items);
 
         return [
-            'label' => '💎 A-class items — restock priority',
+            'label' => 'A-class items — restock priority',
             'why' => 'Items in the top 80% of inventory value (ABC class A) that are low or out of stock here. These drive most of the store\'s value — being out hurts the most.',
             'items' => $items,
             'count' => count($items),
@@ -1241,7 +1195,7 @@ class InventoryCheckService
 
         if ($stocked->isEmpty()) {
             return [
-                'label' => '❄️ Frozen inventory — DO NOT reorder',
+                'label' => 'Frozen inventory — DO NOT reorder',
                 'why' => 'No stocked items at this location.',
                 'items' => [], 'count' => 0, 'frozen_days' => $frozenDays,
             ];
@@ -1296,7 +1250,7 @@ class InventoryCheckService
         }
 
         return [
-            'label' => '❄️ Frozen inventory — DO NOT reorder',
+            'label' => 'Frozen inventory — DO NOT reorder',
             'why' => 'Stock-on-shelf with no sale in ' . $frozenDays . '+ days. Total $' . number_format($totalTied, 0) . ' tied up here. Cross-reference: rows in other buckets that match these are tagged "frozen_dupe".',
             'items' => $items,
             'count' => count($items),
@@ -1400,7 +1354,7 @@ class InventoryCheckService
         ];
     }
 
-    // ── 🎸 Hot used, currently out (watchlist, not reorderable) ──────
+    // ── Hot used, currently out (watchlist, not reorderable) ──────
 
     /**
      * Used titles that have sold N+ copies in the last 90 days but we
@@ -1427,7 +1381,7 @@ class InventoryCheckService
 
         if (empty($catIds)) {
             return [
-                'label' => '🎸 Hot used, currently out',
+                'label' => 'Hot used, currently out',
                 'why' => 'No categories matched "Used Vinyl" or "Used CD" — check your ERP category names in config/inventory_check.php.',
                 'items' => [],
                 'count' => 0,
@@ -1449,7 +1403,7 @@ class InventoryCheckService
         $soldByProduct = $this->getSoldQtyByProduct($business_id, $locationId, $catIds, $saleStart, $saleEnd, $permittedLocations);
         if (empty($soldByProduct)) {
             return [
-                'label' => '🎸 Hot used, currently out',
+                'label' => 'Hot used, currently out',
                 'why' => 'No used sales in the last ' . $saleDays . ' days at this location.',
                 'items' => [],
                 'count' => 0,
@@ -1496,7 +1450,7 @@ class InventoryCheckService
         usort($items, fn ($a, $b) => $b['sold_qty_window'] <=> $a['sold_qty_window']);
 
         return [
-            'label' => '🎸 Hot used, currently out',
+            'label' => 'Hot used, currently out',
             'why' => 'Used titles that sold ' . (int) $minSold . '+ copies in the last ' . $saleDays . 'd but are now gone. Watch for these on customer trade-ins and Discogs — no AMS order needed.',
             'items' => $items,
             'count' => count($items),
