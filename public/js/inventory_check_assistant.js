@@ -943,48 +943,9 @@
         $print.addEventListener('click', function () { window.print(); });
     }
 
-    // ── Sessions ────────────────────────────────────────────────────
-    function loadSessions() {
-        fetch(window.ICA_SESSIONS_URL, { credentials: 'same-origin' })
-            .then((r) => r.json())
-            .then((resp) => {
-                const sel = document.getElementById('ica_session_select');
-                if (!sel) return;
-                sel.innerHTML = '<option value="">—</option>';
-                (resp.data || []).forEach((s) => {
-                    const opt = document.createElement('option');
-                    opt.value = s.id;
-                    opt.textContent = s.name + ' (' + (s.updated_at || '').substring(0, 10) + ')';
-                    sel.appendChild(opt);
-                });
-            });
-    }
-    loadSessions();
-
-    const $saveSession = document.getElementById('ica_session_save');
-    if ($saveSession) {
-        $saveSession.addEventListener('click', function () {
-            const name = document.getElementById('ica_session_name').value.trim();
-            if (!name) { alert('Give it a name.'); return; }
-            fetch(window.ICA_SESSIONS_STORE, {
-                method: 'POST',
-                headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': window.ICA_CSRF,
-                },
-                credentials: 'same-origin',
-                body: JSON.stringify({
-                    name: name,
-                    location_id: $location.value || null,
-                    category_id: $category.value || null,
-                    preset_key: $preset.value || null,
-                }),
-            })
-                .then((r) => r.json())
-                .then(() => loadSessions());
-        });
-    }
+    // Sessions UI removed 2026-05-20 — Sarah didn't recognize / use it.
+    // Backend endpoints (listSessions/storeSession/etc) still wired so a
+    // future use-case doesn't require restoring routes.
 
     // ── Util ─────────────────────────────────────────────────────────
     function escapeHtml(s) {

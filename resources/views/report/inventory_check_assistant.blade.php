@@ -201,34 +201,9 @@
         </div>
     </div>
 
-    {{-- ── Saved sessions (collapsed by default — rarely used) ─────── --}}
-    <details class="ica-more-options no-print" style="margin-top:8px;">
-        <summary>💾 Saved sessions (rare — save/load named order lists)</summary>
-        <div style="margin-top:8px;">
-            <div class="row">
-                <div class="col-md-4">
-                    <div class="form-group">
-                        <label>Session name</label>
-                        <input type="text" class="form-control" id="ica_session_name" placeholder="e.g. Hollywood — week of …">
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="form-group">
-                        <label>Load session</label>
-                        <select class="form-control" id="ica_session_select">
-                            <option value="">—</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <label>&nbsp;</label><br>
-                    <button type="button" class="btn btn-primary btn-sm" id="ica_session_save">Save</button>
-                    <button type="button" class="btn btn-default btn-sm" id="ica_session_load">Load</button>
-                    <button type="button" class="btn btn-danger btn-sm" id="ica_session_delete">Delete</button>
-                </div>
-            </div>
-        </div>
-    </details>
+    {{-- Saved sessions removed 2026-05-20 — Sarah didn't recognize the
+         feature, never used. Backend routes + controller still exist so
+         no migration needed; just dropped from the UI. --}}
 </section>
 
 {{-- ── Street Pulse import modal (file or paste) ─────────────────── --}}
