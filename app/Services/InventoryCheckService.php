@@ -175,33 +175,38 @@ class InventoryCheckService
 
         $topArtists = $this->getTopArtists($business_id, $locationId, $permittedLocations);
 
-        // ABC classification by inventory value (matches /reports/abc-inventory-classification).
-        // Computed once per request, cached 15min — used to tag every item.
-        $abcMap = $this->computeAbcMap($business_id);
-
+        // Per Sarah 2026-05-20: Jon's primary focus is fast sellers <90d, so
+        // that bucket stays first + cheap to compute. Events, ABC, and frozen
+        // all defer to lazy endpoints so the main "Building…" finishes in
+        // ~2-3s instead of timing out.
         $buckets = [
             'fast_oos' => $this->bucketFastOos($business_id, $locationId, $permittedLocations),
-            'abc_a_restock' => $this->bucketAbcARestock($business_id, $locationId, $abcMap, $permittedLocations),
             'street_pulse' => $this->bucketChartPicks($business_id, $locationId, 'street_pulse', $topArtists, $permittedLocations),
             'universal_top' => $this->bucketChartPicks($business_id, $locationId, 'universal_top', $topArtists, $permittedLocations),
             'apple_music_top' => $this->bucketChartPicks($business_id, $locationId, 'apple_music_top', $topArtists, $permittedLocations),
             'top_artist_new_releases' => $this->bucketTopArtistNewReleases($business_id, $locationId, $topArtists, $permittedLocations),
-            // events_upcoming is intentionally NOT computed here — it hits two
-            // external URLs (server.nivessa.com + ticketmaster-feed) and the
-            // cold-cache call ate 15-30s, blocking the whole page. JS now
-            // fetches it on a separate request via @eventsBucket so the rest
-            // of the page renders fast and events fills in when it's ready.
+            // events_upcoming, abc_a_restock, frozen_inventory are ALL lazy —
+            // they hit external feeds or scan big tables and cold-loading
+            // them inline blocked the whole page (Sarah was stuck on the
+            // spinner). JS fires separate requests after the page paints.
             'events_upcoming' => [
                 'label' => '🎤 Upcoming events — stock up',
                 'why' => 'Loading separately from server.nivessa.com + Ticketmaster feed…',
-                'items' => [],
-                'count' => 0,
-                'lazy' => true,
+                'items' => [], 'count' => 0, 'lazy' => true,
             ],
             'long_oos_essentials' => $this->bucketLongOosEssentials($business_id, $locationId, $permittedLocations),
             'hot_used_oos' => $this->bucketHotUsedOos($business_id, $locationId, $permittedLocations),
             'customer_wants' => $this->bucketCustomerWants($business_id, $locationId),
-            'frozen_inventory' => $this->bucketFrozenInventory($business_id, $locationId, $permittedLocations),
+            'abc_a_restock' => [
+                'label' => '💎 A-class items — restock priority',
+                'why' => 'Loading separately (ABC analysis scans the full product catalog)…',
+                'items' => [], 'count' => 0, 'lazy' => true,
+            ],
+            'frozen_inventory' => [
+                'label' => '❄️ Frozen inventory — DO NOT reorder',
+                'why' => 'Loading separately (dead-stock scan crosses transaction history)…',
+                'items' => [], 'count' => 0, 'lazy' => true,
+            ],
         ];
 
         // Optionally filter buckets to categories if the user passed category_ids
@@ -214,39 +219,6 @@ class InventoryCheckService
             }
         }
 
-        // Apply ABC classification + frozen-cross-reference tags across every
-        // bucket's items in a single pass. Done here (vs in each bucket method)
-        // so the bucket builders stay focused on their own selection logic.
-        $frozenVariationIds = [];
-        if (!empty($buckets['frozen_inventory']['items'])) {
-            foreach ($buckets['frozen_inventory']['items'] as $it) {
-                if (!empty($it['variation_id'])) {
-                    $frozenVariationIds[(int) $it['variation_id']] = true;
-                }
-            }
-        }
-        foreach ($buckets as $key => $bucket) {
-            if (empty($bucket['items'])) {
-                continue;
-            }
-            foreach ($bucket['items'] as &$it) {
-                $pid = (int) ($it['product_id'] ?? 0);
-                if ($pid && isset($abcMap[$pid])) {
-                    $it['abc_class'] = $abcMap[$pid];
-                    $it['tags'] = array_merge($it['tags'] ?? [], ['abc_' . $abcMap[$pid]]);
-                }
-                // Cross-reference: if this item is also in the frozen bucket,
-                // flag the row so Sarah sees "we already have dead stock of
-                // this — maybe don't reorder" right on the row.
-                $vid = (int) ($it['variation_id'] ?? 0);
-                if ($vid && $key !== 'frozen_inventory' && isset($frozenVariationIds[$vid])) {
-                    $it['tags'] = array_merge($it['tags'] ?? [], ['frozen_dupe']);
-                }
-            }
-            unset($it);
-            $buckets[$key]['items'] = array_values($bucket['items']);
-        }
-
         return [
             'buckets' => $buckets,
             'meta' => [
@@ -255,10 +227,22 @@ class InventoryCheckService
                 'sale_start' => $saleStart,
                 'sale_end' => $saleEnd,
                 'top_artists' => $topArtists,
-                'abc_classified' => count($abcMap),
                 'generated_at' => Carbon::now()->toIso8601String(),
             ],
         ];
+    }
+
+    /** Public alias for the lazy ABC-restock endpoint. */
+    public function bucketAbcARestockPublic(int $business_id, int $locationId, $permittedLocations): array
+    {
+        $abcMap = $this->computeAbcMap($business_id);
+        return $this->bucketAbcARestock($business_id, $locationId, $abcMap, $permittedLocations);
+    }
+
+    /** Public alias for the lazy frozen-inventory endpoint. */
+    public function bucketFrozenInventoryPublic(int $business_id, int $locationId, $permittedLocations): array
+    {
+        return $this->bucketFrozenInventory($business_id, $locationId, $permittedLocations);
     }
 
     protected function resolveCategoryIds(array $input): array
@@ -920,13 +904,15 @@ class InventoryCheckService
             ];
         }
 
-        $aPids = [];
+        // Hash-set lookup — in_array on a 1000+ element array against 2000
+        // PSC rows was the other reason "Building…" hung.
+        $aPidsSet = [];
         foreach ($abcMap as $pid => $cls) {
             if ($cls === 'A') {
-                $aPids[] = (int) $pid;
+                $aPidsSet[(int) $pid] = true;
             }
         }
-        if (empty($aPids)) {
+        if (empty($aPidsSet)) {
             return [
                 'label' => '💎 A-class items — restock priority',
                 'why' => 'No A-class products at this location.',
@@ -943,7 +929,7 @@ class InventoryCheckService
         $items = [];
         foreach ($rows as $row) {
             $pid = (int) $row->product_id;
-            if (!in_array($pid, $aPids, true)) {
+            if (!isset($aPidsSet[$pid])) {
                 continue;
             }
             $stock = (float) ($row->stock ?? 0);
@@ -953,6 +939,7 @@ class InventoryCheckService
             $items[] = $this->rowToCandidate($row, $stock, 0, $targetStock, [
                 'bucket' => 'abc_a_restock',
                 'reason' => 'A-class (top 80% of inventory value), stock ' . (int) $stock,
+                'tags' => ['abc_A'],
             ]);
         }
 
@@ -982,44 +969,56 @@ class InventoryCheckService
         $limit = (int) config('inventory_check.buckets.frozen_inventory.max_items', 200);
         $cutoff = Carbon::now()->subDays($frozenDays)->format('Y-m-d H:i:s');
 
-        // Last-sold per variation across finalized sells (business-wide so
-        // a title that sells at the OTHER store still counts as "moving").
-        $lastSaleSub = DB::table('transaction_sell_lines as tsl')
-            ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
-            ->where('t.business_id', $business_id)
-            ->where('t.type', 'sell')
-            ->where('t.status', 'final')
-            ->select('tsl.variation_id', DB::raw('MAX(t.transaction_date) as last_sold'))
-            ->groupBy('tsl.variation_id');
-
-        $q = DB::table('product_stock_cache as psc')
+        // Two-step query to avoid scanning the entire transaction history:
+        //   1) Pull stocked variations at this location (small set — ≤ a few
+        //      thousand rows at most).
+        //   2) Look up last_sold for ONLY those variations.
+        // Doing it inline as a leftJoinSub forced MySQL to compute the
+        // MAX(transaction_date) over every variation in the business (70k+
+        // historical txs imported 2026-04-23), which was the spinner
+        // Sarah saw stuck on "Building…".
+        $pscQuery = DB::table('product_stock_cache as psc')
             ->leftJoin('products as p', 'p.id', '=', 'psc.product_id')
-            ->leftJoinSub($lastSaleSub, 'ls', function ($join) {
-                $join->on('psc.variation_id', '=', 'ls.variation_id');
-            })
             ->where('psc.business_id', $business_id)
             ->where('psc.location_id', $locationId)
-            ->where('psc.stock', '>', 0)
-            ->where(function ($q) use ($cutoff) {
-                $q->whereNull('ls.last_sold')
-                  ->orWhere('ls.last_sold', '<', $cutoff);
-            });
-
+            ->where('psc.stock', '>', 0);
         if ($permittedLocations !== 'all') {
-            $q->whereIn('psc.location_id', $permittedLocations);
+            $pscQuery->whereIn('psc.location_id', $permittedLocations);
         }
-
-        $rows = $q->select([
+        $stocked = $pscQuery->select([
             'psc.variation_id', 'psc.product_id', 'psc.location_id', 'psc.stock', 'psc.sku',
             'psc.product', 'psc.type', 'psc.product_variation', 'psc.variation_name',
             'psc.location_name', 'psc.category_name', 'psc.category_id',
             'psc.product_custom_field1', 'psc.total_sold', 'psc.stock_price',
             'p.format as product_format',
-            'ls.last_sold',
-        ])
-            ->orderByDesc('psc.stock_price')
-            ->limit($limit)
-            ->get();
+        ])->orderByDesc('psc.stock_price')->get();
+
+        if ($stocked->isEmpty()) {
+            return [
+                'label' => '❄️ Frozen inventory — DO NOT reorder',
+                'why' => 'No stocked items at this location.',
+                'items' => [], 'count' => 0, 'frozen_days' => $frozenDays,
+            ];
+        }
+
+        $variationIds = $stocked->pluck('variation_id')->map(fn ($v) => (int) $v)->all();
+        $lastSold = DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereIn('tsl.variation_id', $variationIds)
+            ->select('tsl.variation_id', DB::raw('MAX(t.transaction_date) as last_sold'))
+            ->groupBy('tsl.variation_id')
+            ->pluck('last_sold', 'variation_id');
+
+        $rows = $stocked->filter(function ($r) use ($lastSold, $cutoff) {
+            $ls = $lastSold[$r->variation_id] ?? null;
+            return $ls === null || $ls < $cutoff;
+        })->take($limit)->map(function ($r) use ($lastSold) {
+            $r->last_sold = $lastSold[$r->variation_id] ?? null;
+            return $r;
+        });
 
         $items = [];
         foreach ($rows as $row) {

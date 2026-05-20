@@ -195,6 +195,83 @@ class InventoryCheckController extends Controller
         }
     }
 
+    /**
+     * Lazy-loaded ABC-class-A restock bucket. The ABC map computation
+     * scans the whole product catalog (cached 15min) — pulling it out of
+     * the main buckets() call kept the initial "Building…" spinner under
+     * 5s (Sarah 2026-05-20).
+     */
+    public function abcRestockBucket(Request $request)
+    {
+        try {
+            $business_id = (int) $request->session()->get('user.business_id');
+            $input = $request->only(['location_id', 'preset']);
+            if (!empty($input['preset'])) {
+                $resolved = $this->inventoryCheckService->resolvePreset($business_id, $input['preset']);
+                $input = array_merge($resolved, $input);
+            }
+            $locationId = !empty($input['location_id']) ? (int) $input['location_id'] : null;
+            if (!$locationId) {
+                return response()->json(['bucket' => [
+                    'label' => '💎 A-class items — restock priority',
+                    'why' => 'Pick a store first.',
+                    'items' => [], 'count' => 0,
+                ]]);
+            }
+            $permitted = auth()->user()->permitted_locations();
+            $bucket = $this->inventoryCheckService->bucketAbcARestockPublic($business_id, $locationId, $permitted);
+            return response()->json(['bucket' => $bucket]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('ICA abc bucket failed', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile() . ':' . $e->getLine(),
+            ]);
+            return response()->json(['bucket' => [
+                'label' => '💎 A-class items — restock priority',
+                'why' => 'ABC analysis failed to load: ' . $e->getMessage(),
+                'items' => [], 'count' => 0, 'empty_reason' => 'fetch_error',
+            ]]);
+        }
+    }
+
+    /**
+     * Lazy-loaded frozen-inventory bucket. The last-sold scan crosses the
+     * full transaction history (70k+ rows imported 2026-04-23) so it gets
+     * its own request, same pattern as events.
+     */
+    public function frozenInventoryBucket(Request $request)
+    {
+        try {
+            $business_id = (int) $request->session()->get('user.business_id');
+            $input = $request->only(['location_id', 'preset']);
+            if (!empty($input['preset'])) {
+                $resolved = $this->inventoryCheckService->resolvePreset($business_id, $input['preset']);
+                $input = array_merge($resolved, $input);
+            }
+            $locationId = !empty($input['location_id']) ? (int) $input['location_id'] : null;
+            if (!$locationId) {
+                return response()->json(['bucket' => [
+                    'label' => '❄️ Frozen inventory — DO NOT reorder',
+                    'why' => 'Pick a store first.',
+                    'items' => [], 'count' => 0,
+                ]]);
+            }
+            $permitted = auth()->user()->permitted_locations();
+            $bucket = $this->inventoryCheckService->bucketFrozenInventoryPublic($business_id, $locationId, $permitted);
+            return response()->json(['bucket' => $bucket]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('ICA frozen bucket failed', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile() . ':' . $e->getLine(),
+            ]);
+            return response()->json(['bucket' => [
+                'label' => '❄️ Frozen inventory — DO NOT reorder',
+                'why' => 'Frozen-inventory scan failed: ' . $e->getMessage(),
+                'items' => [], 'count' => 0, 'empty_reason' => 'fetch_error',
+            ]]);
+        }
+    }
+
     public function export(Request $request)
     {
         // Open to all authenticated staff — inventory check assistant is

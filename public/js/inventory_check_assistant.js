@@ -114,9 +114,13 @@
                 lastResult = payload;
                 renderBuckets(payload);
                 $exportStrip.style.display = 'block';
-                // Lazy-load events bucket — it hits two external feeds and
-                // would block the main page render by 15-30s on cold cache.
+                // Lazy-load the heavy buckets — events hits 2 external feeds,
+                // ABC scans the full catalog, frozen crosses transaction
+                // history. None of them block the main page now (Sarah was
+                // stuck on "Building…" 2026-05-20).
                 lazyLoadEventsBucket();
+                lazyLoadAuxBucket('abc_a_restock', window.ICA_ABC_URL);
+                lazyLoadAuxBucket('frozen_inventory', window.ICA_FROZEN_URL);
             })
             .catch((err) => {
                 console.error('[ICA] build error', err);
@@ -125,6 +129,64 @@
     }
 
     // ── Rendering ────────────────────────────────────────────────────
+
+    /** Generic lazy-bucket loader for ABC + frozen (same pattern as events). */
+    function lazyLoadAuxBucket(bucketKey, url) {
+        if (!url) return;
+        const params = new URLSearchParams();
+        if ($location && $location.value) params.append('location_id', $location.value);
+        if ($preset && $preset.value) params.append('preset', $preset.value);
+
+        fetch(url + '?' + params.toString(), {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': window.ICA_CSRF || '' },
+            credentials: 'same-origin',
+        })
+            .then((r) => r.json())
+            .then((resp) => {
+                if (!resp || !resp.bucket) return;
+                if (lastResult && lastResult.buckets) {
+                    lastResult.buckets[bucketKey] = resp.bucket;
+                }
+                const existing = $root.querySelector('.ica-bucket[data-bucket="' + bucketKey + '"]');
+                if (!existing) return;
+                const html = renderBucketSection(bucketKey, resp.bucket);
+                const tmp = document.createElement('div');
+                tmp.innerHTML = html;
+                const fresh = tmp.firstElementChild;
+                if (fresh) {
+                    existing.replaceWith(fresh);
+                    attachBucketHandlers();
+                }
+                // Frozen bucket loaded — sweep other rendered rows and tag
+                // matches as "frozen_dupe" so Sarah sees the dupe warning
+                // right on the reorder row.
+                if (bucketKey === 'frozen_inventory') {
+                    applyFrozenDupeTags(resp.bucket.items || []);
+                }
+            })
+            .catch((err) => console.error('[ICA] aux bucket lazy-load failed', bucketKey, err));
+    }
+
+    function applyFrozenDupeTags(frozenItems) {
+        if (!frozenItems || !frozenItems.length) return;
+        const frozenVids = new Set(frozenItems.map((it) => parseInt(it.variation_id, 10)).filter(Boolean));
+        if (!frozenVids.size) return;
+        $root.querySelectorAll('.ica-bucket').forEach((bucketEl) => {
+            const bkey = bucketEl.getAttribute('data-bucket');
+            if (bkey === 'frozen_inventory') return;
+            bucketEl.querySelectorAll('tr[data-row-key]').forEach((tr) => {
+                const key = tr.getAttribute('data-row-key') || '';
+                const vid = parseInt(key.split('|')[1] || 0, 10);
+                if (vid && frozenVids.has(vid)) {
+                    const tagsCell = tr.children[tr.children.length - 3]; // qty is -2, extra -1
+                    if (tagsCell && !tagsCell.querySelector('.ica-tag.frozen_dupe')) {
+                        tagsCell.insertAdjacentHTML('beforeend', '<span class="ica-tag frozen_dupe" title="Also sitting frozen at this location — think twice before reordering">frozen dupe</span>');
+                    }
+                }
+            });
+        });
+    }
+
     function lazyLoadEventsBucket() {
         const params = new URLSearchParams();
         if ($location && $location.value) params.append('location_id', $location.value);

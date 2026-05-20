@@ -4,7 +4,7 @@
 @section('content')
 <section class="content-header">
     <h1>Order for this Week <small class="text-muted">— Inventory Check Assistant</small></h1>
-    <p class="text-muted">Pick a store below. The page builds your reorder list automatically — fast sellers, low stock, chart picks, customer requests, all in one scroll. Export when done.</p>
+    <p class="text-muted">Pick a store below. <strong>Jon's focus:</strong> the 🔥 Fast-moving, out-of-stock bucket — sealed vinyl/CDs that sold &lt;90 days. Everything else (charts, events, ABC, frozen) is supporting context.</p>
 
     <div class="ica-help-toggle">
         <a data-toggle="collapse" href="#ica_help" role="button" aria-expanded="false">
@@ -456,6 +456,8 @@
     window.ICA_COPY_FORMAT = @json($copyFormat);
     window.ICA_BUCKETS_URL = "{{ action('InventoryCheckController@buckets') }}";
     window.ICA_EVENTS_URL = "{{ action('InventoryCheckController@eventsBucket') }}";
+    window.ICA_ABC_URL = "{{ action('InventoryCheckController@abcRestockBucket') }}";
+    window.ICA_FROZEN_URL = "{{ action('InventoryCheckController@frozenInventoryBucket') }}";
     window.ICA_EXPORT_URL = "{{ action('InventoryCheckController@export') }}";
     window.ICA_CHART_IMPORT_URL = "{{ url('reports/inventory-check-assistant/chart-import') }}";
     window.ICA_CHART_LATEST_URL = "{{ url('reports/inventory-check-assistant/chart-latest') }}";
