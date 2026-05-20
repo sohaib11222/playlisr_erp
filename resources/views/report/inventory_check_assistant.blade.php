@@ -462,6 +462,52 @@
 .ica-more-options[open] { padding: 0 14px 14px; }
 .ica-secondary-buckets { padding: 12px 14px 4px; }
 
+/* Friendly loading card (replaces "Building…" spinner) */
+.ica-loading-card {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 22px 24px;
+    margin: 14px 0;
+}
+.ica-loading-head { font-size: 16px; color: #2c699a; margin-bottom: 6px; }
+.ica-loading-head i { margin-right: 10px; }
+.ica-loading-meta { color: #888; font-size: 13px; margin-bottom: 18px; }
+.ica-loading-skeleton { display: flex; flex-direction: column; gap: 8px; }
+.ica-skeleton-row {
+    height: 34px;
+    background: linear-gradient(90deg, #f0f3f7 0%, #e6ebf2 50%, #f0f3f7 100%);
+    background-size: 200% 100%;
+    border-radius: 4px;
+    animation: ica-skel-pulse 1.4s ease-in-out infinite;
+}
+@keyframes ica-skel-pulse {
+    0% { background-position: 100% 0; }
+    100% { background-position: -100% 0; }
+}
+
+/* Frozen-inventory insight bar (style mirrors the budget banner) */
+.ica-frozen-insight {
+    border-radius: 4px;
+    padding: 10px 16px;
+    margin-bottom: 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.ica-frozen-insight-low { background: #eef5fb; border: 1px solid #c6dcec; color: #2c3e50; }
+.ica-frozen-insight-med { background: #fff7e0; border: 1px solid #f0d97a; color: #5a4410; }
+.ica-frozen-insight-high { background: #fdecea; border: 1px solid #f4b5af; color: #7d1f15; }
+.ica-frozen-head { font-size: 14px; }
+.ica-frozen-head strong { font-size: 16px; }
+.ica-frozen-head span.text-muted { display: block; margin-top: 2px; }
+.ica-frozen-cta a { font-weight: 600; }
+
+/* Last-ordered hint (rendered in the reason column for fast_oos) */
+.ica-last-order { color: #2c699a; font-weight: 500; }
+
 /* Budget banner */
 .ica-budget-banner {
     background: #fff;

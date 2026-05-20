@@ -401,6 +401,28 @@ class InventoryCheckService
 
     protected function bucketFastOos(int $business_id, int $locationId, $permittedLocations): array
     {
+        // Cached 5 min per (business, location). The 3 avg-sell-days +
+        // 2 sold-qty queries cross the full 90-day transaction window
+        // (70k+ historical txs) so re-clicking the same store within a
+        // few minutes shouldn't repay that cost. Cache is invalidated on
+        // sale/purchase via the existing PSC refresh job; if Sarah needs
+        // it now, the cache-bust ?nofocache=1 param skips it.
+        $cacheKey = 'ica_fast_oos_' . $business_id . '_' . $locationId;
+        if (request()->boolean('nocache')) {
+            \Illuminate\Support\Facades\Cache::forget($cacheKey);
+        }
+        try {
+            return \Illuminate\Support\Facades\Cache::remember($cacheKey, now()->addMinutes(5), function () use ($business_id, $locationId, $permittedLocations) {
+                return $this->buildFastOosUncached($business_id, $locationId, $permittedLocations);
+            });
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('ICA fast_oos cache failed', ['err' => $e->getMessage()]);
+            return $this->buildFastOosUncached($business_id, $locationId, $permittedLocations);
+        }
+    }
+
+    protected function buildFastOosUncached(int $business_id, int $locationId, $permittedLocations): array
+    {
         $cfg = config('inventory_check.buckets', []);
         $items = [];
 
@@ -495,12 +517,85 @@ class InventoryCheckService
             return $b['sold_qty_window'] <=> $a['sold_qty_window'];
         });
 
+        // Enrich rows with "last ordered" info — employees asked for
+        // feedback on how their previous orders sold (Sarah 2026-05-20).
+        // The reason column now reads e.g. "sold 4 in 60d, stock 0 ·
+        // last ordered 3 on 2026-04-02".
+        if (!empty($items)) {
+            $variationIds = array_map(fn ($it) => (int) $it['variation_id'], $items);
+            $lastOrdered = $this->getLastPurchaseByVariation($business_id, $locationId, $variationIds, $permittedLocations);
+            foreach ($items as &$it) {
+                $vid = (int) ($it['variation_id'] ?? 0);
+                if (!$vid || empty($lastOrdered[$vid])) {
+                    continue;
+                }
+                $lp = $lastOrdered[$vid];
+                $it['last_order_qty'] = (float) $lp['qty'];
+                $it['last_order_date'] = $lp['date'];
+                $it['reason'] = ($it['reason'] ?? '')
+                    . ' · last ordered ' . (int) $lp['qty'] . ' on ' . $lp['date'];
+            }
+            unset($it);
+        }
+
         return [
             'label' => '🔥 Fast-moving, out of stock',
-            'why' => 'Sold fast in the last 60-90 days; we have zero or near-zero on shelf.',
+            'why' => 'Sold fast in the last 60-90 days; we have zero or near-zero on shelf. Each row shows what we last ordered + when, so you can judge if the previous order was right-sized.',
             'items' => $items,
             'count' => count($items),
         ];
+    }
+
+    /**
+     * Last purchase per variation at this location: returns
+     * [variation_id => ['qty' => N, 'date' => 'YYYY-MM-DD']]
+     * Scoped to a passed variation_id set so it stays cheap — no full
+     * purchase_lines scan.
+     */
+    protected function getLastPurchaseByVariation(int $business_id, int $locationId, array $variationIds, $permittedLocations): array
+    {
+        if (empty($variationIds)) {
+            return [];
+        }
+        $q = DB::table('purchase_lines as pl')
+            ->join('transactions as t', 'pl.transaction_id', '=', 't.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.location_id', $locationId)
+            ->whereIn('t.type', ['purchase', 'opening_stock', 'purchase_transfer'])
+            ->whereIn('pl.variation_id', $variationIds)
+            ->select(
+                'pl.variation_id',
+                DB::raw('MAX(t.transaction_date) as last_date')
+            )
+            ->groupBy('pl.variation_id');
+        if ($permittedLocations !== 'all') {
+            $q->whereIn('t.location_id', $permittedLocations);
+        }
+        $latest = $q->get()->keyBy('variation_id');
+
+        if ($latest->isEmpty()) {
+            return [];
+        }
+
+        // For each (variation, last_date) pair, pull the qty on that day.
+        $datePairs = $latest->map(fn ($r) => ['variation_id' => (int) $r->variation_id, 'last_date' => $r->last_date]);
+        $out = [];
+        foreach ($datePairs as $p) {
+            $row = DB::table('purchase_lines as pl')
+                ->join('transactions as t', 'pl.transaction_id', '=', 't.id')
+                ->where('t.business_id', $business_id)
+                ->where('t.location_id', $locationId)
+                ->whereIn('t.type', ['purchase', 'opening_stock', 'purchase_transfer'])
+                ->where('pl.variation_id', $p['variation_id'])
+                ->where('t.transaction_date', $p['last_date'])
+                ->selectRaw('SUM(pl.quantity) as qty')
+                ->first();
+            $out[$p['variation_id']] = [
+                'qty' => $row ? (float) $row->qty : 0.0,
+                'date' => Carbon::parse($p['last_date'])->format('Y-m-d'),
+            ];
+        }
+        return $out;
     }
 
     // ── Chart picks (Street Pulse / Universal Top) ────────────────────

@@ -84,7 +84,29 @@
         if ($category && $category.value) params.append('category_id', $category.value);
         if ($preset && $preset.value) params.append('preset', $preset.value);
 
-        $root.innerHTML = '<div class="text-center text-muted" style="padding: 30px;"><i class="fa fa-spinner fa-spin fa-2x"></i><p>Building…</p></div>';
+        // Friendlier loading state — Sarah called "Building…" confusing
+        // (2026-05-20). Tell the user what's happening + that the slow
+        // part is one-time-per-store and other lists fill in after.
+        const activeBtn = document.querySelector('.ica-store-btn.is-active');
+        const storeLabel = activeBtn ? activeBtn.textContent.trim() : 'this store';
+        $root.innerHTML = `
+            <div class="ica-loading-card">
+                <div class="ica-loading-head">
+                    <i class="fa fa-spinner fa-spin"></i>
+                    <strong>Loading fast sellers list for ${escapeHtml(storeLabel)}…</strong>
+                </div>
+                <div class="ica-loading-meta">
+                    First load takes 5-15 seconds — re-clicks are cached and instant.
+                    The other lists (charts, events, ABC, frozen, manager picks) load in the background after this finishes.
+                </div>
+                <div class="ica-loading-skeleton">
+                    <div class="ica-skeleton-row"></div>
+                    <div class="ica-skeleton-row"></div>
+                    <div class="ica-skeleton-row"></div>
+                    <div class="ica-skeleton-row"></div>
+                    <div class="ica-skeleton-row"></div>
+                </div>
+            </div>`;
         $exportStrip.style.display = 'none';
 
         // Surface what we sent so debugging "No candidates" is one F12 away.
@@ -160,12 +182,63 @@
                 }
                 // Frozen bucket loaded — sweep other rendered rows and tag
                 // matches as "frozen_dupe" so Sarah sees the dupe warning
-                // right on the reorder row.
+                // right on the reorder row. Also surface the total $$ tied
+                // up as a banner under the budget bar (Sarah liked the
+                // budget-bar style 2026-05-20).
                 if (bucketKey === 'frozen_inventory') {
                     applyFrozenDupeTags(resp.bucket.items || []);
+                    renderFrozenInsight(resp.bucket);
                 }
             })
             .catch((err) => console.error('[ICA] aux bucket lazy-load failed', bucketKey, err));
+    }
+
+    function renderFrozenInsight(bucket) {
+        if (!bucket) return;
+        const tied = parseFloat(bucket.tied_up_value_total || 0);
+        const count = parseInt(bucket.count || 0, 10);
+        const days = parseInt(bucket.frozen_days || 180, 10);
+        let host = document.getElementById('ica_frozen_insight');
+        if (!host) {
+            host = document.createElement('div');
+            host.id = 'ica_frozen_insight';
+            const budgetBanner = document.querySelector('.ica-budget-banner');
+            if (budgetBanner && budgetBanner.parentNode) {
+                budgetBanner.parentNode.insertBefore(host, budgetBanner.nextSibling);
+            } else if ($root && $root.parentNode) {
+                $root.parentNode.insertBefore(host, $root);
+            } else {
+                return;
+            }
+        }
+        if (!count || !tied) {
+            host.innerHTML = '';
+            return;
+        }
+        const sev = tied > 25000 ? 'high' : (tied > 10000 ? 'med' : 'low');
+        host.innerHTML = `
+            <div class="ica-frozen-insight ica-frozen-insight-${sev}">
+                <div class="ica-frozen-head">
+                    <span>❄️ <strong>$${tied.toLocaleString('en-US', {maximumFractionDigits:0})}</strong> tied up in frozen inventory</span>
+                    <span class="text-muted small">${count} items haven't sold in ${days}+ days · ${sev === 'high' ? 'review before reordering anything from chart picks' : (sev === 'med' ? 'cross-check before adding more chart titles' : 'OK for now')}</span>
+                </div>
+                <div class="ica-frozen-cta">
+                    <a href="#" class="ica-jump-frozen">Jump to Frozen list ↓</a>
+                </div>
+            </div>`;
+        const jumpLink = host.querySelector('.ica-jump-frozen');
+        if (jumpLink) {
+            jumpLink.addEventListener('click', function (e) {
+                e.preventDefault();
+                const frozen = $root.querySelector('.ica-bucket[data-bucket="frozen_inventory"]');
+                if (frozen) {
+                    // If the secondary disclosure is closed, open it first.
+                    const disc = frozen.closest('details.ica-secondary-disclosure');
+                    if (disc && !disc.open) disc.open = true;
+                    frozen.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        }
     }
 
     function applyFrozenDupeTags(frozenItems) {
