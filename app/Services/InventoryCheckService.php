@@ -408,7 +408,10 @@ class InventoryCheckService
         // sale/purchase via the existing PSC refresh job; if Sarah needs
         // it now, the cache-bust ?nofocache=1 param skips it.
         $cacheKey = 'ica_fast_oos_' . $business_id . '_' . $locationId;
-        if (request()->boolean('nocache')) {
+        // Request::boolean() doesn't exist on this Laravel version — use
+        // filter_var. Without this, ?nocache=1 500s before the cache code
+        // even runs (Sarah hit this 2026-05-20).
+        if (filter_var(request()->input('nocache'), FILTER_VALIDATE_BOOLEAN)) {
             \Illuminate\Support\Facades\Cache::forget($cacheKey);
         }
         try {
