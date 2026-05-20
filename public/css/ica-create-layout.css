@@ -1,0 +1,353 @@
+/* Inventory Check Assistant — visual language matched to /pos/create
+   (Sarah 2026-05-20: "make ui like pos create please").
+
+   Mirrors the same token set, font, and card style as the POS v2 redesign:
+   cream background, white surface cards with line border + soft shadow,
+   pastel-yellow accent, Inter Tight typeface, small UPPERCASE section
+   titles. Scoped under body.ica-v2 so it can't bleed to other views.
+
+   Loaded statically so nginx serves it directly — skips PHP/Blade/OPcache.
+   Cache-busted via ?v=asset_version on the <link> tag. */
+
+body.ica-v2 {
+	--ica-bg:          #FAF6EE;
+	--ica-surface:     #FFFFFF;
+	--ica-surface-2:   #F7F1E3;
+	--ica-ink:         #1F1B16;
+	--ica-ink-2:       #5A5045;
+	--ica-ink-3:       #8E8273;
+	--ica-line:        #ECE3CF;
+	--ica-line-2:      #DFD2B3;
+	--ica-accent:      #FFF2B3;
+	--ica-accent-deep: #E8CF68;
+	--ica-accent-soft: #FFF9DB;
+	--ica-accent-text: #5A4410;
+	--ica-success:     #2F6B3E;
+	--ica-warn:        #8A6D3B;
+	--ica-danger:      #8A3A2E;
+	--ica-radius:      10px;
+	--ica-radius-sm:   8px;
+	--ica-shadow-sm:   0 1px 2px rgba(31,27,22,.06);
+	--ica-shadow-md:   0 4px 14px rgba(31,27,22,.08);
+
+	background: var(--ica-bg);
+	font-family: "Inter Tight", system-ui, sans-serif;
+	color: var(--ica-ink);
+	-webkit-font-smoothing: antialiased;
+}
+
+/* Paint the AdminLTE wrapper cream so the gray halo disappears. */
+body.ica-v2 .content-wrapper {
+	background: var(--ica-bg) !important;
+}
+body.ica-v2 .content-header,
+body.ica-v2 section.content {
+	background: var(--ica-bg) !important;
+}
+body.ica-v2 section.content {
+	padding: 0 !important;
+}
+body.ica-v2 section.content > * {
+	max-width: 1500px;
+	margin-left: auto;
+	margin-right: auto;
+}
+
+/* Header */
+body.ica-v2 .content-header h1 {
+	font-family: inherit;
+	font-weight: 800;
+	font-size: 24px;
+	color: var(--ica-ink);
+	margin: 16px 20px 4px;
+}
+body.ica-v2 .ica-lead {
+	color: var(--ica-ink-2);
+	font-size: 13px;
+	line-height: 1.6;
+	margin: 0 20px 16px;
+}
+body.ica-v2 .ica-lead strong {
+	color: var(--ica-ink);
+	font-weight: 700;
+}
+
+/* ── Universal card style ─────────────────────────────────────────────
+   The page is a stack of white cards on cream. Budget banner, store
+   picker, "More options" disclosure, "Show all the other lists"
+   disclosure, and each bucket all render as cards with the same border
+   + shadow + radius. */
+body.ica-v2 .ica-budget-banner,
+body.ica-v2 .ica-store-picker,
+body.ica-v2 .ica-more-options,
+body.ica-v2 .ica-secondary-disclosure,
+body.ica-v2 .ica-bucket,
+body.ica-v2 .ica-loading-card,
+body.ica-v2 .ica-export-strip {
+	background: var(--ica-surface) !important;
+	border: 1px solid var(--ica-line) !important;
+	border-radius: var(--ica-radius) !important;
+	box-shadow: var(--ica-shadow-sm) !important;
+	margin: 0 20px 14px;
+}
+
+/* Small uppercase section titles (matches POS .nv-card-title) */
+body.ica-v2 .ica-budget-title,
+body.ica-v2 .ica-store-picker-label,
+body.ica-v2 .ica-bucket-header h3,
+body.ica-v2 .ica-loading-head strong {
+	font-size: 12px !important;
+	font-weight: 700 !important;
+	letter-spacing: .12em !important;
+	text-transform: uppercase !important;
+	color: var(--ica-ink-3) !important;
+}
+body.ica-v2 .ica-bucket-header h3 {
+	color: var(--ica-ink) !important;
+}
+
+/* ── Budget banner ────────────────────────────────────────────────── */
+body.ica-v2 .ica-budget-banner {
+	padding: 14px 18px;
+}
+body.ica-v2 .ica-budget-head {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: 10px;
+	margin-bottom: 8px;
+}
+body.ica-v2 .ica-budget-figures {
+	font-size: 13px;
+	color: var(--ica-ink-2);
+}
+body.ica-v2 .ica-budget-figures strong {
+	color: var(--ica-ink);
+	font-weight: 700;
+	font-size: 16px;
+}
+body.ica-v2 .ica-budget-sep { color: var(--ica-ink-3); padding: 0 6px; }
+body.ica-v2 .ica-budget-bar {
+	height: 8px;
+	margin: 0;
+	background: var(--ica-surface-2);
+	border-radius: 999px;
+	overflow: hidden;
+}
+body.ica-v2 .ica-budget-bar .progress-bar {
+	font-size: 0; /* hide the % text — cleaner */
+	background: var(--ica-success) !important;
+}
+body.ica-v2 .ica-budget-bar .progress-bar.progress-bar-warning {
+	background: var(--ica-warn) !important;
+}
+body.ica-v2 .ica-budget-bar .progress-bar.progress-bar-danger {
+	background: var(--ica-danger) !important;
+}
+
+/* ── Store picker (Hollywood / Pico as accent pills) ───────────────── */
+body.ica-v2 .ica-store-picker {
+	padding: 14px 18px;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 10px;
+}
+body.ica-v2 .ica-store-btn {
+	background: var(--ica-surface) !important;
+	border: 1px solid var(--ica-line-2) !important;
+	border-radius: var(--ica-radius-sm) !important;
+	color: var(--ica-ink) !important;
+	font-weight: 600 !important;
+	font-size: 14px !important;
+	padding: 10px 22px !important;
+	height: 44px;
+	line-height: 22px !important;
+	box-shadow: none !important;
+	transition: background .15s, border-color .15s;
+}
+body.ica-v2 .ica-store-btn:hover {
+	background: var(--ica-accent-soft) !important;
+	border-color: var(--ica-accent-deep) !important;
+}
+body.ica-v2 .ica-store-btn.is-active {
+	background: var(--ica-accent) !important;
+	border-color: var(--ica-accent-deep) !important;
+	color: var(--ica-accent-text) !important;
+	box-shadow: 0 0 0 3px var(--ica-accent-soft) !important;
+}
+
+/* ── Disclosure (More options / Show other lists) ─────────────────── */
+body.ica-v2 .ica-more-options > summary,
+body.ica-v2 .ica-secondary-disclosure > summary {
+	padding: 12px 18px;
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--ica-ink-2);
+	letter-spacing: .04em;
+}
+body.ica-v2 .ica-more-options > summary:hover,
+body.ica-v2 .ica-secondary-disclosure > summary:hover {
+	background: var(--ica-accent-soft);
+}
+body.ica-v2 .ica-more-options[open] {
+	padding: 0 18px 14px;
+}
+body.ica-v2 .ica-secondary-buckets {
+	padding: 8px 14px 4px;
+}
+
+/* ── Frozen-inventory insight bar (same card style, severity tint) ── */
+body.ica-v2 .ica-frozen-insight {
+	margin: 0 20px 14px;
+	border-radius: var(--ica-radius);
+	box-shadow: var(--ica-shadow-sm);
+	padding: 10px 18px;
+}
+body.ica-v2 .ica-frozen-insight-low  { background: var(--ica-surface) !important; border: 1px solid var(--ica-line) !important; color: var(--ica-ink-2) !important; }
+body.ica-v2 .ica-frozen-insight-med  { background: var(--ica-accent-soft) !important; border: 1px solid var(--ica-accent-deep) !important; color: var(--ica-accent-text) !important; }
+body.ica-v2 .ica-frozen-insight-high { background: #fff3f1 !important; border: 1px solid #e6a99f !important; color: var(--ica-danger) !important; }
+
+/* ── Buckets (each is a card) ──────────────────────────────────────── */
+body.ica-v2 .ica-bucket {
+	margin-bottom: 14px;
+}
+body.ica-v2 .ica-bucket-header {
+	background: transparent !important;
+	border-left: none !important;
+	border-bottom: 1px solid var(--ica-line) !important;
+	padding: 14px 20px !important;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+}
+body.ica-v2 .ica-bucket-header .ica-why {
+	color: var(--ica-ink-3);
+	font-size: 12px;
+	display: block;
+	margin-top: 4px;
+	letter-spacing: normal;
+	text-transform: none;
+	font-weight: 400;
+}
+body.ica-v2 .ica-bucket-count {
+	background: var(--ica-ink) !important;
+	color: var(--ica-bg) !important;
+	border-radius: 999px !important;
+	font-weight: 700 !important;
+	font-size: 12px !important;
+	padding: 3px 10px !important;
+}
+body.ica-v2 .ica-bucket-count.zero {
+	background: var(--ica-line-2) !important;
+	color: var(--ica-ink-3) !important;
+}
+body.ica-v2 .ica-bucket-body {
+	padding: 4px 0;
+}
+body.ica-v2 .ica-row-table {
+	margin: 0;
+	font-size: 13px;
+}
+body.ica-v2 .ica-row-table thead th {
+	background: var(--ica-surface-2);
+	border-bottom: 1px solid var(--ica-line) !important;
+	border-top: none !important;
+	color: var(--ica-ink-2);
+	font-weight: 600;
+	font-size: 11px;
+	letter-spacing: .08em;
+	text-transform: uppercase;
+	padding: 10px 12px !important;
+}
+body.ica-v2 .ica-row-table tbody td {
+	border-top: 1px solid var(--ica-line) !important;
+	padding: 10px 12px !important;
+	color: var(--ica-ink);
+}
+body.ica-v2 .ica-row-table tbody tr:hover {
+	background: var(--ica-accent-soft);
+}
+body.ica-v2 .ica-bucket-empty {
+	padding: 24px 20px;
+	color: var(--ica-ink-3);
+	font-style: normal;
+}
+
+/* Tags */
+body.ica-v2 .ica-tag {
+	background: var(--ica-surface-2);
+	color: var(--ica-ink-2);
+	border-radius: 4px;
+	padding: 2px 8px;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: .02em;
+	margin-right: 4px;
+}
+body.ica-v2 .ica-tag.top_artist { background: var(--ica-accent); color: var(--ica-accent-text); }
+body.ica-v2 .ica-tag.new_release { background: #e3f1e6; color: #1c4a26; }
+body.ica-v2 .ica-tag.priority_high { background: #fde2dc; color: var(--ica-danger); }
+body.ica-v2 .ica-tag.manager_pick { background: var(--ica-accent); color: var(--ica-accent-text); }
+body.ica-v2 .ica-tag.frozen_dupe { background: #fde2dc; color: var(--ica-danger); }
+body.ica-v2 .ica-tag.abc_A { background: var(--ica-ink); color: var(--ica-bg); }
+body.ica-v2 .ica-tag.abc_B { background: var(--ica-accent-deep); color: var(--ica-accent-text); }
+body.ica-v2 .ica-tag.abc_C { background: var(--ica-line-2); color: var(--ica-ink-3); }
+
+/* Qty input */
+body.ica-v2 .ica-qty-input {
+	width: 64px !important;
+	height: 32px;
+	border: 1px solid var(--ica-line-2) !important;
+	border-radius: var(--ica-radius-sm) !important;
+	background: var(--ica-surface) !important;
+	color: var(--ica-ink);
+	font-weight: 600;
+	text-align: center;
+}
+body.ica-v2 .ica-qty-input:focus {
+	border-color: var(--ica-accent-deep) !important;
+	box-shadow: 0 0 0 3px var(--ica-accent-soft) !important;
+	outline: none;
+}
+
+/* Export strip */
+body.ica-v2 .ica-export-strip {
+	padding: 12px 18px;
+	margin-bottom: 14px;
+}
+body.ica-v2 .ica-export-strip .btn {
+	border-radius: var(--ica-radius-sm) !important;
+	font-weight: 600 !important;
+	padding: 8px 16px !important;
+}
+body.ica-v2 .ica-summary {
+	color: var(--ica-ink-2);
+	font-weight: 600;
+	font-size: 13px;
+}
+
+/* Loading card */
+body.ica-v2 .ica-loading-card { padding: 22px 24px; }
+body.ica-v2 .ica-loading-head { font-size: 13px; color: var(--ica-ink-3); margin-bottom: 6px; }
+body.ica-v2 .ica-loading-head i { margin-right: 10px; color: var(--ica-accent-deep); }
+body.ica-v2 .ica-loading-meta { color: var(--ica-ink-3); font-size: 12px; }
+body.ica-v2 .ica-skeleton-row {
+	background: linear-gradient(90deg, var(--ica-surface-2) 0%, var(--ica-line) 50%, var(--ica-surface-2) 100%);
+}
+
+/* Mobile: relax max-width */
+@media (max-width: 768px) {
+	body.ica-v2 .ica-budget-banner,
+	body.ica-v2 .ica-store-picker,
+	body.ica-v2 .ica-more-options,
+	body.ica-v2 .ica-secondary-disclosure,
+	body.ica-v2 .ica-bucket,
+	body.ica-v2 .ica-loading-card,
+	body.ica-v2 .ica-export-strip,
+	body.ica-v2 .ica-frozen-insight {
+		margin-left: 10px;
+		margin-right: 10px;
+	}
+}

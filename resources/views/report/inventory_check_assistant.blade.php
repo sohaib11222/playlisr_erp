@@ -2,6 +2,14 @@
 @section('title', 'Order for this Week')
 
 @section('content')
+{{-- 2026-05-20: visual reskin to match /pos/create — Sarah asked
+     "make ui like pos create please". Same body-scoped class trick
+     (.ica-v2) + static CSS + Inter Tight font as the POS v2 redesign. --}}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&display=swap" media="print" onload="this.media='all'">
+<link rel="stylesheet" href="{{ asset('css/ica-create-layout.css?v=' . $asset_v) }}">
+<script>document.body.classList.add('ica-v2');</script>
 <section class="content-header">
     <h1>Order for this Week</h1>
     <p class="text-muted ica-lead">
