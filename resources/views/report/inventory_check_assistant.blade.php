@@ -27,12 +27,14 @@
                 <li><strong>Scroll the buckets</strong> to review what's recommended:
                     <ul>
                         <li>🔥 <em>Fast-moving, out of stock</em> — sealed vinyl/CDs that sold quickly and we have ≤ 0 on shelf. <em>Sell Speed</em> column shows avg days to sell.</li>
+                        <li>💎 <em>A-class items — restock priority</em> — ABC analysis. Top 80% of inventory value where stock has dropped to 1 or less. These are the highest-impact gaps; being out of A-class hurts the most.</li>
                         <li>📬 <em>Street Pulse picks</em> / 🌍 <em>Universal top</em> / 🍎 <em>Apple Music top 100</em> — this week's charts, with rows tagged <em>top_artist</em> for artists already popular in our store.</li>
                         <li>🎵 <em>New releases from your top artists</em> — chart picks from artists popular in-store that we don't yet carry that title.</li>
                         <li>🎤 <em>Upcoming events — stock up</em> — LA Ticketmaster shows, nivessa-hosted listening parties, <em>and</em> UMe artist moments (biopics, milestone anniversaries, birthdays) in the next 30 days, with the artists' titles we already carry. Anniversary entries are tagged <code>anniversary</code>; concert entries are tagged <code>event</code>.</li>
                         <li>🔁 <em>Long out-of-stock essentials</em> — items we've sold a lot of historically but haven't restocked in 14+ days.</li>
                         <li>🎸 <em>Hot used, out of stock</em> — used vinyl/CD titles that sell fast when we have them; advisory only (used inventory comes from trade-ins, not orders).</li>
                         <li>📞 <em>Customer Wants</em> — open customer requests. Click <em>Fulfilled</em> when you order or stock the title.</li>
+                        <li>❄️ <em>Frozen inventory — DO NOT reorder</em> — stock already on shelf here with no sale in 180+ days. Cross-references with the other buckets: if a row also appears here, you'll see a red <code>frozen dupe</code> tag — strong "don't reorder more" signal. Each row's suggested qty is locked at 0; total dollars tied up shown in the bucket header.</li>
                     </ul>
                 </li>
                 <li><strong>Adjust quantities</strong> in each row's qty box if the suggestion isn't right. Uncheck rows you don't want to order.</li>
@@ -54,6 +56,35 @@
     <div class="alert alert-warning">
         <strong>Database migration required.</strong> The chart-import tables don't exist yet on this server. SSH in and run
         <code>php artisan migrate</code>, then refresh this page. Fast-moving OOS + Events + Long OOS buckets work now; Street Pulse / Universal / New releases sections stay empty until the migration runs.
+    </div>
+    @endif
+
+    {{-- ── Purchasing budget banner ──────────────────────────────────── --}}
+    @if(!empty($purchaseBudget))
+    @php
+        $pb = $purchaseBudget;
+        $barClass = $pb['over_budget'] ? 'progress-bar-danger' : ($pb['pct_spent'] >= 80 ? 'progress-bar-warning' : 'progress-bar-success');
+        $remainColor = $pb['over_budget'] ? '#a94442' : ($pb['remaining'] < 1000 ? '#8a6d3b' : '#2c699a');
+    @endphp
+    <div class="ica-budget-banner">
+        <div class="ica-budget-head">
+            <span class="ica-budget-title">💰 Purchasing budget — week {{ $pb['week_no'] }} of 13 <small class="text-muted">({{ \Carbon\Carbon::parse($pb['start'])->format('M j') }} – {{ \Carbon\Carbon::parse($pb['end'])->format('M j') }})</small></span>
+            <span class="ica-budget-figures">
+                <span class="ica-budget-spent">Spent <strong>${{ number_format($pb['spent'], 0) }}</strong></span>
+                <span class="ica-budget-sep">·</span>
+                <span>Budget <strong>${{ number_format($pb['budget'], 0) }}</strong></span>
+                <span class="ica-budget-sep">·</span>
+                <span style="color: {{ $remainColor }};">Remaining <strong>${{ number_format($pb['remaining'], 0) }}</strong></span>
+            </span>
+        </div>
+        <div class="progress ica-budget-bar">
+            <div class="progress-bar {{ $barClass }}" role="progressbar" style="width: {{ $pb['pct_spent'] }}%;">
+                {{ $pb['pct_spent'] }}%
+            </div>
+        </div>
+        @if($pb['over_budget'])
+        <div class="ica-budget-warn">⚠️ Over budget this week — confirm with Jon before placing more orders.</div>
+        @endif
     </div>
     @endif
 
@@ -377,6 +408,36 @@
 .ica-tag.priority_high { background: #f8d7da; color: #721c24; }
 .ica-tag.anniversary { background: #e6dcff; color: #4a2a8e; }
 .ica-tag.event { background: #d1ecf1; color: #0c5460; }
+.ica-tag.frozen, .ica-tag.do_not_reorder { background: #d6e4f0; color: #2c3e50; }
+.ica-tag.frozen_dupe { background: #f5c6cb; color: #721c24; font-weight: 700; }
+.ica-tag.abc_A { background: #2c699a; color: #fff; font-weight: 700; }
+.ica-tag.abc_B { background: #f0ad4e; color: #fff; font-weight: 700; }
+.ica-tag.abc_C { background: #ddd; color: #555; }
+
+/* Frozen bucket warning style — make it visually clear this is a DON'T list */
+.ica-bucket[data-bucket="frozen_inventory"] .ica-bucket-header { border-left-color: #c0392b; background: #fdf2f0; }
+.ica-bucket[data-bucket="frozen_inventory"] .ica-row-table tbody tr { opacity: 0.85; }
+.ica-bucket[data-bucket="frozen_inventory"] .ica-qty-input { background: #f5f5f5; }
+
+/* ABC A-restock bucket — emphasize as priority */
+.ica-bucket[data-bucket="abc_a_restock"] .ica-bucket-header { border-left-color: #2c699a; background: #f0f6fc; }
+
+/* Budget banner */
+.ica-budget-banner {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 12px 18px;
+    margin-bottom: 14px;
+}
+.ica-budget-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+.ica-budget-title { font-size: 15px; font-weight: 600; color: #444; }
+.ica-budget-figures { font-size: 13px; color: #555; }
+.ica-budget-figures strong { font-size: 15px; color: #333; }
+.ica-budget-sep { color: #bbb; padding: 0 6px; }
+.ica-budget-bar { margin: 8px 0 0 0; height: 14px; }
+.ica-budget-bar .progress-bar { font-size: 10px; line-height: 14px; font-weight: 600; }
+.ica-budget-warn { color: #a94442; font-weight: 600; margin-top: 6px; font-size: 13px; }
 .ica-row-table { margin-bottom: 0; }
 .ica-row-table td { vertical-align: middle !important; }
 .ica-qty-input { width: 60px; }

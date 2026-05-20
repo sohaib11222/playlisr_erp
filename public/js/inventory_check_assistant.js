@@ -173,7 +173,7 @@
             return;
         }
 
-        const order = ['fast_oos', 'street_pulse', 'universal_top', 'apple_music_top', 'top_artist_new_releases', 'events_upcoming', 'long_oos_essentials', 'hot_used_oos', 'customer_wants'];
+        const order = ['fast_oos', 'abc_a_restock', 'street_pulse', 'universal_top', 'apple_music_top', 'top_artist_new_releases', 'events_upcoming', 'long_oos_essentials', 'hot_used_oos', 'customer_wants', 'frozen_inventory'];
         const buckets = payload.buckets || {};
 
         let html = '';
@@ -241,7 +241,15 @@
     function renderRow(bucket, it) {
         const stock = (it.stock === null || it.stock === undefined) ? '—' : it.stock;
         const sold = (it.sold_qty_window === null || it.sold_qty_window === undefined) ? '—' : it.sold_qty_window;
-        const tags = (it.tags || []).map((t) => `<span class="ica-tag ${escapeHtml(t)}">${escapeHtml(t.replace(/_/g, ' '))}</span>`).join('');
+        // Build the tag list. ABC class always gets pulled out and rendered
+        // first (it's the highest-signal pill); other tags follow.
+        const rawTags = it.tags || [];
+        const abcTag = rawTags.find((t) => t === 'abc_A' || t === 'abc_B' || t === 'abc_C');
+        const nonAbcTags = rawTags.filter((t) => t !== abcTag);
+        const tagsHtml = nonAbcTags.map((t) => `<span class="ica-tag ${escapeHtml(t)}">${escapeHtml(t.replace(/_/g, ' '))}</span>`).join('');
+        const abcHtml = abcTag
+            ? `<span class="ica-tag ${escapeHtml(abcTag)}" title="ABC class ${abcTag.replace('abc_', '')}">${escapeHtml(abcTag.replace('abc_', ''))}</span>`
+            : '';
         const reason = escapeHtml(it.reason || '');
         const product = escapeHtml(it.product || '—');
         const artist = escapeHtml(it.artist || '—');
@@ -258,17 +266,24 @@
             ? `<td>${(it.avg_sell_days !== null && it.avg_sell_days !== undefined) ? escapeHtml(it.avg_sell_days + 'd') : '—'}</td>`
             : '';
 
+        // Frozen rows are a warning list — qty stays 0, checkbox starts
+        // unchecked, qty input disabled so a careless export can't bulk-
+        // reorder dead stock.
+        const isFrozen = bucket === 'frozen_inventory';
+        const checkboxAttrs = isFrozen ? '' : 'checked';
+        const qtyDisabled = isFrozen ? 'disabled' : '';
+
         return `<tr data-row-key="${escapeHtml(rowKey)}">
-            <td><input type="checkbox" class="ica-row-check" checked></td>
-            <td>${product}</td>
+            <td><input type="checkbox" class="ica-row-check" ${checkboxAttrs}></td>
+            <td>${product} ${abcHtml}</td>
             <td>${artist}</td>
             <td>${format}</td>
             <td>${stock}</td>
             <td>${sold}</td>
             ${sellSpeedCell}
             <td><small>${reason}</small></td>
-            <td>${tags}</td>
-            <td><input type="number" class="form-control input-sm ica-qty-input" value="${qty}" min="0" max="99"></td>
+            <td>${tagsHtml}</td>
+            <td><input type="number" class="form-control input-sm ica-qty-input" value="${qty}" min="0" max="99" ${qtyDisabled}></td>
             <td>${extraCol}</td>
         </tr>`;
     }

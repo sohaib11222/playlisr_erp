@@ -91,6 +91,77 @@ class InventoryCheckService
      * @param  array<string,mixed>  $input
      * @return array{buckets: array<string,array>, meta: array<string,mixed>}
      */
+    /**
+     * Current week's purchase budget + actual spend, mirroring the schedule
+     * that the product purchase report uses. Returns null outside the
+     * 13-week window. Pulled in here so the ICA page can show "you have
+     * $X left this week" right next to the reorder list — buying decisions
+     * stay anchored to the cash plan instead of running the export blind.
+     */
+    public function currentPurchaseBudget(int $business_id, $permittedLocations): ?array
+    {
+        $schedule = $this->purchaseBudgetSchedule();
+        $today = Carbon::now()->format('Y-m-d');
+        $week = null;
+        foreach ($schedule as $w) {
+            if ($today >= $w['start'] && $today <= $w['end']) {
+                $week = $w;
+                break;
+            }
+        }
+        if (!$week) {
+            return null;
+        }
+
+        $q = DB::table('transactions as t')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'purchase')
+            ->whereBetween(DB::raw('date(t.transaction_date)'), [$week['start'], $week['end']]);
+        if ($permittedLocations !== 'all') {
+            $q->whereIn('t.location_id', $permittedLocations);
+        }
+        $spent = (float) $q->sum('t.final_total');
+        $budget = (float) $week['budget'];
+        $remaining = $budget - $spent;
+        $pct = $budget > 0 ? min(100, ($spent / $budget) * 100) : 0;
+
+        return [
+            'week_no' => $week['week_no'],
+            'start' => $week['start'],
+            'end' => $week['end'],
+            'budget' => $budget,
+            'spent' => $spent,
+            'remaining' => $remaining,
+            'pct_spent' => round($pct, 1),
+            'over_budget' => $spent > $budget,
+        ];
+    }
+
+    /**
+     * 13-week purchase budget. Source of truth lives in ReportController
+     * (product purchase report); copied here so the ICA page doesn't need
+     * to reach into the reports controller. Keep in sync when the cash
+     * flow plan rolls forward.
+     */
+    private function purchaseBudgetSchedule(): array
+    {
+        return [
+            ['week_no' => 1,  'start' => '2026-05-18', 'end' => '2026-05-24', 'budget' => 10954],
+            ['week_no' => 2,  'start' => '2026-05-25', 'end' => '2026-05-31', 'budget' => 10954],
+            ['week_no' => 3,  'start' => '2026-06-01', 'end' => '2026-06-07', 'budget' => 11238],
+            ['week_no' => 4,  'start' => '2026-06-08', 'end' => '2026-06-14', 'budget' => 11238],
+            ['week_no' => 5,  'start' => '2026-06-15', 'end' => '2026-06-21', 'budget' => 11238],
+            ['week_no' => 6,  'start' => '2026-06-22', 'end' => '2026-06-28', 'budget' => 11238],
+            ['week_no' => 7,  'start' => '2026-06-29', 'end' => '2026-07-05', 'budget' => 10954],
+            ['week_no' => 8,  'start' => '2026-07-06', 'end' => '2026-07-12', 'budget' => 10954],
+            ['week_no' => 9,  'start' => '2026-07-13', 'end' => '2026-07-19', 'budget' => 10954],
+            ['week_no' => 10, 'start' => '2026-07-20', 'end' => '2026-07-26', 'budget' => 10954],
+            ['week_no' => 11, 'start' => '2026-07-27', 'end' => '2026-08-02', 'budget' => 15000],
+            ['week_no' => 12, 'start' => '2026-08-03', 'end' => '2026-08-09', 'budget' => 15000],
+            ['week_no' => 13, 'start' => '2026-08-10', 'end' => '2026-08-16', 'budget' => 15000],
+        ];
+    }
+
     public function buildBuckets(int $business_id, array $input, $permittedLocations): array
     {
         $locationId = !empty($input['location_id']) ? (int) $input['location_id'] : null;
@@ -104,8 +175,13 @@ class InventoryCheckService
 
         $topArtists = $this->getTopArtists($business_id, $locationId, $permittedLocations);
 
+        // ABC classification by inventory value (matches /reports/abc-inventory-classification).
+        // Computed once per request, cached 15min — used to tag every item.
+        $abcMap = $this->computeAbcMap($business_id);
+
         $buckets = [
             'fast_oos' => $this->bucketFastOos($business_id, $locationId, $permittedLocations),
+            'abc_a_restock' => $this->bucketAbcARestock($business_id, $locationId, $abcMap, $permittedLocations),
             'street_pulse' => $this->bucketChartPicks($business_id, $locationId, 'street_pulse', $topArtists, $permittedLocations),
             'universal_top' => $this->bucketChartPicks($business_id, $locationId, 'universal_top', $topArtists, $permittedLocations),
             'apple_music_top' => $this->bucketChartPicks($business_id, $locationId, 'apple_music_top', $topArtists, $permittedLocations),
@@ -125,6 +201,7 @@ class InventoryCheckService
             'long_oos_essentials' => $this->bucketLongOosEssentials($business_id, $locationId, $permittedLocations),
             'hot_used_oos' => $this->bucketHotUsedOos($business_id, $locationId, $permittedLocations),
             'customer_wants' => $this->bucketCustomerWants($business_id, $locationId),
+            'frozen_inventory' => $this->bucketFrozenInventory($business_id, $locationId, $permittedLocations),
         ];
 
         // Optionally filter buckets to categories if the user passed category_ids
@@ -137,6 +214,39 @@ class InventoryCheckService
             }
         }
 
+        // Apply ABC classification + frozen-cross-reference tags across every
+        // bucket's items in a single pass. Done here (vs in each bucket method)
+        // so the bucket builders stay focused on their own selection logic.
+        $frozenVariationIds = [];
+        if (!empty($buckets['frozen_inventory']['items'])) {
+            foreach ($buckets['frozen_inventory']['items'] as $it) {
+                if (!empty($it['variation_id'])) {
+                    $frozenVariationIds[(int) $it['variation_id']] = true;
+                }
+            }
+        }
+        foreach ($buckets as $key => $bucket) {
+            if (empty($bucket['items'])) {
+                continue;
+            }
+            foreach ($bucket['items'] as &$it) {
+                $pid = (int) ($it['product_id'] ?? 0);
+                if ($pid && isset($abcMap[$pid])) {
+                    $it['abc_class'] = $abcMap[$pid];
+                    $it['tags'] = array_merge($it['tags'] ?? [], ['abc_' . $abcMap[$pid]]);
+                }
+                // Cross-reference: if this item is also in the frozen bucket,
+                // flag the row so Sarah sees "we already have dead stock of
+                // this — maybe don't reorder" right on the row.
+                $vid = (int) ($it['variation_id'] ?? 0);
+                if ($vid && $key !== 'frozen_inventory' && isset($frozenVariationIds[$vid])) {
+                    $it['tags'] = array_merge($it['tags'] ?? [], ['frozen_dupe']);
+                }
+            }
+            unset($it);
+            $buckets[$key]['items'] = array_values($bucket['items']);
+        }
+
         return [
             'buckets' => $buckets,
             'meta' => [
@@ -145,6 +255,7 @@ class InventoryCheckService
                 'sale_start' => $saleStart,
                 'sale_end' => $saleEnd,
                 'top_artists' => $topArtists,
+                'abc_classified' => count($abcMap),
                 'generated_at' => Carbon::now()->toIso8601String(),
             ],
         ];
@@ -735,6 +846,218 @@ class InventoryCheckService
             ->orderByDesc('psc.total_sold')
             ->limit($limit)
             ->get();
+    }
+
+    // ── ABC analysis (by inventory value) ─────────────────────────────
+
+    /**
+     * Build a [product_id => 'A'|'B'|'C'] map using the same Pareto-style
+     * classification as /reports/abc-inventory-classification:
+     *   A = cumulative top 80% of inventory value
+     *   B = next 15%
+     *   C = bottom 5%
+     * Cached for 15 min — values change slowly and the underlying scan
+     * touches every stocked product.
+     */
+    protected function computeAbcMap(int $business_id): array
+    {
+        $cacheKey = 'ica_abc_map_' . $business_id;
+        try {
+            return \Illuminate\Support\Facades\Cache::remember($cacheKey, now()->addMinutes(15), function () use ($business_id) {
+                return $this->computeAbcMapUncached($business_id);
+            });
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('ICA computeAbcMap failed', ['err' => $e->getMessage()]);
+            return [];
+        }
+    }
+
+    protected function computeAbcMapUncached(int $business_id): array
+    {
+        $rows = DB::table('product_stock_cache as psc')
+            ->where('psc.business_id', $business_id)
+            ->where('psc.enable_stock', 1)
+            ->select(
+                'psc.product_id',
+                DB::raw('SUM(psc.stock_price) as inventory_value')
+            )
+            ->groupBy('psc.product_id')
+            ->orderByDesc('inventory_value')
+            ->get();
+
+        $total = 0.0;
+        foreach ($rows as $r) {
+            $total += (float) ($r->inventory_value ?? 0);
+        }
+        if ($total <= 0) {
+            return [];
+        }
+
+        $map = [];
+        $running = 0.0;
+        foreach ($rows as $r) {
+            $running += (float) ($r->inventory_value ?? 0);
+            $pct = ($running / $total) * 100;
+            $map[(int) $r->product_id] = $pct <= 80 ? 'A' : ($pct <= 95 ? 'B' : 'C');
+        }
+        return $map;
+    }
+
+    /**
+     * A-class items running low. These are the inventory dollars that drive
+     * most of the store's value — being out of stock on them is the biggest
+     * miss. Stock ≤ 1 with the A label.
+     */
+    protected function bucketAbcARestock(int $business_id, int $locationId, array $abcMap, $permittedLocations): array
+    {
+        if (empty($abcMap)) {
+            return [
+                'label' => '💎 A-class items — restock priority',
+                'why' => 'ABC classification empty — no stocked products with value.',
+                'items' => [],
+                'count' => 0,
+                'empty_reason' => 'no_abc',
+            ];
+        }
+
+        $aPids = [];
+        foreach ($abcMap as $pid => $cls) {
+            if ($cls === 'A') {
+                $aPids[] = (int) $pid;
+            }
+        }
+        if (empty($aPids)) {
+            return [
+                'label' => '💎 A-class items — restock priority',
+                'why' => 'No A-class products at this location.',
+                'items' => [],
+                'count' => 0,
+                'empty_reason' => 'no_a_class',
+            ];
+        }
+
+        $maxStock = (int) config('inventory_check.buckets.abc_a_restock.max_stock', 1);
+        $targetStock = (int) config('inventory_check.buckets.abc_a_restock.target_stock', 3);
+
+        $rows = $this->queryPscRows($business_id, $locationId, [], $permittedLocations);
+        $items = [];
+        foreach ($rows as $row) {
+            $pid = (int) $row->product_id;
+            if (!in_array($pid, $aPids, true)) {
+                continue;
+            }
+            $stock = (float) ($row->stock ?? 0);
+            if ($stock > $maxStock) {
+                continue;
+            }
+            $items[] = $this->rowToCandidate($row, $stock, 0, $targetStock, [
+                'bucket' => 'abc_a_restock',
+                'reason' => 'A-class (top 80% of inventory value), stock ' . (int) $stock,
+            ]);
+        }
+
+        $items = $this->dedupeByVariation($items);
+
+        return [
+            'label' => '💎 A-class items — restock priority',
+            'why' => 'Items in the top 80% of inventory value (ABC class A) that are low or out of stock here. These drive most of the store\'s value — being out hurts the most.',
+            'items' => $items,
+            'count' => count($items),
+        ];
+    }
+
+    // ── Frozen inventory (DO NOT REORDER) ─────────────────────────────
+
+    /**
+     * Items at this location with stock > 0 but no sale in the configured
+     * window (default 180 days). Mirrors /reports/dead-stock but scoped to
+     * the current location so Sarah can see "what's already sitting here
+     * that I shouldn't reorder more of." suggested_qty is forced to 0 so
+     * accidentally checking the row + exporting can't bulk-reorder dead
+     * stock.
+     */
+    protected function bucketFrozenInventory(int $business_id, int $locationId, $permittedLocations): array
+    {
+        $frozenDays = (int) config('inventory_check.buckets.frozen_inventory.frozen_days', 180);
+        $limit = (int) config('inventory_check.buckets.frozen_inventory.max_items', 200);
+        $cutoff = Carbon::now()->subDays($frozenDays)->format('Y-m-d H:i:s');
+
+        // Last-sold per variation across finalized sells (business-wide so
+        // a title that sells at the OTHER store still counts as "moving").
+        $lastSaleSub = DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->select('tsl.variation_id', DB::raw('MAX(t.transaction_date) as last_sold'))
+            ->groupBy('tsl.variation_id');
+
+        $q = DB::table('product_stock_cache as psc')
+            ->leftJoin('products as p', 'p.id', '=', 'psc.product_id')
+            ->leftJoinSub($lastSaleSub, 'ls', function ($join) {
+                $join->on('psc.variation_id', '=', 'ls.variation_id');
+            })
+            ->where('psc.business_id', $business_id)
+            ->where('psc.location_id', $locationId)
+            ->where('psc.stock', '>', 0)
+            ->where(function ($q) use ($cutoff) {
+                $q->whereNull('ls.last_sold')
+                  ->orWhere('ls.last_sold', '<', $cutoff);
+            });
+
+        if ($permittedLocations !== 'all') {
+            $q->whereIn('psc.location_id', $permittedLocations);
+        }
+
+        $rows = $q->select([
+            'psc.variation_id', 'psc.product_id', 'psc.location_id', 'psc.stock', 'psc.sku',
+            'psc.product', 'psc.type', 'psc.product_variation', 'psc.variation_name',
+            'psc.location_name', 'psc.category_name', 'psc.category_id',
+            'psc.product_custom_field1', 'psc.total_sold', 'psc.stock_price',
+            'p.format as product_format',
+            'ls.last_sold',
+        ])
+            ->orderByDesc('psc.stock_price')
+            ->limit($limit)
+            ->get();
+
+        $items = [];
+        foreach ($rows as $row) {
+            $stock = (float) ($row->stock ?? 0);
+            $tiedUp = (float) ($row->stock_price ?? 0);
+            $lastSold = $row->last_sold ? Carbon::parse($row->last_sold)->format('Y-m-d') : null;
+            $daysSince = $lastSold ? Carbon::parse($lastSold)->diffInDays(Carbon::now()) : null;
+
+            $candidate = $this->rowToCandidate($row, $stock, 0, 0, [
+                'bucket' => 'frozen_inventory',
+                'reason' => $lastSold
+                    ? ('last sold ' . $lastSold . ' (' . $daysSince . 'd ago) · $' . number_format($tiedUp, 0) . ' tied up')
+                    : ('never sold · $' . number_format($tiedUp, 0) . ' tied up'),
+                'last_sold' => $lastSold,
+                'days_since_sold' => $daysSince,
+                'tied_up_value' => $tiedUp,
+                'tags' => ['frozen', 'do_not_reorder'],
+            ]);
+            // Force suggested_qty to 0 — this bucket is a warning list, not
+            // a reorder list. rowToCandidate may have nudged it to 1 if a
+            // small sold-window was passed in some future call path.
+            $candidate['suggested_qty'] = 0;
+            $items[] = $candidate;
+        }
+
+        $totalTied = 0.0;
+        foreach ($items as $it) {
+            $totalTied += (float) ($it['tied_up_value'] ?? 0);
+        }
+
+        return [
+            'label' => '❄️ Frozen inventory — DO NOT reorder',
+            'why' => 'Stock-on-shelf with no sale in ' . $frozenDays . '+ days. Total $' . number_format($totalTied, 0) . ' tied up here. Cross-reference: rows in other buckets that match these are tagged "frozen_dupe".',
+            'items' => $items,
+            'count' => count($items),
+            'frozen_days' => $frozenDays,
+            'tied_up_value_total' => round($totalTied, 2),
+        ];
     }
 
     // ── Long OOS essentials (auto-detected) ───────────────────────────

@@ -74,6 +74,16 @@ class InventoryCheckController extends Controller
             $migrationsMissing = true;
         }
 
+        // Current week's purchase budget vs actual spend — shown as a banner
+        // at the top of the page so Sarah doesn't run the order blind.
+        $permitted = auth()->user()->permitted_locations();
+        $purchaseBudget = null;
+        try {
+            $purchaseBudget = $this->inventoryCheckService->currentPurchaseBudget($business_id, $permitted);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('ICA budget banner failed', ['err' => $e->getMessage()]);
+        }
+
         return view('report.inventory_check_assistant')->with(compact(
             'business_locations',
             'categories',
@@ -83,7 +93,8 @@ class InventoryCheckController extends Controller
             'copyFormat',
             'amsColumns',
             'chartFreshness',
-            'migrationsMissing'
+            'migrationsMissing',
+            'purchaseBudget'
         ));
     }
 

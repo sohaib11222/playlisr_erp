@@ -66,6 +66,19 @@ return [
             'lookback_days' => 90,
             'top_n' => 50,
         ],
+        // 💎 ABC class A items running low — top 80% of inventory value
+        // (Pareto) where stock has dropped to threshold or below.
+        'abc_a_restock' => [
+            'max_stock' => 1,
+            'target_stock' => 3,
+        ],
+        // ❄️ Frozen inventory — stock-on-shelf with no recent sale.
+        // Listed as a "do not reorder" warning bucket; tags cross-reference
+        // matches in other buckets.
+        'frozen_inventory' => [
+            'frozen_days' => 180,
+            'max_items' => 200,
+        ],
     ],
 
     /*
