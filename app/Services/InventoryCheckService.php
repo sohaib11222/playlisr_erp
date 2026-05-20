@@ -236,14 +236,60 @@ class InventoryCheckService
      */
     public function buildSecondaryBuckets(int $business_id, int $locationId, $permittedLocations): array
     {
-        $topArtists = $this->getTopArtists($business_id, $locationId, $permittedLocations);
+        // Cache for 5 min per (business, location) — same pattern as
+        // fast_oos. Chart picks alone runs ~1000 per-row SQL lookups
+        // and long_oos does a 365-day aggregation, so first build is
+        // 20-40s but a re-click is instant.
+        $cacheKey = 'ica_secondary_' . $business_id . '_' . $locationId;
+        if (filter_var(request()->input('nocache'), FILTER_VALIDATE_BOOLEAN)) {
+            \Illuminate\Support\Facades\Cache::forget($cacheKey);
+        }
+        try {
+            return \Illuminate\Support\Facades\Cache::remember($cacheKey, now()->addMinutes(5), function () use ($business_id, $locationId, $permittedLocations) {
+                return $this->buildSecondaryBucketsUncached($business_id, $locationId, $permittedLocations);
+            });
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('ICA secondary cache failed', ['err' => $e->getMessage()]);
+            return $this->buildSecondaryBucketsUncached($business_id, $locationId, $permittedLocations);
+        }
+    }
+
+    protected function buildSecondaryBucketsUncached(int $business_id, int $locationId, $permittedLocations): array
+    {
+        // Wrap each bucket independently so a single failure doesn't take
+        // out the rest — Sarah hit a "all stuck on Loading…" 2026-05-20
+        // where one bucket exception cascaded.
+        $topArtists = [];
+        try {
+            $topArtists = $this->getTopArtists($business_id, $locationId, $permittedLocations);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('ICA getTopArtists failed', ['err' => $e->getMessage()]);
+        }
+
+        $safe = function (string $key, string $label, callable $fn) {
+            try {
+                return $fn();
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::error('ICA bucket failed: ' . $key, [
+                    'message' => $e->getMessage(),
+                    'file' => $e->getFile() . ':' . $e->getLine(),
+                ]);
+                return [
+                    'label' => $label,
+                    'why' => 'Failed to load: ' . $e->getMessage(),
+                    'items' => [], 'count' => 0,
+                    'empty_reason' => 'fetch_error',
+                ];
+            }
+        };
+
         return [
-            'street_pulse' => $this->bucketChartPicks($business_id, $locationId, 'street_pulse', $topArtists, $permittedLocations),
-            'universal_top' => $this->bucketChartPicks($business_id, $locationId, 'universal_top', $topArtists, $permittedLocations),
-            'apple_music_top' => $this->bucketChartPicks($business_id, $locationId, 'apple_music_top', $topArtists, $permittedLocations),
-            'top_artist_new_releases' => $this->bucketTopArtistNewReleases($business_id, $locationId, $topArtists, $permittedLocations),
-            'long_oos_essentials' => $this->bucketLongOosEssentials($business_id, $locationId, $permittedLocations),
-            'hot_used_oos' => $this->bucketHotUsedOos($business_id, $locationId, $permittedLocations),
+            'street_pulse' => $safe('street_pulse', 'Street Pulse picks', fn () => $this->bucketChartPicks($business_id, $locationId, 'street_pulse', $topArtists, $permittedLocations)),
+            'universal_top' => $safe('universal_top', 'Universal top', fn () => $this->bucketChartPicks($business_id, $locationId, 'universal_top', $topArtists, $permittedLocations)),
+            'apple_music_top' => $safe('apple_music_top', 'Apple Music top 100', fn () => $this->bucketChartPicks($business_id, $locationId, 'apple_music_top', $topArtists, $permittedLocations)),
+            'top_artist_new_releases' => $safe('top_artist_new_releases', 'New releases from your top artists', fn () => $this->bucketTopArtistNewReleases($business_id, $locationId, $topArtists, $permittedLocations)),
+            'long_oos_essentials' => $safe('long_oos_essentials', 'Long out-of-stock essentials', fn () => $this->bucketLongOosEssentials($business_id, $locationId, $permittedLocations)),
+            'hot_used_oos' => $safe('hot_used_oos', 'Hot used, currently out', fn () => $this->bucketHotUsedOos($business_id, $locationId, $permittedLocations)),
         ];
     }
 

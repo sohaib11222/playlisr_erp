@@ -156,6 +156,12 @@ class InventoryCheckController extends Controller
     {
         try {
             $business_id = (int) $request->session()->get('user.business_id');
+            // Release the session lock immediately so the other lazy AJAX
+            // requests can run in parallel server-side. Without this each
+            // request held the session file lock end-to-end and they ran
+            // serially — Sarah saw all lazy buckets stuck on "Loading…"
+            // 2026-05-20 because secondaryBuckets blocked events + others.
+            $request->session()->save();
             $input = $request->only(['location_id', 'preset']);
 
             if (!empty($input['preset'])) {
@@ -205,6 +211,12 @@ class InventoryCheckController extends Controller
     {
         try {
             $business_id = (int) $request->session()->get('user.business_id');
+            // Release the session lock immediately so the other lazy AJAX
+            // requests can run in parallel server-side. Without this each
+            // request held the session file lock end-to-end and they ran
+            // serially — Sarah saw all lazy buckets stuck on "Loading…"
+            // 2026-05-20 because secondaryBuckets blocked events + others.
+            $request->session()->save();
             $input = $request->only(['location_id', 'preset']);
             if (!empty($input['preset'])) {
                 $resolved = $this->inventoryCheckService->resolvePreset($business_id, $input['preset']);
@@ -243,6 +255,12 @@ class InventoryCheckController extends Controller
     {
         try {
             $business_id = (int) $request->session()->get('user.business_id');
+            // Release the session lock immediately so the other lazy AJAX
+            // requests can run in parallel server-side. Without this each
+            // request held the session file lock end-to-end and they ran
+            // serially — Sarah saw all lazy buckets stuck on "Loading…"
+            // 2026-05-20 because secondaryBuckets blocked events + others.
+            $request->session()->save();
             $input = $request->only(['location_id', 'preset']);
             if (!empty($input['preset'])) {
                 $resolved = $this->inventoryCheckService->resolvePreset($business_id, $input['preset']);
@@ -282,6 +300,12 @@ class InventoryCheckController extends Controller
     {
         try {
             $business_id = (int) $request->session()->get('user.business_id');
+            // Release the session lock immediately so the other lazy AJAX
+            // requests can run in parallel server-side. Without this each
+            // request held the session file lock end-to-end and they ran
+            // serially — Sarah saw all lazy buckets stuck on "Loading…"
+            // 2026-05-20 because secondaryBuckets blocked events + others.
+            $request->session()->save();
             $input = $request->only(['location_id', 'preset']);
             if (!empty($input['preset'])) {
                 $resolved = $this->inventoryCheckService->resolvePreset($business_id, $input['preset']);
@@ -382,6 +406,12 @@ class InventoryCheckController extends Controller
     {
         try {
             $business_id = (int) $request->session()->get('user.business_id');
+            // Release the session lock immediately so the other lazy AJAX
+            // requests can run in parallel server-side. Without this each
+            // request held the session file lock end-to-end and they ran
+            // serially — Sarah saw all lazy buckets stuck on "Loading…"
+            // 2026-05-20 because secondaryBuckets blocked events + others.
+            $request->session()->save();
             $input = $request->only(['location_id', 'preset']);
             if (!empty($input['preset'])) {
                 $resolved = $this->inventoryCheckService->resolvePreset($business_id, $input['preset']);
