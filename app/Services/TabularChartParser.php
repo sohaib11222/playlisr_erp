@@ -49,12 +49,57 @@ class TabularChartParser
         $out = [];
         foreach ($spreadsheet->getSheetNames() as $sheetName) {
             $rows = $spreadsheet->getSheetByName($sheetName)->toArray(null, true, true, false);
-            $parsed = $this->rowsToChartEntries($rows);
+            // Sheet name often encodes the format on Luminate / Street Pulse
+            // weekly files ("Top 200 Overall Vinyl Albums", "Indie Stores
+            // Top 200 CD Albums"). Pass that as a default since these
+            // sheets don't have a Format column. Sarah 2026-05-20.
+            $defaultFormat = $this->formatFromSheetName($sheetName);
+            $parsed = $this->rowsToChartEntries($rows, $defaultFormat);
             foreach ($parsed as $r) {
                 $out[] = $r;
             }
         }
 
+        // Dedupe across tabs by (artist, title, format) — the Indie file
+        // has 5 overlapping tabs (Overall Vinyl + Indie Vinyl + Indie
+        // Physical, etc.); we don't want the same title appearing 3×.
+        return $this->dedupeRows($out);
+    }
+
+    protected function formatFromSheetName(string $sheetName): ?string
+    {
+        $lower = mb_strtolower($sheetName);
+        if (mb_strpos($lower, 'vinyl') !== false) return 'LP';
+        if (mb_strpos($lower, 'cd') !== false) return 'CD';
+        if (mb_strpos($lower, 'cassette') !== false) return 'Cassette';
+        return null;
+    }
+
+    /**
+     * @param  array<int, array{rank:?int, artist:?string, title:?string, format:?string, is_new_release:bool}>  $rows
+     * @return array<int, array{rank:?int, artist:?string, title:?string, format:?string, is_new_release:bool}>
+     */
+    protected function dedupeRows(array $rows): array
+    {
+        $seen = [];
+        $out = [];
+        foreach ($rows as $r) {
+            $key = mb_strtolower(($r['artist'] ?? '') . '|' . ($r['title'] ?? '') . '|' . ($r['format'] ?? ''));
+            if (isset($seen[$key])) {
+                // Keep the smaller (= higher) rank if both have one
+                $existing = $out[$seen[$key]];
+                if (
+                    ($r['rank'] ?? null) !== null
+                    && ($existing['rank'] ?? null) !== null
+                    && (int) $r['rank'] < (int) $existing['rank']
+                ) {
+                    $out[$seen[$key]] = $r;
+                }
+                continue;
+            }
+            $seen[$key] = count($out);
+            $out[] = $r;
+        }
         return $out;
     }
 
@@ -92,9 +137,10 @@ class TabularChartParser
 
     /**
      * @param  array<int, array<int, mixed>>  $rows
+     * @param  string|null  $defaultFormat  fallback when the sheet has no Format column
      * @return array<int, array{rank:?int, artist:?string, title:?string, format:?string, is_new_release:bool}>
      */
-    public function rowsToChartEntries(array $rows): array
+    public function rowsToChartEntries(array $rows, ?string $defaultFormat = null): array
     {
         $headerIdx = $this->findHeaderRow($rows);
         if ($headerIdx === null) {
@@ -163,11 +209,15 @@ class TabularChartParser
                 }
             }
 
+            $fmt = $cFormat !== null ? trim((string) ($row[$cFormat] ?? '')) ?: null : null;
+            if ($fmt === null && $defaultFormat !== null) {
+                $fmt = $defaultFormat;
+            }
             $out[] = [
                 'rank' => $rank,
                 'artist' => $artist !== '' ? $artist : null,
                 'title' => $title !== '' ? $title : null,
-                'format' => $cFormat !== null ? trim((string) ($row[$cFormat] ?? '')) ?: null : null,
+                'format' => $fmt,
                 'is_new_release' => $isNew,
             ];
         }
