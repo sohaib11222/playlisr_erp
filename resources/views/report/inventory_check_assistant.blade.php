@@ -142,11 +142,12 @@
                 @endcomponent
             </div>
             <div class="col-md-6">
-                @component('components.widget', ['class' => 'box-solid', 'title' => 'UMe / Universal chart'])
+                @component('components.widget', ['class' => 'box-solid', 'title' => 'UMe / Universal chart + anniversaries'])
                 <p class="text-muted small" id="ica_ut_freshness">Not yet imported.</p>
                 <button type="button" class="btn btn-default btn-sm" data-toggle="modal" data-target="#ica_ut_modal">
                     <i class="fa fa-upload"></i> Upload this week's chart
                 </button>
+                <p class="text-muted small" style="margin-top:6px;">Drag the "UMe Back-in-Stock + Active LPs and CDs" xlsx. The Top 200 + this-week deliveries feed the Universal Top bucket; the "Key Anniversaries + Birthdays" tab (Michael Jackson biopic, Drake tour, etc.) feeds the Upcoming Events bucket.</p>
                 @endcomponent
             </div>
         </div>

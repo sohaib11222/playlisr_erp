@@ -647,11 +647,16 @@ class InventoryCheckService
             ];
         }
 
+        // Capped at 100 (was 500) 2026-05-20 — each pick fires a fuzzy
+        // LIKE lookup in tryMatchChartPickToVariation, and 3 sources ×
+        // 500 picks = 1500 sequential queries was the dominant cost in
+        // secondaryBuckets. Top 100 covers everything cashiers care
+        // about; raise via config if needed.
         $picks = ChartPick::where('business_id', $business_id)
             ->where('source', $source)
             ->whereDate('week_of', $week)
             ->orderBy('chart_rank')
-            ->limit(500)
+            ->limit((int) config('inventory_check.chart_picks_per_source', 100))
             ->get();
 
         $topArtistsLower = array_map('mb_strtolower', $topArtists);
@@ -794,8 +799,17 @@ class InventoryCheckService
             return null;
         }
         $q = DB::table('product_stock_cache as psc')
+            ->leftJoin('products as p', 'p.id', '=', 'psc.product_id')
+            ->leftJoin('categories as subcat', 'subcat.id', '=', 'psc.sub_category_id')
+            ->leftJoin('variations as v', 'v.id', '=', 'psc.variation_id')
             ->where('psc.business_id', $business_id)
             ->where('psc.product', 'like', '%' . $title . '%')
+            ->select([
+                'psc.variation_id', 'psc.product_id', 'psc.stock', 'psc.sku',
+                'psc.location_name', 'psc.category_name', 'psc.category_id',
+                'psc.total_sold', 'subcat.name as genre', 'p.bin_position',
+                'v.default_purchase_price as cost_price',
+            ])
             ->limit(10);
 
         if ($artist) {
@@ -822,6 +836,7 @@ class InventoryCheckService
             'category_id' => $row->category_id ?? null,
             'genre' => $row->genre ?? null,
             'bin_position' => $row->bin_position ?? null,
+            'cost_price' => isset($row->cost_price) ? (float) $row->cost_price : null,
         ];
     }
 
@@ -975,6 +990,7 @@ class InventoryCheckService
                         'category_name' => $match->category_name,
                         'genre' => $match->genre ?? null,
                         'bin_position' => $match->bin_position ?? null,
+                        'cost_price' => isset($match->cost_price) ? (float) $match->cost_price : null,
                         'is_rsd' => $this->isRsdTitle((string) ($match->product ?? '')),
                         'suggested_qty' => max(1, 3 - (int) $stock),
                         'reason' => $reason,
@@ -1079,6 +1095,7 @@ class InventoryCheckService
         return DB::table('product_stock_cache as psc')
             ->leftJoin('products as p', 'p.id', '=', 'psc.product_id')
             ->leftJoin('categories as subcat', 'subcat.id', '=', 'psc.sub_category_id')
+            ->leftJoin('variations as v', 'v.id', '=', 'psc.variation_id')
             ->where('psc.business_id', $business_id)
             ->where(function ($q) use ($artist) {
                 $q->where('psc.product_custom_field1', 'like', '%' . $artist . '%')
@@ -1089,6 +1106,7 @@ class InventoryCheckService
                 'psc.location_name', 'psc.category_name', 'psc.total_sold',
                 'subcat.name as genre',
                 'p.format as product_format', 'p.bin_position',
+                'v.default_purchase_price as cost_price',
             ])
             ->orderByDesc('psc.total_sold')
             ->limit($limit)
@@ -1895,6 +1913,7 @@ class InventoryCheckService
         $q = DB::table('product_stock_cache as psc')
             ->leftJoin('products as p', 'p.id', '=', 'psc.product_id')
             ->leftJoin('categories as subcat', 'subcat.id', '=', 'psc.sub_category_id')
+            ->leftJoin('variations as v', 'v.id', '=', 'psc.variation_id')
             ->where('psc.business_id', $business_id)
             ->where('psc.location_id', $locationId);
 
@@ -1913,6 +1932,7 @@ class InventoryCheckService
             'psc.product_custom_field1', 'psc.total_sold',
             'p.format as product_format',
             'p.bin_position',
+            'v.default_purchase_price as cost_price',
         ])
             ->orderByDesc('psc.total_sold')
             ->limit((int) config('inventory_check.max_candidate_rows', 2000))
@@ -1944,6 +1964,7 @@ class InventoryCheckService
             'sub_category_id' => $row->sub_category_id ?? null,
             'location_name' => $row->location_name,
             'bin_position' => $row->bin_position ?? null,
+            'cost_price' => isset($row->cost_price) ? (float) $row->cost_price : null,
             'is_rsd' => $this->isRsdTitle($row->product ?? ''),
             'stock' => $stock,
             'sold_qty_window' => round($soldWindow, 2),

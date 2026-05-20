@@ -320,8 +320,8 @@
                             if (stockCell) stockCell.textContent = newQty;
                             btn.dataset.current = String(newQty);
                             btn.disabled = false; btn.textContent = 'Set stock';
-                            // Reason is td:nth-child(11) after Bin + ABC columns
-                            const reasonCell = tr.querySelector('td:nth-child(11) small');
+                            // Reason is td:nth-child(12) after Bin + ABC + Cost
+                            const reasonCell = tr.querySelector('td:nth-child(12) small');
                             if (reasonCell) {
                                 const userName = (resp.entry && resp.entry.user_name) || 'you';
                                 const when = new Date().toISOString().substring(0, 10);
@@ -364,13 +364,31 @@
         if ($location && $location.value) params.append('location_id', $location.value);
         if ($preset && $preset.value) params.append('preset', $preset.value);
 
+        const SECONDARY_KEYS = ['street_pulse', 'universal_top', 'apple_music_top', 'top_artist_new_releases', 'long_oos_essentials', 'hot_used_oos'];
+
+        // Surface a stuck-load warning so Sarah doesn't stare at
+        // "Loading…" forever (2026-05-20).
+        const stuckTimer = setTimeout(() => {
+            SECONDARY_KEYS.forEach((k) => {
+                const el = $root.querySelector('.ica-bucket[data-bucket="' + k + '"] .ica-why');
+                if (el && el.textContent.indexOf('Loading') === 0) {
+                    el.textContent = 'Still loading… first build can take 20-40s. Re-clicks are instant.';
+                }
+            });
+        }, 8000);
+
         fetch(window.ICA_SECONDARY_URL + '?' + params.toString(), {
             headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': window.ICA_CSRF || '' },
             credentials: 'same-origin',
         })
             .then((r) => r.json())
             .then((resp) => {
-                if (!resp || !resp.buckets) return;
+                clearTimeout(stuckTimer);
+                if (!resp || !resp.buckets) {
+                    // Surface a clear error on every placeholder instead of leaving "Loading…"
+                    SECONDARY_KEYS.forEach((k) => paintBucketError(k, 'Empty response from server'));
+                    return;
+                }
                 Object.keys(resp.buckets).forEach((key) => {
                     const bucket = resp.buckets[key];
                     if (lastResult && lastResult.buckets) {
@@ -387,8 +405,18 @@
                 attachBucketHandlers();
                 rebuildFilterOptions();
                 applyRowFilters();
+                renderBucketTotals();
             })
-            .catch((err) => console.error('[ICA] secondary buckets lazy-load failed', err));
+            .catch((err) => {
+                clearTimeout(stuckTimer);
+                console.error('[ICA] secondary buckets lazy-load failed', err);
+                SECONDARY_KEYS.forEach((k) => paintBucketError(k, (err && err.message) || 'network error'));
+            });
+    }
+
+    function paintBucketError(bucketKey, msg) {
+        const el = $root.querySelector('.ica-bucket[data-bucket="' + bucketKey + '"] .ica-why');
+        if (el) el.textContent = 'Failed to load: ' + msg + ' — open the browser console (F12) for details.';
     }
 
     function lazyLoadEventsBucket() {
@@ -397,13 +425,24 @@
         if ($preset && $preset.value) params.append('preset', $preset.value);
         const url = window.ICA_EVENTS_URL || (window.ICA_BUCKETS_URL.replace('/buckets', '/events-bucket'));
 
+        const stuckTimer = setTimeout(() => {
+            const el = $root.querySelector('.ica-bucket[data-bucket="events_upcoming"] .ica-why');
+            if (el && el.textContent.indexOf('Loading') === 0) {
+                el.textContent = 'Still loading… events feed can take 10-30s on cold cache.';
+            }
+        }, 8000);
+
         fetch(url + '?' + params.toString(), {
             headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': window.ICA_CSRF || '' },
             credentials: 'same-origin',
         })
             .then((r) => r.json())
             .then((resp) => {
-                if (!resp || !resp.bucket) return;
+                clearTimeout(stuckTimer);
+                if (!resp || !resp.bucket) {
+                    paintBucketError('events_upcoming', 'empty response');
+                    return;
+                }
                 if (lastResult && lastResult.buckets) {
                     lastResult.buckets.events_upcoming = resp.bucket;
                 }
@@ -422,7 +461,11 @@
                     applyRowFilters();
                 }
             })
-            .catch((err) => console.error('[ICA] events lazy-load failed', err));
+            .catch((err) => {
+                clearTimeout(stuckTimer);
+                console.error('[ICA] events lazy-load failed', err);
+                paintBucketError('events_upcoming', (err && err.message) || 'network error');
+            });
     }
 
     function renderBuckets(payload) {
@@ -491,6 +534,15 @@
         attachBucketHandlers();
         rebuildFilterOptions();
         applyRowFilters();
+        renderBucketTotals();
+        // Live-update totals when the user tweaks qty or toggles checkboxes.
+        $root.addEventListener('input', (e) => {
+            if (e.target && e.target.classList.contains('ica-qty-input')) renderBucketTotals();
+        });
+        $root.addEventListener('change', (e) => {
+            if (e.target && e.target.classList.contains('ica-row-check')) renderBucketTotals();
+            if (e.target && e.target.classList.contains('ica-select-all')) renderBucketTotals();
+        });
     }
 
     // ── Category + Genre filter (client-side row hiding) ─────────────
@@ -519,6 +571,50 @@
         }
     }
 
+    /**
+     * Walk every bucket, sum (qty × cost) across visible + checked rows,
+     * and write a "Total cost" footer onto each bucket header + a grand
+     * total into the export-strip summary so Sarah can budget the order.
+     */
+    function renderBucketTotals() {
+        let grandQty = 0;
+        let grandCost = 0;
+        $root.querySelectorAll('.ica-bucket').forEach((bucketEl) => {
+            let bQty = 0;
+            let bCost = 0;
+            bucketEl.querySelectorAll('tr[data-row-key]').forEach((tr) => {
+                if (tr.style.display === 'none') return;
+                const checkbox = tr.querySelector('.ica-row-check');
+                if (checkbox && !checkbox.checked) return;
+                const qtyInput = tr.querySelector('.ica-qty-input');
+                const q = qtyInput ? (parseInt(qtyInput.value, 10) || 0) : 0;
+                const c = parseFloat(tr.getAttribute('data-cost') || '0') || 0;
+                bQty += q;
+                bCost += q * c;
+            });
+            grandQty += bQty;
+            grandCost += bCost;
+            const header = bucketEl.querySelector('.ica-bucket-header > div:first-child');
+            if (!header) return;
+            let totalEl = header.querySelector('.ica-bucket-total');
+            if (!totalEl) {
+                totalEl = document.createElement('div');
+                totalEl.className = 'ica-bucket-total';
+                header.appendChild(totalEl);
+            }
+            totalEl.textContent = bQty
+                ? `Total cost: $${grandFormat(bCost)} · ${bQty} units`
+                : '';
+        });
+        const $sum = document.getElementById('ica_summary');
+        if ($sum) {
+            $sum.innerHTML = `<span><strong>${grandQty}</strong> units</span> · <span>order cost <strong>$${grandFormat(grandCost)}</strong></span>`;
+        }
+    }
+    function grandFormat(n) {
+        return Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    }
+
     function applyRowFilters() {
         const $cat = document.getElementById('ica_filter_category');
         const $gen = document.getElementById('ica_filter_genre');
@@ -542,6 +638,9 @@
                 tr.style.display = match ? '' : 'none';
                 if (match) visible++;
             });
+            // After filter changes, recompute the total cost so it reflects
+            // only visible rows.
+            // (deferred — single call after the bucket loop below)
             // Update the bucket count pill to reflect filtered visibility
             const countEl = bucketEl.querySelector('.ica-bucket-count');
             if (countEl) {
@@ -555,6 +654,7 @@
                 }
             }
         });
+        renderBucketTotals();
     }
 
     ['ica_filter_category', 'ica_filter_genre', 'ica_filter_abc', 'ica_filter_hide_rsd'].forEach((id) => {
@@ -569,7 +669,7 @@
         // filtered by either. The two new dropdowns above the buckets
         // drive client-side row hiding.
         const headRow = `<th><input type="checkbox" class="ica-select-all" data-bucket="${escapeHtml(key)}"></th>
-               <th>Product</th><th>Artist</th><th>Format</th><th>Bin</th><th>Category</th><th>Genre</th><th title="ABC class — A is the top 80% of inventory value">ABC</th><th>Stock</th><th>Sold (window)</th><th>Reason</th><th>Tags</th><th>Qty</th><th></th>`;
+               <th>Product</th><th>Artist</th><th>Format</th><th>Bin</th><th>Category</th><th>Genre</th><th title="ABC class — A is the top 80% of inventory value">ABC</th><th>Stock</th><th>Sold (window)</th><th title="Wholesale / purchase price per unit">Cost</th><th>Reason</th><th>Tags</th><th>Qty</th><th></th>`;
         const body = (b.count || 0) === 0
             ? `<div class="ica-bucket-empty">No items in this bucket${b.empty_reason ? ' (' + b.empty_reason.replace(/_/g, ' ') + ')' : ''}.</div>`
             : `<table class="table table-condensed table-striped ica-row-table"><thead><tr>${headRow}</tr></thead><tbody>${rows}</tbody></table>`;
@@ -651,7 +751,12 @@
         // is_rsd flag flows from the server — RSD titles can be hidden
         // via the new "Hide RSD titles" checkbox above the buckets.
         const productCell = isRsd ? `${product} <span class="ica-tag ica-rsd-tag" title="Record Store Day release">RSD</span>` : product;
-        return `<tr data-row-key="${escapeHtml(rowKey)}" data-pid="${pid}" data-cat="${category}" data-genre="${genre}" data-abc="${initialAbc}" data-rsd="${isRsd ? '1' : '0'}">
+        // Cost is the wholesale / default_purchase_price per unit.
+        // data-cost holds the numeric value so renderBucketTotals can sum
+        // "qty × cost" across visible rows.
+        const costNum = (typeof it.cost_price === 'number' && !isNaN(it.cost_price)) ? it.cost_price : null;
+        const costCell = costNum !== null ? `$${costNum.toFixed(2)}` : '—';
+        return `<tr data-row-key="${escapeHtml(rowKey)}" data-pid="${pid}" data-cat="${category}" data-genre="${genre}" data-abc="${initialAbc}" data-rsd="${isRsd ? '1' : '0'}" data-cost="${costNum !== null ? costNum : ''}">
             <td><input type="checkbox" class="ica-row-check" ${checkboxAttrs}></td>
             <td>${productCell}</td>
             <td>${artist}</td>
@@ -662,6 +767,7 @@
             <td class="ica-abc-col">${abcCell}</td>
             <td>${stock}</td>
             <td>${sold}</td>
+            <td class="ica-cost-col">${costCell}</td>
             <td><small>${reason}${reasonExtra}</small></td>
             <td>${tagsHtml}</td>
             <td><input type="number" class="form-control input-sm ica-qty-input" value="${qty}" min="0" max="99" ${qtyDisabled}></td>
