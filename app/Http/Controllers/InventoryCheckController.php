@@ -329,9 +329,10 @@ class InventoryCheckController extends Controller
             $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
 
             // Universal-Top xlsx has a known multi-sheet layout (Top 200 +
-            // deliveries) that the dedicated UMe parser handles best.
+            // deliveries + Key Anniversaries) that the dedicated UMe parser
+            // handles best.
             if ($source === 'universal_top' && in_array($ext, ['xlsx', 'xls'], true)) {
-                $rows = $this->parseUniversalXlsx($file->getRealPath());
+                $rows = $this->parseUniversalXlsx($file->getRealPath(), $business_id);
             } else {
                 $rows = app(TabularChartParser::class)->parseFile($file->getRealPath(), $filename);
             }
@@ -429,8 +430,13 @@ class InventoryCheckController extends Controller
     /**
      * UMe Universal xlsx → flat row list. Pulls Top 200 (vinyl + CD) and
      * this-week deliveries; deliveries get is_new_release=true.
+     *
+     * Side effect: persists the "Key Anniversaries + Birthdays" tab to
+     * storage/app/universal-anniversaries-{business_id}.json so the events
+     * bucket can show artist moments alongside concerts (MJ biopic, Drake
+     * tour announcement, etc.). JSON-on-disk pattern keeps this no-migration.
      */
-    protected function parseUniversalXlsx(string $path): array
+    protected function parseUniversalXlsx(string $path, ?int $business_id = null): array
     {
         $parser = app(UniversalChartParser::class);
         $parsed = $parser->parse($path);
@@ -447,7 +453,30 @@ class InventoryCheckController extends Controller
         foreach ($parsed['deliveries_cd'] as $r) {
             $rows[] = array_merge($r, ['is_new_release' => true]);
         }
+
+        if ($business_id && !empty($parsed['anniversaries'])) {
+            $this->saveUniversalAnniversaries($business_id, $parsed['anniversaries']);
+        }
+
         return $rows;
+    }
+
+    protected function saveUniversalAnniversaries(int $business_id, array $anniversaries): void
+    {
+        $path = storage_path('app/universal-anniversaries-' . $business_id . '.json');
+        $dir = dirname($path);
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+        $payload = [
+            'business_id' => $business_id,
+            'updated_at' => Carbon::now()->toIso8601String(),
+            'source' => 'universal_xlsx',
+            'anniversaries' => array_values($anniversaries),
+        ];
+        $tmp = $path . '.tmp';
+        file_put_contents($tmp, json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        @rename($tmp, $path);
     }
 
     public function latestChart(Request $request, string $source)

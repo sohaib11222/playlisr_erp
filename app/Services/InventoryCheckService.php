@@ -577,10 +577,17 @@ class InventoryCheckService
         $lookahead = (int) config('inventory_check.events_lookahead_days', 30);
         $events = $this->eventsFetcher->upcoming($lookahead);
 
+        // Universal's "Key Anniversaries + Birthdays" tab — biopics, milestone
+        // anniversaries, artist birthdays. Persisted on UMe xlsx import; we
+        // surface them as synthetic events so a Michael Jackson biopic release
+        // or a Drake milestone shows up alongside concerts.
+        $annivEvents = $this->loadUniversalAnniversaryEvents($business_id, $lookahead);
+        $events = array_merge($events, $annivEvents);
+
         if (empty($events)) {
             return [
                 'label' => '🎤 Upcoming events — stock up',
-                'why' => 'Pulled from nivessa.com/events. Set NIVESSA_EVENTS_API_URL in .env to enable.',
+                'why' => 'Pulled from nivessa.com/events + UMe anniversaries. Set NIVESSA_EVENTS_API_URL in .env or import a UMe xlsx to enable.',
                 'items' => [],
                 'count' => 0,
                 'empty_reason' => 'no_events',
@@ -593,6 +600,11 @@ class InventoryCheckService
                 $matches = $this->findProductsByArtist($business_id, $artistName, 3);
                 foreach ($matches as $match) {
                     $stock = (float) ($match->stock ?? 0);
+                    $isAnniversary = !empty($event['is_anniversary']);
+                    $reason = $isAnniversary
+                        ? ($event['name'] . ' — ' . $event['date'])
+                        : ('event ' . $event['name'] . ' on ' . $event['date']);
+                    $tags = $isAnniversary ? ['anniversary'] : ['event'];
                     $items[] = [
                         'bucket' => 'events_upcoming',
                         'event_name' => $event['name'],
@@ -609,20 +621,98 @@ class InventoryCheckService
                         'location_name' => $match->location_name,
                         'category_name' => $match->category_name,
                         'suggested_qty' => max(1, 3 - (int) $stock),
-                        'reason' => 'event ' . $event['name'] . ' on ' . $event['date'],
-                        'tags' => ['event'],
+                        'reason' => $reason,
+                        'tags' => $tags,
                     ];
                 }
             }
         }
 
+        $concertCount = count($events) - count($annivEvents);
+
         return [
             'label' => '🎤 Upcoming events — stock up',
-            'why' => 'Artists performing at listening parties & local events in the next ' . $lookahead . ' days.',
+            'why' => 'LA concerts + listening parties + UMe artist moments (biopics, anniversaries, birthdays) in the next ' . $lookahead . ' days.',
             'items' => $items,
             'count' => count($items),
             'events_loaded' => count($events),
+            'concert_events' => $concertCount,
+            'anniversary_events' => count($annivEvents),
         ];
+    }
+
+    /**
+     * Read storage/app/universal-anniversaries-{business_id}.json (written by
+     * the UMe xlsx import) and return rows within the lookahead window in the
+     * same shape NivessaEventsFetcher returns, so the events bucket can fold
+     * them into its product-matching loop.
+     */
+    protected function loadUniversalAnniversaryEvents(int $business_id, int $lookaheadDays): array
+    {
+        $path = storage_path('app/universal-anniversaries-' . $business_id . '.json');
+        if (!is_file($path)) {
+            return [];
+        }
+
+        try {
+            $json = json_decode((string) file_get_contents($path), true);
+        } catch (\Throwable $e) {
+            return [];
+        }
+        if (!is_array($json) || empty($json['anniversaries']) || !is_array($json['anniversaries'])) {
+            return [];
+        }
+
+        $today = Carbon::today();
+        $cutoff = $today->copy()->addDays($lookaheadDays);
+        $out = [];
+
+        foreach ($json['anniversaries'] as $a) {
+            if (!is_array($a)) {
+                continue;
+            }
+            $artist = trim((string) ($a['artist'] ?? ''));
+            $dateStr = (string) ($a['event_date'] ?? '');
+            if ($artist === '' || $dateStr === '') {
+                continue;
+            }
+            try {
+                $d = Carbon::parse($dateStr);
+            } catch (\Throwable $ignore) {
+                continue;
+            }
+            if ($d->lt($today) || $d->gt($cutoff)) {
+                continue;
+            }
+
+            // Build a human label: "Michael Jackson — Thriller 45th biopic"
+            $album = trim((string) ($a['album_or_track'] ?? ''));
+            $moment = trim((string) ($a['moment'] ?? ''));
+            $years = $a['years'] ?? null;
+            $parts = [$artist];
+            if ($album !== '') {
+                $parts[] = $album;
+            }
+            if ($years) {
+                $parts[] = $years . 'th';
+            }
+            if ($moment !== '') {
+                $parts[] = $moment;
+            }
+            $name = implode(' — ', $parts);
+
+            $out[] = [
+                'name' => $name,
+                'date' => $d->format('Y-m-d'),
+                'location' => null,
+                'artists' => [$artist],
+                'is_anniversary' => true,
+                'raw' => $a,
+            ];
+        }
+
+        usort($out, fn ($a, $b) => strcmp($a['date'], $b['date']));
+        return $out;
     }
 
     protected function findProductsByArtist(int $business_id, string $artist, int $limit = 5)

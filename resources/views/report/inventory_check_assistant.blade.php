@@ -29,7 +29,7 @@
                         <li>🔥 <em>Fast-moving, out of stock</em> — sealed vinyl/CDs that sold quickly and we have ≤ 0 on shelf. <em>Sell Speed</em> column shows avg days to sell.</li>
                         <li>📬 <em>Street Pulse picks</em> / 🌍 <em>Universal top</em> / 🍎 <em>Apple Music top 100</em> — this week's charts, with rows tagged <em>top_artist</em> for artists already popular in our store.</li>
                         <li>🎵 <em>New releases from your top artists</em> — chart picks from artists popular in-store that we don't yet carry that title.</li>
-                        <li>🎤 <em>Upcoming events — stock up</em> — LA Ticketmaster shows + nivessa-hosted listening parties in the next 30 days, with the artists' titles we already carry.</li>
+                        <li>🎤 <em>Upcoming events — stock up</em> — LA Ticketmaster shows, nivessa-hosted listening parties, <em>and</em> UMe artist moments (biopics, milestone anniversaries, birthdays) in the next 30 days, with the artists' titles we already carry. Anniversary entries are tagged <code>anniversary</code>; concert entries are tagged <code>event</code>.</li>
                         <li>🔁 <em>Long out-of-stock essentials</em> — items we've sold a lot of historically but haven't restocked in 14+ days.</li>
                         <li>🎸 <em>Hot used, out of stock</em> — used vinyl/CD titles that sell fast when we have them; advisory only (used inventory comes from trade-ins, not orders).</li>
                         <li>📞 <em>Customer Wants</em> — open customer requests. Click <em>Fulfilled</em> when you order or stock the title.</li>
@@ -375,6 +375,8 @@
 .ica-tag.top_artist { background: #fff3cd; color: #856404; }
 .ica-tag.new_release { background: #d4edda; color: #155724; }
 .ica-tag.priority_high { background: #f8d7da; color: #721c24; }
+.ica-tag.anniversary { background: #e6dcff; color: #4a2a8e; }
+.ica-tag.event { background: #d1ecf1; color: #0c5460; }
 .ica-row-table { margin-bottom: 0; }
 .ica-row-table td { vertical-align: middle !important; }
 .ica-qty-input { width: 60px; }
