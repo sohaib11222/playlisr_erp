@@ -296,6 +296,40 @@ class InventoryCheckController extends Controller
      * Jon, Fatteen, Lashyn) flag a category to stock up on and the ICA
      * surfaces low-stock candidates matching that category.
      */
+    public function umeSpotlightsBucket(Request $request)
+    {
+        try {
+            $business_id = (int) $request->session()->get('user.business_id');
+            $request->session()->save();
+            $input = $request->only(['location_id', 'preset']);
+            if (!empty($input['preset'])) {
+                $resolved = $this->inventoryCheckService->resolvePreset($business_id, $input['preset']);
+                $input = array_merge($resolved, $input);
+            }
+            $locationId = !empty($input['location_id']) ? (int) $input['location_id'] : null;
+            if (!$locationId) {
+                return response()->json(['bucket' => [
+                    'label' => 'UMe Update — release spotlights',
+                    'why' => 'Pick a store first.',
+                    'items' => [], 'count' => 0,
+                ]]);
+            }
+            $permitted = auth()->user()->permitted_locations();
+            $bucket = $this->inventoryCheckService->bucketUmeSpotlightsPublic($business_id, $locationId, $permitted);
+            return response()->json(['bucket' => $bucket]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('ICA UMe spotlights bucket failed', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile() . ':' . $e->getLine(),
+            ]);
+            return response()->json(['bucket' => [
+                'label' => 'UMe Update — release spotlights',
+                'why' => 'UMe spotlights failed to load: ' . $e->getMessage(),
+                'items' => [], 'count' => 0, 'empty_reason' => 'fetch_error',
+            ]]);
+        }
+    }
+
     public function managerPicksBucket(Request $request)
     {
         try {

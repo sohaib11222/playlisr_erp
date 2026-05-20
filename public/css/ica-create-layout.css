@@ -232,6 +232,12 @@ body.ica-v2 .ica-tag.ica-rsd-tag {
 	font-size: 10px;
 	padding: 1px 6px;
 }
+body.ica-v2 .ica-tag.ume_spotlight {
+	background: #1F1B16;
+	color: #FAF6EE;
+	font-weight: 700;
+}
+body.ica-v2 .ica-spot-date { white-space: nowrap; color: var(--ica-ink-2); font-weight: 600; }
 
 /* ── Disclosure (More options / Show other lists) ─────────────────── */
 body.ica-v2 .ica-more-options > summary,

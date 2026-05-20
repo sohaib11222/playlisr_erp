@@ -142,6 +142,7 @@
                 // stuck on "Building…" 2026-05-20).
                 lazyLoadEventsBucket();
                 lazyLoadAuxBucket('manager_picks', window.ICA_MGRPICKS_BUCKET_URL);
+                lazyLoadAuxBucket('ume_spotlights', window.ICA_UME_SPOT_URL);
                 lazyLoadAuxBucket('abc_a_restock', window.ICA_ABC_URL);
                 lazyLoadAuxBucket('frozen_inventory', window.ICA_FROZEN_URL);
                 lazyLoadSecondaryBuckets();
@@ -489,7 +490,7 @@
         // single "Show all the other reorder lists" disclosure so it's one
         // click away when needed but not in the face on landing.
         const primary = ['fast_oos'];
-        const secondary = ['manager_picks', 'customer_wants', 'street_pulse', 'universal_top', 'apple_music_top', 'top_artist_new_releases', 'events_upcoming', 'abc_a_restock', 'long_oos_essentials', 'hot_used_oos', 'frozen_inventory'];
+        const secondary = ['manager_picks', 'ume_spotlights', 'customer_wants', 'street_pulse', 'universal_top', 'apple_music_top', 'top_artist_new_releases', 'events_upcoming', 'abc_a_restock', 'long_oos_essentials', 'hot_used_oos', 'frozen_inventory'];
         const buckets = payload.buckets || {};
 
         let primaryHtml = '';
@@ -720,6 +721,9 @@
             extraCol = `<button type="button" class="btn btn-xs btn-success ica-fulfill-want" data-want-id="${it.customer_want_id}"><i class="fa fa-check"></i> Fulfilled</button>`;
         } else if (bucket === 'events_upcoming' && it.event_name) {
             extraCol = `<small class="text-muted">${escapeHtml(it.event_name)} — ${escapeHtml(it.event_date)}</small>`;
+        } else if (bucket === 'ume_spotlights') {
+            const date = escapeHtml(it.release_date_label || it.release_date || '');
+            extraCol = date ? `<small class="text-muted ica-spot-date">Release: ${date}</small>` : '';
         } else if (bucket === 'frozen_inventory' && it.variation_id) {
             extraCol = `<button type="button" class="btn btn-xs btn-default ica-frozen-edit-btn" data-vid="${it.variation_id}" data-lid="${it.location_id || ''}" data-current="${it.stock}">Set stock</button>`;
         }

@@ -191,6 +191,7 @@ class InventoryCheckService
             'long_oos_essentials' => $this->lazyPlaceholder('Long out-of-stock essentials'),
             'hot_used_oos' => $this->lazyPlaceholder('Hot used, currently out'),
             'manager_picks' => $this->lazyPlaceholder('Manager picks'),
+            'ume_spotlights' => $this->lazyPlaceholder('UMe Update — release spotlights'),
             'abc_a_restock' => $this->lazyPlaceholder('A-class items — restock priority'),
             'frozen_inventory' => $this->lazyPlaceholder('Frozen inventory — DO NOT reorder'),
         ];
@@ -322,6 +323,110 @@ class InventoryCheckService
     public function bucketManagerPicksPublic(int $business_id, int $locationId, $permittedLocations): array
     {
         return $this->bucketManagerPicks($business_id, $locationId, $permittedLocations);
+    }
+
+    /** Public alias for the lazy UMe spotlights endpoint. */
+    public function bucketUmeSpotlightsPublic(int $business_id, int $locationId, $permittedLocations): array
+    {
+        return $this->bucketUmeSpotlights($business_id, $locationId, $permittedLocations);
+    }
+
+    /**
+     * UMe Update spotlight releases. Reads
+     * storage/app/ume-spotlights-{business_id}.json (curated each week
+     * from the PDF). Each spotlight: artist, title, release date, format,
+     * genre tag, overview. Cross-references psc by artist match to add a
+     * "you already carry N" badge + a "Bin: <pos>" hint if in stock.
+     */
+    protected function bucketUmeSpotlights(int $business_id, int $locationId, $permittedLocations): array
+    {
+        // Prefer the per-business spotlights file (uploaded each week);
+        // fall back to the seed shipped in database/seed_data/ so the
+        // bucket isn't empty until Sarah uploads the next PDF.
+        $path = storage_path('app/ume-spotlights-' . $business_id . '.json');
+        $sourcePath = is_file($path) ? $path : base_path('database/seed_data/ume-spotlights-seed.json');
+        if (!is_file($sourcePath)) {
+            return [
+                'label' => 'UMe Update — release spotlights',
+                'why' => 'Upload the UMe Update PDF in More options to populate this. Curated weekly highlights from UMe.',
+                'items' => [], 'count' => 0,
+                'empty_reason' => 'not_imported',
+            ];
+        }
+        try {
+            $json = json_decode((string) file_get_contents($sourcePath), true);
+        } catch (\Throwable $e) {
+            return [
+                'label' => 'UMe Update — release spotlights',
+                'why' => 'Failed to read spotlights file: ' . $e->getMessage(),
+                'items' => [], 'count' => 0, 'empty_reason' => 'read_error',
+            ];
+        }
+        $spotlights = is_array($json) ? ($json['spotlights'] ?? []) : [];
+        if (empty($spotlights)) {
+            return [
+                'label' => 'UMe Update — release spotlights',
+                'why' => 'No spotlights in the current file.',
+                'items' => [], 'count' => 0, 'empty_reason' => 'empty',
+            ];
+        }
+
+        $items = [];
+        foreach ($spotlights as $s) {
+            if (!is_array($s)) continue;
+            $artist = trim((string) ($s['artist'] ?? ''));
+            $title = trim((string) ($s['title'] ?? ''));
+            if ($artist === '' && $title === '') continue;
+
+            // Cross-reference: do we already carry this artist's titles
+            // at this location? If so attach the top match's stock + bin.
+            $stock = null; $bin = null; $variation_id = null; $product_id = null; $sku = null; $cost = null;
+            if ($artist !== '') {
+                $matches = $this->findProductsByArtist($business_id, $artist, 1);
+                if ($matches->isNotEmpty()) {
+                    $m = $matches->first();
+                    $stock = (float) ($m->stock ?? 0);
+                    $bin = $m->bin_position ?? null;
+                    $variation_id = (int) ($m->variation_id ?? 0);
+                    $product_id = (int) ($m->product_id ?? 0);
+                    $sku = $m->sku ?? null;
+                    $cost = isset($m->cost_price) ? (float) $m->cost_price : null;
+                }
+            }
+
+            $items[] = [
+                'bucket' => 'ume_spotlights',
+                'variation_id' => $variation_id,
+                'product_id' => $product_id,
+                'sku' => $sku,
+                'artist' => $artist,
+                'product' => $title,
+                'format' => $s['formats'] ?? null,
+                'genre' => $s['genre_tag'] ?? null,
+                'category_name' => null,
+                'bin_position' => $bin,
+                'stock' => $stock,
+                'sold_qty_window' => null,
+                'cost_price' => $cost,
+                'suggested_qty' => 1,
+                'reason' => 'release ' . ($s['release_date_label'] ?? $s['release_date'] ?? '') . ' · ' . mb_strimwidth((string) ($s['overview'] ?? ''), 0, 240, '…'),
+                'release_date' => $s['release_date'] ?? null,
+                'release_date_label' => $s['release_date_label'] ?? null,
+                'overview' => $s['overview'] ?? '',
+                'tags' => ['ume_spotlight'],
+            ];
+        }
+
+        usort($items, fn ($a, $b) => strcmp($a['release_date'] ?? '', $b['release_date'] ?? ''));
+
+        $sourceFile = is_array($json) ? ($json['source_file'] ?? '') : '';
+        $updated = is_array($json) ? ($json['updated_at'] ?? '') : '';
+        return [
+            'label' => 'UMe Update — release spotlights',
+            'why' => 'Curated upcoming releases from ' . ($sourceFile ?: 'UMe') . ($updated ? ' · loaded ' . substr($updated, 0, 10) : ''),
+            'items' => $items,
+            'count' => count($items),
+        ];
     }
 
     // ── Manager picks (Lashyn's suggestions, etc.) ────────────────────

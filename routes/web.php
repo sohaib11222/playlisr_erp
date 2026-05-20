@@ -391,6 +391,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/inventory-check-assistant/frozen-inventory-bucket', 'InventoryCheckController@frozenInventoryBucket');
     Route::post('/reports/inventory-check-assistant/frozen-stock-update', 'InventoryCheckController@frozenStockUpdate');
     Route::get('/reports/inventory-check-assistant/manager-picks-bucket', 'InventoryCheckController@managerPicksBucket');
+    Route::get('/reports/inventory-check-assistant/ume-spotlights-bucket', 'InventoryCheckController@umeSpotlightsBucket');
     Route::get('/reports/inventory-check-assistant/manager-picks', 'InventoryCheckController@listManagerPicks');
     Route::post('/reports/inventory-check-assistant/manager-picks', 'InventoryCheckController@addManagerPick');
     Route::post('/reports/inventory-check-assistant/manager-picks/{id}/dismiss', 'InventoryCheckController@dismissManagerPick');
