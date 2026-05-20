@@ -189,6 +189,13 @@
                 if (bucketKey === 'frozen_inventory') {
                     applyFrozenDupeTags(resp.bucket.items || []);
                     renderFrozenInsight(resp.bucket);
+                    attachFrozenStockEditors();
+                }
+                // ABC bucket carries the full A/B/C product_id map — paint
+                // pills on rows in every other bucket so fast sellers etc.
+                // show whether the title is A/B/C class.
+                if (bucketKey === 'abc_a_restock' && resp.bucket && resp.bucket.abc_map) {
+                    applyAbcTags(resp.bucket.abc_map);
                 }
                 rebuildFilterOptions();
                 applyRowFilters();
@@ -242,6 +249,87 @@
                 }
             });
         }
+    }
+
+    function applyAbcTags(abcMap) {
+        if (!abcMap || typeof abcMap !== 'object') return;
+        $root.querySelectorAll('tr[data-pid]').forEach((tr) => {
+            const pid = tr.getAttribute('data-pid');
+            if (!pid) return;
+            const cls = abcMap[pid];
+            if (!cls) return;
+            const slot = tr.querySelector('.ica-abc-slot');
+            if (slot && !slot.querySelector('.ica-tag')) {
+                slot.innerHTML = `<span class="ica-tag abc_${cls}" title="ABC class ${cls}">${cls}</span>`;
+            }
+        });
+    }
+
+    function attachFrozenStockEditors() {
+        const frozenBucket = $root.querySelector('.ica-bucket[data-bucket="frozen_inventory"]');
+        if (!frozenBucket) return;
+        frozenBucket.querySelectorAll('.ica-frozen-edit-btn').forEach((btn) => {
+            btn.addEventListener('click', function () {
+                const tr = btn.closest('tr');
+                if (!tr) return;
+                const vid = btn.dataset.vid;
+                const lid = btn.dataset.lid;
+                const current = btn.dataset.current || '0';
+                const next = prompt('Update actual on-shelf stock for this item.\nEnter the real qty you counted (or 0 if it\'s gone):', current);
+                if (next === null) return;
+                const newQty = Number(next);
+                if (!Number.isFinite(newQty) || newQty < 0) {
+                    alert('Enter a number ≥ 0.');
+                    return;
+                }
+                const note = prompt('Optional reason (e.g. "sold on Discogs", "miscounted"):', '') || '';
+                btn.disabled = true; btn.textContent = 'Saving…';
+                const fd = new FormData();
+                fd.append('variation_id', vid);
+                fd.append('location_id', lid);
+                fd.append('new_qty', String(newQty));
+                if (note) fd.append('note', note);
+                fetch(window.ICA_FROZEN_UPDATE_URL, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': window.ICA_CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin',
+                    body: fd,
+                })
+                    .then((r) => r.json())
+                    .then((resp) => {
+                        if (!resp || !resp.success) {
+                            btn.disabled = false; btn.textContent = 'Set stock';
+                            alert('Save failed: ' + (resp && resp.error ? resp.error : 'unknown'));
+                            return;
+                        }
+                        // If new stock = 0 the row no longer qualifies as
+                        // frozen, drop it. Otherwise update the displayed
+                        // stock + last-update strip and clear the button.
+                        if (newQty === 0) {
+                            tr.style.transition = 'opacity .4s';
+                            tr.style.opacity = '0';
+                            setTimeout(() => tr.remove(), 400);
+                        } else {
+                            const stockCell = tr.children[6]; // checkbox/product/artist/format/cat/genre/stock
+                            if (stockCell) stockCell.textContent = newQty;
+                            btn.dataset.current = String(newQty);
+                            btn.disabled = false; btn.textContent = 'Set stock';
+                            // Update the "Updated …" line in the reason cell
+                            const reasonCell = tr.querySelector('td:nth-child(9) small');
+                            if (reasonCell) {
+                                const userName = (resp.entry && resp.entry.user_name) || 'you';
+                                const when = new Date().toISOString().substring(0, 10);
+                                reasonCell.innerHTML += ` <span class="ica-last-order">· updated to ${newQty} on ${when} by ${escapeHtml(userName)}</span>`;
+                            }
+                        }
+                    })
+                    .catch((err) => {
+                        console.error('[ICA] frozen stock update failed', err);
+                        btn.disabled = false; btn.textContent = 'Set stock';
+                        alert('Save failed — see console.');
+                    });
+            });
+        });
     }
 
     function applyFrozenDupeTags(frozenItems) {
@@ -510,9 +598,23 @@
         const qty = parseInt(it.suggested_qty || 0, 10) || 0;
         const rowKey = [bucket, it.variation_id || '', it.customer_want_id || '', it.artist || '', it.product || ''].join('|');
 
-        const extraCol = bucket === 'customer_wants' && it.customer_want_id
-            ? `<button type="button" class="btn btn-xs btn-success ica-fulfill-want" data-want-id="${it.customer_want_id}"><i class="fa fa-check"></i> Fulfilled</button>`
-            : (bucket === 'events_upcoming' && it.event_name ? `<small class="text-muted">${escapeHtml(it.event_name)} — ${escapeHtml(it.event_date)}</small>` : '');
+        let extraCol = '';
+        if (bucket === 'customer_wants' && it.customer_want_id) {
+            extraCol = `<button type="button" class="btn btn-xs btn-success ica-fulfill-want" data-want-id="${it.customer_want_id}"><i class="fa fa-check"></i> Fulfilled</button>`;
+        } else if (bucket === 'events_upcoming' && it.event_name) {
+            extraCol = `<small class="text-muted">${escapeHtml(it.event_name)} — ${escapeHtml(it.event_date)}</small>`;
+        } else if (bucket === 'frozen_inventory' && it.variation_id) {
+            extraCol = `<button type="button" class="btn btn-xs btn-default ica-frozen-edit-btn" data-vid="${it.variation_id}" data-lid="${it.location_id || ''}" data-current="${it.stock}">Set stock</button>`;
+        }
+
+        // Frozen rows also show "updated YYYY-MM-DD by Name" on the reason
+        // line when there's a logged in-place correction.
+        let reasonExtra = '';
+        if (bucket === 'frozen_inventory' && it.last_correction && it.last_correction.when) {
+            const when = String(it.last_correction.when).substring(0, 10);
+            const by = it.last_correction.by || '';
+            reasonExtra = ` <span class="ica-last-order">· updated to ${it.last_correction.after} on ${escapeHtml(when)} by ${escapeHtml(by)}</span>`;
+        }
 
         // Frozen rows are a warning list — qty stays 0, checkbox starts
         // unchecked, qty input disabled so a careless export can't bulk-
@@ -522,16 +624,19 @@
         const qtyDisabled = isFrozen ? 'disabled' : '';
 
         // data-cat / data-genre attrs power the client-side filter.
-        return `<tr data-row-key="${escapeHtml(rowKey)}" data-cat="${category}" data-genre="${genre}">
+        // data-pid lets the ABC sweep paint A/B/C pills on rows in other
+        // buckets once the lazy ABC bucket arrives (Sarah 2026-05-20).
+        const pid = parseInt(it.product_id || 0, 10) || '';
+        return `<tr data-row-key="${escapeHtml(rowKey)}" data-pid="${pid}" data-cat="${category}" data-genre="${genre}">
             <td><input type="checkbox" class="ica-row-check" ${checkboxAttrs}></td>
-            <td>${product} ${abcHtml}</td>
+            <td>${product} <span class="ica-abc-slot"></span> ${abcHtml}</td>
             <td>${artist}</td>
             <td>${format}</td>
             <td><small>${category || '—'}</small></td>
             <td><small>${genre || '—'}</small></td>
             <td>${stock}</td>
             <td>${sold}</td>
-            <td><small>${reason}</small></td>
+            <td><small>${reason}${reasonExtra}</small></td>
             <td>${tagsHtml}</td>
             <td><input type="number" class="form-control input-sm ica-qty-input" value="${qty}" min="0" max="99" ${qtyDisabled}></td>
             <td>${extraCol}</td>

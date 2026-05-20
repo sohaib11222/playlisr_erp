@@ -260,6 +260,18 @@ class InventoryCheckService
         return $this->bucketFrozenInventory($business_id, $locationId, $permittedLocations);
     }
 
+    public function loadFrozenCorrections(int $business_id): array
+    {
+        $path = storage_path('app/ica-frozen-corrections-' . $business_id . '.json');
+        if (!is_file($path)) return [];
+        try {
+            $json = json_decode((string) file_get_contents($path), true);
+            return is_array($json) ? $json : [];
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
     /** Public alias for the lazy manager-picks endpoint. */
     public function bucketManagerPicksPublic(int $business_id, int $locationId, $permittedLocations): array
     {
@@ -1150,6 +1162,11 @@ class InventoryCheckService
             'why' => 'Items in the top 80% of inventory value (ABC class A) that are low or out of stock here. These drive most of the store\'s value — being out hurts the most.',
             'items' => $items,
             'count' => count($items),
+            // Full A/B/C map by product_id so JS can paint the ABC pill
+            // on rows in OTHER buckets (fast sellers, chart picks, etc.)
+            // — Sarah 2026-05-20: "add A, B, or C product for the fast
+            // sellers".
+            'abc_map' => $abcMap,
         ];
     }
 
@@ -1222,6 +1239,18 @@ class InventoryCheckService
             return $r;
         });
 
+        // Load any prior in-place stock corrections done from this page —
+        // Sarah wants the most recent "updated by who, when" on each row.
+        $corrections = $this->loadFrozenCorrections($business_id);
+        $lastCorrectionByVid = [];
+        foreach ($corrections as $c) {
+            if (!is_array($c) || empty($c['variation_id'])) continue;
+            $vid = (int) $c['variation_id'];
+            if (!isset($lastCorrectionByVid[$vid]) || $c['when'] > $lastCorrectionByVid[$vid]['when']) {
+                $lastCorrectionByVid[$vid] = $c;
+            }
+        }
+
         $items = [];
         foreach ($rows as $row) {
             $stock = (float) ($row->stock ?? 0);
@@ -1239,6 +1268,19 @@ class InventoryCheckService
                 'tied_up_value' => $tiedUp,
                 'tags' => ['frozen', 'do_not_reorder'],
             ]);
+
+            // Annotate with the most recent in-place correction (if any).
+            $vid = (int) ($candidate['variation_id'] ?? 0);
+            if ($vid && !empty($lastCorrectionByVid[$vid])) {
+                $c = $lastCorrectionByVid[$vid];
+                $candidate['last_correction'] = [
+                    'when' => $c['when'] ?? null,
+                    'by' => $c['user_name'] ?? '',
+                    'before' => $c['before'] ?? null,
+                    'after' => $c['after'] ?? null,
+                ];
+            }
+
             // Force suggested_qty to 0 — this bucket is a warning list, not
             // a reorder list. rowToCandidate may have nudged it to 1 if a
             // small sold-window was passed in some future call path.

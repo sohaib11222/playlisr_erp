@@ -403,6 +403,88 @@ class InventoryCheckController extends Controller
         }
     }
 
+    /**
+     * Inline stock correction from the Frozen bucket. Sarah 2026-05-20:
+     * she needs to fix items that show as "frozen on shelf" when they're
+     * actually gone (Discogs sales, shrinkage, miscounts).
+     *
+     * Updates variation_location_details.qty_available directly + logs a
+     * before/after audit entry to storage/app/ica-frozen-corrections.json.
+     * No new migration. The JSON log is what surfaces "last updated by
+     * who, when" back on the Frozen bucket rows.
+     */
+    public function frozenStockUpdate(Request $request)
+    {
+        $request->validate([
+            'variation_id' => 'required|integer',
+            'location_id' => 'required|integer',
+            'new_qty' => 'required|numeric|min:0',
+            'note' => 'nullable|string|max:500',
+        ]);
+        $business_id = (int) $request->session()->get('user.business_id');
+        $vid = (int) $request->input('variation_id');
+        $lid = (int) $request->input('location_id');
+        $newQty = (float) $request->input('new_qty');
+
+        // Snapshot current qty before writing — required by the
+        // feedback_no_destructive_writes rule (any admin mutation must
+        // record a reversible before-state).
+        $vld = \Illuminate\Support\Facades\DB::table('variation_location_details')
+            ->where('variation_id', $vid)
+            ->where('location_id', $lid)
+            ->first();
+        if (!$vld) {
+            return response()->json(['success' => false, 'error' => 'vld_not_found'], 404);
+        }
+        $before = (float) ($vld->qty_available ?? 0);
+
+        \Illuminate\Support\Facades\DB::table('variation_location_details')
+            ->where('id', $vld->id)
+            ->update([
+                'qty_available' => $newQty,
+                'updated_at' => Carbon::now(),
+            ]);
+
+        // Mirror into product_stock_cache so the next bucket build sees
+        // the corrected stock without waiting for the PSC refresh job.
+        \Illuminate\Support\Facades\DB::table('product_stock_cache')
+            ->where('business_id', $business_id)
+            ->where('variation_id', $vid)
+            ->where('location_id', $lid)
+            ->update(['stock' => $newQty, 'updated_at' => Carbon::now()]);
+
+        $user = auth()->user();
+        $userName = trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? '')) ?: ('user#' . ($user->id ?? 0));
+        $entry = [
+            'variation_id' => $vid,
+            'location_id' => $lid,
+            'before' => $before,
+            'after' => $newQty,
+            'user_id' => (int) ($user->id ?? 0),
+            'user_name' => $userName,
+            'note' => (string) $request->input('note', ''),
+            'when' => Carbon::now()->toIso8601String(),
+        ];
+
+        $path = storage_path('app/ica-frozen-corrections-' . $business_id . '.json');
+        $dir = dirname($path);
+        if (!is_dir($dir)) { @mkdir($dir, 0775, true); }
+        $log = [];
+        if (is_file($path)) {
+            try { $log = json_decode((string) file_get_contents($path), true) ?: []; } catch (\Throwable $e) { $log = []; }
+        }
+        $log[] = $entry;
+        $tmp = $path . '.tmp';
+        file_put_contents($tmp, json_encode($log, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        @rename($tmp, $path);
+
+        // Bust the fast_oos cache so a corrected stock surfaces on the
+        // very next page build instead of waiting up to 5 min.
+        \Illuminate\Support\Facades\Cache::forget('ica_fast_oos_' . $business_id . '_' . $lid);
+
+        return response()->json(['success' => true, 'entry' => $entry]);
+    }
+
     public function export(Request $request)
     {
         // Open to all authenticated staff — inventory check assistant is

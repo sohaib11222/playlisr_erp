@@ -527,6 +527,7 @@
     window.ICA_SECONDARY_URL = "{{ action('InventoryCheckController@secondaryBuckets') }}";
     window.ICA_ABC_URL = "{{ action('InventoryCheckController@abcRestockBucket') }}";
     window.ICA_FROZEN_URL = "{{ action('InventoryCheckController@frozenInventoryBucket') }}";
+    window.ICA_FROZEN_UPDATE_URL = "{{ action('InventoryCheckController@frozenStockUpdate') }}";
     window.ICA_MGRPICKS_BUCKET_URL = "{{ action('InventoryCheckController@managerPicksBucket') }}";
     window.ICA_MGRPICKS_LIST_URL = "{{ action('InventoryCheckController@listManagerPicks') }}";
     window.ICA_MGRPICKS_ADD_URL = "{{ action('InventoryCheckController@addManagerPick') }}";
