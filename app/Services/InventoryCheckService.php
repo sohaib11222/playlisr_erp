@@ -621,6 +621,7 @@ class InventoryCheckService
                 'location_name' => $match['location_name'] ?? null,
                 'category_name' => $match['category_name'] ?? null,
                 'category_id' => $match['category_id'] ?? null,
+                'genre' => $match['genre'] ?? null,
                 'suggested_qty' => $this->suggestedQtyForChartPick($pick, $stock, $isTopArtist),
                 'reason' => $this->chartPickReason($pick, $isTopArtist, $match),
                 'tags' => array_values(array_filter([
@@ -759,6 +760,7 @@ class InventoryCheckService
             'location_name' => $row->location_name,
             'category_name' => $row->category_name,
             'category_id' => $row->category_id ?? null,
+            'genre' => $row->genre ?? null,
         ];
     }
 
@@ -910,6 +912,7 @@ class InventoryCheckService
                         'sold_qty_window' => (float) ($match->total_sold ?? 0),
                         'location_name' => $match->location_name,
                         'category_name' => $match->category_name,
+                        'genre' => $match->genre ?? null,
                         'suggested_qty' => max(1, 3 - (int) $stock),
                         'reason' => $reason,
                         'tags' => $tags,
@@ -1012,6 +1015,7 @@ class InventoryCheckService
         }
         return DB::table('product_stock_cache as psc')
             ->leftJoin('products as p', 'p.id', '=', 'psc.product_id')
+            ->leftJoin('categories as subcat', 'subcat.id', '=', 'psc.sub_category_id')
             ->where('psc.business_id', $business_id)
             ->where(function ($q) use ($artist) {
                 $q->where('psc.product_custom_field1', 'like', '%' . $artist . '%')
@@ -1020,6 +1024,7 @@ class InventoryCheckService
             ->select([
                 'psc.variation_id', 'psc.product_id', 'psc.stock', 'psc.sku', 'psc.product',
                 'psc.location_name', 'psc.category_name', 'psc.total_sold',
+                'subcat.name as genre',
                 'p.format as product_format',
             ])
             ->orderByDesc('psc.total_sold')
@@ -1174,6 +1179,7 @@ class InventoryCheckService
         // Sarah saw stuck on "Building…".
         $pscQuery = DB::table('product_stock_cache as psc')
             ->leftJoin('products as p', 'p.id', '=', 'psc.product_id')
+            ->leftJoin('categories as subcat', 'subcat.id', '=', 'psc.sub_category_id')
             ->where('psc.business_id', $business_id)
             ->where('psc.location_id', $locationId)
             ->where('psc.stock', '>', 0);
@@ -1184,6 +1190,7 @@ class InventoryCheckService
             'psc.variation_id', 'psc.product_id', 'psc.location_id', 'psc.stock', 'psc.sku',
             'psc.product', 'psc.type', 'psc.product_variation', 'psc.variation_name',
             'psc.location_name', 'psc.category_name', 'psc.category_id',
+            'psc.sub_category_id', 'subcat.name as genre',
             'psc.product_custom_field1', 'psc.total_sold', 'psc.stock_price',
             'p.format as product_format',
         ])->orderByDesc('psc.stock_price')->get();
@@ -1304,6 +1311,7 @@ class InventoryCheckService
 
         $rows = DB::table('product_stock_cache as psc')
             ->leftJoin('products as p', 'p.id', '=', 'psc.product_id')
+            ->leftJoin('categories as subcat', 'subcat.id', '=', 'psc.sub_category_id')
             ->where('psc.business_id', $business_id)
             ->where('psc.location_id', $locationId)
             ->whereIn('psc.variation_id', $variationIds)
@@ -1312,7 +1320,7 @@ class InventoryCheckService
                 'psc.variation_id', 'psc.product_id', 'psc.location_id', 'psc.stock', 'psc.sku',
                 'psc.product', 'psc.product_variation', 'psc.variation_name', 'psc.location_name',
                 'psc.category_name', 'psc.product_custom_field1', 'psc.total_sold', 'psc.type',
-                'psc.category_id',
+                'psc.category_id', 'psc.sub_category_id', 'subcat.name as genre',
                 'p.format as product_format',
             ])
             ->limit(500)
@@ -1433,6 +1441,7 @@ class InventoryCheckService
                 'format' => $meta->format ?? null,
                 'category_name' => $meta->category_name ?? null,
                 'category_id' => $meta->category_id ?? null,
+                'genre' => $meta->genre ?? null,
                 'location_name' => null,
                 'stock' => $stock,
                 'sold_qty_window' => round($soldWindow, 2),
@@ -1677,12 +1686,14 @@ class InventoryCheckService
                 $j->on('v.product_id', '=', 'p.id')->where('v.deleted_at', null);
             })
             ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+            ->leftJoin('categories as subcat', 'subcat.id', '=', 'p.sub_category_id')
             ->where('p.business_id', $business_id)
             ->whereIn('p.id', $productIds)
             ->groupBy('p.id')
             ->select([
                 'p.id', 'p.name', 'p.format', 'p.product_custom_field1',
                 'p.category_id', 'c.name as category_name',
+                'p.sub_category_id', 'subcat.name as genre',
                 DB::raw('MIN(v.sub_sku) as sku'),
             ])
             ->get();
@@ -1782,8 +1793,12 @@ class InventoryCheckService
 
     protected function queryPscRows(int $business_id, int $locationId, array $categoryIds, $permittedLocations)
     {
+        // Sarah 2026-05-20: pull sub-category as `genre` so the buckets
+        // can be filtered by genre. PSC has sub_category_id but no name —
+        // LEFT JOIN categories to get the label.
         $q = DB::table('product_stock_cache as psc')
             ->leftJoin('products as p', 'p.id', '=', 'psc.product_id')
+            ->leftJoin('categories as subcat', 'subcat.id', '=', 'psc.sub_category_id')
             ->where('psc.business_id', $business_id)
             ->where('psc.location_id', $locationId);
 
@@ -1798,6 +1813,7 @@ class InventoryCheckService
             'psc.variation_id', 'psc.product_id', 'psc.location_id', 'psc.stock', 'psc.sku',
             'psc.product', 'psc.type', 'psc.product_variation', 'psc.variation_name',
             'psc.location_name', 'psc.category_name', 'psc.category_id',
+            'psc.sub_category_id', 'subcat.name as genre',
             'psc.product_custom_field1', 'psc.total_sold',
             'p.format as product_format',
         ])
@@ -1827,6 +1843,8 @@ class InventoryCheckService
             'format' => $row->product_format ?? null,
             'category_name' => $row->category_name,
             'category_id' => $row->category_id ?? null,
+            'genre' => $row->genre ?? null,
+            'sub_category_id' => $row->sub_category_id ?? null,
             'location_name' => $row->location_name,
             'stock' => $stock,
             'sold_qty_window' => round($soldWindow, 2),

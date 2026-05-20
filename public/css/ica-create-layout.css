@@ -178,6 +178,43 @@ body.ica-v2 .ica-store-btn.is-active {
 	box-shadow: 0 0 0 3px var(--ica-accent-soft) !important;
 }
 
+/* Category + Genre filter pills (live next to the store buttons) */
+body.ica-v2 .ica-filter-group {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	margin-left: 18px;
+}
+body.ica-v2 .ica-filter-label {
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: .12em;
+	text-transform: uppercase;
+	color: var(--ica-ink-3);
+	margin: 0;
+}
+body.ica-v2 .ica-filter-select {
+	height: 36px;
+	border: 1px solid var(--ica-line-2) !important;
+	border-radius: var(--ica-radius-sm) !important;
+	background: var(--ica-surface) !important;
+	color: var(--ica-ink);
+	font-weight: 500;
+	padding: 0 28px 0 12px;
+	min-width: 140px;
+	appearance: none;
+	background-image: linear-gradient(45deg, transparent 50%, var(--ica-ink-3) 50%),
+		linear-gradient(135deg, var(--ica-ink-3) 50%, transparent 50%);
+	background-position: calc(100% - 14px) center, calc(100% - 10px) center;
+	background-size: 4px 4px, 4px 4px;
+	background-repeat: no-repeat;
+}
+body.ica-v2 .ica-filter-select:focus {
+	border-color: var(--ica-accent-deep) !important;
+	box-shadow: 0 0 0 3px var(--ica-accent-soft) !important;
+	outline: none;
+}
+
 /* ── Disclosure (More options / Show other lists) ─────────────────── */
 body.ica-v2 .ica-more-options > summary,
 body.ica-v2 .ica-secondary-disclosure > summary {

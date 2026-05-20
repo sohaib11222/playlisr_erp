@@ -190,6 +190,8 @@
                     applyFrozenDupeTags(resp.bucket.items || []);
                     renderFrozenInsight(resp.bucket);
                 }
+                rebuildFilterOptions();
+                applyRowFilters();
             })
             .catch((err) => console.error('[ICA] aux bucket lazy-load failed', bucketKey, err));
     }
@@ -289,6 +291,8 @@
                     if (fresh) existing.replaceWith(fresh);
                 });
                 attachBucketHandlers();
+                rebuildFilterOptions();
+                applyRowFilters();
             })
             .catch((err) => console.error('[ICA] secondary buckets lazy-load failed', err));
     }
@@ -320,6 +324,8 @@
                         existing.replaceWith(fresh);
                         attachBucketHandlers();
                     }
+                    rebuildFilterOptions();
+                    applyRowFilters();
                 }
             })
             .catch((err) => console.error('[ICA] events lazy-load failed', err));
@@ -389,15 +395,78 @@
         $summary.textContent = `${totalItems} items · ${totalQty} total qty suggested · fast sellers <90d: ${(buckets.fast_oos && buckets.fast_oos.count) || 0}`;
 
         attachBucketHandlers();
+        rebuildFilterOptions();
+        applyRowFilters();
     }
+
+    // ── Category + Genre filter (client-side row hiding) ─────────────
+    function rebuildFilterOptions() {
+        const cats = new Set();
+        const genres = new Set();
+        if (lastResult && lastResult.buckets) {
+            Object.values(lastResult.buckets).forEach((b) => {
+                (b.items || []).forEach((it) => {
+                    if (it.category_name) cats.add(it.category_name);
+                    if (it.genre) genres.add(it.genre);
+                });
+            });
+        }
+        const $cat = document.getElementById('ica_filter_category');
+        const $gen = document.getElementById('ica_filter_genre');
+        if ($cat) {
+            const prev = $cat.value;
+            $cat.innerHTML = '<option value="">All</option>' + Array.from(cats).sort().map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+            if (Array.from(cats).includes(prev)) $cat.value = prev;
+        }
+        if ($gen) {
+            const prev = $gen.value;
+            $gen.innerHTML = '<option value="">All</option>' + Array.from(genres).sort().map((g) => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join('');
+            if (Array.from(genres).includes(prev)) $gen.value = prev;
+        }
+    }
+
+    function applyRowFilters() {
+        const $cat = document.getElementById('ica_filter_category');
+        const $gen = document.getElementById('ica_filter_genre');
+        const cat = $cat ? $cat.value : '';
+        const gen = $gen ? $gen.value : '';
+        $root.querySelectorAll('.ica-bucket').forEach((bucketEl) => {
+            let visible = 0;
+            bucketEl.querySelectorAll('tr[data-row-key]').forEach((tr) => {
+                const rowCat = tr.getAttribute('data-cat') || '';
+                const rowGen = tr.getAttribute('data-genre') || '';
+                const match = (!cat || rowCat === cat) && (!gen || rowGen === gen);
+                tr.style.display = match ? '' : 'none';
+                if (match) visible++;
+            });
+            // Update the bucket count pill to reflect filtered visibility
+            const countEl = bucketEl.querySelector('.ica-bucket-count');
+            if (countEl) {
+                const original = countEl.dataset.original || countEl.textContent;
+                countEl.dataset.original = original;
+                if (cat || gen) {
+                    countEl.textContent = visible + ' / ' + original;
+                    countEl.classList.toggle('zero', visible === 0);
+                } else {
+                    countEl.textContent = original;
+                }
+            }
+        });
+    }
+
+    ['ica_filter_category', 'ica_filter_genre'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('change', applyRowFilters);
+    });
 
     function renderBucketSection(key, b) {
         const countClass = (b.count || 0) === 0 ? 'zero' : '';
         const rows = (b.items || []).map((it) => renderRow(key, it)).join('');
-        // Sell Speed column dropped 2026-05-20 — the underlying query was
-        // the page's biggest perf cost. Uniform column set for all buckets.
+        // Category + Genre columns added 2026-05-20 so the page can be
+        // filtered by either. The two new dropdowns above the buckets
+        // drive client-side row hiding.
         const headRow = `<th><input type="checkbox" class="ica-select-all" data-bucket="${escapeHtml(key)}"></th>
-               <th>Product</th><th>Artist</th><th>Format</th><th>Stock</th><th>Sold (window)</th><th>Reason</th><th>Tags</th><th>Qty</th><th></th>`;
+               <th>Product</th><th>Artist</th><th>Format</th><th>Category</th><th>Genre</th><th>Stock</th><th>Sold (window)</th><th>Reason</th><th>Tags</th><th>Qty</th><th></th>`;
         const body = (b.count || 0) === 0
             ? `<div class="ica-bucket-empty">No items in this bucket${b.empty_reason ? ' (' + b.empty_reason.replace(/_/g, ' ') + ')' : ''}.</div>`
             : `<table class="table table-condensed table-striped ica-row-table"><thead><tr>${headRow}</tr></thead><tbody>${rows}</tbody></table>`;
@@ -436,15 +505,14 @@
         const product = escapeHtml(it.product || '—');
         const artist = escapeHtml(it.artist || '—');
         const format = escapeHtml(it.format || '');
+        const category = escapeHtml(it.category_name || '');
+        const genre = escapeHtml(it.genre || '');
         const qty = parseInt(it.suggested_qty || 0, 10) || 0;
         const rowKey = [bucket, it.variation_id || '', it.customer_want_id || '', it.artist || '', it.product || ''].join('|');
 
         const extraCol = bucket === 'customer_wants' && it.customer_want_id
             ? `<button type="button" class="btn btn-xs btn-success ica-fulfill-want" data-want-id="${it.customer_want_id}"><i class="fa fa-check"></i> Fulfilled</button>`
             : (bucket === 'events_upcoming' && it.event_name ? `<small class="text-muted">${escapeHtml(it.event_name)} — ${escapeHtml(it.event_date)}</small>` : '');
-
-        // Sell Speed column dropped 2026-05-20 (perf).
-        const sellSpeedCell = '';
 
         // Frozen rows are a warning list — qty stays 0, checkbox starts
         // unchecked, qty input disabled so a careless export can't bulk-
@@ -453,14 +521,16 @@
         const checkboxAttrs = isFrozen ? '' : 'checked';
         const qtyDisabled = isFrozen ? 'disabled' : '';
 
-        return `<tr data-row-key="${escapeHtml(rowKey)}">
+        // data-cat / data-genre attrs power the client-side filter.
+        return `<tr data-row-key="${escapeHtml(rowKey)}" data-cat="${category}" data-genre="${genre}">
             <td><input type="checkbox" class="ica-row-check" ${checkboxAttrs}></td>
             <td>${product} ${abcHtml}</td>
             <td>${artist}</td>
             <td>${format}</td>
+            <td><small>${category || '—'}</small></td>
+            <td><small>${genre || '—'}</small></td>
             <td>${stock}</td>
             <td>${sold}</td>
-            ${sellSpeedCell}
             <td><small>${reason}</small></td>
             <td>${tagsHtml}</td>
             <td><input type="number" class="form-control input-sm ica-qty-input" value="${qty}" min="0" max="99" ${qtyDisabled}></td>

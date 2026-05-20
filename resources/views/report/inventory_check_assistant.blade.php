@@ -67,6 +67,18 @@
                 <button type="button" class="btn btn-lg btn-default ica-store-btn" data-preset="pico_all">
                     Pico
                 </button>
+                <span class="ica-filter-group">
+                    <label class="ica-filter-label">Category</label>
+                    <select id="ica_filter_category" class="ica-filter-select">
+                        <option value="">All</option>
+                    </select>
+                </span>
+                <span class="ica-filter-group">
+                    <label class="ica-filter-label">Genre</label>
+                    <select id="ica_filter_genre" class="ica-filter-select">
+                        <option value="">All</option>
+                    </select>
+                </span>
                 <a class="btn btn-link btn-sm pull-right" data-toggle="collapse" href="#ica_advanced_filters" role="button">
                     vinyl/CDs only? ▾
                 </a>
