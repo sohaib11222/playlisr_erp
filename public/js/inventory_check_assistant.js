@@ -258,11 +258,16 @@
             if (!pid) return;
             const cls = abcMap[pid];
             if (!cls) return;
-            const slot = tr.querySelector('.ica-abc-slot');
-            if (slot && !slot.querySelector('.ica-tag')) {
-                slot.innerHTML = `<span class="ica-tag abc_${cls}" title="ABC class ${cls}">${cls}</span>`;
+            const cell = tr.querySelector('.ica-abc-col');
+            if (cell) {
+                cell.innerHTML = `<span class="ica-abc-cell ica-abc-${cls}">${cls}</span>`;
             }
+            tr.setAttribute('data-abc', cls);
         });
+        // Once rows have data-abc populated, the ABC filter dropdown
+        // becomes useful — repopulate options + re-apply current filter.
+        rebuildFilterOptions();
+        applyRowFilters();
     }
 
     function attachFrozenStockEditors() {
@@ -310,12 +315,13 @@
                             tr.style.opacity = '0';
                             setTimeout(() => tr.remove(), 400);
                         } else {
-                            const stockCell = tr.children[6]; // checkbox/product/artist/format/cat/genre/stock
+                            // checkbox/product/artist/format/cat/genre/abc/stock
+                            const stockCell = tr.children[7];
                             if (stockCell) stockCell.textContent = newQty;
                             btn.dataset.current = String(newQty);
                             btn.disabled = false; btn.textContent = 'Set stock';
-                            // Update the "Updated …" line in the reason cell
-                            const reasonCell = tr.querySelector('td:nth-child(9) small');
+                            // Reason is td:nth-child(10) after the ABC column was added
+                            const reasonCell = tr.querySelector('td:nth-child(10) small');
                             if (reasonCell) {
                                 const userName = (resp.entry && resp.entry.user_name) || 'you';
                                 const when = new Date().toISOString().substring(0, 10);
@@ -516,14 +522,17 @@
     function applyRowFilters() {
         const $cat = document.getElementById('ica_filter_category');
         const $gen = document.getElementById('ica_filter_genre');
+        const $abc = document.getElementById('ica_filter_abc');
         const cat = $cat ? $cat.value : '';
         const gen = $gen ? $gen.value : '';
+        const abc = $abc ? $abc.value : '';
         $root.querySelectorAll('.ica-bucket').forEach((bucketEl) => {
             let visible = 0;
             bucketEl.querySelectorAll('tr[data-row-key]').forEach((tr) => {
                 const rowCat = tr.getAttribute('data-cat') || '';
                 const rowGen = tr.getAttribute('data-genre') || '';
-                const match = (!cat || rowCat === cat) && (!gen || rowGen === gen);
+                const rowAbc = tr.getAttribute('data-abc') || '';
+                const match = (!cat || rowCat === cat) && (!gen || rowGen === gen) && (!abc || rowAbc === abc);
                 tr.style.display = match ? '' : 'none';
                 if (match) visible++;
             });
@@ -542,7 +551,7 @@
         });
     }
 
-    ['ica_filter_category', 'ica_filter_genre'].forEach((id) => {
+    ['ica_filter_category', 'ica_filter_genre', 'ica_filter_abc'].forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.addEventListener('change', applyRowFilters);
     });
@@ -554,7 +563,7 @@
         // filtered by either. The two new dropdowns above the buckets
         // drive client-side row hiding.
         const headRow = `<th><input type="checkbox" class="ica-select-all" data-bucket="${escapeHtml(key)}"></th>
-               <th>Product</th><th>Artist</th><th>Format</th><th>Category</th><th>Genre</th><th>Stock</th><th>Sold (window)</th><th>Reason</th><th>Tags</th><th>Qty</th><th></th>`;
+               <th>Product</th><th>Artist</th><th>Format</th><th>Category</th><th>Genre</th><th title="ABC class — A is the top 80% of inventory value">ABC</th><th>Stock</th><th>Sold (window)</th><th>Reason</th><th>Tags</th><th>Qty</th><th></th>`;
         const body = (b.count || 0) === 0
             ? `<div class="ica-bucket-empty">No items in this bucket${b.empty_reason ? ' (' + b.empty_reason.replace(/_/g, ' ') + ')' : ''}.</div>`
             : `<table class="table table-condensed table-striped ica-row-table"><thead><tr>${headRow}</tr></thead><tbody>${rows}</tbody></table>`;
@@ -623,17 +632,22 @@
         const checkboxAttrs = isFrozen ? '' : 'checked';
         const qtyDisabled = isFrozen ? 'disabled' : '';
 
-        // data-cat / data-genre attrs power the client-side filter.
-        // data-pid lets the ABC sweep paint A/B/C pills on rows in other
-        // buckets once the lazy ABC bucket arrives (Sarah 2026-05-20).
+        // data-cat / data-genre / data-abc attrs power the client-side
+        // filter. data-pid lets the ABC sweep populate the ABC cell on
+        // rows in other buckets once the lazy ABC bucket arrives.
         const pid = parseInt(it.product_id || 0, 10) || '';
-        return `<tr data-row-key="${escapeHtml(rowKey)}" data-pid="${pid}" data-cat="${category}" data-genre="${genre}">
+        // Some buckets ship with their own abc tag (e.g. abc_a_restock
+        // tags every row 'abc_A'); use that as the initial ABC cell.
+        const initialAbc = abcTag ? abcTag.replace('abc_', '') : '';
+        const abcCell = initialAbc ? `<span class="ica-abc-cell ica-abc-${initialAbc}">${initialAbc}</span>` : '—';
+        return `<tr data-row-key="${escapeHtml(rowKey)}" data-pid="${pid}" data-cat="${category}" data-genre="${genre}" data-abc="${initialAbc}">
             <td><input type="checkbox" class="ica-row-check" ${checkboxAttrs}></td>
-            <td>${product} <span class="ica-abc-slot"></span> ${abcHtml}</td>
+            <td>${product}</td>
             <td>${artist}</td>
             <td>${format}</td>
             <td><small>${category || '—'}</small></td>
             <td><small>${genre || '—'}</small></td>
+            <td class="ica-abc-col">${abcCell}</td>
             <td>${stock}</td>
             <td>${sold}</td>
             <td><small>${reason}${reasonExtra}</small></td>

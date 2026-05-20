@@ -79,6 +79,15 @@
                         <option value="">All</option>
                     </select>
                 </span>
+                <span class="ica-filter-group">
+                    <label class="ica-filter-label" title="ABC class: A = top 80% of inventory value, B = next 15%, C = bottom 5%">ABC</label>
+                    <select id="ica_filter_abc" class="ica-filter-select">
+                        <option value="">All</option>
+                        <option value="A">A only</option>
+                        <option value="B">B only</option>
+                        <option value="C">C only</option>
+                    </select>
+                </span>
                 <a class="btn btn-link btn-sm pull-right" data-toggle="collapse" href="#ica_advanced_filters" role="button">
                     vinyl/CDs only? ▾
                 </a>
