@@ -212,7 +212,6 @@ class InventoryCheckService
                 'category_ids' => $categoryIds,
                 'sale_start' => $saleStart,
                 'sale_end' => $saleEnd,
-                'top_artists' => $topArtists,
                 'generated_at' => Carbon::now()->toIso8601String(),
             ],
         ];
