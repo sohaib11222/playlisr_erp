@@ -272,6 +272,105 @@ class InventoryCheckController extends Controller
         }
     }
 
+    /**
+     * Lazy-loaded manager-picks bucket. Picks live in
+     * storage/app/ica-manager-picks-{business_id}.json — managers (Sarah,
+     * Jon, Fatteen, Lashyn) flag a category to stock up on and the ICA
+     * surfaces low-stock candidates matching that category.
+     */
+    public function managerPicksBucket(Request $request)
+    {
+        try {
+            $business_id = (int) $request->session()->get('user.business_id');
+            $input = $request->only(['location_id', 'preset']);
+            if (!empty($input['preset'])) {
+                $resolved = $this->inventoryCheckService->resolvePreset($business_id, $input['preset']);
+                $input = array_merge($resolved, $input);
+            }
+            $locationId = !empty($input['location_id']) ? (int) $input['location_id'] : null;
+            if (!$locationId) {
+                return response()->json(['bucket' => [
+                    'label' => '🗒️ Manager picks',
+                    'why' => 'Pick a store first.',
+                    'items' => [], 'count' => 0,
+                ]]);
+            }
+            $permitted = auth()->user()->permitted_locations();
+            $bucket = $this->inventoryCheckService->bucketManagerPicksPublic($business_id, $locationId, $permitted);
+            return response()->json(['bucket' => $bucket]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('ICA manager-picks bucket failed', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile() . ':' . $e->getLine(),
+            ]);
+            return response()->json(['bucket' => [
+                'label' => '🗒️ Manager picks',
+                'why' => 'Manager picks failed to load: ' . $e->getMessage(),
+                'items' => [], 'count' => 0, 'empty_reason' => 'fetch_error',
+            ]]);
+        }
+    }
+
+    public function listManagerPicks(Request $request)
+    {
+        $business_id = (int) $request->session()->get('user.business_id');
+        $picks = $this->inventoryCheckService->loadManagerPicks($business_id);
+        return response()->json(['picks' => $picks]);
+    }
+
+    public function addManagerPick(Request $request)
+    {
+        $request->validate([
+            'note' => 'required|string|max:500',
+            'category_pattern' => 'nullable|string|max:191',
+            'suggested_by' => 'nullable|string|max:64',
+        ]);
+        $business_id = (int) $request->session()->get('user.business_id');
+        $picks = $this->inventoryCheckService->loadManagerPicks($business_id);
+
+        $by = trim((string) $request->input('suggested_by', ''));
+        if ($by === '') {
+            $by = trim((auth()->user()->first_name ?? '') . ' ' . (auth()->user()->last_name ?? ''));
+            if ($by === '') $by = 'Manager';
+        }
+
+        $picks[] = [
+            'id' => $this->inventoryCheckService->newPickId(),
+            'note' => trim((string) $request->input('note')),
+            'category_pattern' => trim((string) $request->input('category_pattern', '')),
+            'suggested_by' => $by,
+            'created_at' => Carbon::now()->toIso8601String(),
+            'dismissed' => false,
+            'dismissed_at' => null,
+            'dismissed_by' => null,
+        ];
+        $this->inventoryCheckService->saveManagerPicks($business_id, $picks);
+        return response()->json(['success' => true, 'picks' => $picks]);
+    }
+
+    public function dismissManagerPick(Request $request, string $id)
+    {
+        $business_id = (int) $request->session()->get('user.business_id');
+        $picks = $this->inventoryCheckService->loadManagerPicks($business_id);
+        $dismissedBy = trim((auth()->user()->first_name ?? '') . ' ' . (auth()->user()->last_name ?? ''));
+        $found = false;
+        foreach ($picks as &$p) {
+            if (($p['id'] ?? null) === $id) {
+                $p['dismissed'] = true;
+                $p['dismissed_at'] = Carbon::now()->toIso8601String();
+                $p['dismissed_by'] = $dismissedBy;
+                $found = true;
+                break;
+            }
+        }
+        unset($p);
+        if (!$found) {
+            return response()->json(['success' => false, 'error' => 'not_found'], 404);
+        }
+        $this->inventoryCheckService->saveManagerPicks($business_id, $picks);
+        return response()->json(['success' => true, 'picks' => $picks]);
+    }
+
     public function export(Request $request)
     {
         // Open to all authenticated staff — inventory check assistant is

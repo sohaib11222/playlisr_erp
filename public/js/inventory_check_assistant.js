@@ -119,6 +119,7 @@
                 // history. None of them block the main page now (Sarah was
                 // stuck on "Building…" 2026-05-20).
                 lazyLoadEventsBucket();
+                lazyLoadAuxBucket('manager_picks', window.ICA_MGRPICKS_BUCKET_URL);
                 lazyLoadAuxBucket('abc_a_restock', window.ICA_ABC_URL);
                 lazyLoadAuxBucket('frozen_inventory', window.ICA_FROZEN_URL);
             })
@@ -240,7 +241,7 @@
         // single "Show all the other reorder lists" disclosure so it's one
         // click away when needed but not in the face on landing.
         const primary = ['fast_oos'];
-        const secondary = ['customer_wants', 'street_pulse', 'universal_top', 'apple_music_top', 'top_artist_new_releases', 'events_upcoming', 'abc_a_restock', 'long_oos_essentials', 'hot_used_oos', 'frozen_inventory'];
+        const secondary = ['manager_picks', 'customer_wants', 'street_pulse', 'universal_top', 'apple_music_top', 'top_artist_new_releases', 'events_upcoming', 'abc_a_restock', 'long_oos_essentials', 'hot_used_oos', 'frozen_inventory'];
         const buckets = payload.buckets || {};
 
         let primaryHtml = '';
@@ -421,6 +422,105 @@
         if (ut) ut.textContent = fmt(fresh.universal_top);
     }
     renderFreshness();
+
+    // ── Manager picks admin (More options panel) ─────────────────────
+    function renderManagerPicksList(picks) {
+        const list = document.getElementById('ica_mgrpicks_list');
+        if (!list) return;
+        const active = (picks || []).filter((p) => !p.dismissed);
+        if (!active.length) {
+            list.innerHTML = '<p class="text-muted small">No active picks. Add one below to surface candidates in the 🗒️ Manager picks bucket.</p>';
+            return;
+        }
+        list.innerHTML = active.map((p) => `
+            <div class="ica-mgrpick-item">
+                <div class="ica-mgrpick-meta">
+                    <span class="ica-mgrpick-by">${escapeHtml(p.suggested_by || 'Manager')}:</span>
+                    <span>${escapeHtml(p.note || '')}</span>
+                    ${p.category_pattern ? `<span class="ica-mgrpick-cat">[${escapeHtml(p.category_pattern)}]</span>` : ''}
+                </div>
+                <button type="button" class="btn btn-xs btn-default ica-mgrpick-dismiss" data-pick-id="${escapeHtml(p.id || '')}" title="Mark done — removes from the bucket">
+                    <i class="fa fa-check"></i> Done
+                </button>
+            </div>
+        `).join('');
+        list.querySelectorAll('.ica-mgrpick-dismiss').forEach((btn) => {
+            btn.addEventListener('click', function () {
+                const id = btn.dataset.pickId;
+                if (!id) return;
+                if (!confirm('Mark this manager pick as done? It will stop surfacing in the bucket.')) return;
+                fetch(window.ICA_MGRPICKS_DISMISS_URL + '/' + encodeURIComponent(id) + '/dismiss', {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': window.ICA_CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin',
+                })
+                    .then((r) => r.json())
+                    .then((resp) => {
+                        if (resp && resp.success) renderManagerPicksList(resp.picks);
+                        // Reload the bucket so the row drops out
+                        if (typeof lazyLoadAuxBucket === 'function' && window.ICA_MGRPICKS_BUCKET_URL) {
+                            lazyLoadAuxBucket('manager_picks', window.ICA_MGRPICKS_BUCKET_URL);
+                        }
+                    });
+            });
+        });
+    }
+
+    function loadManagerPicks() {
+        if (!window.ICA_MGRPICKS_LIST_URL) return;
+        fetch(window.ICA_MGRPICKS_LIST_URL, {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin',
+        })
+            .then((r) => r.json())
+            .then((resp) => renderManagerPicksList((resp && resp.picks) || []))
+            .catch((err) => console.error('[ICA] mgr picks list failed', err));
+    }
+
+    const $mgrAddBtn = document.getElementById('ica_mgrpick_add');
+    if ($mgrAddBtn) {
+        $mgrAddBtn.addEventListener('click', function () {
+            const note = (document.getElementById('ica_mgrpick_note').value || '').trim();
+            const cat = (document.getElementById('ica_mgrpick_category').value || '').trim();
+            const by = (document.getElementById('ica_mgrpick_by').value || '').trim();
+            if (!note) {
+                alert('Type the suggestion first (e.g. "get more sealed electronic").');
+                return;
+            }
+            $mgrAddBtn.disabled = true;
+            const fd = new FormData();
+            fd.append('note', note);
+            if (cat) fd.append('category_pattern', cat);
+            if (by) fd.append('suggested_by', by);
+            fetch(window.ICA_MGRPICKS_ADD_URL, {
+                method: 'POST',
+                headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': window.ICA_CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+                credentials: 'same-origin',
+                body: fd,
+            })
+                .then((r) => r.json())
+                .then((resp) => {
+                    $mgrAddBtn.disabled = false;
+                    if (resp && resp.success) {
+                        document.getElementById('ica_mgrpick_note').value = '';
+                        document.getElementById('ica_mgrpick_category').value = '';
+                        renderManagerPicksList(resp.picks);
+                        if (typeof lazyLoadAuxBucket === 'function' && window.ICA_MGRPICKS_BUCKET_URL) {
+                            lazyLoadAuxBucket('manager_picks', window.ICA_MGRPICKS_BUCKET_URL);
+                        }
+                    } else {
+                        alert('Add failed: ' + (resp && resp.message ? resp.message : 'unknown error'));
+                    }
+                })
+                .catch((err) => {
+                    $mgrAddBtn.disabled = false;
+                    console.error('[ICA] mgr pick add failed', err);
+                    alert('Add failed — see browser console.');
+                });
+        });
+    }
+
+    loadManagerPicks();
 
     // ── Chart imports (file upload + paste) ──────────────────────────
     function importChart(source) {

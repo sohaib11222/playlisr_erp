@@ -388,6 +388,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/inventory-check-assistant/events-bucket', 'InventoryCheckController@eventsBucket');
     Route::get('/reports/inventory-check-assistant/abc-restock-bucket', 'InventoryCheckController@abcRestockBucket');
     Route::get('/reports/inventory-check-assistant/frozen-inventory-bucket', 'InventoryCheckController@frozenInventoryBucket');
+    Route::get('/reports/inventory-check-assistant/manager-picks-bucket', 'InventoryCheckController@managerPicksBucket');
+    Route::get('/reports/inventory-check-assistant/manager-picks', 'InventoryCheckController@listManagerPicks');
+    Route::post('/reports/inventory-check-assistant/manager-picks', 'InventoryCheckController@addManagerPick');
+    Route::post('/reports/inventory-check-assistant/manager-picks/{id}/dismiss', 'InventoryCheckController@dismissManagerPick');
     Route::get('/reports/inventory-check-assistant/export', 'InventoryCheckController@export');
     Route::post('/reports/inventory-check-assistant/chart-import', 'InventoryCheckController@importChart');
     Route::get('/reports/inventory-check-assistant/chart-latest/{source}', 'InventoryCheckController@latestChart');

@@ -133,6 +133,39 @@
         </div>
         <div class="row">
             <div class="col-md-12">
+                @component('components.widget', ['class' => 'box-warning', 'title' => '🗒️ Manager picks — stock-up suggestions'])
+                <p class="text-muted small">Lashyn or any manager can flag a category to stock up on. The 🗒️ Manager picks bucket surfaces low-stock candidates matching it.</p>
+                <div id="ica_mgrpicks_list" class="ica-mgrpicks-list">
+                    <p class="text-muted small">Loading current picks…</p>
+                </div>
+                <hr style="margin: 12px 0;">
+                <div class="ica-mgrpicks-add">
+                    <div class="row">
+                        <div class="col-md-5">
+                            <label class="small">Suggestion <small class="text-muted">(e.g. “get more sealed electronic”)</small></label>
+                            <input type="text" class="form-control input-sm" id="ica_mgrpick_note" maxlength="500" placeholder="get more …">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="small">Category match <small class="text-muted">(optional)</small></label>
+                            <input type="text" class="form-control input-sm" id="ica_mgrpick_category" maxlength="191" placeholder="e.g. Sealed Electronic">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="small">Suggested by</label>
+                            <input type="text" class="form-control input-sm" id="ica_mgrpick_by" maxlength="64" placeholder="Lashyn">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="small">&nbsp;</label><br>
+                            <button type="button" class="btn btn-primary btn-sm" id="ica_mgrpick_add">
+                                <i class="fa fa-plus"></i> Add pick
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                @endcomponent
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-12">
                 @component('components.widget', ['class' => 'box-info', 'title' => '📥 Auto-fetch from inbox'])
                 <p class="text-muted small">Auto-pulls Street Pulse + UMe emails from sarah@nivessa.com every Wednesday 08:15 PST. Trigger manually below.</p>
                 <button type="button" class="btn btn-primary btn-sm" id="ica_run_import" data-dry-run="1">
@@ -371,6 +404,25 @@
 .ica-tag.abc_A { background: #2c699a; color: #fff; font-weight: 700; }
 .ica-tag.abc_B { background: #f0ad4e; color: #fff; font-weight: 700; }
 .ica-tag.abc_C { background: #ddd; color: #555; }
+.ica-tag.manager_pick { background: #fff2b3; color: #5a4410; font-weight: 600; }
+
+/* Manager picks admin */
+.ica-mgrpicks-list { margin-bottom: 8px; }
+.ica-mgrpick-item {
+    background: #fff2b3;
+    border: 1px solid #f0dc7a;
+    border-radius: 4px;
+    padding: 8px 12px;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+}
+.ica-mgrpick-item .ica-mgrpick-meta { color: #5a4410; }
+.ica-mgrpick-item .ica-mgrpick-by { font-weight: 700; margin-right: 6px; }
+.ica-mgrpick-item .ica-mgrpick-cat { color: #806717; font-size: 12px; margin-left: 6px; }
+.ica-mgrpick-item .btn { margin-left: 8px; }
 
 /* Frozen bucket warning style — make it visually clear this is a DON'T list */
 .ica-bucket[data-bucket="frozen_inventory"] .ica-bucket-header { border-left-color: #c0392b; background: #fdf2f0; }
@@ -446,6 +498,10 @@
     window.ICA_EVENTS_URL = "{{ action('InventoryCheckController@eventsBucket') }}";
     window.ICA_ABC_URL = "{{ action('InventoryCheckController@abcRestockBucket') }}";
     window.ICA_FROZEN_URL = "{{ action('InventoryCheckController@frozenInventoryBucket') }}";
+    window.ICA_MGRPICKS_BUCKET_URL = "{{ action('InventoryCheckController@managerPicksBucket') }}";
+    window.ICA_MGRPICKS_LIST_URL = "{{ action('InventoryCheckController@listManagerPicks') }}";
+    window.ICA_MGRPICKS_ADD_URL = "{{ action('InventoryCheckController@addManagerPick') }}";
+    window.ICA_MGRPICKS_DISMISS_URL = "{{ url('reports/inventory-check-assistant/manager-picks') }}";
     window.ICA_EXPORT_URL = "{{ action('InventoryCheckController@export') }}";
     window.ICA_CHART_IMPORT_URL = "{{ url('reports/inventory-check-assistant/chart-import') }}";
     window.ICA_CHART_LATEST_URL = "{{ url('reports/inventory-check-assistant/chart-latest') }}";

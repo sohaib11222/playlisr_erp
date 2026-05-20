@@ -197,6 +197,11 @@ class InventoryCheckService
             'long_oos_essentials' => $this->bucketLongOosEssentials($business_id, $locationId, $permittedLocations),
             'hot_used_oos' => $this->bucketHotUsedOos($business_id, $locationId, $permittedLocations),
             'customer_wants' => $this->bucketCustomerWants($business_id, $locationId),
+            'manager_picks' => [
+                'label' => '🗒️ Manager picks',
+                'why' => 'Loading separately (Lashyn et al stock-up suggestions)…',
+                'items' => [], 'count' => 0, 'lazy' => true,
+            ],
             'abc_a_restock' => [
                 'label' => '💎 A-class items — restock priority',
                 'why' => 'Loading separately (ABC analysis scans the full product catalog)…',
@@ -243,6 +248,142 @@ class InventoryCheckService
     public function bucketFrozenInventoryPublic(int $business_id, int $locationId, $permittedLocations): array
     {
         return $this->bucketFrozenInventory($business_id, $locationId, $permittedLocations);
+    }
+
+    /** Public alias for the lazy manager-picks endpoint. */
+    public function bucketManagerPicksPublic(int $business_id, int $locationId, $permittedLocations): array
+    {
+        return $this->bucketManagerPicks($business_id, $locationId, $permittedLocations);
+    }
+
+    // ── Manager picks (Lashyn's suggestions, etc.) ────────────────────
+
+    /**
+     * Path to the JSON store for manager picks. Same JSON-on-disk pattern
+     * as clover manual matches + universal anniversaries — no migration.
+     */
+    protected function managerPicksPath(int $business_id): string
+    {
+        return storage_path('app/ica-manager-picks-' . $business_id . '.json');
+    }
+
+    /**
+     * Read manager picks. On first read seeds with Lashyn's standing
+     * "get more sealed electronic" suggestion (Sarah 2026-05-20) so the
+     * page surfaces something useful immediately.
+     */
+    public function loadManagerPicks(int $business_id): array
+    {
+        $path = $this->managerPicksPath($business_id);
+        if (!is_file($path)) {
+            $seed = [[
+                'id' => $this->newPickId(),
+                'note' => 'Get more sealed electronic',
+                'category_pattern' => 'Sealed Electronic',
+                'suggested_by' => 'Lashyn',
+                'created_at' => Carbon::now()->toIso8601String(),
+                'dismissed' => false,
+                'dismissed_at' => null,
+                'dismissed_by' => null,
+            ]];
+            $this->saveManagerPicks($business_id, $seed);
+            return $seed;
+        }
+        try {
+            $json = json_decode((string) file_get_contents($path), true);
+        } catch (\Throwable $e) {
+            return [];
+        }
+        if (!is_array($json)) return [];
+        return $json;
+    }
+
+    public function saveManagerPicks(int $business_id, array $picks): void
+    {
+        $path = $this->managerPicksPath($business_id);
+        $dir = dirname($path);
+        if (!is_dir($dir)) { @mkdir($dir, 0775, true); }
+        $tmp = $path . '.tmp';
+        file_put_contents($tmp, json_encode(array_values($picks), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        @rename($tmp, $path);
+    }
+
+    public function newPickId(): string
+    {
+        return bin2hex(random_bytes(8));
+    }
+
+    /**
+     * Bucket: for each active manager pick, find a handful of low-stock
+     * candidates matching the suggested category. Reason text credits
+     * the manager so cashiers know who flagged it.
+     */
+    protected function bucketManagerPicks(int $business_id, int $locationId, $permittedLocations): array
+    {
+        $picks = array_values(array_filter($this->loadManagerPicks($business_id), function ($p) {
+            return is_array($p) && empty($p['dismissed']);
+        }));
+
+        if (empty($picks)) {
+            return [
+                'label' => '🗒️ Manager picks',
+                'why' => 'No active manager picks. Managers can add one in ⚙️ More options.',
+                'items' => [], 'count' => 0, 'empty_reason' => 'no_active_picks',
+            ];
+        }
+
+        $perPickLimit = (int) config('inventory_check.buckets.manager_picks.per_pick_limit', 12);
+        $maxStock = (int) config('inventory_check.buckets.manager_picks.max_stock', 1);
+        $targetStock = (int) config('inventory_check.buckets.manager_picks.target_stock', 3);
+
+        $items = [];
+        $pickSummaries = [];
+        foreach ($picks as $pick) {
+            $by = trim((string) ($pick['suggested_by'] ?? 'Manager'));
+            $note = trim((string) ($pick['note'] ?? ''));
+            $pattern = trim((string) ($pick['category_pattern'] ?? ''));
+            $pickId = (string) ($pick['id'] ?? '');
+            $pickSummaries[] = $by . ': "' . $note . '"' . ($pattern ? ' [' . $pattern . ']' : '');
+
+            // No category pattern → can't surface candidates automatically,
+            // but the pick still shows in the summary banner above the
+            // bucket so it's not invisible.
+            if ($pattern === '') {
+                continue;
+            }
+
+            $catIds = $this->categoryIdsMatching($business_id, $pattern);
+            if (empty($catIds)) {
+                continue;
+            }
+
+            $rows = $this->queryPscRows($business_id, $locationId, $catIds, $permittedLocations);
+            $added = 0;
+            foreach ($rows as $row) {
+                if ($added >= $perPickLimit) break;
+                $stock = (float) ($row->stock ?? 0);
+                if ($stock > $maxStock) continue;
+
+                $items[] = $this->rowToCandidate($row, $stock, (float) ($row->total_sold ?? 0), $targetStock, [
+                    'bucket' => 'manager_picks',
+                    'reason' => $by . ': ' . $note,
+                    'pick_id' => $pickId,
+                    'suggested_by' => $by,
+                    'tags' => ['manager_pick'],
+                ]);
+                $added++;
+            }
+        }
+
+        $items = $this->dedupeByVariation($items);
+
+        return [
+            'label' => '🗒️ Manager picks',
+            'why' => count($picks) . ' active pick' . (count($picks) === 1 ? '' : 's') . ' · ' . implode(' · ', $pickSummaries),
+            'items' => $items,
+            'count' => count($items),
+            'active_picks' => $picks,
+        ];
     }
 
     protected function resolveCategoryIds(array $input): array
