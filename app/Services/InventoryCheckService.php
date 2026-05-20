@@ -441,12 +441,14 @@ class InventoryCheckService
 
             $saleStart = Carbon::now()->subDays((int) ($rules['sale_days'] ?? 60))->format('Y-m-d');
             $saleEnd = Carbon::now()->format('Y-m-d');
-            $sold = $this->getSoldQtyByVariation($business_id, $locationId, $saleStart, $saleEnd, $permittedLocations);
-            // Precompute avg sell-days for this window once; lookup is O(1).
-            // Keeps Clyde's "Sell Speed" column populated without N+1 queries.
-            $avgDaysMap = $this->getAvgSellDaysByVariation($business_id, $locationId, $saleStart, $saleEnd, null, true, $permittedLocations);
 
+            // Pull PSC rows first so we can scope the avg-sell-days query
+            // to only the variation_ids we're going to consider.
             $rows = $this->queryPscRows($business_id, $locationId, $catIds, $permittedLocations);
+            $variationIds = array_map(fn ($r) => (int) $r->variation_id, $rows->all());
+
+            $sold = $this->getSoldQtyByVariation($business_id, $locationId, $saleStart, $saleEnd, $permittedLocations);
+            $avgDaysMap = $this->getAvgSellDaysByVariation($business_id, $locationId, $saleStart, $saleEnd, null, true, $permittedLocations, $variationIds);
             foreach ($rows as $row) {
                 $vid = (int) $row->variation_id;
                 $stock = (float) ($row->stock ?? 0);
@@ -475,10 +477,15 @@ class InventoryCheckService
         if ($rules) {
             $saleStart = Carbon::now()->subDays((int) ($rules['sale_days'] ?? 90))->format('Y-m-d');
             $saleEnd = Carbon::now()->format('Y-m-d');
-            $fast = $this->getAvgSellDaysByVariation($business_id, $locationId, $saleStart, $saleEnd, null, true, $permittedLocations);
+
+            // Pull candidate PSC rows first (any category at this location),
+            // then scope the heavy avg-sell-days query to just those vids.
+            // Was the slowest single query on the page before this scoping.
+            $rows = $this->queryPscRows($business_id, $locationId, [], $permittedLocations);
+            $variationIds = array_map(fn ($r) => (int) $r->variation_id, $rows->all());
+            $fast = $this->getAvgSellDaysByVariation($business_id, $locationId, $saleStart, $saleEnd, null, true, $permittedLocations, $variationIds);
 
             if (!empty($fast)) {
-                $rows = $this->queryPscRows($business_id, $locationId, [], $permittedLocations);
                 foreach ($rows as $row) {
                     $vid = (int) $row->variation_id;
                     if (!isset($fast[$vid])) {
@@ -1745,8 +1752,20 @@ class InventoryCheckService
         string $saleEnd,
         ?int $supplierId,
         bool $excludeZeroDay,
-        $permittedLocations
+        $permittedLocations,
+        ?array $variationIds = null
     ): array {
+        // If caller passes variationIds, scope the join to only those.
+        // bucketFastOos was the slowest call on the page because this
+        // query joined the full 90-day sell-lines × purchase-lines set
+        // (millions of row pairs) and built avg_sell_days for variations
+        // that weren't even in the candidate PSC list. Scoping with
+        // whereIn drops the work by an order of magnitude (Sarah hit a
+        // 30s+ "Loading…" 2026-05-20).
+        if ($variationIds !== null && empty($variationIds)) {
+            return [];
+        }
+
         $q = DB::table('transaction_sell_lines_purchase_lines as tslp')
             ->join('purchase_lines as pl', 'pl.id', '=', 'tslp.purchase_line_id')
             ->join('transactions as purchase', 'purchase.id', '=', 'pl.transaction_id')
@@ -1758,6 +1777,9 @@ class InventoryCheckService
             ->whereNotNull('sale.transaction_date')
             ->whereBetween(DB::raw('DATE(sale.transaction_date)'), [$saleStart, $saleEnd]);
 
+        if ($variationIds !== null) {
+            $q->whereIn('pl.variation_id', $variationIds);
+        }
         if ($supplierId) {
             $q->where('purchase.contact_id', $supplierId);
         }
