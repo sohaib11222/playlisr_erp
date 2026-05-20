@@ -144,6 +144,7 @@
                 lazyLoadAuxBucket('manager_picks', window.ICA_MGRPICKS_BUCKET_URL);
                 lazyLoadAuxBucket('abc_a_restock', window.ICA_ABC_URL);
                 lazyLoadAuxBucket('frozen_inventory', window.ICA_FROZEN_URL);
+                lazyLoadSecondaryBuckets();
             })
             .catch((err) => {
                 console.error('[ICA] build error', err);
@@ -259,6 +260,37 @@
                 }
             });
         });
+    }
+
+    function lazyLoadSecondaryBuckets() {
+        if (!window.ICA_SECONDARY_URL) return;
+        const params = new URLSearchParams();
+        if ($location && $location.value) params.append('location_id', $location.value);
+        if ($preset && $preset.value) params.append('preset', $preset.value);
+
+        fetch(window.ICA_SECONDARY_URL + '?' + params.toString(), {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': window.ICA_CSRF || '' },
+            credentials: 'same-origin',
+        })
+            .then((r) => r.json())
+            .then((resp) => {
+                if (!resp || !resp.buckets) return;
+                Object.keys(resp.buckets).forEach((key) => {
+                    const bucket = resp.buckets[key];
+                    if (lastResult && lastResult.buckets) {
+                        lastResult.buckets[key] = bucket;
+                    }
+                    const existing = $root.querySelector('.ica-bucket[data-bucket="' + key + '"]');
+                    if (!existing) return;
+                    const html = renderBucketSection(key, bucket);
+                    const tmp = document.createElement('div');
+                    tmp.innerHTML = html;
+                    const fresh = tmp.firstElementChild;
+                    if (fresh) existing.replaceWith(fresh);
+                });
+                attachBucketHandlers();
+            })
+            .catch((err) => console.error('[ICA] secondary buckets lazy-load failed', err));
     }
 
     function lazyLoadEventsBucket() {

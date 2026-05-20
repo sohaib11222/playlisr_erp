@@ -173,45 +173,26 @@ class InventoryCheckService
         $saleStart = $input['sale_start'] ?? Carbon::now()->subDays(90)->format('Y-m-d');
         $saleEnd = $input['sale_end'] ?? Carbon::now()->format('Y-m-d');
 
-        $topArtists = $this->getTopArtists($business_id, $locationId, $permittedLocations);
-
-        // Per Sarah 2026-05-20: Jon's primary focus is fast sellers <90d, so
-        // that bucket stays first + cheap to compute. Events, ABC, and frozen
-        // all defer to lazy endpoints so the main "Building…" finishes in
-        // ~2-3s instead of timing out.
+        // Sarah 2026-05-20: page kept hanging on "Building…". Root cause:
+        // every secondary bucket ran sync inside buildBuckets, and many do
+        // multi-second queries (long_oos_essentials = 365-day scan,
+        // top_artists = 90-day scan + 4-way join, 3 chart_picks buckets
+        // each iterate the week's picks doing product lookups). Now ONLY
+        // fast_oos + customer_wants run sync — both are cheap. Everything
+        // else is a lazy placeholder fetched by JS after the page paints.
         $buckets = [
             'fast_oos' => $this->bucketFastOos($business_id, $locationId, $permittedLocations),
-            'street_pulse' => $this->bucketChartPicks($business_id, $locationId, 'street_pulse', $topArtists, $permittedLocations),
-            'universal_top' => $this->bucketChartPicks($business_id, $locationId, 'universal_top', $topArtists, $permittedLocations),
-            'apple_music_top' => $this->bucketChartPicks($business_id, $locationId, 'apple_music_top', $topArtists, $permittedLocations),
-            'top_artist_new_releases' => $this->bucketTopArtistNewReleases($business_id, $locationId, $topArtists, $permittedLocations),
-            // events_upcoming, abc_a_restock, frozen_inventory are ALL lazy —
-            // they hit external feeds or scan big tables and cold-loading
-            // them inline blocked the whole page (Sarah was stuck on the
-            // spinner). JS fires separate requests after the page paints.
-            'events_upcoming' => [
-                'label' => 'Upcoming events — stock up',
-                'why' => 'Loading separately from server.nivessa.com + Ticketmaster feed…',
-                'items' => [], 'count' => 0, 'lazy' => true,
-            ],
-            'long_oos_essentials' => $this->bucketLongOosEssentials($business_id, $locationId, $permittedLocations),
-            'hot_used_oos' => $this->bucketHotUsedOos($business_id, $locationId, $permittedLocations),
             'customer_wants' => $this->bucketCustomerWants($business_id, $locationId),
-            'manager_picks' => [
-                'label' => 'Manager picks',
-                'why' => 'Loading separately (Lashyn et al stock-up suggestions)…',
-                'items' => [], 'count' => 0, 'lazy' => true,
-            ],
-            'abc_a_restock' => [
-                'label' => 'A-class items — restock priority',
-                'why' => 'Loading separately (ABC analysis scans the full product catalog)…',
-                'items' => [], 'count' => 0, 'lazy' => true,
-            ],
-            'frozen_inventory' => [
-                'label' => 'Frozen inventory — DO NOT reorder',
-                'why' => 'Loading separately (dead-stock scan crosses transaction history)…',
-                'items' => [], 'count' => 0, 'lazy' => true,
-            ],
+            'street_pulse' => $this->lazyPlaceholder('Street Pulse picks'),
+            'universal_top' => $this->lazyPlaceholder('Universal top'),
+            'apple_music_top' => $this->lazyPlaceholder('Apple Music top 100'),
+            'top_artist_new_releases' => $this->lazyPlaceholder('New releases from your top artists'),
+            'events_upcoming' => $this->lazyPlaceholder('Upcoming events — stock up'),
+            'long_oos_essentials' => $this->lazyPlaceholder('Long out-of-stock essentials'),
+            'hot_used_oos' => $this->lazyPlaceholder('Hot used, currently out'),
+            'manager_picks' => $this->lazyPlaceholder('Manager picks'),
+            'abc_a_restock' => $this->lazyPlaceholder('A-class items — restock priority'),
+            'frozen_inventory' => $this->lazyPlaceholder('Frozen inventory — DO NOT reorder'),
         ];
 
         // Optionally filter buckets to categories if the user passed category_ids
@@ -234,6 +215,36 @@ class InventoryCheckService
                 'top_artists' => $topArtists,
                 'generated_at' => Carbon::now()->toIso8601String(),
             ],
+        ];
+    }
+
+    protected function lazyPlaceholder(string $label): array
+    {
+        return [
+            'label' => $label,
+            'why' => 'Loading…',
+            'items' => [],
+            'count' => 0,
+            'lazy' => true,
+        ];
+    }
+
+    /**
+     * The slow buckets, computed in one server-side pass so JS only has
+     * to fire one extra request after the initial fast_oos render.
+     * Returns the same key/shape as buildBuckets so the caller can splice
+     * results directly into lastResult.buckets[*].
+     */
+    public function buildSecondaryBuckets(int $business_id, int $locationId, $permittedLocations): array
+    {
+        $topArtists = $this->getTopArtists($business_id, $locationId, $permittedLocations);
+        return [
+            'street_pulse' => $this->bucketChartPicks($business_id, $locationId, 'street_pulse', $topArtists, $permittedLocations),
+            'universal_top' => $this->bucketChartPicks($business_id, $locationId, 'universal_top', $topArtists, $permittedLocations),
+            'apple_music_top' => $this->bucketChartPicks($business_id, $locationId, 'apple_music_top', $topArtists, $permittedLocations),
+            'top_artist_new_releases' => $this->bucketTopArtistNewReleases($business_id, $locationId, $topArtists, $permittedLocations),
+            'long_oos_essentials' => $this->bucketLongOosEssentials($business_id, $locationId, $permittedLocations),
+            'hot_used_oos' => $this->bucketHotUsedOos($business_id, $locationId, $permittedLocations),
         ];
     }
 
@@ -481,30 +492,15 @@ class InventoryCheckService
             return ($b['sold_qty_window'] ?? 0) <=> ($a['sold_qty_window'] ?? 0);
         });
 
-        // Enrich rows with "last ordered" info — employees asked for
-        // feedback on how their previous orders sold (Sarah 2026-05-20).
-        // The reason column now reads e.g. "sold 4 in 60d, stock 0 ·
-        // last ordered 3 on 2026-04-02".
-        if (!empty($items)) {
-            $variationIds = array_map(fn ($it) => (int) $it['variation_id'], $items);
-            $lastOrdered = $this->getLastPurchaseByVariation($business_id, $locationId, $variationIds, $permittedLocations);
-            foreach ($items as &$it) {
-                $vid = (int) ($it['variation_id'] ?? 0);
-                if (!$vid || empty($lastOrdered[$vid])) {
-                    continue;
-                }
-                $lp = $lastOrdered[$vid];
-                $it['last_order_qty'] = (float) $lp['qty'];
-                $it['last_order_date'] = $lp['date'];
-                $it['reason'] = ($it['reason'] ?? '')
-                    . ' · last ordered ' . (int) $lp['qty'] . ' on ' . $lp['date'];
-            }
-            unset($it);
-        }
+        // The "last ordered" enrichment was dropped 2026-05-20 — the
+        // implementation did a per-item query (N+1) and was the new
+        // bottleneck after avg-sell-days went away. Page must load first;
+        // the previous-order feedback feature is parked until it can be
+        // batched into one query or moved to a lazy endpoint.
 
         return [
             'label' => 'Fast-moving, out of stock',
-            'why' => 'Sold fast in the last 60-90 days; we have zero or near-zero on shelf. Each row shows what we last ordered + when, so you can judge if the previous order was right-sized.',
+            'why' => 'Sold fast in the last 60-90 days; we have zero or near-zero on shelf.',
             'items' => $items,
             'count' => count($items),
         ];

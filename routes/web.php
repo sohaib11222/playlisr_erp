@@ -386,6 +386,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/inventory-check-assistant/data', 'InventoryCheckController@data');
     Route::get('/reports/inventory-check-assistant/buckets', 'InventoryCheckController@buckets');
     Route::get('/reports/inventory-check-assistant/events-bucket', 'InventoryCheckController@eventsBucket');
+    Route::get('/reports/inventory-check-assistant/secondary-buckets', 'InventoryCheckController@secondaryBuckets');
     Route::get('/reports/inventory-check-assistant/abc-restock-bucket', 'InventoryCheckController@abcRestockBucket');
     Route::get('/reports/inventory-check-assistant/frozen-inventory-bucket', 'InventoryCheckController@frozenInventoryBucket');
     Route::get('/reports/inventory-check-assistant/manager-picks-bucket', 'InventoryCheckController@managerPicksBucket');

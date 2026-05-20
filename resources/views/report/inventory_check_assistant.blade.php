@@ -512,6 +512,7 @@
     window.ICA_COPY_FORMAT = @json($copyFormat);
     window.ICA_BUCKETS_URL = "{{ action('InventoryCheckController@buckets') }}";
     window.ICA_EVENTS_URL = "{{ action('InventoryCheckController@eventsBucket') }}";
+    window.ICA_SECONDARY_URL = "{{ action('InventoryCheckController@secondaryBuckets') }}";
     window.ICA_ABC_URL = "{{ action('InventoryCheckController@abcRestockBucket') }}";
     window.ICA_FROZEN_URL = "{{ action('InventoryCheckController@frozenInventoryBucket') }}";
     window.ICA_MGRPICKS_BUCKET_URL = "{{ action('InventoryCheckController@managerPicksBucket') }}";

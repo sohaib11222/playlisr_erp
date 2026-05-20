@@ -371,6 +371,38 @@ class InventoryCheckController extends Controller
         return response()->json(['success' => true, 'picks' => $picks]);
     }
 
+    /**
+     * Single endpoint returning the slow secondary buckets (chart picks,
+     * long-OOS, hot-used, top-artist new releases). Page renders the
+     * primary fast_oos + customer_wants first, then JS fires this to
+     * fill in the rest so "Building…" doesn't hang on the 365-day
+     * long-OOS scan + 4-way top-artists join (Sarah 2026-05-20).
+     */
+    public function secondaryBuckets(Request $request)
+    {
+        try {
+            $business_id = (int) $request->session()->get('user.business_id');
+            $input = $request->only(['location_id', 'preset']);
+            if (!empty($input['preset'])) {
+                $resolved = $this->inventoryCheckService->resolvePreset($business_id, $input['preset']);
+                $input = array_merge($resolved, $input);
+            }
+            $locationId = !empty($input['location_id']) ? (int) $input['location_id'] : null;
+            if (!$locationId) {
+                return response()->json(['buckets' => []]);
+            }
+            $permitted = auth()->user()->permitted_locations();
+            $buckets = $this->inventoryCheckService->buildSecondaryBuckets($business_id, $locationId, $permitted);
+            return response()->json(['buckets' => $buckets]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('ICA secondary buckets failed', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile() . ':' . $e->getLine(),
+            ]);
+            return response()->json(['buckets' => [], 'error' => $e->getMessage()]);
+        }
+    }
+
     public function export(Request $request)
     {
         // Open to all authenticated staff — inventory check assistant is
