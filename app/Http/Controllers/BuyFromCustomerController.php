@@ -261,17 +261,16 @@ class BuyFromCustomerController extends Controller
         $request->validate($rules);
 
         if ($requireFinal) {
-            // Sarah 2026-05-06: starting / 2nd / final offers are now read-only
-            // outputs of the calculator (50% / 75% / 95% of the calculated
-            // total), so the cashier can no longer "override" them from the UI.
-            // We still compare submitted final vs. the calculator's auto-final
-            // and only require an override reason if they actually diverge —
-            // which today only happens if someone hand-tampers the form. Keeps
-            // the existing override-reason field meaningful without forcing it
-            // on every accept.
-            $calc = $this->calculator->calculate($request->input('lines', []), $request->all());
+            // Sarah 2026-05-19: starting / 2nd / final offers are editable again,
+            // so the calculator now respects user-typed offer values. To still
+            // detect when the cashier actually overrode the suggested final, we
+            // recompute the calculator's pure auto-final by passing an empty
+            // offerInputs array (which forces the 50% / 75% / 95% defaults), and
+            // compare that to whatever the cashier submitted. If they diverge,
+            // require an override reason.
+            $autoCalc = $this->calculator->calculate($request->input('lines', []), []);
             $pm = $request->input('payment_method');
-            $autoFinal = $pm === 'store_credit' ? (float) $calc['final_offer_credit'] : (float) $calc['final_offer_cash'];
+            $autoFinal = $pm === 'store_credit' ? (float) $autoCalc['final_offer_credit'] : (float) $autoCalc['final_offer_cash'];
             $final = $pm === 'store_credit' ? (float) $request->input('final_offer_credit') : (float) $request->input('final_offer_cash');
             if (abs($final - $autoFinal) > 0.009) {
                 $request->validate([

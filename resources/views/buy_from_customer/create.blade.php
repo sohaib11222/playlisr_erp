@@ -307,14 +307,14 @@
                     <button type="button" class="btn btn-default btn-sm" id="add_line_btn"><i class="fa fa-plus"></i> Add line</button>
 
                     <hr>
-                    {{-- Sarah 2026-05-06: Starting / 2nd / Final cash + credit are no longer
-                         editable — they ARE the offer the calculator computed (50% / 75% / 95%
-                         of the calculated total). Cashier just reads them off. The calculate
-                         form does NOT POST the offer fields — calculator always recomputes
-                         from lines so re-Calculate after editing items always reflects the
-                         new total. Save / Accept / Reject forms below DO emit the calc values
-                         as hidden inputs so the saveOffer / override-reason logic still works. --}}
-                    <h4>Offer to customer <small class="text-muted">auto-calculated from items above</small></h4>
+                    {{-- Sarah 2026-05-19: offer fields are editable again. The calculator
+                         suggests 50% / 75% / 95% of the calculated total, but the cashier
+                         needs to type the actual offered + accepted prices (e.g. for
+                         fixed-rate item types like Book/CD where the Discogs Median +
+                         Multiplier are ignored, or any negotiated number that diverges
+                         from the suggestion). Blank a field to fall back to the auto
+                         suggestion on the next Calculate. --}}
+                    <h4>Offer to customer <small class="text-muted">— autofilled from items; type to override the actual offered/accepted price</small></h4>
                     @php
                         $offerStartingCash = data_get($calc, 'starting_offer_cash');
                         $offerStartingCredit = data_get($calc, 'starting_offer_credit');
@@ -322,8 +322,8 @@
                         $offerSecondCredit = data_get($calc, 'second_offer_credit');
                         $offerFinalCash = data_get($calc, 'final_offer_cash');
                         $offerFinalCredit = data_get($calc, 'final_offer_credit');
-                        $fmtOffer = function ($v) {
-                            return $v === null || $v === '' ? '—' : '$' . number_format((float) $v, 2);
+                        $offerInput = function ($v) {
+                            return $v === null || $v === '' ? '' : number_format((float) $v, 2, '.', '');
                         };
                     @endphp
                     <table class="table table-bordered bfc-offer-table">
@@ -337,21 +337,22 @@
                         <tbody>
                             <tr>
                                 <th class="bfc-offer-rowlabel">1. Starting offer</th>
-                                <td><input type="text" class="form-control bfc-offer-display" value="{{ $fmtOffer($offerStartingCash) }}" readonly tabindex="-1"></td>
-                                <td><input type="text" class="form-control bfc-offer-display" value="{{ $fmtOffer($offerStartingCredit) }}" readonly tabindex="-1"></td>
+                                <td>{!! Form::number('starting_offer_cash', $offerInput($offerStartingCash), ['class' => 'form-control', 'step' => '0.01', 'min' => '0', 'placeholder' => 'auto (50%)']) !!}</td>
+                                <td>{!! Form::number('starting_offer_credit', $offerInput($offerStartingCredit), ['class' => 'form-control', 'step' => '0.01', 'min' => '0', 'placeholder' => 'auto (50%)']) !!}</td>
                             </tr>
                             <tr>
                                 <th class="bfc-offer-rowlabel">2. 2nd offer</th>
-                                <td><input type="text" class="form-control bfc-offer-display" value="{{ $fmtOffer($offerSecondCash) }}" readonly tabindex="-1"></td>
-                                <td><input type="text" class="form-control bfc-offer-display" value="{{ $fmtOffer($offerSecondCredit) }}" readonly tabindex="-1"></td>
+                                <td>{!! Form::number('second_offer_cash', $offerInput($offerSecondCash), ['class' => 'form-control', 'step' => '0.01', 'min' => '0', 'placeholder' => 'auto (75%)']) !!}</td>
+                                <td>{!! Form::number('second_offer_credit', $offerInput($offerSecondCredit), ['class' => 'form-control', 'step' => '0.01', 'min' => '0', 'placeholder' => 'auto (75%)']) !!}</td>
                             </tr>
                             <tr>
                                 <th class="bfc-offer-rowlabel">3. Final offer</th>
-                                <td><input type="text" class="form-control bfc-offer-display" value="{{ $fmtOffer($offerFinalCash) }}" readonly tabindex="-1"></td>
-                                <td><input type="text" class="form-control bfc-offer-display" value="{{ $fmtOffer($offerFinalCredit) }}" readonly tabindex="-1"></td>
+                                <td>{!! Form::number('final_offer_cash', $offerInput($offerFinalCash), ['class' => 'form-control', 'step' => '0.01', 'min' => '0', 'placeholder' => 'auto (95%)']) !!}</td>
+                                <td>{!! Form::number('final_offer_credit', $offerInput($offerFinalCredit), ['class' => 'form-control', 'step' => '0.01', 'min' => '0', 'placeholder' => 'auto (95%)']) !!}</td>
                             </tr>
                         </tbody>
                     </table>
+                    <p class="help-block small" style="margin-top:-4px;">Tip: blank a field and press Calculate to reset to the auto suggestion. Press Calculate again after editing items above to recompute.</p>
                     <div class="form-group">
                         <label>Notes <span class="text-muted">(sealed items, rare finds, condition concerns)</span></label>
                         {!! Form::textarea('notes', $input['notes'] ?? null, ['class' => 'form-control', 'rows' => 2]) !!}
@@ -600,6 +601,35 @@
         });
 
         @if(!empty($calc))
+        // Sarah 2026-05-19: the offer fields live inside the Calculate form, but
+        // Save / Accept / Reject are separate forms whose offer values come from
+        // hidden inputs emitted server-side (last Calculate's $input). If the
+        // cashier types into an offer field AFTER Calculate, that typed value
+        // would be lost when they click Accept. So at submit time, sync the live
+        // offer field values into matching hidden inputs in the submitting form.
+        var BFC_OFFER_FIELDS = [
+            'starting_offer_cash', 'starting_offer_credit',
+            'second_offer_cash', 'second_offer_credit',
+            'final_offer_cash', 'final_offer_credit',
+        ];
+        function syncOffersIntoForm($form) {
+            BFC_OFFER_FIELDS.forEach(function (name) {
+                var live = $('#buy_offer_form').find('[name="' + name + '"]').val();
+                if (live === undefined) return;
+                var $h = $form.find('input[name="' + name + '"]').not(':visible');
+                if ($h.length) {
+                    $h.val(live);
+                } else {
+                    $form.append('<input type="hidden" name="' + name + '" value="' + $('<div>').text(live).html() + '">');
+                }
+            });
+        }
+        $('form').each(function () {
+            var $form = $(this);
+            if ($form.attr('id') === 'buy_offer_form') return;
+            $form.on('submit', function () { syncOffersIntoForm($form); });
+        });
+
         (function signaturePad() {
             var canvas = document.getElementById('buy_signature_canvas');
             if (!canvas || !canvas.getContext) return;
