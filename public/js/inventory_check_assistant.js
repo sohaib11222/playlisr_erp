@@ -315,13 +315,13 @@
                             tr.style.opacity = '0';
                             setTimeout(() => tr.remove(), 400);
                         } else {
-                            // checkbox/product/artist/format/cat/genre/abc/stock
-                            const stockCell = tr.children[7];
+                            // checkbox/product/artist/format/bin/cat/genre/abc/stock
+                            const stockCell = tr.children[8];
                             if (stockCell) stockCell.textContent = newQty;
                             btn.dataset.current = String(newQty);
                             btn.disabled = false; btn.textContent = 'Set stock';
-                            // Reason is td:nth-child(10) after the ABC column was added
-                            const reasonCell = tr.querySelector('td:nth-child(10) small');
+                            // Reason is td:nth-child(11) after Bin + ABC columns
+                            const reasonCell = tr.querySelector('td:nth-child(11) small');
                             if (reasonCell) {
                                 const userName = (resp.entry && resp.entry.user_name) || 'you';
                                 const when = new Date().toISOString().substring(0, 10);
@@ -523,16 +523,22 @@
         const $cat = document.getElementById('ica_filter_category');
         const $gen = document.getElementById('ica_filter_genre');
         const $abc = document.getElementById('ica_filter_abc');
+        const $rsd = document.getElementById('ica_filter_hide_rsd');
         const cat = $cat ? $cat.value : '';
         const gen = $gen ? $gen.value : '';
         const abc = $abc ? $abc.value : '';
+        const hideRsd = $rsd ? $rsd.checked : false;
         $root.querySelectorAll('.ica-bucket').forEach((bucketEl) => {
             let visible = 0;
             bucketEl.querySelectorAll('tr[data-row-key]').forEach((tr) => {
                 const rowCat = tr.getAttribute('data-cat') || '';
                 const rowGen = tr.getAttribute('data-genre') || '';
                 const rowAbc = tr.getAttribute('data-abc') || '';
-                const match = (!cat || rowCat === cat) && (!gen || rowGen === gen) && (!abc || rowAbc === abc);
+                const rowRsd = tr.getAttribute('data-rsd') === '1';
+                const match = (!cat || rowCat === cat)
+                    && (!gen || rowGen === gen)
+                    && (!abc || rowAbc === abc)
+                    && (!hideRsd || !rowRsd);
                 tr.style.display = match ? '' : 'none';
                 if (match) visible++;
             });
@@ -551,7 +557,7 @@
         });
     }
 
-    ['ica_filter_category', 'ica_filter_genre', 'ica_filter_abc'].forEach((id) => {
+    ['ica_filter_category', 'ica_filter_genre', 'ica_filter_abc', 'ica_filter_hide_rsd'].forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.addEventListener('change', applyRowFilters);
     });
@@ -563,7 +569,7 @@
         // filtered by either. The two new dropdowns above the buckets
         // drive client-side row hiding.
         const headRow = `<th><input type="checkbox" class="ica-select-all" data-bucket="${escapeHtml(key)}"></th>
-               <th>Product</th><th>Artist</th><th>Format</th><th>Category</th><th>Genre</th><th title="ABC class — A is the top 80% of inventory value">ABC</th><th>Stock</th><th>Sold (window)</th><th>Reason</th><th>Tags</th><th>Qty</th><th></th>`;
+               <th>Product</th><th>Artist</th><th>Format</th><th>Bin</th><th>Category</th><th>Genre</th><th title="ABC class — A is the top 80% of inventory value">ABC</th><th>Stock</th><th>Sold (window)</th><th>Reason</th><th>Tags</th><th>Qty</th><th></th>`;
         const body = (b.count || 0) === 0
             ? `<div class="ica-bucket-empty">No items in this bucket${b.empty_reason ? ' (' + b.empty_reason.replace(/_/g, ' ') + ')' : ''}.</div>`
             : `<table class="table table-condensed table-striped ica-row-table"><thead><tr>${headRow}</tr></thead><tbody>${rows}</tbody></table>`;
@@ -604,6 +610,8 @@
         const format = escapeHtml(it.format || '');
         const category = escapeHtml(it.category_name || '');
         const genre = escapeHtml(it.genre || '');
+        const bin = escapeHtml(it.bin_position || '');
+        const isRsd = !!it.is_rsd;
         const qty = parseInt(it.suggested_qty || 0, 10) || 0;
         const rowKey = [bucket, it.variation_id || '', it.customer_want_id || '', it.artist || '', it.product || ''].join('|');
 
@@ -640,11 +648,15 @@
         // tags every row 'abc_A'); use that as the initial ABC cell.
         const initialAbc = abcTag ? abcTag.replace('abc_', '') : '';
         const abcCell = initialAbc ? `<span class="ica-abc-cell ica-abc-${initialAbc}">${initialAbc}</span>` : '—';
-        return `<tr data-row-key="${escapeHtml(rowKey)}" data-pid="${pid}" data-cat="${category}" data-genre="${genre}" data-abc="${initialAbc}">
+        // is_rsd flag flows from the server — RSD titles can be hidden
+        // via the new "Hide RSD titles" checkbox above the buckets.
+        const productCell = isRsd ? `${product} <span class="ica-tag ica-rsd-tag" title="Record Store Day release">RSD</span>` : product;
+        return `<tr data-row-key="${escapeHtml(rowKey)}" data-pid="${pid}" data-cat="${category}" data-genre="${genre}" data-abc="${initialAbc}" data-rsd="${isRsd ? '1' : '0'}">
             <td><input type="checkbox" class="ica-row-check" ${checkboxAttrs}></td>
-            <td>${product}</td>
+            <td>${productCell}</td>
             <td>${artist}</td>
             <td>${format}</td>
+            <td><small>${bin || '—'}</small></td>
             <td><small>${category || '—'}</small></td>
             <td><small>${genre || '—'}</small></td>
             <td class="ica-abc-col">${abcCell}</td>

@@ -88,6 +88,9 @@
                         <option value="C">C only</option>
                     </select>
                 </span>
+                <label class="ica-filter-check" title="Hide Record Store Day exclusives (titles with 'RSD' or 'Record Store Day' in the name)">
+                    <input type="checkbox" id="ica_filter_hide_rsd"> Hide RSD titles
+                </label>
                 <a class="btn btn-link btn-sm pull-right" data-toggle="collapse" href="#ica_advanced_filters" role="button">
                     vinyl/CDs only? ▾
                 </a>

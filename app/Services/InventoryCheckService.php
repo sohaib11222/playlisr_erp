@@ -634,6 +634,8 @@ class InventoryCheckService
                 'category_name' => $match['category_name'] ?? null,
                 'category_id' => $match['category_id'] ?? null,
                 'genre' => $match['genre'] ?? null,
+                'bin_position' => $match['bin_position'] ?? null,
+                'is_rsd' => $this->isRsdTitle((string) ($pick->title ?? '')),
                 'suggested_qty' => $this->suggestedQtyForChartPick($pick, $stock, $isTopArtist),
                 'reason' => $this->chartPickReason($pick, $isTopArtist, $match),
                 'tags' => array_values(array_filter([
@@ -773,6 +775,7 @@ class InventoryCheckService
             'category_name' => $row->category_name,
             'category_id' => $row->category_id ?? null,
             'genre' => $row->genre ?? null,
+            'bin_position' => $row->bin_position ?? null,
         ];
     }
 
@@ -925,6 +928,8 @@ class InventoryCheckService
                         'location_name' => $match->location_name,
                         'category_name' => $match->category_name,
                         'genre' => $match->genre ?? null,
+                        'bin_position' => $match->bin_position ?? null,
+                        'is_rsd' => $this->isRsdTitle((string) ($match->product ?? '')),
                         'suggested_qty' => max(1, 3 - (int) $stock),
                         'reason' => $reason,
                         'tags' => $tags,
@@ -1037,7 +1042,7 @@ class InventoryCheckService
                 'psc.variation_id', 'psc.product_id', 'psc.stock', 'psc.sku', 'psc.product',
                 'psc.location_name', 'psc.category_name', 'psc.total_sold',
                 'subcat.name as genre',
-                'p.format as product_format',
+                'p.format as product_format', 'p.bin_position',
             ])
             ->orderByDesc('psc.total_sold')
             ->limit($limit)
@@ -1209,7 +1214,7 @@ class InventoryCheckService
             'psc.location_name', 'psc.category_name', 'psc.category_id',
             'psc.sub_category_id', 'subcat.name as genre',
             'psc.product_custom_field1', 'psc.total_sold', 'psc.stock_price',
-            'p.format as product_format',
+            'p.format as product_format', 'p.bin_position',
         ])->orderByDesc('psc.stock_price')->get();
 
         if ($stocked->isEmpty()) {
@@ -1363,7 +1368,7 @@ class InventoryCheckService
                 'psc.product', 'psc.product_variation', 'psc.variation_name', 'psc.location_name',
                 'psc.category_name', 'psc.product_custom_field1', 'psc.total_sold', 'psc.type',
                 'psc.category_id', 'psc.sub_category_id', 'subcat.name as genre',
-                'p.format as product_format',
+                'p.format as product_format', 'p.bin_position',
             ])
             ->limit(500)
             ->get();
@@ -1484,6 +1489,8 @@ class InventoryCheckService
                 'category_name' => $meta->category_name ?? null,
                 'category_id' => $meta->category_id ?? null,
                 'genre' => $meta->genre ?? null,
+                'bin_position' => $meta->bin_position ?? null,
+                'is_rsd' => $this->isRsdTitle((string) ($meta->name ?? '')),
                 'location_name' => null,
                 'stock' => $stock,
                 'sold_qty_window' => round($soldWindow, 2),
@@ -1736,6 +1743,7 @@ class InventoryCheckService
                 'p.id', 'p.name', 'p.format', 'p.product_custom_field1',
                 'p.category_id', 'c.name as category_name',
                 'p.sub_category_id', 'subcat.name as genre',
+                'p.bin_position',
                 DB::raw('MIN(v.sub_sku) as sku'),
             ])
             ->get();
@@ -1858,6 +1866,7 @@ class InventoryCheckService
             'psc.sub_category_id', 'subcat.name as genre',
             'psc.product_custom_field1', 'psc.total_sold',
             'p.format as product_format',
+            'p.bin_position',
         ])
             ->orderByDesc('psc.total_sold')
             ->limit((int) config('inventory_check.max_candidate_rows', 2000))
@@ -1888,6 +1897,8 @@ class InventoryCheckService
             'genre' => $row->genre ?? null,
             'sub_category_id' => $row->sub_category_id ?? null,
             'location_name' => $row->location_name,
+            'bin_position' => $row->bin_position ?? null,
+            'is_rsd' => $this->isRsdTitle($row->product ?? ''),
             'stock' => $stock,
             'sold_qty_window' => round($soldWindow, 2),
             'suggested_qty' => (int) $suggested,
@@ -1896,6 +1907,21 @@ class InventoryCheckService
                 : '',
             'tags' => [],
         ], $extra);
+    }
+
+    /**
+     * Detect Record Store Day titles by name. No structured RSD flag
+     * exists in the schema (Sarah 2026-05-20) so we look for the
+     * common markers cashiers + AMS put in the title.
+     */
+    protected function isRsdTitle(string $name): bool
+    {
+        if ($name === '') return false;
+        $lower = mb_strtolower($name);
+        if (mb_strpos($lower, 'rsd') !== false) return true;
+        if (mb_strpos($lower, 'record store day') !== false) return true;
+        if (mb_strpos($lower, 'black friday rsd') !== false) return true;
+        return false;
     }
 
     protected function dedupeByVariation(array $items): array
