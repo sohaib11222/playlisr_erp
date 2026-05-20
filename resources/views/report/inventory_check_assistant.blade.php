@@ -52,28 +52,15 @@
     <div class="row no-print">
         <div class="col-md-12">
             <div class="ica-store-picker">
-                <span class="ica-store-picker-label">What are you ordering for?</span>
-                <button type="button" class="btn btn-lg btn-primary ica-store-btn" data-preset="hollywood_all">
-                    🎸 Hollywood — everything
+                <span class="ica-store-picker-label">What store?</span>
+                <button type="button" class="btn btn-lg btn-default ica-store-btn" data-preset="hollywood_all">
+                    🎸 Hollywood
                 </button>
-                <button type="button" class="btn btn-lg btn-default ica-store-btn" data-preset="hollywood_sealed_vinyl">
-                    Hollywood vinyl only
-                </button>
-                <button type="button" class="btn btn-lg btn-default ica-store-btn" data-preset="hollywood_sealed_cd">
-                    Hollywood CDs only
-                </button>
-                <span class="ica-store-divider">·</span>
-                <button type="button" class="btn btn-lg btn-primary ica-store-btn" data-preset="pico_all">
-                    🌴 Pico — everything
-                </button>
-                <button type="button" class="btn btn-lg btn-default ica-store-btn" data-preset="pico_sealed_vinyl">
-                    Pico vinyl only
-                </button>
-                <button type="button" class="btn btn-lg btn-default ica-store-btn" data-preset="pico_sealed_cd">
-                    Pico CDs only
+                <button type="button" class="btn btn-lg btn-default ica-store-btn" data-preset="pico_all">
+                    🌴 Pico
                 </button>
                 <a class="btn btn-link btn-sm pull-right" data-toggle="collapse" href="#ica_advanced_filters" role="button">
-                    Advanced filters ▾
+                    vinyl/CDs only? ▾
                 </a>
             </div>
 
