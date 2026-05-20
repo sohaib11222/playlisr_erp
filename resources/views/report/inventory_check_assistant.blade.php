@@ -3,51 +3,11 @@
 
 @section('content')
 <section class="content-header">
-    <h1>Order for this Week <small class="text-muted">— Inventory Check Assistant</small></h1>
-    <p class="text-muted">Pick a store below. <strong>Jon's focus:</strong> the 🔥 Fast-moving, out-of-stock bucket — sealed vinyl/CDs that sold &lt;90 days. Everything else (charts, events, ABC, frozen) is supporting context.</p>
-
-    <div class="ica-help-toggle">
-        <a data-toggle="collapse" href="#ica_help" role="button" aria-expanded="false">
-            📖 How to use this page (click to expand)
-        </a>
-    </div>
-    <div class="collapse" id="ica_help">
-        <div class="ica-help-panel">
-            <h4 style="margin-top:0;">Step-by-step</h4>
-            <ol style="margin-bottom:8px;">
-                <li><strong>Pick the store</strong> you're ordering for. Click <em>Hollywood — everything</em> or <em>Pico — everything</em>. The page rebuilds for that store automatically.</li>
-                <li><strong>Wait for it to load</strong> — usually 2-5 seconds. Events load separately and may appear a few seconds after the rest of the page.</li>
-                <li><strong>(Optional) Refresh this week's chart data:</strong>
-                    <ul>
-                        <li>🍎 <em>Run Apple Music pull now</em> — pulls today's Apple Music top 100 (takes ~3s).</li>
-                        <li>📬 <em>Street Pulse / Luminate</em> — click "Upload this week's chart". For PNG email screenshots, select all of them at once (cmd-click in the file picker). The browser OCRs each one and fills the paste box. Review the rows for typos, then click Import.</li>
-                        <li>🌍 <em>UMe / Universal</em> — click "Upload this week's chart" and drag in the weekly "UMe Back-in-Stock + Active LPs and CDs" .xlsx attachment.</li>
-                    </ul>
-                </li>
-                <li><strong>Scroll the buckets</strong> to review what's recommended:
-                    <ul>
-                        <li>🔥 <em>Fast-moving, out of stock</em> — sealed vinyl/CDs that sold quickly and we have ≤ 0 on shelf. <em>Sell Speed</em> column shows avg days to sell.</li>
-                        <li>💎 <em>A-class items — restock priority</em> — ABC analysis. Top 80% of inventory value where stock has dropped to 1 or less. These are the highest-impact gaps; being out of A-class hurts the most.</li>
-                        <li>📬 <em>Street Pulse picks</em> / 🌍 <em>Universal top</em> / 🍎 <em>Apple Music top 100</em> — this week's charts, with rows tagged <em>top_artist</em> for artists already popular in our store.</li>
-                        <li>🎵 <em>New releases from your top artists</em> — chart picks from artists popular in-store that we don't yet carry that title.</li>
-                        <li>🎤 <em>Upcoming events — stock up</em> — LA Ticketmaster shows, nivessa-hosted listening parties, <em>and</em> UMe artist moments (biopics, milestone anniversaries, birthdays) in the next 30 days, with the artists' titles we already carry. Anniversary entries are tagged <code>anniversary</code>; concert entries are tagged <code>event</code>.</li>
-                        <li>🔁 <em>Long out-of-stock essentials</em> — items we've sold a lot of historically but haven't restocked in 14+ days.</li>
-                        <li>🎸 <em>Hot used, out of stock</em> — used vinyl/CD titles that sell fast when we have them; advisory only (used inventory comes from trade-ins, not orders).</li>
-                        <li>📞 <em>Customer Wants</em> — open customer requests. Click <em>Fulfilled</em> when you order or stock the title.</li>
-                        <li>❄️ <em>Frozen inventory — DO NOT reorder</em> — stock already on shelf here with no sale in 180+ days. Cross-references with the other buckets: if a row also appears here, you'll see a red <code>frozen dupe</code> tag — strong "don't reorder more" signal. Each row's suggested qty is locked at 0; total dollars tied up shown in the bucket header.</li>
-                    </ul>
-                </li>
-                <li><strong>Adjust quantities</strong> in each row's qty box if the suggestion isn't right. Uncheck rows you don't want to order.</li>
-                <li><strong>Export for AMS</strong> (top button bar) → opens a CSV with all checked rows. Upload that to AMS, or use <em>Copy for cart</em> to paste a one-line-per-item list into another tool.</li>
-            </ol>
-            <p class="text-muted small" style="margin-bottom:0;">
-                <strong>Tips:</strong>
-                Re-uploading a chart for the same week replaces the prior import.
-                The first time you load the page each session, events take a few extra seconds (cold cache).
-                Need a different store/category combo not in the buttons? Open <em>Advanced filters</em>.
-            </p>
-        </div>
-    </div>
+    <h1>Order for this Week</h1>
+    <p class="text-muted ica-lead">
+        <strong>1.</strong> Pick a store below. <strong>2.</strong> Review the 🔥 Fast sellers list (Jon's focus — items that sold &lt;90 days and are out of stock). <strong>3.</strong> Export.
+        Everything else (charts, events, ABC, frozen, customer wants) lives behind the “Show all the other reorder lists” toggle once the list builds.
+    </p>
 </section>
 
 <section class="content">
@@ -150,46 +110,45 @@
         </div>
     </div>
 
-    {{-- ── This-week chart imports (file upload + paste) ──────────── --}}
-    <div class="row no-print" id="ica_freshness_banner">
-        <div class="col-md-6">
-            @component('components.widget', ['class' => 'box-solid', 'title' => '📬 Street Pulse / Luminate chart'])
-            <p class="text-muted small" id="ica_sp_freshness">Not yet imported.</p>
-            <button type="button" class="btn btn-default btn-sm" data-toggle="modal" data-target="#ica_sp_modal">
-                <i class="fa fa-upload"></i> Upload this week's chart
-            </button>
-            <p class="text-muted small" style="margin-top:6px; margin-bottom:0;">Drag in the .xlsx or .csv from the weekly Luminate email.</p>
-            @endcomponent
+    {{-- ── More options (chart imports + inbox pull, collapsed by default) ── --}}
+    <details class="ica-more-options no-print">
+        <summary>⚙️ More options — chart imports, inbox auto-fetch, saved sessions</summary>
+        <div class="row" id="ica_freshness_banner" style="margin-top:8px;">
+            <div class="col-md-6">
+                @component('components.widget', ['class' => 'box-solid', 'title' => '📬 Street Pulse / Luminate chart'])
+                <p class="text-muted small" id="ica_sp_freshness">Not yet imported.</p>
+                <button type="button" class="btn btn-default btn-sm" data-toggle="modal" data-target="#ica_sp_modal">
+                    <i class="fa fa-upload"></i> Upload this week's chart
+                </button>
+                @endcomponent
+            </div>
+            <div class="col-md-6">
+                @component('components.widget', ['class' => 'box-solid', 'title' => '🌍 UMe / Universal chart'])
+                <p class="text-muted small" id="ica_ut_freshness">Not yet imported.</p>
+                <button type="button" class="btn btn-default btn-sm" data-toggle="modal" data-target="#ica_ut_modal">
+                    <i class="fa fa-upload"></i> Upload this week's chart
+                </button>
+                @endcomponent
+            </div>
         </div>
-        <div class="col-md-6">
-            @component('components.widget', ['class' => 'box-solid', 'title' => '🌍 UMe / Universal chart'])
-            <p class="text-muted small" id="ica_ut_freshness">Not yet imported.</p>
-            <button type="button" class="btn btn-default btn-sm" data-toggle="modal" data-target="#ica_ut_modal">
-                <i class="fa fa-upload"></i> Upload this week's chart
-            </button>
-            <p class="text-muted small" style="margin-top:6px; margin-bottom:0;">Drag in the "UMe Back-in-Stock + Active LPs and CDs" .xlsx attachment.</p>
-            @endcomponent
+        <div class="row">
+            <div class="col-md-12">
+                @component('components.widget', ['class' => 'box-info', 'title' => '📥 Auto-fetch from inbox'])
+                <p class="text-muted small">Auto-pulls Street Pulse + UMe emails from sarah@nivessa.com every Wednesday 08:15 PST. Trigger manually below.</p>
+                <button type="button" class="btn btn-primary btn-sm" id="ica_run_import" data-dry-run="1">
+                    <i class="fa fa-bolt"></i> Run test (dry-run)
+                </button>
+                <button type="button" class="btn btn-success btn-sm" id="ica_run_import_real" data-dry-run="0">
+                    <i class="fa fa-download"></i> Run for real
+                </button>
+                <button type="button" class="btn btn-info btn-sm" id="ica_run_apple" style="margin-left:12px;">
+                    🍎 Run Apple Music pull now
+                </button>
+                <pre id="ica_run_import_output" style="display:none; margin-top:12px; max-height:300px; overflow:auto; font-size:11px; background:#f9f9f9; padding:8px;"></pre>
+                @endcomponent
+            </div>
         </div>
-    </div>
-
-    {{-- ── Pull from inbox (auto-fetch runner) ───────────────────── --}}
-    <div class="row no-print">
-        <div class="col-md-12">
-            @component('components.widget', ['class' => 'box-info', 'title' => '📥 Auto-fetch from inbox'])
-            <p class="text-muted small">Pulls last 7 days of Street Pulse + UMe Universal emails from sarah@nivessa.com via IMAP → parses attachments &amp; body → populates the two charts above. Runs every Wednesday 08:15 PST automatically; button below triggers it on demand.</p>
-            <button type="button" class="btn btn-primary btn-sm" id="ica_run_import" data-dry-run="1">
-                <i class="fa fa-bolt"></i> Run test (dry-run)
-            </button>
-            <button type="button" class="btn btn-success btn-sm" id="ica_run_import_real" data-dry-run="0">
-                <i class="fa fa-download"></i> Run for real
-            </button>
-            <button type="button" class="btn btn-info btn-sm" id="ica_run_apple" style="margin-left:12px;">
-                🍎 Run Apple Music pull now
-            </button>
-            <pre id="ica_run_import_output" style="display:none; margin-top:12px; max-height:300px; overflow:auto; font-size:11px; background:#f9f9f9; padding:8px;"></pre>
-            @endcomponent
-        </div>
-    </div>
+    </details>
 
     {{-- ── Export strip (sticky) ──────────────────────────────────── --}}
     <div class="row no-print">
@@ -222,10 +181,10 @@
         </div>
     </div>
 
-    {{-- ── Saved sessions (unchanged, tucked at bottom) ─────────── --}}
-    <div class="row">
-        <div class="col-md-12">
-            @component('components.widget', ['class' => 'box-default', 'title' => 'Saved sessions'])
+    {{-- ── Saved sessions (collapsed by default — rarely used) ─────── --}}
+    <details class="ica-more-options no-print" style="margin-top:8px;">
+        <summary>💾 Saved sessions (rare — save/load named order lists)</summary>
+        <div style="margin-top:8px;">
             <div class="row">
                 <div class="col-md-4">
                     <div class="form-group">
@@ -248,9 +207,8 @@
                     <button type="button" class="btn btn-danger btn-sm" id="ica_session_delete">Delete</button>
                 </div>
             </div>
-            @endcomponent
         </div>
-    </div>
+    </details>
 </section>
 
 {{-- ── Street Pulse import modal (file or paste) ─────────────────── --}}
@@ -421,6 +379,36 @@
 
 /* ABC A-restock bucket — emphasize as priority */
 .ica-bucket[data-bucket="abc_a_restock"] .ica-bucket-header { border-left-color: #2c699a; background: #f0f6fc; }
+
+/* Lead intro */
+.ica-lead { font-size: 14px; line-height: 1.6; }
+.ica-lead strong { color: #2c699a; }
+
+/* "More options" + "Show all the other reorder lists" disclosures */
+.ica-more-options,
+.ica-secondary-disclosure {
+    margin: 14px 0;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 0;
+}
+.ica-more-options > summary,
+.ica-secondary-disclosure > summary {
+    cursor: pointer;
+    padding: 12px 18px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #2c699a;
+    list-style: revert;
+    user-select: none;
+}
+.ica-more-options > summary:hover,
+.ica-secondary-disclosure > summary:hover { background: #f7f9fc; }
+.ica-more-options[open] > summary,
+.ica-secondary-disclosure[open] > summary { border-bottom: 1px solid #eee; }
+.ica-more-options[open] { padding: 0 14px 14px; }
+.ica-secondary-buckets { padding: 12px 14px 4px; }
 
 /* Budget banner */
 .ica-budget-banner {

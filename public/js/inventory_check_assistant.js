@@ -235,33 +235,52 @@
             return;
         }
 
-        const order = ['fast_oos', 'abc_a_restock', 'street_pulse', 'universal_top', 'apple_music_top', 'top_artist_new_releases', 'events_upcoming', 'long_oos_essentials', 'hot_used_oos', 'customer_wants', 'frozen_inventory'];
+        // Per Sarah 2026-05-20: the wall of buckets was overwhelming. Default
+        // view = just fast_oos (Jon's focus). Everything else lives behind a
+        // single "Show all the other reorder lists" disclosure so it's one
+        // click away when needed but not in the face on landing.
+        const primary = ['fast_oos'];
+        const secondary = ['customer_wants', 'street_pulse', 'universal_top', 'apple_music_top', 'top_artist_new_releases', 'events_upcoming', 'abc_a_restock', 'long_oos_essentials', 'hot_used_oos', 'frozen_inventory'];
         const buckets = payload.buckets || {};
 
-        let html = '';
+        let primaryHtml = '';
+        let secondaryHtml = '';
         let totalItems = 0;
         let totalQty = 0;
+        let secondaryItems = 0;
 
-        order.forEach((key) => {
+        primary.forEach((key) => {
             const b = buckets[key];
             if (!b) return;
-            html += renderBucketSection(key, b);
+            primaryHtml += renderBucketSection(key, b);
             totalItems += b.count || 0;
-            (b.items || []).forEach((it) => {
-                totalQty += parseInt(it.suggested_qty || 0, 10) || 0;
-            });
+            (b.items || []).forEach((it) => { totalQty += parseInt(it.suggested_qty || 0, 10) || 0; });
+        });
+        secondary.forEach((key) => {
+            const b = buckets[key];
+            if (!b) return;
+            secondaryHtml += renderBucketSection(key, b);
+            totalItems += b.count || 0;
+            secondaryItems += b.count || 0;
+            (b.items || []).forEach((it) => { totalQty += parseInt(it.suggested_qty || 0, 10) || 0; });
         });
 
+        let html = primaryHtml;
+        if (secondaryHtml !== '') {
+            html += '<details class="ica-secondary-disclosure">'
+                + '<summary><strong>Show all the other reorder lists</strong> '
+                + '<small class="text-muted">(charts, events, ABC, frozen, customer wants — <span id="ica_secondary_count">' + secondaryItems + '</span> more items)</small></summary>'
+                + '<div class="ica-secondary-buckets">' + secondaryHtml + '</div>'
+                + '</details>';
+        }
+
         if (html === '') {
-            // payload.buckets came back as an empty object — that means the
-            // server returned a structurally valid response but with NO
-            // bucket keys. Surface the meta so we can see why.
             const metaJson = payload.meta ? JSON.stringify(payload.meta, null, 2) : '(no meta)';
             html = '<div class="alert alert-warning"><strong>Server returned no buckets.</strong> Usually means the location preset didn\'t resolve. Server meta:<pre style="margin-top:8px; font-size:11px;">' + escapeHtml(metaJson) + '</pre></div>';
         }
 
         $root.innerHTML = html;
-        $summary.textContent = `${totalItems} items across ${order.filter(k => buckets[k] && buckets[k].count > 0).length} buckets · ${totalQty} total qty suggested`;
+        $summary.textContent = `${totalItems} items · ${totalQty} total qty suggested · fast sellers <90d: ${(buckets.fast_oos && buckets.fast_oos.count) || 0}`;
 
         attachBucketHandlers();
     }
