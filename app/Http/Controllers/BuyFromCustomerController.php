@@ -356,8 +356,20 @@ class BuyFromCustomerController extends Controller
         $offer->starting_offer_credit = $calculation['starting_offer_credit'];
         $offer->second_offer_cash = $calculation['second_offer_cash'];
         $offer->second_offer_credit = $calculation['second_offer_credit'];
-        $offer->final_offer_cash = $calculation['final_offer_cash'];
-        $offer->final_offer_credit = $calculation['final_offer_credit'];
+        // Sarah 2026-05-20: cashier can edit the final cash/credit on the form
+        // after Calculate (negotiated price ≠ calculator print-out). Honor the
+        // submitted value when present; fall back to calc otherwise. The Calculate
+        // auto-save path doesn't POST these fields (the editable inputs are
+        // unnamed), so it always falls back — preserving prior behavior. Override
+        // divergence is validated against price_override_reason in validateRequest.
+        $submittedFinalCash = $request->input('final_offer_cash');
+        $submittedFinalCredit = $request->input('final_offer_credit');
+        $offer->final_offer_cash = is_numeric($submittedFinalCash)
+            ? (float) $submittedFinalCash
+            : $calculation['final_offer_cash'];
+        $offer->final_offer_credit = is_numeric($submittedFinalCredit)
+            ? (float) $submittedFinalCredit
+            : $calculation['final_offer_credit'];
         $offer->rejection_reason = $request->input('rejection_reason');
         $offer->notes = $request->input('notes');
         $offer->price_override_reason = $request->input('price_override_reason') ?: null;

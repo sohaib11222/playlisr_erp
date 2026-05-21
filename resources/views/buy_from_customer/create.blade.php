@@ -60,6 +60,14 @@
         /* Readonly offer-amount displays — look like read-outs, not inputs. */
         .bfc-create .bfc-offer-display { background: #f5f5f5; border-color: #e6e6e6; color: #333; font-weight: 600; cursor: default; }
         .bfc-create .bfc-offer-display:focus { outline: none; box-shadow: none; }
+        /* Editable final-offer inputs — visually distinct so cashier knows they can adjust. */
+        .bfc-create .bfc-final-edit { background: #fffdf0; border-color: #e0c46c; color: #333; font-weight: 600; }
+        .bfc-create .bfc-final-edit.bfc-final-overridden { background: #fff3cd; border-color: #d4a017; }
+        /* "Calculator: $X.XX" hint under each editable final input. */
+        .bfc-create .bfc-calc-hint { display: block; margin-top: 3px; font-size: 11px; color: #888; }
+        .bfc-create .bfc-delta { font-weight: 600; margin-left: 2px; }
+        .bfc-create .bfc-delta.bfc-delta-up { color: #27ae60; }
+        .bfc-create .bfc-delta.bfc-delta-down { color: #c0392b; }
         /* Three-row offer table: Starting / 2nd / Final × Cash / Credit. */
         .bfc-create .bfc-offer-table { max-width: 560px; margin-bottom: 12px; }
         .bfc-create .bfc-offer-table th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; color: #666; background: #f7f7f7; padding: 8px 10px; border-bottom: 1px solid #ddd; }
@@ -350,8 +358,18 @@
                             </tr>
                             <tr>
                                 <th class="bfc-offer-rowlabel">3. Final offer</th>
-                                <td>{!! Form::number('final_offer_cash', $offerInput($offerFinalCash), ['class' => 'form-control', 'step' => '0.01', 'min' => '0', 'placeholder' => 'auto (95%)']) !!}</td>
-                                <td>{!! Form::number('final_offer_credit', $offerInput($offerFinalCredit), ['class' => 'form-control', 'step' => '0.01', 'min' => '0', 'placeholder' => 'auto (95%)']) !!}</td>
+                                <td>
+                                    {!! Form::number('final_offer_cash', $offerInput($offerFinalCash), ['class' => 'form-control bfc-final-edit', 'id' => 'bfc_final_cash', 'step' => '0.01', 'min' => '0', 'placeholder' => 'auto (95%)', 'data-auto' => $offerInput($offerFinalCash)]) !!}
+                                    @if(!empty($calc) && $offerFinalCash !== null)
+                                        <small class="bfc-calc-hint">Calculator: ${{ number_format((float) $offerFinalCash, 2) }} <span class="bfc-delta" id="bfc_final_cash_delta"></span></small>
+                                    @endif
+                                </td>
+                                <td>
+                                    {!! Form::number('final_offer_credit', $offerInput($offerFinalCredit), ['class' => 'form-control bfc-final-edit', 'id' => 'bfc_final_credit', 'step' => '0.01', 'min' => '0', 'placeholder' => 'auto (95%)', 'data-auto' => $offerInput($offerFinalCredit)]) !!}
+                                    @if(!empty($calc) && $offerFinalCredit !== null)
+                                        <small class="bfc-calc-hint">Calculator: ${{ number_format((float) $offerFinalCredit, 2) }} <span class="bfc-delta" id="bfc_final_credit_delta"></span></small>
+                                    @endif
+                                </td>
                             </tr>
                         </tbody>
                     </table>
@@ -492,7 +510,7 @@
                                 <button type="submit" class="btn btn-success" id="accept_buy_offer_btn"><i class="fa fa-check"></i> Accept offer (create purchase)</button>
                                 {!! Form::close() !!}
 
-                                {!! Form::open(['url' => route('buy-from-customer.reject'), 'method' => 'post', 'style' => 'display:inline-block; margin-left:6px;']) !!}
+                                {!! Form::open(['url' => route('buy-from-customer.reject'), 'method' => 'post', 'style' => 'display:inline-block; margin-left:6px;', 'id' => 'reject_buy_offer_form']) !!}
                                 @foreach($input as $k => $v)
                                     @if($k === 'lines' && is_array($v))
                                         @foreach($v as $li => $line)
@@ -630,16 +648,70 @@
             $form.on('submit', function () { syncOffersIntoForm($form); });
         });
 
+        // Sarah 2026-05-20: side-by-side calc reference under each editable Final
+        // input ("Calculator: $X.XX  (+$5.00)") so the cashier can always see both
+        // their actual offer and the auto suggestion. Also toggles the override-
+        // required label live, and resets the Reject form's final back to the
+        // calc auto so rejecting after an override doesn't trip the server's
+        // override-reason validation (Reject has no override-reason field).
+        // Runs AFTER the per-form submit handler above so the Reject reset wins.
+        (function finalOverrideSync() {
+            var $cash = $('#bfc_final_cash');
+            var $credit = $('#bfc_final_credit');
+            if (!$cash.length && !$credit.length) return;
+
+            var autoCash = parseFloat($cash.data('auto'));
+            var autoCredit = parseFloat($credit.data('auto'));
+
+            function diverged($input, auto) {
+                var v = parseFloat($input.val());
+                return isFinite(v) && isFinite(auto) && Math.abs(v - auto) > 0.009;
+            }
+
+            function paintDelta($deltaSpan, $input, auto) {
+                $deltaSpan.removeClass('bfc-delta-up bfc-delta-down');
+                var v = parseFloat($input.val());
+                if (!isFinite(v) || !isFinite(auto)) { $deltaSpan.text(''); return; }
+                var d = v - auto;
+                if (Math.abs(d) < 0.005) { $deltaSpan.text(''); return; }
+                var sign = d > 0 ? '+' : '−'; // unicode minus
+                $deltaSpan.text('(' + sign + '$' + Math.abs(d).toFixed(2) + ')');
+                $deltaSpan.addClass(d > 0 ? 'bfc-delta-up' : 'bfc-delta-down');
+            }
+
+            function refresh() {
+                if ($cash.length) {
+                    $cash.toggleClass('bfc-final-overridden', diverged($cash, autoCash));
+                    paintDelta($('#bfc_final_cash_delta'), $cash, autoCash);
+                }
+                if ($credit.length) {
+                    $credit.toggleClass('bfc-final-overridden', diverged($credit, autoCredit));
+                    paintDelta($('#bfc_final_credit_delta'), $credit, autoCredit);
+                }
+                var pm = $('#payment_method').val();
+                var activeDiverged = (pm === 'store_credit')
+                    ? diverged($credit, autoCredit)
+                    : diverged($cash, autoCash);
+                $('#override_required_label').toggle(activeDiverged);
+            }
+
+            $cash.on('input change', refresh);
+            $credit.on('input change', refresh);
+            $(document).on('change', '#payment_method', refresh);
+            refresh();
+
+            $('#reject_buy_offer_form').on('submit', function () {
+                $(this).find('input[type="hidden"][name="final_offer_cash"]').val(isFinite(autoCash) ? autoCash.toFixed(2) : '');
+                $(this).find('input[type="hidden"][name="final_offer_credit"]').val(isFinite(autoCredit) ? autoCredit.toFixed(2) : '');
+            });
+        })();
+
         (function signaturePad() {
             var canvas = document.getElementById('buy_signature_canvas');
             if (!canvas || !canvas.getContext) return;
             var ctx = canvas.getContext('2d');
             var drawing = false;
             var hasSignature = false; // tracks whether the user actually drew anything
-            // Override-reason hint: kept for parity with the controller validation,
-            // but with read-only offer fields the submitted final always matches the
-            // calculator's auto-final, so this stays hidden in the normal flow.
-            $('#override_required_label').hide();
 
             function pos(e) {
                 var r = canvas.getBoundingClientRect();
