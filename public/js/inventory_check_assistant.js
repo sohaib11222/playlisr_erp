@@ -883,6 +883,11 @@
     }
 
     // ── Supplier price feeds (AMS / Alliance / Secretly / Beggars / Red Eye / VP) ──
+    // Sarah 2026-05-20: she doesn't have xlsx files from suppliers — she
+    // looks prices up on each supplier's site one-at-a-time. UI is now:
+    //   1. quick-add form per supplier (artist, title, format, cost) — primary
+    //   2. paste rows from website — secondary
+    //   3. xlsx/csv upload — tertiary (collapsed by default)
     function renderSupplierGrid(feeds) {
         const host = document.getElementById('ica_supplier_grid');
         if (!host) return;
@@ -893,62 +898,116 @@
         host.innerHTML = Object.keys(feeds).map((key) => {
             const f = feeds[key];
             const status = f.row_count
-                ? `<span class="ica-supplier-stat">${f.row_count.toLocaleString()} rows · loaded ${String(f.imported_at || '').substring(0, 10)}</span>`
-                : '<span class="ica-supplier-stat ica-supplier-empty">Not yet uploaded</span>';
+                ? `<span class="ica-supplier-stat">${f.row_count.toLocaleString()} titles tracked · last updated ${String(f.imported_at || '').substring(0, 10)}</span>`
+                : '<span class="ica-supplier-stat ica-supplier-empty">No titles yet — add your first below</span>';
             return `
-                <div class="ica-supplier-row" data-key="${escapeHtml(key)}">
-                    <div class="ica-supplier-meta">
+                <details class="ica-supplier-row" data-key="${escapeHtml(key)}">
+                    <summary>
                         <strong>${escapeHtml(f.label || key)}</strong>
                         <small class="text-muted">${escapeHtml(f.notes || '')}</small>
                         ${status}
+                    </summary>
+                    <div class="ica-supplier-body">
+                        <div class="ica-supplier-form">
+                            <label class="ica-supplier-label">Add one title (artist + title + cost):</label>
+                            <div class="ica-supplier-quickadd">
+                                <input type="text" class="form-control input-sm ica-sup-artist" placeholder="Artist" data-key="${escapeHtml(key)}">
+                                <input type="text" class="form-control input-sm ica-sup-title" placeholder="Title" data-key="${escapeHtml(key)}">
+                                <select class="form-control input-sm ica-sup-format" data-key="${escapeHtml(key)}">
+                                    <option value="">—</option>
+                                    <option value="LP">LP</option>
+                                    <option value="CD">CD</option>
+                                    <option value="Cassette">Cassette</option>
+                                    <option value="7&quot;">7"</option>
+                                </select>
+                                <input type="number" class="form-control input-sm ica-sup-cost" placeholder="$" step="0.01" min="0" data-key="${escapeHtml(key)}">
+                                <button type="button" class="btn btn-primary btn-sm ica-supplier-quick" data-key="${escapeHtml(key)}">Add</button>
+                            </div>
+                            <span class="ica-supplier-msg"></span>
+                        </div>
+                        <details class="ica-supplier-paste">
+                            <summary>Paste rows from supplier site →</summary>
+                            <p class="text-muted small">Paste CSV (Artist, Title, Cost) or tab-separated rows copied from a supplier portal. First line is the header.</p>
+                            <textarea class="form-control input-sm ica-sup-body" rows="4" placeholder="Artist,Title,Cost&#10;Drake,Take Care,12.50" data-key="${escapeHtml(key)}"></textarea>
+                            <button type="button" class="btn btn-default btn-sm ica-supplier-paste-go" data-key="${escapeHtml(key)}">Save pasted rows</button>
+                        </details>
+                        <details class="ica-supplier-paste">
+                            <summary>Upload xlsx/csv file (if you have one) →</summary>
+                            <input type="file" class="ica-supplier-file" accept=".xlsx,.xls,.csv,.tsv,.txt" data-key="${escapeHtml(key)}">
+                            <button type="button" class="btn btn-default btn-sm ica-supplier-file-go" data-key="${escapeHtml(key)}">Upload file</button>
+                        </details>
                     </div>
-                    <div class="ica-supplier-upload">
-                        <input type="file" class="ica-supplier-file" accept=".xlsx,.xls,.csv,.tsv,.txt" data-key="${escapeHtml(key)}">
-                        <button type="button" class="btn btn-xs btn-primary ica-supplier-go" data-key="${escapeHtml(key)}">Upload</button>
-                        <span class="ica-supplier-msg"></span>
-                    </div>
-                </div>
+                </details>
             `;
         }).join('');
 
-        host.querySelectorAll('.ica-supplier-go').forEach((btn) => {
-            btn.addEventListener('click', function () {
-                const key = btn.dataset.key;
-                const row = host.querySelector(`.ica-supplier-row[data-key="${cssEscape(key)}"]`);
-                const fileEl = row && row.querySelector('.ica-supplier-file');
-                const msgEl = row && row.querySelector('.ica-supplier-msg');
-                if (!fileEl || !fileEl.files || !fileEl.files[0]) {
-                    if (msgEl) msgEl.textContent = 'Pick a file first.';
-                    return;
+        // Wire all three buttons
+        host.querySelectorAll('.ica-supplier-quick').forEach((btn) => btn.addEventListener('click', () => supplierSubmit('single', btn)));
+        host.querySelectorAll('.ica-supplier-paste-go').forEach((btn) => btn.addEventListener('click', () => supplierSubmit('paste', btn)));
+        host.querySelectorAll('.ica-supplier-file-go').forEach((btn) => btn.addEventListener('click', () => supplierSubmit('file', btn)));
+    }
+
+    function supplierSubmit(mode, btn) {
+        const key = btn.dataset.key;
+        const host = document.getElementById('ica_supplier_grid');
+        const row = host.querySelector(`details.ica-supplier-row[data-key="${cssEscape(key)}"]`);
+        const msgEl = row && row.querySelector('.ica-supplier-msg');
+        const fd = new FormData();
+        fd.append('supplier_key', key);
+        fd.append('mode', mode);
+
+        if (mode === 'single') {
+            const artist = row.querySelector('.ica-sup-artist').value.trim();
+            const title = row.querySelector('.ica-sup-title').value.trim();
+            const format = row.querySelector('.ica-sup-format').value;
+            const cost = row.querySelector('.ica-sup-cost').value;
+            if (!artist && !title) { if (msgEl) msgEl.textContent = 'Need at least artist or title.'; return; }
+            if (!cost || Number(cost) <= 0) { if (msgEl) msgEl.textContent = 'Cost required.'; return; }
+            fd.append('artist', artist);
+            fd.append('title', title);
+            fd.append('format', format);
+            fd.append('cost', cost);
+        } else if (mode === 'paste') {
+            const body = row.querySelector('.ica-sup-body').value;
+            if (!body.trim()) { if (msgEl) msgEl.textContent = 'Paste some rows first.'; return; }
+            fd.append('body', body);
+        } else {
+            const fileEl = row.querySelector('.ica-supplier-file');
+            if (!fileEl.files || !fileEl.files[0]) { if (msgEl) msgEl.textContent = 'Pick a file.'; return; }
+            fd.append('feed_file', fileEl.files[0]);
+        }
+
+        btn.disabled = true;
+        const origLabel = btn.textContent;
+        btn.textContent = 'Saving…';
+        if (msgEl) msgEl.textContent = '';
+        fetch(window.ICA_SUPPLIER_UPLOAD_URL, {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': window.ICA_CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin',
+            body: fd,
+        })
+            .then((r) => r.json())
+            .then((resp) => {
+                btn.disabled = false; btn.textContent = origLabel;
+                if (resp && resp.success) {
+                    if (msgEl) msgEl.textContent = `Saved · ${resp.added_rows} new, ${resp.row_count} total.`;
+                    // Clear single-add form for next entry
+                    if (mode === 'single') {
+                        row.querySelector('.ica-sup-artist').value = '';
+                        row.querySelector('.ica-sup-title').value = '';
+                        row.querySelector('.ica-sup-cost').value = '';
+                    }
+                    setTimeout(loadSupplierFeeds, 500);
+                } else {
+                    if (msgEl) msgEl.textContent = (resp && resp.message) || 'Save failed.';
                 }
-                const fd = new FormData();
-                fd.append('supplier_key', key);
-                fd.append('feed_file', fileEl.files[0]);
-                btn.disabled = true; btn.textContent = 'Uploading…';
-                if (msgEl) msgEl.textContent = '';
-                fetch(window.ICA_SUPPLIER_UPLOAD_URL, {
-                    method: 'POST',
-                    headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': window.ICA_CSRF, 'X-Requested-With': 'XMLHttpRequest' },
-                    credentials: 'same-origin',
-                    body: fd,
-                })
-                    .then((r) => r.json())
-                    .then((resp) => {
-                        btn.disabled = false; btn.textContent = 'Upload';
-                        if (resp && resp.success) {
-                            if (msgEl) msgEl.textContent = `Imported ${resp.row_count} rows.`;
-                            loadSupplierFeeds();
-                        } else {
-                            if (msgEl) msgEl.textContent = (resp && resp.message) || 'Upload failed.';
-                        }
-                    })
-                    .catch((err) => {
-                        btn.disabled = false; btn.textContent = 'Upload';
-                        if (msgEl) msgEl.textContent = 'Upload failed — see console.';
-                        console.error('[ICA] supplier upload failed', err);
-                    });
+            })
+            .catch((err) => {
+                btn.disabled = false; btn.textContent = origLabel;
+                if (msgEl) msgEl.textContent = 'Save failed — see console.';
+                console.error('[ICA] supplier save failed', err);
             });
-        });
     }
 
     function loadSupplierFeeds() {

@@ -247,33 +247,49 @@ body.ica-v2 .ica-tag.ica-supplier-best {
 	font-size: 11px;
 }
 
-/* Supplier price-feed upload grid (one row per supplier) */
+/* Supplier price-feed panel — quick-add form per supplier, paste +
+   file upload behind nested disclosures. Each supplier collapses to
+   a one-line header row by default; click to expand the entry form. */
 body.ica-v2 .ica-supplier-grid {
-	display: grid;
-	gap: 8px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
 }
-body.ica-v2 .ica-supplier-row {
-	display: grid;
-	grid-template-columns: minmax(220px, 1fr) auto;
-	align-items: center;
-	gap: 14px;
-	padding: 10px 12px;
+body.ica-v2 details.ica-supplier-row {
 	background: var(--ica-surface-2);
 	border: 1px solid var(--ica-line);
 	border-radius: var(--ica-radius-sm);
 }
-body.ica-v2 .ica-supplier-meta { display: flex; flex-direction: column; gap: 2px; }
-body.ica-v2 .ica-supplier-meta strong { color: var(--ica-ink); font-size: 14px; }
-body.ica-v2 .ica-supplier-meta small { color: var(--ica-ink-3); font-size: 12px; }
-body.ica-v2 .ica-supplier-stat { color: var(--ica-success); font-size: 12px; font-weight: 600; }
-body.ica-v2 .ica-supplier-stat.ica-supplier-empty { color: var(--ica-ink-3); font-style: italic; font-weight: 400; }
-body.ica-v2 .ica-supplier-upload {
+body.ica-v2 details.ica-supplier-row > summary {
+	list-style: revert;
+	cursor: pointer;
+	padding: 10px 14px;
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: 12px;
+	flex-wrap: wrap;
 }
-body.ica-v2 .ica-supplier-file { font-size: 12px; }
-body.ica-v2 .ica-supplier-msg { font-size: 12px; color: var(--ica-ink-2); }
+body.ica-v2 details.ica-supplier-row > summary > strong { color: var(--ica-ink); font-size: 14px; }
+body.ica-v2 details.ica-supplier-row > summary > small { color: var(--ica-ink-3); font-size: 12px; }
+body.ica-v2 details.ica-supplier-row[open] > summary { border-bottom: 1px solid var(--ica-line); }
+body.ica-v2 .ica-supplier-body { padding: 12px 14px; background: var(--ica-surface); border-radius: 0 0 var(--ica-radius-sm) var(--ica-radius-sm); }
+body.ica-v2 .ica-supplier-form { margin-bottom: 10px; }
+body.ica-v2 .ica-supplier-label { font-size: 12px; font-weight: 600; color: var(--ica-ink-2); display: block; margin-bottom: 6px; }
+body.ica-v2 .ica-supplier-quickadd {
+	display: grid;
+	grid-template-columns: minmax(120px, 1fr) minmax(160px, 1.5fr) 90px 90px 70px;
+	gap: 6px;
+	align-items: center;
+}
+body.ica-v2 .ica-supplier-quickadd .form-control { height: 32px; font-size: 13px; }
+body.ica-v2 .ica-supplier-quickadd .btn { height: 32px; }
+body.ica-v2 .ica-supplier-paste { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--ica-line); }
+body.ica-v2 .ica-supplier-paste > summary { font-size: 12px; color: var(--ica-ink-2); font-weight: 600; cursor: pointer; padding: 4px 0; }
+body.ica-v2 .ica-supplier-paste textarea { margin: 6px 0; font-family: monospace; font-size: 12px; }
+body.ica-v2 .ica-supplier-paste .ica-supplier-file { display: block; margin: 6px 0; font-size: 12px; }
+body.ica-v2 .ica-supplier-stat { color: var(--ica-success); font-size: 12px; font-weight: 600; margin-left: auto; }
+body.ica-v2 .ica-supplier-stat.ica-supplier-empty { color: var(--ica-ink-3); font-style: italic; font-weight: 400; }
+body.ica-v2 .ica-supplier-msg { font-size: 12px; color: var(--ica-success); display: block; margin-top: 6px; min-height: 16px; }
 
 /* ── Disclosure (More options / Show other lists) ─────────────────── */
 body.ica-v2 .ica-more-options > summary,

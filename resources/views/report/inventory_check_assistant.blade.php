@@ -154,7 +154,7 @@
         <div class="row">
             <div class="col-md-12">
                 @component('components.widget', ['class' => 'box-info', 'title' => 'Supplier price feeds'])
-                <p class="text-muted small">Upload each distributor's weekly catalog (xlsx/csv). The parser auto-detects the Artist / Title / Cost columns and the cheapest match becomes the "Best $X via …" badge on chart-pick rows. Not all releases are Universal — these add Sony / indie / specialty pricing alongside UMe.</p>
+                <p class="text-muted small">Each supplier (AMS, Secretly, Beggars, Redeye, VP) is a row below. Expand one and type artist + title + cost as you look prices up on the supplier's site — entries accumulate. Paste-from-portal + xlsx upload are nested options if you ever have bulk data. The cheapest match across all uploaded prices becomes the green "$X.XX via &lt;supplier&gt;" badge on chart-pick rows.</p>
                 <div id="ica_supplier_grid" class="ica-supplier-grid">
                     <p class="text-muted small">Loading current feeds…</p>
                 </div>

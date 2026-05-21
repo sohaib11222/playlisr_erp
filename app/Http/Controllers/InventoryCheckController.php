@@ -556,53 +556,109 @@ class InventoryCheckController extends Controller
      * storage/app/supplier-prices-{biz}-{supplier_key}.json. Subsequent
      * bucket builds look up the cheapest match per row.
      */
+    /**
+     * Accepts THREE input modes per Sarah 2026-05-20 ("no i do not have
+     * excels for the supplier price feeds"):
+     *   1. file upload (xlsx / csv / tsv)
+     *   2. body paste — CSV/TSV text from a supplier portal
+     *   3. quick single-row entry: artist + title + cost (+ optional format)
+     * All three end up as merged rows in the same per-supplier JSON.
+     */
     public function uploadSupplierFeed(Request $request)
     {
-        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
-            'supplier_key' => 'required|string|max:32',
-            'feed_file' => 'required|file|max:30720',
-        ]);
-        if ($validator->fails()) {
-            return response()->json(['success' => false, 'message' => implode(' ', $validator->errors()->all())], 422);
-        }
-
-        $supplierKey = strtolower(trim((string) $request->input('supplier_key')));
+        $supplierKey = strtolower(trim((string) $request->input('supplier_key', '')));
         $known = $this->inventoryCheckService->knownSuppliers();
         if (!isset($known[$supplierKey])) {
             return response()->json(['success' => false, 'message' => 'Unknown supplier: ' . $supplierKey], 422);
         }
-
-        $file = $request->file('feed_file');
-        $ext = strtolower($file->getClientOriginalExtension());
-        if (!in_array($ext, ['xlsx', 'xls', 'csv', 'tsv', 'txt'], true)) {
-            return response()->json(['success' => false, 'message' => 'Use xlsx, csv, tsv, or txt.'], 422);
-        }
-
         $business_id = (int) $request->session()->get('user.business_id');
-        $filename = $file->getClientOriginalName();
+
+        $mode = (string) $request->input('mode', 'file');
+        $parsedRows = [];
+        $sourceLabel = '';
 
         try {
-            $parsed = $this->inventoryCheckService->parseSupplierFeedFile($file->getRealPath(), $filename);
+            if ($mode === 'single') {
+                $artist = trim((string) $request->input('artist', ''));
+                $title = trim((string) $request->input('title', ''));
+                $cost = $request->input('cost');
+                $format = trim((string) $request->input('format', ''));
+                if ($artist === '' && $title === '') {
+                    return response()->json(['success' => false, 'message' => 'Need at least artist or title.'], 422);
+                }
+                $clean = is_numeric($cost) ? (float) $cost : null;
+                if ($clean === null || $clean <= 0) {
+                    return response()->json(['success' => false, 'message' => 'Cost must be a number > 0.'], 422);
+                }
+                $parsedRows = [[
+                    'artist' => $artist !== '' ? $artist : null,
+                    'title' => $title !== '' ? $title : null,
+                    'format' => $format !== '' ? $format : null,
+                    'cost' => $clean,
+                    'upc' => null,
+                ]];
+                $sourceLabel = 'quick-add ' . trim($artist . ' / ' . $title, ' /');
+            } elseif ($mode === 'paste') {
+                $body = (string) $request->input('body', '');
+                if (trim($body) === '') {
+                    return response()->json(['success' => false, 'message' => 'Paste at least one row.'], 422);
+                }
+                $tmp = tempnam(sys_get_temp_dir(), 'supplier_paste');
+                file_put_contents($tmp, $body);
+                try {
+                    $parsedRows = $this->inventoryCheckService->parseSupplierFeedFile($tmp, 'paste.csv')['rows'] ?? [];
+                } finally {
+                    @unlink($tmp);
+                }
+                if (empty($parsedRows)) {
+                    return response()->json(['success' => false, 'message' => 'Couldn\'t find Artist + Title + Cost columns. Paste a header row like "Artist, Title, Cost" first.'], 422);
+                }
+                $sourceLabel = 'pasted ' . count($parsedRows) . ' rows';
+            } else {
+                // file mode
+                $file = $request->file('feed_file');
+                if (!$file) {
+                    return response()->json(['success' => false, 'message' => 'No file uploaded.'], 422);
+                }
+                $ext = strtolower($file->getClientOriginalExtension());
+                if (!in_array($ext, ['xlsx', 'xls', 'csv', 'tsv', 'txt'], true)) {
+                    return response()->json(['success' => false, 'message' => 'Use xlsx, csv, tsv, or txt.'], 422);
+                }
+                $parsedRows = $this->inventoryCheckService->parseSupplierFeedFile($file->getRealPath(), $file->getClientOriginalName())['rows'] ?? [];
+                $sourceLabel = $file->getClientOriginalName();
+                if (empty($parsedRows)) {
+                    return response()->json(['success' => false, 'message' => 'Couldn\'t find Artist + Title + Cost in the file.'], 422);
+                }
+            }
         } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::error('ICA supplier upload parse failed', ['err' => $e->getMessage()]);
-            return response()->json(['success' => false, 'message' => 'Parse failed: ' . $e->getMessage()], 500);
+            \Illuminate\Support\Facades\Log::error('ICA supplier upload failed', ['err' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => 'Save failed: ' . $e->getMessage()], 500);
         }
 
-        if (empty($parsed['rows'])) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Could not find Artist + Title + a price/cost column in the file. The parser looks for headers like "Artist", "Title", and "Cost"/"Wholesale"/"Net Price".',
-            ], 422);
+        // Merge with any prior rows for this supplier — quick-add entries
+        // accumulate so Sarah can build the catalog up one title at a
+        // time. Dedupe by (artist|title|format) keeping the latest cost.
+        $existing = $this->inventoryCheckService->loadSupplierFeed($business_id, $supplierKey);
+        $existingRows = is_array($existing['rows'] ?? null) ? $existing['rows'] : [];
+        $byKey = [];
+        foreach ($existingRows as $r) {
+            $k = mb_strtolower(($r['artist'] ?? '') . '|' . ($r['title'] ?? '') . '|' . ($r['format'] ?? ''));
+            $byKey[$k] = $r;
         }
+        foreach ($parsedRows as $r) {
+            $k = mb_strtolower(($r['artist'] ?? '') . '|' . ($r['title'] ?? '') . '|' . ($r['format'] ?? ''));
+            $byKey[$k] = $r;
+        }
+        $mergedRows = array_values($byKey);
 
         $payload = [
             'business_id' => $business_id,
             'supplier_key' => $supplierKey,
             'supplier_label' => $known[$supplierKey]['label'] ?? $supplierKey,
-            'source_file' => $filename,
+            'source_file' => $sourceLabel,
             'imported_at' => Carbon::now()->toIso8601String(),
             'imported_by' => trim((auth()->user()->first_name ?? '') . ' ' . (auth()->user()->last_name ?? '')) ?: 'staff',
-            'rows' => $parsed['rows'],
+            'rows' => $mergedRows,
         ];
         $this->inventoryCheckService->saveSupplierFeed($business_id, $supplierKey, $payload);
 
@@ -610,9 +666,10 @@ class InventoryCheckController extends Controller
             'success' => true,
             'supplier_key' => $supplierKey,
             'supplier_label' => $payload['supplier_label'],
-            'row_count' => count($parsed['rows']),
+            'row_count' => count($mergedRows),
+            'added_rows' => count($parsedRows),
             'imported_at' => $payload['imported_at'],
-            'source_file' => $filename,
+            'source_file' => $sourceLabel,
         ]);
     }
 
