@@ -754,7 +754,14 @@
         const abcCell = initialAbc ? `<span class="ica-abc-cell ica-abc-${initialAbc}">${initialAbc}</span>` : '—';
         // is_rsd flag flows from the server — RSD titles can be hidden
         // via the new "Hide RSD titles" checkbox above the buckets.
-        const productCell = isRsd ? `${product} <span class="ica-tag ica-rsd-tag" title="Record Store Day release">RSD</span>` : product;
+        let productCell = isRsd ? `${product} <span class="ica-tag ica-rsd-tag" title="Record Store Day release">RSD</span>` : product;
+        // Best-supplier price badge — appears on rows where any uploaded
+        // supplier feed had a matching (artist, title) row. Shows the
+        // cheapest cost + which supplier had it.
+        if (it.best_supplier && it.best_supplier.cost) {
+            const bs = it.best_supplier;
+            productCell += ` <span class="ica-tag ica-supplier-best" title="Cheapest match across uploaded supplier feeds">$${Number(bs.cost).toFixed(2)} via ${escapeHtml(bs.supplier_label || bs.supplier_key)}</span>`;
+        }
         // Cost is the wholesale / default_purchase_price per unit.
         // data-cost holds the numeric value so renderBucketTotals can sum
         // "qty × cost" across visible rows.
@@ -874,6 +881,87 @@
             });
         });
     }
+
+    // ── Supplier price feeds (AMS / Alliance / Secretly / Beggars / Red Eye / VP) ──
+    function renderSupplierGrid(feeds) {
+        const host = document.getElementById('ica_supplier_grid');
+        if (!host) return;
+        if (!feeds || !Object.keys(feeds).length) {
+            host.innerHTML = '<p class="text-muted small">No supplier feeds configured.</p>';
+            return;
+        }
+        host.innerHTML = Object.keys(feeds).map((key) => {
+            const f = feeds[key];
+            const status = f.row_count
+                ? `<span class="ica-supplier-stat">${f.row_count.toLocaleString()} rows · loaded ${String(f.imported_at || '').substring(0, 10)}</span>`
+                : '<span class="ica-supplier-stat ica-supplier-empty">Not yet uploaded</span>';
+            return `
+                <div class="ica-supplier-row" data-key="${escapeHtml(key)}">
+                    <div class="ica-supplier-meta">
+                        <strong>${escapeHtml(f.label || key)}</strong>
+                        <small class="text-muted">${escapeHtml(f.notes || '')}</small>
+                        ${status}
+                    </div>
+                    <div class="ica-supplier-upload">
+                        <input type="file" class="ica-supplier-file" accept=".xlsx,.xls,.csv,.tsv,.txt" data-key="${escapeHtml(key)}">
+                        <button type="button" class="btn btn-xs btn-primary ica-supplier-go" data-key="${escapeHtml(key)}">Upload</button>
+                        <span class="ica-supplier-msg"></span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        host.querySelectorAll('.ica-supplier-go').forEach((btn) => {
+            btn.addEventListener('click', function () {
+                const key = btn.dataset.key;
+                const row = host.querySelector(`.ica-supplier-row[data-key="${cssEscape(key)}"]`);
+                const fileEl = row && row.querySelector('.ica-supplier-file');
+                const msgEl = row && row.querySelector('.ica-supplier-msg');
+                if (!fileEl || !fileEl.files || !fileEl.files[0]) {
+                    if (msgEl) msgEl.textContent = 'Pick a file first.';
+                    return;
+                }
+                const fd = new FormData();
+                fd.append('supplier_key', key);
+                fd.append('feed_file', fileEl.files[0]);
+                btn.disabled = true; btn.textContent = 'Uploading…';
+                if (msgEl) msgEl.textContent = '';
+                fetch(window.ICA_SUPPLIER_UPLOAD_URL, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': window.ICA_CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin',
+                    body: fd,
+                })
+                    .then((r) => r.json())
+                    .then((resp) => {
+                        btn.disabled = false; btn.textContent = 'Upload';
+                        if (resp && resp.success) {
+                            if (msgEl) msgEl.textContent = `Imported ${resp.row_count} rows.`;
+                            loadSupplierFeeds();
+                        } else {
+                            if (msgEl) msgEl.textContent = (resp && resp.message) || 'Upload failed.';
+                        }
+                    })
+                    .catch((err) => {
+                        btn.disabled = false; btn.textContent = 'Upload';
+                        if (msgEl) msgEl.textContent = 'Upload failed — see console.';
+                        console.error('[ICA] supplier upload failed', err);
+                    });
+            });
+        });
+    }
+
+    function loadSupplierFeeds() {
+        if (!window.ICA_SUPPLIER_LIST_URL) return;
+        fetch(window.ICA_SUPPLIER_LIST_URL, {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin',
+        })
+            .then((r) => r.json())
+            .then((resp) => renderSupplierGrid((resp && resp.feeds) || {}))
+            .catch((err) => console.error('[ICA] supplier feeds list failed', err));
+    }
+    loadSupplierFeeds();
 
     function loadManagerPicks() {
         if (!window.ICA_MGRPICKS_LIST_URL) return;

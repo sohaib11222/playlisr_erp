@@ -239,6 +239,42 @@ body.ica-v2 .ica-tag.ume_spotlight {
 }
 body.ica-v2 .ica-spot-date { white-space: nowrap; color: var(--ica-ink-2); font-weight: 600; }
 
+/* Best-supplier-price tag rendered next to the product name */
+body.ica-v2 .ica-tag.ica-supplier-best {
+	background: #d4edda;
+	color: #155724;
+	font-weight: 700;
+	font-size: 11px;
+}
+
+/* Supplier price-feed upload grid (one row per supplier) */
+body.ica-v2 .ica-supplier-grid {
+	display: grid;
+	gap: 8px;
+}
+body.ica-v2 .ica-supplier-row {
+	display: grid;
+	grid-template-columns: minmax(220px, 1fr) auto;
+	align-items: center;
+	gap: 14px;
+	padding: 10px 12px;
+	background: var(--ica-surface-2);
+	border: 1px solid var(--ica-line);
+	border-radius: var(--ica-radius-sm);
+}
+body.ica-v2 .ica-supplier-meta { display: flex; flex-direction: column; gap: 2px; }
+body.ica-v2 .ica-supplier-meta strong { color: var(--ica-ink); font-size: 14px; }
+body.ica-v2 .ica-supplier-meta small { color: var(--ica-ink-3); font-size: 12px; }
+body.ica-v2 .ica-supplier-stat { color: var(--ica-success); font-size: 12px; font-weight: 600; }
+body.ica-v2 .ica-supplier-stat.ica-supplier-empty { color: var(--ica-ink-3); font-style: italic; font-weight: 400; }
+body.ica-v2 .ica-supplier-upload {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+body.ica-v2 .ica-supplier-file { font-size: 12px; }
+body.ica-v2 .ica-supplier-msg { font-size: 12px; color: var(--ica-ink-2); }
+
 /* ── Disclosure (More options / Show other lists) ─────────────────── */
 body.ica-v2 .ica-more-options > summary,
 body.ica-v2 .ica-secondary-disclosure > summary {

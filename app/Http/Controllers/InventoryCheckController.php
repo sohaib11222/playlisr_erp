@@ -549,6 +549,81 @@ class InventoryCheckController extends Controller
         return response()->json(['success' => true, 'entry' => $entry]);
     }
 
+    /**
+     * Supplier price-feed upload. Sarah ships catalog files weekly from
+     * each distributor (AMS / Alliance / Secretly / Beggars / Red Eye /
+     * VP). Each file is parsed via parseSupplierFeedFile() and saved as
+     * storage/app/supplier-prices-{biz}-{supplier_key}.json. Subsequent
+     * bucket builds look up the cheapest match per row.
+     */
+    public function uploadSupplierFeed(Request $request)
+    {
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+            'supplier_key' => 'required|string|max:32',
+            'feed_file' => 'required|file|max:30720',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'message' => implode(' ', $validator->errors()->all())], 422);
+        }
+
+        $supplierKey = strtolower(trim((string) $request->input('supplier_key')));
+        $known = $this->inventoryCheckService->knownSuppliers();
+        if (!isset($known[$supplierKey])) {
+            return response()->json(['success' => false, 'message' => 'Unknown supplier: ' . $supplierKey], 422);
+        }
+
+        $file = $request->file('feed_file');
+        $ext = strtolower($file->getClientOriginalExtension());
+        if (!in_array($ext, ['xlsx', 'xls', 'csv', 'tsv', 'txt'], true)) {
+            return response()->json(['success' => false, 'message' => 'Use xlsx, csv, tsv, or txt.'], 422);
+        }
+
+        $business_id = (int) $request->session()->get('user.business_id');
+        $filename = $file->getClientOriginalName();
+
+        try {
+            $parsed = $this->inventoryCheckService->parseSupplierFeedFile($file->getRealPath(), $filename);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('ICA supplier upload parse failed', ['err' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => 'Parse failed: ' . $e->getMessage()], 500);
+        }
+
+        if (empty($parsed['rows'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Could not find Artist + Title + a price/cost column in the file. The parser looks for headers like "Artist", "Title", and "Cost"/"Wholesale"/"Net Price".',
+            ], 422);
+        }
+
+        $payload = [
+            'business_id' => $business_id,
+            'supplier_key' => $supplierKey,
+            'supplier_label' => $known[$supplierKey]['label'] ?? $supplierKey,
+            'source_file' => $filename,
+            'imported_at' => Carbon::now()->toIso8601String(),
+            'imported_by' => trim((auth()->user()->first_name ?? '') . ' ' . (auth()->user()->last_name ?? '')) ?: 'staff',
+            'rows' => $parsed['rows'],
+        ];
+        $this->inventoryCheckService->saveSupplierFeed($business_id, $supplierKey, $payload);
+
+        return response()->json([
+            'success' => true,
+            'supplier_key' => $supplierKey,
+            'supplier_label' => $payload['supplier_label'],
+            'row_count' => count($parsed['rows']),
+            'imported_at' => $payload['imported_at'],
+            'source_file' => $filename,
+        ]);
+    }
+
+    public function listSupplierFeeds(Request $request)
+    {
+        $business_id = (int) $request->session()->get('user.business_id');
+        return response()->json([
+            'feeds' => $this->inventoryCheckService->supplierFeedSummary($business_id),
+        ]);
+    }
+
     public function export(Request $request)
     {
         // Open to all authenticated staff — inventory check assistant is

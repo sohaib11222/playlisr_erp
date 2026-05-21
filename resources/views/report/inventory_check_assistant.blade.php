@@ -153,6 +153,16 @@
         </div>
         <div class="row">
             <div class="col-md-12">
+                @component('components.widget', ['class' => 'box-info', 'title' => 'Supplier price feeds'])
+                <p class="text-muted small">Upload each distributor's weekly catalog (xlsx/csv). The parser auto-detects the Artist / Title / Cost columns and the cheapest match becomes the "Best $X via …" badge on chart-pick rows. Not all releases are Universal — these add Sony / indie / specialty pricing alongside UMe.</p>
+                <div id="ica_supplier_grid" class="ica-supplier-grid">
+                    <p class="text-muted small">Loading current feeds…</p>
+                </div>
+                @endcomponent
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-12">
                 @component('components.widget', ['class' => 'box-warning', 'title' => 'Manager picks — stock-up suggestions'])
                 <p class="text-muted small">Lashyn or any manager can flag a category to stock up on. The Manager picks bucket surfaces low-stock candidates matching it.</p>
                 <div id="ica_mgrpicks_list" class="ica-mgrpicks-list">
@@ -543,6 +553,8 @@
     window.ICA_FROZEN_UPDATE_URL = "{{ action('InventoryCheckController@frozenStockUpdate') }}";
     window.ICA_MGRPICKS_BUCKET_URL = "{{ action('InventoryCheckController@managerPicksBucket') }}";
     window.ICA_UME_SPOT_URL = "{{ action('InventoryCheckController@umeSpotlightsBucket') }}";
+    window.ICA_SUPPLIER_LIST_URL = "{{ action('InventoryCheckController@listSupplierFeeds') }}";
+    window.ICA_SUPPLIER_UPLOAD_URL = "{{ action('InventoryCheckController@uploadSupplierFeed') }}";
     window.ICA_MGRPICKS_LIST_URL = "{{ action('InventoryCheckController@listManagerPicks') }}";
     window.ICA_MGRPICKS_ADD_URL = "{{ action('InventoryCheckController@addManagerPick') }}";
     window.ICA_MGRPICKS_DISMISS_URL = "{{ url('reports/inventory-check-assistant/manager-picks') }}";

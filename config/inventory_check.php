@@ -72,6 +72,18 @@ return [
             'max_stock' => 1,
             'target_stock' => 3,
         ],
+        // Supplier price feeds — Sarah uploads each supplier's weekly
+        // catalog (xlsx/csv) and rows in chart_picks etc. get a
+        // "Best $X via <supplier>" badge when a match is found.
+        // The key is used as the JSON filename slug; label is what the
+        // UI shows.
+        'supplier_feeds' => [
+            'ams'      => ['label' => 'AMS / Alliance', 'notes' => 'Main weekly availability + cost'],
+            'secretly' => ['label' => 'Secretly Distribution', 'notes' => 'Indie — Dead Oceans, Jagjaguwar, Saddle Creek, etc.'],
+            'beggars'  => ['label' => 'Beggars Group', 'notes' => 'XL, Matador, 4AD, Rough Trade, Young'],
+            'redeye'   => ['label' => 'Redeye Worldwide', 'notes' => 'Indie / world / reggae catalog'],
+            'vp'       => ['label' => 'VP Records', 'notes' => 'Reggae specialist'],
+        ],
         // ❄️ Frozen inventory — stock-on-shelf with no recent sale.
         // Listed as a "do not reorder" warning bucket; tags cross-reference
         // matches in other buckets.

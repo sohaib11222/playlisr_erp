@@ -325,6 +325,239 @@ class InventoryCheckService
         return $this->bucketManagerPicks($business_id, $locationId, $permittedLocations);
     }
 
+    // ── Supplier price feeds (AMS / Alliance / Secretly / Beggars / Red Eye / VP) ──
+
+    public function knownSuppliers(): array
+    {
+        return (array) config('inventory_check.buckets.supplier_feeds', []);
+    }
+
+    protected function supplierFeedPath(int $business_id, string $supplierKey): string
+    {
+        return storage_path('app/supplier-prices-' . $business_id . '-' . $supplierKey . '.json');
+    }
+
+    public function loadSupplierFeed(int $business_id, string $supplierKey): array
+    {
+        $path = $this->supplierFeedPath($business_id, $supplierKey);
+        if (!is_file($path)) return [];
+        try {
+            $json = json_decode((string) file_get_contents($path), true);
+            return is_array($json) ? $json : [];
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    public function saveSupplierFeed(int $business_id, string $supplierKey, array $payload): void
+    {
+        $path = $this->supplierFeedPath($business_id, $supplierKey);
+        $dir = dirname($path);
+        if (!is_dir($dir)) { @mkdir($dir, 0775, true); }
+        $tmp = $path . '.tmp';
+        file_put_contents($tmp, json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        @rename($tmp, $path);
+    }
+
+    /**
+     * Summary of every uploaded supplier feed for a business: rows uploaded,
+     * date imported, source filename. Used by the More Options panel to
+     * show "AMS · 1,432 rows · loaded 2026-05-19" next to each upload slot.
+     */
+    public function supplierFeedSummary(int $business_id): array
+    {
+        $out = [];
+        foreach ($this->knownSuppliers() as $key => $meta) {
+            $feed = $this->loadSupplierFeed($business_id, $key);
+            $out[$key] = [
+                'label' => $meta['label'] ?? $key,
+                'notes' => $meta['notes'] ?? '',
+                'imported_at' => $feed['imported_at'] ?? null,
+                'source_file' => $feed['source_file'] ?? null,
+                'row_count' => isset($feed['rows']) && is_array($feed['rows']) ? count($feed['rows']) : 0,
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * Parse a supplier-supplied catalog file (xlsx/csv/tsv) into a flat
+     * row list normalized to {artist, title, format, cost, upc}. Header
+     * detection is fuzzy — different suppliers ship different column
+     * names ("Cost", "Wholesale", "Net Price", "Price per CD", "List
+     * Price"). Defaults to picking the cheapest numeric column when
+     * multiple price-like headers are present.
+     *
+     * Returns ['rows' => [...], 'header_map' => [...], 'sample_rows' => N].
+     */
+    public function parseSupplierFeedFile(string $path, string $filename): array
+    {
+        $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+        $rows = [];
+        if (in_array($ext, ['csv', 'tsv', 'txt'], true)) {
+            $rows = $this->readSupplierCsv($path, $ext === 'tsv' ? "\t" : null);
+        } else {
+            try {
+                $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($path);
+            } catch (\Throwable $e) {
+                return ['rows' => [], 'error' => 'load_failed: ' . $e->getMessage()];
+            }
+            // Walk all sheets and merge — many supplier files are
+            // single-sheet but some put format on separate tabs.
+            foreach ($spreadsheet->getSheetNames() as $sheetName) {
+                $sheet = $spreadsheet->getSheetByName($sheetName);
+                $sheetRows = $sheet->toArray(null, true, true, false);
+                $defaultFormat = $this->guessFormatFromSheetName($sheetName);
+                $parsed = $this->normalizeSupplierRows($sheetRows, $defaultFormat);
+                foreach ($parsed as $r) $rows[] = $r;
+            }
+        }
+        return ['rows' => $rows, 'row_count' => count($rows)];
+    }
+
+    protected function readSupplierCsv(string $path, ?string $delim): array
+    {
+        $fh = fopen($path, 'r');
+        if (!$fh) return [];
+        if ($delim === null) {
+            $sample = fread($fh, 4096);
+            rewind($fh);
+            if (substr_count($sample, "\t") > substr_count($sample, ',')) $delim = "\t";
+            elseif (substr_count($sample, ';') > substr_count($sample, ',')) $delim = ';';
+            else $delim = ',';
+        }
+        $rows = [];
+        while (($r = fgetcsv($fh, 0, $delim)) !== false) $rows[] = $r;
+        fclose($fh);
+        return $this->normalizeSupplierRows($rows, null);
+    }
+
+    protected function guessFormatFromSheetName(string $name): ?string
+    {
+        $l = mb_strtolower($name);
+        if (mb_strpos($l, 'vinyl') !== false || mb_strpos($l, 'lp') !== false) return 'LP';
+        if (mb_strpos($l, 'cd') !== false) return 'CD';
+        if (mb_strpos($l, 'cassette') !== false) return 'Cassette';
+        return null;
+    }
+
+    /**
+     * @param  array<int, array<int, mixed>>  $rows  raw 2D cell grid
+     * @return array<int, array{artist:?string, title:?string, format:?string, cost:?float, upc:?string}>
+     */
+    protected function normalizeSupplierRows(array $rows, ?string $defaultFormat): array
+    {
+        $headerIdx = null;
+        $limit = min(count($rows), 10);
+        for ($r = 0; $r < $limit; $r++) {
+            if (!is_array($rows[$r])) continue;
+            $joined = mb_strtolower(implode('|', array_map(fn ($c) => (string) $c, $rows[$r])));
+            $hasArtist = mb_strpos($joined, 'artist') !== false || mb_strpos($joined, 'performer') !== false;
+            $hasTitle = mb_strpos($joined, 'title') !== false || mb_strpos($joined, 'album') !== false || mb_strpos($joined, 'description') !== false;
+            $hasPriceish = mb_strpos($joined, 'price') !== false || mb_strpos($joined, 'cost') !== false || mb_strpos($joined, 'wholesale') !== false || mb_strpos($joined, 'net') !== false || mb_strpos($joined, 'dealer') !== false;
+            if (($hasArtist || $hasTitle) && $hasPriceish) { $headerIdx = $r; break; }
+        }
+        if ($headerIdx === null) return [];
+
+        $headers = array_map(fn ($h) => mb_strtolower(trim((string) $h)), $rows[$headerIdx]);
+        $find = function (array $needles) use ($headers) {
+            foreach ($headers as $i => $h) {
+                foreach ($needles as $n) {
+                    if ($h === $n || mb_strpos($h, $n) !== false) return $i;
+                }
+            }
+            return null;
+        };
+
+        $cArtist = $find(['artist name', 'artist', 'performer']);
+        $cTitle = $find(['title', 'album', 'name', 'description']);
+        $cFormat = $find(['format', 'configuration', 'config']);
+        // Prefer cost/wholesale/dealer over list price — Sarah cares
+        // about the wholesale she pays, not retail.
+        $cCost = $find(['cost', 'wholesale', 'dealer', 'net price', 'net', 'unit price', 'price']);
+        $cUpc = $find(['upc', 'ean', 'barcode']);
+
+        if ($cArtist === null && $cTitle === null) return [];
+
+        $out = [];
+        $count = count($rows);
+        for ($r = $headerIdx + 1; $r < $count; $r++) {
+            $row = $rows[$r];
+            if (!is_array($row)) continue;
+            $artist = $cArtist !== null ? trim((string) ($row[$cArtist] ?? '')) : '';
+            $title = $cTitle !== null ? trim((string) ($row[$cTitle] ?? '')) : '';
+            if ($artist === '' && $title === '') continue;
+            $costRaw = $cCost !== null ? $row[$cCost] ?? null : null;
+            $cost = null;
+            if ($costRaw !== null && $costRaw !== '') {
+                $clean = preg_replace('/[^0-9.\-]/', '', (string) $costRaw);
+                if ($clean !== '' && is_numeric($clean)) $cost = (float) $clean;
+            }
+            $fmt = $cFormat !== null ? trim((string) ($row[$cFormat] ?? '')) ?: null : null;
+            if ($fmt === null && $defaultFormat !== null) $fmt = $defaultFormat;
+            $out[] = [
+                'artist' => $artist !== '' ? $artist : null,
+                'title' => $title !== '' ? $title : null,
+                'format' => $fmt,
+                'cost' => $cost,
+                'upc' => $cUpc !== null ? (trim((string) ($row[$cUpc] ?? '')) ?: null) : null,
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * Walk every uploaded supplier feed for this business and return the
+     * cheapest match for (artist, title) — returns ['supplier_key',
+     * 'supplier_label', 'cost', 'upc'] or null. Builds an in-memory index
+     * once per request via a static cache so it's only one JSON-decode
+     * round trip even when iterating 100s of chart picks.
+     */
+    public function bestSupplierPrice(int $business_id, ?string $artist, ?string $title, ?string $format = null): ?array
+    {
+        static $cache = []; // [business_id => [supplier_key => indexed_rows]]
+        if (!isset($cache[$business_id])) {
+            $cache[$business_id] = [];
+            foreach ($this->knownSuppliers() as $key => $meta) {
+                $feed = $this->loadSupplierFeed($business_id, $key);
+                if (empty($feed['rows']) || !is_array($feed['rows'])) continue;
+                $cache[$business_id][$key] = [
+                    'label' => $meta['label'] ?? $key,
+                    'rows' => $feed['rows'],
+                ];
+            }
+        }
+        if (empty($cache[$business_id])) return null;
+
+        $needleArtist = $artist ? mb_strtolower($artist) : '';
+        $needleTitle = $title ? mb_strtolower($title) : '';
+        if ($needleTitle === '' && $needleArtist === '') return null;
+
+        $best = null;
+        foreach ($cache[$business_id] as $key => $bundle) {
+            foreach ($bundle['rows'] as $row) {
+                if (!is_array($row)) continue;
+                $rArtist = mb_strtolower((string) ($row['artist'] ?? ''));
+                $rTitle = mb_strtolower((string) ($row['title'] ?? ''));
+                $titleHit = $needleTitle !== '' && $rTitle !== '' && mb_strpos($rTitle, $needleTitle) !== false;
+                $artistHit = $needleArtist !== '' && $rArtist !== '' && mb_strpos($rArtist, $needleArtist) !== false;
+                if (!$titleHit || ($needleArtist !== '' && !$artistHit)) continue;
+                $cost = isset($row['cost']) ? (float) $row['cost'] : null;
+                if ($cost === null || $cost <= 0) continue;
+                if ($best === null || $cost < $best['cost']) {
+                    $best = [
+                        'supplier_key' => $key,
+                        'supplier_label' => $bundle['label'],
+                        'cost' => $cost,
+                        'upc' => $row['upc'] ?? null,
+                        'format' => $row['format'] ?? null,
+                    ];
+                }
+            }
+        }
+        return $best;
+    }
+
     /** Public alias for the lazy UMe spotlights endpoint. */
     public function bucketUmeSpotlightsPublic(int $business_id, int $locationId, $permittedLocations): array
     {
@@ -792,6 +1025,7 @@ class InventoryCheckService
                 'genre' => $match['genre'] ?? null,
                 'bin_position' => $match['bin_position'] ?? null,
                 'is_rsd' => $this->isRsdTitle((string) ($pick->title ?? '')),
+                'best_supplier' => $this->bestSupplierPrice($business_id, $pick->artist, $pick->title, $pick->format),
                 'suggested_qty' => $this->suggestedQtyForChartPick($pick, $stock, $isTopArtist),
                 'reason' => $this->chartPickReason($pick, $isTopArtist, $match),
                 'tags' => array_values(array_filter([
