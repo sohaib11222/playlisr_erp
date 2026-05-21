@@ -1022,6 +1022,123 @@
     }
     loadSupplierFeeds();
 
+    // ── Budget: "+ Log a buy" inline form ────────────────────────────
+    const $logBtn = document.getElementById('ica_log_buy_btn');
+    const $logForm = document.getElementById('ica_log_buy_form');
+    const $logCancel = document.getElementById('ica_log_cancel');
+    const $logSave = document.getElementById('ica_log_save');
+    if ($logBtn && $logForm) {
+        $logBtn.addEventListener('click', () => {
+            $logForm.style.display = $logForm.style.display === 'none' ? 'block' : 'none';
+            if ($logForm.style.display === 'block') {
+                const amt = document.getElementById('ica_log_amount');
+                if (amt) amt.focus();
+            }
+        });
+    }
+    if ($logCancel) $logCancel.addEventListener('click', () => { $logForm.style.display = 'none'; });
+    if ($logSave) {
+        $logSave.addEventListener('click', () => {
+            const amount = (document.getElementById('ica_log_amount').value || '').trim();
+            const date = (document.getElementById('ica_log_date').value || '').trim();
+            const source = (document.getElementById('ica_log_source').value || '').trim();
+            const note = (document.getElementById('ica_log_note').value || '').trim();
+            if (!amount || Number(amount) <= 0) { alert('Amount required.'); return; }
+            if (!date) { alert('Pick a date.'); return; }
+            $logSave.disabled = true;
+            const fd = new FormData();
+            fd.append('amount', amount);
+            fd.append('date', date);
+            if (source) fd.append('source', source);
+            if (note) fd.append('note', note);
+            fetch(window.ICA_LOG_BUY_URL, {
+                method: 'POST',
+                headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': window.ICA_CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+                credentials: 'same-origin',
+                body: fd,
+            })
+                .then((r) => r.json())
+                .then((resp) => {
+                    $logSave.disabled = false;
+                    if (resp && resp.success) {
+                        // Easiest: hard-reload so the manual-entry chip
+                        // appears under the bar and the bar repaints in
+                        // the correct color band.
+                        location.reload();
+                    } else {
+                        alert('Save failed: ' + ((resp && resp.message) || 'unknown'));
+                    }
+                })
+                .catch((err) => {
+                    $logSave.disabled = false;
+                    console.error('[ICA] log buy failed', err);
+                    alert('Save failed — see console.');
+                });
+        });
+    }
+    document.querySelectorAll('.ica-budget-manual-remove').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const id = btn.dataset.entryId;
+            if (!id) return;
+            if (!confirm('Remove this manual budget entry?')) return;
+            fetch(window.ICA_LOG_BUY_DELETE_BASE + '/' + encodeURIComponent(id), {
+                method: 'DELETE',
+                headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': window.ICA_CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+                credentials: 'same-origin',
+            })
+                .then((r) => r.json())
+                .then((resp) => { if (resp && resp.success) location.reload(); });
+        });
+    });
+
+    // ── "Auto-fill to budget" — pre-check rows in priority order ─────
+    const $autofill = document.getElementById('ica_autofill_budget');
+    if ($autofill) {
+        $autofill.addEventListener('click', () => {
+            const banner = document.getElementById('ica_budget_banner');
+            const remaining = banner ? parseFloat(banner.dataset.remaining || '0') : 0;
+            if (!remaining || remaining <= 0) {
+                alert('No remaining budget this week — log a buy or wait for the week to roll over.');
+                return;
+            }
+            // Priority order — items in higher-priority buckets get auto-
+            // checked first until the running cost crosses the remaining
+            // budget. Rows in lower-priority buckets get unchecked.
+            const priority = ['fast_oos', 'abc_a_restock', 'manager_picks', 'top_artist_new_releases', 'customer_wants', 'universal_top', 'street_pulse', 'apple_music_top', 'long_oos_essentials', 'events_upcoming', 'ume_spotlights', 'hot_used_oos'];
+            let running = 0;
+            let checkedCount = 0;
+            const usedRows = new WeakSet();
+            priority.forEach((key) => {
+                const bucket = $root.querySelector('.ica-bucket[data-bucket="' + key + '"]');
+                if (!bucket) return;
+                bucket.querySelectorAll('tr[data-row-key]').forEach((tr) => {
+                    if (tr.style.display === 'none') { return; } // respect current filters
+                    const cost = parseFloat(tr.getAttribute('data-cost') || '0') || 0;
+                    const qtyInput = tr.querySelector('.ica-qty-input');
+                    const qty = qtyInput ? (parseInt(qtyInput.value, 10) || 0) : 1;
+                    const lineCost = cost * qty;
+                    const checkbox = tr.querySelector('.ica-row-check');
+                    if (!checkbox) return;
+                    if (lineCost > 0 && running + lineCost <= remaining) {
+                        checkbox.checked = true;
+                        running += lineCost;
+                        checkedCount++;
+                        usedRows.add(tr);
+                    }
+                });
+            });
+            // Uncheck everything we didn't pick (only rows visible)
+            $root.querySelectorAll('tr[data-row-key]').forEach((tr) => {
+                if (tr.style.display === 'none') return;
+                if (usedRows.has(tr)) return;
+                const checkbox = tr.querySelector('.ica-row-check');
+                if (checkbox) checkbox.checked = false;
+            });
+            renderBucketTotals();
+            alert(`Auto-filled ${checkedCount} rows · $${Math.round(running).toLocaleString('en-US')} of $${Math.round(remaining).toLocaleString('en-US')} remaining budget.`);
+        });
+    }
+
     function loadManagerPicks() {
         if (!window.ICA_MGRPICKS_LIST_URL) return;
         fetch(window.ICA_MGRPICKS_LIST_URL, {

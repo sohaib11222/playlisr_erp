@@ -34,25 +34,59 @@
         $barClass = $pb['over_budget'] ? 'progress-bar-danger' : ($pb['pct_spent'] >= 80 ? 'progress-bar-warning' : 'progress-bar-success');
         $remainColor = $pb['over_budget'] ? '#a94442' : ($pb['remaining'] < 1000 ? '#8a6d3b' : '#2c699a');
     @endphp
-    <div class="ica-budget-banner">
+    <div class="ica-budget-banner" id="ica_budget_banner"
+         data-week="{{ $pb['week_no'] }}"
+         data-budget="{{ $pb['budget'] }}"
+         data-remaining="{{ $pb['remaining'] }}">
         <div class="ica-budget-head">
             <span class="ica-budget-title">Purchasing budget — week {{ $pb['week_no'] }} of 13 <small class="text-muted">({{ \Carbon\Carbon::parse($pb['start'])->format('M j') }} – {{ \Carbon\Carbon::parse($pb['end'])->format('M j') }})</small></span>
             <span class="ica-budget-figures">
-                <span class="ica-budget-spent">Spent <strong>${{ number_format($pb['spent'], 0) }}</strong></span>
+                <span class="ica-budget-spent">Spent <strong id="ica_budget_spent">${{ number_format($pb['spent'], 0) }}</strong></span>
                 <span class="ica-budget-sep">·</span>
                 <span>Budget <strong>${{ number_format($pb['budget'], 0) }}</strong></span>
                 <span class="ica-budget-sep">·</span>
-                <span style="color: {{ $remainColor }};">Remaining <strong>${{ number_format($pb['remaining'], 0) }}</strong></span>
+                <span id="ica_budget_remain_wrap" style="color: {{ $remainColor }};">Remaining <strong id="ica_budget_remain">${{ number_format($pb['remaining'], 0) }}</strong></span>
+                <button type="button" class="btn btn-xs btn-default ica-budget-add-btn" id="ica_log_buy_btn" title="Log a purchase against this week's budget (e.g. Jon's $2k collection on Sunday)">+ Log a buy</button>
             </span>
         </div>
         <div class="progress ica-budget-bar">
-            <div class="progress-bar {{ $barClass }}" role="progressbar" style="width: {{ $pb['pct_spent'] }}%;">
+            <div class="progress-bar {{ $barClass }}" id="ica_budget_bar_fill" role="progressbar" style="width: {{ $pb['pct_spent'] }}%;">
                 {{ $pb['pct_spent'] }}%
             </div>
         </div>
-        @if($pb['over_budget'])
-        <div class="ica-budget-warn">⚠️ Over budget this week — confirm with Jon before placing more orders.</div>
+        @if(!empty($pb['manual_entries_this_week']))
+        <div class="ica-budget-manual-list">
+            <small class="text-muted">Manual entries this week:</small>
+            @foreach($pb['manual_entries_this_week'] as $me)
+                <span class="ica-budget-manual-chip" data-entry-id="{{ $me['id'] ?? '' }}">
+                    ${{ number_format((float) ($me['amount'] ?? 0), 0) }}
+                    @if(!empty($me['source'])) · {{ $me['source'] }} @endif
+                    @if(!empty($me['date'])) · {{ \Carbon\Carbon::parse($me['date'])->format('M j') }} @endif
+                    by {{ $me['user_name'] ?? '' }}
+                    <button type="button" class="ica-budget-manual-remove" data-entry-id="{{ $me['id'] ?? '' }}" title="Remove">×</button>
+                </span>
+            @endforeach
+        </div>
         @endif
+        @if($pb['over_budget'])
+        <div class="ica-budget-warn">Over budget this week — confirm with Jon before placing more orders.</div>
+        @endif
+    </div>
+    {{-- Inline form for + Log a buy (hidden until clicked) --}}
+    <div class="ica-budget-log-form" id="ica_log_buy_form" style="display:none;">
+        <div class="ica-log-row">
+            <label>Amount $</label>
+            <input type="number" id="ica_log_amount" class="form-control input-sm" step="0.01" min="0" placeholder="2000.00">
+            <label>Date</label>
+            <input type="date" id="ica_log_date" class="form-control input-sm" value="{{ \Carbon\Carbon::now()->format('Y-m-d') }}">
+            <label>Source</label>
+            <input type="text" id="ica_log_source" class="form-control input-sm" placeholder="e.g. customer collection, Discogs lot">
+            <label>Note</label>
+            <input type="text" id="ica_log_note" class="form-control input-sm" placeholder="Jon's $2k collection Sun">
+            <button type="button" class="btn btn-primary btn-sm" id="ica_log_save">Save</button>
+            <button type="button" class="btn btn-link btn-sm" id="ica_log_cancel">Cancel</button>
+        </div>
+        <small class="text-muted">Logs against the weekly budget bar above. Doesn't create a formal purchase transaction — use /buy-from-customer for that. For ad-hoc cash buys / Jon-on-the-floor pickups.</small>
     </div>
     @endif
 
@@ -219,6 +253,9 @@
             <div class="ica-export-strip" id="ica_export_strip" style="display:none;">
                 <span class="ica-summary" id="ica_summary">—</span>
                 <div class="pull-right">
+                    <button type="button" class="btn btn-warning" id="ica_autofill_budget" title="Pre-check rows in priority order until this week's remaining budget is used up">
+                        Auto-fill to budget
+                    </button>
                     <button type="button" class="btn btn-success" id="ica_export_csv">
                         <i class="fa fa-download"></i> Export for AMS
                     </button>
@@ -555,6 +592,8 @@
     window.ICA_UME_SPOT_URL = "{{ action('InventoryCheckController@umeSpotlightsBucket') }}";
     window.ICA_SUPPLIER_LIST_URL = "{{ action('InventoryCheckController@listSupplierFeeds') }}";
     window.ICA_SUPPLIER_UPLOAD_URL = "{{ action('InventoryCheckController@uploadSupplierFeed') }}";
+    window.ICA_LOG_BUY_URL = "{{ action('InventoryCheckController@addManualBudgetEntry') }}";
+    window.ICA_LOG_BUY_DELETE_BASE = "{{ url('reports/inventory-check-assistant/manual-budget-entry') }}";
     window.ICA_MGRPICKS_LIST_URL = "{{ action('InventoryCheckController@listManagerPicks') }}";
     window.ICA_MGRPICKS_ADD_URL = "{{ action('InventoryCheckController@addManagerPick') }}";
     window.ICA_MGRPICKS_DISMISS_URL = "{{ url('reports/inventory-check-assistant/manager-picks') }}";

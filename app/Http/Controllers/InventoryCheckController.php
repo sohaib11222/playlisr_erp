@@ -681,6 +681,61 @@ class InventoryCheckController extends Controller
         ]);
     }
 
+    /**
+     * Log a purchase against the weekly budget without going through the
+     * formal /buy-from-customer or /purchases/create flow. Sarah's case
+     * 2026-05-20: Jon spent $2k on a collection on Sunday and just needs
+     * the budget bar to reflect it. Stored in
+     * storage/app/ica-manual-budget-entries-{biz}.json; pulled into
+     * currentPurchaseBudget()'s spent total alongside the formal
+     * transactions sum. JSON-on-disk, no migration.
+     */
+    public function addManualBudgetEntry(Request $request)
+    {
+        $request->validate([
+            'amount' => 'required|numeric|min:0.01',
+            'date' => 'required|date',
+            'note' => 'nullable|string|max:500',
+            'source' => 'nullable|string|max:191',
+        ]);
+        $business_id = (int) $request->session()->get('user.business_id');
+        $entries = $this->inventoryCheckService->loadManualBudgetEntries($business_id);
+        $user = auth()->user();
+        $userName = trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? '')) ?: ('user#' . ($user->id ?? 0));
+        $entry = [
+            'id' => bin2hex(random_bytes(8)),
+            'amount' => (float) $request->input('amount'),
+            'date' => substr((string) $request->input('date'), 0, 10),
+            'source' => trim((string) $request->input('source', '')),
+            'note' => trim((string) $request->input('note', '')),
+            'user_id' => (int) ($user->id ?? 0),
+            'user_name' => $userName,
+            'when' => Carbon::now()->toIso8601String(),
+        ];
+        $entries[] = $entry;
+        $this->inventoryCheckService->saveManualBudgetEntries($business_id, $entries);
+
+        // Return the refreshed budget so the bar can re-render without
+        // a full page reload.
+        $permitted = auth()->user()->permitted_locations();
+        $budget = $this->inventoryCheckService->currentPurchaseBudget($business_id, $permitted);
+        return response()->json(['success' => true, 'entry' => $entry, 'budget' => $budget]);
+    }
+
+    public function deleteManualBudgetEntry(Request $request, string $id)
+    {
+        $business_id = (int) $request->session()->get('user.business_id');
+        $entries = $this->inventoryCheckService->loadManualBudgetEntries($business_id);
+        $filtered = array_values(array_filter($entries, fn ($e) => ($e['id'] ?? null) !== $id));
+        if (count($filtered) === count($entries)) {
+            return response()->json(['success' => false, 'error' => 'not_found'], 404);
+        }
+        $this->inventoryCheckService->saveManualBudgetEntries($business_id, $filtered);
+        $permitted = auth()->user()->permitted_locations();
+        $budget = $this->inventoryCheckService->currentPurchaseBudget($business_id, $permitted);
+        return response()->json(['success' => true, 'budget' => $budget]);
+    }
+
     public function export(Request $request)
     {
         // Open to all authenticated staff — inventory check assistant is

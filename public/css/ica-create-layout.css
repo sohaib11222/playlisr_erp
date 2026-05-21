@@ -145,6 +145,38 @@ body.ica-v2 .ica-budget-bar .progress-bar.progress-bar-warning {
 body.ica-v2 .ica-budget-bar .progress-bar.progress-bar-danger {
 	background: var(--ica-danger) !important;
 }
+body.ica-v2 .ica-budget-add-btn { margin-left: 14px; height: 28px; line-height: 1; font-weight: 600; }
+body.ica-v2 .ica-budget-manual-list { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+body.ica-v2 .ica-budget-manual-chip {
+	display: inline-flex; align-items: center; gap: 4px;
+	background: var(--ica-surface-2);
+	border: 1px solid var(--ica-line);
+	border-radius: 999px;
+	padding: 3px 10px;
+	font-size: 12px;
+	color: var(--ica-ink-2);
+}
+body.ica-v2 .ica-budget-manual-remove {
+	background: transparent; border: none; padding: 0 0 0 4px;
+	color: var(--ica-ink-3); font-size: 16px; cursor: pointer; line-height: 1;
+}
+body.ica-v2 .ica-budget-manual-remove:hover { color: var(--ica-danger); }
+body.ica-v2 .ica-budget-log-form {
+	margin: -6px 20px 14px;
+	padding: 12px 18px;
+	background: var(--ica-accent-soft);
+	border: 1px solid var(--ica-accent-deep);
+	border-radius: var(--ica-radius-sm);
+}
+body.ica-v2 .ica-budget-log-form .ica-log-row {
+	display: grid;
+	grid-template-columns: auto 120px auto 140px auto minmax(140px, 1fr) auto minmax(160px, 1fr) auto auto;
+	gap: 8px;
+	align-items: center;
+}
+body.ica-v2 .ica-budget-log-form label { font-size: 12px; font-weight: 600; color: var(--ica-ink-2); margin: 0; }
+body.ica-v2 .ica-budget-log-form .form-control { height: 30px; font-size: 13px; }
+body.ica-v2 .ica-budget-log-form small { display: block; margin-top: 6px; color: var(--ica-ink-3); }
 
 /* ── Store picker (Hollywood / Pico as accent pills) ───────────────── */
 body.ica-v2 .ica-store-picker {

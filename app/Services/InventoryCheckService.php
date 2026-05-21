@@ -98,6 +98,34 @@ class InventoryCheckService
      * $X left this week" right next to the reorder list — buying decisions
      * stay anchored to the cash plan instead of running the export blind.
      */
+    /**
+     * Out-of-band purchase entries logged from the ICA page — collections
+     * Jon buys on the floor, cash buys that haven't gone through
+     * /buy-from-customer yet, etc. JSON-on-disk so no migration and no
+     * risk of crossing into the formal purchase_lines accounting flow.
+     */
+    public function loadManualBudgetEntries(int $business_id): array
+    {
+        $path = storage_path('app/ica-manual-budget-entries-' . $business_id . '.json');
+        if (!is_file($path)) return [];
+        try {
+            $json = json_decode((string) file_get_contents($path), true);
+            return is_array($json) ? $json : [];
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    public function saveManualBudgetEntries(int $business_id, array $entries): void
+    {
+        $path = storage_path('app/ica-manual-budget-entries-' . $business_id . '.json');
+        $dir = dirname($path);
+        if (!is_dir($dir)) { @mkdir($dir, 0775, true); }
+        $tmp = $path . '.tmp';
+        file_put_contents($tmp, json_encode(array_values($entries), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        @rename($tmp, $path);
+    }
+
     public function currentPurchaseBudget(int $business_id, $permittedLocations): ?array
     {
         $schedule = $this->purchaseBudgetSchedule();
@@ -120,7 +148,24 @@ class InventoryCheckService
         if ($permittedLocations !== 'all') {
             $q->whereIn('t.location_id', $permittedLocations);
         }
-        $spent = (float) $q->sum('t.final_total');
+        $spentFromTransactions = (float) $q->sum('t.final_total');
+
+        // Add manual budget entries logged from the ICA "+ Log a buy"
+        // form (e.g. Jon's $2000 collection on Sunday that hasn't been
+        // entered through the formal purchase flow yet). Same week window.
+        $manualEntries = $this->loadManualBudgetEntries($business_id);
+        $spentFromManual = 0.0;
+        $manualThisWeek = [];
+        foreach ($manualEntries as $e) {
+            if (!is_array($e) || empty($e['date'])) continue;
+            $date = substr((string) $e['date'], 0, 10);
+            if ($date < $week['start'] || $date > $week['end']) continue;
+            $amt = (float) ($e['amount'] ?? 0);
+            $spentFromManual += $amt;
+            $manualThisWeek[] = $e;
+        }
+
+        $spent = $spentFromTransactions + $spentFromManual;
         $budget = (float) $week['budget'];
         $remaining = $budget - $spent;
         $pct = $budget > 0 ? min(100, ($spent / $budget) * 100) : 0;
@@ -131,6 +176,9 @@ class InventoryCheckService
             'end' => $week['end'],
             'budget' => $budget,
             'spent' => $spent,
+            'spent_from_transactions' => $spentFromTransactions,
+            'spent_from_manual' => $spentFromManual,
+            'manual_entries_this_week' => $manualThisWeek,
             'remaining' => $remaining,
             'pct_spent' => round($pct, 1),
             'over_budget' => $spent > $budget,
