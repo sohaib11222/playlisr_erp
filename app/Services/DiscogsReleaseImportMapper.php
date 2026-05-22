@@ -321,6 +321,8 @@ class DiscogsReleaseImportMapper
             // Specific format wins decisively when applicable, but Used
             // Vinyl wins ties / vague matches.
             $specificTokens = ['7"', '10"', '12"', '33 rpm', '45 rpm', '78 rpm', 'cd', 'cassette', 'reel', 'box set'];
+            $sizeTokens = ['7"', '10"', '12"'];
+            $releaseSizes = array_values(array_intersect($formatTokens, $sizeTokens));
 
             $best = null;
             $bestScore = -1;
@@ -328,13 +330,28 @@ class DiscogsReleaseImportMapper
                 $score = $m['sub_exact'] ? 1 : 0;
                 $pn = $m['parent_name'];
 
+                // If the parent is keyed to a specific size (7"/10"/12"),
+                // the release must call out the same size. Otherwise drop
+                // format-token credit so a 12"/45rpm or size-less release
+                // falls through to Used Vinyl instead of `7", 45 RPM`.
+                $parentSizes = [];
+                foreach ($sizeTokens as $sz) {
+                    if ($pn !== '' && mb_strpos($pn, $sz) !== false) {
+                        $parentSizes[] = $sz;
+                    }
+                }
+                $sizeConflict = !empty($parentSizes)
+                    && empty(array_intersect($releaseSizes, $parentSizes));
+
                 if ($pn !== '' && mb_strpos($pn, 'used vinyl') !== false) {
                     $score += 5;
                 }
-                foreach ($formatTokens as $tok) {
-                    if ($tok === '' || $pn === '') continue;
-                    if (mb_strpos($pn, $tok) !== false) {
-                        $score += in_array($tok, $specificTokens, true) ? 10 : 2;
+                if (!$sizeConflict) {
+                    foreach ($formatTokens as $tok) {
+                        if ($tok === '' || $pn === '') continue;
+                        if (mb_strpos($pn, $tok) !== false) {
+                            $score += in_array($tok, $specificTokens, true) ? 10 : 2;
+                        }
                     }
                 }
                 if ($score > $bestScore) {
