@@ -22,6 +22,32 @@ class DiscogsReleaseImportMapper
             $warnings[] = 'Release has no title.';
         }
 
+        // Jon 2026-05-21: when Discogs genres is solely "Electronic",
+        // prefix the title with the first style (e.g. "Techno - Title")
+        // so the row name surfaces what kind of electronic music it is.
+        $genresList = [];
+        if (!empty($payload->genres) && is_array($payload->genres)) {
+            foreach ($payload->genres as $g) {
+                $g = trim((string) $g);
+                if ($g !== '') {
+                    $genresList[] = $g;
+                }
+            }
+        }
+        $firstStyle = null;
+        if (!empty($payload->styles) && is_array($payload->styles)) {
+            foreach ($payload->styles as $s) {
+                $s = trim((string) $s);
+                if ($s !== '') {
+                    $firstStyle = $s;
+                    break;
+                }
+            }
+        }
+        if ($title !== '' && count($genresList) === 1 && $genresList[0] === 'Electronic' && $firstStyle !== null) {
+            $title = $firstStyle . ' - ' . $title;
+        }
+
         $name = $this->buildProductName($artistStr, $title);
 
         $formatStr = $this->formatFormats($payload->formats ?? []);
