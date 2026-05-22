@@ -314,6 +314,9 @@
                          Multiplier are ignored, or any negotiated number that diverges
                          from the suggestion). Blank a field to fall back to the auto
                          suggestion on the next Calculate. --}}
+                    <div class="pos-action-row">
+                        <button type="submit" class="btn btn-primary"><i class="fa fa-calculator"></i> Calculate</button>
+                    </div>
                     <h4>Offer to customer <small class="text-muted">— autofilled from items; type to override the actual offered/accepted price</small></h4>
                     @php
                         $offerStartingCash = data_get($calc, 'starting_offer_cash');
@@ -358,9 +361,6 @@
                         {!! Form::textarea('notes', $input['notes'] ?? null, ['class' => 'form-control', 'rows' => 2]) !!}
                     </div>
 
-                    <div class="pos-action-row">
-                        <button type="submit" class="btn btn-primary"><i class="fa fa-calculator"></i> Calculate</button>
-                    </div>
                     </form>
                 </div>
             </div>
