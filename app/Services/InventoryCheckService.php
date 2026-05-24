@@ -414,6 +414,15 @@ class InventoryCheckService
      */
     public function supplierFeedSummary(int $business_id): array
     {
+        $statusPath = storage_path('app/supplier-fetch-status-' . $business_id . '.json');
+        $status = [];
+        if (is_file($statusPath)) {
+            try {
+                $status = json_decode((string) file_get_contents($statusPath), true) ?: [];
+            } catch (\Throwable $e) {
+                $status = [];
+            }
+        }
         $out = [];
         foreach ($this->knownSuppliers() as $key => $meta) {
             $feed = $this->loadSupplierFeed($business_id, $key);
@@ -423,6 +432,7 @@ class InventoryCheckService
                 'imported_at' => $feed['imported_at'] ?? null,
                 'source_file' => $feed['source_file'] ?? null,
                 'row_count' => isset($feed['rows']) && is_array($feed['rows']) ? count($feed['rows']) : 0,
+                'auto_fetch' => $status[$key] ?? null,
             ];
         }
         return $out;

@@ -1176,6 +1176,14 @@
             const status = f.row_count
                 ? `<span class="ica-supplier-stat">${f.row_count.toLocaleString()} titles tracked · last updated ${String(f.imported_at || '').substring(0, 10)}</span>`
                 : '<span class="ica-supplier-stat ica-supplier-empty">No titles yet — add your first below</span>';
+            const af = f.auto_fetch;
+            let afHtml = '<small class="text-muted">Auto-fetch: not yet configured · needs portal URL + credentials in server .env</small>';
+            if (af) {
+                const when = String(af.at || '').substring(0, 16).replace('T', ' ');
+                afHtml = af.ok
+                    ? `<small class="ica-supplier-autofetch ok">Auto-fetch ✓ ${escapeHtml(when)} — ${escapeHtml(af.message || '')}</small>`
+                    : `<small class="ica-supplier-autofetch err">Auto-fetch ✗ ${escapeHtml(when)} — ${escapeHtml(af.message || '')}</small>`;
+            }
             return `
                 <details class="ica-supplier-row" data-key="${escapeHtml(key)}">
                     <summary>
@@ -1184,6 +1192,10 @@
                         ${status}
                     </summary>
                     <div class="ica-supplier-body">
+                        <div class="ica-supplier-autofetch-row">
+                            ${afHtml}
+                            <button type="button" class="btn btn-xs btn-default ica-supplier-autofetch-go" data-key="${escapeHtml(key)}">Run auto-fetch now</button>
+                        </div>
                         <div class="ica-supplier-form">
                             <label class="ica-supplier-label">Add one title (artist + title + cost):</label>
                             <div class="ica-supplier-quickadd">
@@ -1221,6 +1233,40 @@
         host.querySelectorAll('.ica-supplier-quick').forEach((btn) => btn.addEventListener('click', () => supplierSubmit('single', btn)));
         host.querySelectorAll('.ica-supplier-paste-go').forEach((btn) => btn.addEventListener('click', () => supplierSubmit('paste', btn)));
         host.querySelectorAll('.ica-supplier-file-go').forEach((btn) => btn.addEventListener('click', () => supplierSubmit('file', btn)));
+        host.querySelectorAll('.ica-supplier-autofetch-go').forEach((btn) => btn.addEventListener('click', () => runSupplierAutoFetch(btn)));
+    }
+
+    function runSupplierAutoFetch(btn) {
+        const key = btn.dataset.key;
+        const host = document.getElementById('ica_supplier_grid');
+        const row = host.querySelector(`details.ica-supplier-row[data-key="${cssEscape(key)}"]`);
+        const statusEl = row && row.querySelector('.ica-supplier-autofetch-row small');
+        btn.disabled = true;
+        const orig = btn.textContent;
+        btn.textContent = 'Fetching…';
+        if (statusEl) statusEl.textContent = 'Running…';
+        const fd = new FormData();
+        fd.append('supplier_key', key);
+        fetch(window.ICA_SUPPLIER_AUTOFETCH_URL, {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': window.ICA_CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin',
+            body: fd,
+        })
+            .then((r) => r.json())
+            .then((resp) => {
+                btn.disabled = false;
+                btn.textContent = orig;
+                // Refresh status from the canonical list endpoint
+                setTimeout(loadSupplierFeeds, 300);
+            })
+            .catch((err) => {
+                btn.disabled = false;
+                btn.textContent = orig;
+                console.error('[ICA] supplier auto-fetch failed', err);
+                if (statusEl) statusEl.textContent = 'Network error — see console';
+            });
+    }
     }
 
     function supplierSubmit(mode, btn) {

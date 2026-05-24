@@ -322,6 +322,18 @@ body.ica-v2 .ica-supplier-paste .ica-supplier-file { display: block; margin: 6px
 body.ica-v2 .ica-supplier-stat { color: var(--ica-success); font-size: 12px; font-weight: 600; margin-left: auto; }
 body.ica-v2 .ica-supplier-stat.ica-supplier-empty { color: var(--ica-ink-3); font-style: italic; font-weight: 400; }
 body.ica-v2 .ica-supplier-msg { font-size: 12px; color: var(--ica-success); display: block; margin-top: 6px; min-height: 16px; }
+body.ica-v2 .ica-supplier-autofetch-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin: -4px 0 10px;
+	padding: 6px 8px;
+	background: var(--ica-bg);
+	border-radius: var(--ica-radius-sm);
+}
+body.ica-v2 .ica-supplier-autofetch-row > small { flex: 1; color: var(--ica-ink-3); }
+body.ica-v2 .ica-supplier-autofetch.ok { color: var(--ica-success); }
+body.ica-v2 .ica-supplier-autofetch.err { color: var(--ica-danger); }
 
 /* ── Disclosure (More options / Show other lists) ─────────────────── */
 body.ica-v2 .ica-more-options > summary,

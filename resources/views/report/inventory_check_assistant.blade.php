@@ -602,6 +602,7 @@
     window.ICA_UME_SPOT_URL = "{{ action('InventoryCheckController@umeSpotlightsBucket') }}";
     window.ICA_SUPPLIER_LIST_URL = "{{ action('InventoryCheckController@listSupplierFeeds') }}";
     window.ICA_SUPPLIER_UPLOAD_URL = "{{ action('InventoryCheckController@uploadSupplierFeed') }}";
+    window.ICA_SUPPLIER_AUTOFETCH_URL = "{{ action('InventoryCheckController@runSupplierAutoFetch') }}";
     window.ICA_LOG_BUY_URL = "{{ action('InventoryCheckController@addManualBudgetEntry') }}";
     window.ICA_LOG_BUY_DELETE_BASE = "{{ url('reports/inventory-check-assistant/manual-budget-entry') }}";
     window.ICA_MGRPICKS_LIST_URL = "{{ action('InventoryCheckController@listManagerPicks') }}";

@@ -79,6 +79,16 @@ class Kernel extends ConsoleKernel
             ->timezone('America/Los_Angeles')
             ->withoutOverlapping(15);
 
+        // Per-supplier price fetch (AMS / Secretly / Beggars / Redeye /
+        // VP) — Mondays 06:00 PST so prices are fresh before Sarah does
+        // the Wednesday ordering pass. Each fetcher skips itself if its
+        // .env credentials aren't set, so this is safe to ship before
+        // every supplier is wired up. Sarah 2026-05-21.
+        $schedule->command('supplier-prices:fetch all')
+            ->weeklyOn(1, '06:00')
+            ->timezone('America/Los_Angeles')
+            ->withoutOverlapping(45);
+
         // QuickBooks → ERP expense sync. Runs every 30 min so Sabina's QB
         // edits land in the ERP expense report without a manual import. The
         // 14-day window is intentional — late posts and reconcile edits in

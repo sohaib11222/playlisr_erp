@@ -679,6 +679,38 @@ class InventoryCheckController extends Controller
         ]);
     }
 
+    /**
+     * Trigger the auto-fetch for one supplier from the browser. Mirrors
+     * the cron command (php artisan supplier-prices:fetch <key>) but
+     * synchronous so the UI can show success/failure immediately.
+     * Used by the "Run auto-fetch now" button per supplier panel.
+     */
+    public function runSupplierAutoFetch(Request $request)
+    {
+        $request->validate(['supplier_key' => 'required|string|max:32']);
+        $supplierKey = strtolower(trim((string) $request->input('supplier_key')));
+        $business_id = (int) $request->session()->get('user.business_id');
+        // Release the session lock so other lazy AJAX can keep running
+        // while this potentially slow HTTP-out call is in flight.
+        $request->session()->save();
+
+        try {
+            $exit = \Illuminate\Support\Facades\Artisan::call('supplier-prices:fetch', [
+                'supplier' => $supplierKey,
+                '--business-id' => $business_id,
+            ]);
+            $output = \Illuminate\Support\Facades\Artisan::output();
+            return response()->json([
+                'success' => $exit === 0,
+                'exit_code' => $exit,
+                'output' => $output,
+            ]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('ICA supplier auto-fetch failed', ['err' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
     public function listSupplierFeeds(Request $request)
     {
         $business_id = (int) $request->session()->get('user.business_id');
