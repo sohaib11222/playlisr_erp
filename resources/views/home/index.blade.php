@@ -101,6 +101,9 @@
                 @elseif(!is_null($my_30d_rph_avg))
                     <div style="margin-top:10px;" class="pp-micro">30-day avg: ${{ number_format($my_30d_rph_avg, 0) }}/hr</div>
                 @endif
+                @if($my_today_whatnot_count > 0)
+                    <div style="margin-top:6px;" class="pp-micro">Also: {{ $my_today_whatnot_count }} Whatnot order{{ $my_today_whatnot_count === 1 ? '' : 's' }} rung up · ${{ number_format($my_today_whatnot_total, 0) }} <span style="color:#9ca3af;">(Golden's, not counted)</span></div>
+                @endif
             </div>
 
             <div style="background:#f8fafc; border-radius:10px; padding:16px 20px;">

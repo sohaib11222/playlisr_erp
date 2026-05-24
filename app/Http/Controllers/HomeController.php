@@ -880,6 +880,7 @@ class HomeController extends Controller
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
             ->whereNull('t.import_source')
+            ->where(function ($q) { $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); })
             ->where('t.created_by', $me_id)
             ->whereBetween('t.transaction_date', [$today_start, $today_end])
             ->selectRaw("p.artist, p.name, p.format, tsl.unit_price_inc_tax as price")
@@ -896,6 +897,21 @@ class HomeController extends Controller
             ->where('t.created_by', $me_id)
             ->whereBetween('t.transaction_date', [$today_start, $today_end])
             ->count();
+
+        // Whatnot orders I rang up today — informational, does NOT count toward goal/RPH.
+        // Whatnot sales belong to Golden's livestream; cashiers just key the orders in.
+        $my_today_whatnot = \DB::table('transactions')
+            ->where('business_id', $business_id)
+            ->where('type', 'sell')
+            ->where('status', 'final')
+            ->whereNull('import_source')
+            ->where('is_whatnot', 1)
+            ->where('created_by', $me_id)
+            ->whereBetween('transaction_date', [$today_start, $today_end])
+            ->selectRaw('COUNT(*) as cnt, COALESCE(SUM(final_total), 0) as total')
+            ->first();
+        $my_today_whatnot_count = (int) ($my_today_whatnot->cnt ?? 0);
+        $my_today_whatnot_total = (float) ($my_today_whatnot->total ?? 0);
 
         // Team goal for my current location today — average same-day-of-week revenue over the last 12 weeks
         $my_default_loc_id = \DB::table('business_locations')
@@ -1105,6 +1121,7 @@ class HomeController extends Controller
             'my_7day', 'my_streak_above', 'my_7day_best_rph', 'my_7day_best_day', 'my_beat_gap',
             'goal_priced_today', 'goal_rewards_today', 'rewards_me_today',
             'my_top_today', 'my_today_items_total',
+            'my_today_whatnot_count', 'my_today_whatnot_total',
             'team_location_name', 'team_today_rev', 'team_goal', 'team_pct',
             'team_goal_so_far', 'team_bar_width',
             // Top sellers by store module
