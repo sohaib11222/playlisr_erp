@@ -907,6 +907,7 @@ class HomeController extends Controller
             ->where('type', 'sell')
             ->where('status', 'final')
             ->whereNull('import_source')
+            ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
             ->where('location_id', $my_default_loc_id)
             ->whereBetween('transaction_date', [$today_start, $today_end])
             ->sum('final_total');
@@ -924,6 +925,7 @@ class HomeController extends Controller
             ->where('type', 'sell')
             ->where('status', 'final')
             ->whereNull('import_source')
+            ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
             ->where('location_id', $my_default_loc_id)
             ->whereBetween('transaction_date', [$dow_lookback_start, $dow_lookback_end])
             ->whereRaw('DAYOFWEEK(transaction_date) = ?', [$dow_mysql])
@@ -949,6 +951,7 @@ class HomeController extends Controller
             ->where('type', 'sell')
             ->where('status', 'final')
             ->whereNull('import_source')
+            ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
             ->where('location_id', $my_default_loc_id)
             ->whereBetween('transaction_date', [$dow_lookback_start, $dow_lookback_end])
             ->whereRaw('DAYOFWEEK(transaction_date) = ?', [$dow_mysql])
