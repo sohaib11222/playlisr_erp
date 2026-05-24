@@ -733,7 +733,7 @@
             sortable('ABC', 'text', 'ABC class — A is the top 80% of inventory value'),
             sortable('Stock', 'number'),
             sortable('Sold (window)', 'number'),
-            sortable('Cost', 'number', 'Per-unit cost (tied-up $ ÷ stock). A very high value usually means a bad purchase_lines entry.'),
+            sortable('Cost', 'number', 'Per-unit purchase price (variations.dpp_inc_tax) — what we paid for one unit.'),
         ];
         if (isFrozen) {
             headParts.push(sortable('Price', 'number', 'Retail sell price (from product_stock_cache.unit_price).'));

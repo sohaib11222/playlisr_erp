@@ -1671,13 +1671,21 @@ class InventoryCheckService
             'psc.sub_category_id', 'subcat.name as genre',
             'psc.product_custom_field1', 'psc.total_sold', 'psc.stock_price',
             'psc.unit_price as sell_price',
+            // Per-unit purchase price stored on the variation. dpp_inc_tax is
+            // the inc-tax counterpart of psc.unit_price (sell_price_inc_tax)
+            // so the two columns are apples-to-apples. Earlier we computed
+            // cost as stock_price / stock, but that legacy aggregation across
+            // purchase_lines is corrupt on old rows (Jon 2026-05-24: $1788
+            // on a $44 vinyl) — falling back to default_purchase_price
+            // when dpp_inc_tax is null/zero (older imports).
+            DB::raw('COALESCE(NULLIF(v.dpp_inc_tax, 0), v.default_purchase_price, 0) as cost_per_unit'),
             'p.format as product_format', 'p.bin_position',
             'p.created_at as product_created_at',
             DB::raw('GREATEST(
                 COALESCE(IF(p.updated_at > NOW(), NULL, p.updated_at), "1970-01-01"),
                 COALESCE(IF(v.updated_at > NOW(), NULL, v.updated_at), "1970-01-01")
             ) as last_updated_at'),
-        ])->orderByDesc('psc.stock_price')->get();
+        ])->orderByRaw('(psc.stock * COALESCE(NULLIF(v.dpp_inc_tax, 0), v.default_purchase_price, 0)) DESC')->get();
 
         if ($stocked->isEmpty()) {
             return [
@@ -1721,7 +1729,6 @@ class InventoryCheckService
         $items = [];
         foreach ($rows as $row) {
             $stock = (float) ($row->stock ?? 0);
-            $tiedUp = (float) ($row->stock_price ?? 0);
             // Dates: ISO ("YYYY-MM-DD") shipped to JS for both display + sort,
             // JS reformats to mm/dd/yy on screen. Reason text bakes the
             // display format in directly since it's a pre-built string.
@@ -1729,13 +1736,13 @@ class InventoryCheckService
             $daysSince = $lastSoldIso ? Carbon::parse($lastSoldIso)->diffInDays(Carbon::now()) : null;
             $lastSoldDisplay = $lastSoldIso ? Carbon::parse($lastSoldIso)->format('m/d/y') : null;
 
-            // Per-unit cost = total tied-up / stock-on-hand. This is the
-            // weighted average of purchase prices for remaining qty across
-            // purchase_lines. Surfacing it makes bad data obvious — e.g.
-            // a $20 mug with $300/unit cost is a data-entry error in
-            // purchase_lines.purchase_price_inc_tax, not a real loss.
-            $costPerUnit = ($stock > 0) ? round($tiedUp / $stock, 2) : null;
+            // Cost / Price come straight from the variation: cost_per_unit =
+            // v.dpp_inc_tax (purchase price inc tax) and sell_price =
+            // psc.unit_price (sell price inc tax). Tied-up $ is just
+            // cost × stock so the Reason line matches what Cost shows.
+            $costPerUnit = isset($row->cost_per_unit) ? round((float) $row->cost_per_unit, 2) : null;
             $sellPrice = isset($row->sell_price) ? (float) $row->sell_price : null;
+            $tiedUp = ($costPerUnit !== null) ? round($costPerUnit * $stock, 2) : 0.0;
 
             $lastEditedIso = null;
             if (!empty($row->last_updated_at) && $row->last_updated_at !== '1970-01-01 00:00:00') {
