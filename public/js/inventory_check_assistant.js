@@ -673,6 +673,10 @@
         const abc = $abc ? $abc.value : '';
         const hideRsd = $rsd ? $rsd.checked : false;
         $root.querySelectorAll('.ica-bucket').forEach((bucketEl) => {
+            // Frozen bucket can carry its own Category / Genre filter on
+            // top of the global ones — selects live in the bucket header.
+            const frozenCat = bucketEl.getAttribute('data-frozen-cat') || '';
+            const frozenGen = bucketEl.getAttribute('data-frozen-gen') || '';
             let visible = 0;
             bucketEl.querySelectorAll('tr[data-row-key]').forEach((tr) => {
                 const rowCat = tr.getAttribute('data-cat') || '';
@@ -682,7 +686,9 @@
                 const match = (!cat || rowCat === cat)
                     && (!gen || rowGen === gen)
                     && (!abc || rowAbc === abc)
-                    && (!hideRsd || !rowRsd);
+                    && (!hideRsd || !rowRsd)
+                    && (!frozenCat || rowCat === frozenCat)
+                    && (!frozenGen || rowGen === frozenGen);
                 tr.style.display = match ? '' : 'none';
                 if (match) visible++;
             });
@@ -746,29 +752,61 @@
         headParts.push('<th></th>');
         const headRow = headParts.join('');
 
-        // Frozen bucket gets a small inline filter strip in its header —
-        // days threshold (90 / 120 / 180 / custom). Re-fetches the bucket
-        // with the new ?days= param. Store / Category / Genre filters
-        // live in the page-level filter row above (they apply globally).
+        // Frozen bucket gets an inline filter strip in its header — days
+        // threshold (re-fetches with ?days=) plus Category / Genre selects
+        // scoped to just the frozen list. The page-level filter row above
+        // applies globally; these stack on top so Sarah can drill into
+        // frozen without affecting other buckets.
         let frozenControls = '';
         if (isFrozen) {
             const days = parseInt(b.frozen_days || 180, 10);
             const presetVals = [90, 120, 180, 365];
             const opts = presetVals.map((v) => `<option value="${v}" ${v === days ? 'selected' : ''}>${v} days</option>`).join('');
             const isCustom = !presetVals.includes(days);
+
+            // Pull unique categories + genres from this bucket's items.
+            // Re-selection across re-renders is preserved by reading the
+            // previous values off the existing bucket DOM (if present).
+            const prevBucket = $root && $root.querySelector('.ica-bucket[data-bucket="frozen_inventory"]');
+            const prevCat = prevBucket ? (prevBucket.getAttribute('data-frozen-cat') || '') : '';
+            const prevGen = prevBucket ? (prevBucket.getAttribute('data-frozen-gen') || '') : '';
+            const cats = new Set();
+            const gens = new Set();
+            (b.items || []).forEach((it) => {
+                if (it.category_name) cats.add(it.category_name);
+                if (it.genre) gens.add(it.genre);
+            });
+            const catOpts = '<option value="">All</option>' + Array.from(cats).sort().map((c) => `<option value="${escapeHtml(c)}" ${c === prevCat ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('');
+            const genOpts = '<option value="">All</option>' + Array.from(gens).sort().map((g) => `<option value="${escapeHtml(g)}" ${g === prevGen ? 'selected' : ''}>${escapeHtml(g)}</option>`).join('');
+
             frozenControls = `
                 <div class="ica-frozen-controls">
                     <label class="ica-filter-label">Frozen if no sale in</label>
                     <select class="ica-frozen-days-select form-control input-sm">${opts}<option value="custom" ${isCustom ? 'selected' : ''}>Custom…</option></select>
                     <input type="number" class="form-control input-sm ica-frozen-days-custom" min="7" max="3650" value="${days}" style="${isCustom ? '' : 'display:none;'}" placeholder="days">
+                    <label class="ica-filter-label">Category</label>
+                    <select class="ica-frozen-cat-filter form-control input-sm">${catOpts}</select>
+                    <label class="ica-filter-label">Genre</label>
+                    <select class="ica-frozen-gen-filter form-control input-sm">${genOpts}</select>
                 </div>`;
         }
         const body = (b.count || 0) === 0
             ? `<div class="ica-bucket-empty">No items in this bucket${b.empty_reason ? ' (' + b.empty_reason.replace(/_/g, ' ') + ')' : ''}.</div>`
             : `<table class="table table-condensed table-striped ica-row-table"><thead><tr>${headRow}</tr></thead><tbody>${rows}</tbody></table>`;
 
+        // Frozen-scoped filter values, if any, must persist across re-renders.
+        // Read off the prior bucket DOM (or its selects) and re-emit as data attrs.
+        let bucketDataAttrs = '';
+        if (isFrozen) {
+            const prevBucket = $root && $root.querySelector('.ica-bucket[data-bucket="frozen_inventory"]');
+            const prevCat = prevBucket ? (prevBucket.getAttribute('data-frozen-cat') || '') : '';
+            const prevGen = prevBucket ? (prevBucket.getAttribute('data-frozen-gen') || '') : '';
+            if (prevCat) bucketDataAttrs += ` data-frozen-cat="${escapeHtml(prevCat)}"`;
+            if (prevGen) bucketDataAttrs += ` data-frozen-gen="${escapeHtml(prevGen)}"`;
+        }
+
         return `
-            <div class="ica-bucket box box-default" data-bucket="${escapeHtml(key)}">
+            <div class="ica-bucket box box-default" data-bucket="${escapeHtml(key)}"${bucketDataAttrs}>
                 <div class="ica-bucket-header">
                     <div>
                         <h3>${escapeHtml(b.label || key)} <span class="ica-bucket-count ${countClass}">${b.count || 0}</span></h3>
@@ -1020,6 +1058,21 @@
             inp.addEventListener('change', function () {
                 const v = parseInt(inp.value, 10);
                 if (v && v >= 7 && v <= 3650) refetchFrozenBucket(v);
+            });
+        });
+
+        // Frozen-scoped Category / Genre filters — write the choice onto
+        // the bucket element so applyRowFilters can pick it up.
+        $root.querySelectorAll('.ica-frozen-cat-filter, .ica-frozen-gen-filter').forEach((sel) => {
+            sel.addEventListener('change', function () {
+                const bucketEl = sel.closest('.ica-bucket');
+                if (!bucketEl) return;
+                if (sel.classList.contains('ica-frozen-cat-filter')) {
+                    bucketEl.setAttribute('data-frozen-cat', sel.value || '');
+                } else {
+                    bucketEl.setAttribute('data-frozen-gen', sel.value || '');
+                }
+                applyRowFilters();
             });
         });
 
