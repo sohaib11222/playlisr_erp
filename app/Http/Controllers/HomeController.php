@@ -912,6 +912,11 @@ class HomeController extends Controller
             ->first();
         $my_today_whatnot_count = (int) ($my_today_whatnot->cnt ?? 0);
         $my_today_whatnot_total = (float) ($my_today_whatnot->total ?? 0);
+        // "On Whatnot duty today" — when Whatnot $ rung up >= in-store $.
+        // Used to suppress in-store deficit comparisons that read as failure
+        // when really the cashier was occupied with a different task.
+        $on_whatnot_duty_today = $my_today_whatnot_count > 0
+            && $my_today_whatnot_total >= max($my_today_rev, 0.01);
 
         // Team goal for my current location today — average same-day-of-week revenue over the last 12 weeks
         $my_default_loc_id = \DB::table('business_locations')
@@ -1121,7 +1126,7 @@ class HomeController extends Controller
             'my_7day', 'my_streak_above', 'my_7day_best_rph', 'my_7day_best_day', 'my_beat_gap',
             'goal_priced_today', 'goal_rewards_today', 'rewards_me_today',
             'my_top_today', 'my_today_items_total',
-            'my_today_whatnot_count', 'my_today_whatnot_total',
+            'my_today_whatnot_count', 'my_today_whatnot_total', 'on_whatnot_duty_today',
             'team_location_name', 'team_today_rev', 'team_goal', 'team_pct',
             'team_goal_so_far', 'team_bar_width',
             // Top sellers by store module

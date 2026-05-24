@@ -88,7 +88,7 @@
                         <span style="color:#9ca3af; font-size:18px; font-weight:500;">No shift yet — open your register to start</span>
                     @endif
                 </div>
-                @if(!is_null($my_vs_30d_pct))
+                @if(!is_null($my_vs_30d_pct) && (!$on_whatnot_duty_today || $my_vs_30d_pct >= 0))
                     <div style="margin-top:10px;">
                         @if($my_vs_30d_pct >= 0)
                             <span class="pp-arrow-up"></span>
@@ -102,7 +102,7 @@
                     <div style="margin-top:10px;" class="pp-micro">30-day avg: ${{ number_format($my_30d_rph_avg, 0) }}/hr</div>
                 @endif
                 @if($my_today_whatnot_count > 0)
-                    <div style="margin-top:6px;" class="pp-micro">Also: {{ $my_today_whatnot_count }} Whatnot order{{ $my_today_whatnot_count === 1 ? '' : 's' }} rung up · ${{ number_format($my_today_whatnot_total, 0) }}</div>
+                    <div style="margin-top:6px;" class="pp-micro">{{ $my_today_whatnot_count }} Whatnot order{{ $my_today_whatnot_count === 1 ? '' : 's' }} rung up today · ${{ number_format($my_today_whatnot_total, 0) }}</div>
                 @endif
             </div>
 
@@ -110,7 +110,11 @@
                 <div class="pp-muted" style="margin-bottom:6px;">Your best this week</div>
                 <div style="font-size:22px; font-weight:600; line-height:1.2;">${{ number_format($my_7day_best_rph, 0) }}/hr</div>
                 @if($my_7day_best_day)
-                    <div class="pp-micro" style="margin:4px 0 0 0;">{{ $my_7day_best_day }} · ${{ number_format($my_beat_gap, 0) }} to beat it today</div>
+                    @if($on_whatnot_duty_today)
+                        <div class="pp-micro" style="margin:4px 0 0 0;">{{ $my_7day_best_day }} · this week's high mark</div>
+                    @else
+                        <div class="pp-micro" style="margin:4px 0 0 0;">{{ $my_7day_best_day }} · ${{ number_format($my_beat_gap, 0) }} to beat it today</div>
+                    @endif
                 @endif
                 <div class="pp-progress" style="margin-top:10px;">
                     @php
