@@ -804,6 +804,7 @@ class HomeController extends Controller
                 ->where('type', 'sell')
                 ->where('status', 'final')
                 ->whereNull('import_source')
+                ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
                 ->where('created_by', $me_id)
                 ->whereBetween('transaction_date', [$start, $end])
                 ->sum('final_total');
@@ -891,6 +892,7 @@ class HomeController extends Controller
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
             ->whereNull('t.import_source')
+            ->where(function ($q) { $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); })
             ->where('t.created_by', $me_id)
             ->whereBetween('t.transaction_date', [$today_start, $today_end])
             ->count();
