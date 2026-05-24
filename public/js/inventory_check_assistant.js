@@ -204,6 +204,49 @@
             .catch((err) => console.error('[ICA] aux bucket lazy-load failed', bucketKey, err));
     }
 
+    /**
+     * Re-fetch the frozen bucket with a custom days threshold. Triggered
+     * from the in-header "Frozen if no sale in [N] days" select / input.
+     * Shows a loading shim on the bucket body while the request runs.
+     */
+    function refetchFrozenBucket(days) {
+        if (!window.ICA_FROZEN_URL) return;
+        const bucket = $root.querySelector('.ica-bucket[data-bucket="frozen_inventory"]');
+        const body = bucket ? bucket.querySelector('.ica-bucket-body') : null;
+        if (body) body.innerHTML = '<div class="ica-bucket-empty"><i class="fa fa-spinner fa-spin"></i> Recalculating with ' + days + '-day threshold…</div>';
+        const params = new URLSearchParams();
+        if ($location && $location.value) params.append('location_id', $location.value);
+        if ($preset && $preset.value) params.append('preset', $preset.value);
+        params.append('days', String(days));
+        fetch(window.ICA_FROZEN_URL + '?' + params.toString(), {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': window.ICA_CSRF || '' },
+            credentials: 'same-origin',
+        })
+            .then((r) => r.json())
+            .then((resp) => {
+                if (!resp || !resp.bucket) return;
+                if (lastResult && lastResult.buckets) {
+                    lastResult.buckets.frozen_inventory = resp.bucket;
+                }
+                const existing = $root.querySelector('.ica-bucket[data-bucket="frozen_inventory"]');
+                if (!existing) return;
+                const html = renderBucketSection('frozen_inventory', resp.bucket);
+                const tmp = document.createElement('div');
+                tmp.innerHTML = html;
+                const fresh = tmp.firstElementChild;
+                if (fresh) {
+                    existing.replaceWith(fresh);
+                    attachBucketHandlers();
+                }
+                applyFrozenDupeTags(resp.bucket.items || []);
+                renderFrozenInsight(resp.bucket);
+                attachFrozenStockEditors();
+                rebuildFilterOptions();
+                applyRowFilters();
+            })
+            .catch((err) => console.error('[ICA] frozen days re-fetch failed', err));
+    }
+
     function renderFrozenInsight(bucket) {
         if (!bucket) return;
         const tied = parseFloat(bucket.tied_up_value_total || 0);
@@ -316,17 +359,20 @@
                             tr.style.opacity = '0';
                             setTimeout(() => tr.remove(), 400);
                         } else {
-                            // checkbox/product/artist/format/bin/cat/genre/abc/stock
-                            const stockCell = tr.children[8];
+                            const stockCell = tr.querySelector('.ica-stock-col');
                             if (stockCell) stockCell.textContent = newQty;
                             btn.dataset.current = String(newQty);
                             btn.disabled = false; btn.textContent = 'Set stock';
-                            // Reason is td:nth-child(12) after Bin + ABC + Cost
-                            const reasonCell = tr.querySelector('td:nth-child(12) small');
+                            const when = new Date().toISOString().substring(0, 10);
+                            const userName = (resp.entry && resp.entry.user_name) || 'you';
+                            const reasonCell = tr.querySelector('.ica-reason-col small');
                             if (reasonCell) {
-                                const userName = (resp.entry && resp.entry.user_name) || 'you';
-                                const when = new Date().toISOString().substring(0, 10);
                                 reasonCell.innerHTML += ` <span class="ica-last-order">· updated to ${newQty} on ${when} by ${escapeHtml(userName)}</span>`;
+                            }
+                            const updatedCell = tr.querySelector('.ica-updated-col');
+                            if (updatedCell) {
+                                updatedCell.setAttribute('data-updated', when);
+                                updatedCell.innerHTML = `<small>${when}</small>`;
                             }
                         }
                     })
@@ -666,11 +712,55 @@
     function renderBucketSection(key, b) {
         const countClass = (b.count || 0) === 0 ? 'zero' : '';
         const rows = (b.items || []).map((it) => renderRow(key, it)).join('');
+        const isFrozen = key === 'frozen_inventory';
+        const sortable = (label, type, title) => {
+            const t = title ? ` title="${escapeHtml(title)}"` : '';
+            return `<th class="ica-sortable" data-sort-type="${type}"${t}>${escapeHtml(label)}<span class="ica-sort-ind"></span></th>`;
+        };
         // Category + Genre columns added 2026-05-20 so the page can be
         // filtered by either. The two new dropdowns above the buckets
-        // drive client-side row hiding.
-        const headRow = `<th><input type="checkbox" class="ica-select-all" data-bucket="${escapeHtml(key)}"></th>
-               <th>Product</th><th>Artist</th><th>Format</th><th>Bin</th><th>Category</th><th>Genre</th><th title="ABC class — A is the top 80% of inventory value">ABC</th><th>Stock</th><th>Sold (window)</th><th title="Wholesale / purchase price per unit">Cost</th><th>Reason</th><th>Tags</th><th>Qty</th><th></th>`;
+        // drive client-side row hiding. Sortable headers + the frozen-only
+        // Last-updated / Price columns added 2026-05-24.
+        const headParts = [
+            `<th><input type="checkbox" class="ica-select-all" data-bucket="${escapeHtml(key)}"></th>`,
+            sortable('Product', 'text'),
+            sortable('Artist', 'text'),
+            sortable('Format', 'text'),
+            sortable('Bin', 'text'),
+            sortable('Category', 'text'),
+            sortable('Genre', 'text'),
+            sortable('ABC', 'text', 'ABC class — A is the top 80% of inventory value'),
+            sortable('Stock', 'number'),
+            sortable('Sold (window)', 'number'),
+            sortable('Cost', 'number', 'Per-unit cost (tied-up $ ÷ stock). A very high value usually means a bad purchase_lines entry.'),
+        ];
+        if (isFrozen) {
+            headParts.push(sortable('Price', 'number', 'Retail sell price (from product_stock_cache.unit_price).'));
+            headParts.push(sortable('Last updated', 'date', 'Newest of product / variation updated_at — when someone last touched this product record.'));
+        }
+        headParts.push(sortable('Reason', 'text'));
+        headParts.push(sortable('Tags', 'text'));
+        headParts.push(sortable('Qty', 'qty'));
+        headParts.push('<th></th>');
+        const headRow = headParts.join('');
+
+        // Frozen bucket gets a small inline filter strip in its header —
+        // days threshold (90 / 120 / 180 / custom). Re-fetches the bucket
+        // with the new ?days= param. Store / Category / Genre filters
+        // live in the page-level filter row above (they apply globally).
+        let frozenControls = '';
+        if (isFrozen) {
+            const days = parseInt(b.frozen_days || 180, 10);
+            const presetVals = [90, 120, 180, 365];
+            const opts = presetVals.map((v) => `<option value="${v}" ${v === days ? 'selected' : ''}>${v} days</option>`).join('');
+            const isCustom = !presetVals.includes(days);
+            frozenControls = `
+                <div class="ica-frozen-controls">
+                    <label class="ica-filter-label">Frozen if no sale in</label>
+                    <select class="ica-frozen-days-select form-control input-sm">${opts}<option value="custom" ${isCustom ? 'selected' : ''}>Custom…</option></select>
+                    <input type="number" class="form-control input-sm ica-frozen-days-custom" min="7" max="3650" value="${days}" style="${isCustom ? '' : 'display:none;'}" placeholder="days">
+                </div>`;
+        }
         const body = (b.count || 0) === 0
             ? `<div class="ica-bucket-empty">No items in this bucket${b.empty_reason ? ' (' + b.empty_reason.replace(/_/g, ' ') + ')' : ''}.</div>`
             : `<table class="table table-condensed table-striped ica-row-table"><thead><tr>${headRow}</tr></thead><tbody>${rows}</tbody></table>`;
@@ -681,6 +771,7 @@
                     <div>
                         <h3>${escapeHtml(b.label || key)} <span class="ica-bucket-count ${countClass}">${b.count || 0}</span></h3>
                         <span class="ica-why">${escapeHtml(b.why || '')}</span>
+                        ${frozenControls}
                     </div>
                     <div>
                         <button type="button" class="btn btn-xs btn-default ica-collapse-toggle" title="Collapse">
@@ -767,6 +858,25 @@
         // "qty × cost" across visible rows.
         const costNum = (typeof it.cost_price === 'number' && !isNaN(it.cost_price)) ? it.cost_price : null;
         const costCell = costNum !== null ? `$${costNum.toFixed(2)}` : '—';
+
+        // Frozen rows: product cell links to the full /products/view/{id}
+        // page so a click opens the title with all details (sales history,
+        // variations, suppliers). Also adds a "Price" + "Last updated"
+        // column so Sarah can spot bad-data rows ($300 mugs etc.).
+        let priceCellHtml = '';
+        let updatedCellHtml = '';
+        if (isFrozen) {
+            if (it.product_id && window.ICA_PRODUCT_VIEW_URL_BASE) {
+                const href = window.ICA_PRODUCT_VIEW_URL_BASE + '/' + encodeURIComponent(it.product_id);
+                productCell = `<a href="${href}" target="_blank" rel="noopener" class="ica-product-link" title="Open full product details">${productCell}</a>`;
+            }
+            const sellNum = (typeof it.sell_price === 'number' && !isNaN(it.sell_price)) ? it.sell_price : null;
+            const priceTxt = sellNum !== null ? `$${sellNum.toFixed(2)}` : '—';
+            priceCellHtml = `<td class="ica-price-col" data-price="${sellNum !== null ? sellNum : ''}">${priceTxt}</td>`;
+            const updated = it.last_updated_at || '';
+            updatedCellHtml = `<td class="ica-updated-col" data-updated="${escapeHtml(updated)}"><small>${updated ? escapeHtml(updated) : '—'}</small></td>`;
+        }
+
         return `<tr data-row-key="${escapeHtml(rowKey)}" data-pid="${pid}" data-cat="${category}" data-genre="${genre}" data-abc="${initialAbc}" data-rsd="${isRsd ? '1' : '0'}" data-cost="${costNum !== null ? costNum : ''}">
             <td><input type="checkbox" class="ica-row-check" ${checkboxAttrs}></td>
             <td>${productCell}</td>
@@ -776,14 +886,72 @@
             <td><small>${category || '—'}</small></td>
             <td><small>${genre || '—'}</small></td>
             <td class="ica-abc-col">${abcCell}</td>
-            <td>${stock}</td>
+            <td class="ica-stock-col">${stock}</td>
             <td>${sold}</td>
             <td class="ica-cost-col">${costCell}</td>
-            <td><small>${reason}${reasonExtra}</small></td>
+            ${priceCellHtml}
+            ${updatedCellHtml}
+            <td class="ica-reason-col"><small>${reason}${reasonExtra}</small></td>
             <td>${tagsHtml}</td>
             <td><input type="number" class="form-control input-sm ica-qty-input" value="${qty}" min="0" max="99" ${qtyDisabled}></td>
             <td>${extraCol}</td>
         </tr>`;
+    }
+
+    // Generic per-bucket column sort. Click a sortable <th> to sort that
+    // bucket's tbody by the column under it; click again to reverse.
+    function sortBucketTable(th) {
+        const table = th.closest('table');
+        if (!table) return;
+        const tbody = table.querySelector('tbody');
+        if (!tbody) return;
+        const headerRow = th.parentElement;
+        const colIndex = Array.prototype.indexOf.call(headerRow.children, th);
+        if (colIndex < 0) return;
+        const sortType = th.getAttribute('data-sort-type') || 'text';
+        const curDir = th.getAttribute('data-sort-dir');
+        const newDir = curDir === 'asc' ? 'desc' : 'asc';
+
+        headerRow.querySelectorAll('th.ica-sortable').forEach((other) => {
+            other.removeAttribute('data-sort-dir');
+            const ind = other.querySelector('.ica-sort-ind');
+            if (ind) ind.textContent = '';
+        });
+        th.setAttribute('data-sort-dir', newDir);
+        const ind = th.querySelector('.ica-sort-ind');
+        if (ind) ind.textContent = newDir === 'asc' ? ' ▲' : ' ▼';
+
+        const rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+        const factor = newDir === 'asc' ? 1 : -1;
+        rows.sort((a, b) => {
+            const av = sortValueFor(a.children[colIndex], sortType);
+            const bv = sortValueFor(b.children[colIndex], sortType);
+            if (av < bv) return -1 * factor;
+            if (av > bv) return 1 * factor;
+            return 0;
+        });
+        const frag = document.createDocumentFragment();
+        rows.forEach((r) => frag.appendChild(r));
+        tbody.appendChild(frag);
+    }
+
+    function sortValueFor(td, type) {
+        if (!td) return type === 'number' ? -Infinity : '';
+        if (type === 'number') {
+            const text = td.textContent.replace(/[^0-9.\-]/g, '');
+            if (text === '' || text === '-' || text === '.') return -Infinity;
+            const n = parseFloat(text);
+            return isNaN(n) ? -Infinity : n;
+        }
+        if (type === 'qty') {
+            const input = td.querySelector('input');
+            return input ? (parseFloat(input.value) || 0) : 0;
+        }
+        if (type === 'date') {
+            const v = td.getAttribute('data-updated') || td.textContent.trim();
+            return v || '';
+        }
+        return td.textContent.trim().toLowerCase();
     }
 
     function attachBucketHandlers() {
@@ -801,6 +969,36 @@
                 const bucket = cb.dataset.bucket;
                 const rows = $root.querySelectorAll(`.ica-bucket[data-bucket="${cssEscape(bucket)}"] .ica-row-check`);
                 rows.forEach((r) => { r.checked = cb.checked; });
+            });
+        });
+
+        $root.querySelectorAll('th.ica-sortable').forEach((th) => {
+            th.addEventListener('click', function () {
+                sortBucketTable(th);
+            });
+        });
+
+        // Frozen bucket: days-threshold control. Re-fetch the bucket with
+        // ?days= when the user picks a preset or types a custom value.
+        $root.querySelectorAll('.ica-frozen-days-select').forEach((sel) => {
+            sel.addEventListener('change', function () {
+                const wrap = sel.closest('.ica-frozen-controls');
+                const custom = wrap ? wrap.querySelector('.ica-frozen-days-custom') : null;
+                if (sel.value === 'custom') {
+                    if (custom) {
+                        custom.style.display = '';
+                        custom.focus();
+                    }
+                } else {
+                    if (custom) custom.style.display = 'none';
+                    refetchFrozenBucket(parseInt(sel.value, 10));
+                }
+            });
+        });
+        $root.querySelectorAll('.ica-frozen-days-custom').forEach((inp) => {
+            inp.addEventListener('change', function () {
+                const v = parseInt(inp.value, 10);
+                if (v && v >= 7 && v <= 3650) refetchFrozenBucket(v);
             });
         });
 

@@ -470,6 +470,18 @@
 .ica-bucket[data-bucket="frozen_inventory"] .ica-bucket-header { border-left-color: #c0392b; background: #fdf2f0; }
 .ica-bucket[data-bucket="frozen_inventory"] .ica-row-table tbody tr { opacity: 0.85; }
 .ica-bucket[data-bucket="frozen_inventory"] .ica-qty-input { background: #f5f5f5; }
+.ica-row-table th.ica-sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+.ica-row-table th.ica-sortable:hover { background: #eef3f7; }
+.ica-row-table th.ica-sortable[data-sort-dir] { background: #e1ecf4; }
+.ica-row-table th .ica-sort-ind { color: #2c699a; font-size: 11px; margin-left: 2px; }
+.ica-row-table td.ica-updated-col { white-space: nowrap; color: #555; }
+.ica-row-table td.ica-price-col { white-space: nowrap; }
+.ica-row-table a.ica-product-link { color: #2c699a; text-decoration: none; }
+.ica-row-table a.ica-product-link:hover { text-decoration: underline; color: #1d4f73; }
+.ica-frozen-controls { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; }
+.ica-frozen-controls .ica-filter-label { font-size: 12px; color: #555; margin: 0; }
+.ica-frozen-controls .ica-frozen-days-select { width: auto; display: inline-block; }
+.ica-frozen-controls .ica-frozen-days-custom { width: 80px; display: inline-block; }
 
 /* ABC A-restock bucket — emphasize as priority */
 .ica-bucket[data-bucket="abc_a_restock"] .ica-bucket-header { border-left-color: #2c699a; background: #f0f6fc; }
@@ -588,6 +600,7 @@
     window.ICA_ABC_URL = "{{ action('InventoryCheckController@abcRestockBucket') }}";
     window.ICA_FROZEN_URL = "{{ action('InventoryCheckController@frozenInventoryBucket') }}";
     window.ICA_FROZEN_UPDATE_URL = "{{ action('InventoryCheckController@frozenStockUpdate') }}";
+    window.ICA_PRODUCT_VIEW_URL_BASE = "{{ url('products/view') }}";
     window.ICA_MGRPICKS_BUCKET_URL = "{{ action('InventoryCheckController@managerPicksBucket') }}";
     window.ICA_UME_SPOT_URL = "{{ action('InventoryCheckController@umeSpotlightsBucket') }}";
     window.ICA_SUPPLIER_LIST_URL = "{{ action('InventoryCheckController@listSupplierFeeds') }}";

@@ -350,9 +350,9 @@ class InventoryCheckService
     }
 
     /** Public alias for the lazy frozen-inventory endpoint. */
-    public function bucketFrozenInventoryPublic(int $business_id, int $locationId, $permittedLocations): array
+    public function bucketFrozenInventoryPublic(int $business_id, int $locationId, $permittedLocations, ?int $daysOverride = null): array
     {
-        return $this->bucketFrozenInventory($business_id, $locationId, $permittedLocations);
+        return $this->bucketFrozenInventory($business_id, $locationId, $permittedLocations, $daysOverride);
     }
 
     public function loadFrozenCorrections(int $business_id): array
@@ -1636,9 +1636,10 @@ class InventoryCheckService
      * accidentally checking the row + exporting can't bulk-reorder dead
      * stock.
      */
-    protected function bucketFrozenInventory(int $business_id, int $locationId, $permittedLocations): array
+    protected function bucketFrozenInventory(int $business_id, int $locationId, $permittedLocations, ?int $daysOverride = null): array
     {
-        $frozenDays = (int) config('inventory_check.buckets.frozen_inventory.frozen_days', 180);
+        $defaultDays = (int) config('inventory_check.buckets.frozen_inventory.frozen_days', 180);
+        $frozenDays = $daysOverride !== null ? $daysOverride : $defaultDays;
         $limit = (int) config('inventory_check.buckets.frozen_inventory.max_items', 200);
         $cutoff = Carbon::now()->subDays($frozenDays)->format('Y-m-d H:i:s');
 
@@ -1652,6 +1653,7 @@ class InventoryCheckService
         // Sarah saw stuck on "Building…".
         $pscQuery = DB::table('product_stock_cache as psc')
             ->leftJoin('products as p', 'p.id', '=', 'psc.product_id')
+            ->leftJoin('variations as v', 'v.id', '=', 'psc.variation_id')
             ->leftJoin('categories as subcat', 'subcat.id', '=', 'psc.sub_category_id')
             ->where('psc.business_id', $business_id)
             ->where('psc.location_id', $locationId)
@@ -1659,13 +1661,21 @@ class InventoryCheckService
         if ($permittedLocations !== 'all') {
             $pscQuery->whereIn('psc.location_id', $permittedLocations);
         }
+        // last_updated_at = newest of products.updated_at / variations.updated_at,
+        // ignoring future timestamps (corrupt rows from bad-clock syncs — same
+        // guard ProductController uses for its real_updated_at column).
         $stocked = $pscQuery->select([
             'psc.variation_id', 'psc.product_id', 'psc.location_id', 'psc.stock', 'psc.sku',
             'psc.product', 'psc.type', 'psc.product_variation', 'psc.variation_name',
             'psc.location_name', 'psc.category_name', 'psc.category_id',
             'psc.sub_category_id', 'subcat.name as genre',
             'psc.product_custom_field1', 'psc.total_sold', 'psc.stock_price',
+            'psc.unit_price as sell_price',
             'p.format as product_format', 'p.bin_position',
+            DB::raw('GREATEST(
+                COALESCE(IF(p.updated_at > NOW(), NULL, p.updated_at), "1970-01-01"),
+                COALESCE(IF(v.updated_at > NOW(), NULL, v.updated_at), "1970-01-01")
+            ) as last_updated_at'),
         ])->orderByDesc('psc.stock_price')->get();
 
         if ($stocked->isEmpty()) {
@@ -1714,6 +1724,19 @@ class InventoryCheckService
             $lastSold = $row->last_sold ? Carbon::parse($row->last_sold)->format('Y-m-d') : null;
             $daysSince = $lastSold ? Carbon::parse($lastSold)->diffInDays(Carbon::now()) : null;
 
+            // Per-unit cost = total tied-up / stock-on-hand. This is the
+            // weighted average of purchase prices for remaining qty across
+            // purchase_lines. Surfacing it makes bad data obvious — e.g.
+            // a $20 mug with $300/unit cost is a data-entry error in
+            // purchase_lines.purchase_price_inc_tax, not a real loss.
+            $costPerUnit = ($stock > 0) ? round($tiedUp / $stock, 2) : null;
+            $sellPrice = isset($row->sell_price) ? (float) $row->sell_price : null;
+
+            $lastUpdated = null;
+            if (!empty($row->last_updated_at) && $row->last_updated_at !== '1970-01-01 00:00:00') {
+                $lastUpdated = Carbon::parse($row->last_updated_at)->format('Y-m-d');
+            }
+
             $candidate = $this->rowToCandidate($row, $stock, 0, 0, [
                 'bucket' => 'frozen_inventory',
                 'reason' => $lastSold
@@ -1722,6 +1745,9 @@ class InventoryCheckService
                 'last_sold' => $lastSold,
                 'days_since_sold' => $daysSince,
                 'tied_up_value' => $tiedUp,
+                'cost_price' => $costPerUnit,
+                'sell_price' => $sellPrice,
+                'last_updated_at' => $lastUpdated,
                 'tags' => ['frozen', 'do_not_reorder'],
             ]);
 

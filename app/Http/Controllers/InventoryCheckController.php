@@ -261,7 +261,7 @@ class InventoryCheckController extends Controller
             // serially — Sarah saw all lazy buckets stuck on "Loading…"
             // 2026-05-20 because secondaryBuckets blocked events + others.
             $request->session()->save();
-            $input = $request->only(['location_id', 'preset']);
+            $input = $request->only(['location_id', 'preset', 'days']);
             if (!empty($input['preset'])) {
                 $resolved = $this->inventoryCheckService->resolvePreset($business_id, $input['preset']);
                 $input = array_merge($resolved, $input);
@@ -274,8 +274,14 @@ class InventoryCheckController extends Controller
                     'items' => [], 'count' => 0,
                 ]]);
             }
+            // Optional override of the "frozen days" threshold from the UI.
+            // Clamp to a sane range so a bad value can't OOM the query.
+            $daysOverride = null;
+            if ($request->has('days') && is_numeric($request->input('days'))) {
+                $daysOverride = max(7, min(3650, (int) $request->input('days')));
+            }
             $permitted = auth()->user()->permitted_locations();
-            $bucket = $this->inventoryCheckService->bucketFrozenInventoryPublic($business_id, $locationId, $permitted);
+            $bucket = $this->inventoryCheckService->bucketFrozenInventoryPublic($business_id, $locationId, $permitted, $daysOverride);
             return response()->json(['bucket' => $bucket]);
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::error('ICA frozen bucket failed', [
