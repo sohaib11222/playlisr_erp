@@ -458,11 +458,26 @@
     </div>
 
     <!-- eBay Integration -->
+    @php
+        $ebay_env = !empty($api_settings['ebay']['environment']) ? $api_settings['ebay']['environment'] : 'sandbox';
+        $ebay_ru_name = !empty($api_settings['ebay']['ru_name']) ? $api_settings['ebay']['ru_name'] : '';
+    @endphp
     <div class="box box-solid">
         <div class="box-header with-border">
             <h3 class="box-title">eBay Integration</h3>
         </div>
         <div class="box-body">
+            <p class="text-muted" style="margin-top:0;">
+                App credentials + <strong>RuName</strong> are saved here (no <code>.env</code> required).
+                After saving Production keys and RuName, connect the seller at
+                <a href="{{ url('/admin/ebay-seller') }}">eBay Seller Connection</a>.
+            </p>
+            @if($ebay_env === 'production' && $ebay_ru_name === '')
+                <div class="alert alert-warning">
+                    <strong>Production</strong> is selected but <strong>RuName</strong> is empty.
+                    “Connect eBay Seller Account” will fail with <code>invalid_request</code> until you paste your RuName below and save.
+                </div>
+            @endif
             <div class="row">
                 <div class="col-sm-6">
                     <div class="form-group">
@@ -495,13 +510,46 @@
                         {!! Form::label('api_settings[ebay][environment]', 'Environment:') !!}
                         {!! Form::select('api_settings[ebay][environment]', 
                             ['sandbox' => 'Sandbox', 'production' => 'Production'], 
-                            !empty($api_settings['ebay']['environment']) ? $api_settings['ebay']['environment'] : 'sandbox', 
-                            ['class' => 'form-control']) !!}
+                            $ebay_env, 
+                            ['class' => 'form-control', 'id' => 'ebay_environment_select']) !!}
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-sm-12">
+                    <div class="form-group" id="ebay_ru_name_group">
+                        {!! Form::label('api_settings[ebay][ru_name]', 'RuName (eBay Redirect URL name):') !!}
+                        {!! Form::text('api_settings[ebay][ru_name]', 
+                            $ebay_ru_name ?: null, 
+                            ['class' => 'form-control', 'id' => 'ebay_ru_name_input', 'placeholder' => 'Sohaib_Ahmad-SohaibAh-Nivess-hqyoql']) !!}
+                        <p class="help-block" style="margin-bottom:8px;">
+                            <strong>Required for Production.</strong>
+                            Copy from
+                            <a href="https://developer.ebay.com/my/auth?env=production&amp;index=0" target="_blank" rel="noopener">eBay Developer → User Tokens</a>
+                            (the <em>RuName (eBay Redirect URL name)</em> value — not the long HTTPS sign-in URL).
+                        </p>
+                        <p class="help-block" style="margin-bottom:0;">
+                            On that same RuName in eBay, set <strong>Your auth accepted URL</strong> to:<br>
+                            <code style="background:#f5f5f5;padding:4px 8px;border-radius:3px;display:inline-block;margin-top:4px;">{{ url('/admin/ebay-seller/callback') }}</code>
+                        </p>
                     </div>
                 </div>
             </div>
         </div>
     </div>
+    <script>
+    (function () {
+        var envSelect = document.getElementById('ebay_environment_select');
+        var ruGroup = document.getElementById('ebay_ru_name_group');
+        if (!envSelect || !ruGroup) return;
+        function syncRuHighlight() {
+            ruGroup.style.borderLeft = envSelect.value === 'production' ? '4px solid #f39c12' : '';
+            ruGroup.style.paddingLeft = envSelect.value === 'production' ? '12px' : '';
+        }
+        envSelect.addEventListener('change', syncRuHighlight);
+        syncRuHighlight();
+    })();
+    </script>
 
     <!-- Discogs Integration -->
     <div class="box box-solid">

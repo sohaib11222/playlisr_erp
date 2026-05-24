@@ -75,6 +75,28 @@ class EbayService
                !empty($this->devId);
     }
 
+    /**
+     * OAuth redirect_uri for authorize + token exchange.
+     * Production: eBay RuName string. Sandbox: RuName if set, else HTTPS callback URL.
+     */
+    public function getOAuthRedirectUri($callbackUrl)
+    {
+        $ebay = $this->settings['ebay'] ?? [];
+        $ruName = trim($ebay['ru_name'] ?? env('EBAY_RU_NAME', ''));
+        $environment = $ebay['environment'] ?? 'sandbox';
+
+        if ($environment === 'production') {
+            return $ruName !== '' ? $ruName : null;
+        }
+
+        return $ruName !== '' ? $ruName : $callbackUrl;
+    }
+
+    public function isOAuthRedirectReady($callbackUrl)
+    {
+        return $this->getOAuthRedirectUri($callbackUrl) !== null;
+    }
+
     private function makeRequest(string $url, array $options = []): array
     {
         $ch = curl_init();
@@ -416,6 +438,13 @@ class EbayService
     {
         $ebay = $this->settings['ebay'] ?? [];
         $environment = $ebay['environment'] ?? 'sandbox';
+        $oauthRedirect = $this->getOAuthRedirectUri($redirect_uri);
+        if ($oauthRedirect === null) {
+            throw new \InvalidArgumentException(
+                'Production eBay OAuth requires RuName in Business Settings → Integrations → eBay (or EBAY_RU_NAME in .env).'
+            );
+        }
+
         $auth_base = $environment === 'production'
             ? 'https://auth.ebay.com/oauth2/authorize'
             : 'https://auth.sandbox.ebay.com/oauth2/authorize';
@@ -428,10 +457,7 @@ class EbayService
         $params = [
             'client_id' => $this->appId,
             'response_type' => 'code',
-            // eBay requires RuName in production; in sandbox it accepts a
-            // raw URL but we still pass redirect_uri so the callback page
-            // can verify state.
-            'redirect_uri' => !empty($ebay['ru_name']) ? $ebay['ru_name'] : $redirect_uri,
+            'redirect_uri' => $oauthRedirect,
             'scope' => implode(' ', $scopes),
             'state' => bin2hex(random_bytes(8)),
             'prompt' => 'login',
@@ -451,8 +477,10 @@ class EbayService
         if (empty($this->appId) || empty($this->certId)) {
             return ['success' => false, 'msg' => 'eBay app_id / cert_id not configured.'];
         }
-        $ebay = $this->settings['ebay'] ?? [];
-        $redirect = !empty($ebay['ru_name']) ? $ebay['ru_name'] : $redirect_uri;
+        $redirect = $this->getOAuthRedirectUri($redirect_uri);
+        if ($redirect === null) {
+            return ['success' => false, 'msg' => 'eBay RuName not configured for production OAuth.'];
+        }
 
         try {
             $response = $this->makeRequest($this->baseUrl . '/identity/v1/oauth2/token', [

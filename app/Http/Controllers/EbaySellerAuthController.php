@@ -39,8 +39,13 @@ class EbaySellerAuthController extends Controller
         $settings = (new BusinessUtil())->getApiSettings($business_id);
         $seller = $settings['ebay_seller'] ?? [];
         $environment = $settings['ebay']['environment'] ?? 'sandbox';
+        $ru_name = trim($settings['ebay']['ru_name'] ?? '');
+        $callbackUrl = url('/admin/ebay-seller/callback');
+        $oauthReady = $configured ? $service->isOAuthRedirectReady($callbackUrl) : false;
 
-        return view('admin.ebay_seller_auth', compact('configured', 'connected', 'seller', 'environment'));
+        return view('admin.ebay_seller_auth', compact(
+            'configured', 'connected', 'seller', 'environment', 'ru_name', 'oauthReady', 'callbackUrl'
+        ));
     }
 
     public function connect(Request $request)
@@ -54,7 +59,21 @@ class EbaySellerAuthController extends Controller
                 'msg' => 'eBay app credentials missing. Set app_id, cert_id, dev_id under Business Settings → Integrations first.',
             ]);
         }
-        $url = $service->getSellerAuthorizationUrl(url('/admin/ebay-seller/callback'));
+        $callbackUrl = url('/admin/ebay-seller/callback');
+        if (!$service->isOAuthRedirectReady($callbackUrl)) {
+            return redirect('/admin/ebay-seller')->with('status', [
+                'type' => 'error',
+                'msg' => 'Production OAuth requires RuName. Business Settings → Integrations → eBay → paste your RuName (e.g. Sohaib_Ahmad-SohaibAh-Nivess-hqyoql), Save, then try again.',
+            ]);
+        }
+        try {
+            $url = $service->getSellerAuthorizationUrl($callbackUrl);
+        } catch (\InvalidArgumentException $e) {
+            return redirect('/admin/ebay-seller')->with('status', [
+                'type' => 'error',
+                'msg' => $e->getMessage(),
+            ]);
+        }
         return redirect()->away($url);
     }
 

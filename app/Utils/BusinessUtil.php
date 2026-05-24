@@ -484,6 +484,7 @@ class BusinessUtil extends Util
                 'app_id' => '',
                 'cert_id' => '',
                 'dev_id' => '',
+                'ru_name' => '',
                 'environment' => 'sandbox' // sandbox or production
             ],
             'discogs' => [
