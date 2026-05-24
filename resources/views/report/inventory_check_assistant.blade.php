@@ -12,10 +12,6 @@
 <script>document.body.classList.add('ica-v2');</script>
 <section class="content-header">
     <h1>Order for this Week</h1>
-    <p class="text-muted ica-lead">
-        <strong>1.</strong> Pick a store. <strong>2.</strong> Review the two lists that matter — <strong>Fast sellers</strong> (what to order) and <strong>Frozen inventory</strong> (what NOT to order). <strong>3.</strong> Export.
-        Charts, events, ABC, manager picks, etc. live behind "Show all the other reorder lists" if you want them.
-    </p>
 </section>
 
 <section class="content">
