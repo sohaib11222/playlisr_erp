@@ -363,16 +363,17 @@
                             if (stockCell) stockCell.textContent = newQty;
                             btn.dataset.current = String(newQty);
                             btn.disabled = false; btn.textContent = 'Set stock';
-                            const when = new Date().toISOString().substring(0, 10);
+                            const whenIso = new Date().toISOString().substring(0, 10);
+                            const whenDisplay = formatDateMDY(whenIso);
                             const userName = (resp.entry && resp.entry.user_name) || 'you';
                             const reasonCell = tr.querySelector('.ica-reason-col small');
                             if (reasonCell) {
-                                reasonCell.innerHTML += ` <span class="ica-last-order">· updated to ${newQty} on ${when} by ${escapeHtml(userName)}</span>`;
+                                reasonCell.innerHTML += ` <span class="ica-last-order">· updated to ${newQty} on ${whenDisplay} by ${escapeHtml(userName)}</span>`;
                             }
                             const updatedCell = tr.querySelector('.ica-updated-col');
                             if (updatedCell) {
-                                updatedCell.setAttribute('data-updated', when);
-                                updatedCell.innerHTML = `<small>${when}</small>`;
+                                updatedCell.setAttribute('data-updated', whenIso);
+                                updatedCell.innerHTML = `<small>${whenDisplay}</small>`;
                             }
                         }
                     })
@@ -736,7 +737,8 @@
         ];
         if (isFrozen) {
             headParts.push(sortable('Price', 'number', 'Retail sell price (from product_stock_cache.unit_price).'));
-            headParts.push(sortable('Last updated', 'date', 'Newest of product / variation updated_at — when someone last touched this product record.'));
+            headParts.push(sortable('Added', 'date', 'When this product was first added to the system (products.created_at).'));
+            headParts.push(sortable('Last edited', 'date', 'Most recent edit to the product / variation record. NOT the last-sold date — frozen status is based on no SALE in N days, regardless of when the record was last edited.'));
         }
         headParts.push(sortable('Reason', 'text'));
         headParts.push(sortable('Tags', 'text'));
@@ -819,13 +821,14 @@
             extraCol = `<button type="button" class="btn btn-xs btn-default ica-frozen-edit-btn" data-vid="${it.variation_id}" data-lid="${it.location_id || ''}" data-current="${it.stock}">Set stock</button>`;
         }
 
-        // Frozen rows also show "updated YYYY-MM-DD by Name" on the reason
+        // Frozen rows also show "updated mm/dd/yy by Name" on the reason
         // line when there's a logged in-place correction.
         let reasonExtra = '';
         if (bucket === 'frozen_inventory' && it.last_correction && it.last_correction.when) {
-            const when = String(it.last_correction.when).substring(0, 10);
+            const whenIso = String(it.last_correction.when).substring(0, 10);
+            const whenDisplay = formatDateMDY(whenIso);
             const by = it.last_correction.by || '';
-            reasonExtra = ` <span class="ica-last-order">· updated to ${it.last_correction.after} on ${escapeHtml(when)} by ${escapeHtml(by)}</span>`;
+            reasonExtra = ` <span class="ica-last-order">· updated to ${it.last_correction.after} on ${escapeHtml(whenDisplay)} by ${escapeHtml(by)}</span>`;
         }
 
         // Frozen rows are a warning list — qty stays 0, checkbox starts
@@ -861,9 +864,12 @@
 
         // Frozen rows: product cell links to the full /products/view/{id}
         // page so a click opens the title with all details (sales history,
-        // variations, suppliers). Also adds a "Price" + "Last updated"
-        // column so Sarah can spot bad-data rows ($300 mugs etc.).
+        // variations, suppliers). Also adds Price / Added / Last edited
+        // columns so Sarah can spot bad-data rows ($300 mugs etc.) and
+        // tell whether a stale-looking item is genuinely old or just
+        // recently re-imported.
         let priceCellHtml = '';
+        let createdCellHtml = '';
         let updatedCellHtml = '';
         if (isFrozen) {
             if (it.product_id && window.ICA_PRODUCT_VIEW_URL_BASE) {
@@ -873,8 +879,12 @@
             const sellNum = (typeof it.sell_price === 'number' && !isNaN(it.sell_price)) ? it.sell_price : null;
             const priceTxt = sellNum !== null ? `$${sellNum.toFixed(2)}` : '—';
             priceCellHtml = `<td class="ica-price-col" data-price="${sellNum !== null ? sellNum : ''}">${priceTxt}</td>`;
+            const created = it.created_at || '';
+            const createdDisplay = created ? formatDateMDY(created) : '—';
+            createdCellHtml = `<td class="ica-created-col" data-created="${escapeHtml(created)}"><small>${escapeHtml(createdDisplay)}</small></td>`;
             const updated = it.last_updated_at || '';
-            updatedCellHtml = `<td class="ica-updated-col" data-updated="${escapeHtml(updated)}"><small>${updated ? escapeHtml(updated) : '—'}</small></td>`;
+            const updatedDisplay = updated ? formatDateMDY(updated) : '—';
+            updatedCellHtml = `<td class="ica-updated-col" data-updated="${escapeHtml(updated)}"><small>${escapeHtml(updatedDisplay)}</small></td>`;
         }
 
         return `<tr data-row-key="${escapeHtml(rowKey)}" data-pid="${pid}" data-cat="${category}" data-genre="${genre}" data-abc="${initialAbc}" data-rsd="${isRsd ? '1' : '0'}" data-cost="${costNum !== null ? costNum : ''}">
@@ -890,6 +900,7 @@
             <td>${sold}</td>
             <td class="ica-cost-col">${costCell}</td>
             ${priceCellHtml}
+            ${createdCellHtml}
             ${updatedCellHtml}
             <td class="ica-reason-col"><small>${reason}${reasonExtra}</small></td>
             <td>${tagsHtml}</td>
@@ -948,10 +959,20 @@
             return input ? (parseFloat(input.value) || 0) : 0;
         }
         if (type === 'date') {
-            const v = td.getAttribute('data-updated') || td.textContent.trim();
-            return v || '';
+            // Sort by the underlying ISO date kept in data-updated / data-created;
+            // displayed text is mm/dd/yy which doesn't sort lexicographically.
+            const v = td.getAttribute('data-updated') || td.getAttribute('data-created') || '';
+            return v;
         }
         return td.textContent.trim().toLowerCase();
+    }
+
+    // ISO ("YYYY-MM-DD") → "mm/dd/yy". Returns empty string for falsy input.
+    function formatDateMDY(iso) {
+        if (!iso) return '';
+        const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (!m) return iso;
+        return m[2] + '/' + m[3] + '/' + m[1].substring(2);
     }
 
     function attachBucketHandlers() {

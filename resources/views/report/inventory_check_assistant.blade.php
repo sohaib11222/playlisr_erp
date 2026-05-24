@@ -474,7 +474,8 @@
 .ica-row-table th.ica-sortable:hover { background: #eef3f7; }
 .ica-row-table th.ica-sortable[data-sort-dir] { background: #e1ecf4; }
 .ica-row-table th .ica-sort-ind { color: #2c699a; font-size: 11px; margin-left: 2px; }
-.ica-row-table td.ica-updated-col { white-space: nowrap; color: #555; }
+.ica-row-table td.ica-updated-col,
+.ica-row-table td.ica-created-col { white-space: nowrap; color: #555; }
 .ica-row-table td.ica-price-col { white-space: nowrap; }
 .ica-row-table a.ica-product-link { color: #2c699a; text-decoration: none; }
 .ica-row-table a.ica-product-link:hover { text-decoration: underline; color: #1d4f73; }

@@ -1672,6 +1672,7 @@ class InventoryCheckService
             'psc.product_custom_field1', 'psc.total_sold', 'psc.stock_price',
             'psc.unit_price as sell_price',
             'p.format as product_format', 'p.bin_position',
+            'p.created_at as product_created_at',
             DB::raw('GREATEST(
                 COALESCE(IF(p.updated_at > NOW(), NULL, p.updated_at), "1970-01-01"),
                 COALESCE(IF(v.updated_at > NOW(), NULL, v.updated_at), "1970-01-01")
@@ -1721,8 +1722,12 @@ class InventoryCheckService
         foreach ($rows as $row) {
             $stock = (float) ($row->stock ?? 0);
             $tiedUp = (float) ($row->stock_price ?? 0);
-            $lastSold = $row->last_sold ? Carbon::parse($row->last_sold)->format('Y-m-d') : null;
-            $daysSince = $lastSold ? Carbon::parse($lastSold)->diffInDays(Carbon::now()) : null;
+            // Dates: ISO ("YYYY-MM-DD") shipped to JS for both display + sort,
+            // JS reformats to mm/dd/yy on screen. Reason text bakes the
+            // display format in directly since it's a pre-built string.
+            $lastSoldIso = $row->last_sold ? Carbon::parse($row->last_sold)->format('Y-m-d') : null;
+            $daysSince = $lastSoldIso ? Carbon::parse($lastSoldIso)->diffInDays(Carbon::now()) : null;
+            $lastSoldDisplay = $lastSoldIso ? Carbon::parse($lastSoldIso)->format('m/d/y') : null;
 
             // Per-unit cost = total tied-up / stock-on-hand. This is the
             // weighted average of purchase prices for remaining qty across
@@ -1732,22 +1737,27 @@ class InventoryCheckService
             $costPerUnit = ($stock > 0) ? round($tiedUp / $stock, 2) : null;
             $sellPrice = isset($row->sell_price) ? (float) $row->sell_price : null;
 
-            $lastUpdated = null;
+            $lastEditedIso = null;
             if (!empty($row->last_updated_at) && $row->last_updated_at !== '1970-01-01 00:00:00') {
-                $lastUpdated = Carbon::parse($row->last_updated_at)->format('Y-m-d');
+                $lastEditedIso = Carbon::parse($row->last_updated_at)->format('Y-m-d');
+            }
+            $createdIso = null;
+            if (!empty($row->product_created_at) && $row->product_created_at !== '1970-01-01 00:00:00') {
+                $createdIso = Carbon::parse($row->product_created_at)->format('Y-m-d');
             }
 
             $candidate = $this->rowToCandidate($row, $stock, 0, 0, [
                 'bucket' => 'frozen_inventory',
-                'reason' => $lastSold
-                    ? ('last sold ' . $lastSold . ' (' . $daysSince . 'd ago) · $' . number_format($tiedUp, 0) . ' tied up')
+                'reason' => $lastSoldDisplay
+                    ? ('last sold ' . $lastSoldDisplay . ' (' . $daysSince . 'd ago) · $' . number_format($tiedUp, 0) . ' tied up')
                     : ('never sold · $' . number_format($tiedUp, 0) . ' tied up'),
-                'last_sold' => $lastSold,
+                'last_sold' => $lastSoldIso,
                 'days_since_sold' => $daysSince,
                 'tied_up_value' => $tiedUp,
                 'cost_price' => $costPerUnit,
                 'sell_price' => $sellPrice,
-                'last_updated_at' => $lastUpdated,
+                'last_updated_at' => $lastEditedIso,
+                'created_at' => $createdIso,
                 'tags' => ['frozen', 'do_not_reorder'],
             ]);
 
