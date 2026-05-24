@@ -53,6 +53,10 @@ Route::middleware(['setData'])->group(function () {
     // Clover webhook — signature-verified in the controller. Must be outside
     // the auth group (Clover calls us) and outside CSRF (see VerifyCsrfToken::$except).
     Route::post('/webhooks/clover', 'CloverController@webhook')->name('clover.webhook');
+
+    // eBay Marketplace Account Deletion — GET challenge + POST notifications (no CSRF).
+    Route::match(['get', 'post'], '/webhooks/ebay/marketplace-account-deletion', 'EbayMarketplaceDeletionController@handle')
+        ->name('ebay.marketplace_deletion');
 });
 
 //Routes for authenticated users only

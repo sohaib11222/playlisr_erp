@@ -53,4 +53,11 @@ return [
         'business_id' => env('NIVESSA_WEB_BUSINESS_ID'),
     ],
 
+    // eBay Marketplace Account Deletion webhook (Developer → Alerts & Notifications).
+    // Endpoint URL in the portal must match marketplace_deletion_endpoint_url byte-for-byte.
+    'ebay' => [
+        'marketplace_deletion_verification_token' => env('EBAY_MARKETPLACE_DELETION_VERIFICATION_TOKEN', ''),
+        'marketplace_deletion_endpoint_url' => env('EBAY_MARKETPLACE_DELETION_ENDPOINT_URL', ''),
+    ],
+
 ];
