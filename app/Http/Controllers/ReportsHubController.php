@@ -36,7 +36,6 @@ class ReportsHubController extends Controller
                     ['key' => 'sales-rep',             'name' => 'Sales Representative Report', 'icon' => 'fa-user-tie',     'action' => 'ReportController@getSalesRepresentativeReport','desc' => 'Sales by sales rep.', 'admin_only' => true],
                     ['key' => 'sell-payment',          'name' => 'Sell Payment Report',   'icon' => 'fa-money-check',        'action' => 'ReportController@sellPaymentReport',          'desc' => 'Payments against sells.', 'admin_only' => true],
                     ['key' => 'purchase-sell',         'name' => 'Purchase & Sale',       'icon' => 'fa-exchange-alt',       'action' => 'ReportController@getPurchaseSell',            'desc' => 'Purchase vs sell summary.', 'admin_only' => true],
-                    ['key' => 'revenue-by-employee-barcoding', 'name' => 'Revenue by Employee (Barcoded)', 'icon' => 'fa-barcode', 'action' => 'ReportController@revenueByEmployeeBarcoding', 'desc' => 'Items each employee barcoded that sold + the revenue they generated.'],
                 ],
             ],
             'inventory' => [
@@ -91,6 +90,7 @@ class ReportsHubController extends Controller
                 'reports' => [
                     ['key' => 'employee-leaderboard',  'name' => 'Employee Leaderboard',  'icon' => 'fa-trophy',             'action' => 'ReportController@employeeLeaderboard',        'desc' => 'Ranked by $ / hour.', 'admin_only' => true],
                     ['key' => 'employee-productivity', 'name' => 'Employee Productivity', 'icon' => 'fa-user-clock',         'action' => 'ReportController@productEntryProductivity',   'desc' => 'Products priced + purchases entered.'],
+                    ['key' => 'revenue-by-employee-barcoding', 'name' => 'Revenue by Employee (Barcoded)', 'icon' => 'fa-barcode', 'action' => 'ReportController@revenueByEmployeeBarcoding', 'desc' => 'Items each employee barcoded that sold + the revenue they generated.'],
                     ['key' => 'help-searches',         'name' => 'Handbook Searches',     'icon' => 'fa-search',             'action' => 'HelpReportController@index',                  'desc' => 'What employees look up in the handbook + zero-result queries.', 'admin_only' => true],
                     ['key' => 'customer-wants',        'name' => 'Customer Wants',        'icon' => 'fa-heart',              'action' => 'CustomerWantController@index',                'desc' => 'Call-me-when-it-comes-in list.'],
                     ['key' => 'customer-groups',       'name' => 'Customer Groups Report','icon' => 'fa-users-cog',          'action' => 'ReportController@getCustomerGroupsReport',    'desc' => 'Sales by customer group.', 'admin_only' => true],
