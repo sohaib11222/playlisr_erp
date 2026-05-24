@@ -536,8 +536,12 @@
         // view = just fast_oos (Jon's focus). Everything else lives behind a
         // single "Show all the other reorder lists" disclosure so it's one
         // click away when needed but not in the face on landing.
-        const primary = ['fast_oos'];
-        const secondary = ['manager_picks', 'ume_spotlights', 'customer_wants', 'street_pulse', 'universal_top', 'apple_music_top', 'top_artist_new_releases', 'events_upcoming', 'abc_a_restock', 'long_oos_essentials', 'hot_used_oos', 'frozen_inventory'];
+        // Sarah 2026-05-21: "fast sellers and frozen inventory is most
+        // important" — these two are now the default view. Everything
+        // else (charts, events, ABC, manager picks, UMe spotlights,
+        // customer wants, long-OOS, hot-used) lives behind one toggle.
+        const primary = ['fast_oos', 'frozen_inventory'];
+        const secondary = ['manager_picks', 'ume_spotlights', 'customer_wants', 'street_pulse', 'universal_top', 'apple_music_top', 'top_artist_new_releases', 'events_upcoming', 'abc_a_restock', 'long_oos_essentials', 'hot_used_oos'];
         const buckets = payload.buckets || {};
 
         let primaryHtml = '';
@@ -566,7 +570,7 @@
         if (secondaryHtml !== '') {
             html += '<details class="ica-secondary-disclosure">'
                 + '<summary><strong>Show all the other reorder lists</strong> '
-                + '<small class="text-muted">(charts, events, ABC, frozen, customer wants — <span id="ica_secondary_count">' + secondaryItems + '</span> more items)</small></summary>'
+                + '<small class="text-muted">(charts, events, ABC, manager picks, UMe spotlights, customer wants — <span id="ica_secondary_count">' + secondaryItems + '</span> more items)</small></summary>'
                 + '<div class="ica-secondary-buckets">' + secondaryHtml + '</div>'
                 + '</details>';
         }

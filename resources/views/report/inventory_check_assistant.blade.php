@@ -13,8 +13,8 @@
 <section class="content-header">
     <h1>Order for this Week</h1>
     <p class="text-muted ica-lead">
-        <strong>1.</strong> Pick a store below. <strong>2.</strong> Review the Fast sellers list (Jon's focus — items that sold &lt;90 days and are out of stock). <strong>3.</strong> Export.
-        Everything else (charts, events, ABC, frozen, customer wants) lives behind the “Show all the other reorder lists” toggle once the list builds.
+        <strong>1.</strong> Pick a store. <strong>2.</strong> Review the two lists that matter — <strong>Fast sellers</strong> (what to order) and <strong>Frozen inventory</strong> (what NOT to order). <strong>3.</strong> Export.
+        Charts, events, ABC, manager picks, etc. live behind "Show all the other reorder lists" if you want them.
     </p>
 </section>
 
