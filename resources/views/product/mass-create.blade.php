@@ -430,6 +430,7 @@
                         <li><code>Product Name - Artist</code> (Simple format)</li>
                         <li><code>Product Name | Artist | Category | Subcategory | SKU | Price | Bin | Location</code> (Pipe-delimited)</li>
                         <li><code>Product Name,Artist,Category,Subcategory,SKU,Price,Bin,Location</code> (CSV format)</li>
+                        <li><code>Product Name,Artist,Category,Subcategory,SKU,Price,</code> (CSV format, no Bin/Location)</li>
                         <li><code>Product Name	Artist	Category	Subcategory	SKU	Price	Bin	Location</code> (Tab-delimited)</li>
                         <li>Auto-complete suggestions appear as you type!</li>
                     </ul>
@@ -438,7 +439,7 @@
                     id="bulk_product_text" 
                     class="form-control" 
                     rows="12" 
-                    placeholder="Example formats:&#10;Album Title - Artist Name&#10;Album Title | Artist Name | Category | Subcategory | SKU123 | 19.99 | A-12 | Warehouse A&#10;Album Title,Artist Name,Category,Subcategory,SKU123,19.99,A-12,Warehouse A&#10;&#10;Start typing to see auto-complete suggestions from your existing products..."
+                    placeholder="Example formats:&#10;Album Title - Artist Name&#10;Album Title | Artist Name | Category | Subcategory | SKU123 | 19.99 | A-12 | Warehouse A&#10;Album Title,Artist Name,Category,Subcategory,SKU123,19.99,A-12,Warehouse A&#10;Album Title,Artist Name,Category,Subcategory,SKU123,19.99,&#10;&#10;Start typing to see auto-complete suggestions from your existing products..."
                     style="font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.6;"></textarea>
                 <small class="text-muted">
                     <i class="fa fa-lightbulb-o"></i> <strong>Tip:</strong> As you type product names, suggestions from your existing database will appear. 
@@ -489,22 +490,24 @@
         <div class="box-body" style="display: none;">
             <div class="form-group">
                 <label for="bulk_discogs_ids">
-                    <strong>Paste Discogs release IDs <em>or</em> URLs (one per line).</strong>
+                    <strong>Paste Discogs release IDs / URLs <em>or</em> CSV rows (one per line).</strong>
                 </label>
                 <div class="alert alert-info" style="margin-bottom: 10px; padding: 10px;">
-                    Each entry is looked up against the Discogs API. We auto-fill
-                    Product Name (title), Artist, SKU (catalog number), and
-                    best-guess Category/Subcategory. You finish price / location /
-                    bin inline.
+                    <strong>Accepted formats (mix and match, one per line):</strong>
+                    <ul style="margin-bottom: 0; padding-left: 20px;">
+                        <li>Discogs release ID, optionally with a trailing price &mdash; <code>1873085</code> or <code>1873085 19.99</code></li>
+                        <li>Discogs release URL, optionally with a trailing price &mdash; <code>discogs.com/release/249504 25</code></li>
+                        <li>CSV row &mdash; <code>Product Name,Artist,Category,Subcategory,SKU,Price</code> (any field may be left blank, e.g. <code>Some LP,Some Artist,,,,19.99</code>). Wrap fields containing commas in double quotes.</li>
+                    </ul>
                 </div>
                 <textarea
                     id="bulk_discogs_ids"
                     class="form-control"
                     rows="8"
-                    placeholder="Examples (mix and match):&#10;1873085&#10;1873085 19.99&#10;https://www.discogs.com/release/249504-Pink-Floyd-The-Dark-Side-Of-The-Moon&#10;https://www.discogs.com/release/249504 25&#10;discogs.com/release/366070 $12.50"
+                    placeholder="Examples (mix and match):&#10;1873085&#10;1873085 19.99&#10;https://www.discogs.com/release/249504-Pink-Floyd-The-Dark-Side-Of-The-Moon&#10;https://www.discogs.com/release/249504 25&#10;discogs.com/release/366070 $12.50&#10;The Dark Side Of The Moon,Pink Floyd,Used Vinyl,Rock,SHVL 804,24.99"
                     style="font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.6;"></textarea>
                 <small class="text-muted">
-                    <i class="fa fa-info-circle"></i> Either the bare ID number, or a full Discogs URL like <code>discogs.com/release/<strong>1873085</strong>-...</code> &mdash; we'll pull the ID out. Add a space and a price at the end of any line (e.g. <code>1873085 19.99</code>) to pre-fill that row's <strong>Selling Price</strong>.
+                    <i class="fa fa-info-circle"></i> Lines with commas are treated as direct CSV rows &mdash; no Discogs lookup. Category/Subcategory names must match an existing combo (case-insensitive); unmatched categories leave the row's category blank.
                 </small>
             </div>
             <div class="form-group">
@@ -2298,15 +2301,88 @@
         });
     }
 
-    // Accept either a bare numeric ID or a full Discogs URL
-    // like https://www.discogs.com/release/1873085-Pink-Floyd-Atom-Heart-Mother
-    // Extracts the digits after `/release/` when a URL is pasted.
-    // Optionally accepts a trailing price after a space, e.g.
-    //   "1873085 19.99"  or  "https://www.discogs.com/release/249504 $25"
-    // The price (if present) is written into the row's selling-price field.
+    // Minimal CSV-line splitter that respects double-quoted fields. Used for the
+    // direct-entry format `Product Name,Artist,Category,Subcategory,SKU,Price`.
+    function parseCsvLine(line) {
+        const out = [];
+        let cur = '';
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+            const ch = line[i];
+            if (inQuotes) {
+                if (ch === '"') {
+                    if (line[i + 1] === '"') { cur += '"'; i++; }
+                    else { inQuotes = false; }
+                } else {
+                    cur += ch;
+                }
+            } else if (ch === '"' && cur === '') {
+                inQuotes = true;
+            } else if (ch === ',') {
+                out.push(cur);
+                cur = '';
+            } else {
+                cur += ch;
+            }
+        }
+        out.push(cur);
+        return out.map(s => s.trim());
+    }
+
+    // Resolve a category/subcategory name pair to { category_id, sub_category_id }
+    // by matching against the option labels in the global preset-bulk dropdown
+    // (which mirrors flattenedProductCategoryCombos). Case-insensitive exact
+    // match on "Category > Subcategory", or just "Category" when sub is blank.
+    function resolveCategoryComboByName(categoryName, subCategoryName) {
+        const cat = (categoryName || '').trim().toLowerCase();
+        if (!cat) return null;
+        const sub = (subCategoryName || '').trim().toLowerCase();
+        const target = sub ? (cat + ' > ' + sub) : cat;
+        let found = null;
+        $('#preset_bulk_category option').each(function() {
+            if (!$(this).val()) return; // skip placeholder
+            const label = ($(this).text() || '').trim().toLowerCase();
+            if (label === target) {
+                found = {
+                    category_id: parseInt($(this).attr('data-category-id'), 10) || null,
+                    sub_category_id: parseInt($(this).attr('data-sub-category-id'), 10) || 0,
+                };
+                return false;
+            }
+        });
+        return found;
+    }
+
+    // Parse one line into either a Discogs entry or a direct-CSV entry.
+    // Discogs: bare numeric ID, or a URL with `/release/<id>`, optionally with
+    //   a trailing price separated by a space — "1873085 19.99".
+    // CSV: presence of a comma signals direct entry —
+    //   "Product Name,Artist,Category,Subcategory,SKU,Price" (trailing fields optional).
     function parseDiscogsBulkLine(line) {
         const trimmed = (line || '').trim();
         if (!trimmed) return null;
+
+        // CSV direct-entry path: any line containing a comma. Discogs URLs and
+        // bare IDs never contain commas, so this is unambiguous.
+        if (trimmed.indexOf(',') !== -1) {
+            const fields = parseCsvLine(trimmed);
+            const name = fields[0] || '';
+            if (!name) return null;
+            const priceRaw = (fields[5] || '').replace(/^\$/, '').trim();
+            return {
+                type: 'csv',
+                csv: {
+                    name: name,
+                    artist: fields[1] || '',
+                    category: fields[2] || '',
+                    sub_category: fields[3] || '',
+                    sku: fields[4] || '',
+                    price: priceRaw || null,
+                },
+            };
+        }
+
+        // Discogs path (existing behavior).
         let head = trimmed;
         let price = null;
         const priceMatch = trimmed.match(/\s+\$?(\d+(?:\.\d+)?)\s*$/);
@@ -2322,7 +2398,7 @@
             if (m) id = m[1];
         }
         if (!id) return null;
-        return { id: id, price: price };
+        return { type: 'discogs', id: id, price: price };
     }
 
     $('#fetch_discogs_ids').on('click', function() {
@@ -2331,82 +2407,128 @@
                            .map(parseDiscogsBulkLine)
                            .filter(Boolean);
         if (!entries.length) {
-            toastr.warning('Paste at least one Discogs release ID or release URL.');
+            toastr.warning('Paste at least one Discogs release ID, release URL, or CSV row.');
             return;
         }
-        if (!confirm(`Fetch ${entries.length} releases from Discogs and add them to the table?`)) {
+        const discogsCount = entries.filter(e => e.type === 'discogs').length;
+        const csvCount = entries.length - discogsCount;
+        const promptParts = [];
+        if (discogsCount) promptParts.push(`fetch ${discogsCount} from Discogs`);
+        if (csvCount) promptParts.push(`add ${csvCount} CSV row${csvCount === 1 ? '' : 's'}`);
+        if (!confirm(`About to ${promptParts.join(' and ')}. Continue?`)) {
             return;
         }
 
-        // Reverse so prepends preserve typed order (first ID → top).
+        // Reverse so prepends preserve typed order (first entry → top).
         const queue = entries.slice().reverse();
         const $btn = $(this).prop('disabled', true);
         const total = entries.length;
         let added = 0, failed = 0;
         const failures = [];
+        const warnings = [];
 
-        function renderFailures() {
-            if (!failures.length) return '';
-            const items = failures.map(f =>
+        function renderList(title, items, cls) {
+            if (!items.length) return '';
+            const lis = items.map(f =>
                 `<li><code>${f.id}</code> &mdash; ${$('<div>').text(f.msg).html()}</li>`
             ).join('');
-            return `<div class="alert alert-warning" style="margin-top:10px;">
-                <strong>Failed (${failures.length}):</strong>
-                <ul style="margin:6px 0 0 18px;">${items}</ul>
+            return `<div class="alert ${cls}" style="margin-top:10px;">
+                <strong>${title} (${items.length}):</strong>
+                <ul style="margin:6px 0 0 18px;">${lis}</ul>
             </div>`;
+        }
+
+        function finish() {
+            $btn.prop('disabled', false);
+            const bits = [`Added ${added}/${total}`];
+            if (failed) bits.push(`${failed} failed`);
+            if (warnings.length) bits.push(`${warnings.length} with warnings`);
+            const summary = bits.join(' &mdash; ') + '.';
+            const cls = failed ? 'text-warning' : (warnings.length ? 'text-warning' : 'text-success');
+            const icon = failed ? 'exclamation-triangle' : (warnings.length ? 'exclamation-circle' : 'check');
+            $('#discogs_fetch_status').html(
+                `<span class="${cls}"><i class="fa fa-${icon}"></i> ${summary}</span>` +
+                renderList('Failed', failures, 'alert-warning') +
+                renderList('Added with warnings', warnings, 'alert-info')
+            );
+            if (!failed && !warnings.length) {
+                toastr.success(`Added ${added} row${added === 1 ? '' : 's'}.`);
+                $('#bulk_discogs_ids').val('');
+            } else if (failed) {
+                toastr.warning(`${failed} of ${total} entries failed. See details on the page.`);
+            } else {
+                toastr.warning(`${warnings.length} row${warnings.length === 1 ? '' : 's'} added with warnings. See details on the page.`);
+            }
+        }
+
+        function handleCsv(entry) {
+            const csv = entry.csv;
+            const combo = resolveCategoryComboByName(csv.category, csv.sub_category);
+            if (csv.category && !combo) {
+                warnings.push({
+                    id: csv.name,
+                    msg: `Category "${csv.category}${csv.sub_category ? ' > ' + csv.sub_category : ''}" did not match any existing combo — row added without category.`,
+                });
+            }
+            const data = {
+                title: csv.name,
+                artist: csv.artist,
+                sku: csv.sku,
+                category_id: combo ? combo.category_id : null,
+                sub_category_id: combo ? combo.sub_category_id : null,
+            };
+            return addRowFromDiscogsData(data, nextMassRowIndex(), csv.price)
+                .then(() => { added++; });
+        }
+
+        function handleDiscogs(entry) {
+            return new Promise(function(resolve) {
+                const id = entry.id;
+                const price = entry.price;
+                $('#discogs_fetch_status').html(`<i class="fa fa-spinner fa-spin"></i> Fetching ${id} (${added + failed + 1}/${total})...`);
+                $.ajax({
+                    url: "{{ url('product/mass-create/fetch-discogs-release') }}/" + encodeURIComponent(id),
+                    type: 'GET',
+                    success: function(resp) {
+                        if (resp && resp.success) {
+                            addRowFromDiscogsData(resp.data, nextMassRowIndex(), price)
+                                .then(() => { added++; resolve(); });
+                        } else {
+                            failed++;
+                            const msg = (resp && resp.message) ? resp.message : 'Unknown error from server.';
+                            failures.push({ id: id, msg: msg });
+                            console.warn('Discogs fetch failed for ' + id + ':', msg);
+                            resolve();
+                        }
+                    },
+                    error: function(xhr) {
+                        failed++;
+                        let msg = 'HTTP ' + (xhr && xhr.status ? xhr.status : '?');
+                        if (xhr && xhr.responseJSON && xhr.responseJSON.message) {
+                            msg += ' &mdash; ' + xhr.responseJSON.message;
+                        } else if (xhr && xhr.responseText) {
+                            msg += ' &mdash; ' + xhr.responseText.substring(0, 200).replace(/<[^>]+>/g, ' ').trim();
+                        }
+                        failures.push({ id: id, msg: msg });
+                        console.warn('Discogs fetch HTTP error for ' + id, xhr);
+                        resolve();
+                    }
+                });
+            });
         }
 
         function next() {
             if (!queue.length) {
-                $btn.prop('disabled', false);
-                const summary = failed
-                    ? `Added ${added}/${total} &mdash; ${failed} failed (see below).`
-                    : `Added ${added}/${total} from Discogs.`;
-                $('#discogs_fetch_status').html(
-                    `<span class="${failed ? 'text-warning' : 'text-success'}"><i class="fa fa-${failed ? 'exclamation-triangle' : 'check'}"></i> ${summary}</span>` +
-                    renderFailures()
-                );
-                if (!failed) {
-                    toastr.success(`Added ${added} from Discogs.`);
-                    $('#bulk_discogs_ids').val('');
-                } else {
-                    toastr.warning(`${failed} of ${total} Discogs lookups failed. See details on the page.`);
-                }
+                finish();
                 return;
             }
             const entry = queue.shift();
-            const id = entry.id;
-            const price = entry.price;
-            $('#discogs_fetch_status').html(`<i class="fa fa-spinner fa-spin"></i> Fetching ${id} (${added + failed + 1}/${total})...`);
-            $.ajax({
-                url: "{{ url('product/mass-create/fetch-discogs-release') }}/" + encodeURIComponent(id),
-                type: 'GET',
-                success: function(resp) {
-                    if (resp && resp.success) {
-                        addRowFromDiscogsData(resp.data, nextMassRowIndex(), price)
-                            .then(() => { added++; setTimeout(next, 250); });
-                    } else {
-                        failed++;
-                        const msg = (resp && resp.message) ? resp.message : 'Unknown error from server.';
-                        failures.push({ id: id, msg: msg });
-                        console.warn('Discogs fetch failed for ' + id + ':', msg);
-                        setTimeout(next, 250);
-                    }
-                },
-                error: function(xhr) {
-                    failed++;
-                    let msg = 'HTTP ' + (xhr && xhr.status ? xhr.status : '?');
-                    if (xhr && xhr.responseJSON && xhr.responseJSON.message) {
-                        msg += ' &mdash; ' + xhr.responseJSON.message;
-                    } else if (xhr && xhr.responseText) {
-                        // Show first 200 chars of HTML/error body so we can see Laravel's message.
-                        msg += ' &mdash; ' + xhr.responseText.substring(0, 200).replace(/<[^>]+>/g, ' ').trim();
-                    }
-                    failures.push({ id: id, msg: msg });
-                    console.warn('Discogs fetch HTTP error for ' + id, xhr);
-                    setTimeout(next, 250);
-                }
-            });
+            if (entry.type === 'csv') {
+                $('#discogs_fetch_status').html(`<i class="fa fa-spinner fa-spin"></i> Adding CSV row (${added + failed + 1}/${total})...`);
+                handleCsv(entry).then(() => setTimeout(next, 50));
+            } else {
+                handleDiscogs(entry).then(() => setTimeout(next, 250));
+            }
         }
         next();
     });
