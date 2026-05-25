@@ -2020,11 +2020,6 @@
                     // SKU
                     $row.find('input[name*="[sku]"]').val(productData.sku || '');
                     
-                    // Price (selling price) — row field is single_dsp_inc_tax, not selling_price
-                    if (productData.price) {
-                        $row.find('input[name*="[single_dsp_inc_tax]"]').val(productData.price);
-                    }
-                    
                     // Bin position
                     if (productData.bin_position) {
                         $row.find('input[name*="[bin_position]"]').val(productData.bin_position);
@@ -2052,6 +2047,17 @@
                     window.setupProductNameSelect2();
                     // Apply POS manual item price rules (window.manualItemPriceRules) + product entry rules from product.js
                     $row.find('.product-name-autocomplete').trigger('blur');
+
+                    // Selling price — set LAST and re-apply after async rule-resolution timers (combo change → 120ms timer → AJAX rule)
+                    // settle, so the parsed price isn't clobbered by a category_combo rule overwriting empty/zero values.
+                    if (productData.price) {
+                        const targetIdx = rowIndex;
+                        const priceVal = productData.price;
+                        const sel = `#product_rows_container .product-row[data-row-index="${targetIdx}"] input[name*="[single_dsp_inc_tax]"]`;
+                        $(sel).val(priceVal);
+                        setTimeout(function () { $(sel).val(priceVal); }, 350);
+                        setTimeout(function () { $(sel).val(priceVal); }, 800);
+                    }
                     resolve();
                 },
                 error: function () {
