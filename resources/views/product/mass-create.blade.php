@@ -2042,22 +2042,21 @@
                         $combo.val(comboVal).trigger('change');
                     }
 
+                    // Selling price (row field is single_dsp_inc_tax, not selling_price).
+                    // data-parsed-price tells applyRuleToScope (product.js) not to overwrite
+                    // the parsed value when a category_combo rule fires from the combo-change
+                    // or blur triggers below.
+                    if (productData.price) {
+                        $row.find('input[name*="[single_dsp_inc_tax]"]')
+                            .val(productData.price)
+                            .attr('data-parsed-price', '1');
+                    }
+
                     // Reinitialize Select2
                     $row.find('.select2').select2();
                     window.setupProductNameSelect2();
                     // Apply POS manual item price rules (window.manualItemPriceRules) + product entry rules from product.js
                     $row.find('.product-name-autocomplete').trigger('blur');
-
-                    // Selling price — set LAST and re-apply after async rule-resolution timers (combo change → 120ms timer → AJAX rule)
-                    // settle, so the parsed price isn't clobbered by a category_combo rule overwriting empty/zero values.
-                    if (productData.price) {
-                        const targetIdx = rowIndex;
-                        const priceVal = productData.price;
-                        const sel = `#product_rows_container .product-row[data-row-index="${targetIdx}"] input[name*="[single_dsp_inc_tax]"]`;
-                        $(sel).val(priceVal);
-                        setTimeout(function () { $(sel).val(priceVal); }, 350);
-                        setTimeout(function () { $(sel).val(priceVal); }, 800);
-                    }
                     resolve();
                 },
                 error: function () {

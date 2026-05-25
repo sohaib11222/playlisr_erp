@@ -1068,7 +1068,10 @@ $(document).on('click', 'button.apply-all', function(){
         }
         if (rule.selling_price !== null && rule.selling_price !== undefined && rule.selling_price !== '') {
             var $sp = readFirst($scope, ['input[name="single_dsp_inc_tax"]', 'input[name*="[single_dsp_inc_tax]"]']);
-            if ($sp.length && (forceFromCategoryCombo || !$sp.val())) {
+            // data-parsed-price is set by Mass Add bulk-parse to lock the parsed price.
+            // Without this, a category_combo rule's forceFromCategoryCombo branch overwrites it.
+            var parsedSp = $sp.length && $sp.attr('data-parsed-price') === '1';
+            if ($sp.length && !parsedSp && (forceFromCategoryCombo || !$sp.val())) {
                 $sp.val(rule.selling_price).trigger('change');
             }
         }
