@@ -454,10 +454,14 @@
             </label>
             @endif
             <div id="pos_store_credit_row" class="pos-tot-chip store-credit" style="display:none; cursor:default;">
-                <span>Store credit:</span>
+                <span id="pos_store_credit_label">Store credit:</span>
                 <span id="pos_store_credit_amount" style="font-weight:700;">$0.00</span>
                 <button type="button" class="edit" id="btn_use_store_credit">Use it</button>
+                <button type="button" class="edit" id="btn_remove_store_credit" style="display:none;">&times; Remove</button>
             </div>
+            <span id="pos_store_credit_hint" style="display:none; align-self:center; font-size:11px; color:#14532d; font-style:italic;">
+                Now click <strong>Cash</strong> (or <strong>Credit Sale</strong> for tab) to finalize.
+            </span>
         </div>
 
         <div class="pos-receipt">

@@ -247,6 +247,10 @@ $(document).ready(function() {
         $customerSelect.data('employee_discount_applied', false);
         $customerSelect.data('is_employee', false);
 
+        // If credit was already applied against this customer, drop it
+        // before the new (no-customer) state — otherwise the chip and
+        // payment row would still reference the old customer's credit.
+        clearAppliedStoreCredit();
         $('#advance_balance').val(0);
         $('#advance_balance_text').text(__currency_trans_from_en(0, true));
         updatePosStoreCreditUI(0);
@@ -284,6 +288,11 @@ $(document).ready(function() {
                     $('#customer_gift_card_balance').text(__currency_trans_from_en(data.total_gift_card_balance || 0, true));
                     $('#customer_lifetime_purchases').text(__currency_trans_from_en(contact.lifetime_purchases || 0, true));
                     $('#customer_loyalty_points').text(contact.loyalty_points || 0);
+
+                    // Drop any credit applied against a previously-selected
+                    // customer before swapping in the new balance, otherwise
+                    // the chip and first payment row would carry over.
+                    clearAppliedStoreCredit();
 
                     // Keep payment modal's advance/store-credit in sync with latest customer balance.
                     $('#advance_balance_text').text(__currency_trans_from_en(contactBalance, true));
@@ -326,21 +335,82 @@ $(document).ready(function() {
             return;
         }
         var amt = parseFloat(balance || 0) || 0;
+        var used = parseFloat($('#store_credit_used_amount').val() || 0) || 0;
         // Inline "Use it" pill sitting next to the Credit amount in the
         // customer snapshot — Sarah 2026-04-22 wanted it here, not buried in
         // the totals card. Show/hide in lock-step with the totals-card row.
         var $inline = $('#inline_use_store_credit_btn');
-        if (amt > 0) {
-            $('#pos_store_credit_amount').text(__currency_trans_from_en(amt, true));
-            $('#btn_use_store_credit').data('credit-amount', amt);
+        var $useBtn = $('#btn_use_store_credit');
+        var $removeBtn = $('#btn_remove_store_credit');
+        var $label = $('#pos_store_credit_label');
+        var $hint = $('#pos_store_credit_hint');
+
+        if (used > 0) {
+            // Applied: chip shows the applied amount and a Remove button.
+            $label.text('Store credit applied:');
+            $('#pos_store_credit_amount').text(__currency_trans_from_en(used, true));
+            $useBtn.hide();
+            $removeBtn.show();
             $row.show();
-            if ($inline.length) { $inline.data('credit-amount', amt).show(); }
+            $hint.show();
+            if ($inline.length) {
+                $inline.text('× Remove')
+                    .removeClass('btn-success').addClass('btn-warning')
+                    .data('mode', 'remove')
+                    .show();
+            }
+        } else if (amt > 0) {
+            // Idle with credit available: original "Use it" CTA.
+            $label.text('Store credit:');
+            $('#pos_store_credit_amount').text(__currency_trans_from_en(amt, true));
+            $useBtn.data('credit-amount', amt).show();
+            $removeBtn.hide();
+            $row.show();
+            $hint.hide();
+            if ($inline.length) {
+                $inline.text('Use it')
+                    .removeClass('btn-warning').addClass('btn-success')
+                    .data('mode', 'use')
+                    .data('credit-amount', amt)
+                    .show();
+            }
         } else {
             $('#pos_store_credit_amount').text(__currency_trans_from_en(0, true));
-            $('#btn_use_store_credit').data('credit-amount', 0);
+            $useBtn.data('credit-amount', 0);
             $row.hide();
+            $hint.hide();
             if ($inline.length) { $inline.data('credit-amount', 0).hide(); }
         }
+    }
+
+    // Drop any applied store credit from the cart and reset the first
+    // payment row back to Cash + full total. No-op if nothing was applied.
+    // Does NOT touch #advance_balance — callers own that (Remove restores
+    // it; customer-change replaces it).
+    function clearAppliedStoreCredit() {
+        var used = parseFloat($('#store_credit_used_amount').val() || 0) || 0;
+        if (used <= 0) {
+            return;
+        }
+        $('#store_credit_used_amount').val(0);
+
+        var $firstRow = $('#payment_rows_div').find('.payment_row').first();
+        if ($firstRow.length) {
+            var $method = $firstRow.find('.payment_types_dropdown');
+            var $amount = $firstRow.find('.payment-amount');
+            if ($method.length && $amount.length && $method.val() === 'advance') {
+                $method.val('cash').trigger('change');
+                var ft = __read_number($('input#final_total_input'));
+                __write_number($amount, ft);
+                $amount.trigger('change');
+            }
+        }
+
+        set_store_credit_cash_cta(false);
+        if (typeof pos_total_row === 'function') {
+            pos_total_row();
+        }
+        calculate_balance_due();
     }
 
     // Function to load and show customer details modal
@@ -1115,7 +1185,12 @@ $(document).ready(function() {
     // one place. Sarah 2026-04-22 relocated the CTA here.
     $(document).on('click', '#inline_use_store_credit_btn', function (e) {
         e.preventDefault();
-        $('#btn_use_store_credit').trigger('click');
+        var mode = $(this).data('mode') || 'use';
+        if (mode === 'remove') {
+            $('#btn_remove_store_credit').trigger('click');
+        } else {
+            $('#btn_use_store_credit').trigger('click');
+        }
     });
 
     // Use store credit: apply on same screen (no popup); deduct from customer when Cash/Finalize is used
@@ -1187,6 +1262,33 @@ $(document).ready(function() {
         }
 
         toastr.warning(__currency_trans_from_en(useAmount, true) + ' store credit applied. Next step: click the CASH button at bottom to finalize.');
+    });
+
+    // Inverse of #btn_use_store_credit: restore the deducted balance to
+    // this customer, drop the applied state from the cart, and refresh
+    // the chip back to its idle "Use it" form.
+    $(document).on('click', '#btn_remove_store_credit', function () {
+        var used = parseFloat($('#store_credit_used_amount').val() || 0) || 0;
+        if (used <= 0) {
+            return false;
+        }
+        var currentBalance = parseFloat($('#advance_balance').val() || 0) || 0;
+        var restored = currentBalance + used;
+
+        $('#advance_balance').val(restored);
+        clearAppliedStoreCredit();
+        updatePosStoreCreditUI(restored);
+
+        try {
+            if (window.console && console.log) {
+                console.log('[POS store credit removed]', {
+                    removed_amount: used,
+                    restored_balance: restored
+                });
+            }
+        } catch (e) {}
+
+        toastr.info(__currency_trans_from_en(used, true) + ' store credit removed.');
     });
 
     //Finalize invoice, open payment modal
