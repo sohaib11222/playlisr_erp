@@ -346,6 +346,13 @@ class DiscogsReleaseImportMapper
                 if ($pn !== '' && mb_strpos($pn, 'used vinyl') !== false) {
                     $score += 5;
                 }
+                // Jon 2026-05-24: same baseline bias for CDs — most CD
+                // releases coming in via bulk-Discogs are used stock, so
+                // tie-break toward "Used CD" over "Sealed CD / CD (Sealed)"
+                // when both have a matching genre subcategory.
+                if ($pn !== '' && mb_strpos($pn, 'used cd') !== false) {
+                    $score += 5;
+                }
                 if (!$sizeConflict) {
                     foreach ($formatTokens as $tok) {
                         if ($tok === '' || $pn === '') continue;
