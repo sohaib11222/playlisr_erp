@@ -2020,9 +2020,9 @@
                     // SKU
                     $row.find('input[name*="[sku]"]').val(productData.sku || '');
                     
-                    // Price (selling price)
+                    // Price (selling price) — row field is single_dsp_inc_tax, not selling_price
                     if (productData.price) {
-                        $row.find('input[name*="[selling_price]"]').val(productData.price);
+                        $row.find('input[name*="[single_dsp_inc_tax]"]').val(productData.price);
                     }
                     
                     // Bin position
