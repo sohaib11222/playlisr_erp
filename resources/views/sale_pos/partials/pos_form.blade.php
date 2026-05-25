@@ -342,6 +342,9 @@
 				.pos-channel-chip.is-active[data-channel="whatnot"] {
 					background: #fcd34d; border: 1px solid #d4a92a; color: #2b1e16; font-weight: 700;
 				}
+				.pos-channel-chip.is-active[data-channel="discogs"] {
+					background: #16a34a; border: 1px solid #15803d; color: #fff; font-weight: 700;
+				}
 				.pos-channel-chip.is-active i { opacity: 1; }
 			</style>
 			<script>
