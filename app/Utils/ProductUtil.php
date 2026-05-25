@@ -2055,6 +2055,8 @@ class ProductUtil extends Util
             'product_custom_field2',
             'product_custom_field3',
             'product_custom_field4',
+            'first_purchase_date',
+            'last_purchase_date',
         ];
 
         // Add manufacturing data if requested

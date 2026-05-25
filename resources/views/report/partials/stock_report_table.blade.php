@@ -23,6 +23,8 @@
             <th>@lang('report.total_unit_sold')</th>
             <th>@lang('lang_v1.total_unit_transfered')</th>
             <th>@lang('lang_v1.total_unit_adjusted')</th>
+            <th>First purchase</th>
+            <th>Last purchase</th>
             <th>{{$product_custom_field1}}</th>
             <th>{{$product_custom_field2}}</th>
             <th>{{$product_custom_field3}}</th>
@@ -44,7 +46,7 @@
             <td class="footer_total_sold"></td>
             <td class="footer_total_transfered"></td>
             <td class="footer_total_adjusted"></td>
-            <td colspan="4"></td>
+            <td colspan="6"></td>
             @if($show_manufacturing_data)
                 <td class="footer_total_mfg_stock"></td>
             @endif

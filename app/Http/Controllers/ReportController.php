@@ -459,6 +459,16 @@ class ReportController extends Controller
 
                     return  '<span class="potential_profit" data-orig-value="' . (float)$potential_profit . '" > ' . $this->transactionUtil->num_f($potential_profit, true) . '</span>';
                 })
+                ->editColumn('first_purchase_date', function ($row) {
+                    return !empty($row->first_purchase_date)
+                        ? \Carbon::parse($row->first_purchase_date)->format(session('business.date_format'))
+                        : '';
+                })
+                ->editColumn('last_purchase_date', function ($row) {
+                    return !empty($row->last_purchase_date)
+                        ? \Carbon::parse($row->last_purchase_date)->format(session('business.date_format'))
+                        : '';
+                })
                 ->setRowClass(function ($row) {
                     return $row->enable_stock && $row->stock <= $row->alert_quantity ? 'bg-danger' : '';
                 })
@@ -475,6 +485,8 @@ class ReportController extends Controller
                 ->orderColumn('total_transfered', 'total_transfered $1')
                 ->orderColumn('total_adjusted', 'total_adjusted $1')
                 ->orderColumn('stock_price', 'stock_price $1')
+                ->orderColumn('first_purchase_date', 'first_purchase_date $1')
+                ->orderColumn('last_purchase_date', 'last_purchase_date $1')
                 ->removeColumn('enable_stock')
                 ->removeColumn('unit')
                 ->removeColumn('id');

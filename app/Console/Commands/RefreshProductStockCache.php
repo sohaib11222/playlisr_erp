@@ -125,6 +125,7 @@ class RefreshProductStockCache extends Command
         $adjustAgg = $this->aggregateStockAdjustmentByVariationLocation($business_id);
         $stockPriceAgg = $this->aggregateStockPriceByVariationLocation($business_id);
         $mfgAgg = $this->aggregateMfgStockByVariationLocation($business_id);
+        $purchaseDateAgg = $this->aggregatePurchaseDatesByVariationLocation($business_id);
 
         $query = DB::table('variation_location_details as vld')
             ->join('variations', function ($join) {
@@ -156,6 +157,10 @@ class RefreshProductStockCache extends Command
                 $join->on('agg_mfg.agg_variation_id', '=', 'vld.variation_id')
                     ->on('agg_mfg.agg_location_id', '=', 'vld.location_id');
             })
+            ->leftJoinSub($purchaseDateAgg, 'agg_purchase_date', function ($join) {
+                $join->on('agg_purchase_date.agg_variation_id', '=', 'vld.variation_id')
+                    ->on('agg_purchase_date.agg_location_id', '=', 'vld.location_id');
+            })
             ->where('p.business_id', $business_id)
             ->whereIn('p.type', ['single', 'variable'])
             ->whereNotNull('vld.location_id');
@@ -179,6 +184,8 @@ class RefreshProductStockCache extends Command
             DB::raw('COALESCE(agg_stock_price.stock_price, 0) as stock_price'),
             DB::raw('COALESCE(vld.qty_available, 0) as stock'),
             DB::raw('COALESCE(agg_mfg.total_mfg_stock, 0) as total_mfg_stock'),
+            'agg_purchase_date.first_purchase_date',
+            'agg_purchase_date.last_purchase_date',
             'variations.sub_sku as sku',
             'p.name as product',
             'p.type',
@@ -251,6 +258,8 @@ class RefreshProductStockCache extends Command
             'stock_price',
             'stock',
             'total_mfg_stock',
+            'first_purchase_date',
+            'last_purchase_date',
             'sku',
             'product',
             'type',
@@ -300,6 +309,8 @@ class RefreshProductStockCache extends Command
             $bindings[] = $item->stock_price ?? 0;
             $bindings[] = $item->stock ?? 0;
             $bindings[] = isset($item->total_mfg_stock) ? $item->total_mfg_stock : null;
+            $bindings[] = $item->first_purchase_date;
+            $bindings[] = $item->last_purchase_date;
             $bindings[] = $item->sku;
             $bindings[] = $item->product;
             $bindings[] = $item->type;
@@ -412,6 +423,24 @@ class RefreshProductStockCache extends Command
                 .'SUM(COALESCE(pl.quantity - COALESCE(pl.quantity_sold, 0) - COALESCE(pl.quantity_adjusted, 0) '
                 .'- COALESCE(pl.quantity_returned, 0) - COALESCE(pl.mfg_quantity_used, 0), 0) * pl.purchase_price_inc_tax) '
                 .'as stock_price'
+            );
+    }
+
+    /**
+     * Earliest and latest received purchase date for each variation/location.
+     */
+    protected function aggregatePurchaseDatesByVariationLocation(int $business_id)
+    {
+        return DB::table('transactions as t')
+            ->join('purchase_lines as pl', 't.id', '=', 'pl.transaction_id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'purchase')
+            ->where('t.status', 'received')
+            ->groupBy('pl.variation_id', 't.location_id')
+            ->selectRaw(
+                'pl.variation_id as agg_variation_id, t.location_id as agg_location_id, '
+                .'MIN(DATE(t.transaction_date)) as first_purchase_date, '
+                .'MAX(DATE(t.transaction_date)) as last_purchase_date'
             );
     }
 
