@@ -175,7 +175,7 @@
                         if (e.location_name) ehtml += ' · ' + e.location_name;
                         if (e.invoice_no) ehtml += ' · #' + escapeAttr(e.invoice_no);
                         ehtml +=   '</div>';
-                        ehtml +=   '<a class="con-btn" style="display:block; text-decoration:none;" href="/sells/' + e.tx_id + '/edit">Open in ERP</a>';
+                        ehtml +=   '<a class="con-btn" style="display:block; text-decoration:none;" href="/pos/' + e.tx_id + '/edit">Open in ERP</a>';
                         ehtml += '</div>';
                     }
                     $eonList.html(ehtml);
