@@ -3265,6 +3265,92 @@ class ProductController extends Controller
     }
 
 
+    /**
+     * Bulk lookup: for each parsed row in the /mass-create bulk-text preview,
+     * report whether we've ever sold something similar before. Generic across
+     * all product types — matches on exact SKU and fuzzy product name; does
+     * not require Discogs metadata.
+     */
+    public function lookupPastSalesBulk(Request $request)
+    {
+        $business_id = $request->session()->get('user.business_id');
+        $items = $request->input('items', []);
+
+        if (!is_array($items) || empty($items)) {
+            return response()->json(['success' => true, 'results' => []]);
+        }
+
+        $escLike = function (string $s): string {
+            return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $s);
+        };
+
+        $results = [];
+
+        foreach ($items as $idx => $item) {
+            $name = trim((string) ($item['name'] ?? ''));
+            $sku  = trim((string) ($item['sku']  ?? ''));
+
+            $hasName = mb_strlen($name) >= 3;
+            $hasSku  = mb_strlen($sku)  >= 3;
+
+            if (!$hasName && !$hasSku) {
+                $results[$idx] = ['count' => 0, 'qty' => 0, 'last_sold' => null, 'samples' => []];
+                continue;
+            }
+
+            $q = DB::table('transaction_sell_lines as tsl')
+                ->join('transactions as t', 't.id', '=', 'tsl.transaction_id')
+                ->join('products as p', 'p.id', '=', 'tsl.product_id')
+                ->where('t.business_id', $business_id)
+                ->where('t.type', 'sell')
+                ->where('t.status', 'final')
+                ->whereNull('tsl.parent_sell_line_id');
+
+            $q->where(function ($w) use ($hasName, $hasSku, $name, $sku, $escLike) {
+                if ($hasSku) {
+                    $w->orWhere('p.sku', $sku);
+                }
+                if ($hasName) {
+                    $w->orWhere('p.name', 'like', '%' . $escLike($name) . '%');
+                }
+            });
+
+            $agg = (clone $q)
+                ->selectRaw(
+                    'COUNT(*) as line_count, '
+                    . 'COALESCE(SUM(tsl.quantity), 0) as qty_sum, '
+                    . 'MAX(t.transaction_date) as last_sold'
+                )
+                ->first();
+
+            $samples = [];
+            if ($agg && (int) $agg->line_count > 0) {
+                $samples = (clone $q)
+                    ->select('p.id', 'p.name', 'p.sku')
+                    ->distinct()
+                    ->limit(3)
+                    ->get()
+                    ->map(function ($r) {
+                        return [
+                            'id'   => (int) $r->id,
+                            'name' => (string) $r->name,
+                            'sku'  => (string) $r->sku,
+                        ];
+                    })
+                    ->all();
+            }
+
+            $results[$idx] = [
+                'count'     => $agg ? (int) $agg->line_count : 0,
+                'qty'       => $agg ? (int) $agg->qty_sum    : 0,
+                'last_sold' => $agg && $agg->last_sold ? substr((string) $agg->last_sold, 0, 10) : null,
+                'samples'   => $samples,
+            ];
+        }
+
+        return response()->json(['success' => true, 'results' => $results]);
+    }
+
 
     /**
      * Get Product on auto complete

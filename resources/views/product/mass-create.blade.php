@@ -1880,32 +1880,87 @@
         const container = $('#bulk_preview_container');
         const table = $('#bulk_preview_table');
         const count = $('#bulk_preview_count');
-        
+
         if (products.length === 0) {
             container.hide();
             return;
         }
-        
+
         count.text(products.length);
-        
+
+        // Stable token so async lookup only updates the latest render.
+        const renderToken = (window.__bulkPreviewToken || 0) + 1;
+        window.__bulkPreviewToken = renderToken;
+
+        function escapeHtml(s) {
+            return String(s == null ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
         let html = '<table class="table table-bordered table-sm" style="margin-bottom: 0;">';
-        html += '<thead><tr><th>#</th><th>Name</th><th>Artist</th><th>Category</th><th>SKU</th><th>Price</th><th>Bin</th></tr></thead><tbody>';
-        
+        html += '<thead><tr><th>#</th><th>Name</th><th>Artist</th><th>Category</th><th>SKU</th><th>Price</th><th>Bin</th><th>Sold before?</th></tr></thead><tbody>';
+
         products.forEach((product, index) => {
             html += `<tr>
                 <td>${index + 1}</td>
-                <td>${product.name || '<span class="text-muted">-</span>'}</td>
-                <td>${product.artist || '<span class="text-muted">-</span>'}</td>
-                <td>${product.category || '<span class="text-muted">-</span>'}</td>
-                <td>${product.sku || '<span class="text-muted">-</span>'}</td>
-                <td>${product.price ? '$' + product.price : '<span class="text-muted">-</span>'}</td>
-                <td>${product.bin_position || '<span class="text-muted">-</span>'}</td>
+                <td>${escapeHtml(product.name) || '<span class="text-muted">-</span>'}</td>
+                <td>${escapeHtml(product.artist) || '<span class="text-muted">-</span>'}</td>
+                <td>${escapeHtml(product.category) || '<span class="text-muted">-</span>'}</td>
+                <td>${escapeHtml(product.sku) || '<span class="text-muted">-</span>'}</td>
+                <td>${product.price ? '$' + escapeHtml(product.price) : '<span class="text-muted">-</span>'}</td>
+                <td>${escapeHtml(product.bin_position) || '<span class="text-muted">-</span>'}</td>
+                <td class="bulk-preview-sold-cell" data-row-index="${index}"><span class="text-muted"><i class="fa fa-spinner fa-spin"></i></span></td>
             </tr>`;
         });
-        
+
         html += '</tbody></table>';
         table.html(html);
         container.show();
+
+        // Fire generic past-sales lookup (name fuzzy + SKU exact). Best-effort:
+        // a failure here leaves cells as a muted dash and never blocks add.
+        const items = products.map((p, i) => ({
+            idx:  i,
+            name: p.name || '',
+            sku:  p.sku  || '',
+        }));
+
+        $.ajax({
+            url: "{{ route('product.massCreate.pastSalesLookup') }}",
+            type: 'POST',
+            data: JSON.stringify({ items: items }),
+            contentType: 'application/json',
+            headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+            success: function (resp) {
+                if (window.__bulkPreviewToken !== renderToken) return; // stale render
+                const results = (resp && resp.results) || {};
+                Object.keys(results).forEach(function (k) {
+                    const r = results[k];
+                    const $cell = table.find('.bulk-preview-sold-cell[data-row-index="' + k + '"]');
+                    if (!$cell.length) return;
+
+                    if (!r || !r.count) {
+                        $cell.html('<span class="text-muted">—</span>');
+                        return;
+                    }
+
+                    const tooltip = (r.samples || [])
+                        .map(function (s) { return s.name + (s.sku ? ' (' + s.sku + ')' : ''); })
+                        .join('\n');
+                    const lastTxt = r.last_sold ? ' • last ' + r.last_sold : '';
+                    $cell.html(
+                        '<span class="label label-success" title="' + escapeHtml(tooltip) + '">'
+                        + 'Sold ' + r.count + '×' + escapeHtml(lastTxt)
+                        + '</span>'
+                    );
+                });
+            },
+            error: function () {
+                if (window.__bulkPreviewToken !== renderToken) return;
+                table.find('.bulk-preview-sold-cell').html('<span class="text-muted">—</span>');
+            },
+        });
     }
 
     function addProductFromParsedData(productData, rowIndex) {
