@@ -711,6 +711,61 @@ class InventoryCheckController extends Controller
         }
     }
 
+    /**
+     * Save supplier portal credentials from the UI form. Sarah 2026-05-
+     * 21 lost SSH access so .env can't be hand-edited anymore — the
+     * encrypted creds file (storage/app/supplier-creds-{biz}-{key}.enc)
+     * is the new source of truth.
+     *
+     * Accepts any subset of {portal_user, portal_pass, portal_account,
+     * portal_url, prices_url} — sparse updates preserve existing values.
+     * Never returns the saved values back.
+     */
+    public function saveSupplierCredentials(Request $request)
+    {
+        $request->validate(['supplier_key' => 'required|string|max:32']);
+        $supplierKey = strtolower(trim((string) $request->input('supplier_key')));
+        $known = $this->inventoryCheckService->knownSuppliers();
+        if (!isset($known[$supplierKey])) {
+            return response()->json(['success' => false, 'message' => 'Unknown supplier'], 422);
+        }
+        $business_id = (int) $request->session()->get('user.business_id');
+
+        // Map form field names → credential file keys (which are the same
+        // names AbstractHttpFetcher::requireEnv strips the supplier prefix
+        // down to, e.g. AMS_PORTAL_PASS → PORTAL_PASS).
+        $payload = [];
+        foreach ([
+            'portal_user'    => 'PORTAL_USER',
+            'portal_pass'    => 'PORTAL_PASS',
+            'portal_account' => 'PORTAL_ACCOUNT',
+            'portal_url'     => 'PORTAL_URL',
+            'prices_url'     => 'PRICES_URL',
+        ] as $form => $stored) {
+            $v = $request->input($form);
+            if ($v !== null && $v !== '') {
+                $payload[$stored] = (string) $v;
+            }
+        }
+        if (empty($payload)) {
+            return response()->json(['success' => false, 'message' => 'Nothing to save.'], 422);
+        }
+
+        $this->inventoryCheckService->saveSupplierCredentials($business_id, $supplierKey, $payload);
+        return response()->json([
+            'success' => true,
+            'status' => $this->inventoryCheckService->supplierCredentialsStatus($business_id, $supplierKey),
+        ]);
+    }
+
+    public function getSupplierCredentialsStatus(Request $request, string $supplierKey)
+    {
+        $business_id = (int) $request->session()->get('user.business_id');
+        return response()->json([
+            'status' => $this->inventoryCheckService->supplierCredentialsStatus($business_id, $supplierKey),
+        ]);
+    }
+
     public function listSupplierFeeds(Request $request)
     {
         $business_id = (int) $request->session()->get('user.business_id');

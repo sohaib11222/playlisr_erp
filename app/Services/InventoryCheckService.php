@@ -380,6 +380,73 @@ class InventoryCheckService
         return (array) config('inventory_check.buckets.supplier_feeds', []);
     }
 
+    // ── Per-supplier credentials (encrypted, stored on disk) ──────────
+    // Sarah 2026-05-21: doesn't have SSH/Sohaib access — manages portal
+    // logins from the UI instead. Each {biz, supplier_key} pair persists
+    // as Crypt::encryptString(json) so the file at rest is gibberish.
+
+    protected function supplierCredentialsPath(int $business_id, string $supplierKey): string
+    {
+        return storage_path('app/supplier-creds-' . $business_id . '-' . $supplierKey . '.enc');
+    }
+
+    /**
+     * @return array<string,string> e.g. ['user' => '131715', 'pass' => '...']
+     */
+    public function loadSupplierCredentials(int $business_id, string $supplierKey): array
+    {
+        $path = $this->supplierCredentialsPath($business_id, $supplierKey);
+        if (!is_file($path)) return [];
+        try {
+            $plain = \Illuminate\Support\Facades\Crypt::decryptString((string) file_get_contents($path));
+            $json = json_decode($plain, true);
+            return is_array($json) ? $json : [];
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Supplier creds decrypt failed', ['err' => $e->getMessage()]);
+            return [];
+        }
+    }
+
+    public function saveSupplierCredentials(int $business_id, string $supplierKey, array $creds): void
+    {
+        $path = $this->supplierCredentialsPath($business_id, $supplierKey);
+        $dir = dirname($path);
+        if (!is_dir($dir)) { @mkdir($dir, 0775, true); }
+        // Drop any blank fields so partial updates don't wipe other keys.
+        $clean = [];
+        foreach ($creds as $k => $v) {
+            if ($v === null || $v === '') continue;
+            $clean[$k] = (string) $v;
+        }
+        $existing = $this->loadSupplierCredentials($business_id, $supplierKey);
+        $merged = array_merge($existing, $clean);
+        $merged['_updated_at'] = \Carbon\Carbon::now()->toIso8601String();
+        $cipher = \Illuminate\Support\Facades\Crypt::encryptString(json_encode($merged));
+        $tmp = $path . '.tmp';
+        file_put_contents($tmp, $cipher);
+        @chmod($tmp, 0600);
+        @rename($tmp, $path);
+    }
+
+    /**
+     * Status snapshot for the UI — never returns the actual values.
+     * Just reports which keys are configured + when last saved.
+     */
+    public function supplierCredentialsStatus(int $business_id, string $supplierKey): array
+    {
+        $creds = $this->loadSupplierCredentials($business_id, $supplierKey);
+        $set = [];
+        foreach ($creds as $k => $v) {
+            if ($k === '_updated_at') continue;
+            $set[$k] = $v !== null && $v !== '';
+        }
+        return [
+            'configured_keys' => $set,
+            'configured' => !empty($set),
+            'updated_at' => $creds['_updated_at'] ?? null,
+        ];
+    }
+
     protected function supplierFeedPath(int $business_id, string $supplierKey): string
     {
         return storage_path('app/supplier-prices-' . $business_id . '-' . $supplierKey . '.json');

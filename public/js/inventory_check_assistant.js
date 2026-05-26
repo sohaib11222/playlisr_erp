@@ -1196,6 +1196,20 @@
                             ${afHtml}
                             <button type="button" class="btn btn-xs btn-default ica-supplier-autofetch-go" data-key="${escapeHtml(key)}">Run auto-fetch now</button>
                         </div>
+                        <details class="ica-supplier-creds">
+                            <summary>🔐 Portal credentials (for auto-fetch)</summary>
+                            <p class="text-muted small">Stored encrypted on the server. Never displayed back. Auto-fetch uses these to log into the supplier portal.</p>
+                            <div class="ica-creds-row">
+                                <label>Username</label>
+                                <input type="text" class="form-control input-sm ica-cred-user" autocomplete="off" data-key="${escapeHtml(key)}" placeholder="leave blank to keep current">
+                                <label>Account #</label>
+                                <input type="text" class="form-control input-sm ica-cred-account" autocomplete="off" data-key="${escapeHtml(key)}" placeholder="(only if portal asks for one)">
+                                <label>Password</label>
+                                <input type="password" class="form-control input-sm ica-cred-pass" autocomplete="new-password" data-key="${escapeHtml(key)}" placeholder="leave blank to keep current">
+                                <button type="button" class="btn btn-primary btn-sm ica-cred-save" data-key="${escapeHtml(key)}">Save</button>
+                            </div>
+                            <span class="ica-cred-msg" data-key="${escapeHtml(key)}"></span>
+                        </details>
                         <div class="ica-supplier-form">
                             <label class="ica-supplier-label">Add one title (artist + title + cost):</label>
                             <div class="ica-supplier-quickadd">
@@ -1234,6 +1248,49 @@
         host.querySelectorAll('.ica-supplier-paste-go').forEach((btn) => btn.addEventListener('click', () => supplierSubmit('paste', btn)));
         host.querySelectorAll('.ica-supplier-file-go').forEach((btn) => btn.addEventListener('click', () => supplierSubmit('file', btn)));
         host.querySelectorAll('.ica-supplier-autofetch-go').forEach((btn) => btn.addEventListener('click', () => runSupplierAutoFetch(btn)));
+        host.querySelectorAll('.ica-cred-save').forEach((btn) => btn.addEventListener('click', () => saveSupplierCredentials(btn)));
+    }
+
+    function saveSupplierCredentials(btn) {
+        const key = btn.dataset.key;
+        const host = document.getElementById('ica_supplier_grid');
+        const row = host.querySelector(`details.ica-supplier-row[data-key="${cssEscape(key)}"]`);
+        const user = row.querySelector('.ica-cred-user').value.trim();
+        const account = row.querySelector('.ica-cred-account').value.trim();
+        const pass = row.querySelector('.ica-cred-pass').value;
+        const msg = row.querySelector('.ica-cred-msg');
+        if (!user && !account && !pass) { if (msg) msg.textContent = 'Nothing to save.'; return; }
+        btn.disabled = true;
+        const orig = btn.textContent; btn.textContent = 'Saving…';
+        if (msg) msg.textContent = '';
+        const fd = new FormData();
+        fd.append('supplier_key', key);
+        if (user) fd.append('portal_user', user);
+        if (account) fd.append('portal_account', account);
+        if (pass) fd.append('portal_pass', pass);
+        fetch(window.ICA_SUPPLIER_CREDS_URL, {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': window.ICA_CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin',
+            body: fd,
+        })
+            .then((r) => r.json())
+            .then((resp) => {
+                btn.disabled = false; btn.textContent = orig;
+                if (resp && resp.success) {
+                    row.querySelector('.ica-cred-user').value = '';
+                    row.querySelector('.ica-cred-account').value = '';
+                    row.querySelector('.ica-cred-pass').value = '';
+                    if (msg) msg.textContent = 'Saved encrypted. You can now click "Run auto-fetch now" above.';
+                } else {
+                    if (msg) msg.textContent = (resp && resp.message) || 'Save failed.';
+                }
+            })
+            .catch((err) => {
+                btn.disabled = false; btn.textContent = orig;
+                if (msg) msg.textContent = 'Save failed — see console.';
+                console.error('[ICA] supplier creds save failed', err);
+            });
     }
 
     function runSupplierAutoFetch(btn) {

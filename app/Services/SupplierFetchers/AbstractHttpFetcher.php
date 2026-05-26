@@ -31,23 +31,71 @@ abstract class AbstractHttpFetcher implements SupplierFetcherContract
         if (!is_dir($dir)) { @mkdir($dir, 0775, true); }
     }
 
-    /** Convenience: read env vars; throw if any are blank. */
+    /**
+     * Convenience: read env vars; throw if any are blank.
+     *
+     * Sarah 2026-05-21: also looks up the per-business encrypted creds
+     * file (storage/app/supplier-creds-{biz}-{key}.enc) when an env var
+     * is blank — so she can manage portal logins from the ICA UI
+     * without SSHing into the box to edit .env. Env still wins when set.
+     */
     protected function requireEnv(array $keys): array
     {
         $out = [];
         $missing = [];
+
+        // Lazy-load the encrypted creds file for this supplier if any
+        // env key is missing. Cheap (one file read per supplier per
+        // fetch run).
+        $fileCreds = null;
+        $loadFileCreds = function () use (&$fileCreds) {
+            if ($fileCreds !== null) return $fileCreds;
+            try {
+                $svc = app(\App\Services\InventoryCheckService::class);
+                $businessId = $this->resolveBusinessId();
+                $fileCreds = $businessId ? $svc->loadSupplierCredentials($businessId, $this->supplierKey()) : [];
+            } catch (\Throwable $e) {
+                $fileCreds = [];
+            }
+            return $fileCreds;
+        };
+
         foreach ($keys as $k) {
             $v = env($k);
-            if ($v === null || $v === '') {
-                $missing[] = $k;
+            if ($v !== null && $v !== '') {
+                $out[$k] = $v;
                 continue;
             }
-            $out[$k] = $v;
+            // Map .env key to the credentials-file field by stripping
+            // the supplier prefix (e.g. AMS_PORTAL_PASS → PORTAL_PASS).
+            $upperKey = strtoupper($this->supplierKey()) . '_';
+            $shortKey = strpos($k, $upperKey) === 0 ? substr($k, strlen($upperKey)) : $k;
+            $stash = $loadFileCreds();
+            if (!empty($stash[$shortKey])) {
+                $out[$k] = $stash[$shortKey];
+                continue;
+            }
+            $missing[] = $k;
         }
         if (!empty($missing)) {
-            throw new \RuntimeException(static::class . ': missing .env keys ' . implode(', ', $missing));
+            throw new \RuntimeException(static::class . ': missing credential keys ' . implode(', ', $missing)
+                . ' — set them in .env OR via the supplier panel "Credentials" form on the Inventory Check Assistant page.');
         }
         return $out;
+    }
+
+    /**
+     * Best-effort: pick a business_id for credential lookup. Single-
+     * business installs (Nivessa's case) have exactly one row.
+     */
+    protected function resolveBusinessId(): ?int
+    {
+        try {
+            $b = \App\Business::orderBy('id')->first();
+            return $b ? (int) $b->id : null;
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 
     /**
