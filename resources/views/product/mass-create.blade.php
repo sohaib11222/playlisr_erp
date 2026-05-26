@@ -2235,11 +2235,12 @@
         return max + 1;
     }
 
-    // Build a compact "sold before" badge for a Discogs-fetched row showing
-    // three nested lenses (artist-wide vs. this title vs. this exact release),
-    // each with its own per-location/channel breakdown. Also surfaces the
-    // current Discogs marketplace stats (Have / Want / lowest listed). Safe to
-    // call with missing data — renders nothing if no history is attached.
+    // Render a compact "sold before" badge for a Discogs-fetched row. Two
+    // lenses (artist-wide vs. this title), each with per-location/channel
+    // counts. Sits inside the narrow 200px col-name cell, so everything
+    // wraps via flex and label text is kept short (location/channel name
+    // only — colour signals in-store green vs online blue). Tooltips carry
+    // the verbose detail. Renders nothing when no history is attached.
     function renderSalesHistoryBadge($row, discogsData) {
         const $cell = $row.find('.col-name').first();
         if (!$cell.length) return;
@@ -2248,58 +2249,57 @@
         const sh = discogsData && discogsData.sales_history;
         const ms = discogsData && discogsData.marketplace_stats;
 
-        function renderLens(label, lens) {
-            if (!lens || !lens.total_lines) return '';
-            const parts = (lens.by_channel || []).map(b =>
-                `<span class="label label-${b.channel === 'in_store' ? 'success' : 'info'}" `
-                + `style="margin-right:4px;" `
-                + `title="qty ${b.qty}, $${Number(b.revenue).toFixed(2)} — first ${b.first || '—'}, last ${b.last || '—'}">`
-                + `${$('<div>').text(b.label).html()} ×${b.qty}</span>`
-            ).join('');
-            return `<div><strong>${label}:</strong> ${parts}`
-                + ` <span class="text-muted" style="font-size:11px;">`
-                + `(${lens.total_lines} line${lens.total_lines === 1 ? '' : 's'}, `
-                + `$${Number(lens.total_revenue).toFixed(2)}, last ${lens.last_sold || '—'})`
-                + `</span></div>`;
+        // Strip the "In-store: " prefix the backend adds — the green colour
+        // already signals in-store, and we're tight on horizontal space.
+        function shortLabel(b) {
+            const lbl = (b.label || '').replace(/^In-store:\s*/i, '');
+            return $('<div>').text(lbl).html();
         }
 
-        const artistName = discogsData.artist || 'artist';
-        const titleName  = discogsData.title  || 'title';
+        function renderLens(prefix, lens) {
+            if (!lens || !lens.total_lines) return '';
+            const chips = (lens.by_channel || []).map(b =>
+                `<span class="label label-${b.channel === 'in_store' ? 'success' : 'info'}" `
+                + `style="display:inline-block;margin:1px 2px 1px 0;font-weight:normal;" `
+                + `title="${shortLabel(b)}: qty ${b.qty}, $${Number(b.revenue).toFixed(2)} — first ${b.first || '—'}, last ${b.last || '—'}">`
+                + `${shortLabel(b)} ×${b.qty}</span>`
+            ).join('');
+            const tip = `${lens.total_lines} line${lens.total_lines === 1 ? '' : 's'}, $${Number(lens.total_revenue).toFixed(2)} total, last ${lens.last_sold || '—'}`;
+            return `<div style="margin-top:2px;" title="${tip}">`
+                + `<span class="text-muted" style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;">${prefix}</span> ${chips}`
+                + `</div>`;
+        }
+
         const lines = [];
         if (sh) {
-            const aHtml = renderLens(
-                `By artist (${$('<div>').text(artistName).html()})`,
-                sh.by_artist
-            );
-            const tHtml = renderLens(
-                `This title (${$('<div>').text(titleName).html()})`,
-                sh.by_title
-            );
-
+            const aHtml = renderLens('Artist', sh.by_artist);
+            const tHtml = renderLens('Title',  sh.by_title);
             if (aHtml) lines.push(aHtml);
             if (tHtml) lines.push(tHtml);
-
             if (!aHtml && !tHtml) {
-                lines.push(`<div class="text-muted"><i class="fa fa-history"></i> No prior sales for this artist or title.</div>`);
-            } else {
-                lines.unshift(`<div style="margin-bottom:2px;"><i class="fa fa-history"></i> <strong class="text-muted" style="font-size:11px;">SOLD BEFORE</strong></div>`);
+                lines.push(`<div class="text-muted" style="font-size:11px;"><i class="fa fa-history"></i> No prior sales.</div>`);
             }
         }
 
         if (ms) {
             const bits = [];
-            if (ms.have != null) bits.push(`Have ${ms.have}`);
-            if (ms.want != null) bits.push(`Want ${ms.want}`);
-            if (ms.lowest_price != null) bits.push(`low $${Number(ms.lowest_price).toFixed(2)}`);
-            if (ms.num_for_sale != null) bits.push(`${ms.num_for_sale} for sale`);
+            if (ms.have != null) bits.push(`H${ms.have}`);
+            if (ms.want != null) bits.push(`W${ms.want}`);
+            if (ms.lowest_price != null) bits.push(`$${Number(ms.lowest_price).toFixed(2)}`);
+            if (ms.num_for_sale != null) bits.push(`${ms.num_for_sale}fs`);
             if (bits.length) {
-                lines.push(`<div class="text-muted" style="font-size:11px;"><i class="fa fa-globe"></i> Discogs: ${bits.join(' · ')}</div>`);
+                lines.push(
+                    `<div class="text-muted" style="font-size:10px;margin-top:2px;" `
+                    + `title="Have / Want / lowest listed / for sale on Discogs">`
+                    + `<i class="fa fa-globe"></i> ${bits.join(' · ')}</div>`
+                );
             }
         }
 
         if (!lines.length) return;
         $cell.append(
-            `<div class="discogs-sold-before-badge" style="margin-top:4px; font-size:12px; line-height:1.5;">`
+            `<div class="discogs-sold-before-badge" `
+            + `style="margin-top:6px;font-size:11px;line-height:1.35;max-width:100%;overflow-wrap:break-word;word-break:break-word;">`
             + lines.join('')
             + `</div>`
         );
