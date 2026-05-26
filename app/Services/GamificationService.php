@@ -185,6 +185,20 @@ class GamificationService
                 $task['personal_best'] = $this->personalBestProductsShift($user->id, $businessId);
             }
 
+            if ($def['key'] === 'avg_ticket') {
+                $agg = $this->shiftSalesAggregate($user->id, $businessId, $shift);
+                $delta = ($current > 0 && $peerPerHour) ? (($current - $peerPerHour) / $peerPerHour) * 100 : null;
+                $task['paired_with'] = $def['paired_with'] ?? null;
+                $task['hide_bar'] = true;
+                $task['comparison_chip'] = $this->atvComparisonChip($delta);
+                $task['personal_best'] = $this->personalBestAvgTicket($user->id, $businessId);
+                $task['atv_tickets_today'] = $agg['count'];
+                $task['tooltip_override'] = $this->atvTooltipLines($current, $agg['count'], $peerPerHour, $task['personal_best']);
+                // Comparison metric, not a goal.
+                $task['complete'] = false;
+                $task['pace_status'] = null;
+            }
+
             if ($def['key'] === 'value_created') {
                 $tiers = self::VALUE_CREATED_TIERS;
                 $top = end($tiers)['count'];
@@ -353,6 +367,115 @@ class GamificationService
     }
 
     /**
+     * Sum and count of the user's final sales during the active shift.
+     * Used by both avg_ticket's "current" value and its tooltip's ticket
+     * count.
+     *
+     * @return array{total: float, count: int}
+     */
+    protected function shiftSalesAggregate(int $userId, int $businessId, array $shift): array
+    {
+        $start = $shift['started_at']->toDateTimeString();
+        $now = Carbon::now()->toDateTimeString();
+        $q = DB::table('transactions')
+            ->where('business_id', $businessId)
+            ->where('type', 'sell')
+            ->where('status', 'final')
+            ->whereNull('import_source')
+            ->where('created_by', $userId)
+            ->whereBetween('transaction_date', [$start, $now]);
+        if (!empty($shift['location_id'])) {
+            $q->where('location_id', $shift['location_id']);
+        }
+        $row = $q->selectRaw('COALESCE(SUM(final_total),0) as total, COUNT(*) as cnt')->first();
+        return [
+            'total' => $row ? (float) $row->total : 0.0,
+            'count' => $row ? (int) $row->cnt : 0,
+        ];
+    }
+
+    /**
+     * User's best single-day average ticket value. Requires ≥3 tickets
+     * that day so a one-off high-priced sale doesn't read as their best
+     * "shift" average. DATE() grouping matches the other personal-best
+     * queries.
+     *
+     * @return array{count: int, date: string, is_today: bool, tickets: int}|null
+     */
+    public function personalBestAvgTicket(int $userId, int $businessId): ?array
+    {
+        $row = DB::table('transactions')
+            ->where('business_id', $businessId)
+            ->where('type', 'sell')
+            ->where('status', 'final')
+            ->whereNull('import_source')
+            ->where('created_by', $userId)
+            ->selectRaw('DATE(transaction_date) as d, SUM(final_total) / COUNT(*) as atv, COUNT(*) as cnt')
+            ->groupBy('d')
+            ->havingRaw('COUNT(*) >= 3')
+            ->orderByDesc('atv')
+            ->limit(1)
+            ->first();
+
+        if (!$row || (float) $row->atv <= 0) {
+            return null;
+        }
+        $date = Carbon::parse($row->d);
+        return [
+            'count'    => (int) round((float) $row->atv),
+            'date'     => $date->format('M j'),
+            'is_today' => $date->isToday(),
+            'tickets'  => (int) $row->cnt,
+        ];
+    }
+
+    /**
+     * Status chip comparing today's ATV vs the peer ATV at this store/
+     * hour/DOW. Soft-zoning ±5% as "matches peer" so tiny noise doesn't
+     * flicker red/green.
+     *
+     * @return array{label: string, status: string}
+     */
+    protected function atvComparisonChip(?float $deltaPct): array
+    {
+        if ($deltaPct === null) {
+            return ['label' => '', 'status' => 'pending'];
+        }
+        if ($deltaPct >= 20) {
+            return ['label' => '+' . (int) round($deltaPct) . '% vs peer 🔥', 'status' => 'ahead'];
+        }
+        if ($deltaPct >= 5) {
+            return ['label' => '+' . (int) round($deltaPct) . '% vs peer', 'status' => 'ahead'];
+        }
+        if ($deltaPct <= -5) {
+            return ['label' => (int) round($deltaPct) . '% vs peer', 'status' => 'behind'];
+        }
+        return ['label' => '≈ peer', 'status' => 'on'];
+    }
+
+    /**
+     * Tooltip lines for the avg_ticket row: today, peer, personal best.
+     *
+     * @return array<int, string>
+     */
+    protected function atvTooltipLines(float $current, int $tickets, ?float $peer, ?array $pb): array
+    {
+        $lines = [];
+        if ($tickets > 0) {
+            $lines[] = 'Today: $' . number_format($current, 2) . ' across ' . $tickets . ' ticket' . ($tickets === 1 ? '' : 's');
+        } else {
+            $lines[] = 'No sales yet this shift';
+        }
+        if ($peer !== null) {
+            $lines[] = 'Peer ATV (this store, this hour): $' . number_format($peer, 2);
+        }
+        if ($pb) {
+            $lines[] = 'Your best shift ATV: $' . number_format($pb['count']) . ' (' . ($pb['is_today'] ? 'today' : $pb['date']) . ', ' . $pb['tickets'] . ' tickets)';
+        }
+        return $lines;
+    }
+
+    /**
      * @return array<int, array{key: string, label: string, unit: string, decimals: int}>
      */
     protected function taskDefinitions(string $duty): array
@@ -360,6 +483,7 @@ class GamificationService
         if ($duty === 'cashier') {
             return [
                 ['key' => 'sales_total', 'label' => 'Your shift sales', 'unit' => '$', 'decimals' => 0, 'scope' => 'shift'],
+                ['key' => 'avg_ticket', 'label' => 'Avg ticket', 'unit' => '$', 'decimals' => 0, 'scope' => 'shift', 'paired_with' => 'sales_total'],
                 ['key' => 'products_added', 'label' => 'Products added & priced', 'unit' => 'items', 'decimals' => 0, 'scope' => 'shift'],
                 ['key' => 'value_created', 'label' => 'Value listed', 'unit' => '$', 'decimals' => 0, 'scope' => 'shift', 'paired_with' => 'products_added'],
                 ['key' => 'store_sales_today', 'label' => 'Store today (all cashiers)', 'unit' => '$', 'decimals' => 0, 'scope' => 'day_store'],
@@ -406,6 +530,11 @@ class GamificationService
                 ->where('created_by', $userId)
                 ->whereBetween('created_at', [$start, $now]);
             return (float) $q->count();
+        }
+
+        if ($taskKey === 'avg_ticket') {
+            $row = $this->shiftSalesAggregate($userId, $businessId, $shift);
+            return $row['count'] > 0 ? (float) $row['total'] / $row['count'] : 0.0;
         }
 
         if ($taskKey === 'value_created') {
@@ -477,6 +606,29 @@ class GamificationService
 
         if ($taskKey === 'sales_total') {
             return $this->salesPeerStats($businessId, $shift['location_id'] ?? null, $hour, $dowBucket, $rangeStart, $rangeEnd);
+        }
+
+        if ($taskKey === 'avg_ticket') {
+            // Average ticket value (sale final_total) across the matching
+            // store/hour/DOW window. AVG() rather than SUM/COUNT to keep
+            // each ticket equally weighted regardless of cashier mix.
+            $q = DB::table('transactions')
+                ->where('business_id', $businessId)
+                ->where('type', 'sell')
+                ->where('status', 'final')
+                ->whereNull('import_source')
+                ->whereNotNull('created_by')
+                ->whereBetween('transaction_date', [$rangeStart, $rangeEnd])
+                ->whereRaw('HOUR(transaction_date) = ?', [$hour])
+                ->whereRaw('DAYOFWEEK(transaction_date) IN ('.$this->dowList($dowBucket).')');
+            if (!empty($shift['location_id'])) {
+                $q->where('location_id', $shift['location_id']);
+            }
+            $row = $q->selectRaw('AVG(final_total) as avg_atv')->first();
+            return [
+                'avg' => $row && $row->avg_atv !== null ? (float) $row->avg_atv : null,
+                'top' => null,
+            ];
         }
 
         if ($taskKey === 'store_sales_today') {

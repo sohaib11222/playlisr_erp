@@ -77,9 +77,12 @@
                 $is_per_day = ($task['scope'] ?? 'shift') === 'day_store';
                 $is_tiered = !empty($task['tier_max']);
                 $is_paired = !empty($task['paired_with']);
+                $hide_bar = !empty($task['hide_bar']);
                 $bar_width = $task['bar_percent'] ?? $task['percent'];
                 $tier_ticks = $task['tier_ticks'] ?? [];
                 $tier_chip = $task['tier_chip'] ?? null;
+                $comparison_chip = $task['comparison_chip'] ?? null;
+                $tooltip_override = $task['tooltip_override'] ?? null;
                 $pb = $task['personal_best'] ?? null;
                 $fmt = function ($v) use ($is_money) {
                     if ($v === null) return '—';
@@ -110,6 +113,9 @@
                     $tooltipLines[] = 'Your best shift: ' . $fmtTierVal($pb['count']) . ' ('
                         . ($pb['is_today'] ? 'today' : $pb['date']) . ')';
                 }
+                if ($tooltip_override) {
+                    $tooltipLines = $tooltip_override;
+                }
                 $tooltip = implode("\n", $tooltipLines);
                 ob_start();
                 ?>
@@ -129,7 +135,9 @@
                             <?php if (!$is_paired): ?>
                                 <span class="st-pct"><?= number_format($task['percent'], 0) ?>%</span>
                             <?php endif; ?>
-                            <?php if ($is_tiered && $tier_chip && !empty($tier_chip['label'])): ?>
+                            <?php if ($comparison_chip && !empty($comparison_chip['label'])): ?>
+                                <?= $is_paired ? '' : '· ' ?><span class="st-pace <?= e($comparison_chip['status']) ?>"><?= e($comparison_chip['label']) ?></span>
+                            <?php elseif ($is_tiered && $tier_chip && !empty($tier_chip['label'])): ?>
                                 <?= $is_paired ? '' : '· ' ?><span class="st-tier-chip <?= e($tier_chip['status']) ?>"><?= e($tier_chip['label']) ?></span>
                             <?php elseif ($task['complete']): ?>
                                 · <span class="st-pace ahead">Goal hit 🎉</span>
@@ -138,12 +146,14 @@
                             <?php endif; ?>
                         </div>
                     </div>
+                    <?php if (!$hide_bar): ?>
                     <div class="st-bar" title="<?= e($tooltip) ?>">
                         <div class="st-fill <?= $task['complete'] ? 'complete' : '' ?>" style="width: <?= $bar_width ?>%;"></div>
                         <?php foreach ($tier_ticks as $tick): ?>
                             <span class="st-tick" style="left: <?= $tick['position'] ?>%;" title="<?= e($tick['label'] . ' ' . $fmtTierVal($tick['count'])) ?>"></span>
                         <?php endforeach; ?>
                     </div>
+                    <?php endif; ?>
                 </div>
                 <?php
                 return ob_get_clean();
@@ -236,6 +246,11 @@
         function buildStatusHtml(t) {
             var isPaired = !!t.paired_with;
             var html = isPaired ? '' : '<span class="st-pct">' + Math.round(t.percent) + '%</span>';
+            if (t.comparison_chip && t.comparison_chip.label) {
+                return html + (isPaired ? '' : ' · ')
+                    + '<span class="st-pace ' + t.comparison_chip.status + '">'
+                    + t.comparison_chip.label + '</span>';
+            }
             if (t.tier_chip && t.tier_chip.label) {
                 return html + (isPaired ? '' : ' · ')
                     + '<span class="st-tier-chip ' + t.tier_chip.status + '">'
@@ -256,6 +271,9 @@
                 : Math.round(v).toLocaleString();
         }
         function buildTooltip(t) {
+            if (t.tooltip_override && t.tooltip_override.length) {
+                return t.tooltip_override.join('\n');
+            }
             var lines = [];
             var pp = t.peer_per_hour, tp = t.peer_top_per_hour;
             var isMoney = t.unit === '$';
