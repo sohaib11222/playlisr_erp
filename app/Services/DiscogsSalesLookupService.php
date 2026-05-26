@@ -23,13 +23,19 @@ class DiscogsSalesLookupService
      * @param  string|null $title   Release title from Discogs (fuzzy LIKE %title%).
      * @param  int $businessId      Scope all queries to this business.
      * @param  bool $allStatus      If true, include non-final transactions too.
+     * @param  string $mode         Which match conditions to apply:
+     *                              - 'any'     → any of release_id / artist / title (legacy OR, broadest)
+     *                              - 'artist'  → artist fields only
+     *                              - 'title'   → title fields only
+     *                              - 'release' → exact products.discogs_release_id only
      */
     public function lookup(
         ?int $releaseId,
         ?string $artist,
         ?string $title,
         int $businessId,
-        bool $allStatus = false
+        bool $allStatus = false,
+        string $mode = 'any'
     ): array {
         $artist = trim((string) $artist);
         $title  = trim((string) $title);
@@ -42,6 +48,11 @@ class DiscogsSalesLookupService
 
         $likeArtist = $artist !== '' ? '%' . $this->escLike($artist) . '%' : null;
         $likeTitle  = $title  !== '' ? '%' . $this->escLike($title)  . '%' : null;
+
+        // Decide which condition groups to apply based on mode.
+        $useRelease = $releaseId && in_array($mode, ['any', 'release'], true);
+        $useArtist  = $likeArtist !== null && in_array($mode, ['any', 'artist'], true);
+        $useTitle   = $likeTitle  !== null && in_array($mode, ['any', 'title'],  true);
 
         $select = [
             't.id as transaction_id',
@@ -72,19 +83,19 @@ class DiscogsSalesLookupService
             $q->where('t.status', 'final');
         }
 
-        $q->where(function ($w) use ($releaseId, $likeArtist, $likeTitle) {
+        $q->where(function ($w) use ($releaseId, $likeArtist, $likeTitle, $useRelease, $useArtist, $useTitle) {
             $any = false;
-            if ($releaseId) {
+            if ($useRelease) {
                 $w->orWhere('p.discogs_release_id', $releaseId);
                 $any = true;
             }
-            if ($likeArtist !== null) {
+            if ($useArtist) {
                 $w->orWhere('p.artist',          'like', $likeArtist)
                   ->orWhere('p.name',            'like', $likeArtist)
                   ->orWhere('tsl.legacy_artist', 'like', $likeArtist);
                 $any = true;
             }
-            if ($likeTitle !== null) {
+            if ($useTitle) {
                 $w->orWhere('p.name',          'like', $likeTitle)
                   ->orWhere('tsl.legacy_title', 'like', $likeTitle);
                 $any = true;
@@ -173,6 +184,37 @@ class DiscogsSalesLookupService
             'last_sold'      => $lastSold,
             'by_channel'     => array_values($buckets),
             'rows'           => $rows->all(),
+        ];
+    }
+
+    /**
+     * Run three separate lookups so the caller can show artist-level vs.
+     * title-level vs. exact-release counts as distinct lenses (nested supersets
+     * — "all by artist" ⊇ "this title" ⊇ "this exact release"). Each entry is
+     * null when the corresponding input is empty / missing.
+     *
+     * @return array{by_artist: ?array, by_title: ?array, by_release: ?array}
+     */
+    public function lookupSplit(
+        ?int $releaseId,
+        ?string $artist,
+        ?string $title,
+        int $businessId,
+        bool $allStatus = false
+    ): array {
+        $artistTrim = trim((string) $artist);
+        $titleTrim  = trim((string) $title);
+
+        return [
+            'by_artist'  => $artistTrim !== ''
+                ? $this->lookup(null, $artistTrim, null, $businessId, $allStatus, 'artist')
+                : null,
+            'by_title'   => $titleTrim !== ''
+                ? $this->lookup(null, null, $titleTrim, $businessId, $allStatus, 'title')
+                : null,
+            'by_release' => $releaseId
+                ? $this->lookup($releaseId, null, null, $businessId, $allStatus, 'release')
+                : null,
         ];
     }
 

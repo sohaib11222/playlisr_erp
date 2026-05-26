@@ -93,7 +93,7 @@ class DiscogsLookup extends Command
         $this->line('<comment>Local sales history (Nivessa DB)</comment>');
 
         $svcLookup = new DiscogsSalesLookupService();
-        $result = $svcLookup->lookup(
+        $split = $svcLookup->lookupSplit(
             $discogsId,
             $artist,
             $title,
@@ -101,69 +101,79 @@ class DiscogsLookup extends Command
             (bool) $this->option('all-status')
         );
 
-        if (($result['total_lines'] ?? 0) === 0) {
-            $this->line('  No matching sales found.');
-            $this->line('  (Tried: products.discogs_release_id=' . $discogsId
-                . ' | products.artist LIKE artist | products.name LIKE artist|title'
-                . ' | transaction_sell_lines.legacy_artist|legacy_title LIKE)');
-            return 0;
-        }
-
-        $this->line('');
-        $this->line('  Channel summary:');
-        $this->line(sprintf('  %-28s %6s %6s %14s %20s %20s',
-            'Channel', 'Lines', 'Qty', 'Revenue', 'First sold', 'Most recent'));
-        $this->line('  ' . str_repeat('-', 96));
-        foreach ($result['by_channel'] as $b) {
-            $this->line(sprintf('  %-28s %6d %6d %14s %20s %20s',
-                $b['label'],
-                $b['lines'],
-                $b['qty'],
-                '$' . number_format($b['revenue'], 2),
-                $b['first'] ?? '—',
-                $b['last']  ?? '—'
-            ));
-        }
-        $this->line(sprintf('  %-28s %6d %6d %14s %20s %20s',
-            'TOTAL',
-            $result['total_lines'],
-            $result['total_qty'],
-            '$' . number_format((float) $result['total_revenue'], 2),
-            $result['first_sold'] ?? '—',
-            $result['last_sold']  ?? '—'
-        ));
-
-        // Group detail rows by bucket for per-channel listings.
-        $rowsByBucket = [];
-        foreach ($result['rows'] as $r) {
-            $channel = $r->channel ?? 'in_store';
-            $key = $channel === 'in_store'
-                ? ('In-store: ' . ($r->location_name ?: 'Unknown'))
-                : ucfirst($channel);
-            $rowsByBucket[$key][] = $r;
-        }
-        ksort($rowsByBucket);
-
-        foreach ($rowsByBucket as $name => $brows) {
+        $any = false;
+        foreach ([
+            'by_artist'  => 'By artist (' . $artist . ')',
+            'by_title'   => 'This title (' . $title . ')',
+            'by_release' => 'This exact release (Discogs id ' . $discogsId . ')',
+        ] as $key => $heading) {
+            $lens = $split[$key] ?? null;
+            if (!$lens || ($lens['total_lines'] ?? 0) === 0) {
+                continue;
+            }
+            $any = true;
             $this->line('');
-            $this->line('  <info>' . $name . '</info> — sales (newest first):');
-            $shown = array_slice($brows, 0, $limit);
-            foreach ($shown as $r) {
-                $label = $r->product_name
-                    ?: trim(((string) ($r->legacy_artist ?? '')) . ' — ' . ((string) ($r->legacy_title ?? '')), ' —');
-                $this->line(sprintf('    %s  qty=%d  $%s  [txn #%d  %s]  %s',
-                    $r->transaction_date,
-                    (int) $r->quantity,
-                    number_format((float) $r->unit_price_inc_tax, 2),
-                    $r->transaction_id,
-                    $r->status,
-                    $label
+            $this->line('  <info>' . $heading . '</info>');
+            $this->line(sprintf('  %-28s %6s %6s %14s %20s %20s',
+                'Channel', 'Lines', 'Qty', 'Revenue', 'First sold', 'Most recent'));
+            $this->line('  ' . str_repeat('-', 96));
+            foreach ($lens['by_channel'] as $b) {
+                $this->line(sprintf('  %-28s %6d %6d %14s %20s %20s',
+                    $b['label'],
+                    $b['lines'],
+                    $b['qty'],
+                    '$' . number_format($b['revenue'], 2),
+                    $b['first'] ?? '—',
+                    $b['last']  ?? '—'
                 ));
             }
-            $rest = count($brows) - count($shown);
-            if ($rest > 0) {
-                $this->line('    ... ' . $rest . ' more (pass --limit=' . count($brows) . ' to see all)');
+            $this->line(sprintf('  %-28s %6d %6d %14s %20s %20s',
+                'TOTAL',
+                $lens['total_lines'],
+                $lens['total_qty'],
+                '$' . number_format((float) $lens['total_revenue'], 2),
+                $lens['first_sold'] ?? '—',
+                $lens['last_sold']  ?? '—'
+            ));
+
+            // Detail rows for the narrowest non-empty lens (release > title > artist).
+            if ($key === 'by_release' || (!$split['by_release'] && $key === 'by_title')
+                || (!$split['by_release'] && !$split['by_title'] && $key === 'by_artist')) {
+                $rowsByBucket = [];
+                foreach (($lens['rows'] ?? []) as $r) {
+                    $channel = $r->channel ?? 'in_store';
+                    $bk = $channel === 'in_store'
+                        ? ('In-store: ' . ($r->location_name ?: 'Unknown'))
+                        : ucfirst($channel);
+                    $rowsByBucket[$bk][] = $r;
+                }
+                ksort($rowsByBucket);
+                foreach ($rowsByBucket as $name => $brows) {
+                    $this->line('');
+                    $this->line('    ' . $name . ' — sales (newest first):');
+                    $shown = array_slice($brows, 0, $limit);
+                    foreach ($shown as $r) {
+                        $label = $r->product_name
+                            ?: trim(((string) ($r->legacy_artist ?? '')) . ' — ' . ((string) ($r->legacy_title ?? '')), ' —');
+                        $this->line(sprintf('      %s  qty=%d  $%s  [txn #%d  %s]  %s',
+                            $r->transaction_date,
+                            (int) $r->quantity,
+                            number_format((float) $r->unit_price_inc_tax, 2),
+                            $r->transaction_id,
+                            $r->status,
+                            $label
+                        ));
+                    }
+                    $rest = count($brows) - count($shown);
+                    if ($rest > 0) {
+                        $this->line('      ... ' . $rest . ' more (pass --limit=' . count($brows) . ' to see all)');
+                    }
+                }
             }
+        }
+
+        if (!$any) {
+            $this->line('  No matching sales found in any lens (artist, title, or exact release).');
         }
 
         return 0;

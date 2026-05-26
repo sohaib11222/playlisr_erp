@@ -2236,10 +2236,10 @@
     }
 
     // Build a compact "sold before" badge for a Discogs-fetched row showing
-    // how many times the artist/title has sold at each location (Pico,
-    // Hollywood, …) vs. online (Discogs / Whatnot / eBay). Also surfaces the
-    // current Discogs marketplace stats (Have / Want / lowest listed). Safe
-    // to call with missing data — renders nothing if no history is attached.
+    // three nested lenses (artist-wide vs. this title vs. this exact release),
+    // each with its own per-location/channel breakdown. Also surfaces the
+    // current Discogs marketplace stats (Have / Want / lowest listed). Safe to
+    // call with missing data — renders nothing if no history is attached.
     function renderSalesHistoryBadge($row, discogsData) {
         const $cell = $row.find('.col-name').first();
         if (!$cell.length) return;
@@ -2248,23 +2248,44 @@
         const sh = discogsData && discogsData.sales_history;
         const ms = discogsData && discogsData.marketplace_stats;
 
-        const lines = [];
-        if (sh && sh.total_lines > 0) {
-            const parts = (sh.by_channel || []).map(b =>
+        function renderLens(label, lens) {
+            if (!lens || !lens.total_lines) return '';
+            const parts = (lens.by_channel || []).map(b =>
                 `<span class="label label-${b.channel === 'in_store' ? 'success' : 'info'}" `
                 + `style="margin-right:4px;" `
                 + `title="qty ${b.qty}, $${Number(b.revenue).toFixed(2)} — first ${b.first || '—'}, last ${b.last || '—'}">`
                 + `${$('<div>').text(b.label).html()} ×${b.qty}</span>`
             ).join('');
-            lines.push(
-                `<div><i class="fa fa-history"></i> <strong>Sold before:</strong> ${parts}`
+            return `<div><strong>${label}:</strong> ${parts}`
                 + ` <span class="text-muted" style="font-size:11px;">`
-                + `(${sh.total_lines} line${sh.total_lines === 1 ? '' : 's'}, `
-                + `$${Number(sh.total_revenue).toFixed(2)} total, last ${sh.last_sold || '—'})`
-                + `</span></div>`
+                + `(${lens.total_lines} line${lens.total_lines === 1 ? '' : 's'}, `
+                + `$${Number(lens.total_revenue).toFixed(2)}, last ${lens.last_sold || '—'})`
+                + `</span></div>`;
+        }
+
+        const artistName = discogsData.artist || 'artist';
+        const titleName  = discogsData.title  || 'title';
+        const lines = [];
+        if (sh) {
+            const aHtml = renderLens(
+                `By artist (${$('<div>').text(artistName).html()})`,
+                sh.by_artist
             );
-        } else if (sh) {
-            lines.push(`<div class="text-muted"><i class="fa fa-history"></i> No prior sales for this artist/title.</div>`);
+            const tHtml = renderLens(
+                `This title (${$('<div>').text(titleName).html()})`,
+                sh.by_title
+            );
+            const rHtml = renderLens('This exact release', sh.by_release);
+
+            if (aHtml) lines.push(aHtml);
+            if (tHtml) lines.push(tHtml);
+            if (rHtml) lines.push(rHtml);
+
+            if (!aHtml && !tHtml && !rHtml) {
+                lines.push(`<div class="text-muted"><i class="fa fa-history"></i> No prior sales for this artist or title.</div>`);
+            } else {
+                lines.unshift(`<div style="margin-bottom:2px;"><i class="fa fa-history"></i> <strong class="text-muted" style="font-size:11px;">SOLD BEFORE</strong></div>`);
+            }
         }
 
         if (ms) {
@@ -2280,7 +2301,7 @@
 
         if (!lines.length) return;
         $cell.append(
-            `<div class="discogs-sold-before-badge" style="margin-top:4px; font-size:12px; line-height:1.4;">`
+            `<div class="discogs-sold-before-badge" style="margin-top:4px; font-size:12px; line-height:1.5;">`
             + lines.join('')
             + `</div>`
         );
