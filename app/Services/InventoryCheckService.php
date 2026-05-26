@@ -638,6 +638,62 @@ class InventoryCheckService
      * once per request via a static cache so it's only one JSON-decode
      * round trip even when iterating 100s of chart picks.
      */
+    /**
+     * Return EVERY supplier's match for this (artist, title), sorted
+     * cheapest first. Lets the UI show AMS / Secretly / Beggars / Redeye /
+     * VP prices side-by-side per row so Sarah can pick the cheapest at
+     * a glance instead of trusting a single "best" badge.
+     *
+     * @return array<int, array{supplier_key:string, supplier_label:string, cost:float, upc:?string, format:?string}>
+     */
+    public function allSupplierPrices(int $business_id, ?string $artist, ?string $title, ?string $format = null): array
+    {
+        static $cache = []; // [business_id => [supplier_key => indexed_rows]]
+        if (!isset($cache[$business_id])) {
+            $cache[$business_id] = [];
+            foreach ($this->knownSuppliers() as $key => $meta) {
+                $feed = $this->loadSupplierFeed($business_id, $key);
+                if (empty($feed['rows']) || !is_array($feed['rows'])) continue;
+                $cache[$business_id][$key] = [
+                    'label' => $meta['label'] ?? $key,
+                    'rows' => $feed['rows'],
+                ];
+            }
+        }
+        if (empty($cache[$business_id])) return [];
+
+        $needleArtist = $artist ? mb_strtolower($artist) : '';
+        $needleTitle = $title ? mb_strtolower($title) : '';
+        if ($needleTitle === '' && $needleArtist === '') return [];
+
+        $out = [];
+        foreach ($cache[$business_id] as $key => $bundle) {
+            $bestForThisSupplier = null;
+            foreach ($bundle['rows'] as $row) {
+                if (!is_array($row)) continue;
+                $rArtist = mb_strtolower((string) ($row['artist'] ?? ''));
+                $rTitle = mb_strtolower((string) ($row['title'] ?? ''));
+                $titleHit = $needleTitle !== '' && $rTitle !== '' && mb_strpos($rTitle, $needleTitle) !== false;
+                $artistHit = $needleArtist !== '' && $rArtist !== '' && mb_strpos($rArtist, $needleArtist) !== false;
+                if (!$titleHit || ($needleArtist !== '' && !$artistHit)) continue;
+                $cost = isset($row['cost']) ? (float) $row['cost'] : null;
+                if ($cost === null || $cost <= 0) continue;
+                if ($bestForThisSupplier === null || $cost < $bestForThisSupplier['cost']) {
+                    $bestForThisSupplier = [
+                        'supplier_key' => $key,
+                        'supplier_label' => $bundle['label'],
+                        'cost' => $cost,
+                        'upc' => $row['upc'] ?? null,
+                        'format' => $row['format'] ?? null,
+                    ];
+                }
+            }
+            if ($bestForThisSupplier !== null) $out[] = $bestForThisSupplier;
+        }
+        usort($out, fn ($a, $b) => $a['cost'] <=> $b['cost']);
+        return $out;
+    }
+
     public function bestSupplierPrice(int $business_id, ?string $artist, ?string $title, ?string $format = null): ?array
     {
         static $cache = []; // [business_id => [supplier_key => indexed_rows]]
@@ -1151,6 +1207,7 @@ class InventoryCheckService
                 'bin_position' => $match['bin_position'] ?? null,
                 'is_rsd' => $this->isRsdTitle((string) ($pick->title ?? '')),
                 'best_supplier' => $this->bestSupplierPrice($business_id, $pick->artist, $pick->title, $pick->format),
+                'supplier_prices' => $this->allSupplierPrices($business_id, $pick->artist, $pick->title, $pick->format),
                 'suggested_qty' => $this->suggestedQtyForChartPick($pick, $stock, $isTopArtist),
                 'reason' => $this->chartPickReason($pick, $isTopArtist, $match),
                 'tags' => array_values(array_filter([

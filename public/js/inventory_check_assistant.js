@@ -891,12 +891,23 @@
         // is_rsd flag flows from the server — RSD titles can be hidden
         // via the new "Hide RSD titles" checkbox above the buckets.
         let productCell = isRsd ? `${product} <span class="ica-tag ica-rsd-tag" title="Record Store Day release">RSD</span>` : product;
-        // Best-supplier price badge — appears on rows where any uploaded
-        // supplier feed had a matching (artist, title) row. Shows the
-        // cheapest cost + which supplier had it.
-        if (it.best_supplier && it.best_supplier.cost) {
+        // Per-supplier price chips: every supplier with a match shows up
+        // (AMS · Secretly · Beggars · Redeye · VP), cheapest highlighted
+        // green. Sarah picks at a glance. If only one supplier matches,
+        // it still appears as the lone chip.
+        const prices = Array.isArray(it.supplier_prices) ? it.supplier_prices : [];
+        if (prices.length) {
+            const chips = prices.map((p, idx) => {
+                const isBest = idx === 0; // already sorted asc by cost
+                const cls = isBest ? 'ica-tag ica-supplier-best' : 'ica-tag ica-supplier-other';
+                const label = escapeHtml(p.supplier_label || p.supplier_key);
+                return `<span class="${cls}" title="${label}${p.upc ? ' · UPC ' + escapeHtml(p.upc) : ''}">$${Number(p.cost).toFixed(2)} ${label}</span>`;
+            }).join(' ');
+            productCell += ` ${chips}`;
+        } else if (it.best_supplier && it.best_supplier.cost) {
+            // Fallback for buckets where supplier_prices wasn't attached
             const bs = it.best_supplier;
-            productCell += ` <span class="ica-tag ica-supplier-best" title="Cheapest match across uploaded supplier feeds">$${Number(bs.cost).toFixed(2)} via ${escapeHtml(bs.supplier_label || bs.supplier_key)}</span>`;
+            productCell += ` <span class="ica-tag ica-supplier-best">$${Number(bs.cost).toFixed(2)} via ${escapeHtml(bs.supplier_label || bs.supplier_key)}</span>`;
         }
         // Cost is the wholesale / default_purchase_price per unit.
         // data-cost holds the numeric value so renderBucketTotals can sum

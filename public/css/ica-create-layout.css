@@ -278,6 +278,13 @@ body.ica-v2 .ica-tag.ica-supplier-best {
 	font-weight: 700;
 	font-size: 11px;
 }
+body.ica-v2 .ica-tag.ica-supplier-other {
+	background: var(--ica-surface-2);
+	color: var(--ica-ink-2);
+	font-weight: 600;
+	font-size: 11px;
+	border: 1px solid var(--ica-line);
+}
 
 /* Supplier price-feed panel — quick-add form per supplier, paste +
    file upload behind nested disclosures. Each supplier collapses to
