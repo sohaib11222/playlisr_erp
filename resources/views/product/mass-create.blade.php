@@ -906,9 +906,14 @@
             });
         });
 
-        // Remove row
+        // Remove row (also drops any attached sold-before sub-row beneath it).
         $(document).on('click', '.remove_row', function () {
-            $(this).closest('.tr').remove();
+            const $tr = $(this).closest('.tr');
+            const idx = $tr.attr('data-row-index');
+            if (idx !== undefined) {
+                $(`tr.discogs-sold-before-row[data-row-index="${idx}"]`).remove();
+            }
+            $tr.remove();
         });
 
         // When merged Category/Subcategory combo changes, sync hidden ids
@@ -2235,74 +2240,87 @@
         return max + 1;
     }
 
-    // Render a compact "sold before" badge for a Discogs-fetched row. Two
-    // lenses (artist-wide vs. this title), each with per-location/channel
-    // counts. Sits inside the narrow 200px col-name cell, so everything
-    // wraps via flex and label text is kept short (location/channel name
-    // only — colour signals in-store green vs online blue). Tooltips carry
-    // the verbose detail. Renders nothing when no history is attached.
+    // Render the "sold before" + Discogs marketplace info as a full-width
+    // sub-row beneath the product row, so we have the whole table width to
+    // play with instead of the cramped 200px col-name cell. Two lenses
+    // (artist-wide vs. this title) each with per-location/channel chips.
+    // The sub-row tracks the product row by data-row-index so the remove
+    // handler can drop it alongside the parent.
     function renderSalesHistoryBadge($row, discogsData) {
-        const $cell = $row.find('.col-name').first();
-        if (!$cell.length) return;
-        $cell.find('.discogs-sold-before-badge').remove();
+        const rowIdx = $row.attr('data-row-index');
+        if (rowIdx === undefined) return;
+
+        // Drop any previous sub-row for this index (e.g., a re-render).
+        $(`tr.discogs-sold-before-row[data-row-index="${rowIdx}"]`).remove();
 
         const sh = discogsData && discogsData.sales_history;
         const ms = discogsData && discogsData.marketplace_stats;
 
         // Strip the "In-store: " prefix the backend adds — the green colour
-        // already signals in-store, and we're tight on horizontal space.
+        // already signals in-store, so we don't need to repeat it.
         function shortLabel(b) {
             const lbl = (b.label || '').replace(/^In-store:\s*/i, '');
             return $('<div>').text(lbl).html();
         }
+        const esc = (s) => $('<div>').text(s == null ? '' : String(s)).html();
 
         function renderLens(prefix, lens) {
-            if (!lens || !lens.total_lines) return '';
+            if (!lens || !lens.total_lines) {
+                return `<span class="text-muted">${prefix}: <em>no prior sales</em></span>`;
+            }
             const chips = (lens.by_channel || []).map(b =>
                 `<span class="label label-${b.channel === 'in_store' ? 'success' : 'info'}" `
-                + `style="display:inline-block;margin:1px 2px 1px 0;font-weight:normal;" `
-                + `title="${shortLabel(b)}: qty ${b.qty}, $${Number(b.revenue).toFixed(2)} — first ${b.first || '—'}, last ${b.last || '—'}">`
-                + `${shortLabel(b)} ×${b.qty}</span>`
+                + `style="display:inline-block;margin:1px 3px 1px 0;font-weight:normal;font-size:12px;" `
+                + `title="${shortLabel(b)} — qty ${b.qty}, $${Number(b.revenue).toFixed(2)} (first ${b.first || '—'}, last ${b.last || '—'})">`
+                + `${shortLabel(b)} ×${b.qty} `
+                + `<span style="opacity:0.75;">$${Number(b.revenue).toFixed(2)}</span></span>`
             ).join('');
-            const tip = `${lens.total_lines} line${lens.total_lines === 1 ? '' : 's'}, $${Number(lens.total_revenue).toFixed(2)} total, last ${lens.last_sold || '—'}`;
-            return `<div style="margin-top:2px;" title="${tip}">`
-                + `<span class="text-muted" style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;">${prefix}</span> ${chips}`
-                + `</div>`;
+            const summary = `${lens.total_lines} line${lens.total_lines === 1 ? '' : 's'} · `
+                + `$${Number(lens.total_revenue).toFixed(2)} total · last ${lens.last_sold || '—'}`;
+            return `<strong>${prefix}:</strong> ${chips}`
+                + ` <span class="text-muted" style="font-size:11px;">(${summary})</span>`;
         }
 
-        const lines = [];
+        const sections = [];
         if (sh) {
-            const aHtml = renderLens('Artist', sh.by_artist);
-            const tHtml = renderLens('Title',  sh.by_title);
-            if (aHtml) lines.push(aHtml);
-            if (tHtml) lines.push(tHtml);
-            if (!aHtml && !tHtml) {
-                lines.push(`<div class="text-muted" style="font-size:11px;"><i class="fa fa-history"></i> No prior sales.</div>`);
-            }
+            const artistName = esc(discogsData.artist || 'this artist');
+            const titleName  = esc(discogsData.title  || 'this title');
+            sections.push(
+                `<div style="margin-bottom:3px;">`
+                + `<span class="text-muted" style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-right:6px;">`
+                + `<i class="fa fa-history"></i> Sold before</span>`
+                + `</div>`
+            );
+            sections.push(`<div style="margin-bottom:3px;">${renderLens('Artist (' + artistName + ')', sh.by_artist)}</div>`);
+            sections.push(`<div style="margin-bottom:3px;">${renderLens('Title ('  + titleName  + ')', sh.by_title )}</div>`);
         }
 
         if (ms) {
             const bits = [];
-            if (ms.have != null) bits.push(`H${ms.have}`);
-            if (ms.want != null) bits.push(`W${ms.want}`);
-            if (ms.lowest_price != null) bits.push(`$${Number(ms.lowest_price).toFixed(2)}`);
-            if (ms.num_for_sale != null) bits.push(`${ms.num_for_sale}fs`);
+            if (ms.have != null) bits.push(`Have <strong>${esc(ms.have)}</strong>`);
+            if (ms.want != null) bits.push(`Want <strong>${esc(ms.want)}</strong>`);
+            if (ms.lowest_price != null) bits.push(`Lowest listed <strong>$${Number(ms.lowest_price).toFixed(2)}</strong>`);
+            if (ms.num_for_sale != null) bits.push(`<strong>${esc(ms.num_for_sale)}</strong> for sale`);
             if (bits.length) {
-                lines.push(
-                    `<div class="text-muted" style="font-size:10px;margin-top:2px;" `
-                    + `title="Have / Want / lowest listed / for sale on Discogs">`
-                    + `<i class="fa fa-globe"></i> ${bits.join(' · ')}</div>`
+                sections.push(
+                    `<div class="text-muted" style="font-size:11px;margin-top:2px;">`
+                    + `<i class="fa fa-globe"></i> Discogs marketplace: ${bits.join(' &nbsp;·&nbsp; ')}`
+                    + `</div>`
                 );
             }
         }
 
-        if (!lines.length) return;
-        $cell.append(
-            `<div class="discogs-sold-before-badge" `
-            + `style="margin-top:6px;font-size:11px;line-height:1.35;max-width:100%;overflow-wrap:break-word;word-break:break-word;">`
-            + lines.join('')
-            + `</div>`
-        );
+        if (!sections.length) return;
+
+        // Figure out the column span by counting visible cells in the parent row.
+        const colspan = $row.children('td').length || 13;
+
+        const subRow = `<tr class="discogs-sold-before-row" data-row-index="${rowIdx}">`
+            + `<td colspan="${colspan}" `
+            +   `style="background:#fafbfc;border-top:1px dashed #e0e0e0;padding:6px 12px;font-size:12px;line-height:1.5;">`
+            +   sections.join('')
+            + `</td></tr>`;
+        $row.after(subRow);
     }
 
     function addRowFromDiscogsData(discogsData, rowIdx, price) {
