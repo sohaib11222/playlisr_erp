@@ -3298,20 +3298,28 @@ class ProductController extends Controller
                 continue;
             }
 
+            // Lenient query: LEFT join products so legacy sell-lines (no
+             // current product_id, only tsl.legacy_title) still count; no
+             // parent_sell_line_id filter so combo children are included too.
+            // We accept a little double-counting on combos in exchange for
+            // never missing a "yes we sold this" signal.
+            $likeName = $hasName ? '%' . $escLike($name) . '%' : null;
+
             $q = DB::table('transaction_sell_lines as tsl')
                 ->join('transactions as t', 't.id', '=', 'tsl.transaction_id')
-                ->join('products as p', 'p.id', '=', 'tsl.product_id')
+                ->leftJoin('products as p', 'p.id', '=', 'tsl.product_id')
                 ->where('t.business_id', $business_id)
                 ->where('t.type', 'sell')
-                ->where('t.status', 'final')
-                ->whereNull('tsl.parent_sell_line_id');
+                ->where('t.status', 'final');
 
-            $q->where(function ($w) use ($hasName, $hasSku, $name, $sku, $escLike) {
+            $q->where(function ($w) use ($hasName, $hasSku, $likeName, $sku) {
                 if ($hasSku) {
                     $w->orWhere('p.sku', $sku);
                 }
                 if ($hasName) {
-                    $w->orWhere('p.name', 'like', '%' . $escLike($name) . '%');
+                    $w->orWhere('p.name', 'like', $likeName)
+                      ->orWhere('tsl.legacy_title', 'like', $likeName)
+                      ->orWhere('tsl.legacy_artist', 'like', $likeName);
                 }
             });
 
@@ -3326,15 +3334,24 @@ class ProductController extends Controller
             $samples = [];
             if ($agg && (int) $agg->line_count > 0) {
                 $samples = (clone $q)
-                    ->select('p.id', 'p.name', 'p.sku')
+                    ->select(
+                        'p.id as product_id',
+                        'p.name as product_name',
+                        'p.sku as product_sku',
+                        'tsl.legacy_title',
+                        'tsl.legacy_artist'
+                    )
                     ->distinct()
                     ->limit(3)
                     ->get()
                     ->map(function ($r) {
+                        $name = $r->product_name ?: trim(
+                            ($r->legacy_artist ? $r->legacy_artist . ' — ' : '') . ($r->legacy_title ?? '')
+                        );
                         return [
-                            'id'   => (int) $r->id,
-                            'name' => (string) $r->name,
-                            'sku'  => (string) $r->sku,
+                            'id'   => $r->product_id ? (int) $r->product_id : null,
+                            'name' => (string) $name,
+                            'sku'  => (string) ($r->product_sku ?? ''),
                         ];
                     })
                     ->all();
