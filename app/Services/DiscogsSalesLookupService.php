@@ -54,6 +54,8 @@ class DiscogsSalesLookupService
         $useArtist  = $likeArtist !== null && in_array($mode, ['any', 'artist'], true);
         $useTitle   = $likeTitle  !== null && in_array($mode, ['any', 'title'],  true);
 
+        $hasSource = Schema::hasColumn('transactions', 'source');
+
         $select = [
             't.id as transaction_id',
             't.transaction_date',
@@ -70,6 +72,9 @@ class DiscogsSalesLookupService
         ];
         if ($hasChannel) {
             $select[] = 't.channel';
+        }
+        if ($hasSource) {
+            $select[] = 't.source';
         }
 
         $q = DB::table('transaction_sell_lines as tsl')
@@ -130,7 +135,14 @@ class DiscogsSalesLookupService
         $buckets = [];
 
         foreach ($rows as $r) {
-            $channel = $hasChannel ? ($r->channel ?: 'in_store') : 'in_store';
+            // Effective channel: legacy Discogs sales (pre-2026-04-22 migration)
+            // have channel='in_store' (the default backfill) but source='discogs',
+            // so promote those into the Discogs bucket. Doesn't double-count —
+            // post-migration rows already carry channel='discogs'.
+            $rawChannel = $hasChannel ? ($r->channel ?: 'in_store') : 'in_store';
+            $isDiscogsBySource = isset($r->source) && $r->source === 'discogs';
+            $channel = ($isDiscogsBySource || $rawChannel === 'discogs') ? 'discogs' : $rawChannel;
+            $r->channel = $channel; // canonicalize for downstream consumers
             $bucket  = $this->bucketKey($channel, $r);
 
             if (!isset($buckets[$bucket])) {
@@ -184,6 +196,115 @@ class DiscogsSalesLookupService
             'last_sold'      => $lastSold,
             'by_channel'     => array_values($buckets),
             'rows'           => $rows->all(),
+        ];
+    }
+
+    /**
+     * Current unsold stock per business_location for products matching the
+     * given artist / title / release. Reads the denormalized
+     * `product_stock_cache` table so a stale cache is acceptable — the cache
+     * is refreshed periodically by the RefreshProductStockCache command.
+     *
+     * @return array{
+     *   total_qty: float,
+     *   by_location: array<int, array{location_id: int, location_name: string, qty: float, lines: int}>
+     * }
+     */
+    public function stockOnHand(
+        ?int $releaseId,
+        ?string $artist,
+        ?string $title,
+        int $businessId,
+        string $mode = 'any'
+    ): array {
+        $artist = trim((string) $artist);
+        $title  = trim((string) $title);
+
+        if (!$releaseId && $artist === '' && $title === '') {
+            return ['total_qty' => 0.0, 'by_location' => []];
+        }
+
+        $likeArtist = $artist !== '' ? '%' . $this->escLike($artist) . '%' : null;
+        $likeTitle  = $title  !== '' ? '%' . $this->escLike($title)  . '%' : null;
+
+        $useRelease = $releaseId && in_array($mode, ['any', 'release'], true);
+        $useArtist  = $likeArtist !== null && in_array($mode, ['any', 'artist'], true);
+        $useTitle   = $likeTitle  !== null && in_array($mode, ['any', 'title'],  true);
+
+        $q = DB::table('product_stock_cache as psc')
+            ->leftJoin('products as p', 'p.id', '=', 'psc.product_id')
+            ->where('psc.business_id', $businessId)
+            // Positive stock only — negative usually means oversold/data drift.
+            ->where('psc.stock', '>', 0);
+
+        $q->where(function ($w) use ($releaseId, $likeArtist, $likeTitle, $useRelease, $useArtist, $useTitle) {
+            $any = false;
+            if ($useRelease) {
+                $w->orWhere('p.discogs_release_id', $releaseId);
+                $any = true;
+            }
+            if ($useArtist) {
+                $w->orWhere('p.artist', 'like', $likeArtist)
+                  ->orWhere('p.name',   'like', $likeArtist);
+                $any = true;
+            }
+            if ($useTitle) {
+                $w->orWhere('p.name', 'like', $likeTitle);
+                $any = true;
+            }
+            if (!$any) {
+                $w->whereRaw('1 = 0');
+            }
+        });
+
+        $rows = $q->select([
+                'psc.location_id',
+                'psc.location_name',
+                DB::raw('SUM(psc.stock) as qty'),
+                DB::raw('COUNT(*) as lines'),
+            ])
+            ->groupBy('psc.location_id', 'psc.location_name')
+            ->orderBy('psc.location_name')
+            ->get();
+
+        $total = 0.0;
+        $byLocation = [];
+        foreach ($rows as $r) {
+            $qty = (float) $r->qty;
+            if ($qty <= 0) continue;
+            $byLocation[] = [
+                'location_id'   => (int) $r->location_id,
+                'location_name' => (string) ($r->location_name ?: 'Unknown'),
+                'qty'           => $qty,
+                'lines'         => (int) $r->lines,
+            ];
+            $total += $qty;
+        }
+        return ['total_qty' => $total, 'by_location' => $byLocation];
+    }
+
+    /**
+     * Convenience: stock split into artist / title lenses, matching the
+     * structure of lookupSplit().
+     *
+     * @return array{by_artist: ?array, by_title: ?array}
+     */
+    public function stockSplit(
+        ?int $releaseId,
+        ?string $artist,
+        ?string $title,
+        int $businessId
+    ): array {
+        $artistTrim = trim((string) $artist);
+        $titleTrim  = trim((string) $title);
+
+        return [
+            'by_artist' => $artistTrim !== ''
+                ? $this->stockOnHand(null, $artistTrim, null, $businessId, 'artist')
+                : null,
+            'by_title'  => $titleTrim !== ''
+                ? $this->stockOnHand(null, null, $titleTrim, $businessId, 'title')
+                : null,
         ];
     }
 

@@ -3546,13 +3546,13 @@ class ProductController extends Controller
             ]);
         }
 
-        // Local sales history: have we sold this artist/title before, and where?
-        // Two separate lenses (nested supersets) so the UI can distinguish:
-        //   1. how often this artist sells (broadest)
-        //   2. how often this title sells (a subset)
-        // Strip any failures so a slow/broken history lookup never blocks
-        // the row creation that this endpoint primarily exists for.
+        // Local sales history + current stock. Two lenses each (artist-wide vs
+        // this title) so the UI can show both signals. Stock comes from the
+        // denormalized product_stock_cache table — a stale cache is fine here,
+        // it's refreshed periodically by RefreshProductStockCache.
+        // Wrapped in try/catch so a slow/broken lookup never blocks row creation.
         $salesHistory = null;
+        $stockOnHand  = null;
         try {
             $lookup = new \App\Services\DiscogsSalesLookupService();
             $salesHistory = $lookup->lookupSplit(
@@ -3567,6 +3567,12 @@ class ProductController extends Controller
                     unset($salesHistory[$k]['rows']);
                 }
             }
+            $stockOnHand = $lookup->stockSplit(
+                $id,
+                $mapped['artist'] ?? null,
+                $mapped['title']  ?? null,
+                (int) $business_id
+            );
         } catch (\Throwable $e) {
             \Log::warning('mass-create sales-history lookup failed for ' . $id . ': ' . $e->getMessage());
         }
@@ -3593,6 +3599,7 @@ class ProductController extends Controller
                 'discogs_release_id' => $mapped['discogs_release_id'] ?? $id,
                 'warnings' => $mapped['warnings'] ?? [],
                 'sales_history' => $salesHistory,
+                'stock_on_hand' => $stockOnHand,
                 'marketplace_stats' => $stats,
             ],
         ]);

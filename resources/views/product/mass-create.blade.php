@@ -2254,6 +2254,7 @@
         $(`tr.discogs-sold-before-row[data-row-index="${rowIdx}"]`).remove();
 
         const sh = discogsData && discogsData.sales_history;
+        const so = discogsData && discogsData.stock_on_hand;
         const ms = discogsData && discogsData.marketplace_stats;
 
         // Strip the "In-store: " prefix the backend adds — the green colour
@@ -2281,10 +2282,27 @@
                 + ` <span class="text-muted" style="font-size:11px;">(${summary})</span>`;
         }
 
+        // Render current stock-on-hand by location as warning-coloured chips,
+        // visually distinct from the sold-before info (orange vs green/blue).
+        function renderStockLens(prefix, stock) {
+            if (!stock || !stock.total_qty) {
+                return `<span class="text-muted">${prefix}: <em>none in stock</em></span>`;
+            }
+            const chips = (stock.by_location || []).map(loc =>
+                `<span class="label label-warning" `
+                + `style="display:inline-block;margin:1px 3px 1px 0;font-weight:normal;font-size:12px;" `
+                + `title="${esc(loc.location_name)} — ${Number(loc.qty)} units across ${loc.lines} variation${loc.lines === 1 ? '' : 's'}">`
+                + `${esc(loc.location_name)} ×${Number(loc.qty)}</span>`
+            ).join('');
+            return `<strong>${prefix}:</strong> ${chips}`
+                + ` <span class="text-muted" style="font-size:11px;">(${Number(stock.total_qty)} total)</span>`;
+        }
+
         const sections = [];
+        const artistName = esc(discogsData.artist || 'this artist');
+        const titleName  = esc(discogsData.title  || 'this title');
+
         if (sh) {
-            const artistName = esc(discogsData.artist || 'this artist');
-            const titleName  = esc(discogsData.title  || 'this title');
             sections.push(
                 `<div style="margin-bottom:3px;">`
                 + `<span class="text-muted" style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-right:6px;">`
@@ -2293,6 +2311,21 @@
             );
             sections.push(`<div style="margin-bottom:3px;">${renderLens('Artist (' + artistName + ')', sh.by_artist)}</div>`);
             sections.push(`<div style="margin-bottom:3px;">${renderLens('Title ('  + titleName  + ')', sh.by_title )}</div>`);
+        }
+
+        if (so && ((so.by_artist && so.by_artist.total_qty) || (so.by_title && so.by_title.total_qty))) {
+            sections.push(
+                `<div style="margin-top:6px;margin-bottom:3px;">`
+                + `<span class="text-muted" style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-right:6px;">`
+                + `<i class="fa fa-cube"></i> Currently in stock</span>`
+                + `</div>`
+            );
+            if (so.by_artist) {
+                sections.push(`<div style="margin-bottom:3px;">${renderStockLens('Artist (' + artistName + ')', so.by_artist)}</div>`);
+            }
+            if (so.by_title) {
+                sections.push(`<div style="margin-bottom:3px;">${renderStockLens('Title ('  + titleName  + ')', so.by_title )}</div>`);
+            }
         }
 
         if (ms) {
