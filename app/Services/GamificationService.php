@@ -31,6 +31,18 @@ class GamificationService
     public const PRODUCTS_ADDED_FLOOR_PER_HOUR = 20.0;
 
     /**
+     * Fixed tier thresholds for products_added shift progress, in ascending
+     * order. The shift-strip bar fills toward the top tier (elite) so all
+     * three milestones are visible from the start of the shift; the dynamic
+     * peer-pace target is still shown as the "current goal" number.
+     */
+    public const PRODUCTS_ADDED_TIERS = [
+        ['count' => 80,  'key' => 'baseline', 'label' => 'Baseline'],
+        ['count' => 100, 'key' => 'great',    'label' => 'Great shift'],
+        ['count' => 120, 'key' => 'elite',    'label' => 'Elite shift'],
+    ];
+
+    /**
      * Per-store opening hours, keyed by lowercase substring matched against
      * business_locations.name (same style as ImportNivessaCustomerAsks). Each
      * day maps to [open_hour, close_hour) — close is exclusive, so
@@ -134,7 +146,7 @@ class GamificationService
             $myPerHour = $shift['hours'] >= 0.25 ? $current / $shift['hours'] : null;
             $percent = $target > 0 ? min(100, ($current / $target) * 100) : 0;
 
-            $tasks[] = [
+            $task = [
                 'key' => $def['key'],
                 'label' => $def['label'],
                 'unit' => $def['unit'],
@@ -142,15 +154,102 @@ class GamificationService
                 'current' => round($current, $def['decimals']),
                 'target' => round($target, $def['decimals']),
                 'percent' => round($percent, 1),
+                'bar_percent' => round($percent, 1),
                 'peer_per_hour' => $peerPerHour !== null ? round($peerPerHour, $def['decimals']) : null,
                 'peer_top_per_hour' => $peerTopPerHour !== null ? round($peerTopPerHour, $def['decimals']) : null,
                 'my_per_hour' => $myPerHour !== null ? round($myPerHour, $def['decimals']) : null,
                 'complete' => $current >= $target && $target > 0,
                 'pace_status' => $this->paceStatus($current, $target, $shift, $def['scope'] ?? 'shift'),
             ];
+
+            if ($def['key'] === 'products_added') {
+                $tiers = self::PRODUCTS_ADDED_TIERS;
+                $top = end($tiers)['count'];
+                $task['bar_percent'] = round(min(100, ($current / $top) * 100), 1);
+                $task['tier_max'] = $top;
+                $task['tier_ticks'] = array_map(function ($t) use ($top) {
+                    return [
+                        'count'    => $t['count'],
+                        'key'      => $t['key'],
+                        'label'    => $t['label'],
+                        'position' => round(($t['count'] / $top) * 100, 2),
+                    ];
+                }, $tiers);
+                $task['tier_chip'] = $this->productsTierChip($current);
+                $task['personal_best'] = $this->personalBestProductsShift($user->id, $businessId);
+            }
+
+            $tasks[] = $task;
         }
 
         return $tasks;
+    }
+
+    /**
+     * Status chip for the products_added row: which tier was just crossed
+     * and what comes next. Replaces the pace label for tiered rows.
+     *
+     * @return array{label: string, status: string}
+     */
+    protected function productsTierChip(float $current): array
+    {
+        $reached = null;
+        $next = null;
+        foreach (self::PRODUCTS_ADDED_TIERS as $tier) {
+            if ($current >= $tier['count']) {
+                $reached = $tier;
+            } elseif ($next === null) {
+                $next = $tier;
+            }
+        }
+
+        if ($reached === null) {
+            return [
+                'label' => 'Next: ' . $next['label'] . ' @ ' . $next['count'],
+                'status' => 'pending',
+            ];
+        }
+        if ($next === null) {
+            return [
+                'label' => $reached['label'] . ' 🏆',
+                'status' => $reached['key'],
+            ];
+        }
+        return [
+            'label' => $reached['label'] . ' ✓ · next ' . $next['label'] . ' @ ' . $next['count'],
+            'status' => $reached['key'],
+        ];
+    }
+
+    /**
+     * User's best single-day products_added count across all history.
+     * Groups by DATE(created_at), so a 2-shift day inflates — accepted
+     * simplification since employees almost always work one shift per day
+     * and the alternative (joining each row against the next pos_duty
+     * activity_log entry) is O(shifts) queries.
+     *
+     * @return array{count: int, date: string, is_today: bool}|null
+     */
+    public function personalBestProductsShift(int $userId, int $businessId): ?array
+    {
+        $row = DB::table('products')
+            ->where('business_id', $businessId)
+            ->where('created_by', $userId)
+            ->selectRaw('DATE(created_at) as d, COUNT(*) as cnt')
+            ->groupBy('d')
+            ->orderByDesc('cnt')
+            ->limit(1)
+            ->first();
+
+        if (!$row || (int) $row->cnt <= 0) {
+            return null;
+        }
+        $date = Carbon::parse($row->d);
+        return [
+            'count'    => (int) $row->cnt,
+            'date'     => $date->format('M j'),
+            'is_today' => $date->isToday(),
+        ];
     }
 
     /**

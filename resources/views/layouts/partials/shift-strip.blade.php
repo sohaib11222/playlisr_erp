@@ -22,9 +22,15 @@
     .st-row-numbers { flex:0 0 auto; font-size:14px; font-weight:600; color:#111827; white-space:nowrap; }
     .st-row-numbers .st-target { color:#6b7280; font-weight:400; }
     .st-row-status { flex:0 0 auto; font-size:12px; color:#6b7280; white-space:nowrap; }
-    .st-bar { height:9px; background:#eef2f7; border-radius:5px; overflow:hidden; }
+    .st-bar { position:relative; height:9px; background:#eef2f7; border-radius:5px; overflow:visible; }
     .st-bar > .st-fill { height:100%; transition:width .6s ease; background:#534ab7; border-radius:5px; }
     .st-bar > .st-fill.complete { background:#16a34a; }
+    .st-tick { position:absolute; top:-2px; bottom:-2px; width:2px; background:rgba(17,24,39,0.35); border-radius:1px; pointer-events:none; z-index:1; }
+    .st-tier-chip { font-weight:600; }
+    .st-tier-chip.pending  { color:#6b7280; }
+    .st-tier-chip.baseline { color:#1d4ed8; }
+    .st-tier-chip.great    { color:#15803d; }
+    .st-tier-chip.elite    { color:#78350f; background:linear-gradient(90deg,#fde68a,#fbbf24); padding:1px 8px; border-radius:999px; }
     .st-pace { font-weight:600; }
     .st-pace.ahead { color:#3b6d11; }
     .st-pace.behind { color:#9a3412; }
@@ -63,6 +69,11 @@
                 $tp = $task['peer_top_per_hour'] ?? null;
                 $is_money = $task['unit'] === '$';
                 $is_per_day = ($task['scope'] ?? 'shift') === 'day_store';
+                $is_tiered = !empty($task['tier_max']);
+                $bar_width = $task['bar_percent'] ?? $task['percent'];
+                $tier_ticks = $task['tier_ticks'] ?? [];
+                $tier_chip = $task['tier_chip'] ?? null;
+                $pb = $task['personal_best'] ?? null;
                 $fmt = function ($v) use ($is_money) {
                     if ($v === null) return '—';
                     return $is_money
@@ -75,10 +86,21 @@
                     'behind' => 'Behind',
                 ][$task['pace_status'] ?? ''] ?? null;
                 $peer_unit = $is_per_day ? '/day avg' : '/hr';
-                $tooltip = !is_null($pp)
-                    ? ($is_per_day ? 'Typical day at this store: ' : 'Peers at this hour avg ') . $fmt($pp) . $peer_unit
-                        . ($tp ? ' · best ' . $fmt($tp) . ($is_per_day ? '/day' : '/hr') : '')
-                    : '';
+                $tooltipLines = [];
+                if (!is_null($pp)) {
+                    $tooltipLines[] = ($is_per_day ? 'Typical day at this store: ' : 'Peers at this hour avg ') . $fmt($pp) . $peer_unit
+                        . ($tp ? ' · best ' . $fmt($tp) . ($is_per_day ? '/day' : '/hr') : '');
+                }
+                if ($is_tiered && $tier_ticks) {
+                    $tooltipLines[] = 'Tiers: ' . implode(' · ', array_map(function ($t) {
+                        return $t['label'] . ' ' . $t['count'];
+                    }, $tier_ticks));
+                }
+                if ($pb) {
+                    $tooltipLines[] = 'Your best shift: ' . number_format($pb['count']) . ' ('
+                        . ($pb['is_today'] ? 'today' : $pb['date']) . ')';
+                }
+                $tooltip = implode("\n", $tooltipLines);
                 ob_start();
                 ?>
                 <div class="st-row scope-<?= e($task['scope'] ?? 'shift') ?>" data-task-key="<?= e($task['key']) ?>" data-task-complete="<?= $task['complete'] ? '1' : '0' ?>" data-task-scope="<?= e($task['scope'] ?? 'shift') ?>">
@@ -93,7 +115,9 @@
                         </div>
                         <div class="st-row-status" title="<?= e($tooltip) ?>">
                             <span class="st-pct"><?= number_format($task['percent'], 0) ?>%</span>
-                            <?php if ($task['complete']): ?>
+                            <?php if ($is_tiered && $tier_chip): ?>
+                                · <span class="st-tier-chip <?= e($tier_chip['status']) ?>"><?= e($tier_chip['label']) ?></span>
+                            <?php elseif ($task['complete']): ?>
                                 · <span class="st-pace ahead">Goal hit 🎉</span>
                             <?php elseif ($paceLabel): ?>
                                 · <span class="st-pace <?= e($task['pace_status']) ?>"><?= $paceLabel ?></span>
@@ -101,7 +125,10 @@
                         </div>
                     </div>
                     <div class="st-bar" title="<?= e($tooltip) ?>">
-                        <div class="st-fill <?= $task['complete'] ? 'complete' : '' ?>" style="width: <?= $task['percent'] ?>%;"></div>
+                        <div class="st-fill <?= $task['complete'] ? 'complete' : '' ?>" style="width: <?= $bar_width ?>%;"></div>
+                        <?php foreach ($tier_ticks as $tick): ?>
+                            <span class="st-tick" style="left: <?= $tick['position'] ?>%;" title="<?= e($tick['label'] . ' ' . $tick['count']) ?>"></span>
+                        <?php endforeach; ?>
                     </div>
                 </div>
                 <?php
@@ -194,6 +221,10 @@
 
         function buildStatusHtml(t) {
             var html = '<span class="st-pct">' + Math.round(t.percent) + '%</span>';
+            if (t.tier_chip) {
+                return html + ' · <span class="st-tier-chip ' + t.tier_chip.status + '">'
+                    + t.tier_chip.label + '</span>';
+            }
             if (t.complete) {
                 return html + ' · <span class="st-pace ahead">Goal hit 🎉</span>';
             }
@@ -204,14 +235,27 @@
             return html;
         }
         function buildTooltip(t) {
+            var lines = [];
             var pp = t.peer_per_hour, tp = t.peer_top_per_hour;
-            if (pp == null) return '';
-            var isPerDay = t.scope === 'day_store';
-            var unit = isPerDay ? '/day avg' : '/hr';
-            var leadIn = isPerDay ? 'Typical day at this store: ' : 'Peers at this hour avg ';
-            var bestLabel = isPerDay ? '/day' : '/hr';
-            return leadIn + fmt(pp, t.unit === '$') + unit
-                + (tp ? ' · best ' + fmt(tp, t.unit === '$') + bestLabel : '');
+            if (pp != null) {
+                var isPerDay = t.scope === 'day_store';
+                var unit = isPerDay ? '/day avg' : '/hr';
+                var leadIn = isPerDay ? 'Typical day at this store: ' : 'Peers at this hour avg ';
+                var bestLabel = isPerDay ? '/day' : '/hr';
+                lines.push(leadIn + fmt(pp, t.unit === '$') + unit
+                    + (tp ? ' · best ' + fmt(tp, t.unit === '$') + bestLabel : ''));
+            }
+            if (t.tier_ticks && t.tier_ticks.length) {
+                lines.push('Tiers: ' + t.tier_ticks.map(function (x) {
+                    return x.label + ' ' + x.count;
+                }).join(' · '));
+            }
+            if (t.personal_best) {
+                var pb = t.personal_best;
+                lines.push('Your best shift: ' + pb.count.toLocaleString()
+                    + ' (' + (pb.is_today ? 'today' : pb.date) + ')');
+            }
+            return lines.join('\n');
         }
 
         function pulseLive() {
@@ -233,8 +277,9 @@
                 (data.tasks || []).forEach(function (t) {
                     var $task = $panel.find('[data-task-key="' + t.key + '"]');
                     if (!$task.length) return;
+                    var barWidth = (t.bar_percent != null) ? t.bar_percent : t.percent;
                     $task.find('.st-fill')
-                        .css('width', t.percent + '%')
+                        .css('width', barWidth + '%')
                         .toggleClass('complete', !!t.complete);
                     var nums;
                     if (t.unit === '$') {
