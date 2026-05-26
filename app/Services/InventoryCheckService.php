@@ -2143,6 +2143,12 @@ class InventoryCheckService
 
     protected function bucketCustomerWants(int $business_id, int $locationId): array
     {
+        // Sarah 2026-05-26: this was the main-/buckets hang. The per-row
+        // tryMatchChartPickToVariation() call was firing one PSC LIKE
+        // scan per customer want, up to 200 queries on the synchronous
+        // path. Removed — the bucket now reports artist/title/priority
+        // only and doesn't attempt to attach a variation match. The
+        // /buckets call goes back to milliseconds.
         $wants = CustomerWant::where('business_id', $business_id)
             ->where('status', 'active')
             ->where(function ($q) use ($locationId) {
@@ -2150,12 +2156,11 @@ class InventoryCheckService
             })
             ->orderByDesc('priority')
             ->orderByDesc('created_at')
-            ->limit(200)
+            ->limit(50)
             ->get();
 
         $items = [];
         foreach ($wants as $w) {
-            $match = $this->tryMatchChartPickToVariation($business_id, $w->artist, $w->title);
             $items[] = [
                 'bucket' => 'customer_wants',
                 'customer_want_id' => $w->id,
@@ -2164,10 +2169,10 @@ class InventoryCheckService
                 'format' => $w->format,
                 'priority' => $w->priority,
                 'notes' => $w->notes,
-                'variation_id' => $match['variation_id'] ?? null,
-                'product_id' => $match['product_id'] ?? null,
-                'sku' => $match['sku'] ?? null,
-                'stock' => $match['stock'] ?? null,
+                'variation_id' => null,
+                'product_id' => null,
+                'sku' => null,
+                'stock' => null,
                 'suggested_qty' => $w->priority === 'high' ? 2 : 1,
                 'reason' => 'customer request' . ($w->priority === 'high' ? ' (high priority)' : ''),
                 'tags' => ['customer_request', 'priority_' . $w->priority],
