@@ -1335,7 +1335,6 @@
                 if (statusEl) statusEl.textContent = 'Network error — see console';
             });
     }
-    }
 
     function supplierSubmit(mode, btn) {
         const key = btn.dataset.key;
