@@ -2275,13 +2275,11 @@
                 `This title (${$('<div>').text(titleName).html()})`,
                 sh.by_title
             );
-            const rHtml = renderLens('This exact release', sh.by_release);
 
             if (aHtml) lines.push(aHtml);
             if (tHtml) lines.push(tHtml);
-            if (rHtml) lines.push(rHtml);
 
-            if (!aHtml && !tHtml && !rHtml) {
+            if (!aHtml && !tHtml) {
                 lines.push(`<div class="text-muted"><i class="fa fa-history"></i> No prior sales for this artist or title.</div>`);
             } else {
                 lines.unshift(`<div style="margin-bottom:2px;"><i class="fa fa-history"></i> <strong class="text-muted" style="font-size:11px;">SOLD BEFORE</strong></div>`);

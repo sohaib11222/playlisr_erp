@@ -3547,10 +3547,9 @@ class ProductController extends Controller
         }
 
         // Local sales history: have we sold this artist/title before, and where?
-        // Three separate lenses (nested supersets) so the UI can show:
+        // Two separate lenses (nested supersets) so the UI can distinguish:
         //   1. how often this artist sells (broadest)
         //   2. how often this title sells (a subset)
-        //   3. how often this exact release sells (the narrowest)
         // Strip any failures so a slow/broken history lookup never blocks
         // the row creation that this endpoint primarily exists for.
         $salesHistory = null;
@@ -3563,7 +3562,7 @@ class ProductController extends Controller
                 (int) $business_id
             );
             // Detail rows are heavy and not used by the UI badge — drop them.
-            foreach (['by_artist', 'by_title', 'by_release'] as $k) {
+            foreach (['by_artist', 'by_title'] as $k) {
                 if (is_array($salesHistory[$k] ?? null)) {
                     unset($salesHistory[$k]['rows']);
                 }

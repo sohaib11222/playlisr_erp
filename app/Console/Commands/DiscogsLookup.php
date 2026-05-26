@@ -103,9 +103,8 @@ class DiscogsLookup extends Command
 
         $any = false;
         foreach ([
-            'by_artist'  => 'By artist (' . $artist . ')',
-            'by_title'   => 'This title (' . $title . ')',
-            'by_release' => 'This exact release (Discogs id ' . $discogsId . ')',
+            'by_artist' => 'By artist (' . $artist . ')',
+            'by_title'  => 'This title (' . $title . ')',
         ] as $key => $heading) {
             $lens = $split[$key] ?? null;
             if (!$lens || ($lens['total_lines'] ?? 0) === 0) {
@@ -136,9 +135,8 @@ class DiscogsLookup extends Command
                 $lens['last_sold']  ?? '—'
             ));
 
-            // Detail rows for the narrowest non-empty lens (release > title > artist).
-            if ($key === 'by_release' || (!$split['by_release'] && $key === 'by_title')
-                || (!$split['by_release'] && !$split['by_title'] && $key === 'by_artist')) {
+            // Detail rows on the narrower lens when both have hits, else artist.
+            if ($key === 'by_title' || (!$split['by_title'] && $key === 'by_artist')) {
                 $rowsByBucket = [];
                 foreach (($lens['rows'] ?? []) as $r) {
                     $channel = $r->channel ?? 'in_store';
@@ -173,7 +171,7 @@ class DiscogsLookup extends Command
         }
 
         if (!$any) {
-            $this->line('  No matching sales found in any lens (artist, title, or exact release).');
+            $this->line('  No matching sales found for this artist or title.');
         }
 
         return 0;

@@ -188,12 +188,11 @@ class DiscogsSalesLookupService
     }
 
     /**
-     * Run three separate lookups so the caller can show artist-level vs.
-     * title-level vs. exact-release counts as distinct lenses (nested supersets
-     * — "all by artist" ⊇ "this title" ⊇ "this exact release"). Each entry is
-     * null when the corresponding input is empty / missing.
+     * Run two separate lookups so the caller can show artist-level vs.
+     * title-level counts as distinct lenses ("all by artist" ⊇ "this title").
+     * Each entry is null when the corresponding input is empty / missing.
      *
-     * @return array{by_artist: ?array, by_title: ?array, by_release: ?array}
+     * @return array{by_artist: ?array, by_title: ?array}
      */
     public function lookupSplit(
         ?int $releaseId,
@@ -206,14 +205,11 @@ class DiscogsSalesLookupService
         $titleTrim  = trim((string) $title);
 
         return [
-            'by_artist'  => $artistTrim !== ''
+            'by_artist' => $artistTrim !== ''
                 ? $this->lookup(null, $artistTrim, null, $businessId, $allStatus, 'artist')
                 : null,
-            'by_title'   => $titleTrim !== ''
+            'by_title'  => $titleTrim !== ''
                 ? $this->lookup(null, null, $titleTrim, $businessId, $allStatus, 'title')
-                : null,
-            'by_release' => $releaseId
-                ? $this->lookup($releaseId, null, null, $businessId, $allStatus, 'release')
                 : null,
         ];
     }
