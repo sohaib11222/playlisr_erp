@@ -768,10 +768,25 @@ class InventoryCheckController extends Controller
 
     public function listSupplierFeeds(Request $request)
     {
-        $business_id = (int) $request->session()->get('user.business_id');
-        return response()->json([
-            'feeds' => $this->inventoryCheckService->supplierFeedSummary($business_id),
-        ]);
+        try {
+            $business_id = (int) $request->session()->get('user.business_id');
+            $request->session()->save();
+            return response()->json([
+                'feeds' => $this->inventoryCheckService->supplierFeedSummary($business_id),
+            ]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('ICA listSupplierFeeds failed', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile() . ':' . $e->getLine(),
+            ]);
+            // Always return JSON so the JS .then((r) => r.json()) doesn't
+            // throw on an HTML error page — surface the message so the
+            // UI can show it instead of staying on "Loading…" forever.
+            return response()->json([
+                'feeds' => [],
+                'error' => $e->getMessage(),
+            ], 200);
+        }
     }
 
     /**

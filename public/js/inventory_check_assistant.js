@@ -1395,9 +1395,27 @@
             headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
             credentials: 'same-origin',
         })
-            .then((r) => r.json())
-            .then((resp) => renderSupplierGrid((resp && resp.feeds) || {}))
-            .catch((err) => console.error('[ICA] supplier feeds list failed', err));
+            .then((r) => r.text().then((t) => ({ status: r.status, text: t })))
+            .then(({ status, text }) => {
+                const host = document.getElementById('ica_supplier_grid');
+                let resp = null;
+                try { resp = JSON.parse(text); } catch (_) { /* HTML error page */ }
+                if (!resp) {
+                    if (host) host.innerHTML = '<div class="alert alert-danger" style="margin:8px 0;"><strong>Supplier feeds failed to load (HTTP ' + status + ').</strong> Server didn\'t return JSON. Open the browser console (F12) for the raw response.</div>';
+                    console.error('[ICA] supplier feeds non-JSON response', text.substring(0, 500));
+                    return;
+                }
+                if (resp.error) {
+                    if (host) host.innerHTML = '<div class="alert alert-danger" style="margin:8px 0;"><strong>Server error:</strong> ' + escapeHtml(resp.error) + '</div>';
+                    return;
+                }
+                renderSupplierGrid(resp.feeds || {});
+            })
+            .catch((err) => {
+                const host = document.getElementById('ica_supplier_grid');
+                if (host) host.innerHTML = '<div class="alert alert-danger" style="margin:8px 0;"><strong>Supplier feeds: network error.</strong> ' + escapeHtml((err && err.message) || 'fetch failed') + '</div>';
+                console.error('[ICA] supplier feeds list failed', err);
+            });
     }
     loadSupplierFeeds();
 
