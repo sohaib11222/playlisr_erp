@@ -280,7 +280,23 @@ class DiscogsSalesLookupService
             ];
             $total += $qty;
         }
+
+        // Sort: physical stores first (alpha), then online/virtual warehouses
+        // (Discogs Warehouse, eBay Warehouse, …) so the shop-floor counts read
+        // before the marketplace counts.
+        usort($byLocation, function ($a, $b) {
+            $aOnline = $this->isOnlineLocationName($a['location_name']) ? 1 : 0;
+            $bOnline = $this->isOnlineLocationName($b['location_name']) ? 1 : 0;
+            if ($aOnline !== $bOnline) return $aOnline <=> $bOnline;
+            return strcmp($a['location_name'], $b['location_name']);
+        });
+
         return ['total_qty' => $total, 'by_location' => $byLocation];
+    }
+
+    private function isOnlineLocationName(string $name): bool
+    {
+        return (bool) preg_match('/\b(discogs|ebay|whatnot|reverb|shopify|online|warehouse)\b/i', $name);
     }
 
     /**

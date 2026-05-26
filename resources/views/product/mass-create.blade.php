@@ -2337,18 +2337,36 @@
                 + ` <span class="text-muted" style="font-size:11px;">(${summary})</span>`;
         }
 
-        // Render current stock-on-hand by location as warning-coloured chips,
-        // visually distinct from the sold-before info (orange vs green/blue).
+        // A business_location is considered "online" (virtual marketplace
+        // inventory) if its name matches one of these patterns. Matches the
+        // Nivessa convention where Discogs/eBay listings live in dedicated
+        // "<Channel> Warehouse" virtual locations rather than the physical
+        // stores. Online chips render blue (matches the sold-before Discogs
+        // chip), physical chips render orange (warning).
+        function isOnlineLocation(name) {
+            return /\b(discogs|ebay|whatnot|reverb|shopify|online|warehouse)\b/i.test(name || '');
+        }
+        function prettyLocationName(name) {
+            // "Discogs Warehouse" → "Discogs", "eBay Warehouse" → "eBay" — the
+            // "Warehouse" suffix is implementation detail not worth the space.
+            return (name || '').replace(/\s*Warehouse\s*$/i, '').trim() || name;
+        }
+
+        // Render current stock-on-hand by location. Physical stores in orange,
+        // online/virtual locations (Discogs, eBay, …) in blue so it's obvious
+        // which copies are sitting on Discogs vs. on the shop floor.
         function renderStockLens(prefix, stock) {
             if (!stock || !stock.total_qty) {
                 return `<span class="text-muted">${prefix}: <em>none in stock</em></span>`;
             }
-            const chips = (stock.by_location || []).map(loc =>
-                `<span class="label label-warning" `
-                + `style="display:inline-block;margin:1px 3px 1px 0;font-weight:normal;font-size:12px;" `
-                + `title="${esc(loc.location_name)} — ${Number(loc.qty)} units across ${loc.lines} variation${loc.lines === 1 ? '' : 's'}">`
-                + `${esc(loc.location_name)} ×${Number(loc.qty)}</span>`
-            ).join('');
+            const chips = (stock.by_location || []).map(loc => {
+                const online = isOnlineLocation(loc.location_name);
+                const display = prettyLocationName(loc.location_name);
+                return `<span class="label label-${online ? 'info' : 'warning'}" `
+                    + `style="display:inline-block;margin:1px 3px 1px 0;font-weight:normal;font-size:12px;" `
+                    + `title="${esc(loc.location_name)} — ${Number(loc.qty)} units across ${loc.lines} variation${loc.lines === 1 ? '' : 's'}">`
+                    + `${esc(display)} ×${Number(loc.qty)}</span>`;
+            }).join('');
             return `<strong>${prefix}:</strong> ${chips}`
                 + ` <span class="text-muted" style="font-size:11px;">(${Number(stock.total_qty)} total)</span>`;
         }
