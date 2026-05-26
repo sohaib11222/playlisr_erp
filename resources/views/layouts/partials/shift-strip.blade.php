@@ -26,6 +26,12 @@
     .st-bar > .st-fill { height:100%; transition:width .6s ease; background:#534ab7; border-radius:5px; }
     .st-bar > .st-fill.complete { background:#16a34a; }
     .st-tick { position:absolute; top:-2px; bottom:-2px; width:2px; background:rgba(17,24,39,0.35); border-radius:1px; pointer-events:none; z-index:1; }
+    .st-row.paired { margin-top:-2px; padding-left:14px; border-left:2px solid #ede9fe; }
+    .st-row.paired .st-row-label { font-size:12px; font-weight:500; color:#4b5563; }
+    .st-row.paired .st-row-numbers { font-size:13px; }
+    .st-row.paired .st-bar { height:6px; }
+    .st-row.paired .st-fill { background:#7c3aed; }
+    .st-row.paired .st-tick { top:-1px; bottom:-1px; }
     .st-tier-chip { font-weight:600; }
     .st-tier-chip.pending  { color:#6b7280; }
     .st-tier-chip.baseline { color:#1d4ed8; }
@@ -70,6 +76,7 @@
                 $is_money = $task['unit'] === '$';
                 $is_per_day = ($task['scope'] ?? 'shift') === 'day_store';
                 $is_tiered = !empty($task['tier_max']);
+                $is_paired = !empty($task['paired_with']);
                 $bar_width = $task['bar_percent'] ?? $task['percent'];
                 $tier_ticks = $task['tier_ticks'] ?? [];
                 $tier_chip = $task['tier_chip'] ?? null;
@@ -79,6 +86,9 @@
                     return $is_money
                         ? '$' . number_format($v, 0)
                         : number_format($v, $v < 10 ? 1 : 0);
+                };
+                $fmtTierVal = function ($v) use ($is_money) {
+                    return $is_money ? '$' . number_format($v, 0) : number_format($v, 0);
                 };
                 $paceLabel = [
                     'ahead'  => 'Ahead',
@@ -92,31 +102,35 @@
                         . ($tp ? ' · best ' . $fmt($tp) . ($is_per_day ? '/day' : '/hr') : '');
                 }
                 if ($is_tiered && $tier_ticks) {
-                    $tooltipLines[] = 'Tiers: ' . implode(' · ', array_map(function ($t) {
-                        return $t['label'] . ' ' . $t['count'];
+                    $tooltipLines[] = 'Tiers: ' . implode(' · ', array_map(function ($t) use ($fmtTierVal) {
+                        return $t['label'] . ' ' . $fmtTierVal($t['count']);
                     }, $tier_ticks));
                 }
                 if ($pb) {
-                    $tooltipLines[] = 'Your best shift: ' . number_format($pb['count']) . ' ('
+                    $tooltipLines[] = 'Your best shift: ' . $fmtTierVal($pb['count']) . ' ('
                         . ($pb['is_today'] ? 'today' : $pb['date']) . ')';
                 }
                 $tooltip = implode("\n", $tooltipLines);
                 ob_start();
                 ?>
-                <div class="st-row scope-<?= e($task['scope'] ?? 'shift') ?>" data-task-key="<?= e($task['key']) ?>" data-task-complete="<?= $task['complete'] ? '1' : '0' ?>" data-task-scope="<?= e($task['scope'] ?? 'shift') ?>">
+                <div class="st-row scope-<?= e($task['scope'] ?? 'shift') ?><?= $is_paired ? ' paired' : '' ?>" data-task-key="<?= e($task['key']) ?>" data-task-complete="<?= $task['complete'] ? '1' : '0' ?>" data-task-scope="<?= e($task['scope'] ?? 'shift') ?>">
                     <div class="st-row-top">
                         <div class="st-row-label" title="<?= e($task['label']) ?>"><?= e($task['label']) ?></div>
                         <div class="st-row-numbers">
-                            <?php if ($is_money): ?>
+                            <?php if ($is_paired): ?>
+                                $<?= number_format($task['current'], 0) ?>
+                            <?php elseif ($is_money): ?>
                                 $<?= number_format($task['current'], 0) ?><span class="st-target"> / $<?= number_format($task['target'], 0) ?></span>
                             <?php else: ?>
                                 <?= number_format($task['current'], 0) ?><span class="st-target"> / <?= number_format($task['target'], 0) ?> <?= e($task['unit']) ?></span>
                             <?php endif; ?>
                         </div>
                         <div class="st-row-status" title="<?= e($tooltip) ?>">
-                            <span class="st-pct"><?= number_format($task['percent'], 0) ?>%</span>
-                            <?php if ($is_tiered && $tier_chip): ?>
-                                · <span class="st-tier-chip <?= e($tier_chip['status']) ?>"><?= e($tier_chip['label']) ?></span>
+                            <?php if (!$is_paired): ?>
+                                <span class="st-pct"><?= number_format($task['percent'], 0) ?>%</span>
+                            <?php endif; ?>
+                            <?php if ($is_tiered && $tier_chip && !empty($tier_chip['label'])): ?>
+                                <?= $is_paired ? '' : '· ' ?><span class="st-tier-chip <?= e($tier_chip['status']) ?>"><?= e($tier_chip['label']) ?></span>
                             <?php elseif ($task['complete']): ?>
                                 · <span class="st-pace ahead">Goal hit 🎉</span>
                             <?php elseif ($paceLabel): ?>
@@ -127,7 +141,7 @@
                     <div class="st-bar" title="<?= e($tooltip) ?>">
                         <div class="st-fill <?= $task['complete'] ? 'complete' : '' ?>" style="width: <?= $bar_width ?>%;"></div>
                         <?php foreach ($tier_ticks as $tick): ?>
-                            <span class="st-tick" style="left: <?= $tick['position'] ?>%;" title="<?= e($tick['label'] . ' ' . $tick['count']) ?>"></span>
+                            <span class="st-tick" style="left: <?= $tick['position'] ?>%;" title="<?= e($tick['label'] . ' ' . $fmtTierVal($tick['count'])) ?>"></span>
                         <?php endforeach; ?>
                     </div>
                 </div>
@@ -220,9 +234,11 @@
         var paceLabels = { ahead: 'Ahead', on: 'On pace', behind: 'Behind' };
 
         function buildStatusHtml(t) {
-            var html = '<span class="st-pct">' + Math.round(t.percent) + '%</span>';
-            if (t.tier_chip) {
-                return html + ' · <span class="st-tier-chip ' + t.tier_chip.status + '">'
+            var isPaired = !!t.paired_with;
+            var html = isPaired ? '' : '<span class="st-pct">' + Math.round(t.percent) + '%</span>';
+            if (t.tier_chip && t.tier_chip.label) {
+                return html + (isPaired ? '' : ' · ')
+                    + '<span class="st-tier-chip ' + t.tier_chip.status + '">'
                     + t.tier_chip.label + '</span>';
             }
             if (t.complete) {
@@ -234,25 +250,31 @@
             }
             return html;
         }
+        function fmtTierVal(v, isMoney) {
+            return isMoney
+                ? '$' + Math.round(v).toLocaleString()
+                : Math.round(v).toLocaleString();
+        }
         function buildTooltip(t) {
             var lines = [];
             var pp = t.peer_per_hour, tp = t.peer_top_per_hour;
+            var isMoney = t.unit === '$';
             if (pp != null) {
                 var isPerDay = t.scope === 'day_store';
                 var unit = isPerDay ? '/day avg' : '/hr';
                 var leadIn = isPerDay ? 'Typical day at this store: ' : 'Peers at this hour avg ';
                 var bestLabel = isPerDay ? '/day' : '/hr';
-                lines.push(leadIn + fmt(pp, t.unit === '$') + unit
-                    + (tp ? ' · best ' + fmt(tp, t.unit === '$') + bestLabel : ''));
+                lines.push(leadIn + fmt(pp, isMoney) + unit
+                    + (tp ? ' · best ' + fmt(tp, isMoney) + bestLabel : ''));
             }
             if (t.tier_ticks && t.tier_ticks.length) {
                 lines.push('Tiers: ' + t.tier_ticks.map(function (x) {
-                    return x.label + ' ' + x.count;
+                    return x.label + ' ' + fmtTierVal(x.count, isMoney);
                 }).join(' · '));
             }
             if (t.personal_best) {
                 var pb = t.personal_best;
-                lines.push('Your best shift: ' + pb.count.toLocaleString()
+                lines.push('Your best shift: ' + fmtTierVal(pb.count, isMoney)
                     + ' (' + (pb.is_today ? 'today' : pb.date) + ')');
             }
             return lines.join('\n');
@@ -282,7 +304,9 @@
                         .css('width', barWidth + '%')
                         .toggleClass('complete', !!t.complete);
                     var nums;
-                    if (t.unit === '$') {
+                    if (t.paired_with) {
+                        nums = '$' + Math.round(t.current).toLocaleString();
+                    } else if (t.unit === '$') {
                         nums = '$' + Math.round(t.current).toLocaleString() +
                             '<span class="st-target"> / $' + Math.round(t.target).toLocaleString() + '</span>';
                     } else {

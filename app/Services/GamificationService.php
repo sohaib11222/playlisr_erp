@@ -43,6 +43,19 @@ class GamificationService
     ];
 
     /**
+     * Informational tier markers for the retail $ value of items listed
+     * during the shift (sum of variations.sell_price_inc_tax for products
+     * created by the user). NOT a goal — surfaced so employees can see
+     * where their listed-value sits; chip stays empty until a tier is
+     * crossed.
+     */
+    public const VALUE_CREATED_TIERS = [
+        ['count' => 800,  'key' => 'baseline', 'label' => 'Baseline'],
+        ['count' => 1200, 'key' => 'great',    'label' => 'Great'],
+        ['count' => 1800, 'key' => 'elite',    'label' => 'Elite'],
+    ];
+
+    /**
      * Per-store opening hours, keyed by lowercase substring matched against
      * business_locations.name (same style as ImportNivessaCustomerAsks). Each
      * day maps to [open_hour, close_hour) — close is exclusive, so
@@ -167,22 +180,53 @@ class GamificationService
                 $top = end($tiers)['count'];
                 $task['bar_percent'] = round(min(100, ($current / $top) * 100), 1);
                 $task['tier_max'] = $top;
-                $task['tier_ticks'] = array_map(function ($t) use ($top) {
-                    return [
-                        'count'    => $t['count'],
-                        'key'      => $t['key'],
-                        'label'    => $t['label'],
-                        'position' => round(($t['count'] / $top) * 100, 2),
-                    ];
-                }, $tiers);
+                $task['tier_ticks'] = $this->tierTicks($tiers, $top);
                 $task['tier_chip'] = $this->productsTierChip($current);
                 $task['personal_best'] = $this->personalBestProductsShift($user->id, $businessId);
+            }
+
+            if ($def['key'] === 'value_created') {
+                $tiers = self::VALUE_CREATED_TIERS;
+                $top = end($tiers)['count'];
+                $bar = round(min(100, ($current / $top) * 100), 1);
+                $task['bar_percent'] = $bar;
+                // Reuse the percent slot for "% toward elite tier" so the
+                // existing "X%" status text reads as progress toward the
+                // top tier rather than the unused peer-pace target (0%).
+                $task['percent'] = $bar;
+                $task['tier_max'] = $top;
+                $task['tier_ticks'] = $this->tierTicks($tiers, $top);
+                $task['tier_chip'] = $this->valueTierChip($current);
+                $task['personal_best'] = $this->personalBestValueShift($user->id, $businessId);
+                $task['paired_with'] = $def['paired_with'] ?? null;
+                // Informational only — don't trip the "Goal hit" confetti.
+                $task['complete'] = false;
+                $task['pace_status'] = null;
             }
 
             $tasks[] = $task;
         }
 
         return $tasks;
+    }
+
+    /**
+     * Convert a tier list to the {count,key,label,position%} shape the
+     * shift-strip Blade/JS consume to render tick marks.
+     *
+     * @param  array<int, array{count:int,key:string,label:string}>  $tiers
+     * @return array<int, array{count:int,key:string,label:string,position:float}>
+     */
+    protected function tierTicks(array $tiers, int $top): array
+    {
+        return array_map(function ($t) use ($top) {
+            return [
+                'count'    => $t['count'],
+                'key'      => $t['key'],
+                'label'    => $t['label'],
+                'position' => round(($t['count'] / $top) * 100, 2),
+            ];
+        }, $tiers);
     }
 
     /**
@@ -253,6 +297,62 @@ class GamificationService
     }
 
     /**
+     * Informational tier chip for value_created. Stays empty below the
+     * first tier (so it doesn't feel like a goal employees are failing);
+     * shows "Baseline ✓ / Great ✓ / Elite 🏆" once each tier is crossed.
+     *
+     * @return array{label: string, status: string}
+     */
+    protected function valueTierChip(float $current): array
+    {
+        $reached = null;
+        foreach (self::VALUE_CREATED_TIERS as $tier) {
+            if ($current >= $tier['count']) {
+                $reached = $tier;
+            }
+        }
+        if ($reached === null) {
+            return ['label' => '', 'status' => 'pending'];
+        }
+        if ($reached['key'] === 'elite') {
+            return ['label' => 'Elite 🏆', 'status' => 'elite'];
+        }
+        return ['label' => $reached['label'] . ' ✓', 'status' => $reached['key']];
+    }
+
+    /**
+     * User's best single-day total listing value (sum of
+     * variations.sell_price_inc_tax for products they created that day).
+     * Groups by DATE(products.created_at) — same caveat as
+     * personalBestProductsShift.
+     *
+     * @return array{count: int, date: string, is_today: bool}|null
+     */
+    public function personalBestValueShift(int $userId, int $businessId): ?array
+    {
+        $row = DB::table('variations')
+            ->join('products', 'products.id', '=', 'variations.product_id')
+            ->where('products.business_id', $businessId)
+            ->where('products.created_by', $userId)
+            ->whereNull('variations.deleted_at')
+            ->selectRaw('DATE(products.created_at) as d, SUM(variations.sell_price_inc_tax) as total')
+            ->groupBy('d')
+            ->orderByDesc('total')
+            ->limit(1)
+            ->first();
+
+        if (!$row || (float) $row->total <= 0) {
+            return null;
+        }
+        $date = Carbon::parse($row->d);
+        return [
+            'count'    => (int) round((float) $row->total),
+            'date'     => $date->format('M j'),
+            'is_today' => $date->isToday(),
+        ];
+    }
+
+    /**
      * @return array<int, array{key: string, label: string, unit: string, decimals: int}>
      */
     protected function taskDefinitions(string $duty): array
@@ -261,6 +361,7 @@ class GamificationService
             return [
                 ['key' => 'sales_total', 'label' => 'Your shift sales', 'unit' => '$', 'decimals' => 0, 'scope' => 'shift'],
                 ['key' => 'products_added', 'label' => 'Products added & priced', 'unit' => 'items', 'decimals' => 0, 'scope' => 'shift'],
+                ['key' => 'value_created', 'label' => 'Value listed', 'unit' => '$', 'decimals' => 0, 'scope' => 'shift', 'paired_with' => 'products_added'],
                 ['key' => 'store_sales_today', 'label' => 'Store today (all cashiers)', 'unit' => '$', 'decimals' => 0, 'scope' => 'day_store'],
             ];
         }
@@ -273,6 +374,7 @@ class GamificationService
         if ($duty === 'inventory') {
             return [
                 ['key' => 'products_added', 'label' => 'Products added & priced', 'unit' => 'items', 'decimals' => 0, 'scope' => 'shift'],
+                ['key' => 'value_created', 'label' => 'Value listed', 'unit' => '$', 'decimals' => 0, 'scope' => 'shift', 'paired_with' => 'products_added'],
                 ['key' => 'store_sales_today', 'label' => 'Store today (all cashiers)', 'unit' => '$', 'decimals' => 0, 'scope' => 'day_store'],
             ];
         }
@@ -304,6 +406,21 @@ class GamificationService
                 ->where('created_by', $userId)
                 ->whereBetween('created_at', [$start, $now]);
             return (float) $q->count();
+        }
+
+        if ($taskKey === 'value_created') {
+            // Retail value of products this user listed during the shift.
+            // Joins products → variations; sums sell_price_inc_tax (the
+            // sticker price the cashier set when listing). Multi-variation
+            // products are rare for vinyl/CD/DVD inventory, so a flat sum
+            // is the right semantic here.
+            return (float) DB::table('variations')
+                ->join('products', 'products.id', '=', 'variations.product_id')
+                ->where('products.business_id', $businessId)
+                ->where('products.created_by', $userId)
+                ->whereBetween('products.created_at', [$start, $now])
+                ->whereNull('variations.deleted_at')
+                ->sum('variations.sell_price_inc_tax');
         }
 
         if ($taskKey === 'orders_shipped') {
