@@ -5166,14 +5166,15 @@ class SellPosController extends Controller
                 }
             }
         } catch (\Exception $e) {
-            \Log::emergency("File:" . $e->getFile(). "Line:" . $e->getLine(). "Message:" . $e->getMessage());
-
             $output['success'] = false;
-            $output['msg'] = __('lang_v1.item_out_of_stock');
 
-            // If the failure is actually "this variation has 0 stock at
-            // this location", surface enough info for the POS to offer
-            // the quick-receive modal instead of just a toastr error.
+            // Inspect stock before picking a user-facing message. The catch
+            // used to default to "item out of stock" for EVERY exception,
+            // which lied to the cashier when the real cause was a tax /
+            // modifier / pricing crash. Sarah saw "out of stock" toasts on
+            // items that were clearly in the system — that was this branch.
+            $on_hand = null;
+            $variation = null;
             try {
                 $variation = \App\Variation::with('product')->find($variation_id);
                 if ($variation && $variation->product && (int) $variation->product->enable_stock === 1) {
@@ -5182,6 +5183,8 @@ class SellPosController extends Controller
                         ->first();
                     $on_hand = $vld ? (float) $vld->qty_available : 0;
                     if ($on_hand <= 0) {
+                        // Genuinely zero on hand → quick-receive path.
+                        $output['msg'] = __('lang_v1.item_out_of_stock');
                         $output['is_out_of_stock'] = true;
                         $output['variation_id'] = $variation->id;
                         $output['product_name'] = $variation->product->name;
@@ -5193,6 +5196,26 @@ class SellPosController extends Controller
             } catch (\Exception $inner) {
                 // best-effort enrichment; never let it mask the original error
             }
+
+            if (!isset($output['is_out_of_stock'])) {
+                // On-hand is positive (or stock is disabled) — the crash is
+                // something else. Don't mis-label as OOS; tell the cashier
+                // to retry or add manually.
+                $output['msg'] = 'Could not add this item — try again, or add it as a manual line. (Admin: see logs.)';
+            }
+
+            // Always log enough detail to diagnose later. Sarah doesn't SSH,
+            // so the emergency line + on-hand + ids land in the file log she
+            // can pull from /admin if needed.
+            \Log::emergency(sprintf(
+                'POS getProductRow exception: variation_id=%s location_id=%s on_hand=%s file=%s line=%s msg=%s',
+                $variation_id,
+                $location_id,
+                $on_hand === null ? 'unknown' : $on_hand,
+                $e->getFile(),
+                $e->getLine(),
+                $e->getMessage()
+            ));
         }
 
         return $output;
