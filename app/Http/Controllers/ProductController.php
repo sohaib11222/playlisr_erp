@@ -3546,6 +3546,33 @@ class ProductController extends Controller
             ]);
         }
 
+        // Local sales history: have we sold this artist/title before, and where?
+        // Strip any failures so a slow/broken history lookup never blocks
+        // the row creation that this endpoint primarily exists for.
+        $salesHistory = null;
+        try {
+            $lookup = new \App\Services\DiscogsSalesLookupService();
+            $salesHistory = $lookup->lookup(
+                $id,
+                $mapped['artist'] ?? null,
+                $mapped['title']  ?? null,
+                (int) $business_id
+            );
+            // Detail rows are heavy and not used by the UI badge — drop them.
+            unset($salesHistory['rows']);
+        } catch (\Throwable $e) {
+            \Log::warning('mass-create sales-history lookup failed for ' . $id . ': ' . $e->getMessage());
+        }
+
+        // Surface marketplace stats from the Discogs payload so the bulk-add
+        // row can show Have/Want/lowest price alongside the sales history.
+        $stats = [
+            'have'         => $payload->community->have   ?? null,
+            'want'         => $payload->community->want   ?? null,
+            'lowest_price' => $payload->lowest_price      ?? null,
+            'num_for_sale' => $payload->num_for_sale      ?? null,
+        ];
+
         return response()->json([
             'success' => true,
             'data' => [
@@ -3558,6 +3585,8 @@ class ProductController extends Controller
                 'product_description' => $mapped['product_description'] ?? null,
                 'discogs_release_id' => $mapped['discogs_release_id'] ?? $id,
                 'warnings' => $mapped['warnings'] ?? [],
+                'sales_history' => $salesHistory,
+                'marketplace_stats' => $stats,
             ],
         ]);
     }

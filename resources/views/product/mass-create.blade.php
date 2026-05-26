@@ -2235,6 +2235,57 @@
         return max + 1;
     }
 
+    // Build a compact "sold before" badge for a Discogs-fetched row showing
+    // how many times the artist/title has sold at each location (Pico,
+    // Hollywood, …) vs. online (Discogs / Whatnot / eBay). Also surfaces the
+    // current Discogs marketplace stats (Have / Want / lowest listed). Safe
+    // to call with missing data — renders nothing if no history is attached.
+    function renderSalesHistoryBadge($row, discogsData) {
+        const $cell = $row.find('.col-name').first();
+        if (!$cell.length) return;
+        $cell.find('.discogs-sold-before-badge').remove();
+
+        const sh = discogsData && discogsData.sales_history;
+        const ms = discogsData && discogsData.marketplace_stats;
+
+        const lines = [];
+        if (sh && sh.total_lines > 0) {
+            const parts = (sh.by_channel || []).map(b =>
+                `<span class="label label-${b.channel === 'in_store' ? 'success' : 'info'}" `
+                + `style="margin-right:4px;" `
+                + `title="qty ${b.qty}, $${Number(b.revenue).toFixed(2)} — first ${b.first || '—'}, last ${b.last || '—'}">`
+                + `${$('<div>').text(b.label).html()} ×${b.qty}</span>`
+            ).join('');
+            lines.push(
+                `<div><i class="fa fa-history"></i> <strong>Sold before:</strong> ${parts}`
+                + ` <span class="text-muted" style="font-size:11px;">`
+                + `(${sh.total_lines} line${sh.total_lines === 1 ? '' : 's'}, `
+                + `$${Number(sh.total_revenue).toFixed(2)} total, last ${sh.last_sold || '—'})`
+                + `</span></div>`
+            );
+        } else if (sh) {
+            lines.push(`<div class="text-muted"><i class="fa fa-history"></i> No prior sales for this artist/title.</div>`);
+        }
+
+        if (ms) {
+            const bits = [];
+            if (ms.have != null) bits.push(`Have ${ms.have}`);
+            if (ms.want != null) bits.push(`Want ${ms.want}`);
+            if (ms.lowest_price != null) bits.push(`low $${Number(ms.lowest_price).toFixed(2)}`);
+            if (ms.num_for_sale != null) bits.push(`${ms.num_for_sale} for sale`);
+            if (bits.length) {
+                lines.push(`<div class="text-muted" style="font-size:11px;"><i class="fa fa-globe"></i> Discogs: ${bits.join(' · ')}</div>`);
+            }
+        }
+
+        if (!lines.length) return;
+        $cell.append(
+            `<div class="discogs-sold-before-badge" style="margin-top:4px; font-size:12px; line-height:1.4;">`
+            + lines.join('')
+            + `</div>`
+        );
+    }
+
     function addRowFromDiscogsData(discogsData, rowIdx, price) {
         return new Promise(function(resolve) {
             $.ajax({
@@ -2290,6 +2341,14 @@
                             }
                         }
                     }
+
+                    // Sold-before badge: how many times this artist/title has
+                    // sold at Pico vs. Hollywood vs. Discogs vs. Whatnot etc.
+                    // Renders into the product-name cell beneath the name input.
+                    // Guarded so a render failure never breaks the bulk queue.
+                    try { renderSalesHistoryBadge($row, discogsData); }
+                    catch (e) { console.warn('sales-history badge render failed', e); }
+
                     $row.find('.select2').select2();
                     if (typeof window.setupProductNameSelect2 === 'function') {
                         window.setupProductNameSelect2();
