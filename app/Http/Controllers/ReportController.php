@@ -5234,6 +5234,12 @@ class ReportController extends Controller
         // Open to all staff — inventory classification (Sarah 2026-04-28).
         $business_id = $request->session()->get('user.business_id');
 
+        // When an imported ABC file is active, classes come from
+        // /admin/abc-import (sales-based). Otherwise fall back to the live
+        // inventory-value Pareto computation.
+        $imported = (new \App\Services\AbcImportService())->loadGlobalMap();
+        $importedMeta = (new \App\Services\AbcImportService())->load();
+
         if ($request->ajax()) {
             $inventory_rows = DB::table('product_stock_cache as psc')
                 ->where('psc.business_id', $business_id)
@@ -5282,7 +5288,11 @@ class ReportController extends Controller
                 $running += $value;
                 $cumulative_pct = $total_value > 0 ? ($running / $total_value) * 100 : 0;
 
-                if ($cumulative_pct <= 80) {
+                if (!empty($imported)) {
+                    // Imported takes precedence; unmapped products show as
+                    // blank rather than a misleading live class.
+                    $class = $imported[(int) $row->product_id] ?? '';
+                } elseif ($cumulative_pct <= 80) {
                     $class = 'A';
                 } elseif ($cumulative_pct <= 95) {
                     $class = 'B';
@@ -5304,7 +5314,9 @@ class ReportController extends Controller
             return Datatables::of(collect($classified))->make(true);
         }
 
-        return view('report.abc_inventory_classification');
+        return view('report.abc_inventory_classification', [
+            'imported_meta' => $importedMeta,
+        ]);
     }
 
     /**

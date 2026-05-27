@@ -702,6 +702,13 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/admin/nivessa-backend-import/chunk', 'NivessaBackendImportController@chunk');
     Route::post('/admin/nivessa-backend-import/run', 'NivessaBackendImportController@run');
 
+    // ABC import — externally-computed sales-based classification overrides
+    // the live inventory-value ABC used in ICA + ABC report.
+    Route::get('/admin/abc-import', 'AbcImportController@index');
+    Route::post('/admin/abc-import/preview', 'AbcImportController@preview');
+    Route::post('/admin/abc-import/save', 'AbcImportController@save');
+    Route::post('/admin/abc-import/clear', 'AbcImportController@clear');
+
     // Sarah 2026-05-15 — Discogs inventory bulk import. Browser drives the
     // 60-req/min rate limit by serializing one page per AJAX call, snapshots
     // to storage/app/discogs-inventory-snapshots/{id}/listings.ndjson, then

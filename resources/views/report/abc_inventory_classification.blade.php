@@ -7,6 +7,21 @@
 </section>
 
 <section class="content">
+    @if(!empty($imported_meta))
+    <div class="alert alert-info">
+        <strong>ABC source: imported.</strong>
+        {{ $imported_meta['source_file'] ?? '' }}@if(!empty($imported_meta['period_label'])) · {{ $imported_meta['period_label'] }}@endif
+        · uploaded {{ $imported_meta['uploaded_at'] ?? '' }}
+        · {{ number_format($imported_meta['stats']['matched'] ?? 0) }}/{{ number_format($imported_meta['stats']['rows'] ?? 0) }} rows matched.
+        <a href="{{ url('/admin/abc-import') }}">Manage import</a>
+    </div>
+    @else
+    <div class="alert alert-warning">
+        <strong>ABC source: live (inventory value).</strong>
+        No imported file active — classes are computed live from on-hand value.
+        <a href="{{ url('/admin/abc-import') }}">Upload sales-based ABC</a>
+    </div>
+    @endif
     <div class="row">
         <div class="col-md-12">
             @component('components.filters', ['title' => __('report.filters')])

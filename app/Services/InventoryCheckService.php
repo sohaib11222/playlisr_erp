@@ -1776,6 +1776,18 @@ class InventoryCheckService
      */
     protected function computeAbcMap(int $business_id): array
     {
+        // Externally-computed ABC (sales-based, uploaded at /admin/abc-import)
+        // wins when present. Falls back to the live inventory-value computation
+        // if no file is active.
+        try {
+            $imported = (new \App\Services\AbcImportService())->loadGlobalMap();
+            if (!empty($imported)) {
+                return $imported;
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('ICA imported ABC load failed', ['err' => $e->getMessage()]);
+        }
+
         $cacheKey = 'ica_abc_map_' . $business_id;
         try {
             return \Illuminate\Support\Facades\Cache::remember($cacheKey, now()->addMinutes(15), function () use ($business_id) {
