@@ -2329,7 +2329,11 @@
                 + `style="display:inline-block;margin:1px 3px 1px 0;font-weight:normal;font-size:12px;" `
                 + `title="${shortLabel(b)} — qty ${b.qty}, $${Number(b.revenue).toFixed(2)} (first ${b.first || '—'}, last ${b.last || '—'})">`
                 + `${shortLabel(b)} ×${b.qty} `
-                + `<span style="opacity:0.75;">$${Number(b.revenue).toFixed(2)}</span></span>`
+                // Inner dark-translucent pill: keeps the $ amount readable on
+                // top of the green (in-store: Pico/Hollywood) and blue
+                // (Whatnot/Discogs/etc.) chip backgrounds. opacity:0.75 on
+                // plain white text was washing the digits out.
+                + `<span style="background:rgba(0,0,0,0.28);padding:0 5px;margin-left:2px;border-radius:3px;font-weight:600;color:#fff;">$${Number(b.revenue).toFixed(2)}</span></span>`
             ).join('');
             const summary = `${lens.total_lines} line${lens.total_lines === 1 ? '' : 's'} · `
                 + `$${Number(lens.total_revenue).toFixed(2)} total · last ${lens.last_sold || '—'}`;
