@@ -12,25 +12,31 @@ use Illuminate\Support\Facades\DB;
  * sub-category to another. Multiple physical variants of the same album
  * (LP, CD, picture disc, etc.) all get moved together.
  *
- * Sourced from the May 2026 misfiled-genre sheet. The previous pass
- * tried to match by artist only, which over-applied (e.g., Michael
- * Jackson "Blues" had two albums that needed two different targets).
- * Album-level matching resolves those naturally.
+ * Sub-category names in CHANGES come from the source spreadsheet and are
+ * NOT assumed to match the catalog verbatim — they're resolved against
+ * the actual sub-categories in the DB via:
+ *   1. exact normalized match (whitespace/punct stripped, lowercased)
+ *   2. source-name is a substring of a DB sub-category name (sheet is
+ *      shorter — e.g. sheet "Hip-Hop", DB "Hip Hop/Rap")
+ *   3. DB sub-category name is a substring of the source name (sheet is
+ *      longer — e.g. sheet "Electronic/Dance", DB "Electronic")
+ * Ambiguous matches (multiple hits at the same tier) are flagged and
+ * those rows are skipped — never silently picked. Dry-run prints the
+ * full resolution table at the top so the operator can verify before
+ * --commit.
  *
- * Fuzzy matching:
- *  - Artist: normalized exact match (handles diacritics, "The", LAST,FIRST,
- *    punctuation, &). Sade only matches "Sade", not "Sadeen".
- *  - Album: normalized substring match either direction. Parentheticals
- *    are stripped (so "(Picture Disc)", "(Deluxe Edition)", "(X)" don't
- *    matter), and the source's truncated titles like "...FABULOU" still
- *    match the catalog's full "...Fabulous Killjoys".
+ * Use --dump-subcats to just list every product sub-category and exit
+ * (handy for sanity-checking which DB names exist).
  *
- * Dry-run by default. Re-run with --commit to write.
+ * Album matching: parentheticals stripped, "the" dropped, substring
+ * either direction so source truncations like "...FABULOU" still match
+ * the catalog's full "...Fabulous Killjoys".
  */
 class ReassignMisfiledAlbums extends Command
 {
     protected $signature = 'nivessa:reassign-misfiled-albums
                             {--business=1 : business_id to scope to}
+                            {--dump-subcats : List all product sub-categories and exit}
                             {--commit : Actually write (default: dry-run)}';
 
     protected $description = 'Per-album sub-category fixes for the misfiled-genre cleanup pass.';
@@ -83,27 +89,72 @@ class ReassignMisfiledAlbums extends Command
         $businessId = (int) $this->option('business');
         $commit     = (bool) $this->option('commit');
 
+        // Pull ALL product sub-categories once. Used by the resolver below
+        // and by --dump-subcats.
+        $allSubs = Category::where('business_id', $businessId)
+            ->where('category_type', 'product')
+            ->where('parent_id', '!=', 0)
+            ->get(['id', 'name', 'parent_id']);
+
+        if ($this->option('dump-subcats')) {
+            $this->line("All product sub-categories for business {$businessId}:");
+            $parents = Category::where('business_id', $businessId)
+                ->where('category_type', 'product')
+                ->where('parent_id', 0)
+                ->pluck('name', 'id');
+            foreach ($allSubs->sortBy('name') as $s) {
+                $parent = $parents[$s->parent_id] ?? "#{$s->parent_id}";
+                $this->line(sprintf('  id %-5d  %-35s  (parent: %s)', $s->id, $s->name, $parent));
+            }
+            $this->line('Total: ' . $allSubs->count());
+            return 0;
+        }
+
         $this->info($commit
             ? '** COMMIT mode — changes WILL be written **'
             : '** DRY-RUN mode — no changes written. Pass --commit to apply. **');
         $this->newLine();
 
-        // Cache: sub-category name → Category model (or null/AMBIGUOUS).
-        $subCatCache = [];
-        $resolveSub = function (string $name) use (&$subCatCache, $businessId) {
-            $key = $this->normalizeName($name);
-            if (array_key_exists($key, $subCatCache)) return $subCatCache[$key];
-            $matches = Category::where('business_id', $businessId)
-                ->where('category_type', 'product')
-                ->where('parent_id', '!=', 0)
-                ->get(['id', 'name', 'parent_id'])
-                ->filter(fn ($c) => $this->normalizeName($c->name) === $key);
-            if ($matches->isEmpty())  return $subCatCache[$key] = null;
-            if ($matches->count() > 1) return $subCatCache[$key] = 'AMBIGUOUS';
-            return $subCatCache[$key] = $matches->first();
-        };
+        // --- Resolve every unique sub-cat name used in CHANGES against the DB. ---
+        $namesUsed = collect(self::CHANGES)
+            ->flatMap(fn ($r) => [$r[2], $r[3]])
+            ->unique()
+            ->values();
 
-        // Group rows by from-subcategory so we only pull candidates once per group.
+        $resolution = []; // source name => ['category' => Category|null, 'tier' => 1|2|3|null, 'candidates' => [...]]
+        foreach ($namesUsed as $name) {
+            $resolution[$name] = $this->resolveSubCategory($name, $allSubs);
+        }
+
+        // Print resolution table.
+        $this->line('Sub-category resolution (source → DB):');
+        $this->line(str_pad('source', 24) . str_pad('→ DB name', 30) . str_pad('id', 8) . 'how');
+        $this->line(str_repeat('-', 80));
+        $hasUnresolved = false;
+        foreach ($resolution as $src => $res) {
+            if ($res['category'] instanceof Category) {
+                $how = ['exact', 'sheet-in-DB', 'DB-in-sheet'][$res['tier'] - 1] ?? '?';
+                $this->line(
+                    str_pad($this->trunc($src, 22), 24)
+                    . str_pad($this->trunc($res['category']->name, 28), 30)
+                    . str_pad((string) $res['category']->id, 8)
+                    . $how
+                );
+            } else {
+                $hasUnresolved = true;
+                $note = $res['tier'] === 'ambiguous'
+                    ? 'AMBIGUOUS: ' . implode(', ', array_map(fn ($c) => "{$c->name}(#{$c->id})", $res['candidates']))
+                    : 'NOT FOUND';
+                $this->line(str_pad($this->trunc($src, 22), 24) . str_pad('—', 30) . str_pad('—', 8) . $note);
+            }
+        }
+        $this->newLine();
+        if ($hasUnresolved) {
+            $this->warn('Some sub-categories did not resolve. Those rows will be skipped. Run with --dump-subcats to see all DB names, then update CHANGES or rename in the DB.');
+            $this->newLine();
+        }
+
+        // --- Group rows by from-subcategory so we only pull candidates once per group. ---
         $groups = [];
         foreach (self::CHANGES as $row) {
             $groups[$row[2]][] = $row;
@@ -113,7 +164,8 @@ class ReassignMisfiledAlbums extends Command
         $report = [];
 
         foreach ($groups as $fromName => $rows) {
-            $fromCat = $resolveSub($fromName);
+            $fromRes = $resolution[$fromName];
+            $fromCat = $fromRes['category'];
 
             $candidates = null;
             if ($fromCat instanceof Category) {
@@ -128,21 +180,25 @@ class ReassignMisfiledAlbums extends Command
 
             foreach ($rows as [$artistRaw, $albumRaw, $from, $toName]) {
                 $totals['rows']++;
+                $toRes = $resolution[$toName];
+                $toCat = $toRes['category'];
 
-                if ($fromCat === null || $fromCat === 'AMBIGUOUS') {
+                // Use the DB name (not the literal source name) in the report.
+                $fromLabel = $fromCat instanceof Category ? $fromCat->name : $from;
+                $toLabel   = $toCat   instanceof Category ? $toCat->name   : $toName;
+
+                if (!$fromCat instanceof Category) {
                     $totals['no_from']++;
-                    $report[] = ['artist' => $artistRaw, 'album' => $albumRaw, 'from' => $from, 'to' => $toName, 'count' => 0, 'status' => 'SKIP: from sub-cat not found'];
+                    $report[] = ['artist' => $artistRaw, 'album' => $albumRaw, 'from' => $fromLabel, 'to' => $toLabel, 'count' => 0, 'status' => 'SKIP: from sub-cat unresolved'];
                     continue;
                 }
-
-                $toCat = $resolveSub($toName);
-                if ($toCat === null || $toCat === 'AMBIGUOUS') {
+                if (!$toCat instanceof Category) {
                     $totals['no_to']++;
-                    $report[] = ['artist' => $artistRaw, 'album' => $albumRaw, 'from' => $from, 'to' => $toName, 'count' => 0, 'status' => 'SKIP: to sub-cat not found'];
+                    $report[] = ['artist' => $artistRaw, 'album' => $albumRaw, 'from' => $fromLabel, 'to' => $toLabel, 'count' => 0, 'status' => 'SKIP: to sub-cat unresolved'];
                     continue;
                 }
                 if ($fromCat->id === $toCat->id) {
-                    $report[] = ['artist' => $artistRaw, 'album' => $albumRaw, 'from' => $from, 'to' => $toName, 'count' => 0, 'status' => 'SKIP: from == to'];
+                    $report[] = ['artist' => $artistRaw, 'album' => $albumRaw, 'from' => $fromLabel, 'to' => $toLabel, 'count' => 0, 'status' => 'SKIP: from == to'];
                     continue;
                 }
 
@@ -158,14 +214,14 @@ class ReassignMisfiledAlbums extends Command
 
                 if (empty($matches)) {
                     $totals['no_match']++;
-                    $report[] = ['artist' => $artistRaw, 'album' => $albumRaw, 'from' => $from, 'to' => $toName, 'count' => 0, 'status' => 'no products'];
+                    $report[] = ['artist' => $artistRaw, 'album' => $albumRaw, 'from' => $fromLabel, 'to' => $toLabel, 'count' => 0, 'status' => 'no products'];
                     continue;
                 }
 
                 $totals['matched_products'] += count($matches);
                 $samples = array_slice(array_map(fn ($p) => "#{$p->id} {$p->name}", $matches), 0, 3);
                 $report[] = [
-                    'artist'  => $artistRaw, 'album' => $albumRaw, 'from' => $from, 'to' => $toName,
+                    'artist'  => $artistRaw, 'album' => $albumRaw, 'from' => $fromLabel, 'to' => $toLabel,
                     'count'   => count($matches),
                     'status'  => 'match',
                     'samples' => $samples,
@@ -177,8 +233,8 @@ class ReassignMisfiledAlbums extends Command
                         ->whereIn('id', $ids)
                         ->update(['sub_category_id' => $toCat->id, 'updated_at' => now()]);
                     $totals['updated'] += $n;
-                    // Remove updated products from the in-memory candidates list
-                    // so a later row targeting the same from-subcat doesn't re-match.
+                    // Drop updated products from the in-memory list so a later
+                    // row targeting the same from-subcat doesn't re-match them.
                     $movedIds = array_flip($ids);
                     $candidates = array_values(array_filter($candidates, fn ($p) => !isset($movedIds[$p->id])));
                 }
@@ -189,24 +245,24 @@ class ReassignMisfiledAlbums extends Command
         $this->line(
             str_pad('artist', 20)
             . str_pad('album', 38)
-            . str_pad('from', 18)
-            . str_pad('to', 18)
+            . str_pad('from (DB)', 22)
+            . str_pad('to (DB)', 22)
             . str_pad('#', 4)
             . 'status'
         );
-        $this->line(str_repeat('-', 120));
+        $this->line(str_repeat('-', 130));
         foreach ($report as $r) {
             $this->line(
                 str_pad($this->trunc($r['artist'], 18), 20)
                 . str_pad($this->trunc($r['album'], 36), 38)
-                . str_pad($this->trunc($r['from'], 16), 18)
-                . str_pad($this->trunc($r['to'], 16), 18)
+                . str_pad($this->trunc($r['from'], 20), 22)
+                . str_pad($this->trunc($r['to'], 20), 22)
                 . str_pad((string) $r['count'], 4)
                 . $r['status']
             );
             if (!empty($r['samples'])) {
                 foreach ($r['samples'] as $s) {
-                    $this->line('    · ' . $this->trunc($s, 110));
+                    $this->line('    · ' . $this->trunc($s, 120));
                 }
             }
         }
@@ -222,6 +278,34 @@ class ReassignMisfiledAlbums extends Command
             $this->warn('DRY RUN — no rows written. Re-run with --commit to apply.');
         }
         return 0;
+    }
+
+    /**
+     * Resolve a sub-category name against the DB. Tries three tiers in order;
+     * each tier requires exactly one match.
+     *
+     * Returns ['category' => Category|null, 'tier' => 1|2|3|'ambiguous'|null, 'candidates' => Category[]]
+     */
+    private function resolveSubCategory(string $name, $allSubs): array
+    {
+        $key = $this->normalizeName($name);
+
+        $exact = $allSubs->filter(fn ($c) => $this->normalizeName($c->name) === $key)->values();
+        if ($exact->count() === 1) return ['category' => $exact->first(), 'tier' => 1, 'candidates' => $exact->all()];
+        if ($exact->count() > 1)   return ['category' => null,            'tier' => 'ambiguous', 'candidates' => $exact->all()];
+
+        $srcInDb = $allSubs->filter(fn ($c) => $key !== '' && str_contains($this->normalizeName($c->name), $key))->values();
+        if ($srcInDb->count() === 1) return ['category' => $srcInDb->first(), 'tier' => 2, 'candidates' => $srcInDb->all()];
+        if ($srcInDb->count() > 1)   return ['category' => null,              'tier' => 'ambiguous', 'candidates' => $srcInDb->all()];
+
+        $dbInSrc = $allSubs->filter(function ($c) use ($key) {
+            $n = $this->normalizeName($c->name);
+            return $n !== '' && str_contains($key, $n);
+        })->values();
+        if ($dbInSrc->count() === 1) return ['category' => $dbInSrc->first(), 'tier' => 3, 'candidates' => $dbInSrc->all()];
+        if ($dbInSrc->count() > 1)   return ['category' => null,              'tier' => 'ambiguous', 'candidates' => $dbInSrc->all()];
+
+        return ['category' => null, 'tier' => null, 'candidates' => []];
     }
 
     /** lowercase + strip non-alphanumerics — for sub-category name comparison. */
