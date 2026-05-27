@@ -58,59 +58,40 @@
             </span>
         </div>
 
-        {{-- ── Used split (35%) ─────────────────────────────────────── --}}
-        @if($usedBar)
-        <div class="ica-budget-split-row">
-            <div class="ica-budget-split-label">
-                <span class="ica-budget-kind-badge ica-kind-used">Used</span>
-                <span class="ica-budget-split-pct">30–40% cap</span>
+        {{-- ── Used / New split rows ────────────────────────────────── --}}
+        @php
+            $renderSplitRow = function ($label, $caption, $bucket, $barClass, $accentColor, $kindClass) {
+                if (empty($bucket)) return '';
+                $spent = number_format($bucket['spent'], 0);
+                $budget = number_format($bucket['budget'], 0);
+                $pct = $bucket['pct_spent'];
+                $remaining = $bucket['remaining'];
+                $over = $bucket['over_budget'];
+                $remainLine = $over
+                    ? '<span class="ica-bar-remaining-over">over by $' . number_format(abs($remaining), 0) . '</span>'
+                    : '<span class="ica-bar-remaining">$' . number_format($remaining, 0) . ' left</span>';
+                return <<<HTML
+        <div class="ica-bar-row {$kindClass}">
+            <div class="ica-bar-left">
+                <div class="ica-bar-kind">{$label}</div>
+                <div class="ica-bar-caption">{$caption}</div>
             </div>
-            <div class="ica-budget-split-bar-wrap">
-                <div class="progress ica-budget-bar">
-                    <div class="progress-bar {{ $usedBarClass }}" role="progressbar" style="width: {{ $usedBar['pct_spent'] }}%;">
-                        {{ $usedBar['pct_spent'] }}%
-                    </div>
+            <div class="ica-bar-track-wrap">
+                <div class="ica-bar-track">
+                    <div class="ica-bar-fill {$barClass}" style="width: {$pct}%;"></div>
+                    <div class="ica-bar-track-label">\${$spent} <span class="ica-bar-track-of">of</span> \${$budget}</div>
                 </div>
             </div>
-            <div class="ica-budget-split-figures">
-                <span>${{ number_format($usedBar['spent'], 0) }} / ${{ number_format($usedBar['budget'], 0) }}</span>
-                <small style="color: {{ $usedColor }};">
-                    @if($usedBar['over_budget'])
-                        over by ${{ number_format(abs($usedBar['remaining']), 0) }}
-                    @else
-                        ${{ number_format($usedBar['remaining'], 0) }} left
-                    @endif
-                </small>
+            <div class="ica-bar-right">
+                <div class="ica-bar-pct">{$pct}%</div>
+                <div class="ica-bar-remaining-wrap">{$remainLine}</div>
             </div>
         </div>
-        @endif
-
-        {{-- ── New split (65%) ──────────────────────────────────────── --}}
-        @if($newBar)
-        <div class="ica-budget-split-row">
-            <div class="ica-budget-split-label">
-                <span class="ica-budget-kind-badge ica-kind-new">New</span>
-                <span class="ica-budget-split-pct">60–70% majority</span>
-            </div>
-            <div class="ica-budget-split-bar-wrap">
-                <div class="progress ica-budget-bar">
-                    <div class="progress-bar {{ $newBarClass }}" role="progressbar" style="width: {{ $newBar['pct_spent'] }}%;">
-                        {{ $newBar['pct_spent'] }}%
-                    </div>
-                </div>
-            </div>
-            <div class="ica-budget-split-figures">
-                <span>${{ number_format($newBar['spent'], 0) }} / ${{ number_format($newBar['budget'], 0) }}</span>
-                <small style="color: {{ $newColor }};">
-                    @if($newBar['over_budget'])
-                        over by ${{ number_format(abs($newBar['remaining']), 0) }}
-                    @else
-                        ${{ number_format($newBar['remaining'], 0) }} left
-                    @endif
-                </small>
-            </div>
-        </div>
-        @endif
+HTML;
+            };
+        @endphp
+        {!! $renderSplitRow('USED', 'Cap 35% · keep low — slow sell-through', $usedBar, $usedBarClass, $usedColor, 'ica-bar-used') !!}
+        {!! $renderSplitRow('NEW',  'Target 65% · majority of weekly spend', $newBar, $newBarClass, $newColor, 'ica-bar-new') !!}
 
         @if(!empty($pb['manual_entries_this_week']))
         <div class="ica-budget-manual-list">
@@ -651,30 +632,87 @@
 .ica-budget-bar .progress-bar { font-size: 10px; line-height: 14px; font-weight: 600; }
 .ica-budget-warn { color: #a94442; font-weight: 600; margin-top: 6px; font-size: 13px; }
 
-/* Used/New split rows (Sarah 2026-05-27) */
-.ica-budget-split-row {
+/* Used/New split rows v2 (Sarah 2026-05-27 — readability pass) */
+.ica-bar-row {
     display: grid;
-    grid-template-columns: 150px 1fr 180px;
-    gap: 12px;
+    grid-template-columns: 200px 1fr 180px;
+    gap: 18px;
     align-items: center;
-    margin-top: 8px;
+    margin-top: 14px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    background: #fafafa;
+    border: 1px solid #ececec;
 }
-.ica-budget-split-label { display: flex; align-items: center; gap: 8px; }
-.ica-budget-split-pct { font-size: 11px; color: #888; }
-.ica-budget-split-bar-wrap { min-width: 0; }
-.ica-budget-split-figures { font-size: 12px; color: #555; text-align: right; }
-.ica-budget-split-figures small { display: block; font-size: 11px; }
+.ica-bar-used { background: #f5faf6; border-color: #d6ead9; }
+.ica-bar-new  { background: #f4f8fc; border-color: #d4e3f1; }
+
+.ica-bar-left { min-width: 0; }
+.ica-bar-kind {
+    font-size: 18px; font-weight: 800; letter-spacing: 1.2px;
+    color: #333; line-height: 1.1;
+}
+.ica-bar-used .ica-bar-kind { color: #2e7d32; }
+.ica-bar-new  .ica-bar-kind { color: #1565c0; }
+.ica-bar-caption {
+    font-size: 11px; color: #888; margin-top: 2px; line-height: 1.3;
+}
+
+.ica-bar-track-wrap { min-width: 0; }
+.ica-bar-track {
+    position: relative;
+    height: 28px;
+    border-radius: 4px;
+    background: #e8e8e8;
+    overflow: hidden;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.04);
+}
+.ica-bar-fill {
+    position: absolute; top: 0; left: 0; bottom: 0;
+    transition: width 0.3s ease;
+    background-color: #5cb85c;
+}
+.ica-bar-fill.progress-bar-success { background-color: #5cb85c; }
+.ica-bar-fill.progress-bar-warning { background-color: #f0ad4e; }
+.ica-bar-fill.progress-bar-danger  { background-color: #d9534f; }
+.ica-bar-track-label {
+    position: relative; z-index: 2;
+    line-height: 28px; padding: 0 12px;
+    font-size: 14px; font-weight: 600; color: #222;
+    text-shadow: 0 1px 0 rgba(255,255,255,0.6);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ica-bar-track-of { color: #888; font-weight: 400; font-size: 12px; }
+
+.ica-bar-right { text-align: right; }
+.ica-bar-pct {
+    font-size: 22px; font-weight: 800; color: #333; line-height: 1;
+}
+.ica-bar-used .ica-bar-pct { color: #2e7d32; }
+.ica-bar-new  .ica-bar-pct { color: #1565c0; }
+.ica-bar-row .ica-bar-fill.progress-bar-warning ~ * .ica-bar-pct,
+.ica-bar-remaining-wrap { font-size: 12px; color: #666; margin-top: 4px; }
+.ica-bar-remaining { color: #2c699a; font-weight: 600; }
+.ica-bar-remaining-over { color: #a94442; font-weight: 700; }
+
+/* Kind badges (still used on manual entry chips) */
 .ica-budget-kind-badge {
     display: inline-block; font-size: 11px; font-weight: 700;
     padding: 2px 7px; border-radius: 3px; letter-spacing: 0.3px;
+    margin-right: 4px;
 }
 .ica-kind-used { background: #e8f5e9; color: #2e7d32; }
 .ica-kind-new  { background: #e3f2fd; color: #1565c0; }
 .ica-log-kind { display: inline-flex; gap: 10px; align-items: center; padding: 0 4px; }
 .ica-log-kind-opt { font-weight: 400; margin: 0; cursor: pointer; }
-@media (max-width: 720px) {
-    .ica-budget-split-row { grid-template-columns: 1fr; gap: 4px; }
-    .ica-budget-split-figures { text-align: left; }
+
+@media (max-width: 900px) {
+    .ica-bar-row {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+    .ica-bar-right { text-align: left; display: flex; align-items: baseline; gap: 12px; }
+    .ica-bar-remaining-wrap { margin-top: 0; }
 }
 .ica-row-table { margin-bottom: 0; }
 .ica-row-table td { vertical-align: middle !important; }
