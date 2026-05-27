@@ -96,8 +96,7 @@
         fd.append('_token', CSRF);
 
         try {
-            const res = await fetch("{{ url('/admin/abc-import/preview') }}", { method: 'POST', body: fd });
-            const data = await res.json();
+            const data = await postJson("{{ url('/admin/abc-import/preview') }}", fd);
             if (!data.ok) {
                 out.innerHTML = '<div class="alert alert-danger">' + escapeHtml(data.error || 'Preview failed.') + '</div>';
                 return;
@@ -117,8 +116,7 @@
         fd.append('token', pendingToken);
         fd.append('_token', CSRF);
         try {
-            const res = await fetch("{{ url('/admin/abc-import/save') }}", { method: 'POST', body: fd });
-            const data = await res.json();
+            const data = await postJson("{{ url('/admin/abc-import/save') }}", fd);
             if (!data.ok) {
                 alert(data.error || 'Save failed.');
                 saveBtn.disabled = false;
@@ -131,6 +129,24 @@
             saveBtn.disabled = false;
         }
     });
+
+    // Request JSON explicitly so Laravel returns JSON for validation errors.
+    // If the server still returns HTML (auth redirect, 500 page), surface a
+    // useful error instead of a cryptic "Unexpected token '<'".
+    async function postJson(url, fd) {
+        const res = await fetch(url, {
+            method: 'POST',
+            body: fd,
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin',
+        });
+        const text = await res.text();
+        try {
+            return JSON.parse(text);
+        } catch (e) {
+            throw new Error('Server returned non-JSON (HTTP ' + res.status + '). First 200 chars: ' + text.slice(0, 200));
+        }
+    }
 
     function renderPreview(d) {
         const pct = d.stats.rows ? Math.round((d.stats.matched / d.stats.rows) * 100) : 0;

@@ -31,13 +31,23 @@ class AbcImportController extends Controller
         @set_time_limit(0);
         @ini_set('memory_limit', '512M');
 
-        $request->validate([
-            'csv' => 'required|file|mimes:csv,txt|max:20480',
-            'period_label' => 'nullable|string|max:60',
-        ]);
+        // Hand-rolled validation so failures always return JSON. Laravel's
+        // ValidationException returns an HTML redirect when the request
+        // doesn't carry Accept: application/json, which the page parses as
+        // "Unexpected token '<', \"<!DOCTYPE\"...".
+        $file = $request->file('csv');
+        if (!$file || !$file->isValid()) {
+            return response()->json(['ok' => false, 'error' => 'Upload missing or invalid.'], 422);
+        }
+        if ($file->getSize() > 20 * 1024 * 1024) {
+            return response()->json(['ok' => false, 'error' => 'File over 20 MB.'], 422);
+        }
+        $ext = strtolower($file->getClientOriginalExtension());
+        if (!in_array($ext, ['csv', 'txt'], true)) {
+            return response()->json(['ok' => false, 'error' => 'Expected a .csv file (got .' . $ext . ').'], 422);
+        }
 
         $business_id = $request->session()->get('user.business_id');
-        $file = $request->file('csv');
         $tmpPath = $file->getRealPath();
 
         $svc = new AbcImportService();
