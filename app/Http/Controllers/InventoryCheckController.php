@@ -805,17 +805,21 @@ class InventoryCheckController extends Controller
             'date' => 'required|date',
             'note' => 'nullable|string|max:500',
             'source' => 'nullable|string|max:191',
+            'kind' => 'nullable|string|in:used,new',
         ]);
         $business_id = (int) $request->session()->get('user.business_id');
         $entries = $this->inventoryCheckService->loadManualBudgetEntries($business_id);
         $user = auth()->user();
         $userName = trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? '')) ?: ('user#' . ($user->id ?? 0));
+        $kind = strtolower((string) $request->input('kind', 'new'));
+        if (!in_array($kind, ['used', 'new'], true)) $kind = 'new';
         $entry = [
             'id' => bin2hex(random_bytes(8)),
             'amount' => (float) $request->input('amount'),
             'date' => substr((string) $request->input('date'), 0, 10),
             'source' => trim((string) $request->input('source', '')),
             'note' => trim((string) $request->input('note', '')),
+            'kind' => $kind,
             'user_id' => (int) ($user->id ?? 0),
             'user_name' => $userName,
             'when' => Carbon::now()->toIso8601String(),

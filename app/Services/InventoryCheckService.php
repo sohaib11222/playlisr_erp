@@ -141,6 +141,10 @@ class InventoryCheckService
             return null;
         }
 
+        // Total spend from formal purchase transactions (final_total). Kept
+        // as the top-line figure for backwards compat with code that reads
+        // $pb['spent']. The used/new split below uses purchase_lines × the
+        // product's category to bucket the same dollars by Used vs New.
         $q = DB::table('transactions as t')
             ->where('t.business_id', $business_id)
             ->where('t.type', 'purchase')
@@ -150,18 +154,98 @@ class InventoryCheckService
         }
         $spentFromTransactions = (float) $q->sum('t.final_total');
 
+        // ── Used vs New split (Sarah 2026-05-27) ──────────────────────
+        // Sub-budget the weekly cap into 30-40% used / 60-70% new, per
+        // Jon's Q3 cash-flow plan. Locked at 35/65 (mid-range) for now.
+        // Spend is bucketed by category name LIKE '%used%' on the purchase
+        // line's product — same convention the `hot_used_oos` bucket
+        // already relies on (config/inventory_check.php).
+        $usedCatIds = $this->usedCategoryIds($business_id);
+
+        // Per-transaction used-share: sum line totals for the period
+        // grouped by classification, then prorate t.final_total by that
+        // share. This keeps the top-line 'spent' identical to before
+        // (sum of final_total) while still letting us split it.
+        $lineAgg = DB::table('purchase_lines as pl')
+            ->join('transactions as t', 't.id', '=', 'pl.transaction_id')
+            ->leftJoin('products as p', 'p.id', '=', 'pl.product_id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'purchase')
+            ->whereBetween(DB::raw('date(t.transaction_date)'), [$week['start'], $week['end']]);
+        if ($permittedLocations !== 'all') {
+            $lineAgg->whereIn('t.location_id', $permittedLocations);
+        }
+        $lineAgg = $lineAgg
+            ->selectRaw('t.id as txn_id, t.final_total as final_total, p.category_id as category_id, SUM(pl.quantity * pl.purchase_price_inc_tax) as line_total')
+            ->groupBy('t.id', 't.final_total', 'p.category_id')
+            ->get();
+
+        // Group by txn -> total line value + used line value.
+        $perTxn = [];
+        foreach ($lineAgg as $row) {
+            $tid = (int) $row->txn_id;
+            if (!isset($perTxn[$tid])) {
+                $perTxn[$tid] = [
+                    'final_total' => (float) $row->final_total,
+                    'lines_total' => 0.0,
+                    'used_lines' => 0.0,
+                ];
+            }
+            $val = (float) $row->line_total;
+            $perTxn[$tid]['lines_total'] += $val;
+            $isUsed = $row->category_id !== null && in_array((int) $row->category_id, $usedCatIds, true);
+            if ($isUsed) {
+                $perTxn[$tid]['used_lines'] += $val;
+            }
+        }
+        $spentTxnUsed = 0.0;
+        $spentTxnNew = 0.0;
+        foreach ($perTxn as $t) {
+            $ft = $t['final_total'];
+            if ($t['lines_total'] > 0) {
+                $usedShare = $t['used_lines'] / $t['lines_total'];
+            } else {
+                // No lines (rare — empty purchase, returns, etc). Treat
+                // as New so it doesn't vanish from the split.
+                $usedShare = 0.0;
+            }
+            $spentTxnUsed += $ft * $usedShare;
+            $spentTxnNew += $ft * (1 - $usedShare);
+        }
+        // Handle transactions with final_total > 0 but no purchase_lines
+        // (shouldn't normally happen, but guard so totals reconcile).
+        $reconciled = $spentTxnUsed + $spentTxnNew;
+        if (abs($reconciled - $spentFromTransactions) > 0.01) {
+            // Allocate the unreconciled delta to New (conservative — we
+            // can't classify it, so don't credit Used).
+            $spentTxnNew += ($spentFromTransactions - $reconciled);
+        }
+
         // Add manual budget entries logged from the ICA "+ Log a buy"
         // form (e.g. Jon's $2000 collection on Sunday that hasn't been
         // entered through the formal purchase flow yet). Same week window.
+        // 2026-05-27: now also carries a 'kind' field (used|new); default
+        // 'new' for legacy entries saved before the toggle existed.
         $manualEntries = $this->loadManualBudgetEntries($business_id);
         $spentFromManual = 0.0;
+        $spentManualUsed = 0.0;
+        $spentManualNew = 0.0;
         $manualThisWeek = [];
         foreach ($manualEntries as $e) {
             if (!is_array($e) || empty($e['date'])) continue;
             $date = substr((string) $e['date'], 0, 10);
             if ($date < $week['start'] || $date > $week['end']) continue;
             $amt = (float) ($e['amount'] ?? 0);
+            $kind = strtolower((string) ($e['kind'] ?? 'new'));
+            if ($kind !== 'used') $kind = 'new';
+            // Normalise so the chip renders the badge consistently.
+            $e['kind'] = $kind;
             $spentFromManual += $amt;
+            if ($kind === 'used') {
+                $spentManualUsed += $amt;
+            } else {
+                $spentManualNew += $amt;
+            }
             $manualThisWeek[] = $e;
         }
 
@@ -169,6 +253,14 @@ class InventoryCheckService
         $budget = (float) $week['budget'];
         $remaining = $budget - $spent;
         $pct = $budget > 0 ? min(100, ($spent / $budget) * 100) : 0;
+
+        // Used/New sub-budgets (35/65 mid-range of the 30-40 / 60-70 plan).
+        $usedBudget = round($budget * 0.35, 2);
+        $newBudget = round($budget - $usedBudget, 2); // exact complement
+        $usedSpent = $spentTxnUsed + $spentManualUsed;
+        $newSpent = $spentTxnNew + $spentManualNew;
+        $usedPct = $usedBudget > 0 ? min(100, ($usedSpent / $usedBudget) * 100) : 0;
+        $newPct = $newBudget > 0 ? min(100, ($newSpent / $newBudget) * 100) : 0;
 
         return [
             'week_no' => $week['week_no'],
@@ -182,7 +274,44 @@ class InventoryCheckService
             'remaining' => $remaining,
             'pct_spent' => round($pct, 1),
             'over_budget' => $spent > $budget,
+            // Used/New split (Sarah 2026-05-27).
+            'used' => [
+                'budget' => $usedBudget,
+                'spent' => round($usedSpent, 2),
+                'remaining' => round($usedBudget - $usedSpent, 2),
+                'pct_spent' => round($usedPct, 1),
+                'over_budget' => $usedSpent > $usedBudget,
+            ],
+            'new' => [
+                'budget' => $newBudget,
+                'spent' => round($newSpent, 2),
+                'remaining' => round($newBudget - $newSpent, 2),
+                'pct_spent' => round($newPct, 1),
+                'over_budget' => $newSpent > $newBudget,
+            ],
+            'used_category_ids' => $usedCatIds,
         ];
+    }
+
+    /**
+     * Categories considered "Used" for purchasing-budget purposes —
+     * any product category whose name contains "used" (case-insensitive
+     * on MySQL LIKE). Mirrors the convention used by `hot_used_oos` in
+     * config/inventory_check.php so the two stay in sync without an
+     * explicit flag column. Cached per-request.
+     */
+    protected function usedCategoryIds(int $business_id): array
+    {
+        static $cache = [];
+        if (isset($cache[$business_id])) return $cache[$business_id];
+        $ids = Category::where('business_id', $business_id)
+            ->where('category_type', 'product')
+            ->where('name', 'like', '%used%')
+            ->pluck('id')
+            ->map(fn ($v) => (int) $v)
+            ->all();
+        $cache[$business_id] = $ids;
+        return $ids;
     }
 
     /**

@@ -1450,12 +1450,15 @@
             const date = (document.getElementById('ica_log_date').value || '').trim();
             const source = (document.getElementById('ica_log_source').value || '').trim();
             const note = (document.getElementById('ica_log_note').value || '').trim();
+            const kindEl = document.querySelector('input[name="ica_log_kind"]:checked');
+            const kind = kindEl ? (kindEl.value || 'new') : 'new';
             if (!amount || Number(amount) <= 0) { alert('Amount required.'); return; }
             if (!date) { alert('Pick a date.'); return; }
             $logSave.disabled = true;
             const fd = new FormData();
             fd.append('amount', amount);
             fd.append('date', date);
+            fd.append('kind', kind);
             if (source) fd.append('source', source);
             if (note) fd.append('note', note);
             fetch(window.ICA_LOG_BUY_URL, {

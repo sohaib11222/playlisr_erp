@@ -27,7 +27,19 @@
     @if(!empty($purchaseBudget))
     @php
         $pb = $purchaseBudget;
-        $barClass = $pb['over_budget'] ? 'progress-bar-danger' : ($pb['pct_spent'] >= 80 ? 'progress-bar-warning' : 'progress-bar-success');
+        // Per-bucket helpers — one bar each for Used (35%) and New (65%).
+        // 2026-05-27: split was a single bar before; Jon's Q3 cash-flow
+        // plan caps used inventory at 30-40% of weekly spend.
+        $usedBar = $pb['used'] ?? null;
+        $newBar = $pb['new'] ?? null;
+        $bandFor = function ($bucket) {
+            if (empty($bucket)) return ['progress-bar-success', '#2c699a'];
+            if ($bucket['over_budget']) return ['progress-bar-danger', '#a94442'];
+            if ($bucket['pct_spent'] >= 80) return ['progress-bar-warning', '#8a6d3b'];
+            return ['progress-bar-success', '#2c699a'];
+        };
+        [$usedBarClass, $usedColor] = $bandFor($usedBar);
+        [$newBarClass, $newColor] = $bandFor($newBar);
         $remainColor = $pb['over_budget'] ? '#a94442' : ($pb['remaining'] < 1000 ? '#8a6d3b' : '#2c699a');
     @endphp
     <div class="ica-budget-banner" id="ica_budget_banner"
@@ -45,16 +57,68 @@
                 <button type="button" class="btn btn-xs btn-default ica-budget-add-btn" id="ica_log_buy_btn" title="Log a purchase against this week's budget (e.g. Jon's $2k collection on Sunday)">+ Log a buy</button>
             </span>
         </div>
-        <div class="progress ica-budget-bar">
-            <div class="progress-bar {{ $barClass }}" id="ica_budget_bar_fill" role="progressbar" style="width: {{ $pb['pct_spent'] }}%;">
-                {{ $pb['pct_spent'] }}%
+
+        {{-- ── Used split (35%) ─────────────────────────────────────── --}}
+        @if($usedBar)
+        <div class="ica-budget-split-row">
+            <div class="ica-budget-split-label">
+                <span class="ica-budget-kind-badge ica-kind-used">Used</span>
+                <span class="ica-budget-split-pct">30–40% cap</span>
+            </div>
+            <div class="ica-budget-split-bar-wrap">
+                <div class="progress ica-budget-bar">
+                    <div class="progress-bar {{ $usedBarClass }}" role="progressbar" style="width: {{ $usedBar['pct_spent'] }}%;">
+                        {{ $usedBar['pct_spent'] }}%
+                    </div>
+                </div>
+            </div>
+            <div class="ica-budget-split-figures">
+                <span>${{ number_format($usedBar['spent'], 0) }} / ${{ number_format($usedBar['budget'], 0) }}</span>
+                <small style="color: {{ $usedColor }};">
+                    @if($usedBar['over_budget'])
+                        over by ${{ number_format(abs($usedBar['remaining']), 0) }}
+                    @else
+                        ${{ number_format($usedBar['remaining'], 0) }} left
+                    @endif
+                </small>
             </div>
         </div>
+        @endif
+
+        {{-- ── New split (65%) ──────────────────────────────────────── --}}
+        @if($newBar)
+        <div class="ica-budget-split-row">
+            <div class="ica-budget-split-label">
+                <span class="ica-budget-kind-badge ica-kind-new">New</span>
+                <span class="ica-budget-split-pct">60–70% majority</span>
+            </div>
+            <div class="ica-budget-split-bar-wrap">
+                <div class="progress ica-budget-bar">
+                    <div class="progress-bar {{ $newBarClass }}" role="progressbar" style="width: {{ $newBar['pct_spent'] }}%;">
+                        {{ $newBar['pct_spent'] }}%
+                    </div>
+                </div>
+            </div>
+            <div class="ica-budget-split-figures">
+                <span>${{ number_format($newBar['spent'], 0) }} / ${{ number_format($newBar['budget'], 0) }}</span>
+                <small style="color: {{ $newColor }};">
+                    @if($newBar['over_budget'])
+                        over by ${{ number_format(abs($newBar['remaining']), 0) }}
+                    @else
+                        ${{ number_format($newBar['remaining'], 0) }} left
+                    @endif
+                </small>
+            </div>
+        </div>
+        @endif
+
         @if(!empty($pb['manual_entries_this_week']))
         <div class="ica-budget-manual-list">
             <small class="text-muted">Manual entries this week:</small>
             @foreach($pb['manual_entries_this_week'] as $me)
+                @php $meKind = strtolower((string) ($me['kind'] ?? 'new')); @endphp
                 <span class="ica-budget-manual-chip" data-entry-id="{{ $me['id'] ?? '' }}">
+                    <span class="ica-budget-kind-badge ica-kind-{{ $meKind }}">{{ ucfirst($meKind) }}</span>
                     ${{ number_format((float) ($me['amount'] ?? 0), 0) }}
                     @if(!empty($me['source'])) · {{ $me['source'] }} @endif
                     @if(!empty($me['date'])) · {{ \Carbon\Carbon::parse($me['date'])->format('M j') }} @endif
@@ -66,6 +130,8 @@
         @endif
         @if($pb['over_budget'])
         <div class="ica-budget-warn">Over budget this week — confirm with Jon before placing more orders.</div>
+        @elseif(!empty($usedBar) && $usedBar['over_budget'])
+        <div class="ica-budget-warn">Used over its 35% cap — frozen-inventory risk. Slow used buys.</div>
         @endif
     </div>
     {{-- Inline form for + Log a buy (hidden until clicked) --}}
@@ -73,6 +139,15 @@
         <div class="ica-log-row">
             <label>Amount $</label>
             <input type="number" id="ica_log_amount" class="form-control input-sm" step="0.01" min="0" placeholder="2000.00">
+            <label>Kind</label>
+            <span class="ica-log-kind">
+                <label class="ica-log-kind-opt">
+                    <input type="radio" name="ica_log_kind" value="new" checked> New
+                </label>
+                <label class="ica-log-kind-opt">
+                    <input type="radio" name="ica_log_kind" value="used"> Used
+                </label>
+            </span>
             <label>Date</label>
             <input type="date" id="ica_log_date" class="form-control input-sm" value="{{ \Carbon\Carbon::now()->format('Y-m-d') }}">
             <label>Source</label>
@@ -82,7 +157,7 @@
             <button type="button" class="btn btn-primary btn-sm" id="ica_log_save">Save</button>
             <button type="button" class="btn btn-link btn-sm" id="ica_log_cancel">Cancel</button>
         </div>
-        <small class="text-muted">Logs against the weekly budget bar above. Doesn't create a formal purchase transaction — use /buy-from-customer for that. For ad-hoc cash buys / Jon-on-the-floor pickups.</small>
+        <small class="text-muted">Logs against the weekly budget bar above. Doesn't create a formal purchase transaction — use /buy-from-customer for that. For ad-hoc cash buys / Jon-on-the-floor pickups. <strong>Kind</strong> decides whether it counts against the Used or New sub-budget.</small>
     </div>
     @endif
 
@@ -572,9 +647,35 @@
 .ica-budget-figures { font-size: 13px; color: #555; }
 .ica-budget-figures strong { font-size: 15px; color: #333; }
 .ica-budget-sep { color: #bbb; padding: 0 6px; }
-.ica-budget-bar { margin: 8px 0 0 0; height: 14px; }
+.ica-budget-bar { margin: 0; height: 14px; }
 .ica-budget-bar .progress-bar { font-size: 10px; line-height: 14px; font-weight: 600; }
 .ica-budget-warn { color: #a94442; font-weight: 600; margin-top: 6px; font-size: 13px; }
+
+/* Used/New split rows (Sarah 2026-05-27) */
+.ica-budget-split-row {
+    display: grid;
+    grid-template-columns: 150px 1fr 180px;
+    gap: 12px;
+    align-items: center;
+    margin-top: 8px;
+}
+.ica-budget-split-label { display: flex; align-items: center; gap: 8px; }
+.ica-budget-split-pct { font-size: 11px; color: #888; }
+.ica-budget-split-bar-wrap { min-width: 0; }
+.ica-budget-split-figures { font-size: 12px; color: #555; text-align: right; }
+.ica-budget-split-figures small { display: block; font-size: 11px; }
+.ica-budget-kind-badge {
+    display: inline-block; font-size: 11px; font-weight: 700;
+    padding: 2px 7px; border-radius: 3px; letter-spacing: 0.3px;
+}
+.ica-kind-used { background: #e8f5e9; color: #2e7d32; }
+.ica-kind-new  { background: #e3f2fd; color: #1565c0; }
+.ica-log-kind { display: inline-flex; gap: 10px; align-items: center; padding: 0 4px; }
+.ica-log-kind-opt { font-weight: 400; margin: 0; cursor: pointer; }
+@media (max-width: 720px) {
+    .ica-budget-split-row { grid-template-columns: 1fr; gap: 4px; }
+    .ica-budget-split-figures { text-align: left; }
+}
 .ica-row-table { margin-bottom: 0; }
 .ica-row-table td { vertical-align: middle !important; }
 .ica-qty-input { width: 60px; }
