@@ -684,6 +684,11 @@ HTML;
     margin-left: 4px; vertical-align: middle;
     text-transform: uppercase; letter-spacing: 0.3px;
 }
+.ica-event-empty {
+    font-size: 13px; color: #888; font-style: italic;
+    padding: 8px 12px; background: #fafafa;
+    border: 1px dashed #ddd; border-radius: 4px;
+}
 
 /* Lead intro */
 .ica-lead { font-size: 14px; line-height: 1.6; }

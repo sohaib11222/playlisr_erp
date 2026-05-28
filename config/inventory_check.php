@@ -258,7 +258,8 @@ return [
     // hijacks /api/* on the website host). Returns the same shows that
     // back the /events LA tab — what Sarah wants stocked for.
     'events_ticketmaster_url' => env('NIVESSA_TM_FEED_URL', 'https://nivessa.com/ticketmaster-feed'),
-    'events_lookahead_days' => (int) env('NIVESSA_EVENTS_LOOKAHEAD_DAYS', 30),
+    // 2026-05-27 Sarah: bumped 30 → 45. She wants a longer planning window.
+    'events_lookahead_days' => (int) env('NIVESSA_EVENTS_LOOKAHEAD_DAYS', 45),
 
     /*
     |--------------------------------------------------------------------------

@@ -35,6 +35,11 @@ class NivessaEventsFetcher
             // return the same {data:[...]} envelope so we can use the
             // same parser pass for each. Native cURL (Http facade is
             // missing on this older Laravel).
+            // 2026-05-27: tag each row with its source so the bucket can
+            // distinguish nivessa-hosted listening parties from Ticketmaster
+            // LA shows downstream (Sarah's "listening parties = nivessa.com
+            // only; LA shows = TM but trim to big-name venues" cut).
+            $primaryUrl = config('inventory_check.events_api_url');
             $rows = [];
             foreach ($sources as $url) {
                 $payload = $this->fetchJson($url);
@@ -43,8 +48,12 @@ class NivessaEventsFetcher
                 }
                 $items = $payload['data'] ?? $payload['events'] ?? $payload ?? [];
                 if (is_array($items)) {
+                    $source = ($url === $primaryUrl) ? 'nivessa' : 'ticketmaster';
                     foreach ($items as $it) {
-                        $rows[] = $it;
+                        if (is_array($it)) {
+                            $it['__source'] = $source;
+                            $rows[] = $it;
+                        }
                     }
                 }
             }
@@ -57,6 +66,7 @@ class NivessaEventsFetcher
                 if (!is_array($e)) {
                     continue;
                 }
+                $source = $e['__source'] ?? 'nivessa';
                 $date = $e['date'] ?? $e['eventDate'] ?? $e['start_date'] ?? null;
                 if (!$date) {
                     continue;
@@ -114,6 +124,7 @@ class NivessaEventsFetcher
                     'date' => $d->format('Y-m-d'),
                     'location' => $location ? (string) $location : null,
                     'artists' => array_values(array_unique(array_filter($artists))),
+                    'source' => $source,
                     'raw' => $e,
                 ];
             }

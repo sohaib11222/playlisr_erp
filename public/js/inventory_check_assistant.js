@@ -26,7 +26,7 @@
     // losing the surrounding chrome.
     const STEP_CARDS_BY_KEY = {
         fast_oos:        { key: 'fast_oos',        step: 1, title: 'Fast moving — out of stock',  note: 'Prioritize A products (already filtered). <span class="ica-step-dont">Do NOT buy C products.</span>' },
-        events_upcoming: { key: 'events_upcoming', step: 2, title: 'Listening parties + LA events', note: 'Stock up on artists with a listening party or LA show in the next 30 days.' },
+        events_upcoming: { key: 'events_upcoming', step: 2, title: 'Listening parties + big LA shows', note: 'Listening parties = events we host on nivessa.com. LA shows = arena / amphitheater / stadium tier only (Nicki Minaj / Rolling Stones level). Next 45 days.' },
         apple_music_top: { key: 'apple_music_top', step: 3, title: 'Apple Music Top 100',          note: 'Trending Top 100 on Apple Music — make sure we carry the artists fans are streaming.' },
         universal_top:   { key: 'universal_top',   step: 4, title: 'UMe / Universal Top',          note: 'This week\'s UMe Top 200 + new deliveries.' },
         street_pulse:    { key: 'street_pulse',    step: 5, title: 'Street Pulse / Luminate chart', note: 'Luminate top sellers — the industry-wide chart.' },
@@ -543,7 +543,7 @@
         //   below the other secondary so it never crowds the buy flow.
         const stepCards = [
             { key: 'fast_oos',         step: 1, title: 'Fast moving — out of stock',  note: 'Prioritize A products (already filtered). <span class="ica-step-dont">Do NOT buy C products.</span>' },
-            { key: 'events_upcoming',  step: 2, title: 'Listening parties + LA events', note: 'Stock up on artists with a listening party or LA show in the next 30 days.' },
+            { key: 'events_upcoming',  step: 2, title: 'Listening parties + big LA shows', note: 'Listening parties = events we host on nivessa.com. LA shows = arena / amphitheater / stadium tier only (Nicki Minaj / Rolling Stones level). Next 45 days.' },
             { key: 'apple_music_top',  step: 3, title: 'Apple Music Top 100',          note: 'Trending Top 100 on Apple Music — make sure we carry the artists fans are streaming.' },
             { key: 'universal_top',    step: 4, title: 'UMe / Universal Top',          note: 'This week\'s UMe Top 200 + new deliveries.' },
             { key: 'street_pulse',     step: 5, title: 'Street Pulse / Luminate chart', note: 'Luminate top sellers — the industry-wide chart.' },
@@ -772,11 +772,36 @@
             </div>`;
     }
 
+    // 2026-05-27 Sarah: LA shows chips trimmed to "very popular names" only —
+    // arena / amphitheater / stadium / large-theater venues. Anything in
+    // a smaller club is still in the underlying bucket table but isn't
+    // promoted as a featured chip. Substring match, case-insensitive.
+    const POPULAR_LA_VENUES = [
+        'crypto.com arena', 'staples center', 'kia forum', 'the forum', 'inglewood forum',
+        'sofi stadium', 'dodger stadium', 'rose bowl', 'bmo stadium', 'banc of california',
+        'honda center', 'intuit dome', 'hollywood bowl', 'greek theatre',
+        'microsoft theater', 'peacock theater', 'youtube theater',
+        'wiltern', 'walt disney concert hall', 'shrine auditorium',
+        'hollywood palladium', 'orpheum theatre', 'the novo',
+    ];
+    function isPopularLaVenue(location) {
+        if (!location) return false;
+        const lc = String(location).toLowerCase();
+        return POPULAR_LA_VENUES.some((v) => lc.indexOf(v) !== -1);
+    }
+
     /**
      * Group events_upcoming items by event so each event shows its date,
      * location, and how many units were suggested across the event's
      * matching artists. Sarah's "did we order for the listening party?"
      * answer surfaces right above the per-row table.
+     *
+     * Categorization (2026-05-27):
+     *   listening parties = source nivessa (events we host on nivessa.com)
+     *   LA shows          = source ticketmaster AND venue in POPULAR_LA_VENUES
+     *   anniversaries     = source anniversary (UMe biopic/birthday rows)
+     * Small-club TM shows go to the underlying bucket table but aren't
+     * promoted as a featured chip.
      */
     function renderEventOrderSummary(items) {
         if (!items.length) return '';
@@ -784,14 +809,19 @@
         items.forEach((it) => {
             const k = (it.event_name || '') + '|' + (it.event_date || '');
             if (!byEvent[k]) {
+                const src = it.event_source || '';
+                const isListening = src === 'nivessa';
+                const isAnniversary = src === 'anniversary' || (it.tags || []).indexOf('anniversary') !== -1;
+                const isPopularTm = src === 'ticketmaster' && isPopularLaVenue(it.event_location);
                 byEvent[k] = {
                     name: it.event_name || '',
                     date: it.event_date || '',
                     location: it.event_location || '',
-                    is_anniversary: (it.tags || []).indexOf('anniversary') !== -1,
+                    is_anniversary: isAnniversary,
+                    is_listening_party: isListening,
+                    is_popular_tm: isPopularTm,
                     items: 0,
                     qty: 0,
-                    is_listening_party: /listen|party/i.test(it.event_name || ''),
                 };
             }
             byEvent[k].items += 1;
@@ -799,7 +829,7 @@
         });
         const events = Object.values(byEvent).sort((a, b) => a.date.localeCompare(b.date));
         const listening = events.filter((e) => e.is_listening_party);
-        const others = events.filter((e) => !e.is_listening_party);
+        const others = events.filter((e) => e.is_popular_tm || e.is_anniversary);
         const eventChip = (e) => {
             const dateMd = (e.date || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
             const dateDisplay = dateMd ? `${dateMd[2]}/${dateMd[3]}` : (e.date || '');
@@ -818,11 +848,14 @@
         };
         let html = '<div class="ica-event-summary">';
         if (listening.length) {
-            html += '<div class="ica-event-summary-head">🎧 Listening parties (' + listening.length + ')</div>';
+            html += '<div class="ica-event-summary-head">🎧 Listening parties at Nivessa (' + listening.length + ')</div>';
             html += '<div class="ica-event-chips">' + listening.map(eventChip).join('') + '</div>';
+        } else {
+            html += '<div class="ica-event-summary-head">🎧 Listening parties at Nivessa</div>';
+            html += '<div class="ica-event-empty">No listening parties posted to nivessa.com/events in the next 45 days.</div>';
         }
         if (others.length) {
-            html += '<div class="ica-event-summary-head">🎤 LA shows + artist moments (' + others.length + ')</div>';
+            html += '<div class="ica-event-summary-head">🎤 Big LA shows + artist moments (' + others.length + ')</div>';
             html += '<div class="ica-event-chips">' + others.map(eventChip).join('') + '</div>';
         }
         html += '</div>';

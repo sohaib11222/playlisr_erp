@@ -1623,11 +1623,16 @@ class InventoryCheckService
                         ? ($event['name'] . ' — ' . $event['date'])
                         : ('event ' . $event['name'] . ' on ' . $event['date']);
                     $tags = $isAnniversary ? ['anniversary'] : ['event'];
+                    // 2026-05-27: tag source so the JS can split listening
+                    // parties (nivessa-hosted) from LA shows (Ticketmaster)
+                    // from UMe artist moments (anniversaries).
+                    $eventSource = $isAnniversary ? 'anniversary' : ($event['source'] ?? 'nivessa');
                     $items[] = [
                         'bucket' => 'events_upcoming',
                         'event_name' => $event['name'],
                         'event_date' => $event['date'],
                         'event_location' => $event['location'],
+                        'event_source' => $eventSource,
                         'artist' => $artistName,
                         'product' => $match->product,
                         'sku' => $match->sku,
