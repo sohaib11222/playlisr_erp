@@ -724,6 +724,17 @@ HTML;
 .ica-fetch-supplier-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 .ica-fetch-supplier-hint { margin-top: 6px; color: #888; }
 .ica-fetch-supplier-hint a { color: #2c699a; }
+/* Inline portal-creds form that pops out next to a Fetch button when
+   the artisan call reports missing credentials (2026-05-28). */
+.ica-inline-creds {
+    margin: 8px 0 12px; padding: 10px 12px;
+    background: #fff; border: 1px solid #d6e0ea; border-radius: 4px;
+    width: 100%; flex-basis: 100%;
+}
+.ica-inline-creds-head { font-size: 13px; font-weight: 600; color: #2c699a; margin-bottom: 6px; }
+.ica-inline-creds-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ica-inline-creds-row input { width: auto; min-width: 140px; flex: 1 1 180px; max-width: 240px; }
+.ica-inline-creds-msg { margin-top: 6px; font-size: 12px; color: #155724; }
 /* UMe weekly spotlights — inline chip block inside STEP 4 (2026-05-27) */
 .ica-spot-block { margin: 12px 0 10px; }
 .ica-spot-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }

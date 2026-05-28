@@ -782,6 +782,110 @@
      * Wrap a bucket section inside a STEP card (2026-05-27). Used for the
      * top-of-page workflow: STEP 1 fast-OOS, STEP 2 events, STEP 3-5 charts.
      */
+    /**
+     * 2026-05-28 Sarah: one-click "Fetch <Supplier> now" flow. Triggers
+     * the artisan auto-fetch endpoint. On failure due to missing portal
+     * creds, expands an inline username/password form right under the
+     * button — Sarah types once + saves + auto-retries the fetch without
+     * leaving STEP 1.
+     */
+    function runOneClickFetch(btn) {
+        const key = btn.dataset.supplier;
+        const origLabel = btn.dataset.origLabel || btn.textContent;
+        btn.dataset.origLabel = origLabel;
+        btn.disabled = true; btn.textContent = 'Fetching… 20-60s';
+        // Wipe any prior inline cred form so retries are clean.
+        const existingForm = btn.parentElement.querySelector('.ica-inline-creds[data-supplier="' + key + '"]');
+        if (existingForm) existingForm.remove();
+        const fd = new FormData();
+        fd.append('supplier_key', key);
+        fetch(window.ICA_SUPPLIER_AUTOFETCH_URL, {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': window.ICA_CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin',
+            body: fd,
+        })
+            .then((r) => r.json())
+            .then((resp) => {
+                const out = (resp && resp.output) || '';
+                if (resp && resp.success) {
+                    btn.textContent = '✓ Pulled — rebuilding…';
+                    const activeBtn = document.querySelector('.ica-store-btn.is-active');
+                    if (activeBtn) activeBtn.click();
+                    return;
+                }
+                btn.disabled = false;
+                btn.textContent = origLabel;
+                const needsCreds = /credential|env|portal/i.test(out);
+                if (needsCreds) {
+                    showInlineCredsForm(btn, key);
+                } else {
+                    alert('Fetch failed:\n\n' + (out || 'unknown error'));
+                }
+            })
+            .catch((err) => {
+                btn.disabled = false; btn.textContent = origLabel;
+                alert('Fetch failed — ' + (err && err.message ? err.message : 'see console'));
+            });
+    }
+
+    function showInlineCredsForm(btn, key) {
+        const label = (window.ICA_KNOWN_SUPPLIERS || []).find((s) => s.key === key);
+        const supLabel = label ? label.label : key.toUpperCase();
+        const form = document.createElement('div');
+        form.className = 'ica-inline-creds';
+        form.setAttribute('data-supplier', key);
+        form.innerHTML = `
+            <div class="ica-inline-creds-head">🔐 ${escapeHtml(supLabel)} portal login (saved encrypted, never shown back)</div>
+            <div class="ica-inline-creds-row">
+                <input type="text" class="form-control input-sm ica-inline-user" placeholder="Portal username" autocomplete="off">
+                <input type="password" class="form-control input-sm ica-inline-pass" placeholder="Portal password" autocomplete="new-password">
+                <input type="text" class="form-control input-sm ica-inline-url" placeholder="Portal URL (optional)" autocomplete="off">
+                <button type="button" class="btn btn-success btn-sm ica-inline-save">Save + fetch</button>
+                <button type="button" class="btn btn-link btn-sm ica-inline-cancel">Cancel</button>
+            </div>
+            <div class="ica-inline-creds-msg"></div>`;
+        btn.parentElement.insertBefore(form, btn.nextSibling);
+        form.querySelector('.ica-inline-cancel').addEventListener('click', () => form.remove());
+        form.querySelector('.ica-inline-save').addEventListener('click', function () {
+            const user = form.querySelector('.ica-inline-user').value.trim();
+            const pass = form.querySelector('.ica-inline-pass').value;
+            const url = form.querySelector('.ica-inline-url').value.trim();
+            if (!user || !pass) {
+                form.querySelector('.ica-inline-creds-msg').textContent = 'Username + password required.';
+                return;
+            }
+            const saveBtn = form.querySelector('.ica-inline-save');
+            saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
+            const fd = new FormData();
+            fd.append('supplier_key', key);
+            fd.append('portal_user', user);
+            fd.append('portal_pass', pass);
+            if (url) fd.append('portal_url', url);
+            fetch(window.ICA_SUPPLIER_CREDS_URL, {
+                method: 'POST',
+                headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': window.ICA_CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+                credentials: 'same-origin',
+                body: fd,
+            })
+                .then((r) => r.json())
+                .then((resp) => {
+                    if (!resp || !resp.success) {
+                        form.querySelector('.ica-inline-creds-msg').textContent = (resp && resp.message) || 'Save failed.';
+                        saveBtn.disabled = false; saveBtn.textContent = 'Save + fetch';
+                        return;
+                    }
+                    form.querySelector('.ica-inline-creds-msg').textContent = '✓ Saved. Fetching prices now…';
+                    runOneClickFetch(btn);
+                    setTimeout(() => form.remove(), 800);
+                })
+                .catch(() => {
+                    form.querySelector('.ica-inline-creds-msg').textContent = 'Save failed — see console.';
+                    saveBtn.disabled = false; saveBtn.textContent = 'Save + fetch';
+                });
+        });
+    }
+
     function renderStepCard(card, bucket) {
         const inner = renderBucketSection(card.key, bucket);
         let extras = '';
@@ -1424,40 +1528,7 @@
         // for that supplier. If credentials aren't saved, the response
         // surfaces it so Sarah knows to save them once.
         $root.querySelectorAll('.ica-fetch-supplier-now').forEach((btn) => {
-            btn.addEventListener('click', function () {
-                const key = btn.dataset.supplier;
-                const origLabel = btn.textContent;
-                btn.disabled = true; btn.textContent = 'Fetching… 20-60s';
-                const fd = new FormData();
-                fd.append('supplier_key', key);
-                fetch(window.ICA_SUPPLIER_AUTOFETCH_URL, {
-                    method: 'POST',
-                    headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': window.ICA_CSRF, 'X-Requested-With': 'XMLHttpRequest' },
-                    credentials: 'same-origin',
-                    body: fd,
-                })
-                    .then((r) => r.json())
-                    .then((resp) => {
-                        const out = (resp && resp.output) || '';
-                        if (resp && resp.success) {
-                            btn.textContent = '✓ Pulled — rebuilding…';
-                            const activeBtn = document.querySelector('.ica-store-btn.is-active');
-                            if (activeBtn) activeBtn.click();
-                        } else {
-                            btn.disabled = false;
-                            btn.textContent = origLabel;
-                            const needsCreds = /credential|env|portal/i.test(out);
-                            const msg = needsCreds
-                                ? 'Portal login not saved yet. Click "Or open supplier feeds widget ↓" below to save the ' + key.toUpperCase() + ' portal user / password / URL, then try again.'
-                                : 'Fetch failed:\n\n' + (out || 'unknown error');
-                            alert(msg);
-                        }
-                    })
-                    .catch((err) => {
-                        btn.disabled = false; btn.textContent = origLabel;
-                        alert('Fetch failed — ' + (err && err.message ? err.message : 'see console'));
-                    });
-            });
+            btn.addEventListener('click', function () { runOneClickFetch(btn); });
         });
 
         // Apple Music empty-state CTA → trigger the manual pull
