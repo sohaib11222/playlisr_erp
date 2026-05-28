@@ -1620,40 +1620,53 @@
         // (Apple Music CTA is also handled by the delegated listener below.)
     }
 
-    // 2026-05-28 Sarah: delegated click handler so empty-banner buttons
-    // ("Fetch <Supplier> now", "Open supplier feeds", "Run Apple Music
-    // pull now") always work — even if attachBucketHandlers wasn't re-
-    // run after a partial render. Bound once at module init on $root.
-    if ($root) {
-        $root.addEventListener('click', function (e) {
-            const fetchBtn = e.target.closest && e.target.closest('.ica-fetch-supplier-now');
-            if (fetchBtn) { e.preventDefault(); runOneClickFetch(fetchBtn); return; }
-            const jumpBtn = e.target.closest && e.target.closest('.ica-jump-supplier-feeds');
-            if (jumpBtn) {
-                e.preventDefault();
-                const more = document.querySelector('details.ica-more-options');
-                if (more) more.open = true;
-                const grid = document.getElementById('ica_supplier_grid');
-                if (grid) grid.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                return;
-            }
-            const appleBtn = e.target.closest && e.target.closest('.ica-empty-run-apple');
-            if (appleBtn) {
-                e.preventDefault();
-                appleBtn.disabled = true; appleBtn.textContent = 'Running… 30-60s';
-                fetch(window.ICA_RUN_APPLE_URL, {
-                    method: 'POST',
-                    headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': window.ICA_CSRF, 'X-Requested-With': 'XMLHttpRequest' },
-                    credentials: 'same-origin',
-                })
-                    .then((r) => r.json())
-                    .then(() => {
-                        appleBtn.textContent = 'Pull done — reloading chart…';
-                        lazyLoadSecondaryBuckets();
+    // 2026-05-28 Sarah: delegated click handler — bound on `document`
+    // (always available, never null) inside try/catch so any subsequent
+    // module init error can't prevent it from working. Also logs to the
+    // console on every match so dead clicks would be diagnosable.
+    try {
+        document.addEventListener('click', function (e) {
+            try {
+                if (!e.target || !e.target.closest) return;
+                const fetchBtn = e.target.closest('.ica-fetch-supplier-now');
+                if (fetchBtn) {
+                    console.log('[ICA] delegated catch — fetch click on', fetchBtn.dataset.supplier);
+                    e.preventDefault();
+                    runOneClickFetch(fetchBtn);
+                    return;
+                }
+                const jumpBtn = e.target.closest('.ica-jump-supplier-feeds');
+                if (jumpBtn) {
+                    e.preventDefault();
+                    const more = document.querySelector('details.ica-more-options');
+                    if (more) more.open = true;
+                    const grid = document.getElementById('ica_supplier_grid');
+                    if (grid) grid.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    return;
+                }
+                const appleBtn = e.target.closest('.ica-empty-run-apple');
+                if (appleBtn) {
+                    e.preventDefault();
+                    appleBtn.disabled = true; appleBtn.textContent = 'Running… 30-60s';
+                    fetch(window.ICA_RUN_APPLE_URL, {
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': window.ICA_CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+                        credentials: 'same-origin',
                     })
-                    .catch(() => { appleBtn.disabled = false; appleBtn.textContent = 'Retry Apple Music pull'; });
+                        .then((r) => r.json())
+                        .then(() => {
+                            appleBtn.textContent = 'Pull done — reloading chart…';
+                            lazyLoadSecondaryBuckets();
+                        })
+                        .catch(() => { appleBtn.disabled = false; appleBtn.textContent = 'Retry Apple Music pull'; });
+                }
+            } catch (innerErr) {
+                console.error('[ICA] delegated click handler threw', innerErr);
             }
         });
+        console.log('[ICA] delegated click listener bound on document');
+    } catch (outerErr) {
+        console.error('[ICA] failed to bind delegated click listener', outerErr);
     }
 
     // ── Chart freshness ──────────────────────────────────────────────
