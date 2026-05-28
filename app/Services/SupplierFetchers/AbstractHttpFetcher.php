@@ -128,12 +128,14 @@ abstract class AbstractHttpFetcher implements SupplierFetcherContract
             CURLOPT_COOKIEJAR => $this->cookieJar,
             CURLOPT_COOKIEFILE => $this->cookieJar,
         ];
-        // 2026-05-28 Sarah: AMS login was returning HTTP 411 (Length
-        // Required). Cause — when CURLOPT_CUSTOMREQUEST is used for POST,
-        // libcurl doesn't auto-add Content-Length. Switch to the
-        // dedicated CURLOPT_POST flag for POST so curl computes the
-        // length itself and IIS / .NET accepts the request.
-        if (strtoupper($method) === 'POST') {
+        // 2026-05-28 Sarah: AMS login flipped from HTTP 411 (Length
+        // Required) → HTTP 400 (Bad Request) because we set
+        // Content-Length manually AND curl auto-set it via CURLOPT_POST,
+        // so .NET saw duplicate headers and rejected. Now: use
+        // CURLOPT_POST for POSTs (curl handles Content-Length on its own,
+        // no manual stamp), CURLOPT_CUSTOMREQUEST for other verbs.
+        $isPost = strtoupper($method) === 'POST';
+        if ($isPost) {
             $base[CURLOPT_POST] = true;
         } else {
             $base[CURLOPT_CUSTOMREQUEST] = $method;
@@ -142,13 +144,6 @@ abstract class AbstractHttpFetcher implements SupplierFetcherContract
         $headers = !empty($opts['headers']) ? $opts['headers'] : [];
         if (!empty($opts['body'])) {
             curl_setopt($ch, CURLOPT_POSTFIELDS, $opts['body']);
-            // Belt-and-suspenders: stamp Content-Length explicitly so
-            // .NET portals never see a missing header.
-            $hasLen = false;
-            foreach ($headers as $h) { if (stripos($h, 'content-length:') === 0) { $hasLen = true; break; } }
-            if (!$hasLen) {
-                $headers[] = 'Content-Length: ' . strlen((string) $opts['body']);
-            }
         }
         if (!empty($headers)) {
             curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
