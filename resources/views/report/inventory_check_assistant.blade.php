@@ -593,6 +593,22 @@ HTML;
 .ica-frozen-controls .ica-filter-label { font-size: 12px; color: #555; margin: 0; }
 .ica-frozen-controls .ica-frozen-days-select { width: auto; display: inline-block; }
 .ica-frozen-controls .ica-frozen-days-custom { width: 80px; display: inline-block; }
+/* Per-bucket Category / Genre filter strip 2026-05-27 — every bucket
+   gets its own scoped filters so each STEP card / section can be
+   narrowed without changing the page-level filters above. */
+.ica-bucket-controls {
+    display: inline-flex; align-items: center; gap: 6px;
+    margin-top: 6px; flex-wrap: wrap;
+}
+.ica-bucket-controls .ica-filter-label {
+    font-size: 11px; color: #666; margin: 0;
+    text-transform: uppercase; letter-spacing: 0.3px; font-weight: 600;
+}
+.ica-bucket-controls .ica-bucket-cat-filter,
+.ica-bucket-controls .ica-bucket-gen-filter {
+    width: auto; min-width: 120px; max-width: 180px;
+    display: inline-block;
+}
 
 /* ABC A-restock bucket — emphasize as priority */
 .ica-bucket[data-bucket="abc_a_restock"] .ica-bucket-header { border-left-color: #2c699a; background: #f0f6fc; }
