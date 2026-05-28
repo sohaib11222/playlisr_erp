@@ -2358,18 +2358,18 @@
             return (name || '').replace(/\s*Warehouse\s*$/i, '').trim() || name;
         }
 
-        // Render current stock-on-hand by location. Physical stores in orange,
-        // online/virtual locations (Discogs, eBay, …) in blue so it's obvious
-        // which copies are sitting on Discogs vs. on the shop floor.
+        // Render current stock-on-hand by location, matching the bold-black
+        // neutral-pill chip style used by the sold-before chips above so the
+        // two sections read consistently.
         function renderStockLens(prefix, stock) {
             if (!stock || !stock.total_qty) {
-                return `<span class="text-muted">${prefix}: <em>none in stock</em></span>`;
+                return `<strong>${prefix}:</strong> <span class="text-muted"><em>none in stock</em></span>`;
             }
             const chips = (stock.by_location || []).map(loc => {
-                const online = isOnlineLocation(loc.location_name);
                 const display = prettyLocationName(loc.location_name);
-                return `<span class="label label-${online ? 'info' : 'warning'}" `
-                    + `style="display:inline-block;margin:1px 3px 1px 0;font-weight:normal;font-size:12px;" `
+                return `<span style="display:inline-block;margin:1px 3px 1px 0;padding:1px 7px;`
+                    + `background:#f3f4f6;border:1px solid #d1d5db;border-radius:4px;`
+                    + `color:#000;font-weight:700;font-size:12px;" `
                     + `title="${esc(loc.location_name)} — ${Number(loc.qty)} units across ${loc.lines} variation${loc.lines === 1 ? '' : 's'}">`
                     + `${esc(display)} ×${Number(loc.qty)}</span>`;
             }).join('');
@@ -2392,7 +2392,11 @@
             sections.push(`<div style="margin-bottom:3px;">${renderLens('Title ('  + titleName  + ')', sh.by_title )}</div>`);
         }
 
-        if (so && ((so.by_artist && so.by_artist.total_qty) || (so.by_title && so.by_title.total_qty))) {
+        // Always render the stock section when the backend returned a stock
+        // payload (even when total_qty is 0) so the cashier gets a definitive
+        // "none in stock" answer — silently hiding it made never-sold,
+        // never-stocked items look like the lookup was broken.
+        if (so) {
             sections.push(
                 `<div style="margin-top:6px;margin-bottom:3px;">`
                 + `<span class="text-muted" style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-right:6px;">`
