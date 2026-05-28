@@ -789,6 +789,17 @@
                 extras += renderUmeSpotlightChips(spot);
             }
         }
+        // 2026-05-27 Sarah: when fast_oos comes back with no supplier
+        // feeds loaded, surface an obvious "Upload distributor prices"
+        // CTA right inside STEP 1 so she doesn't have to dig through
+        // "More options" to figure out why the AMS column is empty.
+        if (card.key === 'fast_oos' && bucket && Array.isArray(bucket.supplier_feeds_loaded) && bucket.supplier_feeds_loaded.length === 0) {
+            extras += `
+                <div class="ica-empty-cta ica-empty-cta-prices">
+                    <p><strong>The distributor price columns are empty because no supplier feeds are uploaded yet.</strong> Pick a supplier below and upload its weekly xlsx (or paste rows) and prices will populate on the next build.</p>
+                    <button type="button" class="btn btn-primary btn-sm ica-jump-supplier-feeds">Open supplier feeds ↓</button>
+                </div>`;
+        }
         // Apple Music Top 100 empty-state CTA — 2026-05-27 Sarah saw a
         // "No items in this bucket" with no path forward; surface the
         // Run-Apple-Music-pull action right here so she knows what to do.
@@ -1373,6 +1384,18 @@
                         const tr = btn.closest('tr');
                         if (tr) tr.remove();
                     });
+            });
+        });
+
+        // 2026-05-27 Sarah: "Open supplier feeds" CTA — expand the More
+        // options details + scroll to the supplier-feeds widget so she
+        // doesn't have to hunt for it.
+        $root.querySelectorAll('.ica-jump-supplier-feeds').forEach((btn) => {
+            btn.addEventListener('click', function () {
+                const more = document.querySelector('details.ica-more-options');
+                if (more) more.open = true;
+                const grid = document.getElementById('ica_supplier_grid');
+                if (grid) grid.scrollIntoView({ behavior: 'smooth', block: 'start' });
             });
         });
 
