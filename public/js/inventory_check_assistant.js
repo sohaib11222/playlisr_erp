@@ -794,9 +794,10 @@
         const origLabel = btn.dataset.origLabel || btn.textContent;
         btn.dataset.origLabel = origLabel;
         btn.disabled = true; btn.textContent = 'Fetching… 20-60s';
-        // Wipe any prior inline cred form so retries are clean.
-        const existingForm = btn.parentElement.querySelector('.ica-inline-creds[data-supplier="' + key + '"]');
-        if (existingForm) existingForm.remove();
+        // Wipe ANY prior inline cred form for this supplier anywhere on
+        // the page (broader than btn.parentElement — fixes the 5x-stacked
+        // form bug Sarah hit when clicking the AMS button repeatedly).
+        document.querySelectorAll('.ica-inline-creds[data-supplier="' + key + '"]').forEach((el) => el.remove());
         const fd = new FormData();
         fd.append('supplier_key', key);
         fetch(window.ICA_SUPPLIER_AUTOFETCH_URL, {
@@ -830,6 +831,9 @@
     }
 
     function showInlineCredsForm(btn, key) {
+        // Defensive: nuke any leftover form for this supplier first so the
+        // banner can never stack multiple AMS / Secretly / etc. forms.
+        document.querySelectorAll('.ica-inline-creds[data-supplier="' + key + '"]').forEach((el) => el.remove());
         const label = (window.ICA_KNOWN_SUPPLIERS || []).find((s) => s.key === key);
         const supLabel = label ? label.label : key.toUpperCase();
         const form = document.createElement('div');
