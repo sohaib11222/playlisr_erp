@@ -59,6 +59,18 @@ class InventoryCheckController extends Controller
         $copyFormat = config('inventory_check.copy_line_format');
         $amsColumns = config('inventory_check.ams_export_columns', []);
 
+        // 2026-05-27 Sarah: surface the known supplier list to JS so the
+        // fast-OOS table can render a dedicated price column per distributor
+        // (AMS, Secretly, Beggars, Redeye, VP, plus any future ones added
+        // to config/inventory_check.php).
+        $knownSuppliers = [];
+        foreach ($this->inventoryCheckService->knownSuppliers() as $key => $meta) {
+            $knownSuppliers[] = [
+                'key' => $key,
+                'label' => $meta['label'] ?? $key,
+            ];
+        }
+
         // Freshness check for the pasted charts — surface "last imported" dates.
         // Guarded: tables may not exist if migrations haven't run yet on this deploy.
         $chartFreshness = [];
@@ -94,7 +106,8 @@ class InventoryCheckController extends Controller
             'amsColumns',
             'chartFreshness',
             'migrationsMissing',
-            'purchaseBudget'
+            'purchaseBudget',
+            'knownSuppliers'
         ));
     }
 

@@ -732,6 +732,20 @@ HTML;
 .ica-spot-chip-meta { font-size: 11px; color: #888; margin-top: 4px; display: flex; gap: 8px; flex-wrap: wrap; }
 .ica-spot-have { color: #1d4f73; font-weight: 600; }
 .ica-spot-miss { color: #a94442; }
+/* Distributor price columns (2026-05-27 Sarah) — one per supplier so she
+   can compare side-by-side and pick the cheapest. Best-price cell glows
+   green. Empty cells dim. */
+.ica-supplier-col {
+    text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums;
+    color: #555; font-size: 13px; padding: 4px 8px;
+}
+.ica-supplier-col[data-price=""], .ica-supplier-col:empty { color: #bbb; }
+.ica-supplier-best-cell {
+    background: #d4edda; color: #0b3d1a; font-weight: 700;
+}
+.ica-row-table th.ica-sortable[title*="Latest wholesale price"] {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px;
+}
 
 /* Lead intro */
 .ica-lead { font-size: 14px; line-height: 1.6; }
@@ -942,6 +956,7 @@ HTML;
 @section('javascript')
 <script type="text/javascript">
     window.ICA_PRESET_META = @json($presetMeta ?? []);
+    window.ICA_KNOWN_SUPPLIERS = @json($knownSuppliers ?? []);
     window.ICA_CHART_FRESHNESS = @json($chartFreshness ?? []);
     window.ICA_COPY_FORMAT = @json($copyFormat);
     window.ICA_BUCKETS_URL = "{{ action('InventoryCheckController@buckets') }}";

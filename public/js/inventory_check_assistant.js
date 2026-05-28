@@ -770,6 +770,12 @@
     function renderStepCard(card, bucket) {
         const inner = renderBucketSection(card.key, bucket);
         let extras = '';
+        // 2026-05-27 Sarah: surface the bucket's `why` line inside the
+        // step card so the live diagnostic (e.g. "Supplier feeds loaded:
+        // AMS (1,234) · matched 42 / 180 rows") isn't hidden by the
+        // header-suppression CSS. Lives under the static step note.
+        const whyText = bucket && typeof bucket.why === 'string' ? bucket.why.trim() : '';
+        const whyLine = whyText ? `<div class="ica-step-why">${escapeHtml(whyText)}</div>` : '';
         // Events bucket: prepend a per-event order summary so Sarah can see
         // "did we order for the listening party? how many?" at a glance.
         if (card.key === 'events_upcoming' && bucket) {
@@ -984,6 +990,16 @@
             headParts.push(sortable('Added', 'date', 'When this product was first added to the system (products.created_at).'));
             headParts.push(sortable('Last edited', 'date', 'Most recent edit to the product / variation record. NOT the last-sold date — frozen status is based on no SALE in N days, regardless of when the record was last edited.'));
         }
+        // 2026-05-27 Sarah: one column per distributor in fast-OOS + chart
+        // buckets so Sarah can see every supplier's price at a glance and
+        // pick the cheapest. Inline chips dropped (now a column).
+        const suppliers = (window.ICA_KNOWN_SUPPLIERS || []);
+        const showSupplierCols = suppliers.length > 0 && (key === 'fast_oos' || key === 'street_pulse' || key === 'universal_top' || key === 'apple_music_top' || key === 'top_artist_new_releases' || key === 'abc_a_restock' || key === 'long_oos_essentials' || key === 'hot_used_oos' || key === 'manager_picks' || key === 'customer_wants');
+        if (showSupplierCols) {
+            suppliers.forEach((sup) => {
+                headParts.push(sortable(sup.label, 'number', 'Latest wholesale price for this title from ' + sup.label + '. Cheapest cell across the row is highlighted green.'));
+            });
+        }
         headParts.push(sortable('Reason', 'text'));
         headParts.push(sortable('Tags', 'text'));
         headParts.push(sortable('Qty', 'qty'));
@@ -1120,23 +1136,37 @@
         // is_rsd flag flows from the server — RSD titles can be hidden
         // via the new "Hide RSD titles" checkbox above the buckets.
         let productCell = isRsd ? `${product} <span class="ica-tag ica-rsd-tag" title="Record Store Day release">RSD</span>` : product;
-        // Per-supplier price chips: every supplier with a match shows up
-        // (AMS · Secretly · Beggars · Redeye · VP), cheapest highlighted
-        // green. Sarah picks at a glance. If only one supplier matches,
-        // it still appears as the lone chip.
+        // 2026-05-27 Sarah: supplier prices moved out of the product cell
+        // into dedicated columns (see supplierCellsHtml below). The inline
+        // chips were noisy; columns let her compare side-by-side.
         const prices = Array.isArray(it.supplier_prices) ? it.supplier_prices : [];
-        if (prices.length) {
-            const chips = prices.map((p, idx) => {
-                const isBest = idx === 0; // already sorted asc by cost
-                const cls = isBest ? 'ica-tag ica-supplier-best' : 'ica-tag ica-supplier-other';
-                const label = escapeHtml(p.supplier_label || p.supplier_key);
-                return `<span class="${cls}" title="${label}${p.upc ? ' · UPC ' + escapeHtml(p.upc) : ''}">$${Number(p.cost).toFixed(2)} ${label}</span>`;
-            }).join(' ');
-            productCell += ` ${chips}`;
-        } else if (it.best_supplier && it.best_supplier.cost) {
-            // Fallback for buckets where supplier_prices wasn't attached
-            const bs = it.best_supplier;
-            productCell += ` <span class="ica-tag ica-supplier-best">$${Number(bs.cost).toFixed(2)} via ${escapeHtml(bs.supplier_label || bs.supplier_key)}</span>`;
+        const pricesByKey = {};
+        prices.forEach((p) => {
+            if (!p || !p.supplier_key) return;
+            const cost = parseFloat(p.cost);
+            if (!Number.isFinite(cost)) return;
+            // Already sorted asc by cost — first per supplier wins.
+            if (!pricesByKey[p.supplier_key]) pricesByKey[p.supplier_key] = p;
+        });
+        const bestCost = prices.length ? parseFloat(prices[0].cost) : null;
+        const supplierList = (window.ICA_KNOWN_SUPPLIERS || []);
+        const showSupplierCols = supplierList.length > 0 && (
+            bucket === 'fast_oos' || bucket === 'street_pulse' || bucket === 'universal_top' ||
+            bucket === 'apple_music_top' || bucket === 'top_artist_new_releases' ||
+            bucket === 'abc_a_restock' || bucket === 'long_oos_essentials' ||
+            bucket === 'hot_used_oos' || bucket === 'manager_picks' || bucket === 'customer_wants'
+        );
+        let supplierCellsHtml = '';
+        if (showSupplierCols) {
+            supplierCellsHtml = supplierList.map((sup) => {
+                const p = pricesByKey[sup.key];
+                if (!p) return `<td class="ica-supplier-col" data-supplier="${escapeHtml(sup.key)}">—</td>`;
+                const cost = parseFloat(p.cost);
+                const isBest = bestCost !== null && Math.abs(cost - bestCost) < 0.0001;
+                const upcTip = p.upc ? ` · UPC ${p.upc}` : '';
+                const cls = isBest ? 'ica-supplier-col ica-supplier-best-cell' : 'ica-supplier-col';
+                return `<td class="${cls}" data-supplier="${escapeHtml(sup.key)}" data-price="${cost}" title="${escapeHtml(sup.label)}${escapeHtml(upcTip)}">$${cost.toFixed(2)}</td>`;
+            }).join('');
         }
         // Cost is the wholesale / default_purchase_price per unit.
         // data-cost holds the numeric value so renderBucketTotals can sum
@@ -1184,6 +1214,7 @@
             ${priceCellHtml}
             ${createdCellHtml}
             ${updatedCellHtml}
+            ${supplierCellsHtml}
             <td class="ica-reason-col"><small>${reason}${reasonExtra}</small></td>
             <td>${tagsHtml}</td>
             <td><input type="number" class="form-control input-sm ica-qty-input" value="${qty}" min="0" max="99" ${qtyDisabled}></td>
