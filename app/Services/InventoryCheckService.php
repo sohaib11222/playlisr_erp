@@ -1203,6 +1203,21 @@ class InventoryCheckService
         // the previous-order feedback feature is parked until it can be
         // batched into one query or moved to a lazy endpoint.
 
+        // 2026-05-27 Sarah: attach AMS / Secretly / Beggars / Redeye / VP
+        // supplier prices to every fast-OOS row so the green "$X.XX via
+        // <supplier>" chips appear in STEP 1 alongside chart picks.
+        // allSupplierPrices() uses a per-request static cache so the
+        // per-item cost is just a substring scan over already-loaded
+        // supplier rows.
+        foreach ($items as $idx => $it) {
+            $artist = $it['artist'] ?? '';
+            $title = $it['product'] ?? '';
+            $format = $it['format'] ?? null;
+            if ($title === '') continue;
+            $items[$idx]['supplier_prices'] = $this->allSupplierPrices($business_id, $artist, $title, $format);
+            $items[$idx]['best_supplier'] = $this->bestSupplierPrice($business_id, $artist, $title, $format);
+        }
+
         return [
             'label' => 'Fast-moving, out of stock',
             'why' => 'Sold fast in the last 60-90 days; we have zero or near-zero on shelf.',
@@ -1576,7 +1591,7 @@ class InventoryCheckService
 
         return [
             'label' => 'New releases from your top artists',
-            'why' => 'Artists popular in-store who have a new release (or a title we don\'t yet carry) on this week\'s charts.',
+            'why' => 'Artists already selling well in-store with a NEW release on this week\'s charts. Prioritize like fast-OOS: A-class artists first, then B; skip C. Tag "top_artist" means we already know fans want them.',
             'items' => $deduped,
             'count' => count($deduped),
         ];
@@ -1657,6 +1672,11 @@ class InventoryCheckService
 
         $concertCount = count($events) - count($annivEvents);
 
+        // 2026-05-27: load any manual "ordered N via email" entries so the
+        // events bucket can show e.g. "Paul McCartney listening party —
+        // ordered 12 via email" right in the chip.
+        $eventOrders = $this->loadEventOrders($business_id);
+
         return [
             'label' => 'Upcoming events — stock up',
             'why' => 'LA concerts + listening parties + UMe artist moments (biopics, anniversaries, birthdays) in the next ' . $lookahead . ' days.',
@@ -1665,7 +1685,31 @@ class InventoryCheckService
             'events_loaded' => count($events),
             'concert_events' => $concertCount,
             'anniversary_events' => count($annivEvents),
+            'event_orders' => $eventOrders,
+            'all_events' => array_values(array_map(function ($e) {
+                return [
+                    'name' => $e['name'],
+                    'date' => $e['date'],
+                    'location' => $e['location'] ?? null,
+                    'source' => $e['source'] ?? 'nivessa',
+                    'is_anniversary' => !empty($e['is_anniversary']),
+                ];
+            }, $events)),
         ];
+    }
+
+    /**
+     * Load manual "ordered via email" entries for event chips. Stored in
+     * storage/app/ica-event-orders-{business_id}.json (no migration —
+     * Sarah refuses migrations).
+     */
+    public function loadEventOrders(int $business_id): array
+    {
+        $path = storage_path('app/ica-event-orders-' . $business_id . '.json');
+        if (!is_file($path)) return [];
+        $raw = @file_get_contents($path);
+        $decoded = $raw ? json_decode($raw, true) : null;
+        return is_array($decoded) ? $decoded : [];
     }
 
     /**

@@ -405,6 +405,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/inventory-check-assistant/supplier-credentials/{key}', 'InventoryCheckController@getSupplierCredentialsStatus');
     Route::post('/reports/inventory-check-assistant/manual-budget-entry', 'InventoryCheckController@addManualBudgetEntry');
     Route::delete('/reports/inventory-check-assistant/manual-budget-entry/{id}', 'InventoryCheckController@deleteManualBudgetEntry');
+    Route::get('/reports/inventory-check-assistant/event-orders', 'InventoryCheckController@listEventOrders');
+    Route::post('/reports/inventory-check-assistant/event-orders', 'InventoryCheckController@addEventOrder');
+    Route::delete('/reports/inventory-check-assistant/event-orders/{id}', 'InventoryCheckController@deleteEventOrder');
     Route::get('/reports/inventory-check-assistant/manager-picks', 'InventoryCheckController@listManagerPicks');
     Route::post('/reports/inventory-check-assistant/manager-picks', 'InventoryCheckController@addManagerPick');
     Route::post('/reports/inventory-check-assistant/manager-picks/{id}/dismiss', 'InventoryCheckController@dismissManagerPick');

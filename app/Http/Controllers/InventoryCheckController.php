@@ -848,6 +848,75 @@ class InventoryCheckController extends Controller
         return response()->json(['success' => true, 'budget' => $budget]);
     }
 
+    // ── Mark-as-ordered for event chips (2026-05-27) ────────────────
+    // Sarah ordered Paul McCartney stock via email for an upcoming
+    // listening party. The auto-generated suggestions in the events
+    // bucket can't know about external orders, so log them manually
+    // against the event so the chip says "ordered 12 via email".
+    public function listEventOrders(Request $request)
+    {
+        $business_id = (int) $request->session()->get('user.business_id');
+        $path = storage_path('app/ica-event-orders-' . $business_id . '.json');
+        $entries = [];
+        if (is_file($path)) {
+            $raw = @file_get_contents($path);
+            $decoded = $raw ? json_decode($raw, true) : null;
+            if (is_array($decoded)) $entries = $decoded;
+        }
+        return response()->json(['success' => true, 'entries' => $entries]);
+    }
+
+    public function addEventOrder(Request $request)
+    {
+        $request->validate([
+            'event_name' => 'required|string|max:191',
+            'event_date' => 'required|date',
+            'qty' => 'required|integer|min:0|max:9999',
+            'note' => 'nullable|string|max:500',
+        ]);
+        $business_id = (int) $request->session()->get('user.business_id');
+        $path = storage_path('app/ica-event-orders-' . $business_id . '.json');
+        $entries = [];
+        if (is_file($path)) {
+            $raw = @file_get_contents($path);
+            $decoded = $raw ? json_decode($raw, true) : null;
+            if (is_array($decoded)) $entries = $decoded;
+        }
+        $user = auth()->user();
+        $userName = trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? '')) ?: ('user#' . ($user->id ?? 0));
+        $entry = [
+            'id' => bin2hex(random_bytes(8)),
+            'event_name' => trim((string) $request->input('event_name')),
+            'event_date' => substr((string) $request->input('event_date'), 0, 10),
+            'qty' => (int) $request->input('qty'),
+            'note' => trim((string) $request->input('note', '')),
+            'user_id' => (int) ($user->id ?? 0),
+            'user_name' => $userName,
+            'when' => Carbon::now()->toIso8601String(),
+        ];
+        $entries[] = $entry;
+        @file_put_contents($path, json_encode($entries, JSON_PRETTY_PRINT));
+        return response()->json(['success' => true, 'entry' => $entry, 'entries' => $entries]);
+    }
+
+    public function deleteEventOrder(Request $request, string $id)
+    {
+        $business_id = (int) $request->session()->get('user.business_id');
+        $path = storage_path('app/ica-event-orders-' . $business_id . '.json');
+        $entries = [];
+        if (is_file($path)) {
+            $raw = @file_get_contents($path);
+            $decoded = $raw ? json_decode($raw, true) : null;
+            if (is_array($decoded)) $entries = $decoded;
+        }
+        $filtered = array_values(array_filter($entries, fn ($e) => ($e['id'] ?? null) !== $id));
+        if (count($filtered) === count($entries)) {
+            return response()->json(['success' => false, 'error' => 'not_found'], 404);
+        }
+        @file_put_contents($path, json_encode($filtered, JSON_PRETTY_PRINT));
+        return response()->json(['success' => true, 'entries' => $filtered]);
+    }
+
     public function export(Request $request)
     {
         // Open to all authenticated staff — inventory check assistant is

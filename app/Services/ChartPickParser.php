@@ -42,6 +42,13 @@ class ChartPickParser
                 continue;
             }
 
+            // 2026-05-27 Sarah: reject OCR garbage from Tesseract output.
+            // Symptoms — random pipes, multiple brackets, tilde runs, or
+            // alphanumeric soup like "[Toxicity ~~ [SysemOfADown".
+            if ($this->looksLikeOcrGarbage($row['artist'] ?? '') || $this->looksLikeOcrGarbage($row['title'] ?? '')) {
+                continue;
+            }
+
             if ($row['rank'] === null) {
                 $rank++;
                 $row['rank'] = $rank;
@@ -53,6 +60,21 @@ class ChartPickParser
         }
 
         return $out;
+    }
+
+    protected function looksLikeOcrGarbage(string $s): bool
+    {
+        if ($s === '') return false;
+        // Pipes, double-tildes, > 2 brackets — never appear in real chart data
+        if (substr_count($s, '|') >= 1) return true;
+        if (substr_count($s, '~~') >= 1) return true;
+        if (substr_count($s, '[') + substr_count($s, ']') > 2) return true;
+        // Letter density check: real titles are mostly letters/spaces. If
+        // >40% of chars are punctuation/digits, treat as OCR junk.
+        $len = mb_strlen($s);
+        if ($len === 0) return false;
+        $letters = preg_match_all('/[\p{L}\s]/u', $s) ?: 0;
+        return ($letters / max(1, $len)) < 0.6;
     }
 
     protected function stripHtml(string $body): string

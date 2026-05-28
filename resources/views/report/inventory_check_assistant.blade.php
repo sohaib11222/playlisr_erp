@@ -642,6 +642,14 @@ HTML;
 }
 .ica-step-note strong { color: #8a6d3b; }
 .ica-step-note .ica-step-dont { color: #a94442; font-weight: 700; }
+/* 2026-05-27: when a bucket is wrapped in a step card, suppress its own
+   header (label/why/count pill) so we don't show "UPCOMING EVENTS — STOCK UP"
+   right under the STEP 2 badge. Keep the per-bucket Category/Genre filter +
+   collapse button visible. */
+.ica-step-card .ica-bucket-header > div:first-child > h3,
+.ica-step-card .ica-bucket-header > div:first-child > .ica-why { display: none; }
+.ica-step-card .ica-bucket { box-shadow: none; border: none; margin-top: 8px; }
+.ica-step-card .ica-bucket-header { border-left: none; padding-top: 0; }
 /* Don't-reorder warning around frozen (lives inside the secondary disclosure) */
 .ica-dont-card {
     border: 2px solid #c0392b;
@@ -689,6 +697,27 @@ HTML;
     padding: 8px 12px; background: #fafafa;
     border: 1px dashed #ddd; border-radius: 4px;
 }
+.ica-event-mark-ordered {
+    margin-top: 6px; font-size: 11px; padding: 2px 8px;
+    background: #fff; border: 1px dashed #2c699a; color: #2c699a;
+}
+.ica-event-mark-ordered:hover { background: #2c699a; color: #fff; }
+.ica-event-ordered {
+    margin-top: 6px; font-size: 12px; color: #155724;
+    background: #d4edda; padding: 4px 8px; border-radius: 3px;
+    display: flex; justify-content: space-between; align-items: center; gap: 6px;
+}
+.ica-event-ordered strong { color: #0b3d1a; }
+.ica-event-ordered-rm {
+    background: none; border: none; color: #155724;
+    font-size: 14px; line-height: 1; cursor: pointer;
+}
+.ica-event-ordered-rm:hover { color: #a94442; }
+.ica-empty-cta {
+    margin: 12px 0; padding: 14px 18px;
+    background: #fffbe6; border: 1px solid #ffeaa7; border-radius: 4px;
+}
+.ica-empty-cta p { margin: 0 0 8px; color: #555; font-size: 13px; }
 
 /* Lead intro */
 .ica-lead { font-size: 14px; line-height: 1.6; }
@@ -895,6 +924,7 @@ HTML;
     window.ICA_SUPPLIER_AUTOFETCH_URL = "{{ action('InventoryCheckController@runSupplierAutoFetch') }}";
     window.ICA_SUPPLIER_CREDS_URL = "{{ url('reports/inventory-check-assistant/supplier-credentials') }}";
     window.ICA_LOG_BUY_URL = "{{ action('InventoryCheckController@addManualBudgetEntry') }}";
+    window.ICA_EVENT_ORDERS_URL = "{{ url('reports/inventory-check-assistant/event-orders') }}";
     window.ICA_LOG_BUY_DELETE_BASE = "{{ url('reports/inventory-check-assistant/manual-budget-entry') }}";
     window.ICA_MGRPICKS_LIST_URL = "{{ action('InventoryCheckController@listManagerPicks') }}";
     window.ICA_MGRPICKS_ADD_URL = "{{ action('InventoryCheckController@addManagerPick') }}";

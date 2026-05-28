@@ -757,8 +757,20 @@
         let extras = '';
         // Events bucket: prepend a per-event order summary so Sarah can see
         // "did we order for the listening party? how many?" at a glance.
-        if (card.key === 'events_upcoming' && bucket && Array.isArray(bucket.items)) {
-            extras = renderEventOrderSummary(bucket.items);
+        if (card.key === 'events_upcoming' && bucket) {
+            extras = renderEventOrderSummary(bucket);
+        }
+        // Apple Music Top 100 empty-state CTA — 2026-05-27 Sarah saw a
+        // "No items in this bucket" with no path forward; surface the
+        // Run-Apple-Music-pull action right here so she knows what to do.
+        if (card.key === 'apple_music_top' && bucket && (!bucket.items || !bucket.items.length)) {
+            extras = `
+                <div class="ica-empty-cta">
+                    <p>No Apple Music chart data yet. Click below to fetch the latest Top 100.</p>
+                    <button type="button" class="btn btn-primary btn-sm ica-empty-run-apple">
+                        <i class="fa fa-bolt"></i> Run Apple Music pull now
+                    </button>
+                </div>`;
         }
         return `
             <div class="ica-step-card" data-step="${card.step}">
@@ -791,10 +803,9 @@
     }
 
     /**
-     * Group events_upcoming items by event so each event shows its date,
-     * location, and how many units were suggested across the event's
-     * matching artists. Sarah's "did we order for the listening party?"
-     * answer surfaces right above the per-row table.
+     * Render event chips using bucket.all_events (every event we pulled
+     * from nivessa.com / TM, regardless of whether a product matched) +
+     * bucket.event_orders (manual "ordered via email" entries from Sarah).
      *
      * Categorization (2026-05-27):
      *   listening parties = source nivessa (events we host on nivessa.com)
@@ -803,47 +814,91 @@
      * Small-club TM shows go to the underlying bucket table but aren't
      * promoted as a featured chip.
      */
-    function renderEventOrderSummary(items) {
-        if (!items.length) return '';
-        const byEvent = {};
+    function renderEventOrderSummary(bucket) {
+        const allEvents = Array.isArray(bucket.all_events) ? bucket.all_events : [];
+        const items = Array.isArray(bucket.items) ? bucket.items : [];
+        const eventOrders = Array.isArray(bucket.event_orders) ? bucket.event_orders : [];
+
+        // Aggregate per-event qty + item count from bucket items.
+        const itemAgg = {};
         items.forEach((it) => {
             const k = (it.event_name || '') + '|' + (it.event_date || '');
-            if (!byEvent[k]) {
-                const src = it.event_source || '';
-                const isListening = src === 'nivessa';
-                const isAnniversary = src === 'anniversary' || (it.tags || []).indexOf('anniversary') !== -1;
-                const isPopularTm = src === 'ticketmaster' && isPopularLaVenue(it.event_location);
-                byEvent[k] = {
+            if (!itemAgg[k]) itemAgg[k] = { items: 0, qty: 0 };
+            itemAgg[k].items += 1;
+            itemAgg[k].qty += parseInt(it.suggested_qty || 0, 10) || 0;
+        });
+        // Aggregate manual "ordered via email" totals per event.
+        const orderAgg = {};
+        eventOrders.forEach((e) => {
+            const k = (e.event_name || '') + '|' + (e.event_date || '');
+            if (!orderAgg[k]) orderAgg[k] = { qty: 0, entries: [] };
+            orderAgg[k].qty += parseInt(e.qty || 0, 10) || 0;
+            orderAgg[k].entries.push(e);
+        });
+
+        // Build event list. Prefer bucket.all_events; fall back to keys
+        // observed in items if all_events is missing.
+        const events = allEvents.length ? allEvents.slice() : (() => {
+            const out = [];
+            const seen = {};
+            items.forEach((it) => {
+                const k = (it.event_name || '') + '|' + (it.event_date || '');
+                if (seen[k]) return;
+                seen[k] = true;
+                out.push({
                     name: it.event_name || '',
                     date: it.event_date || '',
                     location: it.event_location || '',
-                    is_anniversary: isAnniversary,
-                    is_listening_party: isListening,
-                    is_popular_tm: isPopularTm,
-                    items: 0,
-                    qty: 0,
-                };
-            }
-            byEvent[k].items += 1;
-            byEvent[k].qty += parseInt(it.suggested_qty || 0, 10) || 0;
+                    source: it.event_source || 'nivessa',
+                    is_anniversary: (it.tags || []).indexOf('anniversary') !== -1,
+                });
+            });
+            return out;
+        })();
+        events.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+        const tagged = events.map((e) => {
+            const src = e.source || '';
+            const isAnniversary = src === 'anniversary' || !!e.is_anniversary;
+            const isListening = src === 'nivessa' && !isAnniversary;
+            const isPopularTm = src === 'ticketmaster' && isPopularLaVenue(e.location);
+            return Object.assign({}, e, {
+                is_listening_party: isListening,
+                is_anniversary: isAnniversary,
+                is_popular_tm: isPopularTm,
+            });
         });
-        const events = Object.values(byEvent).sort((a, b) => a.date.localeCompare(b.date));
-        const listening = events.filter((e) => e.is_listening_party);
-        const others = events.filter((e) => e.is_popular_tm || e.is_anniversary);
+
+        const listening = tagged.filter((e) => e.is_listening_party);
+        const others = tagged.filter((e) => e.is_popular_tm || e.is_anniversary);
+
         const eventChip = (e) => {
             const dateMd = (e.date || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
             const dateDisplay = dateMd ? `${dateMd[2]}/${dateMd[3]}` : (e.date || '');
             const locTxt = e.location ? ` · ${escapeHtml(e.location)}` : '';
             const annivBadge = e.is_anniversary ? ' <span class="ica-event-anniv">anniv</span>' : '';
+            const k = (e.name || '') + '|' + (e.date || '');
+            const agg = itemAgg[k] || { items: 0, qty: 0 };
+            const ord = orderAgg[k] || { qty: 0, entries: [] };
+            let qtyLine;
+            if (agg.qty > 0) {
+                qtyLine = `<strong>${agg.qty}</strong> units suggested across ${agg.items} title${agg.items === 1 ? '' : 's'}`;
+            } else {
+                qtyLine = `<span class="text-muted">no in-store matches yet</span>`;
+            }
+            const orderLines = ord.entries.length ? ord.entries.map((entry) => {
+                const note = entry.note ? ' — ' + escapeHtml(entry.note) : '';
+                return `<div class="ica-event-ordered"><strong>Ordered ${entry.qty}</strong> by ${escapeHtml(entry.user_name || '')}${note} <button type="button" class="ica-event-ordered-rm" data-id="${escapeHtml(entry.id || '')}" title="Remove">×</button></div>`;
+            }).join('') : '';
             return `
-                <div class="ica-event-chip ${e.is_listening_party ? 'ica-event-listening' : 'ica-event-show'}">
+                <div class="ica-event-chip ${e.is_listening_party ? 'ica-event-listening' : 'ica-event-show'}" data-event-name="${escapeHtml(e.name || '')}" data-event-date="${escapeHtml(e.date || '')}">
                     <div class="ica-event-chip-head">
                         <strong>${escapeHtml(e.name || '(untitled)')}</strong>${annivBadge}
                         <span class="ica-event-chip-date">${dateDisplay}${locTxt}</span>
                     </div>
-                    <div class="ica-event-chip-qty">
-                        <strong>${e.qty}</strong> units suggested across ${e.items} title${e.items === 1 ? '' : 's'}
-                    </div>
+                    <div class="ica-event-chip-qty">${qtyLine}</div>
+                    ${orderLines}
+                    <button type="button" class="btn btn-xs btn-default ica-event-mark-ordered">+ Mark as ordered (via email)</button>
                 </div>`;
         };
         let html = '<div class="ica-event-summary">';
@@ -1249,6 +1304,82 @@
                         const tr = btn.closest('tr');
                         if (tr) tr.remove();
                     });
+            });
+        });
+
+        // 2026-05-27 "Mark as ordered (via email)" — per-event qty + note
+        // posted to /event-orders endpoint, persisted in storage/app/
+        $root.querySelectorAll('.ica-event-mark-ordered').forEach((btn) => {
+            btn.addEventListener('click', function () {
+                const chip = btn.closest('.ica-event-chip');
+                if (!chip) return;
+                const name = chip.getAttribute('data-event-name') || '';
+                const date = chip.getAttribute('data-event-date') || '';
+                const qtyStr = prompt(`How many units did you order for "${name}"?\n(e.g. 12 LPs ordered via email from AMS)`);
+                if (qtyStr === null) return;
+                const qty = parseInt(qtyStr, 10);
+                if (!Number.isFinite(qty) || qty < 0) { alert('Enter a number ≥ 0.'); return; }
+                const note = prompt('Note (optional, e.g. "via email from AMS"):') || '';
+                btn.disabled = true; btn.textContent = 'Saving…';
+                const fd = new FormData();
+                fd.append('event_name', name);
+                fd.append('event_date', date);
+                fd.append('qty', String(qty));
+                if (note) fd.append('note', note);
+                fetch(window.ICA_EVENT_ORDERS_URL || '/reports/inventory-check-assistant/event-orders', {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': window.ICA_CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin',
+                    body: fd,
+                })
+                    .then((r) => r.json())
+                    .then((resp) => {
+                        if (!resp || !resp.success) { alert('Save failed.'); btn.disabled = false; btn.textContent = '+ Mark as ordered (via email)'; return; }
+                        if (lastResult && lastResult.buckets && lastResult.buckets.events_upcoming) {
+                            lastResult.buckets.events_upcoming.event_orders = resp.entries || [];
+                            replaceBucketInPlace('events_upcoming', lastResult.buckets.events_upcoming);
+                            attachBucketHandlers();
+                        }
+                    })
+                    .catch(() => { alert('Save failed — see console.'); btn.disabled = false; btn.textContent = '+ Mark as ordered (via email)'; });
+            });
+        });
+        $root.querySelectorAll('.ica-event-ordered-rm').forEach((btn) => {
+            btn.addEventListener('click', function () {
+                const id = btn.dataset.id;
+                if (!id || !confirm('Remove this order entry?')) return;
+                fetch((window.ICA_EVENT_ORDERS_URL || '/reports/inventory-check-assistant/event-orders') + '/' + encodeURIComponent(id), {
+                    method: 'DELETE',
+                    headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': window.ICA_CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin',
+                })
+                    .then((r) => r.json())
+                    .then((resp) => {
+                        if (!resp || !resp.success) return;
+                        if (lastResult && lastResult.buckets && lastResult.buckets.events_upcoming) {
+                            lastResult.buckets.events_upcoming.event_orders = resp.entries || [];
+                            replaceBucketInPlace('events_upcoming', lastResult.buckets.events_upcoming);
+                            attachBucketHandlers();
+                        }
+                    });
+            });
+        });
+
+        // Apple Music empty-state CTA → trigger the manual pull
+        $root.querySelectorAll('.ica-empty-run-apple').forEach((btn) => {
+            btn.addEventListener('click', function () {
+                btn.disabled = true; btn.textContent = 'Running… 30-60s';
+                fetch(window.ICA_RUN_APPLE_URL, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': window.ICA_CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin',
+                })
+                    .then((r) => r.json())
+                    .then((resp) => {
+                        btn.textContent = 'Pull done — reloading chart…';
+                        lazyLoadSecondaryBuckets();
+                    })
+                    .catch(() => { btn.disabled = false; btn.textContent = 'Retry Apple Music pull'; });
             });
         });
     }
