@@ -721,6 +721,9 @@ HTML;
     background: #fffbe6; border: 1px solid #ffeaa7; border-radius: 4px;
 }
 .ica-empty-cta p { margin: 0 0 8px; color: #555; font-size: 13px; }
+.ica-fetch-supplier-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.ica-fetch-supplier-hint { margin-top: 6px; color: #888; }
+.ica-fetch-supplier-hint a { color: #2c699a; }
 /* UMe weekly spotlights — inline chip block inside STEP 4 (2026-05-27) */
 .ica-spot-block { margin: 12px 0 10px; }
 .ica-spot-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }

@@ -805,14 +805,18 @@
             }
         }
         // 2026-05-27 Sarah: when fast_oos comes back with no supplier
-        // feeds loaded, surface an obvious "Upload distributor prices"
-        // CTA right inside STEP 1 so she doesn't have to dig through
-        // "More options" to figure out why the AMS column is empty.
+        // feeds loaded, surface a one-click "Fetch AMS now" so prices
+        // populate without a widget hunt. Auto-fetch then re-runs every
+        // Monday via the scheduled cron once credentials are saved.
         if (card.key === 'fast_oos' && bucket && Array.isArray(bucket.supplier_feeds_loaded) && bucket.supplier_feeds_loaded.length === 0) {
+            const supplierBtns = (window.ICA_KNOWN_SUPPLIERS || []).map((sup) =>
+                `<button type="button" class="btn btn-primary btn-sm ica-fetch-supplier-now" data-supplier="${escapeHtml(sup.key)}">Fetch ${escapeHtml(sup.label)} now</button>`
+            ).join(' ');
             extras += `
                 <div class="ica-empty-cta ica-empty-cta-prices">
-                    <p><strong>The distributor price columns are empty because no supplier feeds are uploaded yet.</strong> Pick a supplier below and upload its weekly xlsx (or paste rows) and prices will populate on the next build.</p>
-                    <button type="button" class="btn btn-primary btn-sm ica-jump-supplier-feeds">Open supplier feeds ↓</button>
+                    <p><strong>Distributor price columns are empty — no feeds pulled yet for this business.</strong> Once portal credentials are saved, the weekly Monday 06:00 PST cron auto-refreshes them. Trigger a pull now:</p>
+                    <div class="ica-fetch-supplier-row">${supplierBtns}</div>
+                    <p class="ica-fetch-supplier-hint"><small>First pull asks for portal login if not saved yet. After that, it auto-refreshes every Monday so the columns are always current — no weekly upload.</small> <a href="#" class="ica-jump-supplier-feeds">Or open supplier feeds widget ↓</a></p>
                 </div>`;
         }
         // Apple Music Top 100 empty-state CTA — 2026-05-27 Sarah saw a
@@ -1406,11 +1410,53 @@
         // options details + scroll to the supplier-feeds widget so she
         // doesn't have to hunt for it.
         $root.querySelectorAll('.ica-jump-supplier-feeds').forEach((btn) => {
-            btn.addEventListener('click', function () {
+            btn.addEventListener('click', function (e) {
+                e.preventDefault();
                 const more = document.querySelector('details.ica-more-options');
                 if (more) more.open = true;
                 const grid = document.getElementById('ica_supplier_grid');
                 if (grid) grid.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+        });
+
+        // 2026-05-28 Sarah: "Fetch <Supplier> now" buttons in the empty
+        // STEP 1 banner. Triggers the artisan supplier-prices:fetch cmd
+        // for that supplier. If credentials aren't saved, the response
+        // surfaces it so Sarah knows to save them once.
+        $root.querySelectorAll('.ica-fetch-supplier-now').forEach((btn) => {
+            btn.addEventListener('click', function () {
+                const key = btn.dataset.supplier;
+                const origLabel = btn.textContent;
+                btn.disabled = true; btn.textContent = 'Fetching… 20-60s';
+                const fd = new FormData();
+                fd.append('supplier_key', key);
+                fetch(window.ICA_SUPPLIER_AUTOFETCH_URL, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': window.ICA_CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin',
+                    body: fd,
+                })
+                    .then((r) => r.json())
+                    .then((resp) => {
+                        const out = (resp && resp.output) || '';
+                        if (resp && resp.success) {
+                            btn.textContent = '✓ Pulled — rebuilding…';
+                            const activeBtn = document.querySelector('.ica-store-btn.is-active');
+                            if (activeBtn) activeBtn.click();
+                        } else {
+                            btn.disabled = false;
+                            btn.textContent = origLabel;
+                            const needsCreds = /credential|env|portal/i.test(out);
+                            const msg = needsCreds
+                                ? 'Portal login not saved yet. Click "Or open supplier feeds widget ↓" below to save the ' + key.toUpperCase() + ' portal user / password / URL, then try again.'
+                                : 'Fetch failed:\n\n' + (out || 'unknown error');
+                            alert(msg);
+                        }
+                    })
+                    .catch((err) => {
+                        btn.disabled = false; btn.textContent = origLabel;
+                        alert('Fetch failed — ' + (err && err.message ? err.message : 'see console'));
+                    });
             });
         });
 
