@@ -746,6 +746,15 @@ HTML;
 .ica-row-table th.ica-sortable[title*="Latest wholesale price"] {
     font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px;
 }
+/* Live diagnostic line inside each step card (2026-05-27) — surfaces the
+   bucket's `why` text including supplier-feed status, so when the AMS
+   column is empty Sarah can see exactly why (no feed uploaded vs no
+   match for this title). */
+.ica-step-why {
+    margin-top: 6px; font-size: 12px; color: #666;
+    padding: 6px 10px; background: #f7f9fc;
+    border-radius: 3px; line-height: 1.5;
+}
 
 /* Lead intro */
 .ica-lead { font-size: 14px; line-height: 1.6; }

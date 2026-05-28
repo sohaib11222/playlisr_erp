@@ -808,6 +808,7 @@
                     <h2 class="ica-step-title">${escapeHtml(card.title)}</h2>
                 </div>
                 <div class="ica-step-note">${card.note}</div>
+                ${whyLine}
                 ${extras}
                 ${inner}
             </div>`;
