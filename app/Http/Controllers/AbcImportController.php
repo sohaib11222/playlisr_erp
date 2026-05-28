@@ -50,39 +50,47 @@ class AbcImportController extends Controller
         $business_id = $request->session()->get('user.business_id');
         $tmpPath = $file->getRealPath();
 
-        $svc = new AbcImportService();
         try {
+            $svc = new AbcImportService();
             $rows = $svc->parseCsv($tmpPath);
+
+            if (empty($rows)) {
+                return response()->json(['ok' => false, 'error' => 'No usable rows found. Expected columns: Product, Format, Location, Sales, Q-ty, ABC.'], 422);
+            }
+
+            $result = $svc->match($rows, $business_id);
+
+            // Stash the full payload server-side under a token so Save can pick
+            // it up without re-uploading the file. 10-min TTL is fine for review.
+            $payload = $this->buildPayload($file->getClientOriginalName(), $request->input('period_label'), $result);
+            $token = bin2hex(random_bytes(8));
+            $stashPath = storage_path('app/' . AbcImportService::STORAGE_DIR);
+            if (!is_dir($stashPath)) {
+                @mkdir($stashPath, 0775, true);
+            }
+            file_put_contents($stashPath . '/pending_' . $token . '.json', json_encode($payload));
+
+            return response()->json([
+                'ok' => true,
+                'token' => $token,
+                'stats' => $payload['stats'],
+                'period_label' => $payload['period_label'],
+                'source_file' => $payload['source_file'],
+                'sample_matched' => $this->sampleMatched($result['global_map'], $business_id, 10),
+                'sample_unmatched' => array_slice($result['unmatched'], 0, 25),
+            ]);
         } catch (\Throwable $e) {
-            Log::error('ABC import parse failed', ['err' => $e->getMessage()]);
-            return response()->json(['ok' => false, 'error' => 'Could not parse CSV: ' . $e->getMessage()], 422);
+            // Catch-all so the page sees a real error, not Laravel's default
+            // JSON exception envelope ({message, exception, trace}).
+            Log::error('ABC import preview failed', [
+                'err' => $e->getMessage(),
+                'file' => $e->getFile() . ':' . $e->getLine(),
+            ]);
+            return response()->json([
+                'ok' => false,
+                'error' => 'Preview failed: ' . $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')',
+            ], 500);
         }
-
-        if (empty($rows)) {
-            return response()->json(['ok' => false, 'error' => 'No usable rows found. Expected columns: Product, Format, Location, Sales, Q-ty, ABC.'], 422);
-        }
-
-        $result = $svc->match($rows, $business_id);
-
-        // Stash the full payload server-side under a token so Save can pick it
-        // up without re-uploading the file. 10-min TTL is fine for review.
-        $payload = $this->buildPayload($file->getClientOriginalName(), $request->input('period_label'), $result);
-        $token = bin2hex(random_bytes(8));
-        $stashPath = storage_path('app/' . AbcImportService::STORAGE_DIR);
-        if (!is_dir($stashPath)) {
-            @mkdir($stashPath, 0775, true);
-        }
-        file_put_contents($stashPath . '/pending_' . $token . '.json', json_encode($payload));
-
-        return response()->json([
-            'ok' => true,
-            'token' => $token,
-            'stats' => $payload['stats'],
-            'period_label' => $payload['period_label'],
-            'source_file' => $payload['source_file'],
-            'sample_matched' => $this->sampleMatched($result['global_map'], $business_id, 10),
-            'sample_unmatched' => array_slice($result['unmatched'], 0, 25),
-        ]);
     }
 
     public function save(Request $request)

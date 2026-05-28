@@ -98,7 +98,7 @@
         try {
             const data = await postJson("{{ url('/admin/abc-import/preview') }}", fd);
             if (!data.ok) {
-                out.innerHTML = '<div class="alert alert-danger">' + escapeHtml(data.error || 'Preview failed.') + '</div>';
+                out.innerHTML = '<div class="alert alert-danger">' + escapeHtml(data.error || data.message || 'Preview failed (empty response).') + '</div>';
                 return;
             }
             pendingToken = data.token;
@@ -118,7 +118,7 @@
         try {
             const data = await postJson("{{ url('/admin/abc-import/save') }}", fd);
             if (!data.ok) {
-                alert(data.error || 'Save failed.');
+                alert(data.error || data.message || 'Save failed.');
                 saveBtn.disabled = false;
                 return;
             }
