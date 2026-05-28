@@ -1010,7 +1010,7 @@
             sortable('ABC', 'text', 'ABC class — A is the top 80% of inventory value'),
             sortable('Stock', 'number'),
             sortable('Sold (window)', 'number'),
-            sortable('Cost', 'number', 'Per-unit purchase price (variations.dpp_inc_tax) — what we paid for one unit.'),
+            sortable('Last paid', 'number', 'Wholesale price we paid for the most recent unit of this title (variations.dpp_inc_tax). Compare against the distributor columns to see if a current supplier is cheaper than last time.'),
         ];
         if (isFrozen) {
             headParts.push(sortable('Price', 'number', 'Retail sell price (from product_stock_cache.unit_price).'));
