@@ -1151,7 +1151,11 @@ class InventoryCheckService
         // few minutes shouldn't repay that cost. Cache is invalidated on
         // sale/purchase via the existing PSC refresh job; if Sarah needs
         // it now, the cache-bust ?nofocache=1 param skips it.
-        $cacheKey = 'ica_fast_oos_' . $business_id . '_' . $locationId;
+        // 2026-05-27 Sarah: bumped to v2 to invalidate the cache that
+        // pre-dates the supplier_prices/best_supplier fields being attached
+        // to every fast-OOS row. Without this bump the old (no-chip) data
+        // would keep serving for up to 5 minutes after the new deploy.
+        $cacheKey = 'ica_fast_oos_v2_' . $business_id . '_' . $locationId;
         // Request::boolean() doesn't exist on this Laravel version — use
         // filter_var. Without this, ?nocache=1 500s before the cache code
         // even runs (Sarah hit this 2026-05-20).
@@ -1237,6 +1241,7 @@ class InventoryCheckService
         // allSupplierPrices() uses a per-request static cache so the
         // per-item cost is just a substring scan over already-loaded
         // supplier rows.
+        $itemsWithMatch = 0;
         foreach ($items as $idx => $it) {
             $artist = $it['artist'] ?? '';
             $title = $it['product'] ?? '';
@@ -1244,13 +1249,35 @@ class InventoryCheckService
             if ($title === '') continue;
             $items[$idx]['supplier_prices'] = $this->allSupplierPrices($business_id, $artist, $title, $format);
             $items[$idx]['best_supplier'] = $this->bestSupplierPrice($business_id, $artist, $title, $format);
+            if (!empty($items[$idx]['supplier_prices'])) $itemsWithMatch++;
+        }
+
+        // Supplier-feed diagnostics so Sarah can tell at a glance whether
+        // the absence of chips means "no feeds uploaded" vs "no matches".
+        $feedSummary = $this->supplierFeedSummary($business_id);
+        $feedsLoaded = [];
+        $totalSupplierRows = 0;
+        foreach ($feedSummary as $sup) {
+            $rows = (int) ($sup['rows'] ?? 0);
+            if ($rows <= 0) continue;
+            $feedsLoaded[] = ($sup['label'] ?? $sup['key'] ?? '?') . ' (' . number_format($rows) . ')';
+            $totalSupplierRows += $rows;
+        }
+        $why = 'Sold fast in the last 60-90 days; we have zero or near-zero on shelf.';
+        if (empty($feedsLoaded)) {
+            $why .= ' · No supplier price feeds uploaded — open "More options → Supplier price feeds" to add AMS / Secretly / Beggars / Redeye / VP and prices will start appearing as chips on each row.';
+        } else {
+            $why .= ' · Supplier feeds loaded: ' . implode(' · ', $feedsLoaded) . '. Matched ' . $itemsWithMatch . ' / ' . count($items) . ' rows.';
         }
 
         return [
             'label' => 'Fast-moving, out of stock',
-            'why' => 'Sold fast in the last 60-90 days; we have zero or near-zero on shelf.',
+            'why' => $why,
             'items' => $items,
             'count' => count($items),
+            'supplier_feeds_loaded' => $feedsLoaded,
+            'supplier_rows_total' => $totalSupplierRows,
+            'items_with_supplier_match' => $itemsWithMatch,
         ];
     }
 
