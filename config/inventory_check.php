@@ -80,10 +80,10 @@ return [
         'supplier_feeds' => [
             'ams'      => ['label' => 'AMS', 'notes' => 'All Media Supply — main weekly availability + cost'],
             'alliance' => ['label' => 'Alliance', 'notes' => 'Alliance Entertainment — AENT / WebAMI portal. Separate distributor from AMS (Sarah 2026-05-28)'],
-            'secretly' => ['label' => 'Secretly Distribution', 'notes' => 'Indie — Dead Oceans, Jagjaguwar, Saddle Creek, etc.'],
-            'beggars'  => ['label' => 'Beggars Group', 'notes' => 'XL, Matador, 4AD, Rough Trade, Young'],
-            'redeye'   => ['label' => 'Redeye Worldwide', 'notes' => 'Indie / world / reggae catalog'],
-            'vp'       => ['label' => 'VP Records', 'notes' => 'Reggae specialist'],
+            'secretly' => ['label' => 'Secretly', 'notes' => 'Secretly Distribution — Dead Oceans, Jagjaguwar, Saddle Creek, etc.'],
+            'beggars'  => ['label' => 'Beggars', 'notes' => 'Beggars Group — XL, Matador, 4AD, Rough Trade, Young'],
+            'redeye'   => ['label' => 'Redeye', 'notes' => 'Redeye Worldwide — Indie / world / reggae catalog'],
+            'vp'       => ['label' => 'VP', 'notes' => 'VP Records — reggae specialist'],
         ],
         // ❄️ Frozen inventory — stock-on-shelf with no recent sale.
         // Listed as a "do not reorder" warning bucket; tags cross-reference

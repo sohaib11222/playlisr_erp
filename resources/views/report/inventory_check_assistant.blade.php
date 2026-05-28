@@ -780,15 +780,29 @@ HTML;
    green. Empty cells dim. */
 .ica-supplier-col {
     text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums;
-    color: #555; font-size: 13px; padding: 4px 8px;
+    color: #555; font-size: 13px; padding: 4px 6px;
 }
 .ica-supplier-col[data-price=""], .ica-supplier-col:empty { color: #bbb; }
 .ica-supplier-best-cell {
     background: #d4edda; color: #0b3d1a; font-weight: 700;
 }
+.ica-supplier-link { color: inherit; text-decoration: underline dotted; }
+.ica-supplier-link:hover, .ica-supplier-link:focus { color: #2c699a; text-decoration: underline; }
+.ica-supplier-best-cell .ica-supplier-link { color: #0b3d1a; }
 .ica-row-table th.ica-sortable[title*="Latest wholesale price"] {
     font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px;
 }
+/* 2026-05-28 Sarah: 6 distributor columns + the existing data columns
+   made the table too wide for her screen — was forced to zoom out.
+   Wrap in a horizontal scroller and tighten per-cell padding so most
+   layouts fit at 100%, and the rest scroll within the bucket. */
+.ica-bucket-body { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.ica-row-table { font-size: 12.5px; }
+.ica-row-table th, .ica-row-table td { padding: 4px 6px !important; }
+.ica-row-table th { white-space: nowrap; }
+.ica-row-table td.ica-stock-col,
+.ica-row-table td.ica-cost-col,
+.ica-row-table td.ica-price-col { white-space: nowrap; }
 /* Live diagnostic line inside each step card (2026-05-27) — surfaces the
    bucket's `why` text including supplier-feed status, so when the AMS
    column is empty Sarah can see exactly why (no feed uploaded vs no

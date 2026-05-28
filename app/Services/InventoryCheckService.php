@@ -842,6 +842,7 @@ class InventoryCheckService
                         'cost' => $cost,
                         'upc' => $row['upc'] ?? null,
                         'format' => $row['format'] ?? null,
+                        'url' => $row['url'] ?? null,
                     ];
                 }
             }
@@ -889,6 +890,7 @@ class InventoryCheckService
                         'cost' => $cost,
                         'upc' => $row['upc'] ?? null,
                         'format' => $row['format'] ?? null,
+                        'url' => $row['url'] ?? null,
                     ];
                 }
             }

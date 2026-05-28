@@ -134,8 +134,10 @@ class AmsFetcher extends AbstractHttpFetcher
             // Title: <h2><a href="/Product/<ARTIST>/<TITLE>/<EAN>">TITLE</a></h2>
             $title = null;
             $artist = null;
+            $url = null;
             if (preg_match('#<h2[^>]*>\s*<a\s+href="(/Product/[^"]+)"[^>]*>([^<]+)</a>#', $body, $hm)) {
                 $title = trim(html_entity_decode($hm[2], ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+                $url = 'https://www.allmediasupply.com' . $hm[1];
                 $segs = explode('/', trim($hm[1], '/'));
                 if (count($segs) >= 3) {
                     $artist = str_replace('-', ' ', $segs[1]);
@@ -173,6 +175,7 @@ class AmsFetcher extends AbstractHttpFetcher
                 'format' => $format,
                 'cost' => $cost,
                 'upc' => $ean,
+                'url' => $url,
             ];
         }
         return $out;

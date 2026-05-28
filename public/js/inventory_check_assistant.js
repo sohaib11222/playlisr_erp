@@ -1277,6 +1277,22 @@
         `;
     }
 
+    // 2026-05-28 Sarah: per-supplier site for the "search this title"
+    // fallback link on supplier-price cells (when the fetcher didn't
+    // save a direct product URL). Google site-search lands close to
+    // the right page on each distributor's portal.
+    function supplierFallbackHost(key) {
+        switch (key) {
+            case 'ams':      return 'allmediasupply.com';
+            case 'alliance': return 'aent.com';
+            case 'secretly': return 'secretlydistribution.com';
+            case 'beggars':  return 'beggarsgroup.com';
+            case 'redeye':   return 'redeyeworldwide.com';
+            case 'vp':       return 'vprecords.com';
+            default:         return '';
+        }
+    }
+
     function renderRow(bucket, it) {
         const stock = (it.stock === null || it.stock === undefined) ? '—' : it.stock;
         const sold = (it.sold_qty_window === null || it.sold_qty_window === undefined) ? '—' : it.sold_qty_window;
@@ -1369,6 +1385,22 @@
                 const isBest = bestCost !== null && Math.abs(cost - bestCost) < 0.0001;
                 const upcTip = p.upc ? ` · UPC ${p.upc}` : '';
                 const cls = isBest ? 'ica-supplier-col ica-supplier-best-cell' : 'ica-supplier-col';
+                // 2026-05-28 Sarah: clicking a price opens the supplier's
+                // product page in a new tab. Uses the parsed product URL
+                // when the fetcher saved one (AMS does); falls back to a
+                // Google site search for the title so the click is never
+                // a dead-end.
+                const directUrl = p.url || '';
+                const fallbackHost = supplierFallbackHost(sup.key);
+                const queryFrom = (it.product || it.artist || '').toString();
+                const queryUrl = queryFrom
+                    ? 'https://www.google.com/search?q=' + encodeURIComponent('site:' + fallbackHost + ' ' + queryFrom)
+                    : '';
+                const href = directUrl || queryUrl;
+                const linkTitle = (directUrl ? 'Open this product on ' : 'Search ') + escapeHtml(sup.label) + upcTip;
+                if (href) {
+                    return `<td class="${cls}" data-supplier="${escapeHtml(sup.key)}" data-price="${cost}"><a href="${escapeHtml(href)}" target="_blank" rel="noopener" class="ica-supplier-link" title="${linkTitle}">$${cost.toFixed(2)}</a></td>`;
+                }
                 return `<td class="${cls}" data-supplier="${escapeHtml(sup.key)}" data-price="${cost}" title="${escapeHtml(sup.label)}${escapeHtml(upcTip)}">$${cost.toFixed(2)}</td>`;
             }).join('');
         }
