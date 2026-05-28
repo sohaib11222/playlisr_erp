@@ -5807,6 +5807,20 @@ class TransactionUtil extends Util
             $contact->balance -= $amount;
         }
         $contact->save();
+
+        if (
+            in_array($contact->type, ['customer', 'both']) &&
+            !empty($contact->email) &&
+            (float) $amount > 0
+        ) {
+            $delta = $type == 'deduct' ? -1 * (float) $amount : (float) $amount;
+            app(\App\Services\NivessaBackendCreditSyncService::class)->syncDeltaByEmail(
+                (string) $contact->email,
+                $delta,
+                'erp_contact_balance_' . $type,
+                ['contact_id' => (int) $contact->id, 'origin' => 'transaction_util']
+            );
+        }
     }
 
     public function payContact($request, $format_data = true)

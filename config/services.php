@@ -51,6 +51,7 @@ return [
     'nivessa_web' => [
         'api_token'   => env('NIVESSA_WEB_API_TOKEN'),
         'business_id' => env('NIVESSA_WEB_BUSINESS_ID'),
+        'backend_sync_url' => env('NIVESSA_BACKEND_SYNC_URL'),
     ],
 
     // eBay Marketplace Account Deletion webhook (Developer → Alerts & Notifications).

@@ -445,6 +445,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/qb-balance-fix', 'QbBalanceFixController@index');
     Route::post('/admin/qb-balance-fix', 'QbBalanceFixController@apply');
 
+    // Store-credit reconciliation dashboard: compares ERP vs website backend
+    // balances by customer email and lets admins resolve legacy mismatches.
+    Route::get('/admin/store-credit-sync', 'StoreCreditSyncController@index');
+    Route::post('/admin/store-credit-sync/reconcile', 'StoreCreditSyncController@reconcile');
+
     // eBay seller OAuth — required to read /sell/fulfillment/v1/order.
     // Tokens land in business.api_settings.ebay_seller (no migration).
     Route::get('/admin/ebay-seller', 'EbaySellerAuthController@index');

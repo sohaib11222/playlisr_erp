@@ -1879,6 +1879,15 @@ class ContactController extends Controller
             }
             $contact->save();
 
+            if (in_array($contact->type, ['customer', 'both']) && !empty($contact->email)) {
+                app(\App\Services\NivessaBackendCreditSyncService::class)->syncDeltaByEmail(
+                    (string) $contact->email,
+                    (float) $amount,
+                    (string) $request->input('reason', 'erp_store_credit_add'),
+                    ['contact_id' => (int) $contact->id, 'action' => 'add']
+                );
+            }
+
             return response()->json([
                 'success' => true,
                 'msg' => 'Store credit added successfully.',
@@ -1942,6 +1951,15 @@ class ContactController extends Controller
             );
             $contact->balance_notes = trim(($contact->balance_notes ?? '') . "\n" . $line);
             $contact->save();
+
+            if (in_array($contact->type, ['customer', 'both']) && !empty($contact->email)) {
+                app(\App\Services\NivessaBackendCreditSyncService::class)->syncDeltaByEmail(
+                    (string) $contact->email,
+                    (float) $delta,
+                    $reason !== '' ? $reason : 'erp_store_credit_adjust',
+                    ['contact_id' => (int) $contact->id, 'action' => 'adjust']
+                );
+            }
 
             return response()->json([
                 'success' => true,
