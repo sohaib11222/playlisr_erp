@@ -203,6 +203,18 @@
                 if (lastResult && lastResult.buckets) {
                     lastResult.buckets[bucketKey] = resp.bucket;
                 }
+                // 2026-05-27: ume_spotlights renders as a subsection inside
+                // STEP 4 (universal_top). When the spotlights bucket lazy-
+                // arrives, re-render STEP 4 instead of looking for a
+                // dedicated ume_spotlights element (which no longer exists).
+                if (bucketKey === 'ume_spotlights') {
+                    const utBucket = lastResult && lastResult.buckets && lastResult.buckets.universal_top;
+                    if (utBucket) {
+                        replaceBucketInPlace('universal_top', utBucket);
+                        attachBucketHandlers();
+                    }
+                    return;
+                }
                 if (!replaceBucketInPlace(bucketKey, resp.bucket)) return;
                 attachBucketHandlers();
                 // Frozen bucket loaded — sweep other rendered rows and tag
@@ -548,7 +560,10 @@
             { key: 'universal_top',    step: 4, title: 'UMe / Universal Top',          note: 'This week\'s UMe Top 200 + new deliveries.' },
             { key: 'street_pulse',     step: 5, title: 'Street Pulse / Luminate chart', note: 'Luminate top sellers — the industry-wide chart.' },
         ];
-        const secondary = ['top_artist_new_releases', 'manager_picks', 'ume_spotlights', 'customer_wants', 'abc_a_restock', 'long_oos_essentials', 'hot_used_oos'];
+        // 2026-05-27 Sarah: ume_spotlights pulled out of the secondary list —
+        // it was duplicating the UMe vibe of STEP 4. Spotlights now render
+        // as a "Curated UMe picks" subsection inside the STEP 4 card.
+        const secondary = ['top_artist_new_releases', 'manager_picks', 'customer_wants', 'abc_a_restock', 'long_oos_essentials', 'hot_used_oos'];
         const buckets = payload.buckets || {};
 
         let primaryHtml = '';
@@ -760,6 +775,14 @@
         if (card.key === 'events_upcoming' && bucket) {
             extras = renderEventOrderSummary(bucket);
         }
+        // 2026-05-27 Sarah: UMe spotlights live INSIDE the STEP 4 universal_top
+        // card as a curated-picks subsection so she doesn't see "UMe" twice.
+        if (card.key === 'universal_top') {
+            const spot = lastResult && lastResult.buckets && lastResult.buckets.ume_spotlights;
+            if (spot && Array.isArray(spot.items) && spot.items.length) {
+                extras += renderUmeSpotlightChips(spot);
+            }
+        }
         // Apple Music Top 100 empty-state CTA — 2026-05-27 Sarah saw a
         // "No items in this bucket" with no path forward; surface the
         // Run-Apple-Music-pull action right here so she knows what to do.
@@ -781,6 +804,36 @@
                 <div class="ica-step-note">${card.note}</div>
                 ${extras}
                 ${inner}
+            </div>`;
+    }
+
+    /**
+     * 2026-05-27 Sarah: UMe Update spotlights rendered as chips inside the
+     * STEP 4 Universal Top card so she sees the UMe section once, not twice.
+     */
+    function renderUmeSpotlightChips(bucket) {
+        const items = (bucket.items || []).slice(0, 24);
+        if (!items.length) return '';
+        const chips = items.map((it) => {
+            const stockBadge = (it.stock !== null && it.stock !== undefined && Number(it.stock) > 0)
+                ? `<span class="ica-spot-have">In stock: ${Number(it.stock)}</span>`
+                : `<span class="ica-spot-miss">not in stock</span>`;
+            const date = escapeHtml(it.release_date_label || it.release_date || '');
+            return `
+                <div class="ica-spot-chip">
+                    <div class="ica-spot-chip-head">
+                        <strong>${escapeHtml(it.artist || '')}</strong>${it.product ? ' — ' + escapeHtml(it.product) : ''}
+                    </div>
+                    <div class="ica-spot-chip-meta">
+                        ${date ? `<span>Release: ${date}</span>` : ''}
+                        ${stockBadge}
+                    </div>
+                </div>`;
+        }).join('');
+        return `
+            <div class="ica-spot-block">
+                <div class="ica-event-summary-head">💿 UMe weekly spotlights — curated picks (${items.length})</div>
+                <div class="ica-spot-chips">${chips}</div>
             </div>`;
     }
 

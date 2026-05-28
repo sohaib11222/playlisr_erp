@@ -58,6 +58,25 @@
             </span>
         </div>
 
+        {{-- ── Per-store spend split (2026-05-27 Sarah) ─────────────────── --}}
+        @if(!empty($pb['per_location']))
+        <div class="ica-budget-per-loc">
+            <small class="text-muted ica-budget-per-loc-label">By store this week:</small>
+            @foreach($pb['per_location'] as $loc)
+                <span class="ica-budget-loc-chip">
+                    <strong>{{ $loc['name'] }}</strong>
+                    <span class="ica-budget-loc-amt">${{ number_format($loc['spent'], 0) }}</span>
+                </span>
+            @endforeach
+            @if(!empty($pb['spent_from_manual']))
+                <span class="ica-budget-loc-chip ica-budget-loc-manual" title="Manual + Log a buy entries — not yet tied to a store">
+                    <strong>Manual buys</strong>
+                    <span class="ica-budget-loc-amt">${{ number_format($pb['spent_from_manual'], 0) }}</span>
+                </span>
+            @endif
+        </div>
+        @endif
+
         {{-- ── Used / New split rows ────────────────────────────────── --}}
         @php
             $renderSplitRow = function ($label, $caption, $bucket, $barClass, $accentColor, $kindClass) {
@@ -718,6 +737,17 @@ HTML;
     background: #fffbe6; border: 1px solid #ffeaa7; border-radius: 4px;
 }
 .ica-empty-cta p { margin: 0 0 8px; color: #555; font-size: 13px; }
+/* UMe weekly spotlights — inline chip block inside STEP 4 (2026-05-27) */
+.ica-spot-block { margin: 12px 0 10px; }
+.ica-spot-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+.ica-spot-chip {
+    border: 1px solid #d6e0ea; border-radius: 4px;
+    padding: 8px 12px; background: #fff;
+}
+.ica-spot-chip-head { font-size: 13px; line-height: 1.4; color: #222; }
+.ica-spot-chip-meta { font-size: 11px; color: #888; margin-top: 4px; display: flex; gap: 8px; flex-wrap: wrap; }
+.ica-spot-have { color: #1d4f73; font-weight: 600; }
+.ica-spot-miss { color: #a94442; }
 
 /* Lead intro */
 .ica-lead { font-size: 14px; line-height: 1.6; }
@@ -811,6 +841,26 @@ HTML;
 .ica-budget-bar { margin: 0; height: 14px; }
 .ica-budget-bar .progress-bar { font-size: 10px; line-height: 14px; font-weight: 600; }
 .ica-budget-warn { color: #a94442; font-weight: 600; margin-top: 6px; font-size: 13px; }
+/* Per-store spend chips (2026-05-27 Sarah) */
+.ica-budget-per-loc {
+    margin-top: 10px; display: flex; flex-wrap: wrap;
+    align-items: center; gap: 8px;
+}
+.ica-budget-per-loc-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px;
+    color: #888; font-weight: 600; margin-right: 4px;
+}
+.ica-budget-loc-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #eef5fb; border: 1px solid #c6dcec;
+    padding: 3px 9px; border-radius: 12px; font-size: 12px; color: #2c3e50;
+}
+.ica-budget-loc-chip strong { color: #1d4f73; font-weight: 700; }
+.ica-budget-loc-amt { color: #555; font-weight: 600; }
+.ica-budget-loc-chip.ica-budget-loc-manual {
+    background: #fffbe6; border-color: #ffeaa7;
+}
+.ica-budget-loc-chip.ica-budget-loc-manual strong { color: #8a6d3b; }
 
 /* Used/New split rows v2 (Sarah 2026-05-27 — readability pass) */
 .ica-bar-row {

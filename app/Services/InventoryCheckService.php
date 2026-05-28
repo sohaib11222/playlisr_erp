@@ -254,6 +254,33 @@ class InventoryCheckService
         $remaining = $budget - $spent;
         $pct = $budget > 0 ? min(100, ($spent / $budget) * 100) : 0;
 
+        // 2026-05-27 Sarah: per-store spend in the banner. Splits the
+        // formal-purchase spend by t.location_id and joins business_locations
+        // for readable names ("Hollywood" / "Pico"). Manual "+ Log a buy"
+        // entries don't carry a location yet — they show up only in the
+        // top-line "spent" figure, with a footnote in the JS.
+        $perLocQ = DB::table('transactions as t')
+            ->leftJoin('business_locations as bl', 'bl.id', '=', 't.location_id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'purchase')
+            ->whereBetween(DB::raw('date(t.transaction_date)'), [$week['start'], $week['end']]);
+        if ($permittedLocations !== 'all') {
+            $perLocQ->whereIn('t.location_id', $permittedLocations);
+        }
+        $perLocRows = $perLocQ
+            ->selectRaw('t.location_id, bl.name as location_name, SUM(t.final_total) as spent')
+            ->groupBy('t.location_id', 'bl.name')
+            ->get();
+        $perLocation = [];
+        foreach ($perLocRows as $r) {
+            $perLocation[] = [
+                'location_id' => (int) $r->location_id,
+                'name' => $r->location_name ?: ('Location #' . $r->location_id),
+                'spent' => round((float) $r->spent, 2),
+            ];
+        }
+        usort($perLocation, fn ($a, $b) => $b['spent'] <=> $a['spent']);
+
         // Used/New sub-budgets (35/65 mid-range of the 30-40 / 60-70 plan).
         $usedBudget = round($budget * 0.35, 2);
         $newBudget = round($budget - $usedBudget, 2); // exact complement
@@ -271,6 +298,7 @@ class InventoryCheckService
             'spent_from_transactions' => $spentFromTransactions,
             'spent_from_manual' => $spentFromManual,
             'manual_entries_this_week' => $manualThisWeek,
+            'per_location' => $perLocation,
             'remaining' => $remaining,
             'pct_spent' => round($pct, 1),
             'over_budget' => $spent > $budget,
