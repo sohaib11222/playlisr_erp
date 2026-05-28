@@ -793,21 +793,44 @@
         const key = btn.dataset.supplier;
         const origLabel = btn.dataset.origLabel || btn.textContent;
         btn.dataset.origLabel = origLabel;
-        btn.disabled = true; btn.textContent = 'Fetching… 20-60s';
+        console.log('[ICA] fetch click', key, 'at', new Date().toISOString());
+        // Immediate visible feedback — flash + scroll into view so "nothing
+        // happened" is impossible to mistake for a dead click.
+        btn.disabled = true;
+        btn.textContent = 'Fetching ' + key.toUpperCase() + '…';
+        btn.classList.add('ica-btn-flash');
+        setTimeout(() => btn.classList.remove('ica-btn-flash'), 400);
+        try { btn.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) {}
         // Wipe ANY prior inline cred form / error for this supplier
         // anywhere on the page so retries never stack.
         document.querySelectorAll('.ica-inline-creds[data-supplier="' + key + '"]').forEach((el) => el.remove());
         document.querySelectorAll('.ica-inline-err[data-supplier="' + key + '"]').forEach((el) => el.remove());
+        // Tick-tock label so it's obvious the fetch is alive.
+        let secs = 0;
+        const ticker = setInterval(() => {
+            secs += 1;
+            btn.textContent = 'Fetching ' + key.toUpperCase() + '… ' + secs + 's';
+        }, 1000);
+        // Hard client-side timeout — if PHP-FPM hangs (AMS slow login),
+        // surface an inline error rather than leaving the button stuck.
+        const controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        const timeout = setTimeout(() => {
+            if (controller) controller.abort();
+        }, 120000);
         const fd = new FormData();
         fd.append('supplier_key', key);
-        fetch(window.ICA_SUPPLIER_AUTOFETCH_URL, {
+        const fetchOpts = {
             method: 'POST',
             headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': window.ICA_CSRF, 'X-Requested-With': 'XMLHttpRequest' },
             credentials: 'same-origin',
             body: fd,
-        })
+        };
+        if (controller) fetchOpts.signal = controller.signal;
+        fetch(window.ICA_SUPPLIER_AUTOFETCH_URL, fetchOpts)
             .then((r) => r.json())
             .then((resp) => {
+                clearInterval(ticker); clearTimeout(timeout);
+                console.log('[ICA] fetch resp', key, resp);
                 const out = (resp && resp.output) || '';
                 if (resp && resp.success) {
                     btn.textContent = '✓ Pulled — rebuilding…';
@@ -821,12 +844,18 @@
                 if (needsCreds) {
                     showInlineCredsForm(btn, key);
                 } else {
-                    showInlineError(btn, key, out || 'unknown error');
+                    showInlineError(btn, key, out || (resp && resp.message) || 'unknown error');
                 }
             })
             .catch((err) => {
+                clearInterval(ticker); clearTimeout(timeout);
+                console.error('[ICA] fetch err', key, err);
                 btn.disabled = false; btn.textContent = origLabel;
-                showInlineError(btn, key, (err && err.message) || 'network error');
+                const isAbort = err && err.name === 'AbortError';
+                const msg = isAbort
+                    ? 'Timed out after 120s — the portal login is slow or stuck. Try again, or check Apache error log on the server.'
+                    : (err && err.message) || 'network error';
+                showInlineError(btn, key, msg);
             });
     }
 
@@ -860,13 +889,20 @@
         const form = document.createElement('div');
         form.className = 'ica-inline-creds';
         form.setAttribute('data-supplier', key);
+        // 2026-05-28 Sarah: per-supplier field set. Only AMS asks for an
+        // Account Number. Other portals just need username + password
+        // (the Portal URL is captured server-side from config and is
+        // optional here for advanced override).
+        const showAccount = key === 'ams';
+        const accountField = showAccount
+            ? `<input type="text" class="form-control input-sm ica-inline-account" placeholder="Account number" autocomplete="off">`
+            : '';
         form.innerHTML = `
             <div class="ica-inline-creds-head">🔐 ${escapeHtml(supLabel)} portal login (saved encrypted, never shown back)</div>
             <div class="ica-inline-creds-row">
-                <input type="text" class="form-control input-sm ica-inline-account" placeholder="Account number (AMS / portal #)" autocomplete="off">
-                <input type="text" class="form-control input-sm ica-inline-user" placeholder="Portal username" autocomplete="off">
-                <input type="password" class="form-control input-sm ica-inline-pass" placeholder="Portal password" autocomplete="new-password">
-                <input type="text" class="form-control input-sm ica-inline-url" placeholder="Portal URL (optional)" autocomplete="off">
+                ${accountField}
+                <input type="text" class="form-control input-sm ica-inline-user" placeholder="Username" autocomplete="off">
+                <input type="password" class="form-control input-sm ica-inline-pass" placeholder="Password" autocomplete="new-password">
                 <button type="button" class="btn btn-success btn-sm ica-inline-save">Save + fetch</button>
                 <button type="button" class="btn btn-link btn-sm ica-inline-cancel">Cancel</button>
             </div>
@@ -874,10 +910,10 @@
         btn.parentElement.insertBefore(form, btn.nextSibling);
         form.querySelector('.ica-inline-cancel').addEventListener('click', () => form.remove());
         form.querySelector('.ica-inline-save').addEventListener('click', function () {
-            const account = form.querySelector('.ica-inline-account').value.trim();
+            const accountEl = form.querySelector('.ica-inline-account');
+            const account = accountEl ? accountEl.value.trim() : '';
             const user = form.querySelector('.ica-inline-user').value.trim();
             const pass = form.querySelector('.ica-inline-pass').value;
-            const url = form.querySelector('.ica-inline-url').value.trim();
             if (!user || !pass) {
                 form.querySelector('.ica-inline-creds-msg').textContent = 'Username + password required.';
                 return;
@@ -889,7 +925,6 @@
             fd.append('portal_user', user);
             fd.append('portal_pass', pass);
             if (account) fd.append('portal_account', account);
-            if (url) fd.append('portal_url', url);
             fetch(window.ICA_SUPPLIER_CREDS_URL, {
                 method: 'POST',
                 headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': window.ICA_CSRF, 'X-Requested-With': 'XMLHttpRequest' },
@@ -1135,12 +1170,13 @@
         // filtered by either. The two new dropdowns above the buckets
         // drive client-side row hiding. Sortable headers + the frozen-only
         // Last-updated / Price columns added 2026-05-24.
+        // 2026-05-28 Sarah: Format + Bin columns dropped globally — too
+        // noisy for ordering (Bin still useful inside the Frozen list,
+        // re-added below for that bucket only).
         const headParts = [
             `<th><input type="checkbox" class="ica-select-all" data-bucket="${escapeHtml(key)}"></th>`,
             sortable('Product', 'text'),
             sortable('Artist', 'text'),
-            sortable('Format', 'text'),
-            sortable('Bin', 'text'),
             sortable('Category', 'text'),
             sortable('Genre', 'text'),
             sortable('ABC', 'text', 'ABC class — A is the top 80% of inventory value'),
@@ -1148,6 +1184,11 @@
             sortable('Sold (window)', 'number'),
             sortable('Last paid', 'number', 'Wholesale price we paid for the most recent unit of this title (variations.dpp_inc_tax). Compare against the distributor columns to see if a current supplier is cheaper than last time.'),
         ];
+        if (isFrozen) {
+            // Bin position is essential for physically finding the unsold
+            // copy on shelf — keep it in the frozen list only.
+            headParts.splice(3, 0, sortable('Bin', 'text'));
+        }
         if (isFrozen) {
             headParts.push(sortable('Price', 'number', 'Retail sell price (from product_stock_cache.unit_price).'));
             headParts.push(sortable('Added', 'date', 'When this product was first added to the system (products.created_at).'));
@@ -1362,12 +1403,14 @@
             updatedCellHtml = `<td class="ica-updated-col" data-updated="${escapeHtml(updated)}"><small>${escapeHtml(updatedDisplay)}</small></td>`;
         }
 
+        // 2026-05-28: Format + Bin columns dropped globally. Bin re-added
+        // for the Frozen list only (matches header insertion above).
+        const binCell = isFrozen ? `<td><small>${bin || '—'}</small></td>` : '';
         return `<tr data-row-key="${escapeHtml(rowKey)}" data-pid="${pid}" data-cat="${category}" data-genre="${genre}" data-abc="${initialAbc}" data-rsd="${isRsd ? '1' : '0'}" data-cost="${costNum !== null ? costNum : ''}">
             <td><input type="checkbox" class="ica-row-check" ${checkboxAttrs}></td>
             <td>${productCell}</td>
             <td>${artist}</td>
-            <td>${format}</td>
-            <td><small>${bin || '—'}</small></td>
+            ${binCell}
             <td><small>${category || '—'}</small></td>
             <td><small>${genre || '—'}</small></td>
             <td class="ica-abc-col">${abcCell}</td>

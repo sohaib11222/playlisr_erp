@@ -756,6 +756,14 @@ HTML;
     font-size: 11px; max-height: 200px; overflow: auto;
     white-space: pre-wrap; word-break: break-word; color: #444;
 }
+/* Brief flash on click so it's visually obvious the click registered. */
+.ica-btn-flash {
+    animation: ica-flash 0.4s ease-out;
+}
+@keyframes ica-flash {
+    0%   { box-shadow: 0 0 0 0 rgba(44, 105, 154, 0.6); }
+    100% { box-shadow: 0 0 0 12px rgba(44, 105, 154, 0); }
+}
 /* UMe weekly spotlights — inline chip block inside STEP 4 (2026-05-27) */
 .ica-spot-block { margin: 12px 0 10px; }
 .ica-spot-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }

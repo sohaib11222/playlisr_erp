@@ -79,7 +79,7 @@ return [
         // UI shows.
         'supplier_feeds' => [
             'ams'      => ['label' => 'AMS', 'notes' => 'All Media Supply — main weekly availability + cost'],
-            'alliance' => ['label' => 'Alliance Entertainment', 'notes' => 'AENT / WebAMI portal — separate distributor from AMS (Sarah 2026-05-28)'],
+            'alliance' => ['label' => 'Alliance', 'notes' => 'Alliance Entertainment — AENT / WebAMI portal. Separate distributor from AMS (Sarah 2026-05-28)'],
             'secretly' => ['label' => 'Secretly Distribution', 'notes' => 'Indie — Dead Oceans, Jagjaguwar, Saddle Creek, etc.'],
             'beggars'  => ['label' => 'Beggars Group', 'notes' => 'XL, Matador, 4AD, Rough Trade, Young'],
             'redeye'   => ['label' => 'Redeye Worldwide', 'notes' => 'Indie / world / reggae catalog'],
