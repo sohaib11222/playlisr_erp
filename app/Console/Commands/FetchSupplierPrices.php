@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\InventoryCheckService;
+use App\Services\SupplierFetchers\AllianceFetcher;
 use App\Services\SupplierFetchers\AmsFetcher;
 use App\Services\SupplierFetchers\BeggarsFetcher;
 use App\Services\SupplierFetchers\RedeyeFetcher;
@@ -37,6 +38,7 @@ class FetchSupplierPrices extends Command
     /** Map of supplier key → fetcher class. */
     protected array $fetchers = [
         'ams' => AmsFetcher::class,
+        'alliance' => AllianceFetcher::class,
         'secretly' => SecretlyFetcher::class,
         'beggars' => BeggarsFetcher::class,
         'redeye' => RedeyeFetcher::class,
