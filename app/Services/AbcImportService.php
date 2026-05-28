@@ -252,9 +252,14 @@ class AbcImportService
     }
 
     /**
-     * Substring match guarded against empty strings — strpos errors with
-     * "Empty needle" if either side is empty (common when a product has no
-     * category and category_name is null).
+     * Compare CSV format to ERP category name as token SETS, not substrings.
+     * Order-independent and survives wording variations:
+     *   "CD (Sealed)" CSV  ≈  "Sealed CD" ERP   → match (tokens {cd, sealed})
+     *   "Cassettes - Sealed" ≈ "Sealed Cassettes" → match
+     *   "Used Vinyl" vs "Sealed Vinyl"          → reject (different specific tokens)
+     *
+     * Match rule: one side's tokens must be a subset of (or equal to) the other.
+     * Substring fallback handles partial cat names ("CD" vs "Sealed CD").
      */
     protected function fmtMatches(string $fmt, string $candidate): bool
     {
@@ -264,7 +269,34 @@ class AbcImportService
         if ($fmt === $candidate) {
             return true;
         }
+        $a = $this->tokenize($fmt);
+        $b = $this->tokenize($candidate);
+        if (empty($a) || empty($b)) {
+            return false;
+        }
+        $aInB = array_diff($a, $b);
+        $bInA = array_diff($b, $a);
+        if (empty($aInB) || empty($bInA)) {
+            return true; // one is a subset of the other
+        }
+        // Substring fallback for partial labels.
         return strpos($candidate, $fmt) !== false || strpos($fmt, $candidate) !== false;
+    }
+
+    /**
+     * Split on whitespace/punctuation, drop very short tokens, normalize "&"→"and".
+     */
+    protected function tokenize(string $s): array
+    {
+        $s = str_replace('&', ' and ', $s);
+        $parts = preg_split('/[^\p{L}\p{N}]+/u', $s, -1, PREG_SPLIT_NO_EMPTY);
+        $out = [];
+        foreach ($parts as $p) {
+            if (mb_strlen($p) >= 2) {
+                $out[] = mb_strtolower($p);
+            }
+        }
+        return array_values(array_unique($out));
     }
 
     /**
