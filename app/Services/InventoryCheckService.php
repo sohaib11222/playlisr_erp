@@ -1727,11 +1727,6 @@ class InventoryCheckService
 
         $concertCount = count($events) - count($annivEvents);
 
-        // 2026-05-27: load any manual "ordered N via email" entries so the
-        // events bucket can show e.g. "Paul McCartney listening party —
-        // ordered 12 via email" right in the chip.
-        $eventOrders = $this->loadEventOrders($business_id);
-
         return [
             'label' => 'Upcoming events — stock up',
             'why' => 'LA concerts + listening parties + UMe artist moments (biopics, anniversaries, birthdays) in the next ' . $lookahead . ' days.',
@@ -1740,7 +1735,6 @@ class InventoryCheckService
             'events_loaded' => count($events),
             'concert_events' => $concertCount,
             'anniversary_events' => count($annivEvents),
-            'event_orders' => $eventOrders,
             'all_events' => array_values(array_map(function ($e) {
                 return [
                     'name' => $e['name'],
@@ -1751,20 +1745,6 @@ class InventoryCheckService
                 ];
             }, $events)),
         ];
-    }
-
-    /**
-     * Load manual "ordered via email" entries for event chips. Stored in
-     * storage/app/ica-event-orders-{business_id}.json (no migration —
-     * Sarah refuses migrations).
-     */
-    public function loadEventOrders(int $business_id): array
-    {
-        $path = storage_path('app/ica-event-orders-' . $business_id . '.json');
-        if (!is_file($path)) return [];
-        $raw = @file_get_contents($path);
-        $decoded = $raw ? json_decode($raw, true) : null;
-        return is_array($decoded) ? $decoded : [];
     }
 
     /**

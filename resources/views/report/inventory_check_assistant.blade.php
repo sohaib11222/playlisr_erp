@@ -716,22 +716,6 @@ HTML;
     padding: 8px 12px; background: #fafafa;
     border: 1px dashed #ddd; border-radius: 4px;
 }
-.ica-event-mark-ordered {
-    margin-top: 6px; font-size: 11px; padding: 2px 8px;
-    background: #fff; border: 1px dashed #2c699a; color: #2c699a;
-}
-.ica-event-mark-ordered:hover { background: #2c699a; color: #fff; }
-.ica-event-ordered {
-    margin-top: 6px; font-size: 12px; color: #155724;
-    background: #d4edda; padding: 4px 8px; border-radius: 3px;
-    display: flex; justify-content: space-between; align-items: center; gap: 6px;
-}
-.ica-event-ordered strong { color: #0b3d1a; }
-.ica-event-ordered-rm {
-    background: none; border: none; color: #155724;
-    font-size: 14px; line-height: 1; cursor: pointer;
-}
-.ica-event-ordered-rm:hover { color: #a94442; }
 .ica-empty-cta {
     margin: 12px 0; padding: 14px 18px;
     background: #fffbe6; border: 1px solid #ffeaa7; border-radius: 4px;
@@ -974,7 +958,6 @@ HTML;
     window.ICA_SUPPLIER_AUTOFETCH_URL = "{{ action('InventoryCheckController@runSupplierAutoFetch') }}";
     window.ICA_SUPPLIER_CREDS_URL = "{{ url('reports/inventory-check-assistant/supplier-credentials') }}";
     window.ICA_LOG_BUY_URL = "{{ action('InventoryCheckController@addManualBudgetEntry') }}";
-    window.ICA_EVENT_ORDERS_URL = "{{ url('reports/inventory-check-assistant/event-orders') }}";
     window.ICA_LOG_BUY_DELETE_BASE = "{{ url('reports/inventory-check-assistant/manual-budget-entry') }}";
     window.ICA_MGRPICKS_LIST_URL = "{{ action('InventoryCheckController@listManagerPicks') }}";
     window.ICA_MGRPICKS_ADD_URL = "{{ action('InventoryCheckController@addManagerPick') }}";

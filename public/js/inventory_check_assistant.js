@@ -870,7 +870,6 @@
     function renderEventOrderSummary(bucket) {
         const allEvents = Array.isArray(bucket.all_events) ? bucket.all_events : [];
         const items = Array.isArray(bucket.items) ? bucket.items : [];
-        const eventOrders = Array.isArray(bucket.event_orders) ? bucket.event_orders : [];
 
         // Aggregate per-event qty + item count from bucket items.
         const itemAgg = {};
@@ -879,14 +878,6 @@
             if (!itemAgg[k]) itemAgg[k] = { items: 0, qty: 0 };
             itemAgg[k].items += 1;
             itemAgg[k].qty += parseInt(it.suggested_qty || 0, 10) || 0;
-        });
-        // Aggregate manual "ordered via email" totals per event.
-        const orderAgg = {};
-        eventOrders.forEach((e) => {
-            const k = (e.event_name || '') + '|' + (e.event_date || '');
-            if (!orderAgg[k]) orderAgg[k] = { qty: 0, entries: [] };
-            orderAgg[k].qty += parseInt(e.qty || 0, 10) || 0;
-            orderAgg[k].entries.push(e);
         });
 
         // Build event list. Prefer bucket.all_events; fall back to keys
@@ -932,26 +923,19 @@
             const annivBadge = e.is_anniversary ? ' <span class="ica-event-anniv">anniv</span>' : '';
             const k = (e.name || '') + '|' + (e.date || '');
             const agg = itemAgg[k] || { items: 0, qty: 0 };
-            const ord = orderAgg[k] || { qty: 0, entries: [] };
             let qtyLine;
             if (agg.qty > 0) {
                 qtyLine = `<strong>${agg.qty}</strong> units suggested across ${agg.items} title${agg.items === 1 ? '' : 's'}`;
             } else {
                 qtyLine = `<span class="text-muted">no in-store matches yet</span>`;
             }
-            const orderLines = ord.entries.length ? ord.entries.map((entry) => {
-                const note = entry.note ? ' — ' + escapeHtml(entry.note) : '';
-                return `<div class="ica-event-ordered"><strong>Ordered ${entry.qty}</strong> by ${escapeHtml(entry.user_name || '')}${note} <button type="button" class="ica-event-ordered-rm" data-id="${escapeHtml(entry.id || '')}" title="Remove">×</button></div>`;
-            }).join('') : '';
             return `
-                <div class="ica-event-chip ${e.is_listening_party ? 'ica-event-listening' : 'ica-event-show'}" data-event-name="${escapeHtml(e.name || '')}" data-event-date="${escapeHtml(e.date || '')}">
+                <div class="ica-event-chip ${e.is_listening_party ? 'ica-event-listening' : 'ica-event-show'}">
                     <div class="ica-event-chip-head">
                         <strong>${escapeHtml(e.name || '(untitled)')}</strong>${annivBadge}
                         <span class="ica-event-chip-date">${dateDisplay}${locTxt}</span>
                     </div>
                     <div class="ica-event-chip-qty">${qtyLine}</div>
-                    ${orderLines}
-                    <button type="button" class="btn btn-xs btn-default ica-event-mark-ordered">+ Mark as ordered (via email)</button>
                 </div>`;
         };
         let html = '<div class="ica-event-summary">';
@@ -1356,64 +1340,6 @@
                     .then(() => {
                         const tr = btn.closest('tr');
                         if (tr) tr.remove();
-                    });
-            });
-        });
-
-        // 2026-05-27 "Mark as ordered (via email)" — per-event qty + note
-        // posted to /event-orders endpoint, persisted in storage/app/
-        $root.querySelectorAll('.ica-event-mark-ordered').forEach((btn) => {
-            btn.addEventListener('click', function () {
-                const chip = btn.closest('.ica-event-chip');
-                if (!chip) return;
-                const name = chip.getAttribute('data-event-name') || '';
-                const date = chip.getAttribute('data-event-date') || '';
-                const qtyStr = prompt(`How many units did you order for "${name}"?\n(e.g. 12 LPs ordered via email from AMS)`);
-                if (qtyStr === null) return;
-                const qty = parseInt(qtyStr, 10);
-                if (!Number.isFinite(qty) || qty < 0) { alert('Enter a number ≥ 0.'); return; }
-                const note = prompt('Note (optional, e.g. "via email from AMS"):') || '';
-                btn.disabled = true; btn.textContent = 'Saving…';
-                const fd = new FormData();
-                fd.append('event_name', name);
-                fd.append('event_date', date);
-                fd.append('qty', String(qty));
-                if (note) fd.append('note', note);
-                fetch(window.ICA_EVENT_ORDERS_URL || '/reports/inventory-check-assistant/event-orders', {
-                    method: 'POST',
-                    headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': window.ICA_CSRF, 'X-Requested-With': 'XMLHttpRequest' },
-                    credentials: 'same-origin',
-                    body: fd,
-                })
-                    .then((r) => r.json())
-                    .then((resp) => {
-                        if (!resp || !resp.success) { alert('Save failed.'); btn.disabled = false; btn.textContent = '+ Mark as ordered (via email)'; return; }
-                        if (lastResult && lastResult.buckets && lastResult.buckets.events_upcoming) {
-                            lastResult.buckets.events_upcoming.event_orders = resp.entries || [];
-                            replaceBucketInPlace('events_upcoming', lastResult.buckets.events_upcoming);
-                            attachBucketHandlers();
-                        }
-                    })
-                    .catch(() => { alert('Save failed — see console.'); btn.disabled = false; btn.textContent = '+ Mark as ordered (via email)'; });
-            });
-        });
-        $root.querySelectorAll('.ica-event-ordered-rm').forEach((btn) => {
-            btn.addEventListener('click', function () {
-                const id = btn.dataset.id;
-                if (!id || !confirm('Remove this order entry?')) return;
-                fetch((window.ICA_EVENT_ORDERS_URL || '/reports/inventory-check-assistant/event-orders') + '/' + encodeURIComponent(id), {
-                    method: 'DELETE',
-                    headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': window.ICA_CSRF, 'X-Requested-With': 'XMLHttpRequest' },
-                    credentials: 'same-origin',
-                })
-                    .then((r) => r.json())
-                    .then((resp) => {
-                        if (!resp || !resp.success) return;
-                        if (lastResult && lastResult.buckets && lastResult.buckets.events_upcoming) {
-                            lastResult.buckets.events_upcoming.event_orders = resp.entries || [];
-                            replaceBucketInPlace('events_upcoming', lastResult.buckets.events_upcoming);
-                            attachBucketHandlers();
-                        }
                     });
             });
         });
