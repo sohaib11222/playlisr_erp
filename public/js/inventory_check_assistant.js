@@ -1538,43 +1538,46 @@
             });
         });
 
-        // 2026-05-27 Sarah: "Open supplier feeds" CTA — expand the More
-        // options details + scroll to the supplier-feeds widget so she
-        // doesn't have to hunt for it.
-        $root.querySelectorAll('.ica-jump-supplier-feeds').forEach((btn) => {
-            btn.addEventListener('click', function (e) {
+        // (Empty-banner buttons — supplier-feed jump + per-supplier fetch +
+        // Apple Music pull — are now wired via delegated $root click handler
+        // at module init below so they survive partial re-renders.)
+
+        // (Apple Music CTA is also handled by the delegated listener below.)
+    }
+
+    // 2026-05-28 Sarah: delegated click handler so empty-banner buttons
+    // ("Fetch <Supplier> now", "Open supplier feeds", "Run Apple Music
+    // pull now") always work — even if attachBucketHandlers wasn't re-
+    // run after a partial render. Bound once at module init on $root.
+    if ($root) {
+        $root.addEventListener('click', function (e) {
+            const fetchBtn = e.target.closest && e.target.closest('.ica-fetch-supplier-now');
+            if (fetchBtn) { e.preventDefault(); runOneClickFetch(fetchBtn); return; }
+            const jumpBtn = e.target.closest && e.target.closest('.ica-jump-supplier-feeds');
+            if (jumpBtn) {
                 e.preventDefault();
                 const more = document.querySelector('details.ica-more-options');
                 if (more) more.open = true;
                 const grid = document.getElementById('ica_supplier_grid');
                 if (grid) grid.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            });
-        });
-
-        // 2026-05-28 Sarah: "Fetch <Supplier> now" buttons in the empty
-        // STEP 1 banner. Triggers the artisan supplier-prices:fetch cmd
-        // for that supplier. If credentials aren't saved, the response
-        // surfaces it so Sarah knows to save them once.
-        $root.querySelectorAll('.ica-fetch-supplier-now').forEach((btn) => {
-            btn.addEventListener('click', function () { runOneClickFetch(btn); });
-        });
-
-        // Apple Music empty-state CTA → trigger the manual pull
-        $root.querySelectorAll('.ica-empty-run-apple').forEach((btn) => {
-            btn.addEventListener('click', function () {
-                btn.disabled = true; btn.textContent = 'Running… 30-60s';
+                return;
+            }
+            const appleBtn = e.target.closest && e.target.closest('.ica-empty-run-apple');
+            if (appleBtn) {
+                e.preventDefault();
+                appleBtn.disabled = true; appleBtn.textContent = 'Running… 30-60s';
                 fetch(window.ICA_RUN_APPLE_URL, {
                     method: 'POST',
                     headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': window.ICA_CSRF, 'X-Requested-With': 'XMLHttpRequest' },
                     credentials: 'same-origin',
                 })
                     .then((r) => r.json())
-                    .then((resp) => {
-                        btn.textContent = 'Pull done — reloading chart…';
+                    .then(() => {
+                        appleBtn.textContent = 'Pull done — reloading chart…';
                         lazyLoadSecondaryBuckets();
                     })
-                    .catch(() => { btn.disabled = false; btn.textContent = 'Retry Apple Music pull'; });
-            });
+                    .catch(() => { appleBtn.disabled = false; appleBtn.textContent = 'Retry Apple Music pull'; });
+            }
         });
     }
 
