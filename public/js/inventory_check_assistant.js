@@ -19,6 +19,12 @@
     const $print = document.getElementById('ica_print');
 
     let lastResult = null;
+    // 2026-05-27: tracks whether the abc_a_restock bucket has lazy-loaded
+    // and stamped ABC classes onto rows. While false, applyRowFilters
+    // treats empty rowAbc as a wildcard so the default ABC=A filter
+    // doesn't hide everything pre-load. Once true, "—" rows are real
+    // (unclassified products) and the filter hides them.
+    let abcMapApplied = false;
 
     // 2026-05-27: step-card metadata for lazy-loaded buckets so a late
     // event/chart fetch can re-render its full STEP card (badge, title,
@@ -110,6 +116,9 @@
     }
 
     function buildList() {
+        // Reset the ABC-loaded flag so the wildcard kicks back in until
+        // the new build's abc_a_restock lazy-load finishes.
+        abcMapApplied = false;
         const params = new URLSearchParams();
         if ($location && $location.value) params.append('location_id', $location.value);
         if ($category && $category.value) params.append('category_id', $category.value);
@@ -335,6 +344,9 @@
             }
             tr.setAttribute('data-abc', cls);
         });
+        // ABC map is now applied — drop the empty-rowAbc wildcard so the
+        // ABC filter starts hiding genuinely unclassified rows.
+        abcMapApplied = true;
         // Once rows have data-abc populated, the ABC filter dropdown
         // becomes useful — repopulate options + re-apply current filter.
         rebuildFilterOptions();
@@ -725,14 +737,17 @@
                 const rowGen = tr.getAttribute('data-genre') || '';
                 const rowAbc = tr.getAttribute('data-abc') || '';
                 const rowRsd = tr.getAttribute('data-rsd') === '1';
-                // 2026-05-27: treat empty rowAbc as wildcard so the
-                // default ABC=A filter doesn't hide every row before the
-                // abc_a_restock bucket finishes loading and populates the
-                // ABC class on each row. Once data-abc is populated the
-                // filter applies normally.
+                // 2026-05-27: only treat empty rowAbc as a wildcard while
+                // the ABC bucket is still loading (abcMapApplied=false).
+                // Once it's loaded, "—" means genuinely unclassified and
+                // the ABC filter should hide it if a specific class is
+                // selected.
+                const abcMatch = !abc
+                    || rowAbc === abc
+                    || (!abcMapApplied && !rowAbc);
                 const match = (!cat || rowCat === cat)
                     && (!gen || rowGen === gen)
-                    && (!abc || !rowAbc || rowAbc === abc)
+                    && abcMatch
                     && (!hideRsd || !rowRsd)
                     && (!bucketCat || rowCat === bucketCat)
                     && (!bucketGen || rowGen === bucketGen);
