@@ -115,6 +115,23 @@ class NivessaEventsFetcher
                 if (empty($artists) && $name !== '' && mb_strlen($name) < 60 && !preg_match('/listening|release|party/i', $name)) {
                     $artists[] = $name;
                 }
+                // 2026-05-28 Sarah: nivessa.com listening parties are
+                // typed as "<ARTIST> LISTENING PARTY" / "<ARTIST> ADVANCE
+                // LISTENING EVENTS" / "<ARTIST> RELEASE EVENTS". Strip the
+                // event-type suffix and use what's left as the artist.
+                if (empty($artists) && $name !== '') {
+                    $clean = trim(preg_replace(
+                        '/\s*(?:advance\s+)?(?:listening|release)\s+(?:party|parties|event|events)\s*[:\-–—]?\s*$/i',
+                        '',
+                        $name
+                    ));
+                    // Also handle the "ARTIST: LIVE SHOW" / "ARTIST LIVE
+                    // SHOW" / "ARTIST RELEASE EVENT" suffix variants.
+                    $clean = trim(preg_replace('/\s*[:\-–—]?\s*live\s+show\s*$/i', '', $clean));
+                    if ($clean !== '' && $clean !== $name && mb_strlen($clean) < 60) {
+                        $artists[] = $clean;
+                    }
+                }
                 if (empty($artists)) {
                     $artists = $this->extractArtistsFromText($name . ' ' . $description);
                 }

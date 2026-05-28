@@ -254,7 +254,12 @@ return [
     | https://api.nivessa.com/api/v1/events/allEvents). If unset, the
     | "Upcoming events" bucket is skipped silently.
     */
-    'events_api_url' => env('NIVESSA_EVENTS_API_URL', 'https://server.nivessa.com/api/v1/events/allEvents'),
+    // 2026-05-28 Sarah: listening parties weren't showing. The old
+    // server.nivessa.com subdomain doesn't resolve from the ERP host,
+    // so the fetcher silently came back empty for nivessa-hosted events
+    // (Paul McCartney, Modest Mouse, Death Cab, Olivia Rodrigo all
+    // missed STEP 2). Public host nivessa.com responds at the same path.
+    'events_api_url' => env('NIVESSA_EVENTS_API_URL', 'https://nivessa.com/api/v1/events/allEvents'),
     // Public site's Ticketmaster LA feed (off-/api/ path because nginx
     // hijacks /api/* on the website host). Returns the same shows that
     // back the /events LA tab — what Sarah wants stocked for.
