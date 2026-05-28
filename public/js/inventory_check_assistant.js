@@ -794,10 +794,10 @@
         const origLabel = btn.dataset.origLabel || btn.textContent;
         btn.dataset.origLabel = origLabel;
         btn.disabled = true; btn.textContent = 'Fetching… 20-60s';
-        // Wipe ANY prior inline cred form for this supplier anywhere on
-        // the page (broader than btn.parentElement — fixes the 5x-stacked
-        // form bug Sarah hit when clicking the AMS button repeatedly).
+        // Wipe ANY prior inline cred form / error for this supplier
+        // anywhere on the page so retries never stack.
         document.querySelectorAll('.ica-inline-creds[data-supplier="' + key + '"]').forEach((el) => el.remove());
+        document.querySelectorAll('.ica-inline-err[data-supplier="' + key + '"]').forEach((el) => el.remove());
         const fd = new FormData();
         fd.append('supplier_key', key);
         fetch(window.ICA_SUPPLIER_AUTOFETCH_URL, {
@@ -817,17 +817,38 @@
                 }
                 btn.disabled = false;
                 btn.textContent = origLabel;
-                const needsCreds = /credential|env|portal/i.test(out);
+                const needsCreds = /credential|env|missing portal|not set|not configured/i.test(out);
                 if (needsCreds) {
                     showInlineCredsForm(btn, key);
                 } else {
-                    alert('Fetch failed:\n\n' + (out || 'unknown error'));
+                    showInlineError(btn, key, out || 'unknown error');
                 }
             })
             .catch((err) => {
                 btn.disabled = false; btn.textContent = origLabel;
-                alert('Fetch failed — ' + (err && err.message ? err.message : 'see console'));
+                showInlineError(btn, key, (err && err.message) || 'network error');
             });
+    }
+
+    /**
+     * Dismissable inline error box (replaces alert(), which Sarah couldn't
+     * dismiss on her browser). Renders right next to the Fetch button.
+     */
+    function showInlineError(btn, key, message) {
+        document.querySelectorAll('.ica-inline-err[data-supplier="' + key + '"]').forEach((el) => el.remove());
+        const box = document.createElement('div');
+        box.className = 'ica-inline-err';
+        box.setAttribute('data-supplier', key);
+        const label = (window.ICA_KNOWN_SUPPLIERS || []).find((s) => s.key === key);
+        const supLabel = label ? label.label : key.toUpperCase();
+        box.innerHTML = `
+            <div class="ica-inline-err-head">
+                <strong>${escapeHtml(supLabel)} fetch failed</strong>
+                <button type="button" class="ica-inline-err-close" title="Dismiss">×</button>
+            </div>
+            <pre class="ica-inline-err-body">${escapeHtml(String(message))}</pre>`;
+        btn.parentElement.insertBefore(box, btn.nextSibling);
+        box.querySelector('.ica-inline-err-close').addEventListener('click', () => box.remove());
     }
 
     function showInlineCredsForm(btn, key) {

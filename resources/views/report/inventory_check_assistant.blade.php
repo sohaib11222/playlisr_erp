@@ -735,6 +735,27 @@ HTML;
 .ica-inline-creds-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .ica-inline-creds-row input { width: auto; min-width: 140px; flex: 1 1 180px; max-width: 240px; }
 .ica-inline-creds-msg { margin-top: 6px; font-size: 12px; color: #155724; }
+/* Inline fetch-failed error box — dismissable (replaces alert()) */
+.ica-inline-err {
+    margin: 8px 0 12px; padding: 8px 12px;
+    background: #fdecea; border: 1px solid #f4b5af; border-radius: 4px;
+    width: 100%; flex-basis: 100%;
+}
+.ica-inline-err-head {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 13px; color: #7d1f15;
+}
+.ica-inline-err-close {
+    background: none; border: none; color: #7d1f15;
+    font-size: 18px; line-height: 1; cursor: pointer; padding: 0 4px;
+}
+.ica-inline-err-close:hover { color: #a94442; }
+.ica-inline-err-body {
+    background: #fff; border: 1px solid #f4b5af;
+    margin: 6px 0 0; padding: 6px 8px;
+    font-size: 11px; max-height: 200px; overflow: auto;
+    white-space: pre-wrap; word-break: break-word; color: #444;
+}
 /* UMe weekly spotlights — inline chip block inside STEP 4 (2026-05-27) */
 .ica-spot-block { margin: 12px 0 10px; }
 .ica-spot-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }

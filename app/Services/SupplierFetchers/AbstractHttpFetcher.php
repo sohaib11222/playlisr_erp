@@ -119,7 +119,7 @@ abstract class AbstractHttpFetcher implements SupplierFetcherContract
     protected function request(string $method, string $url, array $opts = []): string
     {
         $ch = curl_init($url);
-        curl_setopt_array($ch, [
+        $base = [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_TIMEOUT => 45,
@@ -127,13 +127,31 @@ abstract class AbstractHttpFetcher implements SupplierFetcherContract
             CURLOPT_USERAGENT => $this->userAgent,
             CURLOPT_COOKIEJAR => $this->cookieJar,
             CURLOPT_COOKIEFILE => $this->cookieJar,
-            CURLOPT_CUSTOMREQUEST => $method,
-        ]);
-        if (!empty($opts['headers'])) {
-            curl_setopt($ch, CURLOPT_HTTPHEADER, $opts['headers']);
+        ];
+        // 2026-05-28 Sarah: AMS login was returning HTTP 411 (Length
+        // Required). Cause — when CURLOPT_CUSTOMREQUEST is used for POST,
+        // libcurl doesn't auto-add Content-Length. Switch to the
+        // dedicated CURLOPT_POST flag for POST so curl computes the
+        // length itself and IIS / .NET accepts the request.
+        if (strtoupper($method) === 'POST') {
+            $base[CURLOPT_POST] = true;
+        } else {
+            $base[CURLOPT_CUSTOMREQUEST] = $method;
         }
+        curl_setopt_array($ch, $base);
+        $headers = !empty($opts['headers']) ? $opts['headers'] : [];
         if (!empty($opts['body'])) {
             curl_setopt($ch, CURLOPT_POSTFIELDS, $opts['body']);
+            // Belt-and-suspenders: stamp Content-Length explicitly so
+            // .NET portals never see a missing header.
+            $hasLen = false;
+            foreach ($headers as $h) { if (stripos($h, 'content-length:') === 0) { $hasLen = true; break; } }
+            if (!$hasLen) {
+                $headers[] = 'Content-Length: ' . strlen((string) $opts['body']);
+            }
+        }
+        if (!empty($headers)) {
+            curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
         }
         $body = curl_exec($ch);
         $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
