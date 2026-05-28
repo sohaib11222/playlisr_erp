@@ -87,11 +87,11 @@ class AbcImportService
      */
     public function match(array $rows, int $business_id): array
     {
+        // products has no deleted_at column in this build; categories does.
         $products = DB::table('products as p')
             ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
             ->leftJoin('categories as sc', 'p.sub_category_id', '=', 'sc.id')
             ->where('p.business_id', $business_id)
-            ->whereNull('p.deleted_at')
             ->select('p.id', 'p.name', 'c.name as category_name', 'sc.name as sub_category_name')
             ->get();
 
@@ -108,7 +108,6 @@ class AbcImportService
         // Location lookup: stripos(name, hollywood/pico/...) — same convention as HomeController.
         $locations = DB::table('business_locations')
             ->where('business_id', $business_id)
-            ->whereNull('deleted_at')
             ->get();
 
         $location_map = [];
