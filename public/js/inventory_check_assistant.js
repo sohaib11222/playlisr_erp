@@ -20,6 +20,37 @@
 
     let lastResult = null;
 
+    // 2026-05-27: step-card metadata for lazy-loaded buckets so a late
+    // event/chart fetch can re-render its full STEP card (badge, title,
+    // note, event chips) instead of replacing only the inner table and
+    // losing the surrounding chrome.
+    const STEP_CARDS_BY_KEY = {
+        fast_oos:        { key: 'fast_oos',        step: 1, title: 'Fast moving — out of stock',  note: 'Prioritize A products (already filtered). <span class="ica-step-dont">Do NOT buy C products.</span>' },
+        events_upcoming: { key: 'events_upcoming', step: 2, title: 'Listening parties + LA events', note: 'Stock up on artists with a listening party or LA show in the next 30 days.' },
+        apple_music_top: { key: 'apple_music_top', step: 3, title: 'Apple Music Top 100',          note: 'Trending Top 100 on Apple Music — make sure we carry the artists fans are streaming.' },
+        universal_top:   { key: 'universal_top',   step: 4, title: 'UMe / Universal Top',          note: 'This week\'s UMe Top 200 + new deliveries.' },
+        street_pulse:    { key: 'street_pulse',    step: 5, title: 'Street Pulse / Luminate chart', note: 'Luminate top sellers — the industry-wide chart.' },
+    };
+
+    /**
+     * Replace a lazy-loaded bucket section in place. If the bucket is
+     * wrapped in a STEP card (events_upcoming, charts), re-render the
+     * whole card so the badge / note / event chips stay in sync.
+     */
+    function replaceBucketInPlace(bucketKey, bucket) {
+        const existing = $root.querySelector('.ica-bucket[data-bucket="' + bucketKey + '"]');
+        if (!existing) return false;
+        const cardWrap = existing.closest('.ica-step-card');
+        const card = STEP_CARDS_BY_KEY[bucketKey];
+        const html = (cardWrap && card) ? renderStepCard(card, bucket) : renderBucketSection(bucketKey, bucket);
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        const fresh = tmp.firstElementChild;
+        if (!fresh) return false;
+        (cardWrap || existing).replaceWith(fresh);
+        return true;
+    }
+
     // ── Preset metadata → auto-populate location/category ─────────────
     function applyPresetMeta() {
         const key = $preset.value;
@@ -172,16 +203,8 @@
                 if (lastResult && lastResult.buckets) {
                     lastResult.buckets[bucketKey] = resp.bucket;
                 }
-                const existing = $root.querySelector('.ica-bucket[data-bucket="' + bucketKey + '"]');
-                if (!existing) return;
-                const html = renderBucketSection(bucketKey, resp.bucket);
-                const tmp = document.createElement('div');
-                tmp.innerHTML = html;
-                const fresh = tmp.firstElementChild;
-                if (fresh) {
-                    existing.replaceWith(fresh);
-                    attachBucketHandlers();
-                }
+                if (!replaceBucketInPlace(bucketKey, resp.bucket)) return;
+                attachBucketHandlers();
                 // Frozen bucket loaded — sweep other rendered rows and tag
                 // matches as "frozen_dupe" so Sarah sees the dupe warning
                 // right on the reorder row. Also surface the total $$ tied
@@ -228,16 +251,8 @@
                 if (lastResult && lastResult.buckets) {
                     lastResult.buckets.frozen_inventory = resp.bucket;
                 }
-                const existing = $root.querySelector('.ica-bucket[data-bucket="frozen_inventory"]');
-                if (!existing) return;
-                const html = renderBucketSection('frozen_inventory', resp.bucket);
-                const tmp = document.createElement('div');
-                tmp.innerHTML = html;
-                const fresh = tmp.firstElementChild;
-                if (fresh) {
-                    existing.replaceWith(fresh);
-                    attachBucketHandlers();
-                }
+                if (!replaceBucketInPlace('frozen_inventory', resp.bucket)) return;
+                attachBucketHandlers();
                 applyFrozenDupeTags(resp.bucket.items || []);
                 renderFrozenInsight(resp.bucket);
                 attachFrozenStockEditors();
@@ -442,13 +457,7 @@
                     if (lastResult && lastResult.buckets) {
                         lastResult.buckets[key] = bucket;
                     }
-                    const existing = $root.querySelector('.ica-bucket[data-bucket="' + key + '"]');
-                    if (!existing) return;
-                    const html = renderBucketSection(key, bucket);
-                    const tmp = document.createElement('div');
-                    tmp.innerHTML = html;
-                    const fresh = tmp.firstElementChild;
-                    if (fresh) existing.replaceWith(fresh);
+                    replaceBucketInPlace(key, bucket);
                 });
                 attachBucketHandlers();
                 rebuildFilterOptions();
@@ -495,16 +504,8 @@
                     lastResult.buckets.events_upcoming = resp.bucket;
                 }
                 // Replace the placeholder events section in the DOM with the real one.
-                const existing = $root.querySelector('.ica-bucket[data-bucket="events_upcoming"]');
-                if (existing) {
-                    const html = renderBucketSection('events_upcoming', resp.bucket);
-                    const tmp = document.createElement('div');
-                    tmp.innerHTML = html;
-                    const fresh = tmp.firstElementChild;
-                    if (fresh) {
-                        existing.replaceWith(fresh);
-                        attachBucketHandlers();
-                    }
+                if (replaceBucketInPlace('events_upcoming', resp.bucket)) {
+                    attachBucketHandlers();
                     rebuildFilterOptions();
                     applyRowFilters();
                 }
@@ -532,28 +533,35 @@
             return;
         }
 
-        // Per Sarah 2026-05-20: the wall of buckets was overwhelming. Default
-        // view = just fast_oos (Jon's focus). Everything else lives behind a
-        // single "Show all the other reorder lists" disclosure so it's one
-        // click away when needed but not in the face on landing.
-        // Sarah 2026-05-21: "fast sellers and frozen inventory is most
-        // important" — these two are now the default view. Everything
-        // else (charts, events, ABC, manager picks, UMe spotlights,
-        // customer wants, long-OOS, hot-used) lives behind one toggle.
-        const primary = ['fast_oos', 'frozen_inventory'];
-        const secondary = ['manager_picks', 'ume_spotlights', 'customer_wants', 'street_pulse', 'universal_top', 'apple_music_top', 'top_artist_new_releases', 'events_upcoming', 'abc_a_restock', 'long_oos_essentials', 'hot_used_oos'];
+        // 2026-05-27 Sarah: page felt overwhelming. New layout —
+        //   STEP 1: Fast moving, out of stock (A products only by default)
+        //   STEP 2: Listening parties + LA events (events_upcoming)
+        //   STEP 3: Charts (Apple Top 100, UMe Top, Street Pulse)
+        //   then everything else (manager picks, customer wants, ABC, UMe spotlights,
+        //   long-OOS, hot-used) lives behind one disclosure.
+        //   Frozen lives in a separate "DO NOT REORDER" warning disclosure
+        //   below the other secondary so it never crowds the buy flow.
+        const stepCards = [
+            { key: 'fast_oos',         step: 1, title: 'Fast moving — out of stock',  note: 'Prioritize A products (already filtered). <span class="ica-step-dont">Do NOT buy C products.</span>' },
+            { key: 'events_upcoming',  step: 2, title: 'Listening parties + LA events', note: 'Stock up on artists with a listening party or LA show in the next 30 days.' },
+            { key: 'apple_music_top',  step: 3, title: 'Apple Music Top 100',          note: 'Trending Top 100 on Apple Music — make sure we carry the artists fans are streaming.' },
+            { key: 'universal_top',    step: 4, title: 'UMe / Universal Top',          note: 'This week\'s UMe Top 200 + new deliveries.' },
+            { key: 'street_pulse',     step: 5, title: 'Street Pulse / Luminate chart', note: 'Luminate top sellers — the industry-wide chart.' },
+        ];
+        const secondary = ['top_artist_new_releases', 'manager_picks', 'ume_spotlights', 'customer_wants', 'abc_a_restock', 'long_oos_essentials', 'hot_used_oos'];
         const buckets = payload.buckets || {};
 
         let primaryHtml = '';
         let secondaryHtml = '';
+        let frozenHtml = '';
         let totalItems = 0;
         let totalQty = 0;
         let secondaryItems = 0;
 
-        primary.forEach((key) => {
-            const b = buckets[key];
+        stepCards.forEach((card) => {
+            const b = buckets[card.key];
             if (!b) return;
-            primaryHtml += renderBucketSection(key, b);
+            primaryHtml += renderStepCard(card, b);
             totalItems += b.count || 0;
             (b.items || []).forEach((it) => { totalQty += parseInt(it.suggested_qty || 0, 10) || 0; });
         });
@@ -565,13 +573,26 @@
             secondaryItems += b.count || 0;
             (b.items || []).forEach((it) => { totalQty += parseInt(it.suggested_qty || 0, 10) || 0; });
         });
+        if (buckets.frozen_inventory) {
+            frozenHtml = renderBucketSection('frozen_inventory', buckets.frozen_inventory);
+            totalItems += buckets.frozen_inventory.count || 0;
+        }
 
         let html = primaryHtml;
         if (secondaryHtml !== '') {
             html += '<details class="ica-secondary-disclosure">'
-                + '<summary><strong>Show all the other reorder lists</strong> '
-                + '<small class="text-muted">(charts, events, ABC, manager picks, UMe spotlights, customer wants — <span id="ica_secondary_count">' + secondaryItems + '</span> more items)</small></summary>'
+                + '<summary><strong>Show the other reorder lists</strong> '
+                + '<small class="text-muted">(top-artist new releases, manager picks, customer wants, ABC restock, UMe spotlights — <span id="ica_secondary_count">' + secondaryItems + '</span> more items)</small></summary>'
                 + '<div class="ica-secondary-buckets">' + secondaryHtml + '</div>'
+                + '</details>';
+        }
+        if (frozenHtml !== '') {
+            html += '<details class="ica-secondary-disclosure ica-frozen-disclosure">'
+                + '<summary><strong style="color:#a94442;">⚠ Don\'t reorder these — frozen inventory</strong> '
+                + '<small class="text-muted">(items already sitting unsold; review before buying any chart picks)</small></summary>'
+                + '<div class="ica-secondary-buckets">'
+                + '<div class="ica-dont-card"><div class="ica-dont-head"><span class="ica-dont-badge">DO NOT REORDER</span><h3 class="ica-dont-title">These titles are already sitting unsold</h3></div></div>'
+                + frozenHtml + '</div>'
                 + '</details>';
         }
 
@@ -581,7 +602,7 @@
         }
 
         $root.innerHTML = html;
-        $summary.textContent = `${totalItems} items · ${totalQty} total qty suggested · fast sellers <90d: ${(buckets.fast_oos && buckets.fast_oos.count) || 0}`;
+        if ($summary) $summary.textContent = '';
 
         attachBucketHandlers();
         rebuildFilterOptions();
@@ -687,9 +708,14 @@
                 const rowGen = tr.getAttribute('data-genre') || '';
                 const rowAbc = tr.getAttribute('data-abc') || '';
                 const rowRsd = tr.getAttribute('data-rsd') === '1';
+                // 2026-05-27: treat empty rowAbc as wildcard so the
+                // default ABC=A filter doesn't hide every row before the
+                // abc_a_restock bucket finishes loading and populates the
+                // ABC class on each row. Once data-abc is populated the
+                // filter applies normally.
                 const match = (!cat || rowCat === cat)
                     && (!gen || rowGen === gen)
-                    && (!abc || rowAbc === abc)
+                    && (!abc || !rowAbc || rowAbc === abc)
                     && (!hideRsd || !rowRsd)
                     && (!frozenCat || rowCat === frozenCat)
                     && (!frozenGen || rowGen === frozenGen);
@@ -719,6 +745,87 @@
         const el = document.getElementById(id);
         if (el) el.addEventListener('change', applyRowFilters);
     });
+
+    /**
+     * Wrap a bucket section inside a STEP card (2026-05-27). Used for the
+     * top-of-page workflow: STEP 1 fast-OOS, STEP 2 events, STEP 3-5 charts.
+     */
+    function renderStepCard(card, bucket) {
+        const inner = renderBucketSection(card.key, bucket);
+        let extras = '';
+        // Events bucket: prepend a per-event order summary so Sarah can see
+        // "did we order for the listening party? how many?" at a glance.
+        if (card.key === 'events_upcoming' && bucket && Array.isArray(bucket.items)) {
+            extras = renderEventOrderSummary(bucket.items);
+        }
+        return `
+            <div class="ica-step-card" data-step="${card.step}">
+                <div class="ica-step-head">
+                    <span class="ica-step-badge">Step ${card.step}</span>
+                    <h2 class="ica-step-title">${escapeHtml(card.title)}</h2>
+                </div>
+                <div class="ica-step-note">${card.note}</div>
+                ${extras}
+                ${inner}
+            </div>`;
+    }
+
+    /**
+     * Group events_upcoming items by event so each event shows its date,
+     * location, and how many units were suggested across the event's
+     * matching artists. Sarah's "did we order for the listening party?"
+     * answer surfaces right above the per-row table.
+     */
+    function renderEventOrderSummary(items) {
+        if (!items.length) return '';
+        const byEvent = {};
+        items.forEach((it) => {
+            const k = (it.event_name || '') + '|' + (it.event_date || '');
+            if (!byEvent[k]) {
+                byEvent[k] = {
+                    name: it.event_name || '',
+                    date: it.event_date || '',
+                    location: it.event_location || '',
+                    is_anniversary: (it.tags || []).indexOf('anniversary') !== -1,
+                    items: 0,
+                    qty: 0,
+                    is_listening_party: /listen|party/i.test(it.event_name || ''),
+                };
+            }
+            byEvent[k].items += 1;
+            byEvent[k].qty += parseInt(it.suggested_qty || 0, 10) || 0;
+        });
+        const events = Object.values(byEvent).sort((a, b) => a.date.localeCompare(b.date));
+        const listening = events.filter((e) => e.is_listening_party);
+        const others = events.filter((e) => !e.is_listening_party);
+        const eventChip = (e) => {
+            const dateMd = (e.date || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+            const dateDisplay = dateMd ? `${dateMd[2]}/${dateMd[3]}` : (e.date || '');
+            const locTxt = e.location ? ` · ${escapeHtml(e.location)}` : '';
+            const annivBadge = e.is_anniversary ? ' <span class="ica-event-anniv">anniv</span>' : '';
+            return `
+                <div class="ica-event-chip ${e.is_listening_party ? 'ica-event-listening' : 'ica-event-show'}">
+                    <div class="ica-event-chip-head">
+                        <strong>${escapeHtml(e.name || '(untitled)')}</strong>${annivBadge}
+                        <span class="ica-event-chip-date">${dateDisplay}${locTxt}</span>
+                    </div>
+                    <div class="ica-event-chip-qty">
+                        <strong>${e.qty}</strong> units suggested across ${e.items} title${e.items === 1 ? '' : 's'}
+                    </div>
+                </div>`;
+        };
+        let html = '<div class="ica-event-summary">';
+        if (listening.length) {
+            html += '<div class="ica-event-summary-head">🎧 Listening parties (' + listening.length + ')</div>';
+            html += '<div class="ica-event-chips">' + listening.map(eventChip).join('') + '</div>';
+        }
+        if (others.length) {
+            html += '<div class="ica-event-summary-head">🎤 LA shows + artist moments (' + others.length + ')</div>';
+            html += '<div class="ica-event-chips">' + others.map(eventChip).join('') + '</div>';
+        }
+        html += '</div>';
+        return html;
+    }
 
     function renderBucketSection(key, b) {
         const countClass = (b.count || 0) === 0 ? 'zero' : '';

@@ -145,39 +145,42 @@ HTML;
     {{-- ── Pick a store (one click → builds) ──────────────────────── --}}
     <div class="row no-print">
         <div class="col-md-12">
-            <div class="ica-store-picker">
+            {{-- 2026-05-27 Sarah: all filters on a single row. ABC defaults to "A only" so
+                 the fast-moving step 1 list is already filtered to A products on landing. --}}
+            <div class="ica-store-picker ica-store-picker-singlerow">
                 <span class="ica-store-picker-label">What store?</span>
-                <button type="button" class="btn btn-lg btn-default ica-store-btn" data-preset="hollywood_all">
+                <button type="button" class="btn btn-default ica-store-btn" data-preset="hollywood_all">
                     Hollywood
                 </button>
-                <button type="button" class="btn btn-lg btn-default ica-store-btn" data-preset="pico_all">
+                <button type="button" class="btn btn-default ica-store-btn" data-preset="pico_all">
                     Pico
                 </button>
+                <span class="ica-store-divider">·</span>
                 <span class="ica-filter-group">
                     <label class="ica-filter-label">Category</label>
-                    <select id="ica_filter_category" class="ica-filter-select">
+                    <select id="ica_filter_category" class="ica-filter-select form-control input-sm">
                         <option value="">All</option>
                     </select>
                 </span>
                 <span class="ica-filter-group">
                     <label class="ica-filter-label">Genre</label>
-                    <select id="ica_filter_genre" class="ica-filter-select">
+                    <select id="ica_filter_genre" class="ica-filter-select form-control input-sm">
                         <option value="">All</option>
                     </select>
                 </span>
                 <span class="ica-filter-group">
                     <label class="ica-filter-label" title="ABC class: A = top 80% of inventory value, B = next 15%, C = bottom 5%">ABC</label>
-                    <select id="ica_filter_abc" class="ica-filter-select">
+                    <select id="ica_filter_abc" class="ica-filter-select form-control input-sm">
                         <option value="">All</option>
-                        <option value="A">A only</option>
+                        <option value="A" selected>A only</option>
                         <option value="B">B only</option>
                         <option value="C">C only</option>
                     </select>
                 </span>
                 <label class="ica-filter-check" title="Hide Record Store Day exclusives (titles with 'RSD' or 'Record Store Day' in the name)">
-                    <input type="checkbox" id="ica_filter_hide_rsd"> Hide RSD titles
+                    <input type="checkbox" id="ica_filter_hide_rsd"> Hide RSD
                 </label>
-                <a class="btn btn-link btn-sm pull-right" data-toggle="collapse" href="#ica_advanced_filters" role="button">
+                <a class="btn btn-link btn-xs" data-toggle="collapse" href="#ica_advanced_filters" role="button">
                     vinyl/CDs only? ▾
                 </a>
             </div>
@@ -215,9 +218,50 @@ HTML;
         </div>
     </div>
 
+    {{-- ── Buckets render target ─────────────────────────────────── --}}
+    <div class="row">
+        <div class="col-md-12" id="ica_buckets_root">
+            <div class="text-center text-muted" style="padding: 40px 0;">
+                <i class="fa fa-arrow-up fa-2x"></i>
+                <p style="margin-top: 12px;">Pick a preset + location → click <strong>Build order list</strong>.</p>
+            </div>
+        </div>
+    </div>
+
+    {{-- ── Place this order footer ────────────────────────────────── --}}
+    {{-- 2026-05-27 Sarah: the sticky "1068 units · order cost $21,942"
+         strip was confusing. Drop the running totals; keep the buttons
+         in a simple footer that only shows once a list has been built.
+         The #ica_summary span is hidden but kept so JS can still write
+         to it without errors. --}}
+    <div class="row no-print">
+        <div class="col-md-12">
+            <div class="ica-order-footer" id="ica_export_strip" style="display:none;">
+                <div class="ica-order-footer-title">Place this order</div>
+                <span class="ica-summary" id="ica_summary" style="display:none;">—</span>
+                <div class="ica-order-footer-actions">
+                    <button type="button" class="btn btn-warning" id="ica_autofill_budget" title="Pre-check rows in priority order until this week's remaining budget is used up">
+                        Auto-fill to budget
+                    </button>
+                    <button type="button" class="btn btn-success" id="ica_export_csv">
+                        <i class="fa fa-download"></i> Export for AMS
+                    </button>
+                    <button type="button" class="btn btn-info" id="ica_copy_cart">
+                        <i class="fa fa-clipboard"></i> Copy for cart
+                    </button>
+                    <button type="button" class="btn btn-default" id="ica_print">
+                        <i class="fa fa-print"></i> Print
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- ── More options (chart imports + inbox pull, collapsed by default) ── --}}
+    {{-- 2026-05-27 Sarah: moved below the buckets so the main flow isn't
+         interrupted by chart-import / supplier / inbox plumbing. --}}
     <details class="ica-more-options no-print">
-        <summary>More options — chart imports, inbox auto-fetch, saved sessions</summary>
+        <summary>More options — chart imports, inbox auto-fetch, supplier feeds, manager picks</summary>
         <div class="row" id="ica_freshness_banner" style="margin-top:8px;">
             <div class="col-md-6">
                 @component('components.widget', ['class' => 'box-solid', 'title' => 'Street Pulse / Luminate chart'])
@@ -298,40 +342,6 @@ HTML;
             </div>
         </div>
     </details>
-
-    {{-- ── Export strip (sticky) ──────────────────────────────────── --}}
-    <div class="row no-print">
-        <div class="col-md-12">
-            <div class="ica-export-strip" id="ica_export_strip" style="display:none;">
-                <span class="ica-summary" id="ica_summary">—</span>
-                <div class="pull-right">
-                    <button type="button" class="btn btn-warning" id="ica_autofill_budget" title="Pre-check rows in priority order until this week's remaining budget is used up">
-                        Auto-fill to budget
-                    </button>
-                    <button type="button" class="btn btn-success" id="ica_export_csv">
-                        <i class="fa fa-download"></i> Export for AMS
-                    </button>
-                    <button type="button" class="btn btn-info" id="ica_copy_cart">
-                        <i class="fa fa-clipboard"></i> Copy for cart
-                    </button>
-                    <button type="button" class="btn btn-default" id="ica_print">
-                        <i class="fa fa-print"></i> Print
-                    </button>
-                </div>
-                <div class="clearfix"></div>
-            </div>
-        </div>
-    </div>
-
-    {{-- ── Buckets render target ─────────────────────────────────── --}}
-    <div class="row">
-        <div class="col-md-12" id="ica_buckets_root">
-            <div class="text-center text-muted" style="padding: 40px 0;">
-                <i class="fa fa-arrow-up fa-2x"></i>
-                <p style="margin-top: 12px;">Pick a preset + location → click <strong>Build order list</strong>.</p>
-            </div>
-        </div>
-    </div>
 
     {{-- Saved sessions removed 2026-05-20 — Sarah didn't recognize the
          feature, never used. Backend routes + controller still exist so
@@ -429,32 +439,80 @@ HTML;
     background: #fff;
     border: 1px solid #ddd;
     border-radius: 4px;
-    padding: 14px 18px;
+    padding: 12px 16px;
     margin-bottom: 14px;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 8px;
 }
-.ica-store-picker-label {
-    font-size: 15px;
+/* 2026-05-27: single-row variant — never wraps, scrolls horizontally on
+   narrow screens instead of stacking. Sarah wants one row regardless. */
+.ica-store-picker-singlerow {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 10px;
+    white-space: nowrap;
+}
+.ica-store-picker-singlerow .ica-filter-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+.ica-store-picker-singlerow .ica-filter-label {
+    font-size: 12px;
     font-weight: 600;
-    margin-right: 12px;
+    color: #666;
+    margin: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+.ica-store-picker-singlerow .ica-filter-select {
+    width: auto;
+    min-width: 100px;
+    max-width: 180px;
+    flex-shrink: 0;
+}
+.ica-store-picker-singlerow .ica-filter-check {
+    flex-shrink: 0;
+    font-size: 13px;
+    margin: 0;
+    font-weight: 500;
     color: #555;
+}
+.ica-store-picker-singlerow .ica-store-btn { flex-shrink: 0; }
+.ica-store-picker-label {
+    font-size: 14px;
+    font-weight: 700;
+    margin-right: 4px;
+    color: #444;
+    flex-shrink: 0;
 }
 .ica-store-btn { font-weight: 500; }
 .ica-store-btn.is-active { background: #2c699a !important; color: #fff !important; border-color: #205373 !important; }
-.ica-store-divider { color: #aaa; font-weight: bold; padding: 0 8px; }
-.ica-export-strip {
-    background: #f5f5f5;
-    border: 1px solid #ddd;
+.ica-store-divider { color: #ccc; font-weight: bold; padding: 0 4px; flex-shrink: 0; }
+/* "Place this order" footer (replaces the old sticky export strip 2026-05-27) */
+.ica-order-footer {
+    background: #f7f9fc;
+    border: 1px solid #d6e0ea;
     border-radius: 4px;
-    padding: 10px 15px;
-    margin-bottom: 15px;
-    position: sticky;
-    top: 0;
-    z-index: 20;
+    padding: 14px 18px;
+    margin: 18px 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px;
 }
+.ica-order-footer-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #2c699a;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-right: auto;
+}
+.ica-order-footer-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .ica-summary { font-weight: bold; font-size: 15px; line-height: 34px; }
 .ica-bucket { margin-bottom: 24px; }
 .ica-bucket-header {
@@ -538,6 +596,78 @@ HTML;
 
 /* ABC A-restock bucket — emphasize as priority */
 .ica-bucket[data-bucket="abc_a_restock"] .ica-bucket-header { border-left-color: #2c699a; background: #f0f6fc; }
+
+/* 2026-05-27 STEP cards — big, friendly section headers for the primary
+   ordering workflow (fast-OOS, listening parties, LA events, charts).
+   Helps Sarah see the order of operations at a glance. */
+.ica-step-card {
+    border: 2px solid #2c699a;
+    border-radius: 6px;
+    padding: 14px 18px 10px;
+    margin: 18px 0 10px;
+    background: linear-gradient(180deg, #f0f6fc 0%, #fff 60%);
+}
+.ica-step-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.ica-step-badge {
+    background: #2c699a; color: #fff; font-weight: 800;
+    font-size: 13px; padding: 4px 11px; border-radius: 4px;
+    letter-spacing: 0.6px; text-transform: uppercase;
+    flex-shrink: 0;
+}
+.ica-step-title { font-size: 20px; font-weight: 700; color: #222; margin: 0; }
+.ica-step-note {
+    margin-top: 8px;
+    font-size: 13px;
+    color: #444;
+    background: #fffbe6;
+    border-left: 3px solid #f0ad4e;
+    padding: 7px 12px;
+    border-radius: 0 3px 3px 0;
+}
+.ica-step-note strong { color: #8a6d3b; }
+.ica-step-note .ica-step-dont { color: #a94442; font-weight: 700; }
+/* Don't-reorder warning around frozen (lives inside the secondary disclosure) */
+.ica-dont-card {
+    border: 2px solid #c0392b;
+    background: #fdf2f0;
+    padding: 12px 16px;
+    border-radius: 6px;
+    margin: 14px 0 6px;
+}
+.ica-dont-head { display: flex; align-items: baseline; gap: 10px; }
+.ica-dont-badge { background: #c0392b; color: #fff; font-weight: 700; font-size: 12px; padding: 3px 9px; border-radius: 3px; letter-spacing: 0.5px; }
+.ica-dont-title { font-size: 16px; font-weight: 700; color: #7d1f15; margin: 0; }
+
+/* Per-event order summary above the events_upcoming bucket table.
+   Each event becomes a chip showing its date, location, and the total
+   suggested units across matching artists so Sarah can answer
+   "did we order for the listening party? how many?" at a glance. */
+.ica-event-summary { margin: 12px 0 10px; }
+.ica-event-summary-head {
+    font-size: 13px; font-weight: 700; color: #2c699a;
+    margin: 10px 0 6px; letter-spacing: 0.3px;
+    text-transform: uppercase;
+}
+.ica-event-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; }
+.ica-event-chip {
+    border: 1px solid #d6e0ea;
+    border-radius: 4px;
+    padding: 8px 12px;
+    background: #fff;
+}
+.ica-event-chip.ica-event-listening { border-color: #b896d4; background: #f5efff; }
+.ica-event-chip.ica-event-show { border-color: #cfe2dc; background: #f3faf7; }
+.ica-event-chip-head { font-size: 13px; line-height: 1.4; }
+.ica-event-chip-head strong { color: #222; }
+.ica-event-chip-date { color: #888; font-size: 12px; margin-left: 6px; }
+.ica-event-chip-qty { font-size: 12px; color: #555; margin-top: 4px; }
+.ica-event-chip-qty strong { color: #2c699a; font-size: 14px; }
+.ica-event-anniv {
+    background: #e6dcff; color: #4a2a8e;
+    font-size: 10px; padding: 1px 5px; border-radius: 2px;
+    margin-left: 4px; vertical-align: middle;
+    text-transform: uppercase; letter-spacing: 0.3px;
+}
 
 /* Lead intro */
 .ica-lead { font-size: 14px; line-height: 1.6; }
