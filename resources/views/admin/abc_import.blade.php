@@ -152,21 +152,61 @@
         const pct = d.stats.rows ? Math.round((d.stats.matched / d.stats.rows) * 100) : 0;
         let html = '';
         html += '<p><strong>' + d.source_file + '</strong>' + (d.period_label ? ' · ' + escapeHtml(d.period_label) : '') + '</p>';
-        html += '<p>Rows: ' + d.stats.rows + ' · Matched: ' + d.stats.matched + ' (' + pct + '%) · Unmatched: ' + d.stats.unmatched + ' · Distinct products: ' + d.stats.distinct_products + '</p>';
+        html += '<p>Rows: ' + d.stats.rows + ' · Matched: ' + d.stats.matched + ' (' + pct + '%) · Unmatched: ' + d.stats.unmatched + ' · Distinct products: ' + d.stats.distinct_products;
+        if (d.stats.ambiguous) html += ' · <span style="color:#a40">Ambiguous: ' + d.stats.ambiguous + '</span>';
+        html += '</p>';
 
         if (d.sample_matched && d.sample_matched.length) {
-            html += '<h4>Matched (sample)</h4><ul>';
+            html += '<h4>Matched (first 20) — CSV row → picked ERP product</h4>';
+            html += '<table class="table table-condensed table-bordered" style="font-size:12px;"><thead><tr>'
+                  + '<th>Class</th><th>CSV Product</th><th>CSV Format</th><th>CSV Loc</th>'
+                  + '<th>→ ERP Product (id)</th><th>ERP Category</th><th>Cands</th></tr></thead><tbody>';
             d.sample_matched.forEach(r => {
-                html += '<li>[' + r.class + '] ' + escapeHtml(r.name) + '</li>';
+                const flag = r.final_candidates > 1 ? ' style="background:#fff3cd"' : '';
+                html += '<tr' + flag + '>'
+                      + '<td>' + escapeHtml(r.csv_class) + '</td>'
+                      + '<td>' + escapeHtml(r.csv_product) + '</td>'
+                      + '<td>' + escapeHtml(r.csv_format) + '</td>'
+                      + '<td>' + escapeHtml(r.csv_location) + '</td>'
+                      + '<td>' + escapeHtml(r.matched_name) + ' <span style="color:#888">(#' + r.matched_id + ')</span></td>'
+                      + '<td>' + escapeHtml(r.matched_category || r.matched_sub_category || '—') + '</td>'
+                      + '<td>' + r.initial_candidates + '→' + r.final_candidates + '</td>'
+                      + '</tr>';
             });
-            html += '</ul>';
+            html += '</tbody></table>';
         }
-        if (d.sample_unmatched && d.sample_unmatched.length) {
-            html += '<h4>Unmatched (first 25)</h4><ul>';
-            d.sample_unmatched.forEach(r => {
-                html += '<li>[' + r.class + '] ' + escapeHtml(r.product) + ' — ' + escapeHtml(r.format) + ' / ' + escapeHtml(r.location) + '</li>';
+
+        if (d.sample_ambiguous && d.sample_ambiguous.length) {
+            html += '<h4>Ambiguous matches (first 20) — multiple ERP products with this name, format didn\'t narrow to one. Picked first by id.</h4>';
+            html += '<table class="table table-condensed table-bordered" style="font-size:12px;"><thead><tr>'
+                  + '<th>Class</th><th>CSV Product</th><th>CSV Format</th>'
+                  + '<th>→ ERP Product (id)</th><th>ERP Category</th><th>Cands</th></tr></thead><tbody>';
+            d.sample_ambiguous.forEach(r => {
+                html += '<tr style="background:#fff3cd">'
+                      + '<td>' + escapeHtml(r.csv_class) + '</td>'
+                      + '<td>' + escapeHtml(r.csv_product) + '</td>'
+                      + '<td>' + escapeHtml(r.csv_format) + '</td>'
+                      + '<td>' + escapeHtml(r.matched_name) + ' <span style="color:#888">(#' + r.matched_id + ')</span></td>'
+                      + '<td>' + escapeHtml(r.matched_category || r.matched_sub_category || '—') + '</td>'
+                      + '<td>' + r.initial_candidates + '→' + r.final_candidates + '</td>'
+                      + '</tr>';
             });
-            html += '</ul>';
+            html += '</tbody></table>';
+        }
+
+        if (d.sample_unmatched && d.sample_unmatched.length) {
+            html += '<h4>Unmatched (first 25) — no ERP product with this name</h4>';
+            html += '<table class="table table-condensed table-bordered" style="font-size:12px;"><thead><tr>'
+                  + '<th>Class</th><th>CSV Product</th><th>CSV Format</th><th>CSV Loc</th></tr></thead><tbody>';
+            d.sample_unmatched.forEach(r => {
+                html += '<tr>'
+                      + '<td>' + escapeHtml(r.class) + '</td>'
+                      + '<td>' + escapeHtml(r.product) + '</td>'
+                      + '<td>' + escapeHtml(r.format) + '</td>'
+                      + '<td>' + escapeHtml(r.location) + '</td>'
+                      + '</tr>';
+            });
+            html += '</tbody></table>';
         }
         out.innerHTML = html;
     }

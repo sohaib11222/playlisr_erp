@@ -113,6 +113,7 @@ class AbcImportService
         $location_map = [];
         $global_map = [];
         $unmatched = [];
+        $matched_trace = []; // [{csv_*, matched_id, matched_name, matched_category, candidates_count}, ...]
         $matched_count = 0;
 
         $classRank = ['A' => 3, 'B' => 2, 'C' => 1];
@@ -124,6 +125,7 @@ class AbcImportService
                 continue;
             }
             $candidates = $index[$norm];
+            $initial_count = count($candidates);
 
             // Narrow by format/category when possible and more than one candidate.
             if (count($candidates) > 1 && $row['format'] !== '') {
@@ -141,8 +143,22 @@ class AbcImportService
                 }
             }
 
-            $pid = (int) $candidates[0]->id;
+            $pick = $candidates[0];
+            $pid = (int) $pick->id;
             $matched_count++;
+
+            $matched_trace[] = [
+                'csv_product' => $row['product'],
+                'csv_format' => $row['format'],
+                'csv_location' => $row['location'],
+                'csv_class' => $row['class'],
+                'matched_id' => $pid,
+                'matched_name' => $pick->name,
+                'matched_category' => $pick->category_name ?? '',
+                'matched_sub_category' => $pick->sub_category_name ?? '',
+                'initial_candidates' => $initial_count,
+                'final_candidates' => count($candidates),
+            ];
 
             // Best class wins globally.
             $existing = $global_map[$pid] ?? null;
@@ -164,6 +180,7 @@ class AbcImportService
             'global_map' => $global_map,
             'location_map' => $location_map,
             'unmatched' => $unmatched,
+            'matched_trace' => $matched_trace,
             'matched_count' => $matched_count,
             'total' => count($rows),
         ];

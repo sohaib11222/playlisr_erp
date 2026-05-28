@@ -70,13 +70,22 @@ class AbcImportController extends Controller
             }
             file_put_contents($stashPath . '/pending_' . $token . '.json', json_encode($payload));
 
+            // Show 20 matched mappings + 20 "ambiguous" ones (rows where the
+            // CSV product name had multiple ERP candidates and format didn't
+            // narrow to one) so it's obvious when the wrong product was picked.
+            $trace = $result['matched_trace'];
+            $ambiguous = array_values(array_filter($trace, function ($t) {
+                return $t['final_candidates'] > 1;
+            }));
+
             return response()->json([
                 'ok' => true,
                 'token' => $token,
-                'stats' => $payload['stats'],
+                'stats' => $payload['stats'] + ['ambiguous' => count($ambiguous)],
                 'period_label' => $payload['period_label'],
                 'source_file' => $payload['source_file'],
-                'sample_matched' => $this->sampleMatched($result['global_map'], $business_id, 10),
+                'sample_matched' => array_slice($trace, 0, 20),
+                'sample_ambiguous' => array_slice($ambiguous, 0, 20),
                 'sample_unmatched' => array_slice($result['unmatched'], 0, 25),
             ]);
         } catch (\Throwable $e) {
