@@ -2324,16 +2324,18 @@
             if (!lens || !lens.total_lines) {
                 return `<span class="text-muted">${prefix}: <em>no prior sales</em></span>`;
             }
+            // Plain bold-black chips on a subtle light pill — the green/blue
+            // label-success/label-info fills were drowning out the $ revenue.
+            // Channel (in-store vs online) is already obvious from the
+            // location name ("Pico", "Hollywood", "Whatnot"), so no colored
+            // background needed.
             const chips = (lens.by_channel || []).map(b =>
-                `<span class="label label-${b.channel === 'in_store' ? 'success' : 'info'}" `
-                + `style="display:inline-block;margin:1px 3px 1px 0;font-weight:normal;font-size:12px;" `
+                `<span style="display:inline-block;margin:1px 3px 1px 0;padding:1px 7px;`
+                + `background:#f3f4f6;border:1px solid #d1d5db;border-radius:4px;`
+                + `color:#000;font-weight:700;font-size:12px;" `
                 + `title="${shortLabel(b)} — qty ${b.qty}, $${Number(b.revenue).toFixed(2)} (first ${b.first || '—'}, last ${b.last || '—'})">`
                 + `${shortLabel(b)} ×${b.qty} `
-                // Inner dark-translucent pill: keeps the $ amount readable on
-                // top of the green (in-store: Pico/Hollywood) and blue
-                // (Whatnot/Discogs/etc.) chip backgrounds. opacity:0.75 on
-                // plain white text was washing the digits out.
-                + `<span style="background:rgba(0,0,0,0.28);padding:0 5px;margin-left:2px;border-radius:3px;font-weight:600;color:#fff;">$${Number(b.revenue).toFixed(2)}</span></span>`
+                + `<span style="font-weight:700;">$${Number(b.revenue).toFixed(2)}</span></span>`
             ).join('');
             const summary = `${lens.total_lines} line${lens.total_lines === 1 ? '' : 's'} · `
                 + `$${Number(lens.total_revenue).toFixed(2)} total · last ${lens.last_sold || '—'}`;
