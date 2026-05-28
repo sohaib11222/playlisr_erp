@@ -132,9 +132,7 @@ class AbcImportService
                 foreach ($candidates as $cand) {
                     $catNorm = $this->normalizeName($cand->category_name ?? '');
                     $subNorm = $this->normalizeName($cand->sub_category_name ?? '');
-                    if ($catNorm === $fmt || $subNorm === $fmt
-                        || strpos($catNorm, $fmt) !== false
-                        || strpos($fmt, $catNorm) !== false) {
+                    if ($this->fmtMatches($fmt, $catNorm) || $this->fmtMatches($fmt, $subNorm)) {
                         $narrowed[] = $cand;
                     }
                 }
@@ -237,12 +235,32 @@ class AbcImportService
     }
 
     /**
+     * Substring match guarded against empty strings — strpos errors with
+     * "Empty needle" if either side is empty (common when a product has no
+     * category and category_name is null).
+     */
+    protected function fmtMatches(string $fmt, string $candidate): bool
+    {
+        if ($fmt === '' || $candidate === '') {
+            return false;
+        }
+        if ($fmt === $candidate) {
+            return true;
+        }
+        return strpos($candidate, $fmt) !== false || strpos($fmt, $candidate) !== false;
+    }
+
+    /**
      * Lowercase, strip "(Manual)" tag, drop quotes/punctuation, collapse spaces.
      * Sarah's analyzer slugs differ from product names in trivial casing/whitespace
      * ways — this is intentionally aggressive to maximize match rate.
      */
-    public function normalizeName(string $name): string
+    public function normalizeName($name): string
     {
+        $name = (string) ($name ?? '');
+        if ($name === '') {
+            return '';
+        }
         $n = mb_strtolower($name);
         // Strip "(Manual)" / "(MANUAL)" — analyzer tag for manually entered items.
         $n = preg_replace('/\(manual\)/i', '', $n);
@@ -265,7 +283,11 @@ class AbcImportService
             return null;
         }
         foreach ($locations as $l) {
-            if (stripos($l->name, $needle) !== false) {
+            $name = (string) ($l->name ?? '');
+            if ($name === '') {
+                continue;
+            }
+            if (stripos($name, $needle) !== false) {
                 return (int) $l->id;
             }
         }
