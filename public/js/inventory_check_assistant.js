@@ -838,6 +838,7 @@
         form.innerHTML = `
             <div class="ica-inline-creds-head">🔐 ${escapeHtml(supLabel)} portal login (saved encrypted, never shown back)</div>
             <div class="ica-inline-creds-row">
+                <input type="text" class="form-control input-sm ica-inline-account" placeholder="Account number (AMS / portal #)" autocomplete="off">
                 <input type="text" class="form-control input-sm ica-inline-user" placeholder="Portal username" autocomplete="off">
                 <input type="password" class="form-control input-sm ica-inline-pass" placeholder="Portal password" autocomplete="new-password">
                 <input type="text" class="form-control input-sm ica-inline-url" placeholder="Portal URL (optional)" autocomplete="off">
@@ -848,6 +849,7 @@
         btn.parentElement.insertBefore(form, btn.nextSibling);
         form.querySelector('.ica-inline-cancel').addEventListener('click', () => form.remove());
         form.querySelector('.ica-inline-save').addEventListener('click', function () {
+            const account = form.querySelector('.ica-inline-account').value.trim();
             const user = form.querySelector('.ica-inline-user').value.trim();
             const pass = form.querySelector('.ica-inline-pass').value;
             const url = form.querySelector('.ica-inline-url').value.trim();
@@ -861,6 +863,7 @@
             fd.append('supplier_key', key);
             fd.append('portal_user', user);
             fd.append('portal_pass', pass);
+            if (account) fd.append('portal_account', account);
             if (url) fd.append('portal_url', url);
             fetch(window.ICA_SUPPLIER_CREDS_URL, {
                 method: 'POST',
