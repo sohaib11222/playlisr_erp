@@ -1169,6 +1169,9 @@ class PurchaseController extends Controller
                                             // Surfaced so the label-print autocomplete can
                                             // tiebreak multi-match by most-recently-updated.
                                             'variation_updated_at' => $variation['updated_at'] ?? null,
+                                            // Surfaced so the label-print autocomplete can prefer
+                                            // the Sealed copy over the Used copy on a UPC scan.
+                                            'catname' => $value['catname'],
                                         ];
                     }
                     $i++;

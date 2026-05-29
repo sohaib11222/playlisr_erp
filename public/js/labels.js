@@ -21,6 +21,27 @@ $(document).ready(function() {
                         swal(LANG.no_products_found);
                         return;
                     }
+                    // When a UPC is scanned, the same barcode lives on both
+                    // the Sealed and the Used copy. Print the SEALED label —
+                    // drop the Used matches so we don't tag a sealed item as
+                    // used. Scoped to UPC (all-digit) input so name searches
+                    // still surface both. Categories: "Sealed Vinyl",
+                    // "Sealed CD", "Cassettes - Sealed", etc.
+                    var typed = ($(this).val() || '').trim();
+                    if (/^\d{8,}$/.test(typed) && ui.content.length > 1) {
+                        var sealed = ui.content.filter(function (it) {
+                            var cat = it.catname;
+                            if (!cat) {
+                                // Fallback: catname is the last " - " chunk of the label text.
+                                var parts = (it.text || '').split(' - ');
+                                cat = parts.length ? parts[parts.length - 1] : '';
+                            }
+                            return cat.toLowerCase().indexOf('sealed') !== -1;
+                        });
+                        if (sealed.length > 0) {
+                            ui.content = sealed;
+                        }
+                    }
                     if (ui.content.length == 1) {
                         ui.item = ui.content[0];
                         $(this).data('ui-autocomplete')._trigger('select', 'autocompleteselect', ui);
