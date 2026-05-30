@@ -257,7 +257,7 @@
 			<label class="pos-product-search-label" for="search_product"><i class="fa fa-search"></i> Ring Up / Scan Product</label>
 			<div class="pos-product-search-wrap">
 				<button type="button" class="pos-product-search-configbtn" data-toggle="modal" data-target="#configure_search_modal" title="{{__('lang_v1.configure_product_search')}}"><i class="fas fa-search-plus"></i></button>
-				{!! Form::text('search_product', null, ['class' => 'form-control mousetrap', 'id' => 'search_product', 'placeholder' => 'Type product name, artist, or scan barcode…',
+				{!! Form::text('search_product', null, ['class' => 'form-control', 'id' => 'search_product', 'placeholder' => 'Type product name, artist, or scan barcode…',
 					'disabled' => is_null($default_location)? true : false,
 					'autofocus' => is_null($default_location)? false : true,
 				]) !!}
