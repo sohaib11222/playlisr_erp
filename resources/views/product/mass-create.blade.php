@@ -2460,9 +2460,6 @@
                     if (discogsData.artist) {
                         $row.find('input[name*="[artist]"]').val(discogsData.artist);
                     }
-                    if (discogsData.sku) {
-                        $row.find('input[name*="[sku]"]').val(discogsData.sku);
-                    }
                     if (price) {
                         $row.find('input[name*="[single_dsp_inc_tax]"]').val(price);
                     }
