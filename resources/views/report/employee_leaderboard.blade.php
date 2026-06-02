@@ -2,6 +2,75 @@
 @section('title', 'Employee Leaderboard')
 
 @section('content')
+{{-- POS-create visual language (Inter Tight + cream palette) applied to the
+     leaderboard. Pure reskin: a single scoped style block with !important
+     overrides — no markup changes — so it can't collide with concurrent edits
+     to the table body. Tokens mirror sale_pos/partials/_redesign_v2.blade.php. --}}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&display=swap" media="print" onload="this.media='all'">
+<style>
+    /* ---- POS tokens ---- */
+    .content-wrapper, body { background: #FAF6EE !important; }
+    .content-header, .content, .content .box, .content .btn, .content input,
+    .content select, .content textarea, .content table {
+        font-family: "Inter Tight", system-ui, -apple-system, sans-serif !important;
+        color: #1F1B16;
+    }
+    .content-header > h1 { font-weight: 800; font-size: 26px; color: #1F1B16; letter-spacing: -.01em; }
+    .content-header > h1 > .fa-trophy { color: #E8CF68; }
+    .content-header > h1 small { color: #8E8273; font-weight: 500; }
+
+    /* ---- cards ---- */
+    .content .box { background: #FFFFFF !important; border: 1px solid #ECE3CF !important;
+        border-top: 1px solid #ECE3CF !important; border-radius: 10px !important;
+        box-shadow: 0 1px 2px rgba(31,27,22,.06) !important; }
+    .content .box .box-header { border-bottom: 1px solid #ECE3CF !important; }
+    .content .box .box-title { font-weight: 700; color: #1F1B16; }
+    .content .box .box-body { padding: 18px 20px !important; }
+
+    /* ---- labels + controls ---- */
+    .content label { font-size: 11px; font-weight: 600; letter-spacing: .12em;
+        text-transform: uppercase; color: #8E8273; }
+    .content .form-control { border: 1px solid #DFD2B3 !important; border-radius: 8px !important;
+        box-shadow: none !important; color: #1F1B16 !important; background: #FFFFFF !important; }
+    .content .form-control:focus { border-color: #E8CF68 !important;
+        box-shadow: 0 0 0 3px rgba(232,207,104,.25) !important; }
+    .content .input-group-btn .btn-primary,
+    .content .btn-primary { background: #1F1B16 !important; border: 1px solid #1F1B16 !important;
+        color: #FAF6EE !important; border-radius: 8px !important; font-weight: 700;
+        letter-spacing: .02em; }
+    .content .btn-primary:hover { background: #000 !important; }
+    .content .text-muted { color: #8E8273 !important; }
+
+    /* ---- banners ---- */
+    .content .alert-info { background: #FFF9DB !important; border: 1px solid #E8CF68 !important;
+        border-left: 4px solid #E8CF68 !important; color: #5A4410 !important; border-radius: 10px !important; }
+    .content .alert-info strong { color: #5A4410 !important; }
+    .content .alert-success { background: #EAF3EC !important; border: 1px solid #2F6B3E !important;
+        color: #2F6B3E !important; border-radius: 10px !important; }
+    .content .alert-warning { border-radius: 10px !important; }
+
+    /* ---- leaderboard table ---- */
+    .lb-store-head { font-weight: 800 !important; color: #1F1B16 !important; font-size: 14px !important;
+        text-transform: uppercase; letter-spacing: .05em; }
+    .lb-table thead tr { color: #8E8273 !important; }
+    .lb-table th { border-bottom: 1px solid #ECE3CF !important; }
+    .lb-table td { border-top: 1px solid #F4ECD9 !important; }
+    .lb-table tbody tr:hover { background: #FAF6EE !important; }
+    .lb-rank-1, .lb-rank-2, .lb-rank-3 { border-radius: 6px; }
+    .lb-me { background: #FFF9DB !important; }
+    .lb-hit { color: #2F6B3E !important; }
+    .lb-comm { background: #EFF6F0 !important; color: #2F6B3E !important; }
+    .lb-soon { background: #FBF7EC !important; }
+    .lb-soon-badge { background: #FFF9DB !important; color: #5A4410 !important; }
+
+    /* ---- live KPI strip: keep green=ahead / red=behind, warm the tones ---- */
+    .lb-live-card { border-radius: 10px !important; }
+    .lb-up { background: #2F6B3E !important; }
+    .lb-down { background: #8A3A2E !important; }
+    .lb-neutral { background: #5A5045 !important; }
+</style>
 <section class="content-header">
     <h1><i class="fa fa-trophy"></i> Employee Leaderboard <small>sales floor performance &amp; commission</small></h1>
 </section>
@@ -36,12 +105,12 @@
                     <form method="POST" action="{{ route('reports.employee-leaderboard.settings') }}">
                         {{ csrf_field() }}
                         <input type="hidden" name="period" value="{{ $period }}">
-                        <label>Goal uplift % (month-over-month push)</label>
+                        <label>Goal stretch %</label>
                         <div class="input-group">
                             <input type="number" step="0.5" min="0" max="1000" name="uplift_pct" class="form-control" value="{{ rtrim(rtrim(number_format($uplift_pct, 2), '0'), '.') }}">
                             <span class="input-group-btn"><button class="btn btn-primary" type="submit">Save</button></span>
                         </div>
-                        <p class="text-muted" style="margin-top:8px;">Each person's goal = their sales in the same window one month ago, raised by this %. Hit the goal and they earn <strong>2% of every dollar above it</strong>.</p>
+                        <p class="text-muted" style="margin-top:8px;">A person's goal is what they sold last month plus this %. Beat it and they earn <strong>2% of every dollar over</strong>.</p>
                     </form>
                 </div>
             </div>
@@ -78,7 +147,7 @@
     </style>
 
     <div class="alert alert-info" style="border-left:4px solid #3c8dbc;">
-        <strong>Both stores, side by side.</strong> Ranked by non-Whatnot $ per hour (Whatnot is excluded from every total). Hours come from cash-register open/close, clipped to the window. <strong>Listing commission</strong> = 2% of used items each person barcoded that sold (since 2026-05-15). <strong>Sales commission</strong> begins 2026-06-15.
+        Each store is ranked by <strong>sales per hour</strong>. Whatnot sales don't count. <strong>Sales commission</strong> starts Jun 15.
     </div>
 
     <div class="row">
