@@ -11151,6 +11151,10 @@ class ReportController extends Controller
                 return !$nameMatches($first, $hide);
             })->values();
 
+            // Per-person hour-based target from this store's own historical
+            // hourly curve (informational; doesn't touch commission).
+            $rows = $this->attachHourTargets($rows, $business_id, $lid, $start_str, $end_str);
+
             $stores[] = [
                 'id'   => $lid,
                 'name' => $lname,
@@ -11484,6 +11488,147 @@ class ReportController extends Controller
         }
 
         return $rows;
+    }
+
+    /**
+     * Store hourly profile: average non-whatnot, pre-tax/net revenue earned in
+     * every (weekday x hour) slot over the last $weeks weeks. This curve is the
+     * store's own peak map — slots at/above the store's median hourly rate are
+     * "peak", below are "off-peak". Used to set per-person targets from the
+     * exact hours they worked (Sarah 2026-06-02). Same revenue basis as the
+     * rest of the board so the numbers reconcile.
+     *
+     * Returns ['rate' => ['{dow}-{hr}' => $/slot], 'median' => x,
+     *          'peak' => ['{dow}-{hr}' => true]] where dow is MySQL DAYOFWEEK
+     * (Sun=1..Sat=7) so it lines up with Carbon's dayOfWeek+1.
+     */
+    private function storeHourlyProfile($business_id, $location_id, $weeks = 12)
+    {
+        $start = \Carbon::now()->subWeeks($weeks)->startOfDay()->toDateTimeString();
+        $end   = \Carbon::now()->subDay()->endOfDay()->toDateTimeString();
+        $net_pretax = '(tsl.quantity - COALESCE(tsl.quantity_returned, 0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax, 0))';
+
+        $rows = \DB::table('transactions as t')
+            ->join('transaction_sell_lines as tsl', 'tsl.transaction_id', '=', 't.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.location_id', $location_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereNull('t.import_source')
+            ->where(function ($q) { $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); })
+            ->whereBetween('t.transaction_date', [$start, $end])
+            ->selectRaw("DAYOFWEEK(t.transaction_date) as dow, HOUR(t.transaction_date) as hr,
+                SUM($net_pretax) as rev, COUNT(DISTINCT DATE(t.transaction_date)) as days")
+            ->groupBy('dow', 'hr')
+            ->get();
+
+        $rate = [];
+        $vals = [];
+        foreach ($rows as $r) {
+            $days = max(1, (int) $r->days);          // how many of that weekday actually traded that hour
+            $rateVal = (float) $r->rev / $days;      // avg $ the store takes in that exact slot
+            $rate[$r->dow . '-' . $r->hr] = $rateVal;
+            if ($rateVal > 0) { $vals[] = $rateVal; }
+        }
+
+        sort($vals);
+        $n = count($vals);
+        $median = 0.0;
+        if ($n > 0) {
+            $mid = intdiv($n, 2);
+            $median = $n % 2 ? $vals[$mid] : ($vals[$mid - 1] + $vals[$mid]) / 2;
+        }
+
+        $peak = [];
+        if ($median > 0) {
+            foreach ($rate as $k => $v) {
+                if ($v >= $median) { $peak[$k] = true; }
+            }
+        }
+
+        return ['rate' => $rate, 'median' => $median, 'peak' => $peak];
+    }
+
+    /**
+     * Attach a per-person hour-based target to leaderboard rows (informational
+     * only — does NOT drive commission; Sarah 2026-06-02). For each person we
+     * take the exact hours they were clocked in (cash_registers, clipped to the
+     * window, capped 6h/shift to match the Hours column), look up the store's
+     * historical rate for those exact (weekday x hour) slots, and divide each
+     * slot by how many staff were on the floor that hour so the target is the
+     * person's FAIR SHARE of the store's expected take — not the whole store's.
+     * Sum = "expected for the hours you worked"; target = expected + a stretch.
+     * Also reports how many of their hours fell in peak vs off-peak slots.
+     */
+    private function attachHourTargets($rows, $business_id, $location_id, $start, $end)
+    {
+        if ($rows->isEmpty()) { return $rows; }
+
+        $profile = $this->storeHourlyProfile($business_id, $location_id, 12);
+        $rate = $profile['rate'];
+        $peak = $profile['peak'];
+
+        $startC = \Carbon::parse($start);
+        $endC   = \Carbon::parse($end);
+
+        $sessions = \DB::table('cash_registers')
+            ->where('business_id', $business_id)
+            ->where('location_id', $location_id)
+            ->whereNotNull('user_id')
+            ->where('created_at', '<=', $end)
+            ->where(function ($q) use ($start) {
+                $q->where('closed_at', '>=', $start)->orWhereNull('closed_at');
+            })
+            ->select('user_id', 'created_at', 'closed_at')
+            ->get();
+
+        // Expand each register session into hour-slot coverage fractions, and
+        // tally distinct staff present per actual calendar hour (for fair-share
+        // division). 6h cap mirrors the Hours figure on the board.
+        $userCov = [];      // user_id => [ ['key'=>'dow-hr','frac'=>f,'inst'=>'Y-m-d H','peak'=>bool], ... ]
+        $slotStaff = [];    // 'Y-m-d H' => [user_id => true]
+        $now = \Carbon::now();
+        foreach ($sessions as $s) {
+            $ss = \Carbon::parse($s->created_at);
+            if ($ss->lt($startC)) { $ss = $startC->copy(); }
+            $se = $s->closed_at ? \Carbon::parse($s->closed_at) : $now->copy();
+            if ($se->gt($endC)) { $se = $endC->copy(); }
+            $cap = $ss->copy()->addSeconds(21600); // 6h
+            if ($se->gt($cap)) { $se = $cap; }
+            if ($se->lte($ss)) { continue; }
+
+            $cursor = $ss->copy();
+            while ($cursor->lt($se)) {
+                $slotEnd = $cursor->copy()->startOfHour()->addHour();
+                $chunkEnd = $slotEnd->lt($se) ? $slotEnd : $se;
+                $frac = $cursor->diffInSeconds($chunkEnd) / 3600.0;
+                $key = ($cursor->dayOfWeek + 1) . '-' . $cursor->hour; // dayOfWeek 0=Sun -> +1 = MySQL DAYOFWEEK
+                $inst = $cursor->format('Y-m-d H');
+                $userCov[$s->user_id][] = ['key' => $key, 'frac' => $frac, 'inst' => $inst, 'peak' => isset($peak[$key])];
+                $slotStaff[$inst][$s->user_id] = true;
+                $cursor = $chunkEnd;
+            }
+        }
+
+        $stretch = 0.10; // gentle, fixed nudge above the store's historical rate
+        return $rows->map(function ($r) use ($userCov, $slotStaff, $rate, $stretch) {
+            $cov = $userCov[$r->user_id] ?? [];
+            $expected = 0.0; $peakH = 0.0; $offH = 0.0;
+            foreach ($cov as $c) {
+                $head = max(1, count($slotStaff[$c['inst']] ?? []));
+                $expected += ($rate[$c['key']] ?? 0) * $c['frac'] / $head;
+                if ($c['peak']) { $peakH += $c['frac']; } else { $offH += $c['frac']; }
+            }
+            $r->hour_expected = round($expected, 2);
+            $r->hour_target = $expected > 0 ? round($expected * (1 + $stretch), 2) : null;
+            $r->hour_target_stretch_pct = $expected > 0 ? round($stretch * 100, 1) : null;
+            $r->hour_pace_pct = ($r->hour_target && $r->hour_target > 0)
+                ? round($r->non_whatnot_revenue / $r->hour_target * 100, 0)
+                : null;
+            $r->hour_peak = round($peakH, 1);
+            $r->hour_offpeak = round($offH, 1);
+            return $r;
+        });
     }
 
     /**

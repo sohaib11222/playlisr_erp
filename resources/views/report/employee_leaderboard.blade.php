@@ -200,6 +200,8 @@
                                     <th class="text-right">Sales / hr</th>
                                     <th class="text-right">Hours</th>
                                     <th class="text-right">Sales</th>
+                                    <th class="text-right">Hour target</th>
+                                    <th class="text-right">Pace</th>
                                     <th class="text-right">Items listed</th>
                                     <th class="text-right">Sales from listed</th>
                                     <th class="text-right">Goal</th>
@@ -223,8 +225,28 @@
                                             @if($r->whatnot_revenue > 0)<div class="lb-sub">Whatnot ${{ number_format($r->whatnot_revenue, 0) }} (excluded)</div>@endif
                                         </td>
                                         <td class="text-right">@if(!$no_hours)<strong style="color:#065f46;">${{ number_format($r->revenue_per_hour, 0) }}</strong>@else — @endif</td>
-                                        <td class="text-right">@if($r->hours_worked > 0){{ number_format($r->hours_worked, 1) }}h @else <span class="text-muted">—</span>@endif</td>
+                                        <td class="text-right">
+                                            @if($r->hours_worked > 0)
+                                                {{ number_format($r->hours_worked, 1) }}h
+                                                @if(($r->hour_peak ?? 0) > 0 || ($r->hour_offpeak ?? 0) > 0)<div class="lb-sub">{{ number_format($r->hour_peak, 1) }}h peak · {{ number_format($r->hour_offpeak, 1) }}h off</div>@endif
+                                            @else <span class="text-muted">—</span>@endif
+                                        </td>
                                         <td class="text-right">${{ number_format($r->non_whatnot_revenue, 0) }}</td>
+                                        <td class="text-right">
+                                            @if(!is_null($r->hour_target))
+                                                ${{ number_format($r->hour_target, 0) }}
+                                                <div class="lb-sub">+{{ rtrim(rtrim(number_format($r->hour_target_stretch_pct, 1), '0'), '.') }}% vs store rate</div>
+                                            @else
+                                                <span class="text-muted">—</span>
+                                            @endif
+                                        </td>
+                                        <td class="text-right">
+                                            @if(!is_null($r->hour_pace_pct))
+                                                @if($r->hour_pace_pct >= 100)<span class="lb-hit">{{ number_format($r->hour_pace_pct, 0) }}%</span>@else<span class="lb-miss">{{ number_format($r->hour_pace_pct, 0) }}%</span>@endif
+                                            @else
+                                                <span class="text-muted">—</span>
+                                            @endif
+                                        </td>
                                         @php
                                             $listedAttrs = 'data-listed="1" data-user="'.$r->user_id.'" data-name="'.e($r->employee).'" data-loc="'.$store['id'].'" data-store="'.e($store['name']).'"';
                                         @endphp
@@ -249,7 +271,7 @@
                                         <td class="text-right">@if($r->total_commission > 0)<strong>${{ number_format($r->total_commission, 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>
                                     </tr>
                                 @empty
-                                    <tr><td colspan="12" class="text-center text-muted">No activity in this window.</td></tr>
+                                    <tr><td colspan="14" class="text-center text-muted">No activity in this window.</td></tr>
                                 @endforelse
                             </tbody>
                         </table>
