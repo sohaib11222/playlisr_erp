@@ -136,6 +136,8 @@
         .lb-comm { background:#f1faf3; font-weight:700; color:#1b5e20; }
         .lb-soon { background:#f7f7f9; }
         .lb-soon-badge { display:inline-block; background:#e3e6ec; color:#6b7280; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; border-radius:10px; padding:2px 8px; }
+        .lb-listed-link { color:#1f2937; border-bottom:1px dashed #c7b870; cursor:pointer; }
+        .lb-listed-link:hover { color:#8a6d00; border-bottom-color:#8a6d00; text-decoration:none; }
         .lb-store-head { font-size:16px; font-weight:700; margin:0 0 8px; }
         .lb-sub { font-size:11px; color:#9aa0a6; }
         .lb-live { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:0 0 12px; }
@@ -223,8 +225,11 @@
                                         <td class="text-right">@if(!$no_hours)<strong style="color:#065f46;">${{ number_format($r->revenue_per_hour, 0) }}</strong>@else — @endif</td>
                                         <td class="text-right">@if($r->hours_worked > 0){{ number_format($r->hours_worked, 1) }}h @else <span class="text-muted">—</span>@endif</td>
                                         <td class="text-right">${{ number_format($r->non_whatnot_revenue, 0) }}</td>
-                                        <td class="text-right">@if($r->priced_count > 0){{ number_format($r->priced_count, 0) }}@else <span class="text-muted">—</span>@endif</td>
-                                        <td class="text-right">${{ number_format($r->priced_revenue, 0) }}</td>
+                                        @php
+                                            $listedAttrs = 'data-listed="1" data-user="'.$r->user_id.'" data-name="'.e($r->employee).'" data-loc="'.$store['id'].'" data-store="'.e($store['name']).'"';
+                                        @endphp
+                                        <td class="text-right">@if($r->priced_count > 0)<a href="#" class="lb-listed-link" {!! $listedAttrs !!}>{{ number_format($r->priced_count, 0) }}</a>@else <span class="text-muted">—</span>@endif</td>
+                                        <td class="text-right">@if($r->priced_revenue > 0)<a href="#" class="lb-listed-link" {!! $listedAttrs !!}>${{ number_format($r->priced_revenue, 0) }}</a>@else ${{ number_format($r->priced_revenue, 0) }}@endif</td>
                                         <td class="text-right">
                                             @if(!is_null($r->goal))
                                                 ${{ number_format($r->goal, 0) }}
@@ -254,6 +259,40 @@
         @empty
             <div class="col-md-12"><div class="alert alert-warning">No active store locations found.</div></div>
         @endforelse
+    </div>
+
+    {{-- Drill-down: items a person listed that sold in this window/store --}}
+    <div class="modal fade" id="lb-listed-modal" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                    <h4 class="modal-title" id="lb-listed-title">Items listed &amp; sold</h4>
+                    <div class="text-muted" id="lb-listed-sub" style="font-size:12px;"></div>
+                </div>
+                <div class="modal-body" style="max-height:65vh; overflow:auto;">
+                    <div id="lb-listed-loading" class="text-muted text-center" style="padding:24px;">Loading…</div>
+                    <table class="table table-condensed" id="lb-listed-table" style="display:none;">
+                        <thead>
+                            <tr style="color:#6b7280; text-transform:uppercase; font-size:10px; letter-spacing:.5px;">
+                                <th>Item</th>
+                                <th class="text-right">Units sold</th>
+                                <th class="text-right">Revenue</th>
+                            </tr>
+                        </thead>
+                        <tbody id="lb-listed-body"></tbody>
+                        <tfoot>
+                            <tr style="font-weight:700; border-top:2px solid #ECE3CF;">
+                                <td>Total</td>
+                                <td class="text-right" id="lb-listed-total-units"></td>
+                                <td class="text-right" id="lb-listed-total-rev"></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                    <div id="lb-listed-empty" class="text-muted text-center" style="display:none; padding:24px;">No listed items sold in this window.</div>
+                </div>
+            </div>
+        </div>
     </div>
 
 </section>
@@ -311,6 +350,67 @@
     }
 
     setInterval(refreshAll, 60000);
+})();
+
+// Items-listed drill-down: click a person's "items listed" / "sales from
+// listed" to see exactly which of their listings sold, best-sellers first.
+(function () {
+    var URL = "{{ $listed_items_url ?? '' }}";
+    var START = "{{ optional($start)->toDateString() }}";
+    var END   = "{{ optional($end)->toDateString() }}";
+    if (!URL) return;
+
+    function money(n) { return '$' + Math.round(Number(n)).toLocaleString(); }
+
+    document.addEventListener('click', function (ev) {
+        var a = ev.target.closest ? ev.target.closest('.lb-listed-link') : null;
+        if (!a) return;
+        ev.preventDefault();
+
+        var user = a.getAttribute('data-user');
+        var loc  = a.getAttribute('data-loc');
+        var name = a.getAttribute('data-name') || '';
+        var store = a.getAttribute('data-store') || '';
+
+        document.getElementById('lb-listed-title').textContent = name + ' — items listed & sold';
+        document.getElementById('lb-listed-sub').textContent = store;
+        document.getElementById('lb-listed-loading').style.display = '';
+        document.getElementById('lb-listed-table').style.display = 'none';
+        document.getElementById('lb-listed-empty').style.display = 'none';
+        document.getElementById('lb-listed-body').innerHTML = '';
+
+        if (window.jQuery) { jQuery('#lb-listed-modal').modal('show'); }
+
+        var qs = '?user_id=' + encodeURIComponent(user) +
+                 '&location_id=' + encodeURIComponent(loc) +
+                 '&start_date=' + encodeURIComponent(START) +
+                 '&end_date=' + encodeURIComponent(END);
+
+        fetch(URL + qs, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (d) {
+                document.getElementById('lb-listed-loading').style.display = 'none';
+                if (!d || !d.items || d.items.length === 0) {
+                    document.getElementById('lb-listed-empty').style.display = '';
+                    return;
+                }
+                var rows = d.items.map(function (it) {
+                    var nameCell = document.createElement('div');
+                    nameCell.textContent = it.product; // textContent escapes
+                    return '<tr><td>' + nameCell.innerHTML + '</td>' +
+                           '<td class="text-right">' + Number(it.units).toLocaleString() + '</td>' +
+                           '<td class="text-right">' + money(it.revenue) + '</td></tr>';
+                }).join('');
+                document.getElementById('lb-listed-body').innerHTML = rows;
+                document.getElementById('lb-listed-total-units').textContent = Number(d.total_units).toLocaleString();
+                document.getElementById('lb-listed-total-rev').textContent = money(d.total_revenue);
+                document.getElementById('lb-listed-table').style.display = '';
+            })
+            .catch(function () {
+                document.getElementById('lb-listed-loading').style.display = 'none';
+                document.getElementById('lb-listed-empty').style.display = '';
+            });
+    });
 })();
 </script>
 @stop

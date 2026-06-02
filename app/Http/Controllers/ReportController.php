@@ -11136,10 +11136,19 @@ class ReportController extends Controller
             foreach ($store_only as $k => $names) {
                 if (strpos($lkey, $k) !== false) { $only = array_merge($only ?? [], $names); }
             }
-            $rows = $rows->filter(function ($r) use ($hide, $only) {
+            // Match on the first name as a prefix so stored variants still hit
+            // (e.g. 'zak' catches "Zakary"/"Zakaria"). Exact match is the common
+            // case; the prefix only matters for nicknames.
+            $nameMatches = function ($first, $list) {
+                foreach ($list as $tok) {
+                    if ($first === $tok || strpos($first, $tok) === 0) { return true; }
+                }
+                return false;
+            };
+            $rows = $rows->filter(function ($r) use ($hide, $only, $nameMatches) {
                 $first = strtolower(trim(explode(' ', trim($r->employee))[0] ?? ''));
-                if ($only !== null) { return in_array($first, $only, true); }
-                return !in_array($first, $hide, true);
+                if ($only !== null) { return $nameMatches($first, $only); }
+                return !$nameMatches($first, $hide);
             })->values();
 
             $stores[] = [
@@ -11151,10 +11160,69 @@ class ReportController extends Controller
         }
 
         $live_data_url = action('StorePerformanceController@data');
+        $listed_items_url = action('ReportController@employeeLeaderboardListedItems');
 
         return view('report.employee_leaderboard')->with(compact(
-            'stores', 'period', 'start', 'end', 'live_data_url'
+            'stores', 'period', 'start', 'end', 'live_data_url', 'listed_items_url'
         ));
+    }
+
+    /**
+     * Drill-down for the leaderboard: the individual products a person listed
+     * (products.created_by) that sold in the window, optionally at one store,
+     * best-sellers first. Powers the "items listed / sales from listed"
+     * click-through so staff can see what of theirs actually sells. Mirrors the
+     * priced_revenue query on the board so the totals reconcile. Admin-only JSON.
+     */
+    public function employeeLeaderboardListedItems(Request $request)
+    {
+        $this->ensureAdminOnlyReportAccess();
+        $business_id = $request->session()->get('user.business_id');
+
+        $user_id     = (int) $request->input('user_id');
+        $location_id = (int) $request->input('location_id', 0);
+
+        // Window resolved on the board and passed through as explicit dates.
+        try {
+            $start = \Carbon::parse($request->input('start_date'))->startOfDay();
+            $end   = \Carbon::parse($request->input('end_date'))->endOfDay();
+        } catch (\Throwable $e) {
+            $start = \Carbon::now()->startOfMonth();
+            $end   = \Carbon::now()->endOfDay();
+        }
+
+        $q = \DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+            ->join('products as p', 'tsl.product_id', '=', 'p.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereNull('t.import_source')
+            ->where('p.created_by', $user_id)
+            ->whereBetween('t.transaction_date', [$start->toDateTimeString(), $end->toDateTimeString()]);
+        if (!empty($location_id)) {
+            $q->where('t.location_id', $location_id);
+        }
+
+        $items = $q
+            ->selectRaw('p.name as product, COALESCE(SUM(tsl.quantity), 0) as units, COALESCE(SUM(tsl.quantity * tsl.unit_price_inc_tax), 0) as revenue')
+            ->groupBy('p.id', 'p.name')
+            ->orderByDesc('revenue')
+            ->limit(200)
+            ->get()
+            ->map(function ($r) {
+                return [
+                    'product' => $r->product,
+                    'units'   => (int) $r->units,
+                    'revenue' => round((float) $r->revenue, 2),
+                ];
+            });
+
+        return response()->json([
+            'items'         => $items,
+            'total_units'   => (int) $items->sum('units'),
+            'total_revenue' => round($items->sum('revenue'), 2),
+        ]);
     }
 
     /**
