@@ -3229,6 +3229,16 @@ function pos_product_row(variation_id = null, purchase_line_id = null, weighing_
                         .focus()
                         .select();
 
+                    // Congratulate the cashier when they ring up an item they
+                    // barcoded themselves — they get the credit and commission.
+                    if (result.barcoded_by_you) {
+                        toastr.success(
+                            'Nice one, ' + result.barcoder_name + '! You barcoded this item, so you get the credit and the commission. 🎉',
+                            'Commission earned',
+                            { timeOut: 6000 }
+                        );
+                    }
+
                     //Used in restaurant module
                     if (result.html_modifier) {
                         $('table#pos_table tbody')

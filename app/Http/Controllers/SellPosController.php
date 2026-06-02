@@ -5153,6 +5153,19 @@ class SellPosController extends Controller
 
             $output = $this->getSellLineRow($variation_id, $location_id, $quantity, $row_count, $is_direct_sell);
 
+            // If the cashier ringing this up is also the one who barcoded
+            // (created) the product in their own ERP login, congratulate them:
+            // they get credit for the record and the commission on the sale.
+            if (!empty($output['success'])) {
+                $creator = Variation::where('variations.id', $variation_id)
+                    ->join('products as p', 'p.id', '=', 'variations.product_id')
+                    ->value('p.created_by');
+                if (!empty($creator) && (int) $creator === (int) auth()->id()) {
+                    $output['barcoded_by_you'] = true;
+                    $output['barcoder_name'] = auth()->user()->first_name;
+                }
+            }
+
             if ($this->transactionUtil->isModuleEnabled('modifiers')  && !$is_direct_sell) {
                 $variation = Variation::find($variation_id);
                 $business_id = request()->session()->get('user.business_id');
