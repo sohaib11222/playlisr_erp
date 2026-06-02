@@ -37,11 +37,12 @@ class ListingCommissionController extends Controller
         'acessories & novelties', 'pictures & posters',
     ];
 
-    // Owners / back-office don't get paid listing commission (matches the
-    // Employee Leaderboard's exclude_owners). Their accounts are also the
-    // creator-of-record for bulk/imported listings, so leaving them in inflates
-    // counts (e.g. Jon showed 48k listed items). Excluded by first name.
-    private $excludedOwnerFirstNames = ['jon', 'jonathan', 'sarah', 'sohaib', 'fatteen'];
+    // Owners / back-office + departed non-floor accounts that don't get paid
+    // listing commission (mirrors the Employee Leaderboard roster). Owner
+    // accounts are also the creator-of-record for bulk/imported listings, so
+    // leaving them in inflates counts (e.g. Jon showed 48k listed items).
+    // 'henry' left the company (Sarah 2026-06-02). Excluded by first name.
+    private $excludedOwnerFirstNames = ['jon', 'jonathan', 'sarah', 'sohaib', 'fatteen', 'henry'];
 
     // Fatteen's ERP account is named "Nerdy Solutions", so the first-name list
     // above misses it. Also drop any account whose full name contains these.
