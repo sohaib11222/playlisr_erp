@@ -11342,39 +11342,14 @@ class ReportController extends Controller
             ->keyBy('created_by');
 
         // Barcoding commission (2% of used items each person barcoded that sold)
-        // and the goal baseline (their sales in the same window one month ago)
-        // are only computed for the report, not the lightweight home widget.
+        // is only computed for the report, not the lightweight home widget. The
+        // sales-goal bonus now pays on each person's hour-based target (the
+        // store's historical rate for the exact hours they worked) — that is
+        // layered on in attachHourTargets, not here, because it needs the
+        // per-store hourly curve and clocked-in headcount (Sarah 2026-06-02).
         $commission = collect();
-        $goal_baseline = collect();        // non-whatnot sales 1 month ago (same window)
-        $goal_baseline_prior = collect();  // 2 months ago — used to read each person's trend
         if ($with_commission) {
             $commission = $this->barcodingCommissionByUser($business_id, $start, $end, $location_id);
-
-            // Same window shifted back N months, non-whatnot, optionally per
-            // store. Same pre-tax / net-of-returns basis as current revenue so
-            // the goal comparison is apples-to-apples.
-            $baselineFor = function ($months) use ($business_id, $start, $end, $location_id, $net_pretax) {
-                $b_start = \Carbon::parse($start)->subMonthsNoOverflow($months)->toDateTimeString();
-                $b_end   = \Carbon::parse($end)->subMonthsNoOverflow($months)->toDateTimeString();
-                $bq = \DB::table('transactions as t')
-                    ->join('transaction_sell_lines as tsl', 'tsl.transaction_id', '=', 't.id')
-                    ->where('t.business_id', $business_id)
-                    ->where('t.type', 'sell')
-                    ->where('t.status', 'final')
-                    ->whereNull('t.import_source')
-                    ->where(function ($q) { $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); })
-                    ->whereBetween('t.transaction_date', [$b_start, $b_end]);
-                if (!empty($location_id)) {
-                    $bq->where('t.location_id', $location_id);
-                }
-                return $bq
-                    ->selectRaw("t.created_by, COALESCE(SUM($net_pretax), 0) as base_sales")
-                    ->groupBy('t.created_by')
-                    ->get()
-                    ->keyBy('created_by');
-            };
-            $goal_baseline       = $baselineFor(1);
-            $goal_baseline_prior = $baselineFor(2);
         }
 
         // Merge keys from every side.
@@ -11408,7 +11383,7 @@ class ReportController extends Controller
 
         $user_ids = $user_ids->filter(fn ($uid) => $users->has($uid))->values();
 
-        $rows = $user_ids->map(function ($uid) use ($tx_agg, $items_agg, $priced_rev, $users, $hours_raw, $commission, $goal_baseline, $goal_baseline_prior, $with_commission) {
+        $rows = $user_ids->map(function ($uid) use ($tx_agg, $items_agg, $priced_rev, $users, $hours_raw, $commission, $with_commission) {
             $u = $users->get($uid);
             $t = $tx_agg->get($uid);
             $name = trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
@@ -11428,31 +11403,15 @@ class ReportController extends Controller
 
             $barcoding_commission = (float) optional($commission->get($uid))->commission ?? 0;
 
-            // Auto goal: their sales last month (same window) pushed up by a
-            // stretch read from their own recent trend, so the target is a real
-            // but reachable step up — never a flat company-wide number.
-            //   growing month-over-month -> keep that pace (capped to 5–20%)
-            //   flat or sliding          -> a gentle +5% nudge back up
-            //   only one month of history -> default +10%
-            // Bonus = 2% of every dollar they ring above the goal.
+            // Sales-goal target + bonus are hour-based now and filled in by
+            // attachHourTargets (it owns the store hourly curve + headcount).
+            // Seed them here so the row shape is stable for the home widget,
+            // which never calls attachHourTargets.
             $goal = null;
             $goal_hit = false;
             $goal_bonus = 0.0;
             $goal_stretch_pct = null;
-            if ($with_commission) {
-                $recent = (float) optional($goal_baseline->get($uid))->base_sales ?? 0;
-                $prior  = (float) optional($goal_baseline_prior->get($uid))->base_sales ?? 0;
-                if ($recent > 0) {
-                    $stretch = $prior > 0 ? max(0.05, min(0.20, $recent / $prior - 1)) : 0.10;
-                    $goal_stretch_pct = round($stretch * 100, 1);
-                    $goal = round($recent * (1 + $stretch), 2);
-                    if ($non_whatnot_revenue >= $goal) {
-                        $goal_hit = true;
-                        $goal_bonus = round(($non_whatnot_revenue - $goal) * 0.02, 2);
-                    }
-                }
-            }
-            $total_commission = round($barcoding_commission + $goal_bonus, 2);
+            $total_commission = round($barcoding_commission, 2);
 
             return (object) [
                 'user_id' => $uid,
@@ -11627,6 +11586,22 @@ class ReportController extends Controller
                 : null;
             $r->hour_peak = round($peakH, 1);
             $r->hour_offpeak = round($offH, 1);
+
+            // The sales-goal bonus now pays on the hour-based target: 2% of
+            // every non-whatnot dollar rung above it (Sarah 2026-06-02). No
+            // target (sparse store history / no clocked hours) => no bonus.
+            // These reuse the existing goal_* / total_commission fields the
+            // blade already reads.
+            $r->goal = $r->hour_target;
+            $r->goal_stretch_pct = $r->hour_target_stretch_pct;
+            if ($r->hour_target && $r->non_whatnot_revenue >= $r->hour_target) {
+                $r->goal_hit = true;
+                $r->goal_bonus = round(($r->non_whatnot_revenue - $r->hour_target) * 0.02, 2);
+            } else {
+                $r->goal_hit = false;
+                $r->goal_bonus = 0.0;
+            }
+            $r->total_commission = round((float) $r->barcoding_commission + $r->goal_bonus, 2);
             return $r;
         });
     }
