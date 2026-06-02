@@ -86,9 +86,9 @@
         <div class="box-body">
             <div class="row">
                 <div class="col-md-6">
-                    <form method="GET" action="{{ action('ReportController@employeeLeaderboard') }}">
+                    <form method="GET" action="{{ action('ReportController@employeeLeaderboard') }}" id="lb-period-form">
                         <label>Period</label>
-                        <select name="period" class="form-control" onchange="this.form.submit()">
+                        <select name="period" class="form-control" id="lb-period" onchange="lbPeriodChange(this)">
                             <option value="today" @if($period==='today') selected @endif>Today</option>
                             <option value="yesterday" @if($period==='yesterday') selected @endif>Yesterday</option>
                             <option value="this_week" @if($period==='this_week') selected @endif>This week</option>
@@ -97,9 +97,26 @@
                             <option value="this_month" @if($period==='this_month') selected @endif>This month</option>
                             <option value="last_30" @if($period==='last_30') selected @endif>Last 30 days</option>
                             <option value="this_quarter" @if($period==='this_quarter') selected @endif>This quarter</option>
+                            <option value="custom" @if($period==='custom') selected @endif>Custom dates&hellip;</option>
                         </select>
-                        <p class="text-muted" style="margin-top:8px;">Window: <strong>{{ $start->format('M j, Y') }}</strong> &rarr; <strong>{{ $end->format('M j, Y') }}</strong></p>
+                        <div id="lb-custom" style="margin-top:8px; @if($period!=='custom') display:none; @endif">
+                            <div class="row">
+                                <div class="col-xs-5"><input type="date" name="start_date" class="form-control" value="{{ $start->format('Y-m-d') }}"></div>
+                                <div class="col-xs-5"><input type="date" name="end_date" class="form-control" value="{{ $end->format('Y-m-d') }}"></div>
+                                <div class="col-xs-2"><button type="submit" class="btn btn-primary btn-block">Go</button></div>
+                            </div>
+                        </div>
+                        <p class="text-muted" style="margin-top:8px;">Showing <strong>{{ $start->format('M j, Y') }}</strong> &rarr; <strong>{{ $end->format('M j, Y') }}</strong></p>
                     </form>
+                    <script>
+                        function lbPeriodChange(sel) {
+                            if (sel.value === 'custom') {
+                                document.getElementById('lb-custom').style.display = '';
+                            } else {
+                                document.getElementById('lb-period-form').submit();
+                            }
+                        }
+                    </script>
                 </div>
                 <div class="col-md-6">
                     <form method="POST" action="{{ route('reports.employee-leaderboard.settings') }}">
@@ -174,14 +191,14 @@
                                     <div class="lb-live-sub"><span data-f="target_pct">{{ number_format($lv['target_pct']) }}%</span> of <span data-f="target_so_far">${{ number_format($lv['target_so_far']) }}</span> by now &middot; ${{ number_format($lv['target_full']) }} goal</div>
                                 </div>
                                 <div class="lb-live-card {{ $lv['lfl_state'] === 'ahead' ? 'lb-up' : ($lv['lfl_state'] === 'behind' ? 'lb-down' : 'lb-neutral') }}" data-tile="lfl">
-                                    <div class="lb-live-lbl">LFL vs last yr</div>
+                                    <div class="lb-live-lbl">Vs last year</div>
                                     <div class="lb-live-val" data-f="lfl_pct">@if($lv['lfl_pct'] === null) — @else {{ ($lv['lfl_pct'] >= 0 ? '+' : '') . number_format($lv['lfl_pct'], 1) }}% @endif</div>
                                     <div class="lb-live-sub"><span data-f="lfl_last_year">${{ number_format($lv['lfl_last_year']) }}</span> by now</div>
                                 </div>
                                 <div class="lb-live-card lb-neutral" data-tile="tx">
-                                    <div class="lb-live-lbl">Tx today</div>
+                                    <div class="lb-live-lbl">Sales today</div>
                                     <div class="lb-live-val" data-f="tx_count">{{ number_format($lv['tx_count']) }}</div>
-                                    <div class="lb-live-sub">avg <span data-f="avg_tx">${{ number_format($lv['avg_tx'], 2) }}</span></div>
+                                    <div class="lb-live-sub">avg sale <span data-f="avg_tx">${{ number_format($lv['avg_tx'], 2) }}</span></div>
                                 </div>
                             </div>
                         @endif
@@ -190,13 +207,13 @@
                                 <tr style="color:#6b7280; text-transform:uppercase; font-size:10px; letter-spacing:.5px;">
                                     <th class="text-center">#</th>
                                     <th>Employee</th>
-                                    <th class="text-right">$ / hr</th>
+                                    <th class="text-right">Sales / hr</th>
                                     <th class="text-right">Hours</th>
                                     <th class="text-right">Sales</th>
                                     <th class="text-right">Goal</th>
                                     <th class="text-right">Bonus</th>
-                                    <th class="text-right lb-comm">Listing comm.</th>
-                                    <th class="text-right lb-soon">Sales comm.</th>
+                                    <th class="text-right lb-comm">Listing pay</th>
+                                    <th class="text-right lb-soon">Sales bonus</th>
                                 </tr>
                             </thead>
                             <tbody>

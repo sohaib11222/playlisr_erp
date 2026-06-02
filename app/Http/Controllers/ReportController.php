@@ -11024,6 +11024,27 @@ class ReportController extends Controller
                 $start = $now->copy()->subWeek()->startOfWeek();
                 $end = $now->copy()->subWeek()->endOfWeek();
                 break;
+            case 'custom':
+                // Manual date range. Falls back to this-month if either date is
+                // missing or unparseable.
+                try {
+                    $sd = $request->input('start_date');
+                    $ed = $request->input('end_date');
+                    if (!empty($sd) && !empty($ed)) {
+                        $start = \Carbon::parse($sd)->startOfDay();
+                        $end   = \Carbon::parse($ed)->endOfDay();
+                        if ($end->lt($start)) { $tmp = $start; $start = $end->copy()->startOfDay(); $end = $tmp->copy()->endOfDay(); }
+                    } else {
+                        $start = $now->copy()->startOfMonth();
+                        $end   = $now->copy()->endOfDay();
+                        $period = 'this_month';
+                    }
+                } catch (\Throwable $e) {
+                    $start = $now->copy()->startOfMonth();
+                    $end   = $now->copy()->endOfDay();
+                    $period = 'this_month';
+                }
+                break;
             case 'last_7':
                 $start = $now->copy()->subDays(6)->startOfDay();
                 $end = $now->copy()->endOfDay();
@@ -11079,7 +11100,7 @@ class ReportController extends Controller
         // actually works there. First-name match, case-insensitive; the store
         // key just needs to appear in the location name. Edit freely.
         $store_hidden = [
-            'pico' => ['manolo', 'luis'],   // not on the Pico floor (old/remote)
+            'pico' => ['manolo', 'luis', 'jacob'],   // not on the Pico floor (old/remote)
         ];
         $store_only = [
             'discogs'   => ['nick'],        // online fulfillment is Nick only
