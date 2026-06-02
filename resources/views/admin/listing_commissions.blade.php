@@ -1,0 +1,131 @@
+@extends('layouts.app')
+@section('title', 'Listing Commissions')
+
+@section('content')
+<section class="content-header">
+    <h1>Listing Commissions Owed</h1>
+    <p class="text-muted">
+        What we owe each person for items they listed. Commission =
+        the person's rate (set on <strong>Sales Commission Agents</strong>) &times;
+        the sell price of every item they've listed since the start date and
+        haven't been paid for yet. Click <strong>Mark paid</strong> once you've paid
+        someone — those listings drop off the owed list.
+    </p>
+</section>
+
+<section class="content">
+
+@if (session('status'))
+    <div class="alert {{ session('status')['success'] ? 'alert-success' : 'alert-danger' }}">
+        {{ session('status')['msg'] }}
+    </div>
+@endif
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="box box-solid">
+            <div class="box-body">
+                <form method="GET" action="{{ url('/admin/listing-commissions') }}" class="form-inline">
+                    <label for="from">Owed since</label>
+                    <input type="date" id="from" name="from" value="{{ $from }}" class="form-control" style="margin:0 8px;">
+                    <button type="submit" class="btn btn-primary">Apply</button>
+                    <span class="pull-right" style="font-size:18px;">
+                        Total owed: <strong>${{ number_format($total_owed, 2) }}</strong>
+                    </span>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        @component('components.widget', ['title' => 'Owed now (since ' . $from . ')'])
+            @if ($people->isEmpty())
+                <p class="text-muted">Nobody is owed listing commission since {{ $from }}.</p>
+            @else
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Person</th>
+                            <th style="text-align:right;">Rate</th>
+                            <th style="text-align:right;">Listings</th>
+                            <th style="text-align:right;">Sell total</th>
+                            <th style="text-align:right;">Owed</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($people as $p)
+                            <tr>
+                                <td>{{ $p->name }}</td>
+                                <td style="text-align:right;">{{ rtrim(rtrim(number_format($p->cmmsn_percent, 2), '0'), '.') }}%</td>
+                                <td style="text-align:right;">{{ number_format($p->count) }}</td>
+                                <td style="text-align:right;">${{ number_format($p->sell_total, 2) }}</td>
+                                <td style="text-align:right;"><strong>${{ number_format($p->owed, 2) }}</strong></td>
+                                <td style="text-align:right;">
+                                    <form method="POST" action="{{ url('/admin/listing-commissions/mark-paid') }}"
+                                          onsubmit="return confirm('Mark {{ $p->count }} listing(s) for {{ $p->name }} as paid (${{ number_format($p->owed, 2) }})?');"
+                                          style="margin:0;">
+                                        @csrf
+                                        <input type="hidden" name="user_id" value="{{ $p->user_id }}">
+                                        <input type="hidden" name="from" value="{{ $from }}">
+                                        <button type="submit" class="btn btn-success btn-xs">Mark paid</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            @endif
+        @endcomponent
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        @component('components.widget', ['title' => 'Paid history'])
+            @if ($history->isEmpty())
+                <p class="text-muted">No payouts recorded yet. Total paid: $0.00</p>
+            @else
+                <p class="text-muted">Total paid to date: <strong>${{ number_format($total_paid, 2) }}</strong></p>
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Paid on</th>
+                            <th>Person</th>
+                            <th style="text-align:right;">Listings</th>
+                            <th style="text-align:right;">Amount</th>
+                            <th>Covered</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($history as $h)
+                            <tr>
+                                <td>{{ $h['marked_at'] ?? '—' }}</td>
+                                <td>{{ $h['name'] ?? ('User #' . ($h['user_id'] ?? '?')) }}</td>
+                                <td style="text-align:right;">{{ number_format($h['count'] ?? 0) }}</td>
+                                <td style="text-align:right;">${{ number_format($h['amount'] ?? 0, 2) }}</td>
+                                <td>{{ $h['from_date'] ?? '?' }} → {{ $h['to_date'] ?? '?' }}</td>
+                                <td style="text-align:right;">
+                                    <form method="POST" action="{{ url('/admin/listing-commissions/undo-payout') }}"
+                                          onsubmit="return confirm('Undo this payout? Those listings will be owed again.');"
+                                          style="margin:0;">
+                                        @csrf
+                                        <input type="hidden" name="id" value="{{ $h['id'] ?? '' }}">
+                                        <input type="hidden" name="from" value="{{ $from }}">
+                                        <button type="submit" class="btn btn-warning btn-xs">Undo</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            @endif
+        @endcomponent
+    </div>
+</div>
+
+</section>
+@endsection
