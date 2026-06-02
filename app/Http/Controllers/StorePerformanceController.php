@@ -69,45 +69,11 @@ class StorePerformanceController extends Controller
 
         $data = $this->compute($business_id, $location_id);
 
-        // Last week's leaderboard, embedded for the leadership view. Admin-only
-        // (the $/hour cross-staff comparison is gated to admins per Sarah
-        // 2026-04-28) — Store Leads still get the KPI tiles above, just not the
-        // ranking. Previous full calendar week (Mon–Sun): the settled,
-        // recognition-ready number, not a mid-week partial. Static through the
-        // 60s tile refresh. Wrapped so a leaderboard hiccup can never take the
-        // dashboard down.
-        $show_leaderboard = false;
-        $leaderboard_rows = collect();
-        $leaderboard_label = '';
-        if ($this->businessUtil->is_admin(auth()->user())) {
-            try {
-                $lb_start = Carbon::now()->subWeek()->startOfWeek();
-                $lb_end   = Carbon::now()->subWeek()->endOfWeek();
-                $report = app()->make(\App\Http\Controllers\ReportController::class);
-                $leaderboard_rows = $report->buildLeaderboardRows(
-                    $business_id,
-                    $lb_start->toDateTimeString(),
-                    $lb_end->toDateTimeString(),
-                    null,
-                    $location_id,
-                    ['exclude_owners' => true]
-                );
-                $leaderboard_label = $lb_start->format('M j') . ' – ' . $lb_end->format('M j');
-                $show_leaderboard = true;
-            } catch (\Throwable $e) {
-                \Log::warning('store-performance leaderboard build failed: ' . $e->getMessage());
-                $show_leaderboard = false;
-            }
-        }
-
         return view('home.store_performance')->with([
             'locations'    => $locations,
             'location_id'  => $location_id,
             'location_name' => $locations->get($location_id),
             'data'         => $data,
-            'show_leaderboard'  => $show_leaderboard,
-            'leaderboard_rows'  => $leaderboard_rows,
-            'leaderboard_label' => $leaderboard_label,
         ]);
     }
 
