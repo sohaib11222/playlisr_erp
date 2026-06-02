@@ -96,6 +96,16 @@ class StorePerformanceController extends Controller
     }
 
     /**
+     * Public accessor so other screens (the Employee Leaderboard) can embed
+     * the same live trading-day KPIs without duplicating the math. Same payload
+     * as the JSON endpoint. Caller is responsible for its own access gating.
+     */
+    public function computeForLocation($business_id, $location_id)
+    {
+        return $this->compute($business_id, $location_id);
+    }
+
+    /**
      * Compute the four KPIs for one location, "as of now" today.
      */
     private function compute($business_id, $location_id)

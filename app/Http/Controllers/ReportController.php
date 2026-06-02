@@ -11060,17 +11060,41 @@ class ReportController extends Controller
             ->orderBy('id')
             ->pluck('name', 'id');
 
+        // Live trading-day KPIs per store, embedded above each ranking so the
+        // leaderboard doubles as the leadership screen — today's pace and last
+        // week's recognition in one place. Reuses StorePerformanceController so
+        // the two screens never drift. Page is already admin-only. Built
+        // defensively: a KPI failure just hides the strip, never breaks the
+        // leaderboard.
+        $sp = null;
+        try {
+            $sp = app()->make(\App\Http\Controllers\StorePerformanceController::class);
+        } catch (\Throwable $e) {
+            \Log::warning('leaderboard live-KPI controller resolve failed: ' . $e->getMessage());
+        }
+
         $stores = [];
         foreach ($locations as $lid => $lname) {
+            $live = null;
+            if ($sp) {
+                try {
+                    $live = $sp->computeForLocation($business_id, $lid);
+                } catch (\Throwable $e) {
+                    \Log::warning('leaderboard live-KPI compute failed: ' . $e->getMessage());
+                }
+            }
             $stores[] = [
                 'id'   => $lid,
                 'name' => $lname,
                 'rows' => $this->buildLeaderboardRows($business_id, $start_str, $end_str, null, $lid, $opts),
+                'live' => $live,
             ];
         }
 
+        $live_data_url = action('StorePerformanceController@data');
+
         return view('report.employee_leaderboard')->with(compact(
-            'stores', 'period', 'start', 'end', 'uplift_pct'
+            'stores', 'period', 'start', 'end', 'uplift_pct', 'live_data_url'
         ));
     }
 

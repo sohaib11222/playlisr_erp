@@ -62,6 +62,14 @@
         .lb-comm { background:#f1faf3; font-weight:700; color:#1b5e20; }
         .lb-store-head { font-size:16px; font-weight:700; margin:0 0 8px; }
         .lb-sub { font-size:11px; color:#9aa0a6; }
+        .lb-live { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:0 0 12px; }
+        .lb-live-card { border-radius:8px; padding:10px 12px; color:#fff; }
+        .lb-up { background:#2e7d32; }
+        .lb-down { background:#c62828; }
+        .lb-neutral { background:#455a64; }
+        .lb-live-lbl { font-size:10px; text-transform:uppercase; letter-spacing:.05em; opacity:.9; }
+        .lb-live-val { font-size:22px; font-weight:800; line-height:1.1; margin-top:2px; }
+        .lb-live-sub { font-size:11px; opacity:.92; margin-top:3px; }
     </style>
 
     <div class="alert alert-info" style="border-left:4px solid #3c8dbc;">
@@ -74,6 +82,26 @@
                 <div class="box box-solid">
                     <div class="box-body table-responsive">
                         <p class="lb-store-head">{{ $store['name'] }}</p>
+                        @if(!empty($store['live']))
+                            @php $lv = $store['live']; @endphp
+                            <div class="lb-live" data-live-loc="{{ $store['id'] }}">
+                                <div class="lb-live-card {{ $lv['target_state'] === 'ahead' ? 'lb-up' : 'lb-down' }}" data-tile="target">
+                                    <div class="lb-live-lbl">Today vs target</div>
+                                    <div class="lb-live-val" data-f="revenue_today">${{ number_format($lv['revenue_today']) }}</div>
+                                    <div class="lb-live-sub"><span data-f="target_pct">{{ number_format($lv['target_pct']) }}%</span> of <span data-f="target_so_far">${{ number_format($lv['target_so_far']) }}</span> by now</div>
+                                </div>
+                                <div class="lb-live-card {{ $lv['lfl_state'] === 'ahead' ? 'lb-up' : ($lv['lfl_state'] === 'behind' ? 'lb-down' : 'lb-neutral') }}" data-tile="lfl">
+                                    <div class="lb-live-lbl">LFL vs last yr</div>
+                                    <div class="lb-live-val" data-f="lfl_pct">@if($lv['lfl_pct'] === null) — @else {{ ($lv['lfl_pct'] >= 0 ? '+' : '') . number_format($lv['lfl_pct'], 1) }}% @endif</div>
+                                    <div class="lb-live-sub"><span data-f="lfl_last_year">${{ number_format($lv['lfl_last_year']) }}</span> by now</div>
+                                </div>
+                                <div class="lb-live-card lb-neutral" data-tile="tx">
+                                    <div class="lb-live-lbl">Tx today</div>
+                                    <div class="lb-live-val" data-f="tx_count">{{ number_format($lv['tx_count']) }}</div>
+                                    <div class="lb-live-sub">avg <span data-f="avg_tx">${{ number_format($lv['avg_tx'], 2) }}</span></div>
+                                </div>
+                            </div>
+                        @endif
                         <table class="table table-condensed lb-table">
                             <thead>
                                 <tr style="color:#6b7280; text-transform:uppercase; font-size:10px; letter-spacing:.5px;">
@@ -131,4 +159,54 @@
     </div>
 
 </section>
+@stop
+
+@section('javascript')
+<script>
+(function () {
+    var DATA_URL = "{{ $live_data_url ?? '' }}";
+    if (!DATA_URL) return;
+
+    function money(n)  { return '$' + Math.round(n).toLocaleString(); }
+    function money2(n) { return '$' + Number(n).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
+
+    function setState(card, state) {
+        if (!card) return;
+        card.classList.remove('lb-up', 'lb-down', 'lb-neutral');
+        card.classList.add(state === 'ahead' ? 'lb-up' : (state === 'behind' ? 'lb-down' : 'lb-neutral'));
+    }
+    function setField(scope, name, value) {
+        var el = scope.querySelector('[data-f="' + name + '"]');
+        if (el) el.textContent = value;
+    }
+
+    // Each store's live strip refreshes independently from the same endpoint
+    // the /store-performance dashboard uses, scoped by location id. The
+    // leaderboard tables themselves are a fixed window and never re-fetch.
+    function refreshAll() {
+        document.querySelectorAll('[data-live-loc]').forEach(function (scope) {
+            var loc = scope.getAttribute('data-live-loc');
+            fetch(DATA_URL + '?location_id=' + loc, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (d) {
+                    if (!d) return;
+                    setField(scope, 'revenue_today', money(d.revenue_today));
+                    setField(scope, 'target_pct', Math.round(d.target_pct) + '%');
+                    setField(scope, 'target_so_far', money(d.target_so_far));
+                    setState(scope.querySelector('[data-tile="target"]'), d.target_state);
+
+                    setField(scope, 'lfl_pct', d.lfl_pct === null ? '—' : (d.lfl_pct >= 0 ? '+' : '') + Number(d.lfl_pct).toFixed(1) + '%');
+                    setField(scope, 'lfl_last_year', money(d.lfl_last_year));
+                    setState(scope.querySelector('[data-tile="lfl"]'), d.lfl_state);
+
+                    setField(scope, 'tx_count', Number(d.tx_count).toLocaleString());
+                    setField(scope, 'avg_tx', money2(d.avg_tx));
+                })
+                .catch(function () { /* keep last good values on transient error */ });
+        });
+    }
+
+    setInterval(refreshAll, 60000);
+})();
+</script>
 @stop
