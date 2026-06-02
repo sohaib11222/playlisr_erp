@@ -60,6 +60,8 @@
         .lb-hit { color:#1b7a32; font-weight:700; }
         .lb-miss { color:#9aa0a6; }
         .lb-comm { background:#f1faf3; font-weight:700; color:#1b5e20; }
+        .lb-soon { background:#f7f7f9; }
+        .lb-soon-badge { display:inline-block; background:#e3e6ec; color:#6b7280; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; border-radius:10px; padding:2px 8px; }
         .lb-store-head { font-size:16px; font-weight:700; margin:0 0 8px; }
         .lb-sub { font-size:11px; color:#9aa0a6; }
         .lb-live { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:0 0 12px; }
@@ -73,7 +75,7 @@
     </style>
 
     <div class="alert alert-info" style="border-left:4px solid #3c8dbc;">
-        <strong>Both stores, side by side.</strong> Ranked by non-Whatnot $ per hour (Whatnot is excluded from every total). Hours come from cash-register open/close, clipped to the window. Commission = 2% of used items each person barcoded that sold (since 2026-05-15) + 2% of sales above their goal.
+        <strong>Both stores, side by side.</strong> Ranked by non-Whatnot $ per hour (Whatnot is excluded from every total). Hours come from cash-register open/close, clipped to the window. <strong>Listing commission</strong> = 2% of used items each person barcoded that sold (since 2026-05-15). <strong>Sales commission</strong> begins 2026-06-15.
     </div>
 
     <div class="row">
@@ -112,7 +114,8 @@
                                     <th class="text-right">Sales</th>
                                     <th class="text-right">Goal</th>
                                     <th class="text-right">Bonus</th>
-                                    <th class="text-right lb-comm">Commission</th>
+                                    <th class="text-right lb-comm">Listing comm.</th>
+                                    <th class="text-right lb-soon">Sales comm.</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -141,12 +144,14 @@
                                         </td>
                                         <td class="text-right">@if($r->goal_bonus > 0)${{ number_format($r->goal_bonus, 2) }}@else <span class="text-muted">—</span>@endif</td>
                                         <td class="text-right lb-comm">
-                                            ${{ number_format($r->total_commission, 2) }}
-                                            @if($r->barcoding_commission > 0)<div class="lb-sub">barcode ${{ number_format($r->barcoding_commission, 2) }}</div>@endif
+                                            @if($r->barcoding_commission > 0)${{ number_format($r->barcoding_commission, 2) }}@else <span class="text-muted">—</span>@endif
+                                        </td>
+                                        <td class="text-right lb-soon">
+                                            <span class="lb-soon-badge">Coming Jun 15</span>
                                         </td>
                                     </tr>
                                 @empty
-                                    <tr><td colspan="8" class="text-center text-muted">No activity in this window.</td></tr>
+                                    <tr><td colspan="9" class="text-center text-muted">No activity in this window.</td></tr>
                                 @endforelse
                             </tbody>
                         </table>
