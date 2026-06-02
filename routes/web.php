@@ -485,6 +485,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/reports/clover-eod-reconciliation/sync-now', 'ReportController@cloverEodSyncNow')->name('reports.clover-eod.sync');
     Route::get('/reports/employee-leaderboard', 'ReportController@employeeLeaderboard');
     Route::get('/reports/employee-leaderboard/listed-items', 'ReportController@employeeLeaderboardListedItems');
+    Route::get('/reports/shift-targets', 'ReportController@shiftTargets');
 
     // Reports hub — organized index of all reports with per-user favorites
     Route::get('/reports', 'ReportsHubController@index')->name('reports.hub');

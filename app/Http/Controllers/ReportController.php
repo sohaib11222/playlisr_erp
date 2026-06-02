@@ -11094,22 +11094,6 @@ class ReportController extends Controller
             \Log::warning('leaderboard live-KPI controller resolve failed: ' . $e->getMessage());
         }
 
-        // Per-store roster overrides. The board files people by where their
-        // sales rang, which can misplace cross-location strays. These keep each
-        // store's list to who actually works there. First-name match,
-        // case-insensitive; the store key just needs to appear in the location
-        // name. The '*' key hides someone from every store floor. A store_only
-        // whitelist wins outright. Roster per Sarah 2026-06-02; edit freely.
-        $store_hidden = [
-            '*'         => ['nerdy', 'viper', 'henry', 'nick'],      // not store-floor staff (Nick = fulfillment, Henry left, nerdy/viper = non-floor accounts)
-            'hollywood' => ['zak', 'alec', 'clark', 'andy', 'davis'], // these work Pico — drop 'andy' here if he's reassigned to HW
-            'pico'      => ['clyde', 'jennifer', 'manolo', 'luis', 'jacob'], // Clyde/Jennifer work HW; manolo/luis/jacob old/remote
-        ];
-        $store_only = [
-            'discogs'   => ['nick'],        // online fulfillment is Nick only
-            'warehouse' => ['nick'],
-        ];
-
         $stores = [];
         foreach ($locations as $lid => $lname) {
             $live = null;
@@ -11122,37 +11106,9 @@ class ReportController extends Controller
             }
 
             $rows = $this->buildLeaderboardRows($business_id, $start_str, $end_str, null, $lid, $opts);
-
-            // Apply this store's roster override. '*' applies to every floor;
-            // a store_only whitelist (e.g. warehouse = Nick) wins outright, so a
-            // name on both the global hide and a whitelist still shows there.
-            $lkey = strtolower((string) $lname);
-            $hide = $store_hidden['*'] ?? [];
-            $only = null;
-            foreach ($store_hidden as $k => $names) {
-                if ($k === '*') { continue; }
-                if (strpos($lkey, $k) !== false) { $hide = array_merge($hide, $names); }
-            }
-            foreach ($store_only as $k => $names) {
-                if (strpos($lkey, $k) !== false) { $only = array_merge($only ?? [], $names); }
-            }
-            // Match on the first name as a prefix so stored variants still hit
-            // (e.g. 'zak' catches "Zakary"/"Zakaria"). Exact match is the common
-            // case; the prefix only matters for nicknames.
-            $nameMatches = function ($first, $list) {
-                foreach ($list as $tok) {
-                    if ($first === $tok || strpos($first, $tok) === 0) { return true; }
-                }
-                return false;
-            };
-            $rows = $rows->filter(function ($r) use ($hide, $only, $nameMatches) {
-                $first = strtolower(trim(explode(' ', trim($r->employee))[0] ?? ''));
-                if ($only !== null) { return $nameMatches($first, $only); }
-                return !$nameMatches($first, $hide);
-            })->values();
-
+            $rows = $this->applyStoreRoster($rows, $lname);
             // Per-person hour-based target from this store's own historical
-            // hourly curve (informational; doesn't touch commission).
+            // hourly curve (this is what the 2% sales bonus pays on).
             $rows = $this->attachHourTargets($rows, $business_id, $lid, $start_str, $end_str);
 
             $stores[] = [
@@ -11169,6 +11125,99 @@ class ReportController extends Controller
         return view('report.employee_leaderboard')->with(compact(
             'stores', 'period', 'start', 'end', 'live_data_url', 'listed_items_url'
         ));
+    }
+
+    /**
+     * Per-store roster overrides. The board files people by where their sales
+     * rang, which can misplace cross-location strays; these keep each store's
+     * list to who actually works there. First-name match, case-insensitive, as
+     * a prefix so stored variants still hit (e.g. 'zak' catches "Zakary"). The
+     * store key just needs to appear in the location name. '*' hides someone
+     * from every store floor; a store_only whitelist wins outright. Roster per
+     * Sarah 2026-06-02; edit freely. Shared by the leaderboard + targets list.
+     */
+    private function applyStoreRoster($rows, $lname)
+    {
+        $store_hidden = [
+            '*'         => ['nerdy', 'viper', 'henry', 'nick'],      // not store-floor staff (Nick = fulfillment, Henry left, nerdy/viper = non-floor accounts)
+            'hollywood' => ['zak', 'alec', 'clark', 'andy', 'davis'], // these work Pico — drop 'andy' here if he's reassigned to HW
+            'pico'      => ['clyde', 'jennifer', 'manolo', 'luis', 'jacob'], // Clyde/Jennifer work HW; manolo/luis/jacob old/remote
+        ];
+        $store_only = [
+            'discogs'   => ['nick'],        // online fulfillment is Nick only
+            'warehouse' => ['nick'],
+        ];
+
+        $lkey = strtolower((string) $lname);
+        $hide = $store_hidden['*'] ?? [];
+        $only = null;
+        foreach ($store_hidden as $k => $names) {
+            if ($k === '*') { continue; }
+            if (strpos($lkey, $k) !== false) { $hide = array_merge($hide, $names); }
+        }
+        foreach ($store_only as $k => $names) {
+            if (strpos($lkey, $k) !== false) { $only = array_merge($only ?? [], $names); }
+        }
+        $nameMatches = function ($first, $list) {
+            foreach ($list as $tok) {
+                if ($first === $tok || strpos($first, $tok) === 0) { return true; }
+            }
+            return false;
+        };
+        return $rows->filter(function ($r) use ($hide, $only, $nameMatches) {
+            $first = strtolower(trim(explode(' ', trim($r->employee))[0] ?? ''));
+            if ($only !== null) { return $nameMatches($first, $only); }
+            return !$nameMatches($first, $hide);
+        })->values();
+    }
+
+    /**
+     * Clean, printable per-employee shift-targets list (Sarah 2026-06-02).
+     * Same data as the leaderboard's Hour target — each active person's target
+     * for the selected period, per store — but stripped to just what you'd post
+     * or hand out: name, hours, peak/off split, target, sales so far, pace, and
+     * the bonus they're on track for. Reuses the exact same builder + roster +
+     * hour-target math so the numbers match the board. Admin-only.
+     */
+    public function shiftTargets(Request $request)
+    {
+        $this->ensureAdminOnlyReportAccess();
+        $business_id = $request->session()->get('user.business_id');
+        $period = $request->input('period', 'this_month');
+
+        $now = \Carbon::now();
+        switch ($period) {
+            case 'today':      $start = $now->copy()->startOfDay();              $end = $now->copy()->endOfDay(); break;
+            case 'yesterday':  $start = $now->copy()->subDay()->startOfDay();    $end = $now->copy()->subDay()->endOfDay(); break;
+            case 'this_week':  $start = $now->copy()->startOfWeek();             $end = $now->copy()->endOfDay(); break;
+            case 'last_week':  $start = $now->copy()->subWeek()->startOfWeek();  $end = $now->copy()->subWeek()->endOfWeek(); break;
+            case 'last_7':     $start = $now->copy()->subDays(6)->startOfDay();  $end = $now->copy()->endOfDay(); break;
+            case 'last_30':    $start = $now->copy()->subDays(29)->startOfDay(); $end = $now->copy()->endOfDay(); break;
+            default:           $start = $now->copy()->startOfMonth();            $end = $now->copy()->endOfDay(); $period = 'this_month'; break;
+        }
+        $start_str = $start->toDateTimeString();
+        $end_str   = $end->toDateTimeString();
+        $opts = ['with_commission' => true, 'exclude_owners' => true];
+
+        $locations = \DB::table('business_locations')
+            ->where('business_id', $business_id)
+            ->where('is_active', 1)
+            ->orderBy('id')
+            ->pluck('name', 'id');
+
+        $stores = [];
+        foreach ($locations as $lid => $lname) {
+            $rows = $this->buildLeaderboardRows($business_id, $start_str, $end_str, null, $lid, $opts);
+            $rows = $this->applyStoreRoster($rows, $lname);
+            $rows = $this->attachHourTargets($rows, $business_id, $lid, $start_str, $end_str);
+            // Only people who actually worked the period have a target to post.
+            $rows = $rows->filter(function ($r) { return $r->hours_worked > 0; })
+                ->sortByDesc(function ($r) { return $r->hour_target ?? 0; })
+                ->values();
+            $stores[] = ['id' => $lid, 'name' => $lname, 'rows' => $rows];
+        }
+
+        return view('report.shift_targets')->with(compact('stores', 'period', 'start', 'end'));
     }
 
     /**
