@@ -447,7 +447,14 @@ class ProductController extends Controller
                     if (empty($row->sku)) {
                         return '';
                     }
-                    $url = 'https://nivessa.com/products/' . rawurlencode($row->sku) . '/' . \Illuminate\Support\Str::slug($row->product ?? '');
+                    // The SKU field can hold several comma-separated values (e.g. the
+                    // internal SKU plus a Discogs release id). nivessa.com resolves a
+                    // product by a single exact SKU, so link with the first token only.
+                    $sku = trim(explode(',', $row->sku)[0]);
+                    if ($sku === '') {
+                        return '';
+                    }
+                    $url = 'https://nivessa.com/products/' . rawurlencode($sku) . '/' . \Illuminate\Support\Str::slug($row->product ?? '');
                     return '<a href="' . $url . '" target="_blank" rel="noopener"><i class="fa fa-external-link"></i> View</a>';
                 })
                 ->filterColumn('products.sku', function ($query, $keyword) {
