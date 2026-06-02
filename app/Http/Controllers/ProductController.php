@@ -4455,24 +4455,36 @@ class ProductController extends Controller
             ]);
         }
 
+        if (!$this->ebayService->isSellerConnected()) {
+            return response()->json([
+                'success' => false,
+                'msg' => 'Your eBay seller account is not connected. Go to Business Settings > Integrations > eBay and click Connect (re-connect if you connected before adding listing permissions).'
+            ]);
+        }
+
         try {
             $product = Product::findOrFail($id);
             $business_id = request()->session()->get('user.business_id');
 
             // Get product category for eBay category mapping
             $ebayCategoryIds = $this->ebayService->getEbayCategoryIds($product->category_id);
-            
+
+            // Collect absolute image URLs (eBay requires publicly reachable https URLs).
+            $imageUrls = [];
+            if (!empty($product->image) && $product->image !== 'default.png') {
+                $imageUrls[] = $product->image_url;
+            }
+
             $productData = [
+                'sku' => 'NIV-' . $product->id,
                 'title' => $product->name,
-                'description' => $product->product_description ?? '',
+                'description' => $product->product_description ?: $product->name,
                 'price' => $product->sell_price_inc_tax ?? $product->sell_price_exc_tax ?? 0,
                 'currency' => 'USD', // TODO: Get from business currency
                 'category_id' => $ebayCategoryIds[0] ?? '',
                 'quantity' => $product->stock_quantity ?? 1,
-                'condition' => 'NEW',
-                'format' => 'FIXED_PRICE',
-                'listing_duration' => 'GTC',
-                'location' => $product->listing_location ?? null
+                'condition' => 'USED_GOOD',
+                'image_urls' => $imageUrls,
             ];
 
             $result = $this->ebayService->createListing($productData);

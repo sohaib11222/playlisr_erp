@@ -13,7 +13,17 @@ class EbayService
 {
     private const SANDBOX_BASE_URL = 'https://api.sandbox.ebay.com';
     private const PRODUCTION_BASE_URL = 'https://api.ebay.com';
-    
+
+    // Scopes the seller consents to. Listing needs sell.inventory (inventory
+    // item + offer + publish) and sell.account (read business policies).
+    // sell.fulfillment.readonly stays so the existing order-pull keeps working.
+    private const SELLER_SCOPES = [
+        'https://api.ebay.com/oauth/api_scope',
+        'https://api.ebay.com/oauth/api_scope/sell.inventory',
+        'https://api.ebay.com/oauth/api_scope/sell.account',
+        'https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly',
+    ];
+
     private $businessUtil;
     private $businessId;
     private $settings;
@@ -313,53 +323,240 @@ class EbayService
             ];
         }
 
+        if (!$this->isSellerConnected()) {
+            return [
+                'success' => false,
+                'msg' => 'Your eBay seller account is not connected. Go to Business Settings > Integrations > eBay and click Connect (you may need to re-connect to grant listing permissions).'
+            ];
+        }
+
+        $token = $this->getSellerAccessToken();
+        if (!$token) {
+            return [
+                'success' => false,
+                'msg' => 'Could not get an eBay seller token. Please re-connect your eBay account in Business Settings > Integrations.'
+            ];
+        }
+
+        // SKU: stable, eBay-safe key derived from the ERP product id.
+        $sku = $productData['sku'] ?? null;
+        if (empty($sku)) {
+            return ['success' => false, 'msg' => 'Missing SKU for eBay listing.'];
+        }
+
+        $title = trim((string)($productData['title'] ?? ''));
+        if ($title === '') {
+            return ['success' => false, 'msg' => 'Product has no name to list on eBay.'];
+        }
+        // eBay title hard limit is 80 chars.
+        if (mb_strlen($title) > 80) {
+            $title = mb_substr($title, 0, 80);
+        }
+
+        $price = $productData['price'] ?? 0;
+        if (!is_numeric($price) || (float)$price <= 0) {
+            return ['success' => false, 'msg' => 'Product needs a sell price greater than 0 to list on eBay.'];
+        }
+
+        $categoryId = trim((string)($productData['category_id'] ?? ''));
+        if ($categoryId === '') {
+            return ['success' => false, 'msg' => 'No eBay category mapped for this product. Set eBay Category IDs on the product category first.'];
+        }
+
+        $imageUrls = array_values(array_filter($productData['image_urls'] ?? [], 'strlen'));
+        if (empty($imageUrls)) {
+            return ['success' => false, 'msg' => 'eBay requires at least one product image. Add an image to the product first.'];
+        }
+
+        // Business policies + merchant location are required to publish.
+        $prereqs = $this->getListingPrereqs($token);
+        if (!empty($prereqs['error'])) {
+            return ['success' => false, 'msg' => $prereqs['error']];
+        }
+
         try {
-            $token = $this->getOAuthToken()['access_token'];
-            
-            // Build listing request
-            $listingRequest = [
+            // 1) Create/replace the inventory item (returns 204 on success).
+            $inventoryItem = [
                 'availability' => [
                     'shipToLocationAvailability' => [
-                        'quantity' => $productData['quantity'] ?? 1
-                    ]
+                        'quantity' => max(1, (int)($productData['quantity'] ?? 1)),
+                    ],
                 ],
-                'condition' => $productData['condition'] ?? 'NEW',
+                'condition' => $productData['condition'] ?? 'USED_GOOD',
                 'product' => [
-                    'title' => $productData['title'] ?? '',
-                    'description' => $productData['description'] ?? '',
-                    'aspects' => $productData['aspects'] ?? []
+                    'title' => $title,
+                    'description' => $productData['description'] ?? $title,
+                    'imageUrls' => array_slice($imageUrls, 0, 12),
                 ],
-                'pricingSummary' => [
-                    'price' => [
-                        'value' => $productData['price'] ?? 0,
-                        'currency' => $productData['currency'] ?? 'USD'
-                    ]
-                ],
-                'categoryId' => $productData['category_id'] ?? '',
-                'format' => $productData['format'] ?? 'FIXED_PRICE',
-                'listingDuration' => $productData['listing_duration'] ?? 'GTC'
             ];
 
-            $response = $this->makeRequest($this->baseUrl . '/sell/inventory/v1/offer', [
-                'headers' => [
-                    'Authorization' => 'Bearer ' . $token,
-                    'Content-Type' => 'application/json'
+            $res = $this->sellerApiRequest('PUT',
+                '/sell/inventory/v1/inventory_item/' . rawurlencode($sku),
+                $token,
+                $inventoryItem,
+                ['Content-Language: en-US']
+            );
+            if ($res['status'] < 200 || $res['status'] >= 300) {
+                return ['success' => false, 'msg' => 'eBay inventory item failed: ' . $this->ebayErr($res)];
+            }
+
+            // 2) Create the offer (or reuse an existing one for this SKU).
+            $offerPayload = [
+                'sku' => $sku,
+                'marketplaceId' => 'EBAY_US',
+                'format' => 'FIXED_PRICE',
+                'availableQuantity' => max(1, (int)($productData['quantity'] ?? 1)),
+                'categoryId' => $categoryId,
+                'listingDescription' => $productData['description'] ?? $title,
+                'pricingSummary' => [
+                    'price' => [
+                        'value' => number_format((float)$price, 2, '.', ''),
+                        'currency' => $productData['currency'] ?? 'USD',
+                    ],
                 ],
-                'post' => json_encode($listingRequest)
-            ]);
+                'listingPolicies' => [
+                    'fulfillmentPolicyId' => $prereqs['fulfillmentPolicyId'],
+                    'paymentPolicyId' => $prereqs['paymentPolicyId'],
+                    'returnPolicyId' => $prereqs['returnPolicyId'],
+                ],
+                'merchantLocationKey' => $prereqs['merchantLocationKey'],
+            ];
+
+            $offerId = null;
+            $res = $this->sellerApiRequest('POST', '/sell/inventory/v1/offer', $token, $offerPayload);
+            if ($res['status'] >= 200 && $res['status'] < 300) {
+                $offerId = $res['body']['offerId'] ?? null;
+            } elseif ($this->ebayErrorId($res) == 25002) {
+                // Offer already exists for this SKU — find it and update it.
+                $existing = $this->sellerApiRequest('GET',
+                    '/sell/inventory/v1/offer?sku=' . rawurlencode($sku) . '&marketplace_id=EBAY_US',
+                    $token);
+                $offerId = $existing['body']['offers'][0]['offerId'] ?? null;
+                if ($offerId) {
+                    $this->sellerApiRequest('PUT', '/sell/inventory/v1/offer/' . $offerId, $token, $offerPayload);
+                }
+            }
+
+            if (!$offerId) {
+                return ['success' => false, 'msg' => 'eBay offer failed: ' . $this->ebayErr($res)];
+            }
+
+            // 3) Publish the offer — this is what makes it a live listing.
+            $res = $this->sellerApiRequest('POST',
+                '/sell/inventory/v1/offer/' . $offerId . '/publish', $token);
+            if ($res['status'] < 200 || $res['status'] >= 300) {
+                return [
+                    'success' => false,
+                    'msg' => 'eBay publish failed: ' . $this->ebayErr($res),
+                    'offer_id' => $offerId,
+                ];
+            }
 
             return [
                 'success' => true,
-                'data' => $response,
-                'listing_id' => $response['offerId'] ?? null
+                'listing_id' => $res['body']['listingId'] ?? $offerId,
+                'offer_id' => $offerId,
+                'data' => $res['body'],
             ];
         } catch (\Exception $e) {
             Log::error('eBay Listing Error: ' . $e->getMessage());
-            return [
-                'success' => false,
-                'msg' => 'eBay listing error: ' . $e->getMessage()
-            ];
+            return ['success' => false, 'msg' => 'eBay listing error: ' . $e->getMessage()];
         }
+    }
+
+    /**
+     * Discover the IDs required to publish: one each of fulfillment/payment/
+     * return business policy, plus a merchant location key. Returns those
+     * keys, or ['error' => '...'] with a human message if any are missing.
+     */
+    private function getListingPrereqs($token)
+    {
+        $policyMap = [
+            'fulfillmentPolicyId' => ['path' => '/sell/account/v1/fulfillment_policy', 'list' => 'fulfillmentPolicies', 'id' => 'fulfillmentPolicyId', 'label' => 'shipping (fulfillment)'],
+            'paymentPolicyId'     => ['path' => '/sell/account/v1/payment_policy',     'list' => 'paymentPolicies',     'id' => 'paymentPolicyId',     'label' => 'payment'],
+            'returnPolicyId'      => ['path' => '/sell/account/v1/return_policy',       'list' => 'returnPolicies',      'id' => 'returnPolicyId',      'label' => 'return'],
+        ];
+
+        $out = [];
+        foreach ($policyMap as $key => $cfg) {
+            $res = $this->sellerApiRequest('GET',
+                $cfg['path'] . '?marketplace_id=EBAY_US', $token);
+            if ($res['status'] < 200 || $res['status'] >= 300) {
+                return ['error' => 'Could not read eBay ' . $cfg['label'] . ' policies: ' . $this->ebayErr($res)];
+            }
+            $id = $res['body'][$cfg['list']][0][$cfg['id']] ?? null;
+            if (!$id) {
+                return ['error' => 'No eBay ' . $cfg['label'] . ' business policy found. Create one in eBay Seller Hub > Business policies, then try again.'];
+            }
+            $out[$key] = $id;
+        }
+
+        $res = $this->sellerApiRequest('GET', '/sell/inventory/v1/location', $token);
+        if ($res['status'] < 200 || $res['status'] >= 300) {
+            return ['error' => 'Could not read eBay inventory locations: ' . $this->ebayErr($res)];
+        }
+        $locKey = $res['body']['locations'][0]['merchantLocationKey'] ?? null;
+        if (!$locKey) {
+            return ['error' => 'No eBay inventory location set up. Add a location in eBay Seller Hub, then try again.'];
+        }
+        $out['merchantLocationKey'] = $locKey;
+
+        return $out;
+    }
+
+    /**
+     * Seller-token API call that returns ['status' => int, 'body' => array]
+     * without throwing. Handles GET/POST/PUT and JSON bodies; the inventory
+     * API returns 204/201 with empty bodies, which makeRequest can't.
+     */
+    private function sellerApiRequest($method, $path, $token, $jsonBody = null, array $extraHeaders = [])
+    {
+        $headers = array_merge([
+            'Authorization: Bearer ' . $token,
+            'Accept: application/json',
+            'Content-Type: application/json',
+        ], $extraHeaders);
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $this->baseUrl . $path);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, strtoupper($method));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        if ($jsonBody !== null) {
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($jsonBody));
+        }
+        $body = curl_exec($ch);
+        $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err = curl_error($ch);
+        curl_close($ch);
+
+        if ($err) {
+            return ['status' => 0, 'body' => ['errors' => [['message' => 'cURL: ' . $err]]]];
+        }
+        $decoded = json_decode((string)$body, true);
+        return ['status' => $code, 'body' => is_array($decoded) ? $decoded : []];
+    }
+
+    /** First eBay errorId from a sellerApiRequest result, or null. */
+    private function ebayErrorId($res)
+    {
+        return $res['body']['errors'][0]['errorId'] ?? null;
+    }
+
+    /** Human-readable error text from a sellerApiRequest result. */
+    private function ebayErr($res)
+    {
+        $status = $res['status'] ?? '?';
+        $errors = $res['body']['errors'] ?? null;
+        if (is_array($errors) && !empty($errors)) {
+            $msgs = array_map(function ($e) {
+                return $e['message'] ?? ($e['longMessage'] ?? '');
+            }, $errors);
+            return 'HTTP ' . $status . ' — ' . implode('; ', array_filter($msgs));
+        }
+        return 'HTTP ' . $status;
     }
 
     /**
@@ -449,16 +646,11 @@ class EbayService
             ? 'https://auth.ebay.com/oauth2/authorize'
             : 'https://auth.sandbox.ebay.com/oauth2/authorize';
 
-        $scopes = [
-            'https://api.ebay.com/oauth/api_scope',
-            'https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly',
-        ];
-
         $params = [
             'client_id' => $this->appId,
             'response_type' => 'code',
             'redirect_uri' => $oauthRedirect,
-            'scope' => implode(' ', $scopes),
+            'scope' => implode(' ', self::SELLER_SCOPES),
             'state' => bin2hex(random_bytes(8)),
             'prompt' => 'login',
         ];
@@ -543,7 +735,6 @@ class EbayService
         }
 
         try {
-            $scopes = ['https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly'];
             $response = $this->makeRequest($this->baseUrl . '/identity/v1/oauth2/token', [
                 'headers' => [
                     'Content-Type' => 'application/x-www-form-urlencoded',
@@ -552,7 +743,7 @@ class EbayService
                 'post' => [
                     'grant_type' => 'refresh_token',
                     'refresh_token' => $sel['refresh_token'],
-                    'scope' => implode(' ', $scopes),
+                    'scope' => implode(' ', self::SELLER_SCOPES),
                 ],
             ]);
             if (empty($response['access_token'])) return null;
