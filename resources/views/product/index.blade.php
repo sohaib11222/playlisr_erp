@@ -63,6 +63,9 @@
                     <a class="btn btn-default" href="{{action('ProductController@downloadExcel')}}">
                         <i class="fa fa-download"></i> Export
                     </a>
+                    <button type="button" class="btn btn-default" id="sync_discogs_listings_btn" title="Pull your Discogs For Sale inventory so listed items show as 'Listed'">
+                        <i class="fa fa-refresh"></i> Sync Discogs listings
+                    </button>
                 @endif
                 <div class="btn-group">
                     <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
@@ -638,6 +641,55 @@
                     }
                 });
             }
+
+            // Sync the seller's live Discogs "For Sale" inventory so already-listed
+            // products show a "Listed" badge instead of offering to list (and
+            // duplicate) them. Paged + resumable on the server; we keep calling
+            // until done.
+            $(document).on('click', '#sync_discogs_listings_btn', function() {
+                var $btn = $(this);
+                var stored = '';
+                try { stored = localStorage.getItem('discogs_seller_username') || ''; } catch (e) {}
+                var username = prompt('Your Discogs seller username:', stored);
+                if (username === null) { return; }
+                username = $.trim(username);
+                if (username === '') { toastr.warning('Discogs username is required.'); return; }
+                try { localStorage.setItem('discogs_seller_username', username); } catch (e) {}
+
+                $btn.prop('disabled', true);
+                var $icon = $btn.find('i');
+                $icon.addClass('fa-spin');
+
+                var runPage = function(restart) {
+                    $.ajax({
+                        url: '/products/sync-discogs-listings',
+                        method: 'POST',
+                        data: { username: username, restart: restart ? 1 : 0 },
+                        dataType: 'json'
+                    }).done(function(res) {
+                        if (!res || !res.ok) {
+                            $icon.removeClass('fa-spin');
+                            $btn.prop('disabled', false);
+                            toastr.error((res && res.msg) || 'Discogs sync failed.');
+                            return;
+                        }
+                        if (!res.done) {
+                            toastr.info('Syncing Discogs… page ' + res.last_page + ' of ' + res.total_pages + ' (' + res.total + ' so far)');
+                            runPage(false);
+                        } else {
+                            $icon.removeClass('fa-spin');
+                            $btn.prop('disabled', false);
+                            toastr.success('Discogs sync complete — ' + res.total + ' listings found. Refreshing…');
+                            if (typeof product_table !== 'undefined') { product_table.ajax.reload(null, false); }
+                        }
+                    }).fail(function(xhr) {
+                        $icon.removeClass('fa-spin');
+                        $btn.prop('disabled', false);
+                        toastr.error('Request failed: ' + (xhr.statusText || xhr.status));
+                    });
+                };
+                runPage(true);
+            });
 
             // All time toggle for created date range
             $(document).on('change', '#product_list_filter_all_time', function() {

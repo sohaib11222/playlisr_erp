@@ -194,6 +194,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/products/{id}/list-to-discogs', 'ProductController@listToDiscogs');
     Route::post('/products/bulk-list-to-ebay', 'ProductController@bulkListToEbay');
     Route::post('/products/bulk-list-to-discogs', 'ProductController@bulkListToDiscogs');
+    Route::post('/products/sync-discogs-listings', 'ProductController@syncDiscogsListings');
     Route::post('/products/bulk-update-location', 'ProductController@updateProductLocation');
     Route::get('/products/get-product-to-edit/{product_id}', 'ProductController@getProductToEdit');
     

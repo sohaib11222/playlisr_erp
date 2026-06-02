@@ -221,7 +221,13 @@ class ProductController extends Controller
             if ($is_woocommerce) {
                 $products->addSelect('woocommerce_disable_sync');
             }
-            
+
+            // Pull the Discogs release id when available so the list can flag items
+            // already on Discogs (column may not be migrated — guard the select).
+            if (\Schema::hasColumn('products', 'discogs_release_id')) {
+                $products->addSelect('products.discogs_release_id');
+            }
+
             $products->groupBy('products.id');
 
             $type = request()->get('type', null);
@@ -299,6 +305,7 @@ class ProductController extends Controller
 
             $ebayConfigured = $this->ebayService->isConfigured();
             $discogsConfigured = $this->discogsService->isConfigured();
+            $discogsListedSet = self::getDiscogsListedReleaseSet();
 
             return Datatables::of($products)
                 ->addColumn(
@@ -437,7 +444,26 @@ class ProductController extends Controller
                 ->addColumn('created_by_name', function ($row) {
                     return $row->created_by_name ?? '';
                 })
-                ->addColumn('list_discogs', function ($row) {
+                ->addColumn('list_discogs', function ($row) use ($discogsListedSet) {
+                    // Already on Discogs? Match the release id (preferred) or a numeric
+                    // SKU token against the synced "For Sale" inventory, and show a badge
+                    // instead of offering to list (which would create a duplicate).
+                    if (!empty($discogsListedSet)) {
+                        $rid = (int) ($row->discogs_release_id ?? 0);
+                        $listed = $rid > 0 && isset($discogsListedSet[$rid]);
+                        if (!$listed && !empty($row->sku)) {
+                            foreach (explode(',', $row->sku) as $tok) {
+                                $tok = trim($tok);
+                                if ($tok !== '' && ctype_digit($tok) && isset($discogsListedSet[(int) $tok])) {
+                                    $listed = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if ($listed) {
+                            return '<span class="label label-success" title="Found in your Discogs For Sale inventory"><i class="fa fa-check"></i> Listed</span>';
+                        }
+                    }
                     return '<a href="#" data-id="' . $row->id . '" class="btn btn-xs btn-default list-to-discogs"><i class="fa fa-music"></i> Discogs</a>';
                 })
                 ->addColumn('list_ebay', function ($row) {
@@ -4560,6 +4586,146 @@ class ProductController extends Controller
                 'msg' => 'Error: ' . $e->getMessage()
             ]);
         }
+    }
+
+    /**
+     * Where the "already on Discogs" release-id set is cached. Stored as a flat
+     * JSON file (no migration) so the products list can flag listed items
+     * without an API call per row.
+     */
+    private function discogsListedPath()
+    {
+        return storage_path('app/discogs-listed-releases.json');
+    }
+
+    /**
+     * Read the cached set of Discogs release ids currently listed "For Sale".
+     * Returns an array keyed by release id for O(1) lookups; empty on any error.
+     */
+    public static function getDiscogsListedReleaseSet()
+    {
+        static $set = null;
+        if ($set !== null) {
+            return $set;
+        }
+        $set = [];
+        $path = storage_path('app/discogs-listed-releases.json');
+        if (is_file($path)) {
+            $data = json_decode((string) file_get_contents($path), true);
+            if (!empty($data['release_ids']) && is_array($data['release_ids'])) {
+                foreach ($data['release_ids'] as $rid) {
+                    $rid = (int) $rid;
+                    if ($rid > 0) {
+                        $set[$rid] = true;
+                    }
+                }
+            }
+        }
+        return $set;
+    }
+
+    /**
+     * Sync the seller's live Discogs "For Sale" inventory into a local release-id
+     * cache so the products list can show which items are already on Discogs and
+     * avoid offering to list (and duplicate) them.
+     *
+     * Paged + resumable: each call fetches a budgeted number of pages and stores
+     * progress, so a large inventory is covered across several clicks rather than
+     * risking a request timeout. Returns done=true once all pages are fetched.
+     */
+    public function syncDiscogsListings(Request $request)
+    {
+        if (!$this->discogsService->isConfigured()) {
+            return response()->json(['ok' => false, 'msg' => 'Discogs API token not configured. Add it in Business Settings > Integrations.']);
+        }
+
+        $path = $this->discogsListedPath();
+        $state = [];
+        if (is_file($path)) {
+            $state = json_decode((string) file_get_contents($path), true) ?: [];
+        }
+
+        $username = trim((string) $request->input('username', ''));
+        $restart  = filter_var($request->input('restart', false), FILTER_VALIDATE_BOOLEAN);
+        if ($username === '') {
+            $username = trim((string) ($state['username'] ?? ''));
+        }
+        if ($username === '') {
+            return response()->json(['ok' => false, 'msg' => 'Discogs seller username is required.']);
+        }
+
+        // Reset progress when starting fresh or switching seller accounts.
+        if ($restart || ($state['username'] ?? null) !== $username || empty($state['in_progress'])) {
+            $state = [
+                'username'    => $username,
+                'release_ids' => [],
+                'last_page'   => 0,
+                'total_pages' => 1,
+                'in_progress' => true,
+                'started_at'  => now()->toDateTimeString(),
+            ];
+        }
+
+        $releaseSet = [];
+        foreach (($state['release_ids'] ?? []) as $rid) {
+            $releaseSet[(int) $rid] = true;
+        }
+
+        $start = microtime(true);
+        $pagesThisCall = 0;
+        $page = (int) $state['last_page'];
+        $totalPages = (int) ($state['total_pages'] ?? 1);
+
+        do {
+            $page++;
+            $resp = $this->discogsService->fetchInventoryPage($username, $page, 100, 'For Sale');
+
+            if (!empty($resp['error'])) {
+                // Persist what we have and report the error (e.g. bad username, 429).
+                $this->persistDiscogsState($path, $state, $releaseSet, $page - 1, $totalPages, true);
+                return response()->json([
+                    'ok'          => false,
+                    'msg'         => $resp['error'],
+                    'retry'       => !empty($resp['retry']),
+                    'last_page'   => $page - 1,
+                    'total_pages' => $totalPages,
+                    'total'       => count($releaseSet),
+                ]);
+            }
+
+            $totalPages = (int) ($resp['pagination']['pages'] ?? $totalPages);
+            foreach (($resp['listings'] ?? []) as $listing) {
+                $rid = (int) ($listing['release']['id'] ?? 0);
+                if ($rid > 0) {
+                    $releaseSet[$rid] = true;
+                }
+            }
+            $pagesThisCall++;
+        } while ($page < $totalPages && $pagesThisCall < 25 && (microtime(true) - $start) < 18);
+
+        $done = $page >= $totalPages;
+        $this->persistDiscogsState($path, $state, $releaseSet, $page, $totalPages, !$done);
+
+        return response()->json([
+            'ok'          => true,
+            'done'        => $done,
+            'last_page'   => $page,
+            'total_pages' => $totalPages,
+            'total'       => count($releaseSet),
+        ]);
+    }
+
+    private function persistDiscogsState($path, $state, $releaseSet, $lastPage, $totalPages, $inProgress)
+    {
+        $state['username']    = $state['username'] ?? '';
+        $state['release_ids'] = array_map('intval', array_keys($releaseSet));
+        $state['last_page']   = (int) $lastPage;
+        $state['total_pages'] = (int) $totalPages;
+        $state['in_progress'] = (bool) $inProgress;
+        if (!$inProgress) {
+            $state['synced_at'] = now()->toDateTimeString();
+        }
+        file_put_contents($path, json_encode($state));
     }
 
     /**
