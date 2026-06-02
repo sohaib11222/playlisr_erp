@@ -437,6 +437,19 @@ class ProductController extends Controller
                 ->addColumn('created_by_name', function ($row) {
                     return $row->created_by_name ?? '';
                 })
+                ->addColumn('list_discogs', function ($row) {
+                    return '<a href="#" data-id="' . $row->id . '" class="btn btn-xs btn-default list-to-discogs"><i class="fa fa-music"></i> Discogs</a>';
+                })
+                ->addColumn('list_ebay', function ($row) {
+                    return '<a href="#" data-id="' . $row->id . '" class="btn btn-xs btn-default list-to-ebay"><i class="fa fa-shopping-cart"></i> eBay</a>';
+                })
+                ->addColumn('nivessa_url', function ($row) {
+                    if (empty($row->sku)) {
+                        return '';
+                    }
+                    $url = 'https://nivessa.com/products/' . rawurlencode($row->sku) . '/' . \Illuminate\Support\Str::slug($row->product ?? '');
+                    return '<a href="' . $url . '" target="_blank" rel="noopener"><i class="fa fa-external-link"></i> View</a>';
+                })
                 ->filterColumn('products.sku', function ($query, $keyword) {
                     $query->whereHas('variations', function($q) use($keyword){
                             $q->where('sub_sku', 'like', "%{$keyword}%");
@@ -451,7 +464,7 @@ class ProductController extends Controller
                             return '';
                         }
                     }])
-                ->rawColumns(['action' , 'product_url', 'image', 'mass_delete', 'product', 'selling_price', 'purchase_price', 'category', 'subcategory', 'current_stock'])
+                ->rawColumns(['action' , 'product_url', 'image', 'mass_delete', 'product', 'selling_price', 'purchase_price', 'category', 'subcategory', 'current_stock', 'list_discogs', 'list_ebay', 'nivessa_url'])
                 ->make(true);
         }
 

@@ -464,7 +464,10 @@
                         // column — MySQL rejects aliases in WHERE, so leaving this
                         // searchable made global search 500 and return zero rows.
                         { data: 'updated_at', name: 'real_updated_at', orderable: true, searchable: false},
-                        { data: 'created_by_name', name: 'u.first_name' }
+                        { data: 'created_by_name', name: 'u.first_name' },
+                        { data: 'list_discogs', name: 'list_discogs', orderable: false, searchable: false },
+                        { data: 'list_ebay', name: 'list_ebay', orderable: false, searchable: false },
+                        { data: 'nivessa_url', name: 'nivessa_url', orderable: false, searchable: false }
                     ],
                     createdRow: function( row, data, dataIndex ) {
                         if($('input#is_rack_enabled').val() == 1){
