@@ -8,15 +8,16 @@ use Illuminate\Support\Facades\Storage;
 
 // Listing commissions owed to staff who list items.
 //
-// There is no commission table — commission is derived live: for every product
-// a commission agent (users.is_cmmsn_agnt=1) created since the start date,
-// owed = users.cmmsn_percent% of that item's sell price (variations.sell_price_inc_tax).
+// A person earns commission when an item THEY listed actually SELLS. So this
+// looks at sold lines (transaction_sell_lines on final sells) whose product was
+// listed on/after the start date by a commission agent (users.is_cmmsn_agnt=1),
+// and owes that lister cmmsn_percent% of the realized sale amount
+// (unit_price_inc_tax × quantity, net of returns).
 //
 // "Paid" is tracked here, not in the DB (Sarah doesn't run migrations): each
-// payout snapshots the exact product ids it covered to
-// storage/app/listing-commission-payouts.json. Owed = listings since the start
-// date that aren't in any payout, so marking paid never double-counts and a
-// payout can be undone.
+// payout snapshots the exact sell-line ids it covered to
+// storage/app/listing-commission-payouts.json. Owed = qualifying sold lines not
+// in any payout, so marking paid never double-counts and a payout can be undone.
 class ListingCommissionController extends Controller
 {
     const PAYOUTS_FILE = 'listing-commission-payouts.json';
@@ -28,31 +29,30 @@ class ListingCommissionController extends Controller
         $businessId = $request->session()->get('user.business_id');
 
         $paid = $this->loadPayouts();
-        $paidProductIds = $this->paidProductIds($paid);
+        $paidLineIds = $this->paidLineIds($paid);
 
-        $listings = $this->ownedListings($businessId, $from, $paidProductIds);
+        $lines = $this->ownedSoldLines($businessId, $from, $paidLineIds);
 
-        // Group the unpaid listings by lister.
+        // Group the unpaid sold lines by lister.
         $people = [];
-        foreach ($listings as $row) {
+        foreach ($lines as $row) {
             $uid = $row->user_id;
             if (!isset($people[$uid])) {
                 $people[$uid] = (object) [
-                    'user_id'      => $uid,
-                    'name'         => $this->personName($row),
+                    'user_id'       => $uid,
+                    'name'          => $this->personName($row),
                     'cmmsn_percent' => (float) $row->cmmsn_percent,
-                    'count'        => 0,
-                    'sell_total'   => 0.0,
-                    'owed'         => 0.0,
+                    'count'         => 0,
+                    'sale_total'    => 0.0,
+                    'owed'          => 0.0,
                 ];
             }
             $people[$uid]->count++;
-            $people[$uid]->sell_total += (float) $row->sell_price;
-            $people[$uid]->owed += (float) $row->sell_price * (float) $row->cmmsn_percent / 100;
+            $people[$uid]->sale_total += (float) $row->sale_amount;
+            $people[$uid]->owed += (float) $row->sale_amount * (float) $row->cmmsn_percent / 100;
         }
         $people = collect($people)->sortByDesc('owed')->values();
 
-        // Paid history (most recent first).
         $history = collect($paid)->sortByDesc('marked_at')->values();
 
         return view('admin.listing_commissions', [
@@ -76,31 +76,31 @@ class ListingCommissionController extends Controller
         }
 
         $paid = $this->loadPayouts();
-        $paidProductIds = $this->paidProductIds($paid);
-        $listings = $this->ownedListings($businessId, $from, $paidProductIds)
+        $paidLineIds = $this->paidLineIds($paid);
+        $lines = $this->ownedSoldLines($businessId, $from, $paidLineIds)
             ->where('user_id', $userId)
             ->values();
 
-        if ($listings->isEmpty()) {
+        if ($lines->isEmpty()) {
             return redirect($this->backUrl($from))
                 ->with('status', ['success' => 0, 'msg' => 'Nothing outstanding for that person.']);
         }
 
         $amount = 0.0;
-        $productIds = [];
-        foreach ($listings as $row) {
-            $amount += (float) $row->sell_price * (float) $row->cmmsn_percent / 100;
-            $productIds[] = (int) $row->id;
+        $lineIds = [];
+        foreach ($lines as $row) {
+            $amount += (float) $row->sale_amount * (float) $row->cmmsn_percent / 100;
+            $lineIds[] = (int) $row->line_id;
         }
 
         $paid[] = [
             'id'            => bin2hex(random_bytes(8)),
             'user_id'       => $userId,
-            'name'          => $this->personName($listings->first()),
-            'cmmsn_percent' => (float) $listings->first()->cmmsn_percent,
-            'count'         => count($productIds),
+            'name'          => $this->personName($lines->first()),
+            'cmmsn_percent' => (float) $lines->first()->cmmsn_percent,
+            'count'         => count($lineIds),
             'amount'        => round($amount, 2),
-            'product_ids'   => $productIds,
+            'line_ids'      => $lineIds,
             'from_date'     => $from,
             'to_date'       => now()->toDateString(),
             'marked_by'     => $request->session()->get('user.id'),
@@ -111,7 +111,7 @@ class ListingCommissionController extends Controller
 
         return redirect($this->backUrl($from))->with('status', [
             'success' => 1,
-            'msg'     => 'Marked ' . count($productIds) . ' listing(s) paid — $' . number_format($amount, 2) . '.',
+            'msg'     => 'Marked ' . count($lineIds) . ' sold item(s) paid — $' . number_format($amount, 2) . '.',
         ]);
     }
 
@@ -134,39 +134,40 @@ class ListingCommissionController extends Controller
         $this->savePayouts($paid);
 
         return redirect($this->backUrl($from))
-            ->with('status', ['success' => 1, 'msg' => 'Payout undone — those listings are owed again.']);
+            ->with('status', ['success' => 1, 'msg' => 'Payout undone — those sales are owed again.']);
     }
 
-    // Unpaid product-level rows: one per product a commission agent listed since
-    // $from, with that product's summed sell price, excluding already-paid ids.
-    private function ownedListings($businessId, $from, array $paidProductIds)
+    // Unpaid sold lines: one row per item sold (final sell) whose product was
+    // listed since $from by a commission agent, with the realized sale amount
+    // (net of returns), excluding lines already covered by a payout.
+    private function ownedSoldLines($businessId, $from, array $paidLineIds)
     {
-        $rows = DB::table('products as p')
+        $rows = DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 't.id', '=', 'tsl.transaction_id')
+            ->join('products as p', 'p.id', '=', 'tsl.product_id')
             ->join('users as u', 'u.id', '=', 'p.created_by')
-            ->leftJoin('variations as v', 'v.product_id', '=', 'p.id')
-            ->where('p.business_id', $businessId)
+            ->where('t.business_id', $businessId)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
             ->where('u.is_cmmsn_agnt', 1)
             ->where('u.cmmsn_percent', '>', 0)
             ->where('p.created_at', '>=', $from . ' 00:00:00')
             ->whereNull('p.deleted_at')
-            ->groupBy('p.id', 'p.name', 'p.created_by', 'p.created_at', 'u.cmmsn_percent', 'u.first_name', 'u.last_name', 'u.surname')
             ->select(
-                'p.id',
-                'p.name',
+                'tsl.id as line_id',
                 'p.created_by as user_id',
-                'p.created_at',
                 'u.cmmsn_percent',
                 'u.first_name',
                 'u.last_name',
                 'u.surname',
-                DB::raw('COALESCE(SUM(v.sell_price_inc_tax), 0) as sell_price')
+                DB::raw('(tsl.unit_price_inc_tax * (tsl.quantity - COALESCE(tsl.quantity_returned, 0))) as sale_amount')
             )
             ->get();
 
-        if (!empty($paidProductIds)) {
-            $paidSet = array_flip($paidProductIds);
+        if (!empty($paidLineIds)) {
+            $paidSet = array_flip($paidLineIds);
             $rows = $rows->reject(function ($r) use ($paidSet) {
-                return isset($paidSet[$r->id]);
+                return isset($paidSet[$r->line_id]);
             })->values();
         }
 
@@ -182,12 +183,12 @@ class ListingCommissionController extends Controller
         return $name;
     }
 
-    private function paidProductIds(array $paid)
+    private function paidLineIds(array $paid)
     {
         $ids = [];
         foreach ($paid as $p) {
-            foreach (($p['product_ids'] ?? []) as $pid) {
-                $ids[] = (int) $pid;
+            foreach (($p['line_ids'] ?? []) as $lid) {
+                $ids[] = (int) $lid;
             }
         }
         return $ids;

@@ -5,11 +5,12 @@
 <section class="content-header">
     <h1>Listing Commissions Owed</h1>
     <p class="text-muted">
-        What we owe each person for items they listed. Commission =
-        the person's rate (set on <strong>Sales Commission Agents</strong>) &times;
-        the sell price of every item they've listed since the start date and
-        haven't been paid for yet. Click <strong>Mark paid</strong> once you've paid
-        someone — those listings drop off the owed list.
+        What we owe each person for items they listed that have <strong>sold</strong>.
+        Commission = the person's rate (set on <strong>Sales Commission Agents</strong>)
+        &times; the actual sale price of each item they listed on/after the start
+        date that has since sold and hasn't been paid for yet. Click
+        <strong>Mark paid</strong> once you've paid someone — those sales drop off
+        the owed list.
     </p>
 </section>
 
@@ -42,15 +43,15 @@
     <div class="col-md-12">
         @component('components.widget', ['title' => 'Owed now (since ' . $from . ')'])
             @if ($people->isEmpty())
-                <p class="text-muted">Nobody is owed listing commission since {{ $from }}.</p>
+                <p class="text-muted">Nobody is owed listing commission for items listed since {{ $from }} that have sold.</p>
             @else
                 <table class="table table-striped">
                     <thead>
                         <tr>
                             <th>Person</th>
                             <th style="text-align:right;">Rate</th>
-                            <th style="text-align:right;">Listings</th>
-                            <th style="text-align:right;">Sell total</th>
+                            <th style="text-align:right;">Items sold</th>
+                            <th style="text-align:right;">Sale total</th>
                             <th style="text-align:right;">Owed</th>
                             <th></th>
                         </tr>
@@ -61,11 +62,11 @@
                                 <td>{{ $p->name }}</td>
                                 <td style="text-align:right;">{{ rtrim(rtrim(number_format($p->cmmsn_percent, 2), '0'), '.') }}%</td>
                                 <td style="text-align:right;">{{ number_format($p->count) }}</td>
-                                <td style="text-align:right;">${{ number_format($p->sell_total, 2) }}</td>
+                                <td style="text-align:right;">${{ number_format($p->sale_total, 2) }}</td>
                                 <td style="text-align:right;"><strong>${{ number_format($p->owed, 2) }}</strong></td>
                                 <td style="text-align:right;">
                                     <form method="POST" action="{{ url('/admin/listing-commissions/mark-paid') }}"
-                                          onsubmit="return confirm('Mark {{ $p->count }} listing(s) for {{ $p->name }} as paid (${{ number_format($p->owed, 2) }})?');"
+                                          onsubmit="return confirm('Mark {{ $p->count }} sold item(s) for {{ $p->name }} as paid (${{ number_format($p->owed, 2) }})?');"
                                           style="margin:0;">
                                         @csrf
                                         <input type="hidden" name="user_id" value="{{ $p->user_id }}">
@@ -94,7 +95,7 @@
                         <tr>
                             <th>Paid on</th>
                             <th>Person</th>
-                            <th style="text-align:right;">Listings</th>
+                            <th style="text-align:right;">Items</th>
                             <th style="text-align:right;">Amount</th>
                             <th>Covered</th>
                             <th></th>
