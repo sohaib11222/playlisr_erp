@@ -4431,9 +4431,12 @@ class ProductController extends Controller
             $result = $this->ebayService->createListing($productData);
 
             if ($result['success']) {
-                // Update product with listing information
-                $product->ebay_listing_id = $result['listing_id'] ?? null;
-                $product->listing_status = !empty($result['listing_id']) ? 'listed' : 'error';
+                if (\Schema::hasColumn('products', 'ebay_listing_id')) {
+                    $product->ebay_listing_id = $result['listing_id'] ?? null;
+                }
+                if (\Schema::hasColumn('products', 'listing_status')) {
+                    $product->listing_status = !empty($result['listing_id']) ? 'listed' : 'error';
+                }
                 $product->save();
 
                 return response()->json([
@@ -4442,8 +4445,10 @@ class ProductController extends Controller
                     'listing_id' => $result['listing_id'] ?? null
                 ]);
             } else {
-                $product->listing_status = 'error';
-                $product->save();
+                if (\Schema::hasColumn('products', 'listing_status')) {
+                    $product->listing_status = 'error';
+                    $product->save();
+                }
 
                 return response()->json([
                     'success' => false,
@@ -4499,9 +4504,16 @@ class ProductController extends Controller
             $result = $this->discogsService->createListing($productData);
 
             if ($result['success']) {
-                // Update product with listing information
-                $product->discogs_listing_id = $result['listing_id'] ?? null;
-                $product->listing_status = !empty($result['listing_id']) ? 'listed' : 'error';
+                // Persist listing info only if the optional tracking columns were
+                // migrated on this DB — the products listing_status migration may
+                // not have been run, and a missing column would otherwise turn a
+                // successful Discogs listing into a confusing "Unknown column" error.
+                if (\Schema::hasColumn('products', 'discogs_listing_id')) {
+                    $product->discogs_listing_id = $result['listing_id'] ?? null;
+                }
+                if (\Schema::hasColumn('products', 'listing_status')) {
+                    $product->listing_status = !empty($result['listing_id']) ? 'listed' : 'error';
+                }
                 $product->save();
 
                 return response()->json([
@@ -4510,8 +4522,10 @@ class ProductController extends Controller
                     'listing_id' => $result['listing_id'] ?? null
                 ]);
             } else {
-                $product->listing_status = 'error';
-                $product->save();
+                if (\Schema::hasColumn('products', 'listing_status')) {
+                    $product->listing_status = 'error';
+                    $product->save();
+                }
 
                 return response()->json([
                     'success' => false,
