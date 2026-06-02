@@ -119,16 +119,8 @@
                     </script>
                 </div>
                 <div class="col-md-6">
-                    <form method="POST" action="{{ route('reports.employee-leaderboard.settings') }}">
-                        {{ csrf_field() }}
-                        <input type="hidden" name="period" value="{{ $period }}">
-                        <label>Goal stretch %</label>
-                        <div class="input-group">
-                            <input type="number" step="0.5" min="0" max="1000" name="uplift_pct" class="form-control" value="{{ rtrim(rtrim(number_format($uplift_pct, 2), '0'), '.') }}">
-                            <span class="input-group-btn"><button class="btn btn-primary" type="submit">Save</button></span>
-                        </div>
-                        <p class="text-muted" style="margin-top:8px;">A person's goal is what they sold last month plus this %. Beat it and they earn <strong>2% of every dollar over</strong>.</p>
-                    </form>
+                    <label>Goal</label>
+                    <p class="text-muted" style="margin-top:8px;">Set automatically for each person — their sales last month, pushed up by their own recent trend (a <strong>5–20%</strong> stretch; +10% when there's only one month of history). Beat it and they earn <strong>2% of every dollar over</strong>. Nothing to tune.</p>
                 </div>
             </div>
         </div>
@@ -237,6 +229,7 @@
                                         <td class="text-right">
                                             @if(!is_null($r->goal))
                                                 ${{ number_format($r->goal, 0) }}
+                                                @if(!is_null($r->goal_stretch_pct))<div class="lb-sub">+{{ rtrim(rtrim(number_format($r->goal_stretch_pct, 1), '0'), '.') }}% vs last mo</div>@endif
                                                 @if($r->goal_hit)<div class="lb-hit">hit</div>@else<div class="lb-miss">{{ $r->goal > 0 ? number_format(($r->non_whatnot_revenue / $r->goal) * 100, 0) : 0 }}%</div>@endif
                                             @else
                                                 <span class="text-muted">—</span>

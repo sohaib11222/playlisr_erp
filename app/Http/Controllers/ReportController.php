@@ -11067,11 +11067,11 @@ class ReportController extends Controller
         $start_str = $start->toDateTimeString();
         $end_str = $end->toDateTimeString();
 
-        // Goal uplift % (month-over-month push). Editable inline, stored in a
-        // JSON file (no migration). Each employee's goal = their sales in the
-        // equivalent window one month earlier, raised by this %.
-        $uplift_pct = $this->getLeaderboardUplift($business_id);
-        $opts = ['with_commission' => true, 'exclude_owners' => true, 'uplift_pct' => $uplift_pct];
+        // Goal auto-adjusts per person from their own recent trajectory (see
+        // buildLeaderboardRows). Deliberately not an editable knob — the target
+        // is always realistic and motivating without manual upkeep (Sarah
+        // 2026-06-02).
+        $opts = ['with_commission' => true, 'exclude_owners' => true];
 
         // Both stores side by side: one ranked table per active location.
         // Whatnot is excluded from every revenue total here (Sarah 2026-06-02).
@@ -11153,45 +11153,8 @@ class ReportController extends Controller
         $live_data_url = action('StorePerformanceController@data');
 
         return view('report.employee_leaderboard')->with(compact(
-            'stores', 'period', 'start', 'end', 'uplift_pct', 'live_data_url'
+            'stores', 'period', 'start', 'end', 'live_data_url'
         ));
-    }
-
-    /** Path to the per-business leaderboard settings JSON (no migration). */
-    private function leaderboardSettingsPath($business_id)
-    {
-        return storage_path('app/leaderboard-settings-' . $business_id . '.json');
-    }
-
-    /** Month-over-month goal uplift %, default 10. */
-    private function getLeaderboardUplift($business_id)
-    {
-        $path = $this->leaderboardSettingsPath($business_id);
-        if (is_file($path)) {
-            try {
-                $data = json_decode((string) file_get_contents($path), true) ?: [];
-            } catch (\Throwable $e) {
-                $data = [];
-            }
-            if (isset($data['uplift_pct'])) {
-                return (float) $data['uplift_pct'];
-            }
-        }
-        return 10.0;
-    }
-
-    /** Save the goal uplift % (admin-only). */
-    public function saveLeaderboardSettings(Request $request)
-    {
-        $this->ensureAdminOnlyReportAccess();
-        $business_id = $request->session()->get('user.business_id');
-        $uplift = (float) $request->input('uplift_pct', 10);
-        $uplift = max(0, min(1000, $uplift));
-        file_put_contents(
-            $this->leaderboardSettingsPath($business_id),
-            json_encode(['uplift_pct' => $uplift], JSON_PRETTY_PRINT)
-        );
-        return redirect()->back()->with('status', 'Goal uplift updated to ' . rtrim(rtrim(number_format($uplift, 2), '0'), '.') . '%.');
     }
 
     /**
@@ -11204,7 +11167,6 @@ class ReportController extends Controller
     {
         $with_commission = !empty($opts['with_commission']);
         $exclude_owners  = !empty($opts['exclude_owners']);
-        $uplift_pct      = isset($opts['uplift_pct']) ? (float) $opts['uplift_pct'] : 0.0;
 
         // Hours worked per user in this window, derived from cash_registers.
         // A register's "shift" is created_at -> closed_at (or NOW() if still open),
@@ -11306,27 +11268,33 @@ class ReportController extends Controller
         // and the goal baseline (their sales in the same window one month ago)
         // are only computed for the report, not the lightweight home widget.
         $commission = collect();
-        $goal_baseline = collect();
+        $goal_baseline = collect();        // non-whatnot sales 1 month ago (same window)
+        $goal_baseline_prior = collect();  // 2 months ago — used to read each person's trend
         if ($with_commission) {
             $commission = $this->barcodingCommissionByUser($business_id, $start, $end, $location_id);
 
-            $b_start = \Carbon::parse($start)->subMonthNoOverflow()->toDateTimeString();
-            $b_end   = \Carbon::parse($end)->subMonthNoOverflow()->toDateTimeString();
-            $bq = \DB::table('transactions as t')
-                ->where('t.business_id', $business_id)
-                ->where('t.type', 'sell')
-                ->where('t.status', 'final')
-                ->whereNull('t.import_source')
-                ->where(function ($q) { $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); })
-                ->whereBetween('t.transaction_date', [$b_start, $b_end]);
-            if (!empty($location_id)) {
-                $bq->where('t.location_id', $location_id);
-            }
-            $goal_baseline = $bq
-                ->selectRaw('t.created_by, COALESCE(SUM(t.final_total), 0) as base_sales')
-                ->groupBy('t.created_by')
-                ->get()
-                ->keyBy('created_by');
+            // Same window shifted back N months, non-whatnot, optionally per store.
+            $baselineFor = function ($months) use ($business_id, $start, $end, $location_id) {
+                $b_start = \Carbon::parse($start)->subMonthsNoOverflow($months)->toDateTimeString();
+                $b_end   = \Carbon::parse($end)->subMonthsNoOverflow($months)->toDateTimeString();
+                $bq = \DB::table('transactions as t')
+                    ->where('t.business_id', $business_id)
+                    ->where('t.type', 'sell')
+                    ->where('t.status', 'final')
+                    ->whereNull('t.import_source')
+                    ->where(function ($q) { $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); })
+                    ->whereBetween('t.transaction_date', [$b_start, $b_end]);
+                if (!empty($location_id)) {
+                    $bq->where('t.location_id', $location_id);
+                }
+                return $bq
+                    ->selectRaw('t.created_by, COALESCE(SUM(t.final_total), 0) as base_sales')
+                    ->groupBy('t.created_by')
+                    ->get()
+                    ->keyBy('created_by');
+            };
+            $goal_baseline       = $baselineFor(1);
+            $goal_baseline_prior = $baselineFor(2);
         }
 
         // Merge keys from every side.
@@ -11350,6 +11318,9 @@ class ReportController extends Controller
         if ($exclude_owners) {
             $excluded_first = ['jon', 'jonathan', 'sarah', 'sohaib', 'fatteen'];
             $users_q->whereNotIn(\DB::raw('LOWER(first_name)'), $excluded_first)
+                    // Fatteen's account is named "Nerdy Solutions", so first_name
+                    // alone misses it — also drop any name containing "nerdy".
+                    ->whereRaw("LOWER(TRIM(CONCAT(COALESCE(first_name,''),' ',COALESCE(last_name,''),' ',COALESCE(surname,'')))) NOT LIKE '%nerdy%'")
                     ->where(function ($q) {
                         $q->whereNull('email')->orWhere('email', '!=', 'sarah@nivessa.com');
                     });
@@ -11358,7 +11329,7 @@ class ReportController extends Controller
 
         $user_ids = $user_ids->filter(fn ($uid) => $users->has($uid))->values();
 
-        $rows = $user_ids->map(function ($uid) use ($tx_agg, $items_agg, $priced, $priced_rev, $users, $hours_raw, $commission, $goal_baseline, $with_commission, $uplift_pct) {
+        $rows = $user_ids->map(function ($uid) use ($tx_agg, $items_agg, $priced, $priced_rev, $users, $hours_raw, $commission, $goal_baseline, $goal_baseline_prior, $with_commission) {
             $u = $users->get($uid);
             $t = $tx_agg->get($uid);
             $name = trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
@@ -11376,15 +11347,24 @@ class ReportController extends Controller
 
             $barcoding_commission = (float) optional($commission->get($uid))->commission ?? 0;
 
-            // Goal = sales one month ago in the same window, raised by the
-            // uplift %. Bonus = 2% of sales above goal once they clear it.
+            // Auto goal: their sales last month (same window) pushed up by a
+            // stretch read from their own recent trend, so the target is a real
+            // but reachable step up — never a flat company-wide number.
+            //   growing month-over-month -> keep that pace (capped to 5–20%)
+            //   flat or sliding          -> a gentle +5% nudge back up
+            //   only one month of history -> default +10%
+            // Bonus = 2% of every dollar they ring above the goal.
             $goal = null;
             $goal_hit = false;
             $goal_bonus = 0.0;
+            $goal_stretch_pct = null;
             if ($with_commission) {
-                $base = (float) optional($goal_baseline->get($uid))->base_sales ?? 0;
-                if ($base > 0) {
-                    $goal = round($base * (1 + $uplift_pct / 100), 2);
+                $recent = (float) optional($goal_baseline->get($uid))->base_sales ?? 0;
+                $prior  = (float) optional($goal_baseline_prior->get($uid))->base_sales ?? 0;
+                if ($recent > 0) {
+                    $stretch = $prior > 0 ? max(0.05, min(0.20, $recent / $prior - 1)) : 0.10;
+                    $goal_stretch_pct = round($stretch * 100, 1);
+                    $goal = round($recent * (1 + $stretch), 2);
                     if ($non_whatnot_revenue >= $goal) {
                         $goal_hit = true;
                         $goal_bonus = round(($non_whatnot_revenue - $goal) * 0.02, 2);
@@ -11414,6 +11394,7 @@ class ReportController extends Controller
                 'goal' => $goal,
                 'goal_hit' => $goal_hit,
                 'goal_bonus' => $goal_bonus,
+                'goal_stretch_pct' => $goal_stretch_pct,
                 'total_commission' => $total_commission,
             ];
         })
