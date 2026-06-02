@@ -118,10 +118,6 @@
                         }
                     </script>
                 </div>
-                <div class="col-md-6">
-                    <label>Goal</label>
-                    <p class="text-muted" style="margin-top:8px;">Set automatically for each person — their sales last month, pushed up by their own recent trend (a <strong>5–20%</strong> stretch; +10% when there's only one month of history). Beat it and they earn <strong>2% of every dollar over</strong>. Nothing to tune.</p>
-                </div>
             </div>
         </div>
     </div>
