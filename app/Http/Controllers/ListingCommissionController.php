@@ -152,7 +152,6 @@ class ListingCommissionController extends Controller
             ->where('u.is_cmmsn_agnt', 1)
             ->where('u.cmmsn_percent', '>', 0)
             ->where('p.created_at', '>=', $from . ' 00:00:00')
-            ->whereNull('p.deleted_at')
             ->select(
                 'tsl.id as line_id',
                 'p.created_by as user_id',
