@@ -11205,7 +11205,7 @@ class ReportController extends Controller
         }
 
         $items = $q
-            ->selectRaw('p.name as product, COALESCE(SUM(tsl.quantity), 0) as units, COALESCE(SUM(tsl.quantity * tsl.unit_price_inc_tax), 0) as revenue')
+            ->selectRaw('p.name as product, COALESCE(SUM(tsl.quantity - COALESCE(tsl.quantity_returned, 0)), 0) as units, COALESCE(SUM((tsl.quantity - COALESCE(tsl.quantity_returned, 0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax, 0))), 0) as revenue')
             ->groupBy('p.id', 'p.name')
             ->orderByDesc('revenue')
             ->limit(200)
@@ -11270,9 +11270,20 @@ class ReportController extends Controller
             ->get()
             ->keyBy('user_id');
 
+        // Revenue basis for the whole board, since these figures drive
+        // commission (Sarah 2026-06-02): per line, PRE-TAX and NET OF RETURNS —
+        //   (qty sold - qty returned) * (unit price inc tax - per-unit tax).
+        // Pre-tax so we never pay commission on sales tax we remit; net of
+        // returns so refunded items don't count. Line-level (not final_total)
+        // because that's the only grain where returns net cleanly. Order-level
+        // invoice discounts / shipping are not in this figure — fine for floor
+        // sales, which are item-priced.
+        $net_pretax = '(tsl.quantity - COALESCE(tsl.quantity_returned, 0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax, 0))';
+
         // Transaction aggregates per employee (created_by). Whatnot is kept
         // separate so every "total" can exclude it (Sarah 2026-06-02).
         $tx_q = \DB::table('transactions as t')
+            ->join('transaction_sell_lines as tsl', 'tsl.transaction_id', '=', 't.id')
             ->where('t.business_id', $business_id)
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
@@ -11283,9 +11294,9 @@ class ReportController extends Controller
         }
         $tx_agg = $tx_q
             ->selectRaw("t.created_by,
-                COALESCE(SUM(t.final_total), 0) as revenue,
-                COALESCE(SUM(CASE WHEN t.is_whatnot = 1 THEN t.final_total ELSE 0 END), 0) as whatnot_revenue,
-                SUM(CASE WHEN t.is_whatnot = 1 THEN 0 ELSE 1 END) as nw_tx_count")
+                COALESCE(SUM($net_pretax), 0) as revenue,
+                COALESCE(SUM(CASE WHEN t.is_whatnot = 1 THEN $net_pretax ELSE 0 END), 0) as whatnot_revenue,
+                COUNT(DISTINCT CASE WHEN t.is_whatnot = 1 THEN NULL ELSE t.id END) as nw_tx_count")
             ->groupBy('t.created_by')
             ->get()
             ->keyBy('created_by');
@@ -11321,7 +11332,7 @@ class ReportController extends Controller
             $priced_rev_q->where('t.location_id', $location_id);
         }
         $priced_rev = $priced_rev_q
-            ->selectRaw('p.created_by, COALESCE(SUM(tsl.quantity * tsl.unit_price_inc_tax), 0) as priced_revenue, COALESCE(SUM(tsl.quantity), 0) as priced_sold_count')
+            ->selectRaw("p.created_by, COALESCE(SUM($net_pretax), 0) as priced_revenue, COALESCE(SUM(tsl.quantity - COALESCE(tsl.quantity_returned, 0)), 0) as priced_sold_count")
             ->groupBy('p.created_by')
             ->get()
             ->keyBy('created_by');
@@ -11335,11 +11346,14 @@ class ReportController extends Controller
         if ($with_commission) {
             $commission = $this->barcodingCommissionByUser($business_id, $start, $end, $location_id);
 
-            // Same window shifted back N months, non-whatnot, optionally per store.
-            $baselineFor = function ($months) use ($business_id, $start, $end, $location_id) {
+            // Same window shifted back N months, non-whatnot, optionally per
+            // store. Same pre-tax / net-of-returns basis as current revenue so
+            // the goal comparison is apples-to-apples.
+            $baselineFor = function ($months) use ($business_id, $start, $end, $location_id, $net_pretax) {
                 $b_start = \Carbon::parse($start)->subMonthsNoOverflow($months)->toDateTimeString();
                 $b_end   = \Carbon::parse($end)->subMonthsNoOverflow($months)->toDateTimeString();
                 $bq = \DB::table('transactions as t')
+                    ->join('transaction_sell_lines as tsl', 'tsl.transaction_id', '=', 't.id')
                     ->where('t.business_id', $business_id)
                     ->where('t.type', 'sell')
                     ->where('t.status', 'final')
@@ -11350,7 +11364,7 @@ class ReportController extends Controller
                     $bq->where('t.location_id', $location_id);
                 }
                 return $bq
-                    ->selectRaw('t.created_by, COALESCE(SUM(t.final_total), 0) as base_sales')
+                    ->selectRaw("t.created_by, COALESCE(SUM($net_pretax), 0) as base_sales")
                     ->groupBy('t.created_by')
                     ->get()
                     ->keyBy('created_by');
@@ -11514,8 +11528,11 @@ class ReportController extends Controller
             $q->where('t.location_id', $location_id);
         }
 
+        // Pre-tax and net of returns (Sarah 2026-06-02): 2% of the item's price
+        // before sales tax, less any returned quantity. Whatnot sales DO earn
+        // listing pay — the lister did the work and the item sold.
         return $q
-            ->selectRaw('p.created_by, ROUND(SUM(tsl.quantity * tsl.unit_price_inc_tax) * 0.02, 2) as commission')
+            ->selectRaw('p.created_by, ROUND(SUM((tsl.quantity - COALESCE(tsl.quantity_returned, 0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax, 0))) * 0.02, 2) as commission')
             ->groupBy('p.created_by')
             ->get()
             ->keyBy('created_by');
