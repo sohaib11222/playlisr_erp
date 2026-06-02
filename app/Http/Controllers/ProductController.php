@@ -447,10 +447,24 @@ class ProductController extends Controller
                     if (empty($row->sku)) {
                         return '';
                     }
-                    // The SKU field can hold several comma-separated values (e.g. the
-                    // internal SKU plus a Discogs release id). nivessa.com resolves a
-                    // product by a single exact SKU, so link with the first token only.
-                    $sku = trim(explode(',', $row->sku)[0]);
+                    // SKU may hold several comma-separated values (e.g. an internal SKU
+                    // plus a Discogs release id). nivessa.com keys products by a single
+                    // exact SKU and, in practice, that is the numeric Discogs release id
+                    // (or a POS-/DISCOGS- prefixed SKU) — internal "PD-" SKUs never exist
+                    // on the site. Prefer the website-shaped token so the link resolves.
+                    $tokens = array_filter(array_map('trim', explode(',', $row->sku)), 'strlen');
+                    $sku = null;
+                    foreach ($tokens as $t) {
+                        if (ctype_digit($t)) { $sku = $t; break; }
+                    }
+                    if ($sku === null) {
+                        foreach ($tokens as $t) {
+                            if (stripos($t, 'POS-') === 0 || stripos($t, 'DISCOGS-') === 0) { $sku = $t; break; }
+                        }
+                    }
+                    if ($sku === null) {
+                        $sku = reset($tokens) ?: '';
+                    }
                     if ($sku === '') {
                         return '';
                     }
