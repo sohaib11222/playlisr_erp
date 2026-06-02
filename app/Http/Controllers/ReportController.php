@@ -11630,15 +11630,48 @@ class ReportController extends Controller
         // Until then the bonus is shown as a PROJECTION only and is NOT added to
         // anyone's total commission — no sales-bonus money is owed before then.
         $sales_bonus_live = \Carbon::now()->gte(\Carbon::parse(self::SALES_BONUS_LIVE_DATE));
-        return $rows->map(function ($r) use ($userCov, $slotStaff, $rate, $stretch, $sales_bonus_live) {
+
+        // The bonus is a PER-DAY bar (Sarah 2026-06-02): each day a person works
+        // gets its own target from that day's hours, and they earn 2% of every
+        // non-whatnot dollar rung above THAT day's target, summed across days.
+        // A short day doesn't cancel a strong day (which a period total would).
+        // So we need each person's non-whatnot sales split by calendar date,
+        // same pre-tax / net-of-returns basis as the rest of the board.
+        $net_pretax = '(tsl.quantity - COALESCE(tsl.quantity_returned, 0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax, 0))';
+        $daySalesQ = \DB::table('transactions as t')
+            ->join('transaction_sell_lines as tsl', 'tsl.transaction_id', '=', 't.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereNull('t.import_source')
+            ->where(function ($q) { $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); })
+            ->whereBetween('t.transaction_date', [$start, $end]);
+        if (!empty($location_id)) {
+            $daySalesQ->where('t.location_id', $location_id);
+        }
+        $daySales = []; // [user_id][Y-m-d] => non-whatnot $ rung that day
+        foreach ($daySalesQ
+            ->selectRaw("t.created_by, DATE(t.transaction_date) as d, COALESCE(SUM($net_pretax), 0) as rev")
+            ->groupBy('t.created_by', \DB::raw('DATE(t.transaction_date)'))
+            ->get() as $row) {
+            $daySales[$row->created_by][$row->d] = (float) $row->rev;
+        }
+
+        return $rows->map(function ($r) use ($userCov, $slotStaff, $rate, $stretch, $sales_bonus_live, $daySales) {
             $cov = $userCov[$r->user_id] ?? [];
-            $expected = 0.0; $peakH = 0.0; $offH = 0.0;
+            $peakH = 0.0; $offH = 0.0;
+            $dayExpected = []; // Y-m-d => expected store-rate $ for hours worked that day
             foreach ($cov as $c) {
                 $head = max(1, count($slotStaff[$c['inst']] ?? []));
-                $expected += ($rate[$c['key']] ?? 0) * $c['frac'] / $head;
+                $exp = ($rate[$c['key']] ?? 0) * $c['frac'] / $head;
+                $date = substr($c['inst'], 0, 10);
+                $dayExpected[$date] = ($dayExpected[$date] ?? 0) + $exp;
                 if ($c['peak']) { $peakH += $c['frac']; } else { $offH += $c['frac']; }
             }
+            $expected = array_sum($dayExpected);
             $r->hour_expected = round($expected, 2);
+            // Period "Target" shown = sum of the daily targets (same number as
+            // expected*stretch since targets add up across days).
             $r->hour_target = $expected > 0 ? round($expected * (1 + $stretch), 2) : null;
             $r->hour_target_stretch_pct = $expected > 0 ? round($stretch * 100, 1) : null;
             $r->hour_pace_pct = ($r->hour_target && $r->hour_target > 0)
@@ -11647,21 +11680,23 @@ class ReportController extends Controller
             $r->hour_peak = round($peakH, 1);
             $r->hour_offpeak = round($offH, 1);
 
-            // The sales-goal bonus pays on the hour-based target: 2% of every
-            // non-whatnot dollar rung above it (Sarah 2026-06-02). No target
-            // (sparse store history / no clocked hours) => no bonus. goal_bonus
-            // is the PROJECTED amount (always computed so targets can be
-            // solidified before launch); sales_bonus_live says whether it's
-            // actually being paid yet. Reuses the goal_* fields the blade reads.
+            // Per-day bonus: 2% of each day's sales above that day's target,
+            // summed. No target on a day (sparse store history / no clocked
+            // hours) => that day earns nothing. goal_bonus is the PROJECTED
+            // amount (always computed so targets can be solidified before
+            // launch); sales_bonus_live says whether it's actually paid yet.
+            $bonus = 0.0; $anyTarget = false;
+            foreach ($dayExpected as $date => $exp) {
+                if ($exp <= 0) { continue; }
+                $anyTarget = true;
+                $dayTarget = $exp * (1 + $stretch);
+                $sold = (float) ($daySales[$r->user_id][$date] ?? 0);
+                if ($sold > $dayTarget) { $bonus += ($sold - $dayTarget) * 0.02; }
+            }
             $r->goal = $r->hour_target;
             $r->goal_stretch_pct = $r->hour_target_stretch_pct;
-            if ($r->hour_target && $r->non_whatnot_revenue >= $r->hour_target) {
-                $r->goal_hit = true;
-                $r->goal_bonus = round(($r->non_whatnot_revenue - $r->hour_target) * 0.02, 2);
-            } else {
-                $r->goal_hit = false;
-                $r->goal_bonus = 0.0;
-            }
+            $r->goal_bonus = round($bonus, 2);
+            $r->goal_hit = $anyTarget && $bonus > 0;
             $r->sales_bonus_live = $sales_bonus_live;
             // Only money actually owed today counts toward total commission. The
             // sales bonus is excluded until it goes live on 2026-06-15.

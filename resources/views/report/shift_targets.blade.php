@@ -82,9 +82,9 @@
         <div class="box-body">
             <p style="margin:0 0 6px; font-weight:700;">How to read this</p>
             <ul style="margin:0; padding-left:18px; line-height:1.6;">
-                <li><strong>Target</strong> is set by <em>when</em> someone works, not a flat number. For the exact hours they were on the clock, we look at what the store normally takes in those time slots (last 12 weeks), split it fairly between everyone working those hours, and add a 10% stretch. Busy Friday night → higher bar; slow Tuesday morning → lower bar.</li>
+                <li><strong>Target</strong> is set <em>per day</em> by <em>when</em> someone works, not a flat number. For the exact hours they were on the clock that day, we look at what the store normally takes in those time slots (last 12 weeks), split it fairly between everyone working those hours, and add a 10% stretch. Busy Friday night → higher bar; slow Tuesday morning → lower bar. The number shown here is the sum of their daily targets over the period.</li>
                 <li><strong>Pace</strong> is their sales vs. that target. 100%+ (green) means they beat it.</li>
-                <li><strong>Sales bonus</strong> is 2% of every dollar they ring <em>above</em> target. <strong>This starts June 15</strong> — the figures here are projections so you can solidify the targets first. No bonus is paid yet.</li>
+                <li><strong>Sales bonus</strong> is 2% of every dollar they ring <em>above their target on each day</em> — a slow day won't cancel out a strong one. <strong>This starts June 15</strong> — the figures here are projections so you can solidify the targets first. No bonus is paid yet.</li>
             </ul>
         </div>
     </div>
