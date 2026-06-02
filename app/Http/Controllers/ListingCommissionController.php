@@ -43,6 +43,10 @@ class ListingCommissionController extends Controller
     // counts (e.g. Jon showed 48k listed items). Excluded by first name.
     private $excludedOwnerFirstNames = ['jon', 'jonathan', 'sarah', 'sohaib', 'fatteen'];
 
+    // Fatteen's ERP account is named "Nerdy Solutions", so the first-name list
+    // above misses it. Also drop any account whose full name contains these.
+    private $excludedNameContains = ['nerdy'];
+
     public function index(Request $request)
     {
         $from = $this->normalizeFrom($request->input('from'));
@@ -181,7 +185,6 @@ class ListingCommissionController extends Controller
             ->whereBetween('t.transaction_date', [$start, $end])
             ->whereNotNull('p.created_by')
             ->where('p.created_at', '>=', $start)
-            ->whereNotIn(DB::raw('LOWER(u.first_name)'), $this->excludedOwnerFirstNames)
             ->where(function ($qq) {
                 foreach ($this->excludedCategoryPatterns as $pat) {
                     $qq->where(DB::raw('LOWER(c.name)'), 'NOT LIKE', $pat)
@@ -190,6 +193,7 @@ class ListingCommissionController extends Controller
                 $qq->whereNotIn(DB::raw('LOWER(TRIM(c.name))'), $this->excludedCategoryNames)
                    ->whereNotIn(DB::raw('LOWER(TRIM(COALESCE(sc.name, \'\')))'), $this->excludedCategoryNames);
             });
+        $this->excludeOwners($q);
 
         $rows = $q->select(
                 'tsl.id as line_id',
@@ -219,14 +223,13 @@ class ListingCommissionController extends Controller
     {
         $start = $from . ' 00:00:00';
 
-        return DB::table('products as p')
+        $q = DB::table('products as p')
             ->join('users as u', 'u.id', '=', 'p.created_by')
             ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
             ->leftJoin('categories as sc', 'p.sub_category_id', '=', 'sc.id')
             ->where('p.business_id', $businessId)
             ->whereNotNull('p.created_by')
             ->where('p.created_at', '>=', $start)
-            ->whereNotIn(DB::raw('LOWER(u.first_name)'), $this->excludedOwnerFirstNames)
             ->where(function ($qq) {
                 foreach ($this->excludedCategoryPatterns as $pat) {
                     $qq->where(DB::raw('LOWER(c.name)'), 'NOT LIKE', $pat)
@@ -234,11 +237,26 @@ class ListingCommissionController extends Controller
                 }
                 $qq->whereNotIn(DB::raw('LOWER(TRIM(c.name))'), $this->excludedCategoryNames)
                    ->whereNotIn(DB::raw('LOWER(TRIM(COALESCE(sc.name, \'\')))'), $this->excludedCategoryNames);
-            })
-            ->selectRaw('p.created_by as user_id, COUNT(*) as listed_count')
+            });
+        $this->excludeOwners($q);
+
+        return $q->selectRaw('p.created_by as user_id, COUNT(*) as listed_count')
             ->groupBy('p.created_by')
             ->pluck('listed_count', 'user_id')
             ->toArray();
+    }
+
+    // Drop owner/back-office accounts from a query that has joined `users as u`.
+    private function excludeOwners($q)
+    {
+        $q->whereNotIn(DB::raw('LOWER(u.first_name)'), $this->excludedOwnerFirstNames);
+        foreach ($this->excludedNameContains as $needle) {
+            $q->whereRaw(
+                "LOWER(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''),' ',COALESCE(u.surname,'')))) NOT LIKE ?",
+                ['%' . $needle . '%']
+            );
+        }
+        return $q;
     }
 
     private function personName($row)
