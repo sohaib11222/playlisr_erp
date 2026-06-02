@@ -6,13 +6,16 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
-// Listing commissions owed to staff who list items.
+// Listing (barcoding) commissions owed to staff.
 //
-// A person earns commission when an item THEY listed actually SELLS. So this
-// looks at sold lines (transaction_sell_lines on final sells) whose product was
-// listed on/after the start date by a commission agent (users.is_cmmsn_agnt=1),
-// and owes that lister cmmsn_percent% of the realized sale amount
-// (unit_price_inc_tax × quantity, net of returns).
+// Mirrors the EXACT commission employees already see on the Employee
+// Leaderboard (ReportController::barcodingCommissionByUser): a person earns
+// 2% of the sale value (quantity × unit_price_inc_tax) of every item THEY
+// listed/barcoded (products.created_by) that has since SOLD on a final sell,
+// as long as the product was listed on/after the 2026-05-15 rollout and isn't
+// in an excluded category (sealed/new stock, gear, apparel, etc.). Keeping the
+// formula identical here means this payables view agrees with what each
+// employee was shown they earned.
 //
 // "Paid" is tracked here, not in the DB (Sarah doesn't run migrations): each
 // payout snapshots the exact sell-line ids it covered to
@@ -22,6 +25,17 @@ class ListingCommissionController extends Controller
 {
     const PAYOUTS_FILE = 'listing-commission-payouts.json';
     const DEFAULT_FROM = '2026-05-15';
+    const RATE = 0.02; // flat 2%, matches barcodingCommissionByUser
+
+    // Category exclusions copied verbatim from barcodingCommissionByUser so the
+    // owed numbers match the leaderboard exactly.
+    private $excludedCategoryPatterns = ['%sealed%', '%new vinyl%', '%new cd%', '%new cassette%'];
+    private $excludedCategoryNames = [
+        'audio gear', 'record players', 'record player',
+        'trading cards', 'apparel', 'clothing', 'video games',
+        'gift items', 'toys', 'accessories & novelties',
+        'acessories & novelties', 'pictures & posters',
+    ];
 
     public function index(Request $request)
     {
@@ -39,17 +53,16 @@ class ListingCommissionController extends Controller
             $uid = $row->user_id;
             if (!isset($people[$uid])) {
                 $people[$uid] = (object) [
-                    'user_id'       => $uid,
-                    'name'          => $this->personName($row),
-                    'cmmsn_percent' => (float) $row->cmmsn_percent,
-                    'count'         => 0,
-                    'sale_total'    => 0.0,
-                    'owed'          => 0.0,
+                    'user_id'    => $uid,
+                    'name'       => $this->personName($row),
+                    'count'      => 0,
+                    'sale_total' => 0.0,
+                    'owed'       => 0.0,
                 ];
             }
             $people[$uid]->count++;
             $people[$uid]->sale_total += (float) $row->sale_amount;
-            $people[$uid]->owed += (float) $row->sale_amount * (float) $row->cmmsn_percent / 100;
+            $people[$uid]->owed += (float) $row->sale_amount * self::RATE;
         }
         $people = collect($people)->sortByDesc('owed')->values();
 
@@ -57,6 +70,7 @@ class ListingCommissionController extends Controller
 
         return view('admin.listing_commissions', [
             'from'        => $from,
+            'rate_pct'    => self::RATE * 100,
             'people'      => $people,
             'history'     => $history,
             'total_owed'  => $people->sum('owed'),
@@ -89,22 +103,21 @@ class ListingCommissionController extends Controller
         $amount = 0.0;
         $lineIds = [];
         foreach ($lines as $row) {
-            $amount += (float) $row->sale_amount * (float) $row->cmmsn_percent / 100;
+            $amount += (float) $row->sale_amount * self::RATE;
             $lineIds[] = (int) $row->line_id;
         }
 
         $paid[] = [
-            'id'            => bin2hex(random_bytes(8)),
-            'user_id'       => $userId,
-            'name'          => $this->personName($lines->first()),
-            'cmmsn_percent' => (float) $lines->first()->cmmsn_percent,
-            'count'         => count($lineIds),
-            'amount'        => round($amount, 2),
-            'line_ids'      => $lineIds,
-            'from_date'     => $from,
-            'to_date'       => now()->toDateString(),
-            'marked_by'     => $request->session()->get('user.id'),
-            'marked_at'     => now()->toDateTimeString(),
+            'id'         => bin2hex(random_bytes(8)),
+            'user_id'    => $userId,
+            'name'       => $this->personName($lines->first()),
+            'count'      => count($lineIds),
+            'amount'     => round($amount, 2),
+            'line_ids'   => $lineIds,
+            'from_date'  => $from,
+            'to_date'    => now()->toDateString(),
+            'marked_by'  => $request->session()->get('user.id'),
+            'marked_at'  => now()->toDateTimeString(),
         ];
 
         $this->savePayouts($paid);
@@ -138,28 +151,44 @@ class ListingCommissionController extends Controller
     }
 
     // Unpaid sold lines: one row per item sold (final sell) whose product was
-    // listed since $from by a commission agent, with the realized sale amount
-    // (net of returns), excluding lines already covered by a payout.
+    // listed on/after $from by the lister (products.created_by), excluding
+    // sealed/new stock + non-vinyl categories, with the realized sale value and
+    // excluding lines already covered by a payout. Filters mirror
+    // ReportController::barcodingCommissionByUser exactly.
     private function ownedSoldLines($businessId, $from, array $paidLineIds)
     {
-        $rows = DB::table('transaction_sell_lines as tsl')
-            ->join('transactions as t', 't.id', '=', 'tsl.transaction_id')
-            ->join('products as p', 'p.id', '=', 'tsl.product_id')
+        $start = $from . ' 00:00:00';
+        $end = now()->toDateTimeString();
+
+        $q = DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+            ->join('products as p', 'tsl.product_id', '=', 'p.id')
+            ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
+            ->leftJoin('categories as sc', 'p.sub_category_id', '=', 'sc.id')
             ->join('users as u', 'u.id', '=', 'p.created_by')
             ->where('t.business_id', $businessId)
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
-            ->where('u.is_cmmsn_agnt', 1)
-            ->where('u.cmmsn_percent', '>', 0)
-            ->where('p.created_at', '>=', $from . ' 00:00:00')
-            ->select(
+            ->whereNull('t.import_source')
+            ->whereBetween('t.transaction_date', [$start, $end])
+            ->whereNotNull('p.created_by')
+            ->where('p.created_at', '>=', $start)
+            ->where(function ($qq) {
+                foreach ($this->excludedCategoryPatterns as $pat) {
+                    $qq->where(DB::raw('LOWER(c.name)'), 'NOT LIKE', $pat)
+                       ->where(DB::raw('LOWER(COALESCE(sc.name, \'\'))'), 'NOT LIKE', $pat);
+                }
+                $qq->whereNotIn(DB::raw('LOWER(TRIM(c.name))'), $this->excludedCategoryNames)
+                   ->whereNotIn(DB::raw('LOWER(TRIM(COALESCE(sc.name, \'\')))'), $this->excludedCategoryNames);
+            });
+
+        $rows = $q->select(
                 'tsl.id as line_id',
                 'p.created_by as user_id',
-                'u.cmmsn_percent',
                 'u.first_name',
                 'u.last_name',
                 'u.surname',
-                DB::raw('(tsl.unit_price_inc_tax * (tsl.quantity - COALESCE(tsl.quantity_returned, 0))) as sale_amount')
+                DB::raw('(tsl.quantity * tsl.unit_price_inc_tax) as sale_amount')
             )
             ->get();
 
