@@ -20,6 +20,20 @@
     .sp-sub .sp-pill { display: inline-block; background: rgba(255,255,255,.22); border-radius: 20px; padding: 2px 12px; font-weight: 700; margin-right: 8px; }
     .sp-loc select { display: inline-block; width: auto; min-width: 160px; }
     .sp-foot { margin-top: 16px; font-size: 12px; color: #999; text-align: center; }
+    .sp-lb { margin-top: 26px; background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.10); padding: 18px 20px 8px; }
+    .sp-lb-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+    .sp-lb-title { font-size: 18px; font-weight: 700; color: #2b2b2b; margin: 0; }
+    .sp-lb-window { font-size: 13px; color: #888; }
+    .sp-lb table { width: 100%; border-collapse: collapse; }
+    .sp-lb th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: #999; border-bottom: 2px solid #eee; padding: 8px 10px; }
+    .sp-lb td { padding: 10px; border-bottom: 1px solid #f1f1f1; font-size: 15px; color: #333; }
+    .sp-lb th.num, .sp-lb td.num { text-align: right; }
+    .sp-lb tr:last-child td { border-bottom: none; }
+    .sp-rank { font-weight: 800; color: #777; width: 48px; }
+    .sp-rank-1 { color: #c9a227; }
+    .sp-rank-2 { color: #8c8c8c; }
+    .sp-rank-3 { color: #b07b41; }
+    .sp-lb-empty { color: #999; padding: 14px 10px 20px; font-size: 14px; }
 </style>
 
 <section class="content sp-wrap">
@@ -76,8 +90,45 @@
         </div>
     </div>
 
+    @if(!empty($show_leaderboard))
+    <div class="sp-lb">
+        <div class="sp-lb-head">
+            <h2 class="sp-lb-title">Last week&rsquo;s leaderboard &middot; {{ $location_name }}</h2>
+            <span class="sp-lb-window">{{ $leaderboard_label }} &middot; ranked by revenue / hour</span>
+        </div>
+        @if($leaderboard_rows->count() === 0)
+            <div class="sp-lb-empty">No ranked sales for this store last week.</div>
+        @else
+        <table>
+            <thead>
+                <tr>
+                    <th class="sp-rank">#</th>
+                    <th>Employee</th>
+                    <th class="num">Revenue</th>
+                    <th class="num">Items</th>
+                    <th class="num">Avg sale</th>
+                    <th class="num">$ / hr</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach($leaderboard_rows as $i => $r)
+                <tr>
+                    <td class="sp-rank sp-rank-{{ $i + 1 }}">{{ $i + 1 }}</td>
+                    <td>{{ $r->employee }}</td>
+                    <td class="num">${{ number_format($r->non_whatnot_revenue) }}</td>
+                    <td class="num">{{ number_format($r->items_rung) }}</td>
+                    <td class="num">${{ number_format($r->avg_tx, 2) }}</td>
+                    <td class="num">{{ $r->revenue_per_hour === null ? '—' : '$' . number_format($r->revenue_per_hour) }}</td>
+                </tr>
+                @endforeach
+            </tbody>
+        </table>
+        @endif
+    </div>
+    @endif
+
     <div class="sp-foot">
-        Updated <b id="sp-asof">{{ $data['as_of'] }}</b> &middot; refreshes automatically every 60 seconds
+        Updated <b id="sp-asof">{{ $data['as_of'] }}</b> &middot; tiles refresh automatically every 60 seconds &middot; leaderboard is last week, fixed
     </div>
 </section>
 @stop
