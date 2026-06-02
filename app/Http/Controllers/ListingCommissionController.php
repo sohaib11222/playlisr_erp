@@ -46,6 +46,7 @@ class ListingCommissionController extends Controller
         $paidLineIds = $this->paidLineIds($paid);
 
         $lines = $this->ownedSoldLines($businessId, $from, $paidLineIds);
+        $listedCounts = $this->listedCountByUser($businessId, $from);
 
         // Group the unpaid sold lines by lister.
         $people = [];
@@ -53,11 +54,12 @@ class ListingCommissionController extends Controller
             $uid = $row->user_id;
             if (!isset($people[$uid])) {
                 $people[$uid] = (object) [
-                    'user_id'    => $uid,
-                    'name'       => $this->personName($row),
-                    'count'      => 0,
-                    'sale_total' => 0.0,
-                    'owed'       => 0.0,
+                    'user_id'      => $uid,
+                    'name'         => $this->personName($row),
+                    'listed_count' => (int) ($listedCounts[$uid] ?? 0),
+                    'count'        => 0,
+                    'sale_total'   => 0.0,
+                    'owed'         => 0.0,
                 ];
             }
             $people[$uid]->count++;
@@ -200,6 +202,34 @@ class ListingCommissionController extends Controller
         }
 
         return $rows;
+    }
+
+    // Items each person LISTED on/after $from (regardless of whether they've
+    // sold), keyed by user_id. Same product + category filters as the
+    // commission query so "listed" and "sold" describe the same eligible
+    // universe; just no transaction join.
+    private function listedCountByUser($businessId, $from)
+    {
+        $start = $from . ' 00:00:00';
+
+        return DB::table('products as p')
+            ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
+            ->leftJoin('categories as sc', 'p.sub_category_id', '=', 'sc.id')
+            ->where('p.business_id', $businessId)
+            ->whereNotNull('p.created_by')
+            ->where('p.created_at', '>=', $start)
+            ->where(function ($qq) {
+                foreach ($this->excludedCategoryPatterns as $pat) {
+                    $qq->where(DB::raw('LOWER(c.name)'), 'NOT LIKE', $pat)
+                       ->where(DB::raw('LOWER(COALESCE(sc.name, \'\'))'), 'NOT LIKE', $pat);
+                }
+                $qq->whereNotIn(DB::raw('LOWER(TRIM(c.name))'), $this->excludedCategoryNames)
+                   ->whereNotIn(DB::raw('LOWER(TRIM(COALESCE(sc.name, \'\')))'), $this->excludedCategoryNames);
+            })
+            ->selectRaw('p.created_by as user_id, COUNT(*) as listed_count')
+            ->groupBy('p.created_by')
+            ->pluck('listed_count', 'user_id')
+            ->toArray();
     }
 
     private function personName($row)

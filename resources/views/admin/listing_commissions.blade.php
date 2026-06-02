@@ -50,6 +50,7 @@
                     <thead>
                         <tr>
                             <th>Person</th>
+                            <th style="text-align:right;">Items listed</th>
                             <th style="text-align:right;">Items sold</th>
                             <th style="text-align:right;">Sale total</th>
                             <th style="text-align:right;">Owed</th>
@@ -60,6 +61,7 @@
                         @foreach ($people as $p)
                             <tr>
                                 <td>{{ $p->name }}</td>
+                                <td style="text-align:right;">{{ number_format($p->listed_count) }}</td>
                                 <td style="text-align:right;">{{ number_format($p->count) }}</td>
                                 <td style="text-align:right;">${{ number_format($p->sale_total, 2) }}</td>
                                 <td style="text-align:right;"><strong>${{ number_format($p->owed, 2) }}</strong></td>
