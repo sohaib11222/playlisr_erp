@@ -72,6 +72,9 @@
         .lb-live-lbl { font-size:10px; text-transform:uppercase; letter-spacing:.05em; opacity:.9; }
         .lb-live-val { font-size:22px; font-weight:800; line-height:1.1; margin-top:2px; }
         .lb-live-sub { font-size:11px; opacity:.92; margin-top:3px; }
+        .lb-bar { position:relative; height:9px; background:rgba(255,255,255,.28); border-radius:6px; margin:7px 0 5px; }
+        .lb-bar-fill { position:absolute; left:0; top:0; height:100%; background:#fff; border-radius:6px; transition:width .4s ease; }
+        .lb-bar-pace { position:absolute; top:-2px; width:2px; height:13px; background:rgba(0,0,0,.55); }
     </style>
 
     <div class="alert alert-info" style="border-left:4px solid #3c8dbc;">
@@ -87,10 +90,18 @@
                         @if(!empty($store['live']))
                             @php $lv = $store['live']; @endphp
                             <div class="lb-live" data-live-loc="{{ $store['id'] }}">
+                                @php
+                                    $tw = $lv['target_full'] > 0 ? min(100, max(0, $lv['revenue_today'] / $lv['target_full'] * 100)) : 0;
+                                    $pw = $lv['target_full'] > 0 ? min(100, max(0, $lv['target_so_far'] / $lv['target_full'] * 100)) : 0;
+                                @endphp
                                 <div class="lb-live-card {{ $lv['target_state'] === 'ahead' ? 'lb-up' : 'lb-down' }}" data-tile="target">
                                     <div class="lb-live-lbl">Today vs target</div>
                                     <div class="lb-live-val" data-f="revenue_today">${{ number_format($lv['revenue_today']) }}</div>
-                                    <div class="lb-live-sub"><span data-f="target_pct">{{ number_format($lv['target_pct']) }}%</span> of <span data-f="target_so_far">${{ number_format($lv['target_so_far']) }}</span> by now</div>
+                                    <div class="lb-bar" title="Full-day target ${{ number_format($lv['target_full']) }}">
+                                        <div class="lb-bar-fill" data-f-bar="target" style="width: {{ round($tw, 1) }}%"></div>
+                                        <div class="lb-bar-pace" data-f-pace="target" style="left: {{ round($pw, 1) }}%"></div>
+                                    </div>
+                                    <div class="lb-live-sub"><span data-f="target_pct">{{ number_format($lv['target_pct']) }}%</span> of <span data-f="target_so_far">${{ number_format($lv['target_so_far']) }}</span> by now &middot; ${{ number_format($lv['target_full']) }} goal</div>
                                 </div>
                                 <div class="lb-live-card {{ $lv['lfl_state'] === 'ahead' ? 'lb-up' : ($lv['lfl_state'] === 'behind' ? 'lb-down' : 'lb-neutral') }}" data-tile="lfl">
                                     <div class="lb-live-lbl">LFL vs last yr</div>
@@ -199,6 +210,12 @@
                     setField(scope, 'target_pct', Math.round(d.target_pct) + '%');
                     setField(scope, 'target_so_far', money(d.target_so_far));
                     setState(scope.querySelector('[data-tile="target"]'), d.target_state);
+
+                    var tFull = Number(d.target_full) || 0;
+                    var fillEl = scope.querySelector('[data-f-bar="target"]');
+                    var paceEl = scope.querySelector('[data-f-pace="target"]');
+                    if (fillEl) fillEl.style.width = (tFull > 0 ? Math.min(100, Math.max(0, d.revenue_today / tFull * 100)) : 0) + '%';
+                    if (paceEl) paceEl.style.left = (tFull > 0 ? Math.min(100, Math.max(0, d.target_so_far / tFull * 100)) : 0) + '%';
 
                     setField(scope, 'lfl_pct', d.lfl_pct === null ? '—' : (d.lfl_pct >= 0 ? '+' : '') + Number(d.lfl_pct).toFixed(1) + '%');
                     setField(scope, 'lfl_last_year', money(d.lfl_last_year));
