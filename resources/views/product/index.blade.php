@@ -48,11 +48,13 @@
 <div id="product_filters_bar">
     <div class="row" style="margin-bottom: 5px;">
         <div class="col-md-8 col-sm-12">
-            <div class="form-group">
+            <div class="form-group" style="position: relative;">
                 <input type="text"
                        id="product_search_main"
                        class="form-control product-search-input"
+                       autocomplete="off"
                        placeholder="Search products by artist, title, SKU, or barcode…">
+                <ul id="product_search_recent" class="dropdown-menu" style="display:none; width:100%; max-height:280px; overflow-y:auto;"></ul>
             </div>
         </div>
         <div class="col-md-4 col-sm-12 text-right">
@@ -538,8 +540,43 @@
                 var __search_timer = null;
                 var __search_xhr   = null;
                 var __search_last  = '';
+
+                // Recent searches, kept in this browser only (localStorage). Starts
+                // recording from first use — it can't recover terms typed before this
+                // was deployed.
+                var RECENT_KEY = 'product_recent_searches';
+                var RECENT_MAX = 10;
+                var loadRecent = function() {
+                    try { return JSON.parse(localStorage.getItem(RECENT_KEY)) || []; }
+                    catch (e) { return []; }
+                };
+                var saveRecentTerm = function(term) {
+                    term = $.trim(term);
+                    if (term.length < 2) { return; }
+                    var list = loadRecent().filter(function(t) {
+                        return t.toLowerCase() !== term.toLowerCase();
+                    });
+                    list.unshift(term);
+                    list = list.slice(0, RECENT_MAX);
+                    try { localStorage.setItem(RECENT_KEY, JSON.stringify(list)); } catch (e) {}
+                };
+                var renderRecent = function() {
+                    var list = loadRecent();
+                    var $menu = $('#product_search_recent');
+                    if (!list.length) { $menu.hide().empty(); return; }
+                    var html = '<li class="dropdown-header">Recent searches</li>';
+                    list.forEach(function(t) {
+                        var esc = $('<div>').text(t).html();
+                        html += '<li><a href="#" class="recent-search-item" data-term="' + esc + '">' + esc + '</a></li>';
+                    });
+                    html += '<li class="divider"></li>';
+                    html += '<li><a href="#" id="recent-search-clear" style="color:#a94442;">Clear recent searches</a></li>';
+                    $menu.html(html).show();
+                };
+
                 var runProductSearch = function(term) {
                     if (typeof product_table === 'undefined') { return; }
+                    saveRecentTerm(term);
                     if (term === __search_last) { return; }
                     __search_last = term;
                     // Cancel any in-flight AJAX so old responses don't overwrite new ones
@@ -557,11 +594,13 @@
                     clearTimeout(__search_timer);
                     // Empty -> reset immediately. 1 char -> wait (too broad). 2+ -> 350ms debounce.
                     if (term.length === 0) {
+                        renderRecent();
                         runProductSearch('');
                     } else if (term.length === 1) {
                         // Skip — single-character search rarely useful and is the worst case
                         return;
                     } else {
+                        $('#product_search_recent').hide();
                         __search_timer = setTimeout(function() { runProductSearch(term); }, 350);
                     }
                 });
@@ -570,7 +609,32 @@
                     if (e.which === 13) {
                         e.preventDefault();
                         clearTimeout(__search_timer);
+                        $('#product_search_recent').hide();
                         runProductSearch($(this).val());
+                    }
+                });
+                // Show recent searches when focusing the (empty) box
+                $('#product_search_main').on('focus', function() {
+                    if ($.trim($(this).val()) === '') { renderRecent(); }
+                });
+                // Pick a recent search
+                $(document).on('mousedown', '.recent-search-item', function(e) {
+                    e.preventDefault();
+                    var term = $(this).data('term');
+                    $('#product_search_main').val(term);
+                    $('#product_search_recent').hide();
+                    clearTimeout(__search_timer);
+                    runProductSearch(term);
+                });
+                $(document).on('mousedown', '#recent-search-clear', function(e) {
+                    e.preventDefault();
+                    try { localStorage.removeItem(RECENT_KEY); } catch (e) {}
+                    $('#product_search_recent').hide().empty();
+                });
+                // Hide the dropdown when clicking away
+                $(document).on('click', function(e) {
+                    if (!$(e.target).closest('#product_search_main, #product_search_recent').length) {
+                        $('#product_search_recent').hide();
                     }
                 });
             }
