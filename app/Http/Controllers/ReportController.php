@@ -11095,12 +11095,15 @@ class ReportController extends Controller
         }
 
         // Per-store roster overrides. The board files people by where their
-        // sales rang, which can misplace cross-location strays (e.g. someone who
-        // rang one sale at another store). These keep each store's list to who
-        // actually works there. First-name match, case-insensitive; the store
-        // key just needs to appear in the location name. Edit freely.
+        // sales rang, which can misplace cross-location strays. These keep each
+        // store's list to who actually works there. First-name match,
+        // case-insensitive; the store key just needs to appear in the location
+        // name. The '*' key hides someone from every store floor. A store_only
+        // whitelist wins outright. Roster per Sarah 2026-06-02; edit freely.
         $store_hidden = [
-            'pico' => ['manolo', 'luis', 'jacob'],   // not on the Pico floor (old/remote)
+            '*'         => ['nerdy', 'viper', 'henry', 'nick'],      // not store-floor staff (Nick = fulfillment, Henry left, nerdy/viper = non-floor accounts)
+            'hollywood' => ['zak', 'alec', 'clark', 'andy', 'davis'], // these work Pico — drop 'andy' here if he's reassigned to HW
+            'pico'      => ['clyde', 'jennifer', 'manolo', 'luis', 'jacob'], // Clyde/Jennifer work HW; manolo/luis/jacob old/remote
         ];
         $store_only = [
             'discogs'   => ['nick'],        // online fulfillment is Nick only
@@ -11120,24 +11123,24 @@ class ReportController extends Controller
 
             $rows = $this->buildLeaderboardRows($business_id, $start_str, $end_str, null, $lid, $opts);
 
-            // Apply this store's roster override.
+            // Apply this store's roster override. '*' applies to every floor;
+            // a store_only whitelist (e.g. warehouse = Nick) wins outright, so a
+            // name on both the global hide and a whitelist still shows there.
             $lkey = strtolower((string) $lname);
-            $hide = [];
+            $hide = $store_hidden['*'] ?? [];
             $only = null;
             foreach ($store_hidden as $k => $names) {
+                if ($k === '*') { continue; }
                 if (strpos($lkey, $k) !== false) { $hide = array_merge($hide, $names); }
             }
             foreach ($store_only as $k => $names) {
                 if (strpos($lkey, $k) !== false) { $only = array_merge($only ?? [], $names); }
             }
-            if (!empty($hide) || $only !== null) {
-                $rows = $rows->filter(function ($r) use ($hide, $only) {
-                    $first = strtolower(trim(explode(' ', trim($r->employee))[0] ?? ''));
-                    if ($only !== null && !in_array($first, $only, true)) { return false; }
-                    if (in_array($first, $hide, true)) { return false; }
-                    return true;
-                })->values();
-            }
+            $rows = $rows->filter(function ($r) use ($hide, $only) {
+                $first = strtolower(trim(explode(' ', trim($r->employee))[0] ?? ''));
+                if ($only !== null) { return in_array($first, $only, true); }
+                return !in_array($first, $hide, true);
+            })->values();
 
             $stores[] = [
                 'id'   => $lid,

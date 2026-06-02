@@ -210,6 +210,7 @@
                                     <th class="text-right">Sales / hr</th>
                                     <th class="text-right">Hours</th>
                                     <th class="text-right">Sales</th>
+                                    <th class="text-right">Sales from listed</th>
                                     <th class="text-right">Goal</th>
                                     <th class="text-right">Bonus</th>
                                     <th class="text-right lb-comm">Listing pay</th>
@@ -232,6 +233,7 @@
                                         <td class="text-right">@if(!$no_hours)<strong style="color:#065f46;">${{ number_format($r->revenue_per_hour, 0) }}</strong>@else — @endif</td>
                                         <td class="text-right">@if($r->hours_worked > 0){{ number_format($r->hours_worked, 1) }}h @else <span class="text-muted">—</span>@endif</td>
                                         <td class="text-right">${{ number_format($r->non_whatnot_revenue, 0) }}</td>
+                                        <td class="text-right">${{ number_format($r->priced_revenue, 0) }}</td>
                                         <td class="text-right">
                                             @if(!is_null($r->goal))
                                                 ${{ number_format($r->goal, 0) }}
@@ -249,7 +251,7 @@
                                         </td>
                                     </tr>
                                 @empty
-                                    <tr><td colspan="9" class="text-center text-muted">No activity in this window.</td></tr>
+                                    <tr><td colspan="10" class="text-center text-muted">No activity in this window.</td></tr>
                                 @endforelse
                             </tbody>
                         </table>
