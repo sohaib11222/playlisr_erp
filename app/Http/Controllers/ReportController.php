@@ -11279,10 +11279,15 @@ class ReportController extends Controller
             ->unique()
             ->values();
 
-        // ACTIVE employees only (terminated accounts clutter rankings). When
-        // requested, also drop owners/back-office (Jon/Sarah, Sohaib, Fatteen)
-        // so the report shows the sales floor only (Sarah 2026-06-02).
-        $users_q = \App\User::whereIn('id', $user_ids)->where('status', 'active');
+        // CURRENT staff only. Per the offboarding convention an ex-employee is
+        // status='active' but allow_login=0, so "current" requires BOTH
+        // status=active AND allow_login=1 (Sarah 2026-06-02) — otherwise people
+        // who've been let go still show on the board. When requested, also drop
+        // owners/back-office (Jon/Sarah, Sohaib, Fatteen) so the report shows
+        // the sales floor only.
+        $users_q = \App\User::whereIn('id', $user_ids)
+            ->where('status', 'active')
+            ->where('allow_login', 1);
         if ($exclude_owners) {
             $excluded_first = ['jon', 'jonathan', 'sarah', 'sohaib', 'fatteen'];
             $users_q->whereNotIn(\DB::raw('LOWER(first_name)'), $excluded_first)
