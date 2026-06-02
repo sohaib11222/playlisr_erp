@@ -40,6 +40,13 @@ use Spatie\Activitylog\Models\Activity;
 class ReportController extends Controller
 {
     /**
+     * Date the sales-goal bonus starts being real pay (Sarah 2026-06-02 — still
+     * solidifying targets until then). Before this date the leaderboard shows
+     * the bonus as a projection only and excludes it from total commission.
+     */
+    const SALES_BONUS_LIVE_DATE = '2026-06-15 00:00:00';
+
+    /**
      * All Utils instance.
      *
      */
@@ -11619,7 +11626,11 @@ class ReportController extends Controller
         }
 
         $stretch = 0.10; // gentle, fixed nudge above the store's historical rate
-        return $rows->map(function ($r) use ($userCov, $slotStaff, $rate, $stretch) {
+        // Sales bonus goes live 2026-06-15 (Sarah is still solidifying targets).
+        // Until then the bonus is shown as a PROJECTION only and is NOT added to
+        // anyone's total commission — no sales-bonus money is owed before then.
+        $sales_bonus_live = \Carbon::now()->gte(\Carbon::parse(self::SALES_BONUS_LIVE_DATE));
+        return $rows->map(function ($r) use ($userCov, $slotStaff, $rate, $stretch, $sales_bonus_live) {
             $cov = $userCov[$r->user_id] ?? [];
             $expected = 0.0; $peakH = 0.0; $offH = 0.0;
             foreach ($cov as $c) {
@@ -11636,11 +11647,12 @@ class ReportController extends Controller
             $r->hour_peak = round($peakH, 1);
             $r->hour_offpeak = round($offH, 1);
 
-            // The sales-goal bonus now pays on the hour-based target: 2% of
-            // every non-whatnot dollar rung above it (Sarah 2026-06-02). No
-            // target (sparse store history / no clocked hours) => no bonus.
-            // These reuse the existing goal_* / total_commission fields the
-            // blade already reads.
+            // The sales-goal bonus pays on the hour-based target: 2% of every
+            // non-whatnot dollar rung above it (Sarah 2026-06-02). No target
+            // (sparse store history / no clocked hours) => no bonus. goal_bonus
+            // is the PROJECTED amount (always computed so targets can be
+            // solidified before launch); sales_bonus_live says whether it's
+            // actually being paid yet. Reuses the goal_* fields the blade reads.
             $r->goal = $r->hour_target;
             $r->goal_stretch_pct = $r->hour_target_stretch_pct;
             if ($r->hour_target && $r->non_whatnot_revenue >= $r->hour_target) {
@@ -11650,7 +11662,10 @@ class ReportController extends Controller
                 $r->goal_hit = false;
                 $r->goal_bonus = 0.0;
             }
-            $r->total_commission = round((float) $r->barcoding_commission + $r->goal_bonus, 2);
+            $r->sales_bonus_live = $sales_bonus_live;
+            // Only money actually owed today counts toward total commission. The
+            // sales bonus is excluded until it goes live on 2026-06-15.
+            $r->total_commission = round((float) $r->barcoding_commission + ($sales_bonus_live ? $r->goal_bonus : 0.0), 2);
             return $r;
         });
     }

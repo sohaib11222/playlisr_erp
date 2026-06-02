@@ -36,6 +36,9 @@
     .st-hit { color: #1b7a32; font-weight: 700; }
     .st-miss { color: #9aa0a6; }
     .st-target { font-weight: 700; }
+    .st-explain { background: #FFF9DB !important; border: 1px solid #E8CF68 !important;
+        border-left: 4px solid #E8CF68 !important; color: #5A4410 !important; }
+    .st-explain li { margin-bottom: 4px; }
 
     @media print {
         .st-noprint { display: none !important; }
@@ -72,10 +75,17 @@
                     <button type="button" class="btn btn-primary" onclick="window.print()" style="margin-top:22px;">Print this list</button>
                 </div>
             </div>
-            <p class="text-muted" style="margin-top:4px;">
-                Target = the store's own historical take for the exact hours each person was clocked in (last 12 weeks),
-                fair-shared by how many staff were on the floor, plus a 10% stretch. The 2% sales bonus pays on every dollar above it.
-            </p>
+        </div>
+    </div>
+
+    <div class="box st-explain">
+        <div class="box-body">
+            <p style="margin:0 0 6px; font-weight:700;">How to read this</p>
+            <ul style="margin:0; padding-left:18px; line-height:1.6;">
+                <li><strong>Target</strong> is set by <em>when</em> someone works, not a flat number. For the exact hours they were on the clock, we look at what the store normally takes in those time slots (last 12 weeks), split it fairly between everyone working those hours, and add a 10% stretch. Busy Friday night → higher bar; slow Tuesday morning → lower bar.</li>
+                <li><strong>Pace</strong> is their sales vs. that target. 100%+ (green) means they beat it.</li>
+                <li><strong>Sales bonus</strong> is 2% of every dollar they ring <em>above</em> target. <strong>This starts June 15</strong> — the figures here are projections so you can solidify the targets first. No bonus is paid yet.</li>
+            </ul>
         </div>
     </div>
 
@@ -91,7 +101,7 @@
                             <th class="text-right">Sales so far</th>
                             <th class="text-right">Target</th>
                             <th class="text-right">Pace</th>
-                            <th class="text-right">Bonus on track</th>
+                            <th class="text-right">Sales bonus<div class="st-sub" style="text-transform:none; letter-spacing:0;">projected · from Jun 15</div></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -119,7 +129,13 @@
                                         <span class="text-muted">—</span>
                                     @endif
                                 </td>
-                                <td class="text-right">@if($r->goal_bonus > 0)<strong>${{ number_format($r->goal_bonus, 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>
+                                <td class="text-right">
+                                    @if($r->goal_bonus > 0)
+                                        @if($r->sales_bonus_live)<strong>${{ number_format($r->goal_bonus, 2) }}</strong>@else<span class="text-muted">${{ number_format($r->goal_bonus, 2) }}</span>@endif
+                                    @else
+                                        <span class="text-muted">—</span>
+                                    @endif
+                                </td>
                             </tr>
                         @empty
                             <tr><td colspan="6" class="text-center text-muted">No one clocked in at this store for the selected period.</td></tr>

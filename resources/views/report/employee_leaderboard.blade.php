@@ -204,7 +204,6 @@
                                     <th class="text-right">Pace</th>
                                     <th class="text-right">Items listed</th>
                                     <th class="text-right">Sales from listed</th>
-                                    <th class="text-right">Bonus</th>
                                     <th class="text-right lb-comm">Listing pay</th>
                                     <th class="text-right lb-soon">Sales bonus</th>
                                     <th class="text-right">Total commission</th>
@@ -251,17 +250,25 @@
                                         @endphp
                                         <td class="text-right">@if($r->priced_count > 0)<a href="#" class="lb-listed-link" {!! $listedAttrs !!}>{{ number_format($r->priced_count, 0) }}</a>@else <span class="text-muted">—</span>@endif</td>
                                         <td class="text-right">@if($r->priced_revenue > 0)<a href="#" class="lb-listed-link" {!! $listedAttrs !!}>${{ number_format($r->priced_revenue, 0) }}</a>@else ${{ number_format($r->priced_revenue, 0) }}@endif</td>
-                                        <td class="text-right">@if($r->goal_bonus > 0)${{ number_format($r->goal_bonus, 2) }}@else <span class="text-muted">—</span>@endif</td>
                                         <td class="text-right lb-comm">
                                             @if($r->barcoding_commission > 0)${{ number_format($r->barcoding_commission, 2) }}@else <span class="text-muted">—</span>@endif
                                         </td>
                                         <td class="text-right lb-soon">
-                                            <span class="lb-soon-badge">Coming Jun 15</span>
+                                            @if($r->sales_bonus_live)
+                                                @if($r->goal_bonus > 0)${{ number_format($r->goal_bonus, 2) }}@else <span class="text-muted">—</span>@endif
+                                            @else
+                                                @if($r->goal_bonus > 0)
+                                                    <span class="text-muted">${{ number_format($r->goal_bonus, 2) }}</span>
+                                                    <div class="lb-sub">projected · from Jun 15</div>
+                                                @else
+                                                    <span class="lb-soon-badge">From Jun 15</span>
+                                                @endif
+                                            @endif
                                         </td>
                                         <td class="text-right">@if($r->total_commission > 0)<strong>${{ number_format($r->total_commission, 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>
                                     </tr>
                                 @empty
-                                    <tr><td colspan="13" class="text-center text-muted">No activity in this window.</td></tr>
+                                    <tr><td colspan="12" class="text-center text-muted">No activity in this window.</td></tr>
                                 @endforelse
                             </tbody>
                         </table>
