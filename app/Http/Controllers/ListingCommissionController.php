@@ -37,6 +37,12 @@ class ListingCommissionController extends Controller
         'acessories & novelties', 'pictures & posters',
     ];
 
+    // Owners / back-office don't get paid listing commission (matches the
+    // Employee Leaderboard's exclude_owners). Their accounts are also the
+    // creator-of-record for bulk/imported listings, so leaving them in inflates
+    // counts (e.g. Jon showed 48k listed items). Excluded by first name.
+    private $excludedOwnerFirstNames = ['jon', 'jonathan', 'sarah', 'sohaib', 'fatteen'];
+
     public function index(Request $request)
     {
         $from = $this->normalizeFrom($request->input('from'));
@@ -175,6 +181,7 @@ class ListingCommissionController extends Controller
             ->whereBetween('t.transaction_date', [$start, $end])
             ->whereNotNull('p.created_by')
             ->where('p.created_at', '>=', $start)
+            ->whereNotIn(DB::raw('LOWER(u.first_name)'), $this->excludedOwnerFirstNames)
             ->where(function ($qq) {
                 foreach ($this->excludedCategoryPatterns as $pat) {
                     $qq->where(DB::raw('LOWER(c.name)'), 'NOT LIKE', $pat)
@@ -213,11 +220,13 @@ class ListingCommissionController extends Controller
         $start = $from . ' 00:00:00';
 
         return DB::table('products as p')
+            ->join('users as u', 'u.id', '=', 'p.created_by')
             ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
             ->leftJoin('categories as sc', 'p.sub_category_id', '=', 'sc.id')
             ->where('p.business_id', $businessId)
             ->whereNotNull('p.created_by')
             ->where('p.created_at', '>=', $start)
+            ->whereNotIn(DB::raw('LOWER(u.first_name)'), $this->excludedOwnerFirstNames)
             ->where(function ($qq) {
                 foreach ($this->excludedCategoryPatterns as $pat) {
                     $qq->where(DB::raw('LOWER(c.name)'), 'NOT LIKE', $pat)
