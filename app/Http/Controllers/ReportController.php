@@ -11019,6 +11019,11 @@ class ReportController extends Controller
                 $start = $now->copy()->startOfWeek();
                 $end = $now->copy()->endOfDay();
                 break;
+            case 'last_week':
+                // Previous full calendar week (Mon–Sun) — the Week-2 baseline window.
+                $start = $now->copy()->subWeek()->startOfWeek();
+                $end = $now->copy()->subWeek()->endOfWeek();
+                break;
             case 'last_7':
                 $start = $now->copy()->subDays(6)->startOfDay();
                 $end = $now->copy()->endOfDay();

@@ -18,6 +18,7 @@
                         <option value="today" @if($period==='today') selected @endif>Today</option>
                         <option value="yesterday" @if($period==='yesterday') selected @endif>Yesterday</option>
                         <option value="this_week" @if($period==='this_week') selected @endif>This week</option>
+                        <option value="last_week" @if($period==='last_week') selected @endif>Previous week</option>
                         <option value="last_7" @if($period==='last_7') selected @endif>Last 7 days</option>
                         <option value="this_month" @if($period==='this_month') selected @endif>This month</option>
                         <option value="last_30" @if($period==='last_30') selected @endif>Last 30 days</option>

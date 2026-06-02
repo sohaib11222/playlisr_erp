@@ -72,6 +72,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/home/purchase-payment-dues', 'HomeController@getPurchasePaymentDues');
     Route::get('/home/sales-payment-dues', 'HomeController@getSalesPaymentDues');
     Route::get('/home/shift-progress', 'HomeController@getShiftProgress')->name('home.shiftProgress');
+    // Store Lead daily performance dashboard (revenue vs target, LFL, tx count, ATV).
+    Route::get('/store-performance', 'StorePerformanceController@index')->name('store-performance');
+    Route::get('/store-performance/data', 'StorePerformanceController@data')->name('store-performance.data');
     Route::post('/attach-medias-to-model', 'HomeController@attachMediasToGivenModel')->name('attach.medias.to.model');
     Route::get('/calendar', 'HomeController@getCalendar')->name('calendar');
     
