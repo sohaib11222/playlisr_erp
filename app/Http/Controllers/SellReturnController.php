@@ -14,6 +14,7 @@ use App\Utils\ProductUtil;
 use App\Utils\TransactionUtil;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Yajra\DataTables\Facades\DataTables;
 use App\TransactionSellLine;
 use App\Events\TransactionPaymentDeleted;
@@ -250,8 +251,13 @@ class SellReturnController extends Controller
             $sell->sell_lines[$key]->formatted_qty = $this->transactionUtil->num_f($value->quantity, false, null, true);
         }
 
+        // Week 4 cash-control rollout: every return needs manager approval. If
+        // the person on the screen is already a manager they self-authorize;
+        // otherwise the return form asks for a manager's credentials inline.
+        $is_manager = ChooseRoleController::userCanManager(auth()->user());
+
         return view('sell_return.add')
-            ->with(compact('sell'));
+            ->with(compact('sell', 'is_manager'));
     }
 
     /**
@@ -269,14 +275,49 @@ class SellReturnController extends Controller
         try {
             $input = $request->except('_token');
 
-            if (!empty($input['products'])) {
-                $business_id = $request->session()->get('user.business_id');
+            $business_id = $request->session()->get('user.business_id');
 
+            // ---- Manager approval gate (Week 4 cash-control rollout) ----
+            // Returns and exchanges require manager approval, no exceptions.
+            // A manager either self-authorizes (they're the logged-in user) or
+            // signs off inline with their credentials. A reason is always
+            // required. This is a hard gate on the *return* path only — it does
+            // not touch the POS sell flow, so the till can never be blocked.
+            $reason = trim((string) $request->input('approval_reason', ''));
+            if (mb_strlen($reason) < 4) {
+                return ['success' => 0,
+                        'msg' => 'A reason for the return is required (at least 4 characters).'];
+            }
+
+            $cashier = auth()->user();
+            if (ChooseRoleController::userCanManager($cashier)) {
+                $approver = $cashier;
+            } else {
+                $mgr_username = trim((string) $request->input('manager_username', ''));
+                $mgr_password = (string) $request->input('manager_password', '');
+                if ($mgr_username === '' || $mgr_password === '') {
+                    return ['success' => 0,
+                            'msg' => 'Manager approval is required. A manager must enter their username and password.'];
+                }
+                $approver = User::where('business_id', $business_id)
+                    ->where('username', $mgr_username)
+                    ->where('status', 'active')
+                    ->first();
+                if (empty($approver)
+                    || !Hash::check($mgr_password, $approver->password)
+                    || !ChooseRoleController::userCanManager($approver)) {
+                    return ['success' => 0,
+                            'msg' => 'Manager approval failed. Check the manager username and password.'];
+                }
+            }
+            // -------------------------------------------------------------
+
+            if (!empty($input['products'])) {
                 //Check if subscribed or not
                 if (!$this->moduleUtil->isSubscribed($business_id)) {
                     return $this->moduleUtil->expiredResponse(action('SellReturnController@index'));
                 }
-        
+
                 $user_id = $request->session()->get('user.id');
 
                 DB::beginTransaction();
@@ -284,8 +325,12 @@ class SellReturnController extends Controller
                 $sell_return =  $this->transactionUtil->addSellReturn($input, $business_id, $user_id);
 
                 $receipt = $this->receiptContent($business_id, $sell_return->location_id, $sell_return->id);
-                
+
                 DB::commit();
+
+                // Audit the approval after the return is safely committed. A
+                // logging failure must never roll back or break the return.
+                $this->logReturnApproval($business_id, $sell_return, $cashier, $approver, $reason);
 
                 $output = ['success' => 1,
                             'msg' => __('lang_v1.success'),
@@ -308,6 +353,60 @@ class SellReturnController extends Controller
         }
 
         return $output;
+    }
+
+    /**
+     * Append a manager-approval record to the per-business audit log.
+     *
+     * Stored as a JSON file under storage/app (no migration — same pattern as
+     * the other admin audit logs Sarah uses) and surfaced read-only at
+     * /admin/return-approvals. Best-effort: any failure here is swallowed so it
+     * can never affect the return that already committed.
+     */
+    private function logReturnApproval($business_id, $sell_return, $cashier, $approver, $reason)
+    {
+        try {
+            $path = storage_path('app/return-approvals-' . $business_id . '.json');
+
+            $log = [];
+            if (is_file($path)) {
+                $decoded = json_decode((string) file_get_contents($path), true);
+                if (is_array($decoded)) {
+                    $log = $decoded;
+                }
+            }
+
+            $name = function ($u) {
+                if (empty($u)) return null;
+                return trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
+            };
+
+            $log[] = [
+                'return_id'     => $sell_return->id,
+                'invoice_no'    => $sell_return->invoice_no,
+                'parent_id'     => $sell_return->return_parent_id,
+                'location_id'   => $sell_return->location_id,
+                'amount'        => (float) $sell_return->final_total,
+                'cashier_id'    => $cashier ? $cashier->id : null,
+                'cashier_name'  => $name($cashier),
+                'approver_id'   => $approver ? $approver->id : null,
+                'approver_name' => $name($approver),
+                'self_approved' => ($cashier && $approver && $cashier->id === $approver->id),
+                'reason'        => mb_substr($reason, 0, 500),
+                'created_at'    => now()->toDateTimeString(),
+            ];
+
+            // Keep the file bounded so it can't grow without limit.
+            if (count($log) > 5000) {
+                $log = array_slice($log, -5000);
+            }
+
+            $tmp = $path . '.tmp';
+            file_put_contents($tmp, json_encode($log, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            @rename($tmp, $path);
+        } catch (\Throwable $e) {
+            \Log::warning('return approval log failed: ' . $e->getMessage());
+        }
     }
 
     /**

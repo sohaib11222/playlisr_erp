@@ -15,6 +15,9 @@
 
 	{!! Form::open(['url' => action('SellReturnController@store'), 'method' => 'post', 'id' => 'sell_return_form' ]) !!}
 	{!! Form::hidden('transaction_id', $sell->id); !!}
+	{!! Form::hidden('approval_reason', null, ['id' => 'approval_reason_input']); !!}
+	{!! Form::hidden('manager_username', null, ['id' => 'manager_username_input']); !!}
+	{!! Form::hidden('manager_password', null, ['id' => 'manager_password_input']); !!}
 	<div class="box box-solid">
 		<div class="box-header">
 			<h3 class="box-title">@lang('lang_v1.parent_sale')</h3>
@@ -160,7 +163,41 @@
 			<br>
 			<div class="row">
 				<div class="col-sm-12">
-					<button type="submit" class="btn btn-primary pull-right">@lang('messages.save')</button>
+					<button type="button" id="open_return_approval" class="btn btn-primary pull-right">@lang('messages.save')</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- Manager approval gate: returns require a reason and manager sign-off. -->
+	<div class="modal fade" id="return_approval_modal" tabindex="-1" role="dialog">
+		<div class="modal-dialog" role="document">
+			<div class="modal-content">
+				<div class="modal-header">
+					<button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+					<h4 class="modal-title">@lang('lang_v1.sell_return') - Manager approval</h4>
+				</div>
+				<div class="modal-body">
+					<div class="form-group">
+						<label for="return_approval_reason">Reason for return / exchange:*</label>
+						<textarea id="return_approval_reason" class="form-control" rows="2" maxlength="500"></textarea>
+					</div>
+					@if(empty($is_manager))
+					<p class="text-muted">A manager must approve this return. Enter manager credentials to authorize.</p>
+					<div class="form-group">
+						<label for="return_manager_username">Manager username:*</label>
+						<input type="text" id="return_manager_username" class="form-control" autocomplete="off">
+					</div>
+					<div class="form-group">
+						<label for="return_manager_password">Manager password:*</label>
+						<input type="password" id="return_manager_password" class="form-control" autocomplete="off">
+					</div>
+					@endif
+					<div id="return_approval_error" class="text-danger" style="display:none;"></div>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-default" data-dismiss="modal">@lang('messages.cancel')</button>
+					<button type="button" class="btn btn-primary" id="confirm_return_approval">Approve and process return</button>
 				</div>
 			</div>
 		</div>
@@ -176,6 +213,50 @@
 	$(document).ready(function() {
 		$('form#sell_return_form').validate();
 		update_sell_return_total();
+
+		// Manager approval gate. The visible Save button no longer submits;
+		// it validates the return, then opens the approval modal. The modal's
+		// confirm button copies the reason (+ manager credentials when the
+		// cashier isn't a manager) into the form and submits it, which fires
+		// the existing AJAX submitHandler in sell_return.js.
+		$('#open_return_approval').click(function() {
+			if (!$('form#sell_return_form').valid()) {
+				return;
+			}
+			var any_qty = false;
+			$('table#sell_return_table input.return_qty').each(function() {
+				if (__read_number($(this)) > 0) {
+					any_qty = true;
+				}
+			});
+			if (!any_qty) {
+				toastr.error('Enter a return quantity for at least one item.');
+				return;
+			}
+			$('#return_approval_error').hide().text('');
+			$('#return_approval_modal').modal('show');
+		});
+
+		$('#confirm_return_approval').click(function() {
+			var reason = $.trim($('#return_approval_reason').val() || '');
+			if (reason.length < 4) {
+				$('#return_approval_error').text('Please enter a reason (at least 4 characters).').show();
+				return;
+			}
+			@if(empty($is_manager))
+			var mgr_username = $.trim($('#return_manager_username').val() || '');
+			var mgr_password = $('#return_manager_password').val() || '';
+			if (mgr_username === '' || mgr_password === '') {
+				$('#return_approval_error').text('A manager username and password are required.').show();
+				return;
+			}
+			$('#manager_username_input').val(mgr_username);
+			$('#manager_password_input').val(mgr_password);
+			@endif
+			$('#approval_reason_input').val(reason);
+			$('#return_approval_modal').modal('hide');
+			$('form#sell_return_form').submit();
+		});
 		//Date picker
 		// $('#transaction_date').datepicker({
 		//     autoclose: true,

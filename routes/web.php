@@ -740,6 +740,13 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/cost-price-rules', 'CostPriceRulesController@index');
     Route::post('/admin/cost-price-rules/run', 'CostPriceRulesController@run');
 
+    // Listing commissions owed to staff for items they listed. Derived live
+    // from products.created_by + users.cmmsn_percent × sell price; "paid" is
+    // tracked in storage/app/listing-commission-payouts.json (no migration).
+    Route::get('/admin/listing-commissions', 'ListingCommissionController@index');
+    Route::post('/admin/listing-commissions/mark-paid', 'ListingCommissionController@markPaid');
+    Route::post('/admin/listing-commissions/undo-payout', 'ListingCommissionController@undoPayout');
+
     // One-shot cleanup: historical xlsx import wrote some transactions with
     // future dates (typos / no-year rows defaulting to 2026). Rewrites them
     // to the 1st of the month encoded in the import source slug.
@@ -858,6 +865,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/pos-overrides', 'PosPriceOverrideController@index');
     Route::post('/admin/pos-overrides/setup', 'PosPriceOverrideController@setup');
     Route::post('/admin/pos-overrides/fix-sticker', 'PosPriceOverrideController@fixSticker');
+
+    // Read-only audit log of manager-approved returns/exchanges. Returns now
+    // require manager sign-off (gate lives in SellReturnController@store); this
+    // surfaces who returned what, who approved it, and why.
+    Route::get('/admin/return-approvals', 'ReturnApprovalController@index');
 
     // Cashier-side "quick receive at the till" + its audit log. When the
     // customer brings a record that the system says is out of stock, the
