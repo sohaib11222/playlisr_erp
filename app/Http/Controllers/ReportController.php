@@ -11237,15 +11237,6 @@ class ReportController extends Controller
             ->get()
             ->keyBy('created_by');
 
-        // Items priced in the window per user (products created).
-        $priced = \DB::table('products')
-            ->where('business_id', $business_id)
-            ->whereBetween('created_at', [$start, $end])
-            ->selectRaw('created_by, COUNT(*) as priced_count')
-            ->groupBy('created_by')
-            ->get()
-            ->keyBy('created_by');
-
         // Revenue from items priced by the user, sold in this window.
         $priced_rev_q = \DB::table('transaction_sell_lines as tsl')
             ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
@@ -11259,7 +11250,7 @@ class ReportController extends Controller
             $priced_rev_q->where('t.location_id', $location_id);
         }
         $priced_rev = $priced_rev_q
-            ->selectRaw('p.created_by, COALESCE(SUM(tsl.quantity * tsl.unit_price_inc_tax), 0) as priced_revenue')
+            ->selectRaw('p.created_by, COALESCE(SUM(tsl.quantity * tsl.unit_price_inc_tax), 0) as priced_revenue, COALESCE(SUM(tsl.quantity), 0) as priced_sold_count')
             ->groupBy('p.created_by')
             ->get()
             ->keyBy('created_by');
@@ -11300,7 +11291,6 @@ class ReportController extends Controller
         // Merge keys from every side.
         $user_ids = collect($tx_agg->keys())
             ->merge($items_agg->keys())
-            ->merge($priced->keys())
             ->merge($priced_rev->keys())
             ->merge($commission->keys())
             ->unique()
@@ -11329,7 +11319,7 @@ class ReportController extends Controller
 
         $user_ids = $user_ids->filter(fn ($uid) => $users->has($uid))->values();
 
-        $rows = $user_ids->map(function ($uid) use ($tx_agg, $items_agg, $priced, $priced_rev, $users, $hours_raw, $commission, $goal_baseline, $goal_baseline_prior, $with_commission) {
+        $rows = $user_ids->map(function ($uid) use ($tx_agg, $items_agg, $priced_rev, $users, $hours_raw, $commission, $goal_baseline, $goal_baseline_prior, $with_commission) {
             $u = $users->get($uid);
             $t = $tx_agg->get($uid);
             $name = trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
@@ -11339,7 +11329,9 @@ class ReportController extends Controller
             $non_whatnot_revenue = max($revenue - $whatnot_revenue, 0);
             $items_rung = (int) optional($items_agg->get($uid))->items_rung ?? 0;
             $tx_count = (int) ($t->nw_tx_count ?? 0); // non-whatnot transactions
-            $priced_count = (int) optional($priced->get($uid))->priced_count ?? 0;
+            // Units from items this person listed that SOLD in the window — pairs
+            // with priced_revenue so the count and the dollars describe the same set.
+            $priced_count = (int) optional($priced_rev->get($uid))->priced_sold_count ?? 0;
 
             // Minimum 0.25h when normalizing so very short shifts don't make
             // absurd per-hour numbers; no register activity => null (UI "—").
