@@ -11255,10 +11255,13 @@ class ReportController extends Controller
         $hours_raw = $hours_q
             ->selectRaw("user_id,
                 SUM(
-                    TIMESTAMPDIFF(
-                        SECOND,
-                        GREATEST(created_at, ?),
-                        LEAST(COALESCE(closed_at, NOW()), ?)
+                    LEAST(
+                        TIMESTAMPDIFF(
+                            SECOND,
+                            GREATEST(created_at, ?),
+                            LEAST(COALESCE(closed_at, NOW()), ?)
+                        ),
+                        21600
                     )
                 ) / 3600.0 as hours")
             ->addBinding($start, 'select')
