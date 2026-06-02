@@ -11046,24 +11046,69 @@ class ReportController extends Controller
         $start_str = $start->toDateTimeString();
         $end_str = $end->toDateTimeString();
 
-        $rows = $this->buildLeaderboardRows($business_id, $start_str, $end_str);
+        // Goal uplift % (month-over-month push). Editable inline, stored in a
+        // JSON file (no migration). Each employee's goal = their sales in the
+        // equivalent window one month earlier, raised by this %.
+        $uplift_pct = $this->getLeaderboardUplift($business_id);
+        $opts = ['with_commission' => true, 'exclude_owners' => true, 'uplift_pct' => $uplift_pct];
 
-        // Optional column sort (URL params). Default is the builder's own order
-        // (revenue per hour desc, nulls last) — which preserves gold/silver/bronze.
-        $sort = $request->input('sort');
-        $dir  = strtolower($request->input('dir', 'desc')) === 'asc' ? 'asc' : 'desc';
-        $sort_keys = ['employee','revenue','non_whatnot_revenue','whatnot_revenue','tx_count','items_rung','avg_tx','priced_count','priced_revenue','hours_worked','revenue_per_hour','items_per_hour','tx_per_hour'];
-        if (in_array($sort, $sort_keys)) {
-            $rows = $rows->sortBy(function ($r) use ($sort) {
-                $v = $r->$sort ?? null;
-                // Null values sort after real values regardless of direction
-                return $v;
-            }, SORT_REGULAR, $dir === 'desc')->values();
+        // Both stores side by side: one ranked table per active location.
+        // Whatnot is excluded from every revenue total here (Sarah 2026-06-02).
+        $locations = \DB::table('business_locations')
+            ->where('business_id', $business_id)
+            ->where('is_active', 1)
+            ->orderBy('id')
+            ->pluck('name', 'id');
+
+        $stores = [];
+        foreach ($locations as $lid => $lname) {
+            $stores[] = [
+                'id'   => $lid,
+                'name' => $lname,
+                'rows' => $this->buildLeaderboardRows($business_id, $start_str, $end_str, null, $lid, $opts),
+            ];
         }
 
         return view('report.employee_leaderboard')->with(compact(
-            'rows', 'period', 'start', 'end', 'sort', 'dir'
+            'stores', 'period', 'start', 'end', 'uplift_pct'
         ));
+    }
+
+    /** Path to the per-business leaderboard settings JSON (no migration). */
+    private function leaderboardSettingsPath($business_id)
+    {
+        return storage_path('app/leaderboard-settings-' . $business_id . '.json');
+    }
+
+    /** Month-over-month goal uplift %, default 10. */
+    private function getLeaderboardUplift($business_id)
+    {
+        $path = $this->leaderboardSettingsPath($business_id);
+        if (is_file($path)) {
+            try {
+                $data = json_decode((string) file_get_contents($path), true) ?: [];
+            } catch (\Throwable $e) {
+                $data = [];
+            }
+            if (isset($data['uplift_pct'])) {
+                return (float) $data['uplift_pct'];
+            }
+        }
+        return 10.0;
+    }
+
+    /** Save the goal uplift % (admin-only). */
+    public function saveLeaderboardSettings(Request $request)
+    {
+        $this->ensureAdminOnlyReportAccess();
+        $business_id = $request->session()->get('user.business_id');
+        $uplift = (float) $request->input('uplift_pct', 10);
+        $uplift = max(0, min(1000, $uplift));
+        file_put_contents(
+            $this->leaderboardSettingsPath($business_id),
+            json_encode(['uplift_pct' => $uplift], JSON_PRETTY_PRINT)
+        );
+        return redirect()->back()->with('status', 'Goal uplift updated to ' . rtrim(rtrim(number_format($uplift, 2), '0'), '.') . '%.');
     }
 
     /**
@@ -11072,13 +11117,16 @@ class ReportController extends Controller
      * Returned as a keyed-by-user Collection so it can power both the full
      * page and the dashboard top-3 widget.
      */
-    public function buildLeaderboardRows($business_id, $start, $end, $limit = null)
+    public function buildLeaderboardRows($business_id, $start, $end, $limit = null, $location_id = null, array $opts = [])
     {
+        $with_commission = !empty($opts['with_commission']);
+        $exclude_owners  = !empty($opts['exclude_owners']);
+        $uplift_pct      = isset($opts['uplift_pct']) ? (float) $opts['uplift_pct'] : 0.0;
+
         // Hours worked per user in this window, derived from cash_registers.
-        // A register's "shift" is created_at -> closed_at (or NOW() if still open).
-        // We clip each shift to the [start, end] window so partial overlaps are
-        // counted correctly when the window itself is short.
-        $hours_raw = \DB::table('cash_registers')
+        // A register's "shift" is created_at -> closed_at (or NOW() if still open),
+        // clipped to [start, end]. Optionally scoped to a single location.
+        $hours_q = \DB::table('cash_registers')
             ->where('business_id', $business_id)
             ->whereNotNull('user_id')
             ->where(function ($q) use ($start, $end) {
@@ -11087,7 +11135,11 @@ class ReportController extends Controller
                       $q2->where('closed_at', '>=', $start)
                          ->orWhereNull('closed_at');
                   });
-            })
+            });
+        if (!empty($location_id)) {
+            $hours_q->where('location_id', $location_id);
+        }
+        $hours_raw = $hours_q
             ->selectRaw("user_id,
                 SUM(
                     TIMESTAMPDIFF(
@@ -11101,42 +11153,46 @@ class ReportController extends Controller
             ->groupBy('user_id')
             ->get()
             ->keyBy('user_id');
-        // Sales side — revenue + tx count + line count per employee (created_by)
-        $sales = \DB::table('transactions as t')
-            ->leftJoin('transaction_sell_lines as tsl', 'tsl.transaction_id', '=', 't.id')
-            ->leftJoin('users as u', 't.created_by', '=', 'u.id')
+
+        // Transaction aggregates per employee (created_by). Whatnot is kept
+        // separate so every "total" can exclude it (Sarah 2026-06-02).
+        $tx_q = \DB::table('transactions as t')
             ->where('t.business_id', $business_id)
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
             ->whereNull('t.import_source')
-            ->whereBetween('t.transaction_date', [$start, $end])
+            ->whereBetween('t.transaction_date', [$start, $end]);
+        if (!empty($location_id)) {
+            $tx_q->where('t.location_id', $location_id);
+        }
+        $tx_agg = $tx_q
             ->selectRaw("t.created_by,
-                CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as employee,
-                COUNT(DISTINCT t.id) as tx_count,
-                COALESCE(SUM(tsl.quantity), 0) as items_rung,
-                COALESCE(SUM(t.final_total) / GREATEST(COUNT(DISTINCT t.id), 1), 0) as avg_tx,
-                COALESCE((SELECT SUM(t2.final_total) FROM transactions t2
-                    WHERE t2.business_id = t.business_id
-                      AND t2.type = 'sell' AND t2.status = 'final'
-                      AND t2.import_source IS NULL
-                      AND t2.created_by = t.created_by
-                      AND t2.transaction_date BETWEEN ? AND ?), 0) as revenue,
-                COALESCE((SELECT SUM(t2.final_total) FROM transactions t2
-                    WHERE t2.business_id = t.business_id
-                      AND t2.type = 'sell' AND t2.status = 'final'
-                      AND t2.import_source IS NULL
-                      AND t2.created_by = t.created_by
-                      AND t2.is_whatnot = 1
-                      AND t2.transaction_date BETWEEN ? AND ?), 0) as whatnot_revenue")
-            ->addBinding($start, 'select')
-            ->addBinding($end, 'select')
-            ->addBinding($start, 'select')
-            ->addBinding($end, 'select')
-            ->groupBy('t.created_by', 'u.first_name', 'u.last_name')
+                COALESCE(SUM(t.final_total), 0) as revenue,
+                COALESCE(SUM(CASE WHEN t.is_whatnot = 1 THEN t.final_total ELSE 0 END), 0) as whatnot_revenue,
+                SUM(CASE WHEN t.is_whatnot = 1 THEN 0 ELSE 1 END) as nw_tx_count")
+            ->groupBy('t.created_by')
             ->get()
             ->keyBy('created_by');
 
-        // Items priced in the window per user
+        // Items rung per employee — non-whatnot lines only.
+        $items_q = \DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereNull('t.import_source')
+            ->where(function ($q) { $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); })
+            ->whereBetween('t.transaction_date', [$start, $end]);
+        if (!empty($location_id)) {
+            $items_q->where('t.location_id', $location_id);
+        }
+        $items_agg = $items_q
+            ->selectRaw('t.created_by, COALESCE(SUM(tsl.quantity), 0) as items_rung')
+            ->groupBy('t.created_by')
+            ->get()
+            ->keyBy('created_by');
+
+        // Items priced in the window per user (products created).
         $priced = \DB::table('products')
             ->where('business_id', $business_id)
             ->whereBetween('created_at', [$start, $end])
@@ -11145,54 +11201,109 @@ class ReportController extends Controller
             ->get()
             ->keyBy('created_by');
 
-        // Revenue from items priced by the user, sold in this window
-        $priced_rev = \DB::table('transaction_sell_lines as tsl')
+        // Revenue from items priced by the user, sold in this window.
+        $priced_rev_q = \DB::table('transaction_sell_lines as tsl')
             ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
             ->join('products as p', 'tsl.product_id', '=', 'p.id')
             ->where('t.business_id', $business_id)
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
             ->whereNull('t.import_source')
-            ->whereBetween('t.transaction_date', [$start, $end])
+            ->whereBetween('t.transaction_date', [$start, $end]);
+        if (!empty($location_id)) {
+            $priced_rev_q->where('t.location_id', $location_id);
+        }
+        $priced_rev = $priced_rev_q
             ->selectRaw('p.created_by, COALESCE(SUM(tsl.quantity * tsl.unit_price_inc_tax), 0) as priced_revenue')
             ->groupBy('p.created_by')
             ->get()
             ->keyBy('created_by');
 
-        // Merge keys from both sides (someone may have priced items but not sold any, and vice versa)
-        $user_ids = collect($sales->keys())->merge($priced->keys())->merge($priced_rev->keys())->unique()->values();
+        // Barcoding commission (2% of used items each person barcoded that sold)
+        // and the goal baseline (their sales in the same window one month ago)
+        // are only computed for the report, not the lightweight home widget.
+        $commission = collect();
+        $goal_baseline = collect();
+        if ($with_commission) {
+            $commission = $this->barcodingCommissionByUser($business_id, $start, $end, $location_id);
 
-        // Lookup user names, filtered to ACTIVE employees only — Sarah asked
-        // to stop showing terminated / inactive accounts on the leaderboard
-        // (they clutter the rankings and are sometimes historical data from
-        // people who aren't with the company anymore). SoftDeletes on the
-        // model handles deleted_at automatically.
-        $users = \App\User::whereIn('id', $user_ids)
-            ->where('status', 'active')
-            ->get()
-            ->keyBy('id');
+            $b_start = \Carbon::parse($start)->subMonthNoOverflow()->toDateTimeString();
+            $b_end   = \Carbon::parse($end)->subMonthNoOverflow()->toDateTimeString();
+            $bq = \DB::table('transactions as t')
+                ->where('t.business_id', $business_id)
+                ->where('t.type', 'sell')
+                ->where('t.status', 'final')
+                ->whereNull('t.import_source')
+                ->where(function ($q) { $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); })
+                ->whereBetween('t.transaction_date', [$b_start, $b_end]);
+            if (!empty($location_id)) {
+                $bq->where('t.location_id', $location_id);
+            }
+            $goal_baseline = $bq
+                ->selectRaw('t.created_by, COALESCE(SUM(t.final_total), 0) as base_sales')
+                ->groupBy('t.created_by')
+                ->get()
+                ->keyBy('created_by');
+        }
 
-        // Drop any user_ids that aren't active. Their sales/pricing still
-        // happened and still count toward business-wide totals elsewhere —
-        // but they don't deserve a row on the per-employee leaderboard.
+        // Merge keys from every side.
+        $user_ids = collect($tx_agg->keys())
+            ->merge($items_agg->keys())
+            ->merge($priced->keys())
+            ->merge($priced_rev->keys())
+            ->merge($commission->keys())
+            ->unique()
+            ->values();
+
+        // ACTIVE employees only (terminated accounts clutter rankings). When
+        // requested, also drop owners/back-office (Jon/Sarah, Sohaib, Fatteen)
+        // so the report shows the sales floor only (Sarah 2026-06-02).
+        $users_q = \App\User::whereIn('id', $user_ids)->where('status', 'active');
+        if ($exclude_owners) {
+            $excluded_first = ['jon', 'jonathan', 'sarah', 'sohaib', 'fatteen'];
+            $users_q->whereNotIn(\DB::raw('LOWER(first_name)'), $excluded_first)
+                    ->where(function ($q) {
+                        $q->whereNull('email')->orWhere('email', '!=', 'sarah@nivessa.com');
+                    });
+        }
+        $users = $users_q->get()->keyBy('id');
+
         $user_ids = $user_ids->filter(fn ($uid) => $users->has($uid))->values();
 
-        $rows = $user_ids->map(function ($uid) use ($sales, $priced, $priced_rev, $users, $hours_raw) {
+        $rows = $user_ids->map(function ($uid) use ($tx_agg, $items_agg, $priced, $priced_rev, $users, $hours_raw, $commission, $goal_baseline, $with_commission, $uplift_pct) {
             $u = $users->get($uid);
-            $s = $sales->get($uid);
-            $name = $s->employee ?? trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
+            $t = $tx_agg->get($uid);
+            $name = trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
             $hours = (float) (optional($hours_raw->get($uid))->hours ?? 0);
-            $revenue = (float) ($s->revenue ?? 0);
-            $whatnot_revenue = (float) ($s->whatnot_revenue ?? 0);
+            $revenue = (float) ($t->revenue ?? 0);
+            $whatnot_revenue = (float) ($t->whatnot_revenue ?? 0);
             $non_whatnot_revenue = max($revenue - $whatnot_revenue, 0);
-            $items_rung = (int) ($s->items_rung ?? 0);
-            $tx_count = (int) ($s->tx_count ?? 0);
+            $items_rung = (int) optional($items_agg->get($uid))->items_rung ?? 0;
+            $tx_count = (int) ($t->nw_tx_count ?? 0); // non-whatnot transactions
             $priced_count = (int) optional($priced->get($uid))->priced_count ?? 0;
 
-            // Use a minimum of 0.25h (15 min) when normalizing so very short
-            // shifts don't produce absurd per-hour numbers. Users with no
-            // register activity return null per-hour metrics (UI renders "—").
+            // Minimum 0.25h when normalizing so very short shifts don't make
+            // absurd per-hour numbers; no register activity => null (UI "—").
             $hr_eff = $hours >= 0.25 ? $hours : null;
+
+            $barcoding_commission = (float) optional($commission->get($uid))->commission ?? 0;
+
+            // Goal = sales one month ago in the same window, raised by the
+            // uplift %. Bonus = 2% of sales above goal once they clear it.
+            $goal = null;
+            $goal_hit = false;
+            $goal_bonus = 0.0;
+            if ($with_commission) {
+                $base = (float) optional($goal_baseline->get($uid))->base_sales ?? 0;
+                if ($base > 0) {
+                    $goal = round($base * (1 + $uplift_pct / 100), 2);
+                    if ($non_whatnot_revenue >= $goal) {
+                        $goal_hit = true;
+                        $goal_bonus = round(($non_whatnot_revenue - $goal) * 0.02, 2);
+                    }
+                }
+            }
+            $total_commission = round($barcoding_commission + $goal_bonus, 2);
 
             return (object) [
                 'user_id' => $uid,
@@ -11202,17 +11313,23 @@ class ReportController extends Controller
                 'revenue' => $revenue,
                 'whatnot_revenue' => $whatnot_revenue,
                 'non_whatnot_revenue' => $non_whatnot_revenue,
-                'avg_tx' => (float) ($s->avg_tx ?? 0),
+                'avg_tx' => $tx_count > 0 ? $non_whatnot_revenue / $tx_count : 0.0,
                 'priced_count' => $priced_count,
                 'priced_revenue' => (float) optional($priced_rev->get($uid))->priced_revenue ?? 0,
                 'hours_worked' => $hours,
-                'revenue_per_hour' => $hr_eff ? $revenue / $hr_eff : null,
+                // Per-hour metrics rank on non-whatnot revenue (whatnot excluded).
+                'revenue_per_hour' => $hr_eff ? $non_whatnot_revenue / $hr_eff : null,
                 'items_per_hour'   => $hr_eff ? $items_rung / $hr_eff : null,
                 'tx_per_hour'      => $hr_eff ? $tx_count / $hr_eff : null,
                 'priced_per_hour'  => $hr_eff ? $priced_count / $hr_eff : null,
+                'barcoding_commission' => $barcoding_commission,
+                'goal' => $goal,
+                'goal_hit' => $goal_hit,
+                'goal_bonus' => $goal_bonus,
+                'total_commission' => $total_commission,
             ];
         })
-        // Primary sort: revenue per hour (null goes last). Secondary: raw revenue.
+        // Primary sort: revenue per hour (null goes last).
         ->sortBy(function ($r) { return $r->revenue_per_hour === null ? -1 : $r->revenue_per_hour; }, SORT_REGULAR, true)
         ->values();
 
@@ -11221,6 +11338,55 @@ class ReportController extends Controller
         }
 
         return $rows;
+    }
+
+    /**
+     * Barcoding commission per user: 2% of the gross on USED items the user
+     * barcoded (products.created_by) that sold in the window. Mirrors the
+     * established earnings rule — rollout-gated to 2026-05-15 with the same
+     * category exclusions as the /home earnings widget. Optionally scoped to
+     * the location where the sale happened.
+     */
+    private function barcodingCommissionByUser($business_id, $start, $end, $location_id = null)
+    {
+        $rollout = '2026-05-15 00:00:00';
+        $excludedCategoryPatterns = ['%sealed%', '%new vinyl%', '%new cd%', '%new cassette%'];
+        $excludedCategoryNames = [
+            'audio gear', 'record players', 'record player',
+            'trading cards', 'apparel', 'clothing', 'video games',
+            'gift items', 'toys', 'accessories & novelties',
+            'acessories & novelties', 'pictures & posters',
+        ];
+
+        $q = \DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+            ->join('products as p', 'tsl.product_id', '=', 'p.id')
+            ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
+            ->leftJoin('categories as sc', 'p.sub_category_id', '=', 'sc.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereNull('t.import_source')
+            ->whereBetween('t.transaction_date', [$start, $end])
+            ->whereNotNull('p.created_by')
+            ->where('p.created_at', '>=', $rollout)
+            ->where(function ($qq) use ($excludedCategoryPatterns, $excludedCategoryNames) {
+                foreach ($excludedCategoryPatterns as $pat) {
+                    $qq->where(\DB::raw('LOWER(c.name)'), 'NOT LIKE', $pat)
+                       ->where(\DB::raw('LOWER(COALESCE(sc.name, \'\'))'), 'NOT LIKE', $pat);
+                }
+                $qq->whereNotIn(\DB::raw('LOWER(TRIM(c.name))'), $excludedCategoryNames)
+                   ->whereNotIn(\DB::raw('LOWER(TRIM(COALESCE(sc.name, \'\')))'), $excludedCategoryNames);
+            });
+        if (!empty($location_id)) {
+            $q->where('t.location_id', $location_id);
+        }
+
+        return $q
+            ->selectRaw('p.created_by, ROUND(SUM(tsl.quantity * tsl.unit_price_inc_tax) * 0.02, 2) as commission')
+            ->groupBy('p.created_by')
+            ->get()
+            ->keyBy('created_by');
     }
 
     /**
