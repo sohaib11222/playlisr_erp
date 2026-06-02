@@ -26,7 +26,7 @@ class StorePerformanceController extends Controller
     // store dashboard. The Week-2 spec puts this in front of the Store Lead;
     // admins (owner + Sarah) always have access. Extend this list if Store
     // Leads use a differently-named role.
-    private $allowed_roles = ['Store Lead', 'Store Manager', 'Manager'];
+    private $allowed_roles = ['Store Lead'];
 
     public function __construct(BusinessUtil $businessUtil)
     {
