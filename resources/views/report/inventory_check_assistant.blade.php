@@ -714,6 +714,75 @@ HTML;
 /* Keep page content clear of the sticky nav bar. */
 body.ica-wizard-active { padding-bottom: 64px; }
 
+/* ---- Per-step control bar (status + mark done + notes) ---- */
+.ica-wizard-stepctl {
+    background: #f7f9fb;
+    border: 1px solid #e3e8ee;
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin: 0 0 12px;
+}
+.ica-wizard-stepctl-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.ica-wizard-stepctl-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+}
+.ica-wizard-stepctl-num {
+    flex: 0 0 auto;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: #cfd8e0;
+    color: #fff;
+    font-size: 12px; font-weight: 600;
+    display: inline-flex; align-items: center; justify-content: center;
+}
+.ica-wizard-stepctl-title {
+    font-weight: 600; color: #2c3e50;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ica-wizard-stepctl-todo { color: #999; font-size: 12px; }
+.ica-wizard-stepctl-done { color: #3a7a3a; font-size: 12px; font-weight: 600; }
+.ica-wizard-stepctl-skip { color: #b0883a; font-size: 12px; }
+.ica-wizard-stepctl-actions {
+    display: flex; align-items: center; gap: 4px; flex: 0 0 auto;
+}
+.ica-wizard-stepctl-notes { margin-top: 8px; }
+.ica-wizard-note-foot {
+    display: flex; align-items: center; gap: 10px; margin-top: 6px;
+}
+.ica-wizard-note-meta { color: #999; font-size: 12px; }
+
+/* Completed step collapses to a slim green bar; click header to peek. */
+.ica-wizard-collapsed > .ica-wizard-stepctl {
+    background: #eafaea;
+    border-color: #c3e0c3;
+    margin-bottom: 8px;
+    cursor: pointer;
+}
+.ica-wizard-collapsed > .ica-wizard-stepctl .ica-wizard-stepctl-num {
+    background: #5cb85c;
+}
+@media screen {
+    /* Hide everything in a collapsed slide except its control bar. */
+    .ica-wizard-collapsed > *:not(.ica-wizard-stepctl):not(summary) { display: none !important; }
+    .ica-wizard-collapsed.ica-wizard-peek > * { display: revert !important; }
+    .ica-wizard-collapsed > summary { display: none !important; }
+}
+.ica-wizard-collapsed > .ica-wizard-stepctl .ica-wizard-stepctl-head::after {
+    content: "▸";
+    color: #5cb85c;
+    margin-left: 4px;
+}
+.ica-wizard-peek > .ica-wizard-stepctl .ica-wizard-stepctl-head::after { content: "▾"; }
+
 .ica-mgrpicks-list { margin-bottom: 8px; }
 .ica-mgrpick-item {
     background: #fff2b3;

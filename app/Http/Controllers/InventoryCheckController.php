@@ -467,24 +467,33 @@ class InventoryCheckController extends Controller
         ]);
     }
 
-    /** Mark a wizard step done / skipped / reset for a store this week. */
+    /**
+     * Update a wizard step for a store this week — set/clear the done|skipped
+     * state and/or save a shared note. State and note are independent so one
+     * never clobbers the other.
+     */
     public function setWizardProgress(Request $request)
     {
         $request->validate([
             'store' => 'required|string|max:64',
             'step' => 'required|string|max:64',
-            'state' => 'required|in:done,skipped,reset',
+            'state' => 'nullable|in:done,skipped,reset',
+            'note' => 'nullable|string|max:1000',
         ]);
         $business_id = (int) $request->session()->get('user.business_id');
+        $store = (string) $request->input('store');
+        $step = (string) $request->input('step');
         $by = trim((auth()->user()->first_name ?? '') . ' ' . (auth()->user()->last_name ?? ''));
         if ($by === '') $by = 'Staff';
-        $steps = $this->inventoryCheckService->setWizardStep(
-            $business_id,
-            (string) $request->input('store'),
-            (string) $request->input('step'),
-            (string) $request->input('state'),
-            $by
-        );
+
+        $steps = $this->inventoryCheckService->getWizardWeekSteps($business_id, $store);
+        // Note is saved when the field is present (blank string clears it).
+        if ($request->has('note')) {
+            $steps = $this->inventoryCheckService->setWizardNote($business_id, $store, $step, (string) $request->input('note'), $by);
+        }
+        if ($request->filled('state')) {
+            $steps = $this->inventoryCheckService->setWizardStep($business_id, $store, $step, (string) $request->input('state'), $by);
+        }
         return response()->json([
             'success' => true,
             'week' => $this->inventoryCheckService->wizardWeekKey(),

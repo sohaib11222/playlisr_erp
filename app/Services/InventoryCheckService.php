@@ -1111,11 +1111,12 @@ class InventoryCheckService
     }
 
     /**
-     * Mark one step done / skipped / reset for a store this week. Returns the
-     * updated step map. Prunes weeks other than the current one so the file
-     * never grows unbounded.
+     * Merge fields into one step's record for a store this week, keeping any
+     * fields not being changed (so saving a note doesn't wipe done-state and
+     * vice-versa). Prunes stale weeks so the file never grows unbounded.
+     * Returns the updated step map for the store.
      */
-    public function setWizardStep(int $business_id, string $store, string $step, string $state, string $by = ''): array
+    protected function upsertWizardStep(int $business_id, string $store, string $step, array $fields): array
     {
         $all = $this->loadWizardProgress($business_id);
         $week = $this->wizardWeekKey();
@@ -1124,17 +1125,45 @@ class InventoryCheckService
         if (!isset($all[$week])) $all[$week] = [];
         if (!isset($all[$week][$store])) $all[$week][$store] = [];
 
-        if ($state === 'reset') {
+        $existing = $all[$week][$store][$step] ?? [];
+        $merged = array_merge($existing, $fields);
+        // If the step has no meaningful content left, drop it entirely.
+        $hasState = !empty($merged['state']);
+        $hasNote = isset($merged['note']) && trim((string) $merged['note']) !== '';
+        if (!$hasState && !$hasNote) {
             unset($all[$week][$store][$step]);
         } else {
-            $all[$week][$store][$step] = [
-                'state' => $state, // 'done' | 'skipped'
-                'by' => $by,
-                'at' => Carbon::now()->toIso8601String(),
-            ];
+            $all[$week][$store][$step] = $merged;
         }
         $this->saveWizardProgress($business_id, $all);
         return $all[$week][$store];
+    }
+
+    /** Mark one step done / skipped / reset for a store this week. */
+    public function setWizardStep(int $business_id, string $store, string $step, string $state, string $by = ''): array
+    {
+        if ($state === 'reset') {
+            // Clear the done/skipped flag but keep any note attached.
+            return $this->upsertWizardStep($business_id, $store, $step, [
+                'state' => null, 'by' => null, 'at' => null,
+            ]);
+        }
+        return $this->upsertWizardStep($business_id, $store, $step, [
+            'state' => $state, // 'done' | 'skipped'
+            'by' => $by,
+            'at' => Carbon::now()->toIso8601String(),
+        ]);
+    }
+
+    /** Save (or clear, when blank) the shared note on one step this week. */
+    public function setWizardNote(int $business_id, string $store, string $step, string $note, string $by = ''): array
+    {
+        $note = trim($note);
+        return $this->upsertWizardStep($business_id, $store, $step, [
+            'note' => $note,
+            'note_by' => $note === '' ? null : $by,
+            'note_at' => $note === '' ? null : Carbon::now()->toIso8601String(),
+        ]);
     }
 
     /**

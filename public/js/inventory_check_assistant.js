@@ -2590,6 +2590,7 @@
             if ($wizBar) $wizBar.style.display = (wizardBuilt && existing.length) ? '' : 'none';
             if ($wizDots) $wizDots.style.display = 'none';
             if ($wizLabel) $wizLabel.textContent = 'All steps (classic scroll)';
+            if (wizardBuilt) wizardDecorate(existing);
             return;
         }
         if ($wizDots) $wizDots.style.display = '';
@@ -2608,7 +2609,94 @@
             // <details> slides need to be open to show their content.
             if (isCur && x.el.tagName === 'DETAILS') x.el.open = true;
         });
+        wizardDecorate(existing);
         wizardRenderChrome(existing);
+    }
+
+    /**
+     * Inject / refresh the per-step control bar (status + Mark done / Reopen
+     * + Skip + shared note) at the top of each slide, and collapse completed
+     * steps to a slim green bar. Runs in both step and show-all modes.
+     */
+    function wizardDecorate(existing) {
+        existing.forEach((x, i) => {
+            const st = wizardProgress[x.slide.key] || {};
+            const isDone = st.state === 'done';
+            const isSkipped = st.state === 'skipped';
+            // Find / create the control bar as the slide's first child (after
+            // a <summary> for <details> slides so the disclosure still works).
+            let ctl = x.el.querySelector(':scope > .ica-wizard-stepctl');
+            if (!ctl) {
+                ctl = document.createElement('div');
+                ctl.className = 'ica-wizard-stepctl';
+                const summary = x.el.querySelector(':scope > summary');
+                if (summary) summary.insertAdjacentElement('afterend', ctl);
+                else x.el.insertBefore(ctl, x.el.firstChild);
+            }
+            ctl.dataset.wizkey = x.slide.key;
+            const num = i + 1;
+            const noteVal = typeof st.note === 'string' ? st.note : '';
+            const noteMeta = (noteVal && st.note_by)
+                ? 'last edit ' + escapeHtml(st.note_by) : '';
+            let badge = '<span class="ica-wizard-stepctl-todo">To do</span>';
+            if (isDone) badge = '<span class="ica-wizard-stepctl-done">✓ Done' + (st.by ? ' · ' + escapeHtml(st.by) : '') + '</span>';
+            else if (isSkipped) badge = '<span class="ica-wizard-stepctl-skip">Skipped this week</span>';
+            const skipBtn = (x.slide.importStep && !isDone && !isSkipped)
+                ? '<button type="button" class="btn btn-link btn-xs ica-wizard-ctl-skip">Skip this week</button>' : '';
+            const doneBtn = isDone
+                ? '<button type="button" class="btn btn-default btn-xs ica-wizard-ctl-reopen">Reopen</button>'
+                : '<button type="button" class="btn btn-success btn-xs ica-wizard-ctl-done">Mark step done</button>';
+            const noteCount = noteVal ? ' •' : '';
+            ctl.innerHTML =
+                '<div class="ica-wizard-stepctl-row">'
+                + '<span class="ica-wizard-stepctl-head">'
+                +   '<span class="ica-wizard-stepctl-num">' + num + '</span>'
+                +   '<span class="ica-wizard-stepctl-title">' + escapeHtml(x.slide.label) + '</span>'
+                +   badge
+                + '</span>'
+                + '<span class="ica-wizard-stepctl-actions">'
+                +   '<button type="button" class="btn btn-link btn-xs ica-wizard-ctl-notetoggle">' + (noteVal ? 'Note' + noteCount : 'Add note') + '</button>'
+                +   skipBtn
+                +   doneBtn
+                + '</span>'
+                + '</div>'
+                + '<div class="ica-wizard-stepctl-notes" style="display:none;">'
+                +   '<textarea class="form-control input-sm ica-wizard-note-input" rows="2" maxlength="1000" placeholder="Leave a note for the team — e.g. ordered 12, rest backordered…">' + escapeHtml(noteVal) + '</textarea>'
+                +   '<div class="ica-wizard-note-foot">'
+                +     '<button type="button" class="btn btn-primary btn-xs ica-wizard-note-save">Save note</button>'
+                +     '<span class="ica-wizard-note-meta">' + noteMeta + '</span>'
+                +   '</div>'
+                + '</div>';
+            // Collapse completed steps to the slim bar (keep current peekable).
+            x.el.classList.toggle('ica-wizard-collapsed', isDone);
+            if (!isDone) x.el.classList.remove('ica-wizard-peek');
+            // If there's a saved note, surface the box open so it's visible.
+            if (noteVal) {
+                const box = ctl.querySelector(':scope > .ica-wizard-stepctl-notes');
+                if (box) box.style.display = '';
+            }
+        });
+    }
+
+    function wizardSaveNote(key, note) {
+        const body = new URLSearchParams();
+        body.append('store', wizardStoreKey());
+        body.append('step', key);
+        body.append('note', note);
+        fetch(window.ICA_WIZARD_PROGRESS_URL, {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': window.ICA_CSRF || '',
+            },
+            credentials: 'same-origin',
+            body: body.toString(),
+        })
+            .then((r) => r.json())
+            .then((resp) => { if (resp && resp.steps) wizardProgress = resp.steps; wizardApply(); })
+            .catch((err) => console.error('[ICA] wizard note save failed', err));
     }
 
     function wizardRenderChrome(existing) {
@@ -2751,6 +2839,60 @@
     if ($wizDots) $wizDots.addEventListener('click', function (e) {
         const dot = e.target.closest('.ica-wizard-dot');
         if (dot && dot.dataset.wizkey) wizardGoToKey(dot.dataset.wizkey);
+    });
+
+    // Delegated handlers for the per-step control bars injected by
+    // wizardDecorate(). One listener on document covers every slide, including
+    // ones that get re-rendered by the lazy bucket pipeline.
+    document.addEventListener('click', function (e) {
+        const ctl = e.target.closest('.ica-wizard-stepctl');
+        if (!ctl || !ctl.dataset.wizkey) return;
+        const key = ctl.dataset.wizkey;
+        const stepMode = wizardIsCurrentMode() && wizardBuilt;
+        // Mark step done — collapse to green bar, advance in step mode.
+        if (e.target.closest('.ica-wizard-ctl-done')) {
+            wizardSetState(key, 'done');
+            if (stepMode && wizardCurrentKey === key) wizardAdvance();
+            return;
+        }
+        // Reopen a completed/skipped step.
+        if (e.target.closest('.ica-wizard-ctl-reopen')) {
+            wizardSetState(key, 'reset');
+            return;
+        }
+        // Skip this week (import steps only).
+        if (e.target.closest('.ica-wizard-ctl-skip')) {
+            wizardSetState(key, 'skipped');
+            if (stepMode && wizardCurrentKey === key) wizardAdvance();
+            return;
+        }
+        // Toggle the note box open/closed.
+        if (e.target.closest('.ica-wizard-ctl-notetoggle')) {
+            e.preventDefault();
+            const box = ctl.querySelector(':scope > .ica-wizard-stepctl-notes');
+            if (box) {
+                const showing = box.style.display !== 'none';
+                box.style.display = showing ? 'none' : '';
+                if (!showing) {
+                    const ta = box.querySelector('.ica-wizard-note-input');
+                    if (ta) ta.focus();
+                }
+            }
+            return;
+        }
+        // Save the shared note.
+        if (e.target.closest('.ica-wizard-note-save')) {
+            const ta = ctl.querySelector('.ica-wizard-note-input');
+            wizardSaveNote(key, ta ? ta.value : '');
+            return;
+        }
+        // Clicking the header of a collapsed (done) step peeks it open.
+        if (e.target.closest('.ica-wizard-stepctl-head')) {
+            const slide = ctl.parentElement;
+            if (slide && slide.classList.contains('ica-wizard-collapsed')) {
+                slide.classList.toggle('ica-wizard-peek');
+            }
+        }
     });
 
     // Expose the two hooks for the render pipeline (same IIFE scope).
