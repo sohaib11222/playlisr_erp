@@ -659,6 +659,16 @@
 
     {!! Form::close() !!}
 
+    {{-- Blocking overlay shown while products are being saved. Saving many rows
+         can take ~20s, so this reassures staff and prevents double-submits. --}}
+    <div id="mass_add_saving_overlay" style="display:none; position:fixed; inset:0; z-index:20000; background:rgba(0,0,0,0.55); align-items:center; justify-content:center;">
+        <div style="background:#fff; border-radius:8px; padding:28px 36px; text-align:center; max-width:420px; box-shadow:0 4px 24px rgba(0,0,0,0.3);">
+            <i class="fa fa-spinner fa-spin fa-3x" style="color:#28a745;"></i>
+            <h4 style="margin-top:18px; margin-bottom:6px;">Please wait — processing…</h4>
+            <p style="margin-bottom:0; color:#666;">Saving your products. This can take up to a minute for larger batches.<br><strong>Please don't click again or close this page.</strong></p>
+        </div>
+    </div>
+
     {{-- Fixed to viewport so it is not clipped by .responsive-table overflow or table cell overflow --}}
     <div id="mass-add-artist-floating-panel" class="mass-add-artist-floating-root" aria-hidden="true"></div>
 
@@ -1267,7 +1277,13 @@
         // Обработка клика по кнопке "Save All Products" с отладкой
         $('#save_all_products').on('click', function(e){
             e.preventDefault();  // Предотвращаем стандартную отправку формы
-                        
+
+            // Guard against double-submits: a save can take ~20s, and staff were
+            // re-clicking thinking the page had hung.
+            if (window.__massAddSubmitting) {
+                return false;
+            }
+
             // Clear previous error messages
             $('.error-message').remove();
             $('.is-invalid').removeClass('is-invalid');
@@ -1342,6 +1358,16 @@
                 data: formData,
                 processData: false,
                 contentType: false,
+                beforeSend: function() {
+                    window.__massAddSubmitting = true;
+                    $('#save_all_products, #save_and_send_to_purchase').prop('disabled', true);
+                    $('#mass_add_saving_overlay').css('display', 'flex');
+                },
+                complete: function() {
+                    window.__massAddSubmitting = false;
+                    $('#save_all_products, #save_and_send_to_purchase').prop('disabled', false);
+                    $('#mass_add_saving_overlay').hide();
+                },
                 success: function(response) {
                     if(response.success) {
                         toastr.success(response.msg);
@@ -1393,30 +1419,92 @@
                             }
                         }
                         
+                        // Make field keys human-readable for the popup. Known fields
+                        // get a friendly label; anything else is title-cased.
+                        const fieldLabels = {
+                            single_dsp_inc_tax: 'Selling Price',
+                            name: 'Product name',
+                            business_locations: 'Business location',
+                            category_id: 'Category',
+                            artist: 'Artist',
+                            stock: 'Stock quantity'
+                        };
+                        function humanizeField(fieldName) {
+                            if (!fieldName) return 'Field';
+                            if (fieldLabels[fieldName]) return fieldLabels[fieldName];
+                            return fieldName
+                                .replace(/_/g, ' ')
+                                .replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+                        }
+
+                        // Strip Laravel's ugly attribute path from the default message
+                        // (e.g. "The products.0.unit_price field is required.").
+                        function cleanMessage(msg, fieldName) {
+                            return String(msg).replace(/products\.\d+\.[a-z_]+/gi, humanizeField(fieldName).toLowerCase());
+                        }
+
+                        let rowErrors = [];
+
                         // Process each error
                         Object.keys(errors).forEach(function(key) {
                             // Extract product index and field name from the key (e.g., "products.0.name")
                             let parts = key.split('.');
                             let productIndex = parts[1];
                             let fieldName = parts[2];
-                            
+
                             // Add error message based on field type
                             if (fieldName === 'business_locations') {
                                 addError(`[name="products[${productIndex}][business_locations][]"]`, errors[key][0]);
                             } else {
                                 addError(`[name="products[${productIndex}][${fieldName}]"]`, errors[key][0]);
                             }
-                            
+
                             // Add to error messages array for toastr
                             errorMessages.push(errors[key][0]);
+
+                            rowErrors.push({
+                                row: parseInt(productIndex, 10),
+                                field: humanizeField(fieldName),
+                                msg: cleanMessage(errors[key][0], fieldName)
+                            });
                         });
-                        
-                        // Show all error messages in toastr
-                        // if (errorMessages.length > 0) {
-                        //     toastr.error(errorMessages.join('<br>'));
-                        // }
+
+                        // Build a clear popup that tells staff exactly which row /
+                        // field is wrong and what's missing.
+                        if (rowErrors.length > 0) {
+                            rowErrors.sort(function(a, b) { return a.row - b.row; });
+
+                            let html = '<div class="alert alert-danger" style="text-align:left; margin-bottom:0;">';
+                            html += '<p style="margin-bottom:8px;"><strong>Please fix the following before saving:</strong></p>';
+                            html += '<ul style="margin-bottom:0; padding-left:20px;">';
+                            rowErrors.forEach(function(item) {
+                                html += `<li><strong>Row ${item.row + 1} — ${item.field}:</strong> ${item.msg}</li>`;
+                            });
+                            html += '</ul></div>';
+
+                            swal({
+                                title: 'Some products are missing information',
+                                content: {
+                                    element: 'div',
+                                    attributes: { innerHTML: html }
+                                },
+                                icon: 'error',
+                                buttons: {
+                                    confirm: { text: 'Go fix it', className: 'btn btn-danger' }
+                                }
+                            });
+
+                            try { document.getElementById('error-audio').play(); } catch (e) {}
+
+                            // Scroll to the first invalid field so they can find it fast.
+                            let $firstError = $('.is-invalid').first();
+                            if ($firstError.length) {
+                                $('html, body').animate({ scrollTop: $firstError.offset().top - 120 }, 400);
+                            }
+                        }
                     } else {
                         toastr.error('An unexpected error occurred. Please try again.');
+                        try { document.getElementById('error-audio').play(); } catch (e) {}
                     }
                 }
             });
