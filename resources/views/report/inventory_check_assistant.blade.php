@@ -362,6 +362,35 @@ HTML;
         </div>
     </details>
 
+    {{-- ── Manual reorder reminder (non-music categories) ──────────────
+         The automated buckets above only cover vinyl/CD. These physical
+         categories are reordered by hand — Jon's "don't forget" list.
+         Static checklist; ticks aren't saved, it's a printable reminder. --}}
+    <div class="row">
+        <div class="col-md-12">
+            @component('components.widget', ['class' => 'box-warning', 'title' => "Don't forget to reorder — manual (non-music)"])
+            <p class="text-muted small">The buckets above only cover vinyl &amp; CDs. These categories are reordered by hand — tick as you go.</p>
+            <ul class="ica-manual-reorder">
+                @foreach([
+                    'Cassettes',
+                    'Magazines',
+                    'Books',
+                    'Posters',
+                    'Pokemon cards',
+                    'Sports cards',
+                    'Clothing',
+                    'Toys',
+                    'Keychains / stickers / pins',
+                    'Drinks &amp; snacks',
+                    'Audio equipment',
+                ] as $manualCat)
+                <li><label><input type="checkbox"> {!! $manualCat !!}</label></li>
+                @endforeach
+            </ul>
+            @endcomponent
+        </div>
+    </div>
+
     {{-- Saved sessions removed 2026-05-20 — Sarah didn't recognize the
          feature, never used. Backend routes + controller still exist so
          no migration needed; just dropped from the UI. --}}
@@ -578,6 +607,17 @@ HTML;
 .ica-tag.manager_pick { background: #fff2b3; color: #5a4410; font-weight: 600; }
 
 /* Manager picks admin */
+.ica-manual-reorder {
+    list-style: none;
+    padding: 0;
+    margin: 4px 0 0;
+    column-count: 3;
+    column-gap: 24px;
+}
+.ica-manual-reorder li { margin: 0 0 6px; break-inside: avoid; }
+.ica-manual-reorder label { font-weight: normal; margin: 0; cursor: pointer; }
+.ica-manual-reorder input[type="checkbox"] { margin-right: 6px; }
+@media (max-width: 768px) { .ica-manual-reorder { column-count: 1; } }
 .ica-mgrpicks-list { margin-bottom: 8px; }
 .ica-mgrpick-item {
     background: #fff2b3;
