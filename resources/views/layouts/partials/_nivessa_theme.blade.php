@@ -151,8 +151,15 @@
 	/* ---------- Sidebar (left nav) ---------- */
 	/* AdminLTE sidebar is dark navy by default. Shift to a Nivessa-flavored
 	   dark that coordinates with the near-black navbar. */
+	/* AdminLTE's skin rule (.skin-blue-light .main-sidebar) is more specific
+	   than a plain `body .main-sidebar`, so match its skin-class prefix to win
+	   the cascade — otherwise the sidebar stays the default navy. */
 	body .main-sidebar,
-	body .left-side {
+	body .left-side,
+	body[class*="skin-"] .main-sidebar,
+	body[class*="skin-"] .left-side,
+	body[class*="skin-"] .wrapper .main-sidebar,
+	body .sidebar {
 		background-color: #2E2420 !important;
 	}
 	body .sidebar-menu > li > a {
