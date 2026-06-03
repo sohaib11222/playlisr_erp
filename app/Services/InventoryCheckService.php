@@ -1059,6 +1059,84 @@ class InventoryCheckService
         return bin2hex(random_bytes(8));
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | Wizard step progress (step-by-step "Order for this week" flow)
+    |--------------------------------------------------------------------------
+    | Shared per-store checklist so Clyde / Jon / Ece (Hollywood) and Zak
+    | (Pico) don't redo each other's steps. Keyed by ISO week so it resets
+    | every Monday on its own. Plain JSON in storage/app — no migration,
+    | same pattern as manager picks. Structure:
+    |   { "2026-W23": { "hollywood_all": { "fast_oos": {state,by,at} } } }
+    */
+    protected function wizardProgressPath(int $business_id): string
+    {
+        return storage_path('app/ica-wizard-progress-' . $business_id . '.json');
+    }
+
+    /** ISO year-week, e.g. "2026-W23". Naturally rolls over Monday. */
+    public function wizardWeekKey(): string
+    {
+        return Carbon::now()->format('o-\WW');
+    }
+
+    public function loadWizardProgress(int $business_id): array
+    {
+        $path = $this->wizardProgressPath($business_id);
+        if (!is_file($path)) return [];
+        try {
+            $json = json_decode((string) file_get_contents($path), true);
+        } catch (\Throwable $e) {
+            return [];
+        }
+        return is_array($json) ? $json : [];
+    }
+
+    public function saveWizardProgress(int $business_id, array $data): void
+    {
+        $path = $this->wizardProgressPath($business_id);
+        $dir = dirname($path);
+        if (!is_dir($dir)) { @mkdir($dir, 0775, true); }
+        $tmp = $path . '.tmp';
+        file_put_contents($tmp, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        @rename($tmp, $path);
+    }
+
+    /** This week's step map for one store, e.g. { fast_oos: {state:'done',...} }. */
+    public function getWizardWeekSteps(int $business_id, string $store): array
+    {
+        $all = $this->loadWizardProgress($business_id);
+        $week = $this->wizardWeekKey();
+        return $all[$week][$store] ?? [];
+    }
+
+    /**
+     * Mark one step done / skipped / reset for a store this week. Returns the
+     * updated step map. Prunes weeks other than the current one so the file
+     * never grows unbounded.
+     */
+    public function setWizardStep(int $business_id, string $store, string $step, string $state, string $by = ''): array
+    {
+        $all = $this->loadWizardProgress($business_id);
+        $week = $this->wizardWeekKey();
+        // Drop stale weeks — the checklist only ever cares about "this week".
+        $all = array_filter($all, function ($k) use ($week) { return $k === $week; }, ARRAY_FILTER_USE_KEY);
+        if (!isset($all[$week])) $all[$week] = [];
+        if (!isset($all[$week][$store])) $all[$week][$store] = [];
+
+        if ($state === 'reset') {
+            unset($all[$week][$store][$step]);
+        } else {
+            $all[$week][$store][$step] = [
+                'state' => $state, // 'done' | 'skipped'
+                'by' => $by,
+                'at' => Carbon::now()->toIso8601String(),
+            ];
+        }
+        $this->saveWizardProgress($business_id, $all);
+        return $all[$week][$store];
+    }
+
     /**
      * Bucket: for each active manager pick, find a handful of low-stock
      * candidates matching the suggested category. Reason text credits

@@ -449,6 +449,50 @@ class InventoryCheckController extends Controller
     }
 
     /**
+     * Wizard step progress — shared per-store checklist for the step-by-step
+     * "Order for this week" flow. Resets weekly (ISO week key). GET returns
+     * this week's done/skipped map for one store.
+     */
+    public function wizardProgress(Request $request)
+    {
+        $business_id = (int) $request->session()->get('user.business_id');
+        $store = trim((string) $request->input('store', ''));
+        $steps = $store !== ''
+            ? $this->inventoryCheckService->getWizardWeekSteps($business_id, $store)
+            : [];
+        return response()->json([
+            'week' => $this->inventoryCheckService->wizardWeekKey(),
+            'store' => $store,
+            'steps' => (object) $steps,
+        ]);
+    }
+
+    /** Mark a wizard step done / skipped / reset for a store this week. */
+    public function setWizardProgress(Request $request)
+    {
+        $request->validate([
+            'store' => 'required|string|max:64',
+            'step' => 'required|string|max:64',
+            'state' => 'required|in:done,skipped,reset',
+        ]);
+        $business_id = (int) $request->session()->get('user.business_id');
+        $by = trim((auth()->user()->first_name ?? '') . ' ' . (auth()->user()->last_name ?? ''));
+        if ($by === '') $by = 'Staff';
+        $steps = $this->inventoryCheckService->setWizardStep(
+            $business_id,
+            (string) $request->input('store'),
+            (string) $request->input('step'),
+            (string) $request->input('state'),
+            $by
+        );
+        return response()->json([
+            'success' => true,
+            'week' => $this->inventoryCheckService->wizardWeekKey(),
+            'steps' => (object) $steps,
+        ]);
+    }
+
+    /**
      * Single endpoint returning the slow secondary buckets (chart picks,
      * long-OOS, hot-used, top-artist new releases). Page renders the
      * primary fast_oos + customer_wants first, then JS fires this to

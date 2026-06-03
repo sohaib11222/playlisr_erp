@@ -237,6 +237,19 @@ HTML;
         </div>
     </div>
 
+    {{-- ── Wizard progress / stepper (shown once a list is built) ──── --}}
+    <div class="row no-print" id="ica_wizard_bar" style="display:none;">
+        <div class="col-md-12">
+            <div class="ica-wizard-progress">
+                <div class="ica-wizard-progress-head">
+                    <span class="ica-wizard-step-label" id="ica_wizard_step_label">Step 1</span>
+                    <a href="#" id="ica_wizard_toggle" class="ica-wizard-toggle">Show all (classic scroll)</a>
+                </div>
+                <div class="ica-wizard-dots" id="ica_wizard_dots"></div>
+            </div>
+        </div>
+    </div>
+
     {{-- ── Buckets render target ─────────────────────────────────── --}}
     <div class="row">
         <div class="col-md-12" id="ica_buckets_root">
@@ -274,6 +287,14 @@ HTML;
                 </div>
             </div>
         </div>
+    </div>
+
+    {{-- ── Wizard nav (sticky footer; only in step-by-step mode) ────── --}}
+    <div class="ica-wizard-nav no-print" id="ica_wizard_nav" style="display:none;">
+        <button type="button" class="btn btn-default btn-sm" id="ica_wizard_back">&larr; Back</button>
+        <span class="ica-wizard-nav-center" id="ica_wizard_nav_center"></span>
+        <button type="button" class="btn btn-link btn-sm ica-wizard-skip" id="ica_wizard_skip">Skip this week</button>
+        <button type="button" class="btn btn-primary btn-sm" id="ica_wizard_done">Mark done &amp; next &rarr;</button>
     </div>
 
     {{-- ── More options (chart imports + inbox pull, collapsed by default) ── --}}
@@ -366,7 +387,7 @@ HTML;
          The automated buckets above only cover vinyl/CD. These physical
          categories are reordered by hand — Jon's "don't forget" list.
          Static checklist; ticks aren't saved, it's a printable reminder. --}}
-    <div class="row">
+    <div class="row" id="ica_manual_reorder_step">
         <div class="col-md-12">
             @component('components.widget', ['class' => 'box-warning', 'title' => "Don't forget to reorder — manual (non-music)"])
             <p class="text-muted small">The buckets above only cover vinyl &amp; CDs. These categories are reordered by hand — tick as you go.</p>
@@ -618,6 +639,81 @@ HTML;
 .ica-manual-reorder label { font-weight: normal; margin: 0; cursor: pointer; }
 .ica-manual-reorder input[type="checkbox"] { margin-right: 6px; }
 @media (max-width: 768px) { .ica-manual-reorder { column-count: 1; } }
+
+/* ── Step-by-step wizard ─────────────────────────────────────── */
+.ica-wizard-progress {
+    background: #fff;
+    border: 1px solid #e3e3e3;
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 14px;
+}
+.ica-wizard-progress-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+.ica-wizard-step-label { font-weight: 600; font-size: 14px; }
+.ica-wizard-toggle { font-size: 12px; }
+.ica-wizard-dots { display: flex; flex-wrap: wrap; gap: 6px; }
+.ica-wizard-dot {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border: 1px solid #ccc;
+    background: #f7f7f7;
+    color: #555;
+    border-radius: 14px;
+    padding: 3px 10px;
+    font-size: 11px;
+    cursor: pointer;
+    white-space: nowrap;
+    user-select: none;
+}
+.ica-wizard-dot .ica-wizard-dot-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: #ccc;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+}
+.ica-wizard-dot.is-current { border-color: #3c8dbc; background: #eaf4fb; color: #2c3e50; font-weight: 600; }
+.ica-wizard-dot.is-current .ica-wizard-dot-num { background: #3c8dbc; }
+.ica-wizard-dot.is-done { border-color: #c3e0c3; background: #eafaea; color: #3a7a3a; }
+.ica-wizard-dot.is-done .ica-wizard-dot-num { background: #5cb85c; }
+.ica-wizard-dot.is-skipped { border-color: #ddd; background: #f3f3f3; color: #999; }
+.ica-wizard-dot.is-skipped .ica-wizard-dot-num { background: #bbb; }
+
+/* Show only the current slide on screen; print restores everything. */
+@media screen {
+    .ica-wizard-hidden { display: none !important; }
+}
+/* A <details> slide shown as a wizard step: force it open, drop the toggle. */
+.ica-wizard-mode .ica-secondary-disclosure[open] > summary { list-style: none; }
+.ica-wizard-mode .ica-secondary-disclosure.ica-wizard-current > summary { pointer-events: none; }
+
+.ica-wizard-nav {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    z-index: 1030;
+    background: #fff;
+    border-top: 1px solid #ddd;
+    box-shadow: 0 -2px 6px rgba(0,0,0,0.08);
+    padding: 10px 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.ica-wizard-nav-center { flex: 1; text-align: center; color: #666; font-size: 13px; }
+.ica-wizard-nav .ica-wizard-skip { color: #999; }
+/* Keep page content clear of the sticky nav bar. */
+body.ica-wizard-active { padding-bottom: 64px; }
+
 .ica-mgrpicks-list { margin-bottom: 8px; }
 .ica-mgrpick-item {
     background: #fff2b3;
@@ -1091,6 +1187,7 @@ HTML;
     window.ICA_RUN_APPLE_URL = "{{ url('reports/inventory-check-assistant/run-apple-music') }}";
     window.ICA_SESSIONS_URL = "{{ action('InventoryCheckController@listSessions') }}";
     window.ICA_SESSIONS_STORE = "{{ action('InventoryCheckController@storeSession') }}";
+    window.ICA_WIZARD_PROGRESS_URL = "{{ action('InventoryCheckController@wizardProgress') }}";
     window.ICA_CSRF = "{{ csrf_token() }}";
 </script>
 <!-- Tesseract.js for browser-side OCR of Luminate PNG screenshots. v5

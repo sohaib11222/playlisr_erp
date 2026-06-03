@@ -54,6 +54,7 @@
         const fresh = tmp.firstElementChild;
         if (!fresh) return false;
         (cardWrap || existing).replaceWith(fresh);
+        wizardReapply(); // re-assert wizard visibility on the swapped-in card
         return true;
     }
 
@@ -643,6 +644,8 @@
             if (e.target && e.target.classList.contains('ica-row-check')) renderBucketTotals();
             if (e.target && e.target.classList.contains('ica-select-all')) renderBucketTotals();
         });
+        // Hand control to the step-by-step wizard (no-op in "Show all" mode).
+        wizardOnBucketsRendered();
     }
 
     // ── Category + Genre filter (client-side row hiding) ─────────────
@@ -2524,5 +2527,234 @@
     function cssEscape(s) {
         return String(s).replace(/"/g, '\\"');
     }
+
+    // ── Step-by-step wizard ──────────────────────────────────────────
+    // Presentation layer over the already-rendered buckets: shows one step
+    // at a time with a progress stepper, Back / Skip / Mark-done nav, and a
+    // shared per-store weekly checklist persisted server-side. Fully
+    // non-destructive — "Show all" drops back to the classic full scroll,
+    // and every bucket / handler keeps working untouched. Resets each Monday.
+    const WIZARD_SLIDES = [
+        { key: 'fast_oos',        label: 'Fast movers',  sel: () => $root.querySelector('.ica-step-card[data-step="1"]') },
+        { key: 'events_upcoming', label: 'Events',       sel: () => $root.querySelector('.ica-step-card[data-step="2"]') },
+        { key: 'apple_music_top', label: 'Apple Top 100', importStep: true, sel: () => $root.querySelector('.ica-step-card[data-step="3"]') },
+        { key: 'universal_top',   label: 'UMe Top',      importStep: true, sel: () => $root.querySelector('.ica-step-card[data-step="4"]') },
+        { key: 'street_pulse',    label: 'Street Pulse', importStep: true, sel: () => $root.querySelector('.ica-step-card[data-step="5"]') },
+        { key: 'other_lists',     label: 'Other lists',  sel: () => $root.querySelector('.ica-secondary-disclosure:not(.ica-frozen-disclosure)') },
+        { key: 'frozen_review',   label: "Frozen — don't reorder", sel: () => $root.querySelector('.ica-frozen-disclosure') },
+        { key: 'manual_nonmusic', label: 'Manual reorders', sel: () => document.getElementById('ica_manual_reorder_step') },
+        { key: 'place_order',     label: 'Place order',  sel: () => document.getElementById('ica_export_strip') },
+    ];
+
+    const $wizBar = document.getElementById('ica_wizard_bar');
+    const $wizNav = document.getElementById('ica_wizard_nav');
+    const $wizDots = document.getElementById('ica_wizard_dots');
+    const $wizLabel = document.getElementById('ica_wizard_step_label');
+    const $wizToggle = document.getElementById('ica_wizard_toggle');
+    const $wizBack = document.getElementById('ica_wizard_back');
+    const $wizSkip = document.getElementById('ica_wizard_skip');
+    const $wizDone = document.getElementById('ica_wizard_done');
+    const $wizCenter = document.getElementById('ica_wizard_nav_center');
+
+    let wizardMode = (function () {
+        try { return localStorage.getItem('ica_wizard_mode') || 'step'; } catch (_) { return 'step'; }
+    })();
+    let wizardProgress = {};     // { slideKey: {state:'done'|'skipped'} }
+    let wizardCurrentKey = null; // key of the slide on screen
+    let wizardBuilt = false;     // a list has been rendered at least once
+
+    function wizardStoreKey() {
+        return ($preset && $preset.value) ? $preset.value : 'default';
+    }
+
+    /** Slides whose DOM element currently exists, in canonical order. */
+    function wizardExistingSlides() {
+        return WIZARD_SLIDES.map((s) => ({ slide: s, el: s.sel() })).filter((x) => !!x.el);
+    }
+
+    function wizardIsCurrentMode() { return wizardMode === 'step'; }
+
+    function wizardApply() {
+        const existing = wizardExistingSlides();
+        if ($wizToggle) {
+            $wizToggle.textContent = wizardIsCurrentMode() ? 'Show all (classic scroll)' : 'Back to step-by-step';
+        }
+        if (!wizardIsCurrentMode() || !wizardBuilt || existing.length === 0) {
+            // Classic scroll — strip per-slide chrome, show everything.
+            existing.forEach((x) => { x.el.classList.remove('ica-wizard-hidden', 'ica-wizard-current'); });
+            document.body.classList.remove('ica-wizard-active');
+            if ($root) $root.classList.remove('ica-wizard-mode');
+            if ($wizNav) $wizNav.style.display = 'none';
+            // Keep the bar (toggle only) reachable once a list is built so the
+            // user can switch back into step-by-step; hide the dots/label.
+            if ($wizBar) $wizBar.style.display = (wizardBuilt && existing.length) ? '' : 'none';
+            if ($wizDots) $wizDots.style.display = 'none';
+            if ($wizLabel) $wizLabel.textContent = 'All steps (classic scroll)';
+            return;
+        }
+        if ($wizDots) $wizDots.style.display = '';
+        // Ensure currentKey points at an existing slide.
+        if (!existing.some((x) => x.slide.key === wizardCurrentKey)) {
+            wizardCurrentKey = existing[0].slide.key;
+        }
+        document.body.classList.add('ica-wizard-active');
+        if ($root) $root.classList.add('ica-wizard-mode');
+        if ($wizBar) $wizBar.style.display = '';
+        if ($wizNav) $wizNav.style.display = 'flex';
+        existing.forEach((x) => {
+            const isCur = x.slide.key === wizardCurrentKey;
+            x.el.classList.toggle('ica-wizard-hidden', !isCur);
+            x.el.classList.toggle('ica-wizard-current', isCur);
+            // <details> slides need to be open to show their content.
+            if (isCur && x.el.tagName === 'DETAILS') x.el.open = true;
+        });
+        wizardRenderChrome(existing);
+    }
+
+    function wizardRenderChrome(existing) {
+        const pos = existing.findIndex((x) => x.slide.key === wizardCurrentKey);
+        const total = existing.length;
+        const curIdx = pos < 0 ? 0 : pos;
+        const cur = existing[curIdx];
+        if ($wizLabel) {
+            const doneCount = existing.filter((x) => (wizardProgress[x.slide.key] || {}).state === 'done').length;
+            $wizLabel.textContent = 'Step ' + (curIdx + 1) + ' of ' + total + ' · ' + doneCount + ' done';
+        }
+        // Dots
+        if ($wizDots) {
+            $wizDots.innerHTML = existing.map((x, i) => {
+                const st = (wizardProgress[x.slide.key] || {}).state || '';
+                let cls = 'ica-wizard-dot';
+                if (x.slide.key === wizardCurrentKey) cls += ' is-current';
+                else if (st === 'done') cls += ' is-done';
+                else if (st === 'skipped') cls += ' is-skipped';
+                const mark = st === 'done' ? '✓' : (st === 'skipped' ? '–' : (i + 1));
+                return '<span class="' + cls + '" data-wizkey="' + x.slide.key + '">'
+                    + '<span class="ica-wizard-dot-num">' + mark + '</span>'
+                    + escapeHtml(x.slide.label) + '</span>';
+            }).join('');
+        }
+        // Nav buttons
+        if ($wizBack) $wizBack.disabled = (curIdx === 0);
+        const isLast = (curIdx === total - 1);
+        if ($wizDone) $wizDone.innerHTML = isLast ? 'Finish' : 'Mark done &amp; next →';
+        if ($wizSkip) $wizSkip.style.display = (cur && cur.slide.importStep) ? '' : 'none';
+        if ($wizCenter) {
+            const allDone = existing.every((x) => {
+                const st = (wizardProgress[x.slide.key] || {}).state;
+                return st === 'done' || st === 'skipped';
+            });
+            $wizCenter.textContent = allDone
+                ? 'All steps handled for this week ✓'
+                : (cur ? cur.slide.label : '');
+        }
+    }
+
+    function wizardGoToKey(key) {
+        wizardCurrentKey = key;
+        wizardApply();
+        const cur = WIZARD_SLIDES.find((s) => s.key === key);
+        const el = cur ? cur.sel() : null;
+        if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function wizardAdvance() {
+        const existing = wizardExistingSlides();
+        const pos = existing.findIndex((x) => x.slide.key === wizardCurrentKey);
+        if (pos >= 0 && pos < existing.length - 1) {
+            wizardGoToKey(existing[pos + 1].slide.key);
+        } else {
+            wizardApply(); // stay on last, refresh chrome
+        }
+    }
+
+    function wizardSetState(key, state) {
+        // Optimistic local update so the UI is instant.
+        if (state === 'reset') delete wizardProgress[key];
+        else wizardProgress[key] = { state: state };
+        const body = new URLSearchParams();
+        body.append('store', wizardStoreKey());
+        body.append('step', key);
+        body.append('state', state);
+        fetch(window.ICA_WIZARD_PROGRESS_URL, {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': window.ICA_CSRF || '',
+            },
+            credentials: 'same-origin',
+            body: body.toString(),
+        })
+            .then((r) => r.json())
+            .then((resp) => { if (resp && resp.steps) wizardProgress = resp.steps; wizardApply(); })
+            .catch((err) => console.error('[ICA] wizard save failed', err));
+    }
+
+    function wizardLoadProgress() {
+        if (!window.ICA_WIZARD_PROGRESS_URL) return;
+        fetch(window.ICA_WIZARD_PROGRESS_URL + '?store=' + encodeURIComponent(wizardStoreKey()), {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin',
+        })
+            .then((r) => r.json())
+            .then((resp) => {
+                wizardProgress = (resp && resp.steps) ? resp.steps : {};
+                // Resume on the first step that isn't done/skipped.
+                const existing = wizardExistingSlides();
+                const firstOpen = existing.find((x) => {
+                    const st = (wizardProgress[x.slide.key] || {}).state;
+                    return st !== 'done' && st !== 'skipped';
+                });
+                wizardCurrentKey = firstOpen ? firstOpen.slide.key
+                    : (existing[0] ? existing[0].slide.key : null);
+                wizardApply();
+            })
+            .catch((err) => { console.error('[ICA] wizard load failed', err); wizardApply(); });
+    }
+
+    // Called at the end of renderBuckets and after lazy re-renders.
+    function wizardOnBucketsRendered() {
+        wizardBuilt = true;
+        if (wizardIsCurrentMode()) wizardLoadProgress();
+        else wizardApply();
+    }
+    // Re-assert visibility after a single step card is replaced in place.
+    function wizardReapply() {
+        if (wizardBuilt) wizardApply();
+    }
+
+    if ($wizToggle) {
+        $wizToggle.addEventListener('click', function (e) {
+            e.preventDefault();
+            wizardMode = wizardIsCurrentMode() ? 'all' : 'step';
+            try { localStorage.setItem('ica_wizard_mode', wizardMode); } catch (_) {}
+            $wizToggle.textContent = wizardIsCurrentMode() ? 'Show all (classic scroll)' : 'Back to step-by-step';
+            if (wizardIsCurrentMode()) wizardLoadProgress();
+            else wizardApply();
+        });
+    }
+    if ($wizBack) $wizBack.addEventListener('click', function () {
+        const existing = wizardExistingSlides();
+        const pos = existing.findIndex((x) => x.slide.key === wizardCurrentKey);
+        if (pos > 0) wizardGoToKey(existing[pos - 1].slide.key);
+    });
+    if ($wizDone) $wizDone.addEventListener('click', function () {
+        wizardSetState(wizardCurrentKey, 'done');
+        wizardAdvance();
+    });
+    if ($wizSkip) $wizSkip.addEventListener('click', function () {
+        wizardSetState(wizardCurrentKey, 'skipped');
+        wizardAdvance();
+    });
+    if ($wizDots) $wizDots.addEventListener('click', function (e) {
+        const dot = e.target.closest('.ica-wizard-dot');
+        if (dot && dot.dataset.wizkey) wizardGoToKey(dot.dataset.wizkey);
+    });
+
+    // Expose the two hooks for the render pipeline (same IIFE scope).
+    window.__icaWizardOnRendered = wizardOnBucketsRendered;
+    window.__icaWizardReapply = wizardReapply;
 
 })();
