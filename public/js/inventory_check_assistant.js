@@ -32,10 +32,11 @@
     // losing the surrounding chrome.
     const STEP_CARDS_BY_KEY = {
         fast_oos:        { key: 'fast_oos',        step: 1, title: 'Fast moving — out of stock',  note: 'Prioritize A products (already filtered). <span class="ica-step-dont">Do NOT buy C products.</span>' },
-        events_upcoming: { key: 'events_upcoming', step: 2, title: 'Listening parties + big LA shows', note: 'Listening parties = events we host on nivessa.com. LA shows = arena / amphitheater / stadium tier only (Nicki Minaj / Rolling Stones level). Next 45 days.' },
-        apple_music_top: { key: 'apple_music_top', step: 3, title: 'Apple Music Top 100',          note: 'Trending Top 100 on Apple Music — make sure we carry the artists fans are streaming.' },
-        universal_top:   { key: 'universal_top',   step: 4, title: 'UMe / Universal Top',          note: 'This week\'s UMe Top 200 + new deliveries.' },
-        street_pulse:    { key: 'street_pulse',    step: 5, title: 'Street Pulse / Luminate chart', note: 'Luminate top sellers — the industry-wide chart.' },
+        abc_a_restock:   { key: 'abc_a_restock',   step: 2, title: 'A-class items to restock',     note: 'Your top-value titles (A class) that are running low. RSD-exclusive titles are filtered out — restock the everyday A-class first.' },
+        events_upcoming: { key: 'events_upcoming', step: 3, title: 'Listening parties + big LA shows', note: 'Listening parties = events we host on nivessa.com. LA shows = arena / amphitheater / stadium / mid-size venue. Next 45 days. Only events where we stock the artist are shown.' },
+        apple_music_top: { key: 'apple_music_top', step: 4, title: 'Apple Music Top 100',          note: 'Trending Top 100 on Apple Music — make sure we carry the artists fans are streaming.' },
+        universal_top:   { key: 'universal_top',   step: 5, title: 'UMe / Universal Top',          note: 'This week\'s UMe Top 200 + new deliveries.' },
+        street_pulse:    { key: 'street_pulse',    step: 6, title: 'Street Pulse / Luminate chart', note: 'Luminate top sellers — the industry-wide chart.' },
     };
 
     /**
@@ -138,7 +139,7 @@
                 </div>
                 <div class="ica-loading-meta">
                     First load takes 5-15 seconds — re-clicks are cached and instant.
-                    The other lists (charts, events, ABC, frozen, manager picks) load in the background after this finishes.
+                    The other lists (charts, events, ABC, frozen) load in the background after this finishes.
                 </div>
                 <div class="ica-loading-skeleton">
                     <div class="ica-skeleton-row"></div>
@@ -182,7 +183,6 @@
                 // history. None of them block the main page now (Sarah was
                 // stuck on "Building…" 2026-05-20).
                 lazyLoadEventsBucket();
-                lazyLoadAuxBucket('manager_picks', window.ICA_MGRPICKS_BUCKET_URL);
                 lazyLoadAuxBucket('ume_spotlights', window.ICA_UME_SPOT_URL);
                 lazyLoadAuxBucket('abc_a_restock', window.ICA_ABC_URL);
                 lazyLoadAuxBucket('frozen_inventory', window.ICA_FROZEN_URL);
@@ -209,7 +209,12 @@
         })
             .then((r) => r.json())
             .then((resp) => {
-                if (!resp || !resp.bucket) return;
+                if (!resp || !resp.bucket) {
+                    // Don't leave a permanent spinner — tell Sarah it came
+                    // back empty so "not loading" isn't ambiguous.
+                    if (bucketKey !== 'ume_spotlights') paintBucketError(bucketKey, 'empty response from server');
+                    return;
+                }
                 if (lastResult && lastResult.buckets) {
                     lastResult.buckets[bucketKey] = resp.bucket;
                 }
@@ -246,7 +251,10 @@
                 rebuildFilterOptions();
                 applyRowFilters();
             })
-            .catch((err) => console.error('[ICA] aux bucket lazy-load failed', bucketKey, err));
+            .catch((err) => {
+                console.error('[ICA] aux bucket lazy-load failed', bucketKey, err);
+                if (bucketKey !== 'ume_spotlights') paintBucketError(bucketKey, (err && err.message) || 'network error');
+            });
     }
 
     /**
@@ -568,15 +576,16 @@
         //   below the other secondary so it never crowds the buy flow.
         const stepCards = [
             { key: 'fast_oos',         step: 1, title: 'Fast moving — out of stock',  note: 'Prioritize A products (already filtered). <span class="ica-step-dont">Do NOT buy C products.</span>' },
-            { key: 'events_upcoming',  step: 2, title: 'Listening parties + big LA shows', note: 'Listening parties = events we host on nivessa.com. LA shows = arena / amphitheater / stadium tier only (Nicki Minaj / Rolling Stones level). Next 45 days.' },
-            { key: 'apple_music_top',  step: 3, title: 'Apple Music Top 100',          note: 'Trending Top 100 on Apple Music — make sure we carry the artists fans are streaming.' },
-            { key: 'universal_top',    step: 4, title: 'UMe / Universal Top',          note: 'This week\'s UMe Top 200 + new deliveries.' },
-            { key: 'street_pulse',     step: 5, title: 'Street Pulse / Luminate chart', note: 'Luminate top sellers — the industry-wide chart.' },
+            { key: 'abc_a_restock',    step: 2, title: 'A-class items to restock',     note: 'Your top-value titles (A class) that are running low. RSD-exclusive titles are filtered out — restock the everyday A-class first.' },
+            { key: 'events_upcoming',  step: 3, title: 'Listening parties + big LA shows', note: 'Listening parties = events we host on nivessa.com. LA shows = arena / amphitheater / stadium / mid-size venue. Next 45 days. Only events where we stock the artist are shown.' },
+            { key: 'apple_music_top',  step: 4, title: 'Apple Music Top 100',          note: 'Trending Top 100 on Apple Music — make sure we carry the artists fans are streaming.' },
+            { key: 'universal_top',    step: 5, title: 'UMe / Universal Top',          note: 'This week\'s UMe Top 200 + new deliveries.' },
+            { key: 'street_pulse',     step: 6, title: 'Street Pulse / Luminate chart', note: 'Luminate top sellers — the industry-wide chart.' },
         ];
         // 2026-05-27 Sarah: ume_spotlights pulled out of the secondary list —
         // it was duplicating the UMe vibe of STEP 4. Spotlights now render
         // as a "Curated UMe picks" subsection inside the STEP 4 card.
-        const secondary = ['top_artist_new_releases', 'manager_picks', 'customer_wants', 'abc_a_restock', 'long_oos_essentials', 'hot_used_oos'];
+        const secondary = ['top_artist_new_releases', 'customer_wants', 'long_oos_essentials', 'hot_used_oos'];
         const buckets = payload.buckets || {};
 
         let primaryHtml = '';
@@ -610,7 +619,7 @@
         if (secondaryHtml !== '') {
             html += '<details class="ica-secondary-disclosure">'
                 + '<summary><strong>Show the other reorder lists</strong> '
-                + '<small class="text-muted">(top-artist new releases, manager picks, customer wants, ABC restock, UMe spotlights — <span id="ica_secondary_count">' + secondaryItems + '</span> more items)</small></summary>'
+                + '<small class="text-muted">(top-artist new releases, customer wants, long out-of-stock, hot used — <span id="ica_secondary_count">' + secondaryItems + '</span> more items)</small></summary>'
                 + '<div class="ica-secondary-buckets">' + secondaryHtml + '</div>'
                 + '</details>';
         }
@@ -713,9 +722,88 @@
         if ($sum) {
             $sum.innerHTML = `<span><strong>${grandQty}</strong> units</span> · <span>order cost <strong>$${grandFormat(grandCost)}</strong></span>`;
         }
+        buildOrderPreview();
     }
     function grandFormat(n) {
         return Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    }
+
+    /**
+     * Build the plain-English "Your order list" preview shown on the final
+     * Place-order step: every ticked row across all buckets, grouped by the
+     * cheapest supplier for that title, with qty. This is the printable list
+     * Sarah asked for — it answers "what am I actually ordering, and from
+     * whom?" Rebuilt automatically whenever totals recompute (qty / checkbox
+     * changes), so it always mirrors the ticks above.
+     */
+    function buildOrderPreview() {
+        const host = document.getElementById('ica_order_preview');
+        if (!host) return;
+        const supLabels = {};
+        (window.ICA_KNOWN_SUPPLIERS || []).forEach((s) => { if (s && s.key) supLabels[s.key] = s.label || s.key; });
+        const groups = {};       // supplierKey -> { label, qty, cost, rows: [] }
+        const seen = {};         // de-dupe identical title rows across buckets
+        $root.querySelectorAll('.ica-bucket tr[data-row-key]').forEach((tr) => {
+            if (tr.style.display === 'none') return;
+            const cb = tr.querySelector('.ica-row-check');
+            if (cb && !cb.checked) return;
+            const qtyInput = tr.querySelector('.ica-qty-input');
+            const qty = qtyInput ? (parseInt(qtyInput.value, 10) || 0) : 0;
+            if (qty < 1) return;
+            const cells = tr.children;
+            const product = (cells[1] ? cells[1].textContent : '').trim();
+            const artist = (cells[2] ? cells[2].textContent : '').trim();
+            // Cheapest supplier = the cell flagged ica-supplier-best-cell.
+            let supKey = 'unassigned';
+            let unitPrice = null;
+            const bestCell = tr.querySelector('.ica-supplier-best-cell');
+            if (bestCell) {
+                supKey = bestCell.getAttribute('data-supplier') || 'unassigned';
+                const p = parseFloat(bestCell.getAttribute('data-price'));
+                if (Number.isFinite(p)) unitPrice = p;
+            } else {
+                const c = parseFloat(tr.getAttribute('data-cost'));
+                if (Number.isFinite(c) && c > 0) unitPrice = c;
+            }
+            const dedupeKey = supKey + '|' + artist + '|' + product;
+            if (seen[dedupeKey]) return;
+            seen[dedupeKey] = true;
+            const label = supKey === 'unassigned' ? 'No supplier matched yet' : (supLabels[supKey] || supKey);
+            if (!groups[supKey]) groups[supKey] = { label: label, qty: 0, cost: 0, rows: [] };
+            const lineCost = unitPrice !== null ? unitPrice * qty : null;
+            groups[supKey].qty += qty;
+            if (lineCost !== null) groups[supKey].cost += lineCost;
+            groups[supKey].rows.push({ product: product, artist: artist, qty: qty, unitPrice: unitPrice });
+        });
+
+        const keys = Object.keys(groups);
+        if (!keys.length) {
+            host.innerHTML = '<div class="ica-order-preview-empty">Nothing ticked yet. Tick the titles you want to order in the steps above and they\'ll show up here, grouped by supplier.</div>';
+            return;
+        }
+        // Real suppliers first (alpha), "unassigned" last.
+        keys.sort((a, b) => {
+            if (a === 'unassigned') return 1;
+            if (b === 'unassigned') return -1;
+            return groups[a].label.localeCompare(groups[b].label);
+        });
+        let html = '';
+        keys.forEach((k) => {
+            const g = groups[k];
+            const totTxt = g.cost > 0
+                ? `${g.qty} units · $${grandFormat(g.cost)}`
+                : `${g.qty} units`;
+            html += '<div class="ica-order-supplier">';
+            html += '<div class="ica-order-supplier-head"><span>' + escapeHtml(g.label) + '</span><span class="ica-order-supplier-tot">' + escapeHtml(totTxt) + '</span></div>';
+            html += '<table class="ica-order-table"><tbody>';
+            g.rows.forEach((r) => {
+                const name = (r.artist ? r.artist + ' — ' : '') + r.product;
+                const priceTxt = r.unitPrice !== null ? '$' + r.unitPrice.toFixed(2) + ' ea' : '';
+                html += '<tr><td class="ica-order-qty">' + r.qty + '×</td><td>' + escapeHtml(name) + '</td><td class="ica-order-price">' + escapeHtml(priceTxt) + '</td></tr>';
+            });
+            html += '</tbody></table></div>';
+        });
+        host.innerHTML = html;
     }
 
     function applyRowFilters() {
@@ -953,7 +1041,10 @@
     }
 
     function renderStepCard(card, bucket) {
-        const inner = renderBucketSection(card.key, bucket);
+        // 2026-06-03 Sarah: the events step is a heads-up reminder (the chip
+        // summary already aggregates "X units across Y titles"); the raw
+        // filter + table underneath was just noise, so drop it for events.
+        const inner = card.key === 'events_upcoming' ? '' : renderBucketSection(card.key, bucket);
         let extras = '';
         // 2026-05-27 Sarah: surface the bucket's `why` line inside the
         // step card so the live diagnostic (e.g. "Supplier feeds loaded:
@@ -998,6 +1089,20 @@
                     <p>No Apple Music chart data yet. Click below to fetch the latest Top 100.</p>
                     <button type="button" class="btn btn-primary btn-sm ica-empty-run-apple">
                         <i class="fa fa-bolt"></i> Run Apple Music pull now
+                    </button>
+                </div>`;
+        }
+        // UMe + Street Pulse charts are imported by hand (xlsx/paste/inbox).
+        // When there's nothing for this week, show a clear "import it here"
+        // prompt instead of a silent empty table (Sarah 2026-06-03).
+        if ((card.key === 'universal_top' || card.key === 'street_pulse') && bucket && !bucket.lazy && (!bucket.items || !bucket.items.length)) {
+            const modalTarget = card.key === 'universal_top' ? '#ica_ut_modal' : '#ica_sp_modal';
+            const chartName = card.key === 'universal_top' ? 'UMe / Universal' : 'Street Pulse / Luminate';
+            extras += `
+                <div class="ica-empty-cta">
+                    <p>No ${escapeHtml(chartName)} chart imported for this week yet. Import it to populate this step.</p>
+                    <button type="button" class="btn btn-primary btn-sm" data-toggle="modal" data-target="${modalTarget}">
+                        <i class="fa fa-upload"></i> Import this week's chart
                     </button>
                 </div>`;
         }
@@ -1120,41 +1225,50 @@
             });
         });
 
-        const listening = tagged.filter((e) => e.is_listening_party);
-        const others = tagged.filter((e) => e.is_popular_tm || e.is_anniversary);
+        // 2026-06-03 Sarah: only surface events where we actually stock the
+        // artist's records — hides indie live shows + small-time artists with
+        // no in-store matches. LA venue tier still includes mid-size rooms.
+        const hasStock = (e) => {
+            const agg = itemAgg[(e.name || '') + '|' + (e.date || '')];
+            return !!(agg && agg.qty > 0);
+        };
+        const listening = tagged.filter((e) => e.is_listening_party && hasStock(e));
+        const others = tagged.filter((e) => (e.is_popular_tm || e.is_anniversary) && hasStock(e));
 
+        const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         const eventChip = (e) => {
             const dateMd = (e.date || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
-            const dateDisplay = dateMd ? `${dateMd[2]}/${dateMd[3]}` : (e.date || '');
-            const locTxt = e.location ? ` · ${escapeHtml(e.location)}` : '';
+            let dateBadge = '<span class="ica-event-date-day">' + escapeHtml(e.date || 'TBD') + '</span>';
+            if (dateMd) {
+                const mo = MONTHS[parseInt(dateMd[2], 10) - 1] || dateMd[2];
+                const dy = parseInt(dateMd[3], 10);
+                dateBadge = `<span class="ica-event-date-mo">${mo}</span><span class="ica-event-date-day">${dy}</span>`;
+            }
+            const locTxt = e.location ? `<div class="ica-event-chip-loc">${escapeHtml(e.location)}</div>` : '';
             const annivBadge = e.is_anniversary ? ' <span class="ica-event-anniv">anniv</span>' : '';
             const k = (e.name || '') + '|' + (e.date || '');
             const agg = itemAgg[k] || { items: 0, qty: 0 };
-            let qtyLine;
-            if (agg.qty > 0) {
-                qtyLine = `<strong>${agg.qty}</strong> units suggested across ${agg.items} title${agg.items === 1 ? '' : 's'}`;
-            } else {
-                qtyLine = `<span class="text-muted">no in-store matches yet</span>`;
-            }
+            const qtyLine = `<strong>${agg.qty}</strong> units suggested across ${agg.items} title${agg.items === 1 ? '' : 's'}`;
             return `
                 <div class="ica-event-chip ${e.is_listening_party ? 'ica-event-listening' : 'ica-event-show'}">
-                    <div class="ica-event-chip-head">
-                        <strong>${escapeHtml(e.name || '(untitled)')}</strong>${annivBadge}
-                        <span class="ica-event-chip-date">${dateDisplay}${locTxt}</span>
+                    <div class="ica-event-date-badge">${dateBadge}</div>
+                    <div class="ica-event-chip-main">
+                        <div class="ica-event-chip-head"><strong>${escapeHtml(e.name || '(untitled)')}</strong>${annivBadge}</div>
+                        ${locTxt}
+                        <div class="ica-event-chip-qty">${qtyLine}</div>
                     </div>
-                    <div class="ica-event-chip-qty">${qtyLine}</div>
                 </div>`;
         };
         let html = '<div class="ica-event-summary">';
+        html += '<div class="ica-event-summary-head">Listening parties at Nivessa' + (listening.length ? ' (' + listening.length + ')' : '') + '</div>';
+        html += '<div class="ica-event-reminder">Did we order the stock for each listening party? Tick it off as you order.</div>';
         if (listening.length) {
-            html += '<div class="ica-event-summary-head">🎧 Listening parties at Nivessa (' + listening.length + ')</div>';
             html += '<div class="ica-event-chips">' + listening.map(eventChip).join('') + '</div>';
         } else {
-            html += '<div class="ica-event-summary-head">🎧 Listening parties at Nivessa</div>';
-            html += '<div class="ica-event-empty">No listening parties posted to nivessa.com/events in the next 45 days.</div>';
+            html += '<div class="ica-event-empty">No listening parties (that we stock) in the next 45 days.</div>';
         }
         if (others.length) {
-            html += '<div class="ica-event-summary-head">🎤 Big LA shows + artist moments (' + others.length + ')</div>';
+            html += '<div class="ica-event-summary-head">Big LA shows + artist moments (' + others.length + ')</div>';
             html += '<div class="ica-event-chips">' + others.map(eventChip).join('') + '</div>';
         }
         html += '</div>';
@@ -1201,7 +1315,7 @@
         // buckets so Sarah can see every supplier's price at a glance and
         // pick the cheapest. Inline chips dropped (now a column).
         const suppliers = (window.ICA_KNOWN_SUPPLIERS || []);
-        const showSupplierCols = suppliers.length > 0 && (key === 'fast_oos' || key === 'street_pulse' || key === 'universal_top' || key === 'apple_music_top' || key === 'top_artist_new_releases' || key === 'abc_a_restock' || key === 'long_oos_essentials' || key === 'hot_used_oos' || key === 'manager_picks' || key === 'customer_wants');
+        const showSupplierCols = suppliers.length > 0 && (key === 'fast_oos' || key === 'street_pulse' || key === 'universal_top' || key === 'apple_music_top' || key === 'top_artist_new_releases' || key === 'abc_a_restock' || key === 'long_oos_essentials' || key === 'hot_used_oos' || key === 'customer_wants');
         if (showSupplierCols) {
             suppliers.forEach((sup) => {
                 headParts.push(sortable(sup.label, 'number', 'Latest wholesale price for this title from ' + sup.label + '. Cheapest cell across the row is highlighted green.'));
@@ -1251,8 +1365,21 @@
                     <input type="number" class="form-control input-sm ica-frozen-days-custom" min="7" max="3650" value="${days}" style="${isCustom ? '' : 'display:none;'}" placeholder="days">
                 </div>`;
         }
+        let emptyHtml = `<div class="ica-bucket-empty">No items in this bucket${b.empty_reason ? ' (' + b.empty_reason.replace(/_/g, ' ') + ')' : ''}.</div>`;
+        // Customer wants only shows requests logged in the ERP's Customer
+        // Wants page (status = active, this store or all-stores). If it's
+        // empty it usually means requests aren't being entered here yet —
+        // point Sarah straight at the page to add / review them rather than
+        // leaving a bare "no items".
+        if (key === 'customer_wants' && (b.count || 0) === 0) {
+            const manageUrl = window.ICA_CUSTOMER_WANTS_URL || '';
+            const link = manageUrl
+                ? ` <a href="${escapeHtml(manageUrl)}" target="_blank" rel="noopener">Open the Customer Wants page</a> to add or review requests.`
+                : '';
+            emptyHtml = `<div class="ica-bucket-empty">No active customer requests logged for this store yet.${link}</div>`;
+        }
         const body = (b.count || 0) === 0
-            ? `<div class="ica-bucket-empty">No items in this bucket${b.empty_reason ? ' (' + b.empty_reason.replace(/_/g, ' ') + ')' : ''}.</div>`
+            ? emptyHtml
             : `<table class="table table-condensed table-striped ica-row-table"><thead><tr>${headRow}</tr></thead><tbody>${rows}</tbody></table>`;
 
         // Per-bucket cat/gen values, if any, must persist across re-renders.
@@ -1377,7 +1504,7 @@
             bucket === 'fast_oos' || bucket === 'street_pulse' || bucket === 'universal_top' ||
             bucket === 'apple_music_top' || bucket === 'top_artist_new_releases' ||
             bucket === 'abc_a_restock' || bucket === 'long_oos_essentials' ||
-            bucket === 'hot_used_oos' || bucket === 'manager_picks' || bucket === 'customer_wants'
+            bucket === 'hot_used_oos' || bucket === 'customer_wants'
         );
         let supplierCellsHtml = '';
         if (showSupplierCols) {
@@ -2071,7 +2198,7 @@
             // Priority order — items in higher-priority buckets get auto-
             // checked first until the running cost crosses the remaining
             // budget. Rows in lower-priority buckets get unchecked.
-            const priority = ['fast_oos', 'abc_a_restock', 'manager_picks', 'top_artist_new_releases', 'customer_wants', 'universal_top', 'street_pulse', 'apple_music_top', 'long_oos_essentials', 'events_upcoming', 'ume_spotlights', 'hot_used_oos'];
+            const priority = ['fast_oos', 'abc_a_restock', 'top_artist_new_releases', 'customer_wants', 'universal_top', 'street_pulse', 'apple_music_top', 'long_oos_essentials', 'events_upcoming', 'ume_spotlights', 'hot_used_oos'];
             let running = 0;
             let checkedCount = 0;
             const usedRows = new WeakSet();
@@ -2536,13 +2663,14 @@
     // and every bucket / handler keeps working untouched. Resets each Monday.
     const WIZARD_SLIDES = [
         { key: 'fast_oos',        label: 'Fast movers',  sel: () => $root.querySelector('.ica-step-card[data-step="1"]') },
-        { key: 'events_upcoming', label: 'Events',       sel: () => $root.querySelector('.ica-step-card[data-step="2"]') },
-        { key: 'apple_music_top', label: 'Apple Top 100', importStep: true, sel: () => $root.querySelector('.ica-step-card[data-step="3"]') },
-        { key: 'universal_top',   label: 'UMe Top',      importStep: true, sel: () => $root.querySelector('.ica-step-card[data-step="4"]') },
-        { key: 'street_pulse',    label: 'Street Pulse', importStep: true, sel: () => $root.querySelector('.ica-step-card[data-step="5"]') },
+        { key: 'abc_a_restock',   label: 'A-class restock', sel: () => $root.querySelector('.ica-step-card[data-step="2"]') },
+        { key: 'events_upcoming', label: 'Events',       sel: () => $root.querySelector('.ica-step-card[data-step="3"]') },
+        { key: 'apple_music_top', label: 'Apple Top 100', importStep: true, sel: () => $root.querySelector('.ica-step-card[data-step="4"]') },
+        { key: 'universal_top',   label: 'UMe Top',      importStep: true, sel: () => $root.querySelector('.ica-step-card[data-step="5"]') },
+        { key: 'street_pulse',    label: 'Street Pulse', importStep: true, sel: () => $root.querySelector('.ica-step-card[data-step="6"]') },
         { key: 'other_lists',     label: 'Other lists',  sel: () => $root.querySelector('.ica-secondary-disclosure:not(.ica-frozen-disclosure)') },
         { key: 'frozen_review',   label: "Frozen — don't reorder", sel: () => $root.querySelector('.ica-frozen-disclosure') },
-        { key: 'manual_nonmusic', label: 'Manual reorders', sel: () => document.getElementById('ica_manual_reorder_step') },
+        { key: 'manual_nonmusic', label: 'Other categories', sel: () => document.getElementById('ica_manual_reorder_step') },
         { key: 'place_order',     label: 'Place order',  sel: () => document.getElementById('ica_export_strip') },
     ];
 

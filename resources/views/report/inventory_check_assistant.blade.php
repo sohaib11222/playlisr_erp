@@ -269,7 +269,13 @@ HTML;
     <div class="row no-print">
         <div class="col-md-12">
             <div class="ica-order-footer" id="ica_export_strip" style="display:none;">
-                <div class="ica-order-footer-title">Place this order</div>
+                <div class="ica-order-footer-title">Your order list</div>
+                <p class="ica-order-footer-explain">
+                    This is everything you ticked across the steps above, grouped by supplier.
+                    Print it or copy it, then place the order with each supplier. Untick a row in
+                    any step to drop it from here.
+                </p>
+                <div id="ica_order_preview" class="ica-order-preview"></div>
                 <span class="ica-summary" id="ica_summary" style="display:none;">—</span>
                 <div class="ica-order-footer-actions">
                     <button type="button" class="btn btn-warning" id="ica_autofill_budget" title="Pre-check rows in priority order until this week's remaining budget is used up">
@@ -301,7 +307,7 @@ HTML;
     {{-- 2026-05-27 Sarah: moved below the buckets so the main flow isn't
          interrupted by chart-import / supplier / inbox plumbing. --}}
     <details class="ica-more-options no-print">
-        <summary>More options — chart imports, inbox auto-fetch, supplier feeds, manager picks</summary>
+        <summary>More options — chart imports, inbox auto-fetch, supplier feeds</summary>
         <div class="row" id="ica_freshness_banner" style="margin-top:8px;">
             <div class="col-md-6">
                 @component('components.widget', ['class' => 'box-solid', 'title' => 'Street Pulse / Luminate chart'])
@@ -333,39 +339,6 @@ HTML;
         </div>
         <div class="row">
             <div class="col-md-12">
-                @component('components.widget', ['class' => 'box-warning', 'title' => 'Manager picks — stock-up suggestions'])
-                <p class="text-muted small">Lashyn or any manager can flag a category to stock up on. The Manager picks bucket surfaces low-stock candidates matching it.</p>
-                <div id="ica_mgrpicks_list" class="ica-mgrpicks-list">
-                    <p class="text-muted small">Loading current picks…</p>
-                </div>
-                <hr style="margin: 12px 0;">
-                <div class="ica-mgrpicks-add">
-                    <div class="row">
-                        <div class="col-md-5">
-                            <label class="small">Suggestion <small class="text-muted">(e.g. “get more sealed electronic”)</small></label>
-                            <input type="text" class="form-control input-sm" id="ica_mgrpick_note" maxlength="500" placeholder="get more …">
-                        </div>
-                        <div class="col-md-3">
-                            <label class="small">Category match <small class="text-muted">(optional)</small></label>
-                            <input type="text" class="form-control input-sm" id="ica_mgrpick_category" maxlength="191" placeholder="e.g. Sealed Electronic">
-                        </div>
-                        <div class="col-md-2">
-                            <label class="small">Suggested by</label>
-                            <input type="text" class="form-control input-sm" id="ica_mgrpick_by" maxlength="64" placeholder="Lashyn">
-                        </div>
-                        <div class="col-md-2">
-                            <label class="small">&nbsp;</label><br>
-                            <button type="button" class="btn btn-primary btn-sm" id="ica_mgrpick_add">
-                                <i class="fa fa-plus"></i> Add pick
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                @endcomponent
-            </div>
-        </div>
-        <div class="row">
-            <div class="col-md-12">
                 @component('components.widget', ['class' => 'box-info', 'title' => 'Auto-fetch from inbox'])
                 <p class="text-muted small">Auto-pulls Street Pulse + UMe emails from sarah@nivessa.com every Wednesday 08:15 PST. Trigger manually below.</p>
                 <button type="button" class="btn btn-primary btn-sm" id="ica_run_import" data-dry-run="1">
@@ -389,7 +362,11 @@ HTML;
          Static checklist; ticks aren't saved, it's a printable reminder. --}}
     <div class="row" id="ica_manual_reorder_step">
         <div class="col-md-12">
-            @component('components.widget', ['class' => 'box-warning', 'title' => "Don't forget to reorder — manual (non-music)"])
+            @component('components.widget', ['class' => 'box-warning', 'title' => "Other categories"])
+            {{-- Data-driven fast-seller / low-stock list per non-music category
+                 renders here when loaded; the hand-reorder checklist below is
+                 the always-present reminder. --}}
+            <div id="ica_other_cats_data"></div>
             <p class="text-muted small">The buckets above only cover vinyl &amp; CDs. These categories are reordered by hand — tick as you go.</p>
             <ul class="ica-manual-reorder">
                 @foreach([
@@ -583,6 +560,30 @@ HTML;
 }
 .ica-order-footer-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .ica-summary { font-weight: bold; font-size: 15px; line-height: 34px; }
+.ica-order-footer-explain { flex-basis: 100%; margin: 0; font-size: 13px; color: #555; }
+.ica-order-preview { flex-basis: 100%; }
+.ica-order-preview-empty { color: #888; font-size: 13px; font-style: italic; }
+.ica-order-supplier {
+    margin-bottom: 14px;
+    border: 1px solid #e4e9f0;
+    border-radius: 4px;
+    background: #fff;
+    overflow: hidden;
+}
+.ica-order-supplier-head {
+    background: #eef3f9;
+    padding: 6px 12px;
+    font-weight: 700;
+    color: #2c699a;
+    font-size: 13px;
+    display: flex;
+    justify-content: space-between;
+}
+.ica-order-supplier-head .ica-order-supplier-tot { color: #555; font-weight: 400; }
+.ica-order-table { width: 100%; font-size: 13px; }
+.ica-order-table td { padding: 4px 12px; border-top: 1px solid #f0f3f7; vertical-align: top; }
+.ica-order-table .ica-order-qty { width: 50px; font-weight: 700; color: #2c699a; }
+.ica-order-table .ica-order-price { width: 80px; text-align: right; color: #777; white-space: nowrap; }
 .ica-bucket { margin-bottom: 24px; }
 .ica-bucket-header {
     background: #fff;
@@ -898,6 +899,9 @@ body.ica-wizard-active { padding-bottom: 64px; }
 }
 .ica-event-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; }
 .ica-event-chip {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
     border: 1px solid #d6e0ea;
     border-radius: 4px;
     padding: 8px 12px;
@@ -905,11 +909,41 @@ body.ica-wizard-active { padding-bottom: 64px; }
 }
 .ica-event-chip.ica-event-listening { border-color: #b896d4; background: #f5efff; }
 .ica-event-chip.ica-event-show { border-color: #cfe2dc; background: #f3faf7; }
+.ica-event-date-badge {
+    flex: 0 0 auto;
+    min-width: 46px;
+    text-align: center;
+    background: #2c699a;
+    color: #fff;
+    border-radius: 4px;
+    padding: 4px 6px;
+    line-height: 1.1;
+}
+.ica-event-listening .ica-event-date-badge { background: #6f4aa3; }
+.ica-event-date-mo {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.ica-event-date-day { display: block; font-size: 20px; font-weight: 700; }
+.ica-event-chip-main { flex: 1 1 auto; min-width: 0; }
 .ica-event-chip-head { font-size: 13px; line-height: 1.4; }
 .ica-event-chip-head strong { color: #222; }
+.ica-event-chip-loc { font-size: 12px; color: #777; margin-top: 1px; }
 .ica-event-chip-date { color: #888; font-size: 12px; margin-left: 6px; }
 .ica-event-chip-qty { font-size: 12px; color: #555; margin-top: 4px; }
 .ica-event-chip-qty strong { color: #2c699a; font-size: 14px; }
+.ica-event-reminder {
+    font-size: 12px;
+    color: #6f4aa3;
+    background: #f5efff;
+    border: 1px solid #e0d3f2;
+    border-radius: 4px;
+    padding: 6px 10px;
+    margin-bottom: 8px;
+}
 .ica-event-anniv {
     background: #e6dcff; color: #4a2a8e;
     font-size: 10px; padding: 1px 5px; border-radius: 2px;
@@ -1237,7 +1271,6 @@ body.ica-wizard-active { padding-bottom: 64px; }
     window.ICA_FROZEN_URL = "{{ action('InventoryCheckController@frozenInventoryBucket') }}";
     window.ICA_FROZEN_UPDATE_URL = "{{ action('InventoryCheckController@frozenStockUpdate') }}";
     window.ICA_PRODUCT_VIEW_URL_BASE = "{{ url('products/view') }}";
-    window.ICA_MGRPICKS_BUCKET_URL = "{{ action('InventoryCheckController@managerPicksBucket') }}";
     window.ICA_UME_SPOT_URL = "{{ action('InventoryCheckController@umeSpotlightsBucket') }}";
     window.ICA_SUPPLIER_LIST_URL = "{{ action('InventoryCheckController@listSupplierFeeds') }}";
     window.ICA_SUPPLIER_UPLOAD_URL = "{{ action('InventoryCheckController@uploadSupplierFeed') }}";
@@ -1245,13 +1278,11 @@ body.ica-wizard-active { padding-bottom: 64px; }
     window.ICA_SUPPLIER_CREDS_URL = "{{ url('reports/inventory-check-assistant/supplier-credentials') }}";
     window.ICA_LOG_BUY_URL = "{{ action('InventoryCheckController@addManualBudgetEntry') }}";
     window.ICA_LOG_BUY_DELETE_BASE = "{{ url('reports/inventory-check-assistant/manual-budget-entry') }}";
-    window.ICA_MGRPICKS_LIST_URL = "{{ action('InventoryCheckController@listManagerPicks') }}";
-    window.ICA_MGRPICKS_ADD_URL = "{{ action('InventoryCheckController@addManagerPick') }}";
-    window.ICA_MGRPICKS_DISMISS_URL = "{{ url('reports/inventory-check-assistant/manager-picks') }}";
     window.ICA_EXPORT_URL = "{{ action('InventoryCheckController@export') }}";
     window.ICA_CHART_IMPORT_URL = "{{ url('reports/inventory-check-assistant/chart-import') }}";
     window.ICA_CHART_LATEST_URL = "{{ url('reports/inventory-check-assistant/chart-latest') }}";
     window.ICA_CUSTOMER_WANT_FULFILL_URL = "{{ url('reports/inventory-check-assistant/customer-want') }}";
+    window.ICA_CUSTOMER_WANTS_URL = "{{ action('CustomerWantController@index') }}";
     window.ICA_RUN_EMAIL_IMPORT_URL = "{{ url('reports/inventory-check-assistant/run-email-import') }}";
     window.ICA_RUN_APPLE_URL = "{{ url('reports/inventory-check-assistant/run-apple-music') }}";
     window.ICA_SESSIONS_URL = "{{ action('InventoryCheckController@listSessions') }}";

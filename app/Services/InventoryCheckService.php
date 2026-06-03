@@ -2072,6 +2072,11 @@ class InventoryCheckService
             if ($stock > $maxStock) {
                 continue;
             }
+            // 2026-06-03 Sarah: RSD-exclusive titles aren't routine restocks —
+            // keep them out of the A-class restock list.
+            if ($this->isRsdTitle((string) ($row->product ?? ''))) {
+                continue;
+            }
             $items[] = $this->rowToCandidate($row, $stock, 0, $targetStock, [
                 'bucket' => 'abc_a_restock',
                 'reason' => 'A-class (top 80% of inventory value), stock ' . (int) $stock,
