@@ -2,9 +2,9 @@
      Nivessa global theme layer (2026-04-20)
 
      Surface-level reskin that applies site-wide. Covers ONLY:
-       - Typography (Inter Tight)
+       - Typography (Poppins — matches nivessa.com)
        - Body / content background (cream)
-       - Main header + sidebar (near-black, yellow accent)
+       - Main header + sidebar (espresso, yellow accent)
        - Color tokens (CSS custom properties) for pages that opt in
 
      Intentionally does NOT restyle buttons, forms, tables, modals,
@@ -19,29 +19,33 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
 <style>
+	/* Palette aligned to nivessa.com (2026-06-03): Poppins, espresso #3B2E2A,
+	   cream #FDF5E7, the logo's warm yellow #FFE070, terracotta #D59052.
+	   Replaces the earlier Inter-Tight / near-black / gold approximation so the
+	   header + sidebar match the rebranded login and dashboard. */
 	:root {
-		--nv-bg:          #FAF6EE;
+		--nv-bg:          #FDF5E7;
 		--nv-surface:     #FFFFFF;
-		--nv-surface-2:   #F7F1E3;
-		--nv-ink:         #1F1B16;
-		--nv-ink-2:       #5A5045;
-		--nv-ink-3:       #8E8273;
-		--nv-line:        #ECE3CF;
-		--nv-line-2:      #DFD2B3;
-		--nv-brand:       #1F1B16;
-		--nv-brand-ink:   #FAF6EE;
-		--nv-accent:      #FFF2B3;
-		--nv-accent-deep: #E8CF68;
-		--nv-accent-soft: #FFF9DB;
-		--nv-accent-text: #5A4410;
-		--nv-cr:          #7A1F1F;
+		--nv-surface-2:   #FDF7EC;
+		--nv-ink:         #3B2E2A;
+		--nv-ink-2:       #6B5B4F;
+		--nv-ink-3:       #8A7A6B;
+		--nv-line:        #E7D9C0;
+		--nv-line-2:      #D9C9B0;
+		--nv-brand:       #3B2E2A;
+		--nv-brand-ink:   #FDF5E7;
+		--nv-accent:      #FFE070;
+		--nv-accent-deep: #D59052;
+		--nv-accent-soft: #FFF7EC;
+		--nv-accent-text: #B5742F;
+		--nv-cr:          #B91C1C;
 	}
 
 	/* ---------- Typography ---------- */
-	/* Apply Inter Tight, but WITHOUT !important on body. The earlier version
+	/* Apply Poppins, but WITHOUT !important on body. The earlier version
 	   used !important, which blocked the browser's fallback chain to icon
 	   fonts (FontAwesome) and emoji fonts site-wide — every icon and emoji
 	   rendered as a □ tofu square. Sarah: "none of our changes are here and
@@ -49,8 +53,7 @@
 	   Fix: drop the !important, include emoji + symbol fonts in the fallback
 	   stack, and let .fa/.glyphicon rules keep their own font-family. */
 	html, body {
-		font-family: "Inter Tight", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
-		font-feature-settings: "ss01", "cv11";
+		font-family: "Poppins", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
 	}
 	body .content-wrapper,
 	body .main-sidebar,
@@ -150,7 +153,7 @@
 	   dark that coordinates with the near-black navbar. */
 	body .main-sidebar,
 	body .left-side {
-		background-color: #2a2320 !important;
+		background-color: #2E2420 !important;
 	}
 	body .sidebar-menu > li > a {
 		color: #E8DBC7 !important;
@@ -159,12 +162,12 @@
 	body .sidebar-menu > li:hover > a,
 	body .sidebar-menu > li.active > a,
 	body .sidebar-menu > li.menu-open > a {
-		background: #1F1B16 !important;
+		background: #241C18 !important;
 		color: var(--nv-accent) !important;
 		border-left-color: var(--nv-accent) !important;
 	}
 	body .sidebar-menu > li > .treeview-menu {
-		background: #1F1B16 !important;
+		background: #241C18 !important;
 		padding: 6px 0;
 	}
 	body .sidebar-menu .treeview-menu > li > a {

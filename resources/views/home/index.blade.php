@@ -75,9 +75,9 @@
     .content a:not(.btn):not(.info-box):not([class*="bg-"]) { color: #B5742F; }
     .content a:not(.btn):hover { color: #8f5a23; }
 </style>
-<section class="content-header content-header-custom">
-    <h1 style="margin:0; font-size:20px;">{{ __('home.welcome_message', ['name' => Session::get('user.first_name')]) }}</h1>
-</section>
+
+{{-- Orange welcome banner removed (Sarah 2026-06-03): it just repeated the
+     "What's up, {name}" greeting in the hero card right below it. --}}
 
 {{-- ============================================================
      Nivessa employee dashboard (new) — what's selling, collections
@@ -127,7 +127,7 @@
     <div class="pp-card" style="padding:22px 26px;">
         <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:18px;">
             <div>
-                <div style="font-size:24px; font-weight:600; margin-bottom:2px;">What's up, {{ $me_first_name }}</div>
+                <div style="font-size:24px; font-weight:600; margin-bottom:2px;">What's up, {{ $me_first_name }} 🔥</div>
                 <div class="pp-muted">Keep crushin' it. {{ \Carbon\Carbon::now()->format('l, F j') }}</div>
             </div>
             <div class="pp-muted" style="text-align:right;">
