@@ -1,0 +1,78 @@
+# Read-only report: per-subcategory sell-through for items priced since a
+# cutoff date. "Priced" = product created on/after the cutoff with a sell
+# price set. "Sold" = of those, how many appear in a finalized sell.
+# No writes — pure SELECT. Reuses the Deploy production SSH secrets.
+
+name: Nivessa · vinyl sell-through report
+
+on:
+  workflow_dispatch:
+    inputs:
+      since:
+        description: Count items priced on/after this date (YYYY-MM-DD)
+        required: true
+        default: '2026-01-01'
+
+concurrency:
+  group: nivessa-vinyl-sellthrough
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Run sell-through query over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: true
+          command_timeout: 120s
+          script: |
+            set -e
+            cd /www/playlist.nivessa.com/app
+            SINCE='${{ github.event.inputs.since }}'
+            echo "=== sell-through, items priced since: $SINCE ==="
+            php artisan tinker <<PHP
+            \$since = '$SINCE 00:00:00';
+            \$rows = DB::select("
+              SELECT pc.name AS parent_category, sc.name AS subcategory,
+                     COUNT(DISTINCT p.id) AS items_priced,
+                     COUNT(DISTINCT CASE WHEN s.product_id IS NOT NULL THEN p.id END) AS items_sold
+              FROM products p
+              JOIN variations v ON v.product_id = p.id
+                AND COALESCE(v.default_sell_price, v.sell_price_inc_tax, 0) > 0
+              JOIN categories sc ON sc.id = p.sub_category_id
+              LEFT JOIN categories pc ON pc.id = sc.parent_id
+              LEFT JOIN (
+                SELECT DISTINCT tsl.product_id
+                FROM transaction_sell_lines tsl
+                JOIN transactions t ON t.id = tsl.transaction_id
+                WHERE t.type = 'sell' AND t.status = 'final'
+                  AND (tsl.quantity - COALESCE(tsl.quantity_returned,0)) > 0
+              ) s ON s.product_id = p.id
+              WHERE p.created_at >= ? AND p.is_inactive = 0
+              GROUP BY sc.id, sc.name, pc.name
+              ORDER BY items_priced DESC
+            ", [\$since]);
+            foreach (\$rows as \$r) {
+              echo "DATA\t".(\$r->parent_category ?? '')."\t".\$r->subcategory."\t".\$r->items_priced."\t".\$r->items_sold."\n";
+            }
+            echo "DONE\t".count(\$rows)." rows\n";
+            PHP
