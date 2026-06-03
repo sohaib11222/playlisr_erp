@@ -17,6 +17,64 @@
         margin-top: 0 !important;
     }
 </style>
+
+{{-- ============================================================
+     Nivessa brand skin for the dashboard — matches nivessa.com
+     (cream #FDF5E7, espresso #3B2E2A, terracotta #D59052, Poppins).
+     Scoped to /home since this <style> only renders on this page.
+     Reskins the page background, type, and card chrome only;
+     semantic data colors (green = money / up, red = down / alerts)
+     are intentionally left intact so the numbers stay readable.
+     ============================================================ --}}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap">
+<style>
+    .content-wrapper, body { background: #FDF5E7 !important; }
+    .content-header-custom h1, .content, .content-custom,
+    .pp-card, .niv-card, .content .box, .info-box, .content .box-title {
+        font-family: "Poppins", system-ui, -apple-system, sans-serif !important;
+        color: #3B2E2A;
+    }
+    .content-header-custom h1 { color: #3B2E2A !important; font-weight: 700 !important; letter-spacing: -.01em; }
+
+    /* Card chrome -> warm Nivessa card */
+    .pp-card, .niv-card, .content .box {
+        background: #FFFFFF !important;
+        border: 1px solid #E7D9C0 !important;
+        border-radius: 16px !important;
+        box-shadow: 0 6px 20px rgba(59,46,42,.06) !important;
+    }
+    .content .box .box-header { border-bottom: 1px solid #F0E6D2 !important; }
+    .content .box .box-title { font-weight: 600; color: #3B2E2A; }
+
+    /* Classic AdminLTE info-boxes -> branded cards */
+    .info-box.info-box-new-style {
+        background: #FFFFFF !important;
+        border: 1px solid #E7D9C0 !important;
+        border-radius: 14px !important;
+        box-shadow: 0 6px 20px rgba(59,46,42,.06) !important;
+    }
+    /* Cyan icon clashes with the brand — make it espresso. Green / yellow /
+       red icons carry meaning (net, dues, returns) so leave them. */
+    .info-box-icon.bg-aqua { background: #3B2E2A !important; color: #FDF5E7 !important; }
+
+    /* Section / card headings: cool blue accent -> espresso */
+    .niv-card h3 { color: #3B2E2A !important; border-bottom-color: #F0E6D2 !important; }
+    .niv-card h3 .niv-sub { color: #8A7A6B !important; }
+
+    /* Warm-tint the cool grey inner panels in the hero / cards */
+    .pp-card div[style*="#f8fafc"] { background: #FDF7EC !important; }
+
+    /* Primary actions -> espresso, terracotta on hover */
+    .content .btn-primary {
+        background: #3B2E2A !important; border-color: #3B2E2A !important;
+        color: #FDF5E7 !important; border-radius: 8px !important; font-weight: 600;
+    }
+    .content .btn-primary:hover { background: #D59052 !important; border-color: #D59052 !important; color: #fff !important; }
+    .content a:not(.btn):not(.info-box):not([class*="bg-"]) { color: #B5742F; }
+    .content a:not(.btn):hover { color: #8f5a23; }
+</style>
 <section class="content-header content-header-custom">
     <h1 style="margin:0; font-size:20px;">{{ __('home.welcome_message', ['name' => Session::get('user.first_name')]) }}</h1>
 </section>
@@ -69,7 +127,7 @@
     <div class="pp-card" style="padding:22px 26px;">
         <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:18px;">
             <div>
-                <div style="font-size:24px; font-weight:600; margin-bottom:2px;">What's up, {{ $me_first_name }} 🔥</div>
+                <div style="font-size:24px; font-weight:600; margin-bottom:2px;">What's up, {{ $me_first_name }}</div>
                 <div class="pp-muted">Keep crushin' it. {{ \Carbon\Carbon::now()->format('l, F j') }}</div>
             </div>
             <div class="pp-muted" style="text-align:right;">
@@ -130,7 +188,7 @@
          from 2026-05-15 — legacy inventory is not eligible. --}}
     <div class="pp-card">
         <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px;">
-            <div style="font-size:14px; font-weight:600;">💰 Your earnings</div>
+            <div style="font-size:14px; font-weight:600;">Your earnings</div>
             <div class="pp-muted">2% of used items sold from products you barcoded</div>
         </div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
@@ -257,7 +315,7 @@
             </div>
             <div class="pp-micro" style="margin-top:8px;">
                 @if($my_priced_today >= $goal_priced_today)
-                    🎉 Goal hit — keep going!
+                    Goal hit — keep going!
                 @else
                     {{ $goal_priced_today - $my_priced_today }} more to hit your daily goal
                 @endif
@@ -274,7 +332,7 @@
             </div>
             <div class="pp-micro" style="margin-top:8px;">
                 @if($rewards_me_today >= $goal_rewards_today)
-                    🎯 Daily streak locked in
+                    Daily streak locked in
                 @else
                     {{ $goal_rewards_today - $rewards_me_today }} more for the daily streak
                 @endif
@@ -323,7 +381,7 @@
                 $rem_day  = max(0, $team_goal - $team_today_rev);
             @endphp
             @if($team_today_rev >= $team_goal)
-                🎉 Daily goal smashed — nice work
+                Daily goal smashed — nice work
             @elseif($rem_pace > 0)
                 ${{ number_format($rem_pace, 0) }} behind pace · pace target by now ${{ number_format($team_goal_so_far, 0) }} · ${{ number_format($rem_day, 0) }} to full goal
             @else
@@ -428,7 +486,7 @@
 
         @if($ts_insight)
         <div class="ts-insight-row">
-            <p class="ts-insight">💡 {{ $ts_insight }}</p>
+            <p class="ts-insight">{{ $ts_insight }}</p>
             <a href="{{ action('ReportController@categorySalesReport') }}" class="ts-breakdown-link">See full breakdown →</a>
         </div>
         @endif
