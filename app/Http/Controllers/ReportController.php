@@ -11254,12 +11254,16 @@ class ReportController extends Controller
         $q = \DB::table('transaction_sell_lines as tsl')
             ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
             ->join('products as p', 'tsl.product_id', '=', 'p.id')
+            ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
+            ->leftJoin('categories as sc', 'p.sub_category_id', '=', 'sc.id')
             ->where('t.business_id', $business_id)
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
             ->whereNull('t.import_source')
             ->where('p.created_by', $user_id)
             ->whereBetween('t.transaction_date', [$start->toDateTimeString(), $end->toDateTimeString()]);
+        // USED items only, mirroring the board's priced_revenue query so totals reconcile.
+        $this->applyUsedItemCategoryFilter($q);
         if (!empty($location_id)) {
             $q->where('t.location_id', $location_id);
         }
@@ -11379,15 +11383,20 @@ class ReportController extends Controller
             ->get()
             ->keyBy('created_by');
 
-        // Revenue from items priced by the user, sold in this window.
+        // Revenue from items priced by the user, sold in this window. USED items
+        // only — sealed/new vinyl/CD/cassette and non-record categories are
+        // excluded so the board counts used listings, not new (Sarah 2026-06-03).
         $priced_rev_q = \DB::table('transaction_sell_lines as tsl')
             ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
             ->join('products as p', 'tsl.product_id', '=', 'p.id')
+            ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
+            ->leftJoin('categories as sc', 'p.sub_category_id', '=', 'sc.id')
             ->where('t.business_id', $business_id)
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
             ->whereNull('t.import_source')
             ->whereBetween('t.transaction_date', [$start, $end]);
+        $this->applyUsedItemCategoryFilter($priced_rev_q);
         if (!empty($location_id)) {
             $priced_rev_q->where('t.location_id', $location_id);
         }
@@ -11706,6 +11715,32 @@ class ReportController extends Controller
     }
 
     /**
+     * Restrict a sell-line query to USED items. Requires the products table to
+     * be joined as `p` and its category/sub_category leftJoined as `c`/`sc`.
+     * "Used" = not sealed/new vinyl/CD/cassette and not a non-record category —
+     * the single definition shared by items-listed, sales-from-listed, the
+     * listed-items drill-down, and listing commission so the numbers reconcile.
+     */
+    private function applyUsedItemCategoryFilter($q)
+    {
+        $excludedCategoryPatterns = ['%sealed%', '%new vinyl%', '%new cd%', '%new cassette%'];
+        $excludedCategoryNames = [
+            'audio gear', 'record players', 'record player',
+            'trading cards', 'apparel', 'clothing', 'video games',
+            'gift items', 'toys', 'accessories & novelties',
+            'acessories & novelties', 'pictures & posters',
+        ];
+        return $q->where(function ($qq) use ($excludedCategoryPatterns, $excludedCategoryNames) {
+            foreach ($excludedCategoryPatterns as $pat) {
+                $qq->where(\DB::raw('LOWER(c.name)'), 'NOT LIKE', $pat)
+                   ->where(\DB::raw('LOWER(COALESCE(sc.name, \'\'))'), 'NOT LIKE', $pat);
+            }
+            $qq->whereNotIn(\DB::raw('LOWER(TRIM(c.name))'), $excludedCategoryNames)
+               ->whereNotIn(\DB::raw('LOWER(TRIM(COALESCE(sc.name, \'\')))'), $excludedCategoryNames);
+        });
+    }
+
+    /**
      * Barcoding commission per user: 2% of the gross on USED items the user
      * barcoded (products.created_by) that sold in the window. Mirrors the
      * established earnings rule — rollout-gated to 2026-05-15 with the same
@@ -11715,13 +11750,6 @@ class ReportController extends Controller
     private function barcodingCommissionByUser($business_id, $start, $end, $location_id = null)
     {
         $rollout = '2026-05-15 00:00:00';
-        $excludedCategoryPatterns = ['%sealed%', '%new vinyl%', '%new cd%', '%new cassette%'];
-        $excludedCategoryNames = [
-            'audio gear', 'record players', 'record player',
-            'trading cards', 'apparel', 'clothing', 'video games',
-            'gift items', 'toys', 'accessories & novelties',
-            'acessories & novelties', 'pictures & posters',
-        ];
 
         $q = \DB::table('transaction_sell_lines as tsl')
             ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
@@ -11734,15 +11762,8 @@ class ReportController extends Controller
             ->whereNull('t.import_source')
             ->whereBetween('t.transaction_date', [$start, $end])
             ->whereNotNull('p.created_by')
-            ->where('p.created_at', '>=', $rollout)
-            ->where(function ($qq) use ($excludedCategoryPatterns, $excludedCategoryNames) {
-                foreach ($excludedCategoryPatterns as $pat) {
-                    $qq->where(\DB::raw('LOWER(c.name)'), 'NOT LIKE', $pat)
-                       ->where(\DB::raw('LOWER(COALESCE(sc.name, \'\'))'), 'NOT LIKE', $pat);
-                }
-                $qq->whereNotIn(\DB::raw('LOWER(TRIM(c.name))'), $excludedCategoryNames)
-                   ->whereNotIn(\DB::raw('LOWER(TRIM(COALESCE(sc.name, \'\')))'), $excludedCategoryNames);
-            });
+            ->where('p.created_at', '>=', $rollout);
+        $this->applyUsedItemCategoryFilter($q);
         if (!empty($location_id)) {
             $q->where('t.location_id', $location_id);
         }
