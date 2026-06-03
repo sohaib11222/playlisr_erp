@@ -44,35 +44,11 @@ jobs:
           port: ${{ steps.flags.outputs.ssh_port }}
           script_stop: true
           command_timeout: 120s
+          # drone-ssh runs each line as its own command, so the report script
+          # is base64-encoded into a single line, decoded to a temp file, and
+          # executed via `php artisan tinker <file>` (full Laravel bootstrap).
           script: |
-            set -e
-            cd /www/playlist.nivessa.com/app
-            SINCE='${{ github.event.inputs.since }}'
-            echo "=== sell-through, items priced since: $SINCE ==="
-            php artisan tinker <<PHP
-            \$since = '$SINCE 00:00:00';
-            \$rows = DB::select("
-              SELECT pc.name AS parent_category, sc.name AS subcategory,
-                     COUNT(DISTINCT p.id) AS items_priced,
-                     COUNT(DISTINCT CASE WHEN s.product_id IS NOT NULL THEN p.id END) AS items_sold
-              FROM products p
-              JOIN variations v ON v.product_id = p.id
-                AND COALESCE(v.default_sell_price, v.sell_price_inc_tax, 0) > 0
-              JOIN categories sc ON sc.id = p.sub_category_id
-              LEFT JOIN categories pc ON pc.id = sc.parent_id
-              LEFT JOIN (
-                SELECT DISTINCT tsl.product_id
-                FROM transaction_sell_lines tsl
-                JOIN transactions t ON t.id = tsl.transaction_id
-                WHERE t.type = 'sell' AND t.status = 'final'
-                  AND (tsl.quantity - COALESCE(tsl.quantity_returned,0)) > 0
-              ) s ON s.product_id = p.id
-              WHERE p.created_at >= ? AND p.is_inactive = 0
-              GROUP BY sc.id, sc.name, pc.name
-              ORDER BY items_priced DESC
-            ", [\$since]);
-            foreach (\$rows as \$r) {
-              echo "DATA\t".(\$r->parent_category ?? '')."\t".\$r->subcategory."\t".\$r->items_priced."\t".\$r->items_sold."\n";
-            }
-            echo "DONE\t".count(\$rows)." rows\n";
-            PHP
+            echo "=== sell-through, items priced since: ${{ github.event.inputs.since }} ==="
+            echo 'PD9waHAKJHNpbmNlID0gZ2V0ZW52KCdTVF9TSU5DRScpID86ICcyMDI2LTAxLTAxIDAwOjAwOjAwJzsKJHJvd3MgPSBEQjo6c2VsZWN0KCIKICBTRUxFQ1QgcGMubmFtZSBBUyBwYXJlbnRfY2F0ZWdvcnksIHNjLm5hbWUgQVMgc3ViY2F0ZWdvcnksCiAgICAgICAgIENPVU5UKERJU1RJTkNUIHAuaWQpIEFTIGl0ZW1zX3ByaWNlZCwKICAgICAgICAgQ09VTlQoRElTVElOQ1QgQ0FTRSBXSEVOIHMucHJvZHVjdF9pZCBJUyBOT1QgTlVMTCBUSEVOIHAuaWQgRU5EKSBBUyBpdGVtc19zb2xkCiAgRlJPTSBwcm9kdWN0cyBwCiAgSk9JTiB2YXJpYXRpb25zIHYgT04gdi5wcm9kdWN0X2lkID0gcC5pZAogICAgQU5EIENPQUxFU0NFKHYuZGVmYXVsdF9zZWxsX3ByaWNlLCB2LnNlbGxfcHJpY2VfaW5jX3RheCwgMCkgPiAwCiAgSk9JTiBjYXRlZ29yaWVzIHNjIE9OIHNjLmlkID0gcC5zdWJfY2F0ZWdvcnlfaWQKICBMRUZUIEpPSU4gY2F0ZWdvcmllcyBwYyBPTiBwYy5pZCA9IHNjLnBhcmVudF9pZAogIExFRlQgSk9JTiAoCiAgICBTRUxFQ1QgRElTVElOQ1QgdHNsLnByb2R1Y3RfaWQKICAgIEZST00gdHJhbnNhY3Rpb25fc2VsbF9saW5lcyB0c2wKICAgIEpPSU4gdHJhbnNhY3Rpb25zIHQgT04gdC5pZCA9IHRzbC50cmFuc2FjdGlvbl9pZAogICAgV0hFUkUgdC50eXBlID0gJ3NlbGwnIEFORCB0LnN0YXR1cyA9ICdmaW5hbCcKICAgICAgQU5EICh0c2wucXVhbnRpdHkgLSBDT0FMRVNDRSh0c2wucXVhbnRpdHlfcmV0dXJuZWQsMCkpID4gMAogICkgcyBPTiBzLnByb2R1Y3RfaWQgPSBwLmlkCiAgV0hFUkUgcC5jcmVhdGVkX2F0ID49ID8gQU5EIHAuaXNfaW5hY3RpdmUgPSAwCiAgR1JPVVAgQlkgc2MuaWQsIHNjLm5hbWUsIHBjLm5hbWUKICBPUkRFUiBCWSBpdGVtc19wcmljZWQgREVTQwoiLCBbJHNpbmNlXSk7CmZvcmVhY2ggKCRyb3dzIGFzICRyKSB7CiAgZWNobyAiREFUQVx0Ii4oJHItPnBhcmVudF9jYXRlZ29yeSA/PyAnJykuIlx0Ii4kci0+c3ViY2F0ZWdvcnkuIlx0Ii4kci0+aXRlbXNfcHJpY2VkLiJcdCIuJHItPml0ZW1zX3NvbGQuIlxuIjsKfQplY2hvICJET05FXHQiLmNvdW50KCRyb3dzKS4iIHJvd3NcbiI7Cg==' | base64 -d > /tmp/st_report.php
+            cd /www/playlist.nivessa.com/app && ST_SINCE='${{ github.event.inputs.since }} 00:00:00' php artisan tinker /tmp/st_report.php
+            rm -f /tmp/st_report.php
