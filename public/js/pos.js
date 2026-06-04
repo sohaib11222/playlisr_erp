@@ -1261,7 +1261,7 @@ $(document).ready(function() {
             }
         }
 
-        toastr.warning(__currency_trans_from_en(useAmount, true) + ' store credit applied. Next step: click the CASH button at bottom to finalize.');
+        toastr.warning(__currency_trans_from_en(useAmount, true) + ' store credit applied. Next step: click CASH (full credit) or CARD (to charge the remaining balance) at the bottom to finalize.');
     });
 
     // Inverse of #btn_use_store_credit: restore the deducted balance to
@@ -1381,9 +1381,60 @@ $(document).ready(function() {
         var pay_method = $(this).data('pay_method');
         var store_credit_used_amount = parseFloat($('#store_credit_used_amount').val() || 0) || 0;
 
-        // Guardrail: when store credit is used, push cashier to use CASH finalize path.
+        // Store credit + CARD: let the cashier close out the remaining balance on
+        // card instead of being forced down the CASH path. The store-credit portion
+        // is kept as an `advance` payment line (the TransactionPaymentAdded listener
+        // deducts it from the customer's balance), and only the remainder is charged
+        // to the card. The card-details modal binds to row 0, so the CARD line must
+        // live on row 0 and the advance line on a second appended row.
+        if (store_credit_used_amount > 0 && pay_method === 'card') {
+            var sc_total_payable = __read_number($('input#final_total_input'));
+            var sc_remaining = sc_total_payable - store_credit_used_amount;
+
+            if (sc_remaining < 0.05) {
+                // Store credit covers the whole sale — nothing left for the card.
+                // Row 0 already holds the advance line, so just finalize.
+                window.pos_submit_in_progress = false;
+                calculate_balance_due();
+                pos_form_obj.submit();
+                return false;
+            }
+
+            // Row 0 becomes the CARD line for the remaining balance.
+            var $sc_first = $('#payment_rows_div').find('.payment_row').first();
+            $sc_first.find('.payment_types_dropdown').first().val('card').trigger('change');
+            $sc_first.find('input.payment-amount').first()
+                .val(__currency_trans_from_en(sc_remaining, false)).change();
+
+            // Append a second row carrying the store-credit (advance) portion.
+            var sc_row_index = $('#payment_row_index').val();
+            var sc_location_id = $('input#location_id').val();
+            $.ajax({
+                method: 'POST',
+                url: '/sells/pos/get_payment_row',
+                data: { row_index: sc_row_index, location_id: sc_location_id },
+                dataType: 'html',
+                success: function(result) {
+                    if (!result) { return; }
+                    $('#payment_rows_div').append(result);
+                    __select2($('#payment_rows_div').find('.select2'));
+                    $('#method_' + sc_row_index).val('advance');
+                    $('#payment_rows_div').find('input.payment-amount').last()
+                        .val(__currency_trans_from_en(store_credit_used_amount, false)).change();
+                    $('#method_' + sc_row_index).change();
+                    $('#payment_row_index').val(parseInt(sc_row_index) + 1);
+                    calculate_balance_due();
+                    // Collect card details for the remaining balance, then submit.
+                    $('div#card_details_modal').modal('show');
+                }
+            });
+            return false;
+        }
+
+        // Guardrail: when store credit is used, push cashier to a supported finalize
+        // path (CASH or CARD). Other express methods still warn.
         var bypassStoreCreditGuard = $(this).data('store-credit-bypass') === true;
-        if (store_credit_used_amount > 0 && pay_method !== 'cash' && pay_method !== 'credit_sale' && !bypassStoreCreditGuard) {
+        if (store_credit_used_amount > 0 && pay_method !== 'cash' && pay_method !== 'card' && pay_method !== 'credit_sale' && !bypassStoreCreditGuard) {
             var $btn = $(this);
             swal({
                 title: 'Store credit pending',
