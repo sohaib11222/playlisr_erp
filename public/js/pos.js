@@ -788,6 +788,13 @@ $(document).ready(function() {
                 displayName += ' <span class="pos-format-tag pos-format-' + kind + '">' + safeTag + '</span>';
             }
 
+            // Append the sub-category (genre / store section) so the cashier
+            // can tell which bin or part of the store the item lives in.
+            if (item.sub_category_name && item.sub_category_name.trim() !== '') {
+                var safeSection = $('<div>').text(item.sub_category_name.trim()).html();
+                displayName += ' <span class="pos-section-tag">' + safeSection + '</span>';
+            }
+
             if (item.enable_stock == 1 && item.qty_available <= 0 && !is_overselling_allowed && !for_so) {
                 // Out-of-stock rows used to be greyed and un-clickable. They
                 // are now clickable — tapping pops the quick-receive modal

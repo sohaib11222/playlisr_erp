@@ -244,6 +244,22 @@
 				.pos-format-tag.pos-format-video       { color: #991b1b; background: #fee2e2; border: 1px solid #fca5a5; }
 				.pos-format-tag.pos-format-other       { color: #374151; background: #e5e7eb; border: 1px solid #cbd5e1; }
 
+				/* Sub-category / store-section tag (genre, e.g. Hip-Hop, Rock) so the
+				   cashier can tell where in the store to find the item. */
+				.pos-section-tag {
+					display: inline-block;
+					font-weight: 600;
+					font-size: 12px;
+					letter-spacing: 0.3px;
+					padding: 1px 7px;
+					margin-left: 6px;
+					border-radius: 4px;
+					vertical-align: 1px;
+					color: #065f46;
+					background: #d1fae5;
+					border: 1px solid #6ee7b7;
+				}
+
 				/* Secondary action row — sits below search, not inside it */
 				.pos-action-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 				.pos-action-row .btn { height: 40px; padding: 0 16px; font-weight: 600; font-size: 13px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; }
