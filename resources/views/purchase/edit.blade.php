@@ -81,7 +81,7 @@
               <div class="form-group">
                 {!! Form::label('location_id', __('purchase.business_location').':*') !!}
                 @show_tooltip(__('tooltip.purchase_location'))
-                {!! Form::select('location_id', $business_locations, $purchase->location_id, ['class' => 'form-control select2', 'placeholder' => __('messages.please_select'), 'disabled']); !!}
+                {!! Form::select('location_id', $business_locations, $purchase->location_id, ['class' => 'form-control select2', 'placeholder' => __('messages.please_select'), 'required']); !!}
               </div>
             </div>
 

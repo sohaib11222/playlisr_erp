@@ -793,7 +793,7 @@ class PurchaseController extends Controller
 
             $currency_details = $this->transactionUtil->purchaseCurrencyDetails($business_id);
 
-            $update_data = $request->only([ 'ref_no', 'status', 'contact_id',
+            $update_data = $request->only([ 'ref_no', 'status', 'contact_id', 'location_id',
                             'transaction_date', 'total_before_tax',
                             'discount_type', 'discount_amount', 'tax_id',
                             'tax_amount', 'shipping_details',
@@ -852,8 +852,33 @@ class PurchaseController extends Controller
             $update_data['additional_expense_value_2'] = $request->input('additional_expense_value_2') != '' ? $this->productUtil->num_uf($request->input('additional_expense_value_2'), $currency_details) * $exchange_rate: 0;
             $update_data['additional_expense_value_3'] = $request->input('additional_expense_value_3') != '' ? $this->productUtil->num_uf($request->input('additional_expense_value_3'), $currency_details) * $exchange_rate : 0;
             $update_data['additional_expense_value_4'] = $request->input('additional_expense_value_4') != '' ? $this->productUtil->num_uf($request->input('additional_expense_value_4'), $currency_details) * $exchange_rate : 0;
-            
+
             DB::beginTransaction();
+
+            //If the purchase location was corrected, move already-received stock
+            //from the old location to the new one before lines are re-saved.
+            //($transaction->location_id is still the old value until update() runs.)
+            $old_location_id = $transaction->location_id;
+            $new_location_id = $update_data['location_id'] ?? $old_location_id;
+            if (!empty($new_location_id) && $new_location_id != $old_location_id && $before_status == 'received') {
+                foreach ($transaction->purchase_lines()->get() as $existing_line) {
+                    $this->productUtil->decreaseProductQuantity(
+                        $existing_line->product_id,
+                        $existing_line->variation_id,
+                        $old_location_id,
+                        $existing_line->quantity
+                    );
+                    $this->productUtil->updateProductQuantity(
+                        $new_location_id,
+                        $existing_line->product_id,
+                        $existing_line->variation_id,
+                        $existing_line->quantity,
+                        0,
+                        null,
+                        false
+                    );
+                }
+            }
 
             //update transaction
             $transaction->update($update_data);
