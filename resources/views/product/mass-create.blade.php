@@ -2535,7 +2535,7 @@
                 data: { index: rowIdx },
                 success: function(rowHtml) {
                     const $row = $(rowHtml);
-                    $('#product_rows_container').prepend($row);
+                    $('#product_rows_container').append($row);
 
                     // Sarah 2026-05-06: ONLY the title goes into Product Name
                     // and ONLY the artist goes into Artist — don't combine them
@@ -2716,8 +2716,9 @@
             return;
         }
 
-        // Reverse so prepends preserve typed order (first entry → top).
-        const queue = entries.slice().reverse();
+        // Rows are appended to the bottom, so iterate in typed order
+        // (first entry → highest existing row, last entry → very bottom).
+        const queue = entries.slice();
         const $btn = $(this).prop('disabled', true);
         const total = entries.length;
         let added = 0, failed = 0;
@@ -2737,6 +2738,30 @@
 
         function finish() {
             $btn.prop('disabled', false);
+
+            // Drop the always-present empty starter row(s) so only the
+            // fetched rows remain. A row counts as blank when its Product
+            // Name is empty; never remove the last remaining row.
+            if (added > 0) {
+                $('#product_rows_container .product-row').each(function() {
+                    const $r = $(this);
+                    const name = ($r.find('.product-name-autocomplete').val() || '').trim();
+                    if (!name && $('#product_rows_container .product-row').length > 1) {
+                        const idx = $r.attr('data-row-index');
+                        if (idx !== undefined) {
+                            $(`tr.discogs-sold-before-row[data-row-index="${idx}"]`).remove();
+                        }
+                        $r.remove();
+                    }
+                });
+
+                // Jump to the last (most recently added) row.
+                const $last = $('#product_rows_container .product-row').last();
+                if ($last.length) {
+                    $last[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }
+
             const bits = [`Added ${added}/${total}`];
             if (failed) bits.push(`${failed} failed`);
             if (warnings.length) bits.push(`${warnings.length} with warnings`);
