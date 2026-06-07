@@ -59,6 +59,14 @@
         {!! Form::textarea('description', null, ['class' => 'form-control', 'placeholder' => 'Description', 'rows' => 3]) !!}
       </div>
 
+      @if($category_type === 'product')
+      <div class="form-group">
+        {!! Form::label('ebay_category_ids', 'eBay Category ID(s):') !!}
+        {!! Form::text('ebay_category_ids', null, ['class' => 'form-control', 'placeholder' => '176985 or comma-separated']) !!}
+        <p class="help-block">eBay US category ID for listings in this category (comma-separated if multiple).</p>
+      </div>
+      @endif
+
       @if(!empty($parent_categories) && $enable_sub_category)
       <!-- Parent Category Selector -->
       <div class="form-group hide" id="parent_cat_div">

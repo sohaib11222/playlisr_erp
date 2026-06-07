@@ -516,6 +516,32 @@
                 </div>
             </div>
             <div class="row">
+                <div class="col-sm-6">
+                    <div class="form-group">
+                        {!! Form::label('api_settings[ebay][default_category_id]', 'Default eBay Category ID:') !!}
+                        {!! Form::text('api_settings[ebay][default_category_id]',
+                            !empty($api_settings['ebay']['default_category_id']) ? $api_settings['ebay']['default_category_id'] : null,
+                            ['class' => 'form-control', 'placeholder' => '176985']) !!}
+                        <p class="help-block">Fallback when a product category has no eBay Category IDs mapped (e.g. 176985 for Vinyl).</p>
+                    </div>
+                </div>
+                <div class="col-sm-6">
+                    <div class="form-group">
+                        {!! Form::label('api_settings[ebay][default_condition]', 'Default Item Condition:') !!}
+                        {!! Form::select('api_settings[ebay][default_condition]',
+                            [
+                                'USED_GOOD' => 'Used — Good',
+                                'USED_VERY_GOOD' => 'Used — Very Good',
+                                'USED_ACCEPTABLE' => 'Used — Acceptable',
+                                'NEW' => 'New',
+                                'LIKE_NEW' => 'Like New',
+                            ],
+                            !empty($api_settings['ebay']['default_condition']) ? $api_settings['ebay']['default_condition'] : 'USED_GOOD',
+                            ['class' => 'form-control']) !!}
+                    </div>
+                </div>
+            </div>
+            <div class="row">
                 <div class="col-sm-12">
                     <div class="form-group" id="ebay_ru_name_group">
                         {!! Form::label('api_settings[ebay][ru_name]', 'RuName (eBay Redirect URL name):') !!}

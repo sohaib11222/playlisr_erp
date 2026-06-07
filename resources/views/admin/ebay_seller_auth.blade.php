@@ -63,6 +63,49 @@
     </div>
 
     @if($configured)
+    <div class="box box-{{ !empty($listingReadiness['seller_connected']) && !empty($listingReadiness['policies_ok']) && !empty($listingReadiness['location_ok']) ? 'success' : 'warning' }}">
+        <div class="box-header with-border"><h3 class="box-title">Listing readiness</h3></div>
+        <div class="box-body">
+            <table class="table table-bordered" style="max-width:700px;">
+                <tr>
+                    <th>App credentials</th>
+                    <td>{!! !empty($listingReadiness['configured']) ? '<span class="text-success"><i class="fa fa-check"></i> OK</span>' : '<span class="text-danger">Missing</span>' !!}</td>
+                </tr>
+                <tr>
+                    <th>OAuth RuName</th>
+                    <td>{!! !empty($listingReadiness['oauth_ready']) ? '<span class="text-success"><i class="fa fa-check"></i> OK</span>' : '<span class="text-danger">RuName required for Production</span>' !!}</td>
+                </tr>
+                <tr>
+                    <th>Seller connected</th>
+                    <td>{!! !empty($listingReadiness['seller_connected']) ? '<span class="text-success"><i class="fa fa-check"></i> Connected</span>' : '<span class="text-warning">Not connected</span>' !!}</td>
+                </tr>
+                <tr>
+                    <th>Business policies</th>
+                    <td>{!! !empty($listingReadiness['policies_ok']) ? '<span class="text-success"><i class="fa fa-check"></i> Found</span>' : '<span class="text-warning">Missing or not checked</span>' !!}</td>
+                </tr>
+                <tr>
+                    <th>Inventory location</th>
+                    <td>{!! !empty($listingReadiness['location_ok']) ? '<span class="text-success"><i class="fa fa-check"></i> Found</span>' : '<span class="text-warning">Missing or not checked</span>' !!}</td>
+                </tr>
+                <tr>
+                    <th>Default category ID</th>
+                    <td>{!! !empty($listingReadiness['default_category_set']) ? '<span class="text-success"><i class="fa fa-check"></i> Set</span>' : '<span class="text-muted">Optional fallback — set in Integrations</span>' !!}</td>
+                </tr>
+            </table>
+            @if(!empty($listingReadiness['errors']))
+                <ul class="text-danger" style="margin-bottom:0;">
+                    @foreach($listingReadiness['errors'] as $err)
+                        <li>{{ $err }}</li>
+                    @endforeach
+                </ul>
+            @endif
+            <p class="text-muted" style="margin-top:12px;">
+                OAuth scopes include <code>sell.inventory</code> and <code>sell.account</code> for listing.
+                Re-connect if you connected before those scopes were added.
+            </p>
+        </div>
+    </div>
+
     <div class="box box-default">
         <div class="box-header with-border"><h3 class="box-title">eBay Developer Console setup (fixes 400 invalid_request)</h3></div>
         <div class="box-body">

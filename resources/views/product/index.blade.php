@@ -183,6 +183,26 @@
 
                     <div class="tab-pane active" id="product_list_tab">
 
+                        @if($is_admin)
+                        <div id="ebay_listing_status_banner" class="alert @if(!empty($ebay_listing_ready)) alert-success @elseif(!empty($ebay_configured)) alert-warning @else alert-danger @endif" style="margin-bottom:12px;">
+                            @if(!empty($ebay_listing_ready))
+                                <i class="fa fa-check-circle"></i>
+                                <strong>eBay listing ready.</strong>
+                                Seller connected — you can list products from the eBay column or bulk button.
+                                <a href="{{ url('/admin/ebay-seller') }}">Seller settings</a>
+                            @elseif(!empty($ebay_configured))
+                                <i class="fa fa-exclamation-triangle"></i>
+                                <strong>eBay credentials saved but seller not connected.</strong>
+                                <a href="{{ url('/admin/ebay-seller') }}">Connect your eBay seller account</a> before listing.
+                            @else
+                                <i class="fa fa-times-circle"></i>
+                                <strong>eBay not configured.</strong>
+                                Add App ID, Cert ID, and Dev ID in
+                                <a href="{{ action('BusinessController@getBusinessSettings') }}#integrations">Business Settings → Integrations</a>.
+                            @endif
+                        </div>
+                        @endif
+
                         <button class="btn btn-success pull-right margin-left-10 downloadbarcodes" style="display:none;">Download Barcodes</button>
                         @if(config('constants.enable_product_bulk_edit') && ($is_admin || auth()->user()->can('product.update')))
                             <button type="button" class="btn btn-primary pull-right margin-left-10" id="edit-selected-top" style="display:none;">
@@ -200,10 +220,9 @@
                                 <i class="fa fa-download"></i> Export Uncategorized
                             </button>
                             @php
-                                $ebayService = app(\App\Services\EbayService::class);
                                 $discogsService = app(\App\Services\DiscogsService::class);
                             @endphp
-                            @if($ebayService->isConfigured())
+                            @if(!empty($ebay_listing_ready))
                                 <button type="button" class="btn btn-primary pull-right margin-left-10" id="bulk_list_ebay_btn">
                                     <i class="fa fa-shopping-cart"></i> List Selected to eBay
                                 </button>
@@ -1651,44 +1670,125 @@
             return false;
         });
 
-        // Per-row "List on Discogs" / "List on eBay" actions. Both endpoints take just the
-        // product ID and pull price/stock/name off the product record; no modal needed.
-        // The dropdown items are only rendered server-side when the respective service
-        // reports isConfigured(), so reaching this handler means credentials exist — any
-        // failure after that is a real marketplace-side error, surfaced via toastr.
-        $(document).on('click', '.list-to-discogs, .list-to-ebay', function(e) {
-            e.preventDefault();
-            var $link = $(this);
-            var productId = $link.data('id');
-            var isEbay = $link.hasClass('list-to-ebay');
-            var platform = isEbay ? 'ebay' : 'discogs';
-            var platformLabel = isEbay ? 'eBay' : 'Discogs';
-            var originalIcon = isEbay ? 'fa-shopping-cart' : 'fa-music';
-
-            if (!confirm('List this product on ' + platformLabel + '? This creates a real, live listing.')) {
-                return;
-            }
-
+        function runEbayList(productId, $link) {
             var $icon = $link.find('i');
-            $icon.removeClass('fa-shopping-cart fa-music').addClass('fa-spinner fa-spin');
+            var originalIcon = 'fa-shopping-cart';
+            $icon.removeClass('fa-shopping-cart').addClass('fa-spinner fa-spin');
             $link.css('pointer-events', 'none');
 
             $.ajax({
-                url: '/products/' + productId + '/list-to-' + platform,
+                url: '/products/' + productId + '/list-to-ebay',
                 method: 'POST',
                 data: {},
                 dataType: 'json'
             }).done(function(result) {
                 if (result && result.success) {
-                    toastr.success(result.msg || 'Listed on ' + platformLabel + '.');
+                    toastr.success(result.msg || 'Listed on eBay.');
+                    if (typeof product_table !== 'undefined') {
+                        product_table.ajax.reload(null, false);
+                    }
                 } else {
-                    toastr.error((result && result.msg) || 'Failed to list on ' + platformLabel + '.');
+                    toastr.error((result && result.msg) || 'Failed to list on eBay.');
+                }
+            }).fail(function(xhr) {
+                var msg = (xhr.responseJSON && xhr.responseJSON.msg) ? xhr.responseJSON.msg : (xhr.statusText || xhr.status);
+                toastr.error('Request failed: ' + msg);
+            }).always(function() {
+                $icon.removeClass('fa-spinner fa-spin').addClass(originalIcon);
+                $link.css('pointer-events', '');
+            });
+        }
+
+        $(document).on('click', '.list-to-ebay', function(e) {
+            e.preventDefault();
+            var $link = $(this);
+            var productId = $link.data('id');
+
+            $.getJSON('/products/' + productId + '/ebay-preflight').done(function(preflight) {
+                if (!preflight || !preflight.ok) {
+                    var errs = (preflight && preflight.errors) ? preflight.errors.join(' ') : 'This product cannot be listed on eBay.';
+                    toastr.error(errs);
+                    return;
+                }
+                var confirmMsg = 'List this product on eBay? This creates a real, live listing.';
+                if (preflight.warnings && preflight.warnings.length) {
+                    confirmMsg += '\n\n' + preflight.warnings.join('\n');
+                }
+                if (!confirm(confirmMsg)) {
+                    return;
+                }
+                runEbayList(productId, $link);
+            }).fail(function(xhr) {
+                toastr.error('Preflight check failed: ' + (xhr.statusText || xhr.status));
+            });
+        });
+
+        $(document).on('click', '.list-to-discogs', function(e) {
+            e.preventDefault();
+            var $link = $(this);
+            var productId = $link.data('id');
+            var originalIcon = 'fa-music';
+
+            if (!confirm('List this product on Discogs? This creates a real, live listing.')) {
+                return;
+            }
+
+            var $icon = $link.find('i');
+            $icon.removeClass('fa-music').addClass('fa-spinner fa-spin');
+            $link.css('pointer-events', 'none');
+
+            $.ajax({
+                url: '/products/' + productId + '/list-to-discogs',
+                method: 'POST',
+                data: {},
+                dataType: 'json'
+            }).done(function(result) {
+                if (result && result.success) {
+                    toastr.success(result.msg || 'Listed on Discogs.');
+                } else {
+                    toastr.error((result && result.msg) || 'Failed to list on Discogs.');
                 }
             }).fail(function(xhr) {
                 toastr.error('Request failed: ' + (xhr.statusText || xhr.status));
             }).always(function() {
                 $icon.removeClass('fa-spinner fa-spin').addClass(originalIcon);
                 $link.css('pointer-events', '');
+            });
+        });
+
+        $(document).on('click', '#bulk_list_ebay_btn', function(e) {
+            e.preventDefault();
+            var selectedIds = window.getSelectedProductIds ? window.getSelectedProductIds() : [];
+            if (!selectedIds.length) {
+                toastr.warning('Select at least one product to list on eBay.');
+                return;
+            }
+            if (!confirm('List ' + selectedIds.length + ' selected product(s) on eBay? This creates real, live listings.')) {
+                return;
+            }
+            var $btn = $(this);
+            $btn.prop('disabled', true);
+            $.ajax({
+                url: '/products/bulk-list-to-ebay',
+                method: 'POST',
+                data: { product_ids: selectedIds, _token: $('meta[name="csrf-token"]').attr('content') },
+                dataType: 'json'
+            }).done(function(result) {
+                toastr.info(result.msg || 'Bulk listing finished.');
+                if (result.results && result.results.length) {
+                    result.results.forEach(function(r) {
+                        if (!r.success) {
+                            toastr.error('Product #' + r.product_id + ': ' + (r.msg || 'failed'));
+                        }
+                    });
+                }
+                if (typeof product_table !== 'undefined') {
+                    product_table.ajax.reload(null, false);
+                }
+            }).fail(function(xhr) {
+                toastr.error('Bulk list failed: ' + (xhr.statusText || xhr.status));
+            }).always(function() {
+                $btn.prop('disabled', false);
             });
         });
 

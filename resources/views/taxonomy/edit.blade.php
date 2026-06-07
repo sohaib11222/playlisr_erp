@@ -34,6 +34,13 @@
         {!! Form::label('description', __( 'lang_v1.description' ) . ':') !!}
         {!! Form::textarea('description', $category->description, ['class' => 'form-control', 'placeholder' => __( 'lang_v1.description'), 'rows' => 3]); !!}
       </div>
+      @if(($category->category_type ?? request()->get('type')) === 'product')
+      <div class="form-group">
+        {!! Form::label('ebay_category_ids', 'eBay Category ID(s):') !!}
+        {!! Form::text('ebay_category_ids', $category->ebay_category_ids ?? null, ['class' => 'form-control', 'placeholder' => '176985']) !!}
+        <p class="help-block">eBay US category ID for listings in this category.</p>
+      </div>
+      @endif
       @if(!empty($parent_categories) && $enable_sub_category)
           <div class="form-group">
             <div class="checkbox">

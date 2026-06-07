@@ -190,9 +190,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/products/list-no-variation', 'ProductController@getProductsWithoutVariations');
     Route::post('/products/bulk-edit', 'ProductController@bulkEdit');
     Route::post('/products/bulk-update', 'ProductController@bulkUpdate');
-    Route::post('/products/{id}/list-to-ebay', 'ProductController@listToEbay');
+    Route::post('/products/{id}/list-to-ebay', 'EbayListingController@list');
+    Route::get('/products/{id}/ebay-preflight', 'EbayListingController@preflight');
+    Route::get('/ebay/listing-readiness', 'EbayListingController@readiness');
     Route::post('/products/{id}/list-to-discogs', 'ProductController@listToDiscogs');
-    Route::post('/products/bulk-list-to-ebay', 'ProductController@bulkListToEbay');
+    Route::post('/products/bulk-list-to-ebay', 'EbayListingController@bulkList');
     Route::post('/products/bulk-list-to-discogs', 'ProductController@bulkListToDiscogs');
     Route::post('/products/sync-discogs-listings', 'ProductController@syncDiscogsListings');
     Route::post('/products/bulk-update-location', 'ProductController@updateProductLocation');

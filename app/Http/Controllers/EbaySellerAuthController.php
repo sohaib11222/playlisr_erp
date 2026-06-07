@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\Ebay\EbayInventoryApiClient;
 use App\Services\EbayService;
 use App\Utils\BusinessUtil;
 use Illuminate\Http\Request;
@@ -43,8 +44,12 @@ class EbaySellerAuthController extends Controller
         $callbackUrl = url('/admin/ebay-seller/callback');
         $oauthReady = $configured ? $service->isOAuthRedirectReady($callbackUrl) : false;
 
+        $listingReadiness = $configured
+            ? (new EbayInventoryApiClient($business_id, $service))->getReadinessSummary()
+            : ['configured' => false, 'seller_connected' => false, 'errors' => ['eBay app credentials missing.']];
+
         return view('admin.ebay_seller_auth', compact(
-            'configured', 'connected', 'seller', 'environment', 'ru_name', 'oauthReady', 'callbackUrl'
+            'configured', 'connected', 'seller', 'environment', 'ru_name', 'oauthReady', 'callbackUrl', 'listingReadiness'
         ));
     }
 

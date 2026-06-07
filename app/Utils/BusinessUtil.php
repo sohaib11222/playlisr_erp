@@ -485,7 +485,10 @@ class BusinessUtil extends Util
                 'cert_id' => '',
                 'dev_id' => '',
                 'ru_name' => '',
-                'environment' => 'sandbox' // sandbox or production
+                'environment' => 'sandbox', // sandbox or production
+                'default_category_id' => '',
+                'default_condition' => 'USED_GOOD',
+                'policy_cache' => [],
             ],
             'discogs' => [
                 'token' => '',

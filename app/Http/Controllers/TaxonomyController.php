@@ -149,6 +149,9 @@ class TaxonomyController extends Controller
                         'business_id' => $request->session()->get('user.business_id'),
                         'created_by' => $request->session()->get('user.id'),
                     ];
+                    if ($category_type === 'product' && $request->filled('ebay_category_ids')) {
+                        $subcategory_data['ebay_category_ids'] = $request->input('ebay_category_ids');
+                    }
                     Category::create($subcategory_data);
                 }
             }
@@ -158,6 +161,9 @@ class TaxonomyController extends Controller
             $input['parent_id'] = 0; // No parent if not a subcategory
             $input['business_id'] = $request->session()->get('user.business_id');
             $input['created_by'] = $request->session()->get('user.id');
+            if ($category_type === 'product' && $request->filled('ebay_category_ids')) {
+                $input['ebay_category_ids'] = $request->input('ebay_category_ids');
+            }
 
             Category::create($input);
         }
@@ -240,7 +246,7 @@ class TaxonomyController extends Controller
 
         if (request()->ajax()) {
             try {
-                $input = $request->only(['name', 'description']);
+                $input = $request->only(['name', 'description', 'ebay_category_ids']);
                 $business_id = $request->session()->get('user.business_id');
 
                 $category = Category::where('business_id', $business_id)->findOrFail($id);
@@ -252,6 +258,9 @@ class TaxonomyController extends Controller
                 $category->name = $input['name'];
                 $category->description = $input['description'];
                 $category->short_code = $request->input('short_code');
+                if ($category->category_type === 'product') {
+                    $category->ebay_category_ids = $request->input('ebay_category_ids');
+                }
                 
                 if (!empty($request->input('add_as_sub_cat')) &&  $request->input('add_as_sub_cat') == 1 && !empty($request->input('parent_id'))) {
                     $category->parent_id = $request->input('parent_id');

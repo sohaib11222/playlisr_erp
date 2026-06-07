@@ -227,6 +227,14 @@ class ProductController extends Controller
             if (\Schema::hasColumn('products', 'discogs_release_id')) {
                 $products->addSelect('products.discogs_release_id');
             }
+            if (\Schema::hasColumn('products', 'ebay_listing_id')) {
+                $products->addSelect('products.ebay_listing_id');
+            }
+            if (\Schema::hasColumn('products', 'listing_status')) {
+                $products->addSelect('products.listing_status');
+            }
+
+            $ebayListingReady = $this->ebayService->isConfigured() && $this->ebayService->isSellerConnected();
 
             $products->groupBy('products.id');
 
@@ -304,6 +312,7 @@ class ProductController extends Controller
             }
 
             $ebayConfigured = $this->ebayService->isConfigured();
+            $ebaySellerConnected = $ebayConfigured ? $this->ebayService->isSellerConnected() : false;
             $discogsConfigured = $this->discogsService->isConfigured();
             $discogsListedSet = self::getDiscogsListedReleaseSet();
 
@@ -327,7 +336,7 @@ class ProductController extends Controller
                 })
                 ->addColumn(
                     'action',
-                    function ($row) use ($selling_price_group_count, $ebayConfigured, $discogsConfigured) {
+                    function ($row) use ($selling_price_group_count, $ebayConfigured, $ebaySellerConnected, $discogsConfigured) {
                         // Compact grey actions group: Labels button + dropdown
                         $html = '<div class="btn-group btn-group-xs">';
 
@@ -367,7 +376,7 @@ class ProductController extends Controller
                         if ($discogsConfigured) {
                             $html .= '<li><a href="#" data-id="' . $row->id . '" class="list-to-discogs"><i class="fa fa-music"></i> List on Discogs</a></li>';
                         }
-                        if ($ebayConfigured) {
+                        if ($ebayConfigured && $ebaySellerConnected && empty($row->ebay_listing_id)) {
                             $html .= '<li><a href="#" data-id="' . $row->id . '" class="list-to-ebay"><i class="fa fa-shopping-cart"></i> List on eBay</a></li>';
                         }
 
@@ -466,8 +475,14 @@ class ProductController extends Controller
                     }
                     return '<a href="#" data-id="' . $row->id . '" class="btn btn-xs btn-default list-to-discogs"><i class="fa fa-music"></i> Discogs</a>';
                 })
-                ->addColumn('list_ebay', function ($row) {
-                    return '<a href="#" data-id="' . $row->id . '" class="btn btn-xs btn-default list-to-ebay"><i class="fa fa-shopping-cart"></i> eBay</a>';
+                ->addColumn('list_ebay', function ($row) use ($ebayListingReady) {
+                    if (!empty($row->ebay_listing_id)) {
+                        return '<span class="label label-success" title="eBay listing ID: ' . e($row->ebay_listing_id) . '">Listed</span>';
+                    }
+                    if (!$ebayListingReady) {
+                        return '<span class="btn btn-xs btn-default disabled" title="Connect eBay seller at /admin/ebay-seller first"><i class="fa fa-shopping-cart"></i> eBay</span>';
+                    }
+                    return '<a href="#" data-id="' . $row->id . '" class="btn btn-xs btn-default list-to-ebay"><i class="fa fa-shopping-cart"></i> List</a>';
                 })
                 ->addColumn('nivessa_url', function ($row) {
                     if (empty($row->sku)) {
@@ -557,6 +572,10 @@ class ProductController extends Controller
 
         $is_admin = $this->productUtil->is_admin(auth()->user());
 
+        $ebay_configured = $this->ebayService->isConfigured();
+        $ebay_seller_connected = $ebay_configured ? $this->ebayService->isSellerConnected() : false;
+        $ebay_listing_ready = $ebay_configured && $ebay_seller_connected;
+
         return view('product.index')
             ->with(compact(
                 'rack_enabled',
@@ -569,7 +588,10 @@ class ProductController extends Controller
                 'pos_module_data',
                 'is_woocommerce',
                 'is_admin',
-                'users_who_created_products'
+                'users_who_created_products',
+                'ebay_configured',
+                'ebay_seller_connected',
+                'ebay_listing_ready'
             ));
     }
 
@@ -4441,89 +4463,6 @@ class ProductController extends Controller
     }
 
     /**
-     * List a single product to eBay
-     *
-     * @param int $id
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function listToEbay($id)
-    {
-        if (!$this->ebayService->isConfigured()) {
-            return response()->json([
-                'success' => false,
-                'msg' => 'eBay API credentials not configured. Please configure in Business Settings > Integrations.'
-            ]);
-        }
-
-        if (!$this->ebayService->isSellerConnected()) {
-            return response()->json([
-                'success' => false,
-                'msg' => 'Your eBay seller account is not connected. Go to Business Settings > Integrations > eBay and click Connect (re-connect if you connected before adding listing permissions).'
-            ]);
-        }
-
-        try {
-            $product = Product::findOrFail($id);
-            $business_id = request()->session()->get('user.business_id');
-
-            // Get product category for eBay category mapping
-            $ebayCategoryIds = $this->ebayService->getEbayCategoryIds($product->category_id);
-
-            // Collect absolute image URLs (eBay requires publicly reachable https URLs).
-            $imageUrls = [];
-            if (!empty($product->image) && $product->image !== 'default.png') {
-                $imageUrls[] = $product->image_url;
-            }
-
-            $productData = [
-                'sku' => 'NIV-' . $product->id,
-                'title' => $product->name,
-                'description' => $product->product_description ?: $product->name,
-                'price' => $product->sell_price_inc_tax ?? $product->sell_price_exc_tax ?? 0,
-                'currency' => 'USD', // TODO: Get from business currency
-                'category_id' => $ebayCategoryIds[0] ?? '',
-                'quantity' => $product->stock_quantity ?? 1,
-                'condition' => 'USED_GOOD',
-                'image_urls' => $imageUrls,
-            ];
-
-            $result = $this->ebayService->createListing($productData);
-
-            if ($result['success']) {
-                if (\Schema::hasColumn('products', 'ebay_listing_id')) {
-                    $product->ebay_listing_id = $result['listing_id'] ?? null;
-                }
-                if (\Schema::hasColumn('products', 'listing_status')) {
-                    $product->listing_status = !empty($result['listing_id']) ? 'listed' : 'error';
-                }
-                $product->save();
-
-                return response()->json([
-                    'success' => true,
-                    'msg' => 'Product listed to eBay successfully!',
-                    'listing_id' => $result['listing_id'] ?? null
-                ]);
-            } else {
-                if (\Schema::hasColumn('products', 'listing_status')) {
-                    $product->listing_status = 'error';
-                    $product->save();
-                }
-
-                return response()->json([
-                    'success' => false,
-                    'msg' => $result['msg'] ?? 'Failed to list product to eBay'
-                ]);
-            }
-        } catch (\Exception $e) {
-            \Log::error('eBay Listing Error: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'msg' => 'Error: ' . $e->getMessage()
-            ]);
-        }
-    }
-
-    /**
      * List a single product to Discogs
      *
      * @param int $id
@@ -4740,54 +4679,6 @@ class ProductController extends Controller
         file_put_contents($path, json_encode($state));
     }
 
-    /**
-     * Bulk list products to eBay
-     *
-     * @param \Illuminate\Http\Request $request
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function bulkListToEbay(Request $request)
-    {
-        if (!$this->ebayService->isConfigured()) {
-            return response()->json([
-                'success' => false,
-                'msg' => 'eBay API credentials not configured.'
-            ]);
-        }
-
-        $productIds = $request->input('product_ids', []);
-        if (empty($productIds)) {
-            return response()->json([
-                'success' => false,
-                'msg' => 'No products selected'
-            ]);
-        }
-
-        $results = [];
-        $successCount = 0;
-        $errorCount = 0;
-
-        foreach ($productIds as $productId) {
-            $result = $this->listToEbay($productId);
-            $results[] = [
-                'product_id' => $productId,
-                'success' => $result->getData()->success ?? false,
-                'msg' => $result->getData()->msg ?? ''
-            ];
-            
-            if ($result->getData()->success ?? false) {
-                $successCount++;
-            } else {
-                $errorCount++;
-            }
-        }
-
-        return response()->json([
-            'success' => true,
-            'msg' => "Listed {$successCount} products successfully. {$errorCount} failed.",
-            'results' => $results
-        ]);
-    }
 
     /**
      * Bulk list products to Discogs
