@@ -99,6 +99,35 @@
                     @endforeach
                 </ul>
             @endif
+            @if(!empty($listingReadiness['seller_connected']))
+            <div class="box box-default" style="margin-top:16px; margin-bottom:0;">
+                <div class="box-header with-border"><h4 class="box-title" style="font-size:15px;">Inventory API location</h4></div>
+                <div class="box-body">
+                    <p class="text-muted" style="margin-top:0;">
+                        ERP listings need an <strong>Inventory API warehouse location</strong> — separate from business policies and normal Seller Hub listings.
+                        Use the buttons below to check what eBay has on file, or create a default warehouse if none exists.
+                    </p>
+                    <button type="button" class="btn btn-default" id="btn_check_ebay_locations">
+                        <i class="fa fa-search"></i> Check inventory locations
+                    </button>
+                    <button type="button" class="btn btn-primary" id="btn_create_ebay_location" style="margin-left:8px;">
+                        <i class="fa fa-plus"></i> Create default warehouse location
+                    </button>
+                    <div id="ebay_location_result" style="margin-top:12px; display:none;">
+                        <pre class="bg-light" style="padding:10px; border-radius:4px; white-space:pre-wrap; margin:0; max-height:240px; overflow:auto;"></pre>
+                    </div>
+                    @if(!empty($listingReadiness['locations']))
+                        <p class="text-success" style="margin-top:12px; margin-bottom:0;">
+                            <i class="fa fa-check"></i>
+                            On file: {{ count($listingReadiness['locations']) }} location(s)
+                            @foreach($listingReadiness['locations'] as $loc)
+                                — <code>{{ $loc['merchantLocationKey'] ?? '?' }}</code>
+                            @endforeach
+                        </p>
+                    @endif
+                </div>
+            </div>
+            @endif
             <p class="text-muted" style="margin-top:12px;">
                 OAuth scopes include <code>sell.inventory</code> and <code>sell.account</code> for listing.
                 Re-connect if you connected before those scopes were added.
@@ -129,4 +158,76 @@
     @endif
 
 </section>
+
+@if(!empty($listingReadiness['seller_connected']))
+@section('javascript')
+<script>
+$(function () {
+    var $panel = $('#ebay_location_result');
+    var $pre = $panel.find('pre');
+
+    function showResult(text, isError) {
+        $pre.text(text);
+        $panel.show();
+        $pre.css('color', isError ? '#a94442' : '#333');
+    }
+
+    $('#btn_check_ebay_locations').on('click', function () {
+        var $btn = $(this);
+        $btn.prop('disabled', true);
+        showResult('Checking eBay inventory locations…', false);
+        $.getJSON('{{ url('/admin/ebay-seller/inventory-location/check') }}')
+            .done(function (res) {
+                if (!res || !res.success) {
+                    showResult((res && res.msg) ? res.msg : 'Check failed.', true);
+                    return;
+                }
+                if (!res.locations || !res.locations.length) {
+                    showResult('No inventory locations found.\n\nClick "Create default warehouse location" to add one.', true);
+                    return;
+                }
+                var lines = ['Found ' + res.locations.length + ' location(s):\n'];
+                res.locations.forEach(function (loc, i) {
+                    lines.push((i + 1) + '. Key: ' + (loc.merchantLocationKey || '?'));
+                    if (loc.name) lines.push('   Name: ' + loc.name);
+                    if (loc.locationTypes) lines.push('   Types: ' + loc.locationTypes.join(', '));
+                    if (loc.merchantLocationStatus) lines.push('   Status: ' + loc.merchantLocationStatus);
+                });
+                showResult(lines.join('\n'), false);
+            })
+            .fail(function (xhr) {
+                var msg = (xhr.responseJSON && xhr.responseJSON.msg) ? xhr.responseJSON.msg : (xhr.statusText || 'Request failed');
+                showResult(msg, true);
+            })
+            .always(function () {
+                $btn.prop('disabled', false);
+            });
+    });
+
+    $('#btn_create_ebay_location').on('click', function () {
+        if (!confirm('Create a default warehouse inventory location on your eBay seller account? Uses your first ERP store address (or Los Angeles, CA 90028 as fallback).')) {
+            return;
+        }
+        var $btn = $(this);
+        $btn.prop('disabled', true);
+        showResult('Creating inventory location…', false);
+        $.ajax({
+            url: '{{ url('/admin/ebay-seller/inventory-location/create') }}',
+            method: 'POST',
+            data: { _token: '{{ csrf_token() }}' },
+            dataType: 'json'
+        }).done(function (res) {
+            showResult((res && res.msg) ? res.msg : 'Done.', false);
+            setTimeout(function () { window.location.reload(); }, 1500);
+        }).fail(function (xhr) {
+            var msg = (xhr.responseJSON && xhr.responseJSON.msg) ? xhr.responseJSON.msg : (xhr.statusText || 'Create failed');
+            showResult(msg, true);
+        }).always(function () {
+            $btn.prop('disabled', false);
+        });
+    });
+});
+</script>
+@endsection
+@endif
 @stop

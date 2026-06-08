@@ -128,6 +128,46 @@ class EbaySellerAuthController extends Controller
         ]);
     }
 
+    public function checkInventoryLocation(Request $request)
+    {
+        $this->guardAdmin();
+        $business_id = (int) $request->session()->get('user.business_id');
+        $service = new EbayService($business_id);
+        if (!$service->isSellerConnected()) {
+            return response()->json(['success' => false, 'msg' => 'Seller not connected.'], 422);
+        }
+
+        $result = (new EbayInventoryApiClient($business_id, $service))->listInventoryLocations();
+        return response()->json($result);
+    }
+
+    public function createInventoryLocation(Request $request)
+    {
+        $this->guardAdmin();
+        $business_id = (int) $request->session()->get('user.business_id');
+        $service = new EbayService($business_id);
+        if (!$service->isSellerConnected()) {
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json(['success' => false, 'msg' => 'Seller not connected.'], 422);
+            }
+            return redirect('/admin/ebay-seller')->with('status', [
+                'type' => 'error',
+                'msg' => 'Seller not connected.',
+            ]);
+        }
+
+        $result = (new EbayInventoryApiClient($business_id, $service))->createDefaultInventoryLocation();
+
+        if ($request->ajax() || $request->wantsJson()) {
+            return response()->json($result, !empty($result['success']) ? 200 : 422);
+        }
+
+        return redirect('/admin/ebay-seller')->with('status', [
+            'type' => !empty($result['success']) ? 'success' : 'error',
+            'msg' => $result['msg'] ?? 'Unknown result.',
+        ]);
+    }
+
     protected function guardAdmin()
     {
         $user = auth()->user();

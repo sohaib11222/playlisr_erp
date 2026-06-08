@@ -225,6 +225,99 @@ class EbayInventoryApiClient
     }
 
     /**
+     * List inventory API locations on the connected seller account.
+     *
+     * @return array{success: bool, locations: array, msg?: string}
+     */
+    public function listInventoryLocations()
+    {
+        $token = $this->ebayService->getSellerAccessToken();
+        if (!$token) {
+            return ['success' => false, 'locations' => [], 'msg' => 'No seller token — connect your eBay account first.'];
+        }
+
+        $res = $this->sellerApiRequest('GET', '/sell/inventory/v1/location', $token);
+        if ($res['status'] < 200 || $res['status'] >= 300) {
+            return [
+                'success' => false,
+                'locations' => [],
+                'msg' => 'Could not read eBay inventory locations: ' . $this->ebayErr($res),
+            ];
+        }
+
+        $locations = $res['body']['locations'] ?? [];
+        return [
+            'success' => true,
+            'locations' => is_array($locations) ? $locations : [],
+            'msg' => count($locations) . ' location(s) found.',
+        ];
+    }
+
+    /**
+     * Create a default WAREHOUSE location when none exists (Inventory API).
+     *
+     * @return array{success: bool, msg: string, merchantLocationKey?: string}
+     */
+    public function createDefaultInventoryLocation()
+    {
+        $existing = $this->listInventoryLocations();
+        if (empty($existing['success'])) {
+            return ['success' => false, 'msg' => $existing['msg'] ?? 'Could not check existing locations.'];
+        }
+        if (!empty($existing['locations'])) {
+            $key = $existing['locations'][0]['merchantLocationKey'] ?? 'unknown';
+            return [
+                'success' => true,
+                'msg' => 'Inventory location already exists (key: ' . $key . '). No change made.',
+                'merchantLocationKey' => $key,
+            ];
+        }
+
+        $token = $this->ebayService->getSellerAccessToken();
+        if (!$token) {
+            return ['success' => false, 'msg' => 'No seller token — connect your eBay account first.'];
+        }
+
+        $settings = $this->businessUtil->getApiSettings($this->businessId);
+        $ebay = $settings['ebay'] ?? [];
+        $locationKey = trim((string) ($ebay['inventory_location_key'] ?? 'nivessa-warehouse'));
+        if ($locationKey === '') {
+            $locationKey = 'nivessa-warehouse';
+        }
+
+        $address = $this->resolveWarehouseAddress();
+        $payload = [
+            'name' => 'Nivessa Warehouse',
+            'locationTypes' => ['WAREHOUSE'],
+            'merchantLocationStatus' => 'ENABLED',
+            'location' => [
+                'address' => $address,
+            ],
+        ];
+
+        $res = $this->sellerApiRequest(
+            'POST',
+            '/sell/inventory/v1/location/' . rawurlencode($locationKey),
+            $token,
+            $payload,
+            ['Content-Language: en-US']
+        );
+
+        if ($res['status'] < 200 || $res['status'] >= 300) {
+            return ['success' => false, 'msg' => 'Create location failed: ' . $this->ebayErr($res)];
+        }
+
+        // Bust policy cache so next listing picks up the new location key.
+        $this->getListingPrereqs($token, true);
+
+        return [
+            'success' => true,
+            'msg' => 'Created inventory location "' . $locationKey . '" (' . $this->formatAddress($address) . ').',
+            'merchantLocationKey' => $locationKey,
+        ];
+    }
+
+    /**
      * Readiness summary for admin UI (no product draft required).
      *
      * @return array
@@ -238,6 +331,7 @@ class EbayInventoryApiClient
             'policies_ok' => false,
             'location_ok' => false,
             'default_category_set' => false,
+            'locations' => [],
             'errors' => [],
         ];
 
@@ -259,22 +353,96 @@ class EbayInventoryApiClient
             return $summary;
         }
 
-        $prereqs = $this->getListingPrereqs();
-        if (!empty($prereqs['error'])) {
-            $summary['errors'][] = $prereqs['error'];
+        $token = $this->ebayService->getSellerAccessToken();
+        if (!$token) {
+            $summary['errors'][] = 'Could not get seller token.';
             return $summary;
         }
 
-        $summary['policies_ok'] = !empty($prereqs['fulfillmentPolicyId'])
-            && !empty($prereqs['paymentPolicyId'])
-            && !empty($prereqs['returnPolicyId']);
-        $summary['location_ok'] = !empty($prereqs['merchantLocationKey']);
+        $policyCheck = $this->checkBusinessPolicies($token);
+        $summary['policies_ok'] = !empty($policyCheck['ok']);
+        if (!$summary['policies_ok'] && !empty($policyCheck['error'])) {
+            $summary['errors'][] = $policyCheck['error'];
+        }
+
+        $locResult = $this->listInventoryLocations();
+        if (!empty($locResult['success'])) {
+            $summary['locations'] = $locResult['locations'];
+            $summary['location_ok'] = count($locResult['locations']) > 0;
+            if (!$summary['location_ok']) {
+                $summary['errors'][] = 'No eBay inventory location set up. Use "Create default warehouse location" below, then try again.';
+            }
+        } else {
+            $summary['errors'][] = $locResult['msg'] ?? 'Could not read inventory locations.';
+        }
 
         if (!$summary['default_category_set']) {
             $summary['errors'][] = 'No default eBay category ID set in Business Settings (optional fallback when product category has no mapping).';
         }
 
         return $summary;
+    }
+
+    /**
+     * @return array{ok: bool, error?: string, fulfillmentPolicyId?: string, paymentPolicyId?: string, returnPolicyId?: string}
+     */
+    protected function checkBusinessPolicies($token)
+    {
+        $policyMap = [
+            'fulfillmentPolicyId' => ['path' => '/sell/account/v1/fulfillment_policy', 'list' => 'fulfillmentPolicies', 'id' => 'fulfillmentPolicyId', 'label' => 'shipping (fulfillment)'],
+            'paymentPolicyId' => ['path' => '/sell/account/v1/payment_policy', 'list' => 'paymentPolicies', 'id' => 'paymentPolicyId', 'label' => 'payment'],
+            'returnPolicyId' => ['path' => '/sell/account/v1/return_policy', 'list' => 'returnPolicies', 'id' => 'returnPolicyId', 'label' => 'return'],
+        ];
+
+        $out = ['ok' => true];
+        foreach ($policyMap as $key => $cfg) {
+            $res = $this->sellerApiRequest('GET', $cfg['path'] . '?marketplace_id=EBAY_US', $token);
+            if ($res['status'] < 200 || $res['status'] >= 300) {
+                return ['ok' => false, 'error' => 'Could not read eBay ' . $cfg['label'] . ' policies: ' . $this->ebayErr($res)];
+            }
+            $id = $res['body'][$cfg['list']][0][$cfg['id']] ?? null;
+            if (!$id) {
+                return ['ok' => false, 'error' => 'No eBay ' . $cfg['label'] . ' business policy found. Create one in eBay Seller Hub → Business policies.'];
+            }
+            $out[$key] = $id;
+        }
+        return $out;
+    }
+
+    protected function resolveWarehouseAddress()
+    {
+        $loc = \App\BusinessLocation::where('business_id', $this->businessId)
+            ->where('is_active', 1)
+            ->orderBy('id')
+            ->first();
+
+        if ($loc && !empty($loc->zip_code)) {
+            return array_filter([
+                'addressLine1' => $loc->landmark ?: ($loc->name ?: null),
+                'city' => $loc->city ?: null,
+                'stateOrProvince' => $loc->state ?: null,
+                'postalCode' => $loc->zip_code,
+                'country' => $loc->country ?: 'US',
+            ]);
+        }
+
+        return [
+            'city' => 'Los Angeles',
+            'stateOrProvince' => 'CA',
+            'postalCode' => '90028',
+            'country' => 'US',
+        ];
+    }
+
+    protected function formatAddress(array $address)
+    {
+        $parts = array_filter([
+            $address['city'] ?? null,
+            $address['stateOrProvince'] ?? null,
+            $address['postalCode'] ?? null,
+            $address['country'] ?? null,
+        ]);
+        return implode(', ', $parts);
     }
 
     private function savePolicyCache(array $cache)

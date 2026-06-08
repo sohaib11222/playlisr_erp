@@ -464,6 +464,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/ebay-seller/connect', 'EbaySellerAuthController@connect');
     Route::get('/admin/ebay-seller/callback', 'EbaySellerAuthController@callback');
     Route::post('/admin/ebay-seller/disconnect', 'EbaySellerAuthController@disconnect');
+    Route::get('/admin/ebay-seller/inventory-location/check', 'EbaySellerAuthController@checkInventoryLocation');
+    Route::post('/admin/ebay-seller/inventory-location/create', 'EbaySellerAuthController@createInventoryLocation');
 
     // Sling (getsling.com) connection — provides "Hours Worked" on the
     // Employee Productivity report. Sling free has no API keys, so we use
