@@ -286,10 +286,7 @@ class EbayInventoryApiClient
             }
         }
 
-        $erpLocations = \App\BusinessLocation::where('business_id', $this->businessId)
-            ->active()
-            ->orderBy('name')
-            ->get();
+        $erpLocations = $this->erpShipFromLocations();
 
         if ($erpLocations->isEmpty()) {
             return $this->createSingleWarehouseLocation($token, 'nivessa-warehouse', 'Nivessa Warehouse', $this->fallbackAddress());
@@ -470,10 +467,7 @@ class EbayInventoryApiClient
         }
 
         $locResult = $this->listInventoryLocations();
-        $erpStores = \App\BusinessLocation::where('business_id', $this->businessId)
-            ->active()
-            ->orderBy('name')
-            ->get(['id', 'name']);
+        $erpStores = $this->erpShipFromLocations(['id', 'name']);
         $summary['erp_locations'] = $erpStores->map(function ($loc) use ($ebay) {
             $map = $ebay['location_map'] ?? [];
             $key = $map[(string) $loc->id] ?? self::merchantKeyForLocationName($loc->name, (int) $loc->id);
@@ -533,21 +527,87 @@ class EbayInventoryApiClient
         return $out;
     }
 
+    /**
+     * Physical retail stores that ship eBay orders (Pico, Hollywood).
+     * Virtual marketplace bins (Discogs/eBay Warehouse) are excluded.
+     */
+    protected function erpShipFromLocations(array $columns = ['*'])
+    {
+        return \App\BusinessLocation::where('business_id', $this->businessId)
+            ->active()
+            ->orderBy('name')
+            ->get($columns)
+            ->filter(function ($loc) {
+                return self::isEbayShipFromLocation($loc->name);
+            })
+            ->values();
+    }
+
+    public static function isEbayShipFromLocation($name)
+    {
+        $normalized = strtolower(trim((string) $name));
+        if ($normalized === '') {
+            return false;
+        }
+        foreach (['discogs warehouse', 'ebay warehouse'] as $virtual) {
+            if ($normalized === $virtual || strpos($normalized, $virtual) !== false) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     protected function addressFromBusinessLocation(\App\BusinessLocation $loc)
     {
-        $address = array_filter([
-            'addressLine1' => $loc->landmark ?: ($loc->name ?: null),
-            'city' => $loc->city ?: null,
-            'stateOrProvince' => $loc->state ?: null,
-            'postalCode' => $loc->zip_code ?: null,
-            'country' => $loc->country ?: 'US',
-        ]);
+        $country = $this->normalizeCountryCode($loc->country);
+        $city = trim((string) ($loc->city ?? ''));
+        $state = trim((string) ($loc->state ?? ''));
+        $postal = trim((string) ($loc->zip_code ?? ''));
+        $line1 = trim((string) ($loc->landmark ?: $loc->name ?: ''));
 
-        if (!empty($address['postalCode'])) {
-            return $address;
+        $address = ['country' => $country];
+        if ($line1 !== '') {
+            $address['addressLine1'] = $line1;
+        }
+        if ($city !== '') {
+            $address['city'] = $city;
+        }
+        if ($state !== '') {
+            $address['stateOrProvince'] = $state;
+        }
+        if ($postal !== '') {
+            $address['postalCode'] = $postal;
         }
 
-        return $this->fallbackAddress();
+        $hasPostalBundle = $postal !== '';
+        $hasCityStateBundle = $city !== '' && $state !== '';
+        if (!$hasPostalBundle && !$hasCityStateBundle) {
+            return $this->fallbackAddress();
+        }
+
+        return $address;
+    }
+
+    protected function normalizeCountryCode($value)
+    {
+        $raw = strtoupper(trim((string) $value));
+        if ($raw === '') {
+            return 'US';
+        }
+        if (strlen($raw) === 2 && ctype_alpha($raw)) {
+            return $raw;
+        }
+
+        $map = [
+            'USA' => 'US',
+            'U.S.' => 'US',
+            'U.S.A.' => 'US',
+            'UNITED STATES' => 'US',
+            'UNITED STATES OF AMERICA' => 'US',
+            'AMERICA' => 'US',
+        ];
+
+        return $map[$raw] ?? 'US';
     }
 
     protected function fallbackAddress()
