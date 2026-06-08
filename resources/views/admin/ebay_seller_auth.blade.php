@@ -123,9 +123,6 @@
                     <button type="button" class="btn btn-default" id="btn_check_ebay_locations">
                         <i class="fa fa-search"></i> Check inventory locations
                     </button>
-                    <button type="button" class="btn btn-primary" id="btn_create_ebay_location" style="margin-left:8px;">
-                        <i class="fa fa-plus"></i> Create store warehouse locations
-                    </button>
                     <div id="ebay_location_result" style="margin-top:12px; display:none;">
                         <pre class="bg-light" style="padding:10px; border-radius:4px; white-space:pre-wrap; margin:0; max-height:240px; overflow:auto;"></pre>
                     </div>
@@ -196,7 +193,7 @@ $(function () {
                     return;
                 }
                 if (!res.locations || !res.locations.length) {
-                    showResult('No inventory locations found.\n\nClick "Create store warehouse locations" to add Pico + Hollywood.', true);
+                    showResult('No inventory locations found for Pico / Hollywood.', true);
                     return;
                 }
                 var lines = ['Found ' + res.locations.length + ' location(s):\n'];
@@ -217,28 +214,6 @@ $(function () {
             });
     });
 
-    $('#btn_create_ebay_location').on('click', function () {
-        if (!confirm('Create eBay warehouse locations for each ERP store (Pico + Hollywood)? Uses each store\'s address from Business Locations.')) {
-            return;
-        }
-        var $btn = $(this);
-        $btn.prop('disabled', true);
-        showResult('Creating inventory location…', false);
-        $.ajax({
-            url: '{{ url('/admin/ebay-seller/inventory-location/create') }}',
-            method: 'POST',
-            data: { _token: '{{ csrf_token() }}' },
-            dataType: 'json'
-        }).done(function (res) {
-            showResult((res && res.msg) ? res.msg : 'Done.', false);
-            setTimeout(function () { window.location.reload(); }, 1500);
-        }).fail(function (xhr) {
-            var msg = (xhr.responseJSON && xhr.responseJSON.msg) ? xhr.responseJSON.msg : (xhr.statusText || 'Create failed');
-            showResult(msg, true);
-        }).always(function () {
-            $btn.prop('disabled', false);
-        });
-    });
 });
 </script>
 @endsection

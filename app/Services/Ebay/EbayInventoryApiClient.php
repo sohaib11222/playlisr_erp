@@ -488,7 +488,7 @@ class EbayInventoryApiClient
                     array_column($summary['erp_locations'], 'merchant_location_key')
                 )) >= $needed;
             if (!$summary['location_ok']) {
-                $summary['errors'][] = 'eBay inventory locations missing for one or more stores. Click "Create store warehouse locations" below (creates Pico + Hollywood).';
+                $summary['errors'][] = 'eBay inventory locations missing for one or more stores (Pico, Hollywood).';
             }
         } else {
             $summary['errors'][] = $locResult['msg'] ?? 'Could not read inventory locations.';
