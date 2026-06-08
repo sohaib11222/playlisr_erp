@@ -47,6 +47,14 @@ class EbayInventoryApiClient
             return ['success' => false, 'msg' => $prereqs['error']];
         }
 
+        $offerLocationKey = $this->resolveOfferLocationKey($draft, $prereqs);
+        if ($offerLocationKey === '') {
+            return [
+                'success' => false,
+                'msg' => 'No eBay inventory location for this product\'s store. Create Pico + Hollywood locations at /admin/ebay-seller.',
+            ];
+        }
+
         $sku = $draft->sku;
         $title = trim((string) $draft->title);
         if (mb_strlen($title) > 80) {
@@ -105,7 +113,7 @@ class EbayInventoryApiClient
                     'paymentPolicyId' => $prereqs['paymentPolicyId'],
                     'returnPolicyId' => $prereqs['returnPolicyId'],
                 ],
-                'merchantLocationKey' => $prereqs['merchantLocationKey'],
+                'merchantLocationKey' => $offerLocationKey,
             ];
 
             $offerId = null;
@@ -254,52 +262,126 @@ class EbayInventoryApiClient
     }
 
     /**
-     * Create a default WAREHOUSE location when none exists (Inventory API).
+     * Create eBay WAREHOUSE locations for each active ERP store (Pico, Hollywood, …).
+     * Skips keys that already exist; saves ERP location_id → merchantLocationKey map.
      *
-     * @return array{success: bool, msg: string, merchantLocationKey?: string}
+     * @return array{success: bool, msg: string, created?: string[], skipped?: string[], location_map?: array}
      */
     public function createDefaultInventoryLocation()
     {
-        $existing = $this->listInventoryLocations();
-        if (empty($existing['success'])) {
-            return ['success' => false, 'msg' => $existing['msg'] ?? 'Could not check existing locations.'];
-        }
-        if (!empty($existing['locations'])) {
-            $key = $existing['locations'][0]['merchantLocationKey'] ?? 'unknown';
-            return [
-                'success' => true,
-                'msg' => 'Inventory location already exists (key: ' . $key . '). No change made.',
-                'merchantLocationKey' => $key,
-            ];
-        }
-
         $token = $this->ebayService->getSellerAccessToken();
         if (!$token) {
             return ['success' => false, 'msg' => 'No seller token — connect your eBay account first.'];
         }
 
-        $settings = $this->businessUtil->getApiSettings($this->businessId);
-        $ebay = $settings['ebay'] ?? [];
-        $locationKey = trim((string) ($ebay['inventory_location_key'] ?? 'nivessa-warehouse'));
-        if ($locationKey === '') {
-            $locationKey = 'nivessa-warehouse';
+        $existing = $this->listInventoryLocations();
+        if (empty($existing['success'])) {
+            return ['success' => false, 'msg' => $existing['msg'] ?? 'Could not check existing locations.'];
         }
 
-        $address = $this->resolveWarehouseAddress();
-        $payload = [
-            'name' => 'Nivessa Warehouse',
-            'locationTypes' => ['WAREHOUSE'],
-            'merchantLocationStatus' => 'ENABLED',
-            'location' => [
-                'address' => $address,
-            ],
-        ];
+        $existingKeys = [];
+        foreach ($existing['locations'] as $loc) {
+            if (!empty($loc['merchantLocationKey'])) {
+                $existingKeys[$loc['merchantLocationKey']] = true;
+            }
+        }
 
+        $erpLocations = \App\BusinessLocation::where('business_id', $this->businessId)
+            ->active()
+            ->orderBy('name')
+            ->get();
+
+        if ($erpLocations->isEmpty()) {
+            return $this->createSingleWarehouseLocation($token, 'nivessa-warehouse', 'Nivessa Warehouse', $this->fallbackAddress());
+        }
+
+        $created = [];
+        $skipped = [];
+        $errors = [];
+        $locationMap = [];
+
+        foreach ($erpLocations as $erpLoc) {
+            $key = self::merchantKeyForLocationName($erpLoc->name, (int) $erpLoc->id);
+            $locationMap[(string) $erpLoc->id] = $key;
+
+            if (isset($existingKeys[$key])) {
+                $skipped[] = $erpLoc->name . ' → ' . $key;
+                continue;
+            }
+
+            $address = $this->addressFromBusinessLocation($erpLoc);
+            $payload = [
+                'name' => 'Nivessa ' . $erpLoc->name,
+                'locationTypes' => ['WAREHOUSE'],
+                'merchantLocationStatus' => 'ENABLED',
+                'location' => ['address' => $address],
+            ];
+
+            $res = $this->sellerApiRequest(
+                'POST',
+                '/sell/inventory/v1/location/' . rawurlencode($key),
+                $token,
+                $payload,
+                ['Content-Language: en-US']
+            );
+
+            if ($res['status'] < 200 || $res['status'] >= 300) {
+                $errors[] = $erpLoc->name . ': ' . $this->ebayErr($res);
+                continue;
+            }
+
+            $existingKeys[$key] = true;
+            $created[] = $erpLoc->name . ' → ' . $key . ' (' . $this->formatAddress($address) . ')';
+        }
+
+        $this->saveLocationMap($locationMap);
+        $this->getListingPrereqs($token, true);
+
+        if (!empty($errors) && empty($created) && empty($skipped)) {
+            return ['success' => false, 'msg' => implode(' ', $errors)];
+        }
+
+        $parts = [];
+        if (!empty($created)) {
+            $parts[] = 'Created: ' . implode('; ', $created);
+        }
+        if (!empty($skipped)) {
+            $parts[] = 'Already on eBay: ' . implode('; ', $skipped);
+        }
+        if (!empty($errors)) {
+            $parts[] = 'Errors: ' . implode('; ', $errors);
+        }
+
+        return [
+            'success' => empty($errors) || !empty($created) || !empty($skipped),
+            'msg' => implode("\n", $parts),
+            'created' => $created,
+            'skipped' => $skipped,
+            'location_map' => $locationMap,
+        ];
+    }
+
+    public static function merchantKeyForLocationName($name, $id = null)
+    {
+        $slug = strtolower(trim(preg_replace('/[^a-z0-9]+/', '-', (string) $name), '-'));
+        if ($slug === '') {
+            $slug = 'loc-' . (int) $id;
+        }
+        return 'nivessa-' . $slug;
+    }
+
+    protected function createSingleWarehouseLocation($token, $key, $label, array $address)
+    {
         $res = $this->sellerApiRequest(
             'POST',
-            '/sell/inventory/v1/location/' . rawurlencode($locationKey),
+            '/sell/inventory/v1/location/' . rawurlencode($key),
             $token,
-            $payload,
+            [
+                'name' => $label,
+                'locationTypes' => ['WAREHOUSE'],
+                'merchantLocationStatus' => 'ENABLED',
+                'location' => ['address' => $address],
+            ],
             ['Content-Language: en-US']
         );
 
@@ -307,14 +389,36 @@ class EbayInventoryApiClient
             return ['success' => false, 'msg' => 'Create location failed: ' . $this->ebayErr($res)];
         }
 
-        // Bust policy cache so next listing picks up the new location key.
         $this->getListingPrereqs($token, true);
-
         return [
             'success' => true,
-            'msg' => 'Created inventory location "' . $locationKey . '" (' . $this->formatAddress($address) . ').',
-            'merchantLocationKey' => $locationKey,
+            'msg' => 'Created inventory location "' . $key . '" (' . $this->formatAddress($address) . ').',
+            'merchantLocationKey' => $key,
         ];
+    }
+
+    protected function resolveOfferLocationKey(EbayListingDraft $draft, array $prereqs)
+    {
+        $key = trim((string) ($draft->merchant_location_key ?? ''));
+        if ($key !== '') {
+            return $key;
+        }
+        return $prereqs['merchantLocationKey'] ?? '';
+    }
+
+    protected function saveLocationMap(array $locationMap)
+    {
+        $business = \App\Business::find($this->businessId);
+        if (!$business) {
+            return;
+        }
+        $api = $business->api_settings ?? [];
+        if (is_string($api)) {
+            $api = json_decode($api, true) ?? [];
+        }
+        $api['ebay'] = array_merge($api['ebay'] ?? [], ['location_map' => $locationMap]);
+        $business->api_settings = $api;
+        $business->save();
     }
 
     /**
@@ -366,11 +470,31 @@ class EbayInventoryApiClient
         }
 
         $locResult = $this->listInventoryLocations();
+        $erpStores = \App\BusinessLocation::where('business_id', $this->businessId)
+            ->active()
+            ->orderBy('name')
+            ->get(['id', 'name']);
+        $summary['erp_locations'] = $erpStores->map(function ($loc) use ($ebay) {
+            $map = $ebay['location_map'] ?? [];
+            $key = $map[(string) $loc->id] ?? self::merchantKeyForLocationName($loc->name, (int) $loc->id);
+            return ['id' => $loc->id, 'name' => $loc->name, 'merchant_location_key' => $key];
+        })->values()->all();
+        $summary['location_map'] = $ebay['location_map'] ?? [];
+
         if (!empty($locResult['success'])) {
             $summary['locations'] = $locResult['locations'];
-            $summary['location_ok'] = count($locResult['locations']) > 0;
+            $ebayKeys = array_filter(array_map(function ($loc) {
+                return $loc['merchantLocationKey'] ?? null;
+            }, $locResult['locations']));
+            $needed = count($summary['erp_locations']);
+            $summary['location_ok'] = $needed === 0
+                ? count($ebayKeys) > 0
+                : count(array_intersect(
+                    $ebayKeys,
+                    array_column($summary['erp_locations'], 'merchant_location_key')
+                )) >= $needed;
             if (!$summary['location_ok']) {
-                $summary['errors'][] = 'No eBay inventory location set up. Use "Create default warehouse location" below, then try again.';
+                $summary['errors'][] = 'eBay inventory locations missing for one or more stores. Click "Create store warehouse locations" below (creates Pico + Hollywood).';
             }
         } else {
             $summary['errors'][] = $locResult['msg'] ?? 'Could not read inventory locations.';
@@ -409,23 +533,25 @@ class EbayInventoryApiClient
         return $out;
     }
 
-    protected function resolveWarehouseAddress()
+    protected function addressFromBusinessLocation(\App\BusinessLocation $loc)
     {
-        $loc = \App\BusinessLocation::where('business_id', $this->businessId)
-            ->where('is_active', 1)
-            ->orderBy('id')
-            ->first();
+        $address = array_filter([
+            'addressLine1' => $loc->landmark ?: ($loc->name ?: null),
+            'city' => $loc->city ?: null,
+            'stateOrProvince' => $loc->state ?: null,
+            'postalCode' => $loc->zip_code ?: null,
+            'country' => $loc->country ?: 'US',
+        ]);
 
-        if ($loc && !empty($loc->zip_code)) {
-            return array_filter([
-                'addressLine1' => $loc->landmark ?: ($loc->name ?: null),
-                'city' => $loc->city ?: null,
-                'stateOrProvince' => $loc->state ?: null,
-                'postalCode' => $loc->zip_code,
-                'country' => $loc->country ?: 'US',
-            ]);
+        if (!empty($address['postalCode'])) {
+            return $address;
         }
 
+        return $this->fallbackAddress();
+    }
+
+    protected function fallbackAddress()
+    {
         return [
             'city' => 'Los Angeles',
             'stateOrProvince' => 'CA',

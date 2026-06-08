@@ -43,6 +43,15 @@ class EbayListingDraft
     /** @var string|null */
     public $listing_status;
 
+    /** @var int|null ERP business_locations.id ships from */
+    public $erp_location_id;
+
+    /** @var string|null e.g. Pico, Hollywood */
+    public $erp_location_name;
+
+    /** @var string|null eBay merchantLocationKey */
+    public $merchant_location_key;
+
     public function toArray()
     {
         return [
@@ -59,6 +68,9 @@ class EbayListingDraft
             'not_for_selling' => $this->not_for_selling,
             'ebay_listing_id' => $this->ebay_listing_id,
             'listing_status' => $this->listing_status,
+            'erp_location_id' => $this->erp_location_id,
+            'erp_location_name' => $this->erp_location_name,
+            'merchant_location_key' => $this->merchant_location_key,
         ];
     }
 }

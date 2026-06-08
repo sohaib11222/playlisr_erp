@@ -66,8 +66,16 @@ class EbayListingValidator
             $errors[] = 'Missing SKU for eBay listing.';
         }
 
+        if (empty(trim((string) $draft->merchant_location_key))) {
+            $errors[] = 'No eBay inventory location mapped for this product\'s store. Create Pico + Hollywood locations at /admin/ebay-seller.';
+        }
+
         if ($warnIfListed && !empty($draft->ebay_listing_id) && $draft->listing_status === 'listed') {
             $warnings[] = 'This product already has an eBay listing (ID: ' . $draft->ebay_listing_id . '). Listing again may create a duplicate.';
+        }
+
+        if (!empty($draft->erp_location_name) && !empty($draft->merchant_location_key)) {
+            $warnings[] = 'Will list from ' . $draft->erp_location_name . ' (eBay location: ' . $draft->merchant_location_key . ').';
         }
 
         return [

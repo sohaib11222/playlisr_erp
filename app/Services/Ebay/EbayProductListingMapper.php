@@ -41,10 +41,14 @@ class EbayProductListingMapper
         $settings = $this->businessUtil->getApiSettings($businessId);
         $ebaySettings = $settings['ebay'] ?? [];
 
+        $product->load(['product_locations']);
+
         $variation = $product->variations()
             ->with(['variation_location_details'])
             ->orderBy('id')
             ->first();
+
+        $shipFrom = $this->resolveShipFromLocation($product, $variation, $ebaySettings);
 
         $draft = new EbayListingDraft();
         $draft->product_id = (int) $product->id;
@@ -53,7 +57,10 @@ class EbayProductListingMapper
         $draft->description = trim((string) ($product->product_description ?: $product->name));
         $draft->price = $variation ? (float) $variation->sell_price_inc_tax : 0;
         $draft->currency = $this->resolveCurrency($businessId);
-        $draft->quantity = $this->resolveQuantity($variation);
+        $draft->quantity = $shipFrom['quantity'];
+        $draft->erp_location_id = $shipFrom['erp_location_id'];
+        $draft->erp_location_name = $shipFrom['erp_location_name'];
+        $draft->merchant_location_key = $shipFrom['merchant_location_key'];
         $draft->category_id = $this->resolveCategoryId($product, $ebaySettings);
         $draft->condition = trim((string) ($ebaySettings['default_condition'] ?? 'USED_GOOD'));
         $draft->image_urls = $this->resolveImageUrls($product);
@@ -93,13 +100,77 @@ class EbayProductListingMapper
         return $title;
     }
 
-    private function resolveQuantity($variation)
+    /**
+     * Pick ERP store + eBay merchantLocationKey from product_locations and stock.
+     *
+     * @return array{erp_location_id: ?int, erp_location_name: ?string, merchant_location_key: string, quantity: int}
+     */
+    private function resolveShipFromLocation(Product $product, $variation, array $ebaySettings)
     {
-        if (!$variation) {
-            return 1;
+        $locationMap = $ebaySettings['location_map'] ?? [];
+        $assigned = $product->product_locations;
+        $assignedIds = $assigned->pluck('id')->map(function ($id) {
+            return (int) $id;
+        })->all();
+
+        $qtyByLocation = [];
+        if ($variation) {
+            foreach ($variation->variation_location_details as $vld) {
+                $lid = (int) $vld->location_id;
+                if (empty($assignedIds) || in_array($lid, $assignedIds, true)) {
+                    $qtyByLocation[$lid] = (int) ($qtyByLocation[$lid] ?? 0) + (int) $vld->qty_available;
+                }
+            }
         }
-        $qty = (int) $variation->variation_location_details->sum('qty_available');
-        return max(1, $qty);
+
+        $pick = null;
+        $maxQty = -1;
+        if (!empty($assignedIds)) {
+            foreach ($assigned as $loc) {
+                $lid = (int) $loc->id;
+                $q = (int) ($qtyByLocation[$lid] ?? 0);
+                if ($q > $maxQty) {
+                    $maxQty = $q;
+                    $pick = $loc;
+                }
+            }
+            if ($pick === null) {
+                $pick = $assigned->first();
+                $maxQty = (int) ($qtyByLocation[(int) $pick->id] ?? 0);
+            }
+        }
+
+        if ($pick !== null) {
+            $lid = (int) $pick->id;
+            $key = $locationMap[(string) $lid] ?? EbayInventoryApiClient::merchantKeyForLocationName($pick->name, $lid);
+            $qty = $maxQty > 0 ? $maxQty : max(1, (int) array_sum($qtyByLocation));
+            return [
+                'erp_location_id' => $lid,
+                'erp_location_name' => $pick->name,
+                'merchant_location_key' => $key,
+                'quantity' => max(1, $qty),
+            ];
+        }
+
+        $fallbackKey = $this->defaultMerchantLocationKey($locationMap);
+        $totalQty = $variation
+            ? max(1, (int) $variation->variation_location_details->sum('qty_available'))
+            : 1;
+
+        return [
+            'erp_location_id' => null,
+            'erp_location_name' => null,
+            'merchant_location_key' => $fallbackKey,
+            'quantity' => $totalQty,
+        ];
+    }
+
+    private function defaultMerchantLocationKey(array $locationMap)
+    {
+        if (!empty($locationMap)) {
+            return (string) reset($locationMap);
+        }
+        return 'nivessa-hollywood';
     }
 
     private function resolveImageUrls(Product $product)

@@ -104,14 +104,27 @@
                 <div class="box-header with-border"><h4 class="box-title" style="font-size:15px;">Inventory API location</h4></div>
                 <div class="box-body">
                     <p class="text-muted" style="margin-top:0;">
-                        ERP listings need an <strong>Inventory API warehouse location</strong> — separate from business policies and normal Seller Hub listings.
-                        Use the buttons below to check what eBay has on file, or create a default warehouse if none exists.
+                        ERP listings need an <strong>Inventory API warehouse per store</strong> (Pico, Hollywood) — separate from business policies.
+                        Each product lists from the store where it has stock / is assigned.
                     </p>
+                    @if(!empty($listingReadiness['erp_locations']))
+                        <table class="table table-condensed table-bordered" style="max-width:560px; margin-bottom:12px;">
+                            <thead><tr><th>ERP store</th><th>eBay location key</th></tr></thead>
+                            <tbody>
+                                @foreach($listingReadiness['erp_locations'] as $store)
+                                    <tr>
+                                        <td>{{ $store['name'] }}</td>
+                                        <td><code>{{ $store['merchant_location_key'] }}</code></td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    @endif
                     <button type="button" class="btn btn-default" id="btn_check_ebay_locations">
                         <i class="fa fa-search"></i> Check inventory locations
                     </button>
                     <button type="button" class="btn btn-primary" id="btn_create_ebay_location" style="margin-left:8px;">
-                        <i class="fa fa-plus"></i> Create default warehouse location
+                        <i class="fa fa-plus"></i> Create store warehouse locations
                     </button>
                     <div id="ebay_location_result" style="margin-top:12px; display:none;">
                         <pre class="bg-light" style="padding:10px; border-radius:4px; white-space:pre-wrap; margin:0; max-height:240px; overflow:auto;"></pre>
@@ -183,7 +196,7 @@ $(function () {
                     return;
                 }
                 if (!res.locations || !res.locations.length) {
-                    showResult('No inventory locations found.\n\nClick "Create default warehouse location" to add one.', true);
+                    showResult('No inventory locations found.\n\nClick "Create store warehouse locations" to add Pico + Hollywood.', true);
                     return;
                 }
                 var lines = ['Found ' + res.locations.length + ' location(s):\n'];
@@ -205,7 +218,7 @@ $(function () {
     });
 
     $('#btn_create_ebay_location').on('click', function () {
-        if (!confirm('Create a default warehouse inventory location on your eBay seller account? Uses your first ERP store address (or Los Angeles, CA 90028 as fallback).')) {
+        if (!confirm('Create eBay warehouse locations for each ERP store (Pico + Hollywood)? Uses each store\'s address from Business Locations.')) {
             return;
         }
         var $btn = $(this);

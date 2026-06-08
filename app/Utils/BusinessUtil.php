@@ -489,6 +489,7 @@ class BusinessUtil extends Util
                 'default_category_id' => '',
                 'default_condition' => 'USED_GOOD',
                 'policy_cache' => [],
+                'location_map' => [],
             ],
             'discogs' => [
                 'token' => '',
