@@ -61,7 +61,7 @@ class EbaySellerAuthController extends Controller
         if (!$service->isConfigured()) {
             return redirect('/admin/ebay-seller')->with('status', [
                 'type' => 'error',
-                'msg' => 'eBay app credentials missing. Set app_id, cert_id, dev_id under Business Settings → Integrations first.',
+                'msg' => 'eBay app credentials missing. Set app_id and cert_id under Business Settings → Integrations first.',
             ]);
         }
         $callbackUrl = url('/admin/ebay-seller/callback');

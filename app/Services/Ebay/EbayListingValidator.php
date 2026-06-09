@@ -26,7 +26,7 @@ class EbayListingValidator
         $warnings = [];
 
         if (!$this->ebayService->isConfigured()) {
-            $errors[] = 'eBay API credentials not configured. Set App ID, Cert ID, and Dev ID in Business Settings → Integrations.';
+            $errors[] = 'eBay API credentials not configured. Set App ID and Cert ID in Business Settings → Integrations.';
         }
 
         if ($this->ebayService->isConfigured() && !$this->ebayService->isSellerConnected()) {

@@ -234,7 +234,8 @@ class ProductController extends Controller
                 $products->addSelect('products.listing_status');
             }
 
-            $ebayListingReady = $this->ebayService->isConfigured() && $this->ebayService->isSellerConnected();
+            $ebayService = new EbayService($this->getBusinessId());
+            $ebayListingReady = $ebayService->isConfigured() && $ebayService->isSellerConnected();
 
             $products->groupBy('products.id');
 
@@ -311,8 +312,8 @@ class ProductController extends Controller
                 $products->whereDate('products.created_at', '<=', $end_date);
             }
 
-            $ebayConfigured = $this->ebayService->isConfigured();
-            $ebaySellerConnected = $ebayConfigured ? $this->ebayService->isSellerConnected() : false;
+            $ebayConfigured = $ebayService->isConfigured();
+            $ebaySellerConnected = $ebayConfigured ? $ebayService->isSellerConnected() : false;
             $discogsConfigured = $this->discogsService->isConfigured();
             $discogsListedSet = self::getDiscogsListedReleaseSet();
 
@@ -572,8 +573,9 @@ class ProductController extends Controller
 
         $is_admin = $this->productUtil->is_admin(auth()->user());
 
-        $ebay_configured = $this->ebayService->isConfigured();
-        $ebay_seller_connected = $ebay_configured ? $this->ebayService->isSellerConnected() : false;
+        $ebayService = new EbayService($this->getBusinessId());
+        $ebay_configured = $ebayService->isConfigured();
+        $ebay_seller_connected = $ebay_configured ? $ebayService->isSellerConnected() : false;
         $ebay_listing_ready = $ebay_configured && $ebay_seller_connected;
 
         return view('product.index')

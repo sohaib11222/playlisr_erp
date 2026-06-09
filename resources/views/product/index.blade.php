@@ -197,7 +197,7 @@
                             @else
                                 <i class="fa fa-times-circle"></i>
                                 <strong>eBay not configured.</strong>
-                                Add App ID, Cert ID, and Dev ID in
+                                Add App ID and Cert ID in
                                 <a href="{{ action('BusinessController@getBusinessSettings') }}#integrations">Business Settings → Integrations</a>.
                             @endif
                         </div>

@@ -80,9 +80,9 @@ class EbayService
      */
     public function isConfigured()
     {
-        return !empty($this->appId) && 
-               !empty($this->certId) && 
-               !empty($this->devId);
+        // OAuth + Inventory API only need Client ID + Secret (app_id, cert_id).
+        // dev_id is optional legacy metadata and is not sent to eBay OAuth.
+        return !empty($this->appId) && !empty($this->certId);
     }
 
     /**

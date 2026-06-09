@@ -19,7 +19,7 @@
             @if(!$configured)
                 <p class="text-danger">
                     <i class="fa fa-exclamation-triangle"></i>
-                    eBay app credentials are missing. Set <code>app_id</code>, <code>cert_id</code>, and <code>dev_id</code>
+                    eBay app credentials are missing. Set <code>app_id</code> and <code>cert_id</code>
                     under Business Settings → Integrations first.
                 </p>
             @elseif($environment === 'production' && empty($ru_name))
