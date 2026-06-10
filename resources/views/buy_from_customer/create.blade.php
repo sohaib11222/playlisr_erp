@@ -204,6 +204,9 @@
                             <div class="form-group">
                                 <label>Existing contact</label>
                                 {!! Form::select('contact_id', $contacts, $input['contact_id'] ?? null, ['class' => 'form-control select2', 'style' => 'width:100%;']) !!}
+                                <button type="button" class="btn btn-link btn-xs" id="bfc_view_account_btn" style="padding-left:0;">
+                                    <i class="fa fa-user"></i> View account (store credit &amp; history)
+                                </button>
                             </div>
                         </div>
                         <div class="col-md-3">
@@ -573,6 +576,7 @@
     @endif
 </section>
 
+@include('sale_pos.partials.customer_account_modal')
 @include('help.partials.tour_button', ['tourSteps' => \App\Help\Catalog::tour('buy_from_customer')])
 @endsection
 
@@ -587,6 +591,154 @@
 
         $(document).on('change', '#seller_mode', toggleSellerMode);
         toggleSellerMode();
+
+        // View account: load the selected contact's store credit, gift cards,
+        // preorders and purchase history into the shared POS customer modal so
+        // the cashier can check balances before quoting a store-credit offer.
+        function loadCustomerAccount(contactId) {
+            $('#customer_account_loading').show();
+            $('#customer_account_content').hide();
+            $('#customer_account_modal').modal('show');
+
+            $.ajax({
+                url: '/sells/pos/get-customer-account-info',
+                type: 'GET',
+                data: { contact_id: contactId },
+                dataType: 'json',
+                success: function (response) {
+                    $('#customer_account_loading').hide();
+                    if (!response || !response.success || !response.data) {
+                        $('#customer_account_content').show();
+                        toastr.error('Failed to load customer information.');
+                        return;
+                    }
+                    var data = response.data;
+                    var contact = data.contact;
+
+                    $('#modal_customer_name').text(contact.name);
+                    $('#modal_account_balance').text(__currency_trans_from_en(contact.balance || 0, true));
+                    $('#modal_lifetime_purchases').text(__currency_trans_from_en(contact.lifetime_purchases || 0, true));
+                    $('#modal_loyalty_points').text(contact.loyalty_points || 0);
+                    $('#modal_loyalty_tier').text(contact.loyalty_tier || 'Bronze');
+                    $('#modal_last_purchase_date').text(contact.last_purchase_date || 'Never');
+                    $('#modal_total_gift_card_balance').text(__currency_trans_from_en(data.total_gift_card_balance || 0, true));
+                    $('#modal_store_credit_contact_id').val(contact.id);
+                    $('#modal_store_credit_amount').val('');
+
+                    var giftCardsHtml = '';
+                    if (data.gift_cards && data.gift_cards.length > 0) {
+                        data.gift_cards.forEach(function (card) {
+                            giftCardsHtml += '<p><strong>Card:</strong> ' + card.card_number +
+                                ' | <strong>Balance:</strong> ' + __currency_trans_from_en(card.balance, true);
+                            if (card.expiry_date) {
+                                giftCardsHtml += ' | <strong>Expires:</strong> ' + card.expiry_date;
+                            }
+                            giftCardsHtml += '</p>';
+                        });
+                    } else {
+                        giftCardsHtml = '<p class="text-muted">No active gift cards</p>';
+                    }
+                    $('#modal_gift_cards_list').html(giftCardsHtml);
+
+                    var preordersHtml = '';
+                    var preorderCount = 0;
+                    if (data.preorders && data.preorders.length > 0) {
+                        preorderCount = data.preorders.length;
+                        data.preorders.forEach(function (preorder) {
+                            var productDisplay = preorder.product_name;
+                            if (preorder.artist) {
+                                productDisplay = preorder.artist + ' - ' + productDisplay;
+                            }
+                            preordersHtml += '<tr>' +
+                                '<td>' + productDisplay + '</td>' +
+                                '<td>' + (preorder.sub_sku || 'N/A') + '</td>' +
+                                '<td>' + preorder.quantity + '</td>' +
+                                '<td>' + preorder.order_date + '</td>' +
+                                '<td>' + (preorder.expected_date || 'Not set') + '</td>' +
+                                '</tr>';
+                        });
+                    } else {
+                        preordersHtml = '<tr><td colspan="5" class="text-center text-muted">No pending preorders</td></tr>';
+                    }
+                    $('#modal_preorders_list').html(preordersHtml);
+                    $('#modal_preorder_count').text('(' + preorderCount + ' preorder' + (preorderCount !== 1 ? 's' : '') + ')');
+
+                    var totalPurchases = data.total_purchases_count || 0;
+                    $('#modal_purchase_count').text('(' + totalPurchases + ' purchase' + (totalPurchases !== 1 ? 's' : '') + ')');
+
+                    var purchasesHtml = '';
+                    if (data.all_purchases && data.all_purchases.length > 0) {
+                        data.all_purchases.forEach(function (purchase) {
+                            var itemsText = purchase.item_count + ' item' + (purchase.item_count !== 1 ? 's' : '');
+                            var viewLink = '<a href="/sells/' + purchase.id + '" target="_blank" class="btn btn-xs btn-info"><i class="fa fa-eye"></i> View</a>';
+                            purchasesHtml += '<tr>' +
+                                '<td><strong>' + purchase.invoice_no + '</strong></td>' +
+                                '<td>' + purchase.date + '</td>' +
+                                '<td>' + itemsText + '</td>' +
+                                '<td>' + __currency_trans_from_en(purchase.total, true) + '</td>' +
+                                '<td><span class="label label-' + (purchase.payment_status === 'paid' ? 'success' : purchase.payment_status === 'partial' ? 'warning' : 'danger') + '">' + purchase.payment_status + '</span></td>' +
+                                '<td>' + viewLink + '</td>' +
+                                '</tr>';
+                        });
+                    } else {
+                        purchasesHtml = '<tr><td colspan="6" class="text-center text-muted">No purchases found</td></tr>';
+                    }
+                    $('#modal_all_purchases_list').html(purchasesHtml);
+
+                    $('#customer_account_content').show();
+                },
+                error: function (xhr, status, error) {
+                    $('#customer_account_loading').hide();
+                    $('#customer_account_content').show();
+                    toastr.error('Error loading customer information: ' + error);
+                }
+            });
+        }
+
+        $(document).on('click', '#bfc_view_account_btn', function (e) {
+            e.preventDefault();
+            var contactId = $('#contact_id').val();
+            if (!contactId) {
+                toastr.error('Select an existing contact first.');
+                return;
+            }
+            loadCustomerAccount(contactId);
+        });
+
+        // Add store credit from inside the modal (mirrors the POS / contact list).
+        $(document).on('click', '#modal_add_store_credit_btn', function () {
+            var contactId = $('#modal_store_credit_contact_id').val();
+            var amount = parseFloat($('#modal_store_credit_amount').val()) || 0;
+            if (!contactId) {
+                toastr.error('Customer not selected.');
+                return;
+            }
+            if (amount <= 0) {
+                toastr.error('Please enter a valid amount.');
+                return;
+            }
+            $.ajax({
+                method: 'POST',
+                url: '/contacts/' + contactId + '/store-credit',
+                dataType: 'json',
+                data: {
+                    amount: amount,
+                    _token: $('meta[name="csrf-token"]').attr('content')
+                },
+                success: function (result) {
+                    if (result.success) {
+                        toastr.success(result.msg);
+                        $('#modal_account_balance').text(__currency_trans_from_en(result.new_balance || 0, true));
+                        $('#modal_store_credit_amount').val('');
+                    } else {
+                        toastr.error(result.msg || 'Unable to add store credit.');
+                    }
+                },
+                error: function () {
+                    toastr.error('Unable to add store credit.');
+                }
+            });
+        });
 
         // Sarah 2026-05-06: auto-fill the per-row "Standard Multiplier" from the
         // Discogs median price (the value tier from Sarah's sheet). Condition is
