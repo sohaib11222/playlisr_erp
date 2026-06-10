@@ -247,6 +247,78 @@ class DiscogsReleaseImportMapper
     }
 
     /**
+     * Jon 2026-06-09: Discogs genre→style category overrides. For a handful
+     * of broad Discogs genres the matching ERP category is named after the
+     * *style* rather than the genre, and Discogs' style names don't always
+     * match ours (e.g. "Alternative Rock" → our "Alt Rock"). Each rule below
+     * maps to our category name. Returns [] when no rule fired, so the caller
+     * falls back to the raw genre+style terms.
+     *
+     * @param  string[]  $genreTerms  lowercased Discogs genres
+     * @param  string[]  $styleTerms  lowercased Discogs styles
+     * @return string[]  preferred ERP-aligned terms
+     */
+    private function derivePreferredTerms(array $genreTerms, array $styleTerms): array
+    {
+        $has = static function (array $haystacks, string $needle): bool {
+            foreach ($haystacks as $h) {
+                if (mb_strpos($h, $needle) !== false) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        $preferred = [];
+
+        // Rock → prefer the sub-style category.
+        if ($has($genreTerms, 'rock')) {
+            if ($has($styleTerms, 'metal')) {
+                $preferred[] = 'metal';
+            }
+            if ($has($styleTerms, 'punk')) {
+                $preferred[] = 'punk';
+            }
+            if ($has($styleTerms, 'new wave')) {
+                $preferred[] = 'new wave';
+            }
+            if ($has($styleTerms, 'alternative rock')
+                || $has($styleTerms, 'alt rock')
+                || $has($styleTerms, 'indie rock')) {
+                $preferred[] = 'alt rock';
+            }
+            if ($has($styleTerms, 'blues')) {
+                $preferred[] = 'blues';
+            }
+        }
+
+        // Folk, World, & Country → Folk or Country by style.
+        if ($has($genreTerms, 'folk') && $has($genreTerms, 'country')) {
+            if ($has($styleTerms, 'folk')) {
+                $preferred[] = 'folk';
+            }
+            if ($has($styleTerms, 'country')) {
+                $preferred[] = 'country';
+            }
+        }
+
+        // Stage & Screen → Musicals, otherwise Soundtracks.
+        if ($has($genreTerms, 'stage') && $has($genreTerms, 'screen')) {
+            $preferred[] = $has($styleTerms, 'musical') ? 'musicals' : 'soundtracks';
+        }
+
+        // Funk / Soul → only steer Gospel out to its own category; R&B etc.
+        // are left to fall through to the default term matching.
+        if ($has($genreTerms, 'funk') || $has($genreTerms, 'soul')) {
+            if ($has($styleTerms, 'gospel')) {
+                $preferred[] = 'gospel';
+            }
+        }
+
+        return array_values(array_unique($preferred));
+    }
+
+    /**
      * Match a Discogs release's genre/style + format against the ERP's
      * product categories. When several subcategories match the same
      * genre, prefer the one whose parent category name overlaps with the
@@ -259,20 +331,30 @@ class DiscogsReleaseImportMapper
     private function resolveCategoryFromGenres(int $businessId, $genres, $styles, array $formatTokens = []): array
     {
         $warnings = [];
-        $terms = [];
+        $genreTerms = [];
         foreach (is_array($genres) ? $genres : [] as $g) {
             $t = mb_strtolower(trim((string) $g));
             if ($t !== '') {
-                $terms[] = $t;
+                $genreTerms[] = $t;
             }
         }
+        $styleTerms = [];
         foreach (is_array($styles) ? $styles : [] as $s) {
             $t = mb_strtolower(trim((string) $s));
             if ($t !== '') {
-                $terms[] = $t;
+                $styleTerms[] = $t;
             }
         }
-        $terms = array_unique($terms);
+
+        // Jon 2026-06-09: for a few broad Discogs genres the ERP category
+        // lives under the *style* (e.g. Rock > Punk, Stage & Screen >
+        // Soundtracks), so steer resolution to the style first. When a rule
+        // fires we match on its terms alone; otherwise fall back to the full
+        // genre+style list.
+        $preferred = $this->derivePreferredTerms($genreTerms, $styleTerms);
+        $terms = $preferred !== []
+            ? $preferred
+            : array_values(array_unique(array_merge($genreTerms, $styleTerms)));
 
         if ($terms === []) {
             return ['category_id' => null, 'sub_category_id' => null, 'warnings' => []];
