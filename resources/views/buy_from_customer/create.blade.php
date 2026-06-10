@@ -416,6 +416,45 @@
                         </div>
 
                         <hr>
+                        @php $calcLines = data_get($calc, 'lines', []); @endphp
+                        @if(!empty($calcLines))
+                            <h4>Per-item breakdown <small class="text-muted">(calculator value per line, at 100% — before the 50/75/95% offer steps)</small></h4>
+                            <div class="table-responsive">
+                                <table class="table table-condensed table-bordered">
+                                    <thead>
+                                        <tr>
+                                            <th>Item type</th>
+                                            <th>Title</th>
+                                            <th>Grade</th>
+                                            <th class="text-right">Qty</th>
+                                            <th class="text-right">Line cash value</th>
+                                            <th class="text-right">Line credit value</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach($calcLines as $cl)
+                                            <tr>
+                                                <td>{{ $itemTypes[data_get($cl, 'item_type')] ?? data_get($cl, 'item_type') }}</td>
+                                                <td>{{ data_get($cl, 'title') ?: '—' }}</td>
+                                                <td>{{ data_get($cl, 'condition_grade') ?: '—' }}</td>
+                                                <td class="text-right">{{ number_format((float) data_get($cl, 'quantity', 0), 2) }}</td>
+                                                <td class="text-right">@format_currency(data_get($cl, 'line_cash_total', 0))</td>
+                                                <td class="text-right">@format_currency(data_get($cl, 'line_credit_total', 0))</td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                    <tfoot>
+                                        <tr>
+                                            <th colspan="4" class="text-right">Calculator total</th>
+                                            <th class="text-right">@format_currency(data_get($calc, 'calculated_cash_total', 0))</th>
+                                            <th class="text-right">@format_currency(data_get($calc, 'calculated_credit_total', 0))</th>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        @endif
+
+                        <hr>
                         <h4>Collection buy <small class="text-muted">(from line items)</small></h4>
                         <div class="row">
                             <div class="col-md-6">
