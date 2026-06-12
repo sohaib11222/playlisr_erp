@@ -3538,8 +3538,17 @@ class SellPosController extends Controller
             \Log::warning('prior-shift-close gate failed: ' . $e->getMessage());
         }
 
+        // Nivessa: non-cashier roles (Discogs / Warehouse / Admin) don't run
+        // a register, so don't force them to open one / count the drawer.
+        // They can still use the POS screen for lookups and rings.
+        $non_cashier_roles = ['Admin', 'Discogs', 'Warehouse'];
+        $user_roles = array_map(function ($role) {
+            return explode('#', $role)[0];
+        }, auth()->user()->getRoleNames()->toArray());
+        $skip_register = count(array_intersect($non_cashier_roles, $user_roles)) > 0;
+
         //Check if there is a open register, if no then redirect to Create Register screen.
-        if ($this->cashRegisterUtil->countOpenedRegister() == 0) {
+        if (!$skip_register && $this->cashRegisterUtil->countOpenedRegister() == 0) {
             return redirect()->action('CashRegisterController@create', ['sub_type' => $sub_type]);
         }
 
@@ -3553,7 +3562,7 @@ class SellPosController extends Controller
 
         $payment_lines[] = $this->dummyPaymentLine;
 
-        $default_location = !empty($register_details->location_id) ? BusinessLocation::findOrFail($register_details->location_id) : null;
+        $default_location = !empty($register_details) && !empty($register_details->location_id) ? BusinessLocation::findOrFail($register_details->location_id) : null;
 
         $business_locations = BusinessLocation::forDropdown($business_id, false, true);
         $bl_attributes = $business_locations['attributes'];
