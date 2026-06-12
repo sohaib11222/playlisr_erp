@@ -139,7 +139,28 @@ class BarcodesTableSeeder extends Seeder
             'created_at'=>'2017-12-18 05:51:10',
             'updated_at'=>'2017-12-18 05:51:10'
         ]);
-            
+
+        Barcode::create([
+            'id'=>7,
+            'name'=>'Nivessa 2" x 2" (Large Barcode + Logo)',
+            'description'=>'Continuous Roll, Label Size: 2" x 2", large barcode with Nivessa logo',
+            'width'=>2,
+            'height'=>2,
+            'paper_width'=>2,
+            'paper_height'=>0.00,
+            'top_margin'=>0.00,
+            'left_margin'=>0.00,
+            'row_distance'=>0.00,
+            'col_distance'=>0.00,
+            'stickers_in_one_row'=>1,
+            'is_default'=>0,
+            'is_continuous'=>1,
+            'stickers_in_one_sheet'=>null,
+            'business_id'=>null,
+            'created_at'=>'2026-06-12 00:00:00',
+            'updated_at'=>'2026-06-12 00:00:00'
+        ]);
+
         // Barcode::create( [
         // 	'name'=>'154 Per Sheet',
         // 	'description'=>'Sheet Size: 8.5" x 11", Label Size: 25.4mm x 9.52mm, Labels per sheet: 154',

@@ -7,6 +7,43 @@
 		<!-- <columns column-count="{{$barcode_details->stickers_in_one_row}}" column-gap="{{$barcode_details->col_distance*1}}"> -->
 	@endif
 		<td align="center" valign="center">
+			@php $is_nivessa_2x2 = (abs(($barcode_details->width * 1) - 2) < 0.01 && abs(($barcode_details->height * 1) - 2) < 0.01); @endphp
+			@if($is_nivessa_2x2)
+			{{-- Nivessa 2"x2" large-barcode layout --}}
+			<div style="overflow: hidden !important; width: {{$barcode_details->width * 1}}in; height: {{$barcode_details->height * 1}}in; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 0.06in 0.04in; box-sizing: border-box; text-align: center;">
+
+				{{-- Nivessa logo --}}
+				<img src="{{ asset('img/nivessa-logo.png') }}" style="height: 0.4in; width: auto; display: block; margin: 0 auto;">
+
+				{{-- Optional text fields (kept compact so the barcode dominates) --}}
+				<div style="line-height: 1.05;">
+					@if(!empty($print['name']))
+						<span style="display: block !important; font-size: {{$print['name_size']}}px;">{{$page_product->product_actual_name}}</span>
+					@endif
+
+					@if(!empty($print['variations']) && $page_product->is_dummy != 1)
+						<span style="display: block !important; font-size: {{$print['variations_size']}}px;">{{$page_product->product_variation_name}}:<b>{{$page_product->variation_name}}</b></span>
+					@endif
+
+					@if(!empty($print['price']))
+						<span style="display: block !important; font-size: {{$print['price_size']}}px;">
+							<b>{{session('currency')['symbol'] ?? ''}}@if($print['price_type'] == 'inclusive'){{@num_format($page_product->sell_price_inc_tax)}}@else{{@num_format($page_product->default_sell_price)}}@endif</b>
+							@if(!empty($page_product->purchase_date) && array_key_exists('purchase_date', $print ?? []))
+								<span style="font-size: {{ (int) ($print['purchase_date_size'] ?? 12) }}px;">&nbsp;<b>{{ $page_product->purchase_date }}</b></span>
+							@endif
+						</span>
+					@elseif(!empty($page_product->purchase_date) && array_key_exists('purchase_date', $print ?? []))
+						<span style="display: block !important; font-size: {{$print['purchase_date_size'] ?? 12}}px;"><b>{{ $page_product->purchase_date }}</b></span>
+					@endif
+				</div>
+
+				{{-- Large barcode fills the remaining width --}}
+				<div style="width: 100%;">
+					<img style="width: 96% !important; height: 0.75in !important; display: block; margin: 0 auto;" src="data:image/png;base64,{{DNS1D::getBarcodePNG($page_product->sub_sku, $page_product->barcode_type, 2, 60, array(0, 0, 0), false)}}">
+					<span style="font-size: 12px !important; letter-spacing: 1px;">{{ $page_product->sub_sku }}</span>
+				</div>
+			</div>
+			@else
 			<div style="overflow: hidden !important;display: flex; flex-wrap: wrap;align-content: center;width: {{$barcode_details->width * 1}}in; height: {{$barcode_details->height * 1}}in; justify-content: center;">
 				
 
@@ -100,7 +137,8 @@
 					</span>
 				</div>
 			</div>
-		
+			@endif
+
 		</td>
 
 	@if($loop->iteration % $barcode_details->stickers_in_one_row == 0)
