@@ -3713,8 +3713,19 @@ class SellPosController extends Controller
             $is_direct_sale = true;
         }
 
+        // Nivessa: non-cashier roles (Admin / Discogs / Warehouse) don't run a
+        // register, so don't block their rings on an open drawer. Mirrors the
+        // skip_register exemption in create() — without this, those roles can
+        // load POS but the sale POST gets redirected to the register screen and
+        // silently fails (AJAX expects JSON, gets a 302 to HTML).
+        $non_cashier_roles = ['Admin', 'Discogs', 'Warehouse'];
+        $user_roles = array_map(function ($role) {
+            return explode('#', $role)[0];
+        }, auth()->user()->getRoleNames()->toArray());
+        $skip_register = count(array_intersect($non_cashier_roles, $user_roles)) > 0;
+
         //Check if there is a open register, if no then redirect to Create Register screen.
-        if (!$is_direct_sale && $this->cashRegisterUtil->countOpenedRegister() == 0) {
+        if (!$is_direct_sale && !$skip_register && $this->cashRegisterUtil->countOpenedRegister() == 0) {
             return redirect()->action('CashRegisterController@create');
         }
 

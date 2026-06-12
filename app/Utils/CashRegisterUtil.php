@@ -144,6 +144,15 @@ class CashRegisterUtil extends Util
         $register =  CashRegister::where('user_id', $user_id)
                                 ->where('status', 'open')
                                 ->first();
+
+        // Non-cashier roles (Admin / Discogs / Warehouse) ring without an open
+        // drawer, so there's nothing to post payments into. Skip rather than
+        // dereference a null register. The sale itself is still recorded; it
+        // just won't appear in cash-register reconciliation.
+        if (empty($register)) {
+            return true;
+        }
+
         $payments_formatted = [];
         foreach ($payments as $payment) {
             $payment_amount = (isset($payment['is_return']) && $payment['is_return'] == 1) ? (-1*$this->num_uf($payment['amount'])) : $this->num_uf($payment['amount']);
