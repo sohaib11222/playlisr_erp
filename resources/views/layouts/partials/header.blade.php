@@ -88,7 +88,11 @@
                   <a href="{{action('UserController@getProfile')}}" class="btn btn-default btn-flat">@lang('lang_v1.profile')</a>
                 </div>
                 <div class="pull-right">
-                  <a href="{{action('Auth\LoginController@logout')}}" class="btn btn-default btn-flat">@lang('lang_v1.sign_out')</a>
+                  @php
+                    $has_open_register = \App\CashRegister::where('user_id', auth()->id())->where('status', 'open')->exists();
+                  @endphp
+                  <a href="{{action('Auth\LoginController@logout')}}" id="sign_out_link" class="btn btn-default btn-flat"
+                    @if($has_open_register) data-open-register="1" data-close-register-url="{{ action('SellPosController@create') }}?close_register=1" @endif>@lang('lang_v1.sign_out')</a>
                 </div>
               </li>
             </ul>
@@ -98,3 +102,32 @@
       </div>
     </nav>
   </header>
+
+  <script>
+    // Cashiers keep forgetting to close their register at end of shift. If they
+    // still have an open register when they hit Sign Out, stop and remind them
+    // first — let them jump straight to closing it, or sign out anyway.
+    // Deferred to DOMContentLoaded because jQuery (vendor.js) loads after this partial.
+    document.addEventListener('DOMContentLoaded', function () {
+    $(document).on('click', '#sign_out_link[data-open-register="1"]', function (e) {
+      e.preventDefault();
+      var logoutUrl = $(this).attr('href');
+      var closeUrl = $(this).data('close-register-url');
+      swal({
+        title: "{{ __('lang_v1.register_still_open') }}",
+        text: "{{ __('lang_v1.register_still_open_logout_warning') }}",
+        icon: 'warning',
+        buttons: {
+          signout: { text: "{{ __('lang_v1.sign_out_anyway') }}", value: 'signout', className: 'btn-default' },
+          close: { text: "{{ __('lang_v1.close_register') }}", value: 'close' },
+        },
+      }).then(function (value) {
+        if (value === 'close') {
+          window.location = closeUrl;
+        } else if (value === 'signout') {
+          window.location = logoutUrl;
+        }
+      });
+    });
+    });
+  </script>

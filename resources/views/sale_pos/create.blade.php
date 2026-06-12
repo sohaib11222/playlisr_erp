@@ -365,6 +365,16 @@
 	@include('sale_pos.partials.keyboard_shortcuts')
 	@include('sale_pos.partials.clover_mismatch_modal_script')
 
+	<script>
+		// Arriving here from the "Close register" prompt on sign-out: open the
+		// close-register modal automatically so the cashier lands right on it.
+		$(function () {
+			if (/[?&]close_register=1\b/.test(window.location.search)) {
+				$('#close_register').trigger('click');
+			}
+		});
+	</script>
+
 	<!-- Call restaurant module if defined -->
     @if(in_array('tables' ,$enabled_modules) || in_array('modifiers' ,$enabled_modules) || in_array('service_staff' ,$enabled_modules))
     	<script src="{{ asset('js/restaurant.js?v=' . $asset_v) }}"></script>
