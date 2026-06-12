@@ -84,7 +84,8 @@ class DiscogsReleaseImportMapper
             $businessId,
             $payload->genres ?? [],
             $payload->styles ?? [],
-            $formatTokens
+            $formatTokens,
+            $this->deriveTitlePriorityTerms($title, $payload->labels ?? [])
         );
         $categoryId = $resolved['category_id'];
         $subCategoryId = $resolved['sub_category_id'];
@@ -319,6 +320,34 @@ class DiscogsReleaseImportMapper
     }
 
     /**
+     * Jon 2026-06-12: title/label-derived category steers that Discogs genres
+     * miss. "Motown" in the title OR the release's label is a strong R&B
+     * signal — Discogs routinely tags these as Pop / Jazz / Funk-Soul. Returned
+     * terms are prepended ahead of the genre/style terms in
+     * resolveCategoryFromGenres so R&B wins category ties over those, while
+     * still falling back if a business has no R&B sub.
+     *
+     * @param  mixed  $labels  Discogs labels array (objects with ->name)
+     * @return string[] lowercase priority terms
+     */
+    private function deriveTitlePriorityTerms(string $title, $labels = []): array
+    {
+        $haystack = mb_strtolower($title);
+        if (is_array($labels)) {
+            foreach ($labels as $label) {
+                if (is_object($label) && isset($label->name)) {
+                    $haystack .= ' ' . mb_strtolower(trim((string) $label->name));
+                }
+            }
+        }
+        $terms = [];
+        if (mb_strpos($haystack, 'motown') !== false) {
+            $terms[] = 'r&b';
+        }
+        return $terms;
+    }
+
+    /**
      * Match a Discogs release's genre/style + format against the ERP's
      * product categories. When several subcategories match the same
      * genre, prefer the one whose parent category name overlaps with the
@@ -326,9 +355,10 @@ class DiscogsReleaseImportMapper
      * LP picks `Used Vinyl > Pop`, etc.).
      *
      * @param  string[]  $formatTokens  lowercase format tokens from extractFormatTokens()
+     * @param  string[]  $priorityTerms lowercase terms tried before genre/style (win ties)
      * @return array{category_id: int|null, sub_category_id: int|null, warnings: string[]}
      */
-    private function resolveCategoryFromGenres(int $businessId, $genres, $styles, array $formatTokens = []): array
+    private function resolveCategoryFromGenres(int $businessId, $genres, $styles, array $formatTokens = [], array $priorityTerms = []): array
     {
         $warnings = [];
         $genreTerms = [];
@@ -355,6 +385,13 @@ class DiscogsReleaseImportMapper
         $terms = $preferred !== []
             ? $preferred
             : array_values(array_unique(array_merge($genreTerms, $styleTerms)));
+
+        // Title-derived steers (e.g. "Motown" → R&B) go first so they win
+        // ties in the format-ranked match below, while genre/style terms
+        // remain as fallback when the priority term has no matching sub.
+        if ($priorityTerms !== []) {
+            $terms = array_values(array_unique(array_merge($priorityTerms, $terms)));
+        }
 
         if ($terms === []) {
             return ['category_id' => null, 'sub_category_id' => null, 'warnings' => []];
