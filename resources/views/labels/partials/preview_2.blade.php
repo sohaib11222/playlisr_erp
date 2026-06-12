@@ -39,7 +39,7 @@
 
 				{{-- Large barcode fills the remaining width --}}
 				<div style="width: 100%;">
-					<img style="width: 96% !important; height: 0.75in !important; display: block; margin: 0 auto;" src="data:image/png;base64,{{DNS1D::getBarcodePNG($page_product->sub_sku, $page_product->barcode_type, 2, 60, array(0, 0, 0), false)}}">
+					<img style="width: 96% !important; height: 0.75in !important; display: block; margin: 0 auto;" src="data:image/png;base64,{{DNS1D::getBarcodePNG($page_product->sub_sku, $page_product->barcode_type, 1, 30, array(0, 0, 0), false)}}">
 					<span style="font-size: 12px !important; letter-spacing: 1px;">{{ $page_product->sub_sku }}</span>
 				</div>
 			</div>
