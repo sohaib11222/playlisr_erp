@@ -105,25 +105,48 @@
             };
         @endphp
 
+        @php
+            // Render a Budget + Actual cell pair for one week. $sign turns on
+            // red/green colouring (balance/net rows); plain rows stay neutral.
+            $bDivider = 'border-left:2px solid #cbd5e1;';
+            $pair = function ($budgetVal, $actualVal, $sign = false, $budgetMuted = true) use ($money, $signColor, $hasActuals, $bDivider) {
+                $bColor = $budgetMuted ? '#64748b' : '#1f2937';
+                $bStyle = 'text-align:right;' . $bDivider . 'color:' . $bColor . ';';
+                $aStyle = 'text-align:right;';
+                if ($hasActuals && $sign) {
+                    $aStyle .= 'color:' . $signColor($actualVal) . ';';
+                } elseif (!$hasActuals) {
+                    $aStyle .= 'color:#cbd5e1;';
+                }
+                $aText = $hasActuals ? $money($actualVal) : '—';
+                return '<td style="' . $bStyle . '">' . $money($budgetVal) . '</td>'
+                     . '<td style="' . $aStyle . '">' . $aText . '</td>';
+            };
+        @endphp
+
         <div class="box box-primary">
             <div class="box-header with-border">
-                <h3 class="box-title">Weekly cash flow</h3>
+                <h3 class="box-title">Weekly cash flow — budget vs actual</h3>
                 <span class="pull-right text-muted" style="font-size:12px;">
-                    Each cell: <strong>actual</strong> on top
-                    @if($hasActuals)(from QuickBooks)@else<em>(no actuals — QuickBooks unavailable)</em>@endif,
-                    <span style="color:#64748b;">budget</span> below.
+                    @if($hasActuals)Actual from QuickBooks.@else<em>Actuals unavailable — QuickBooks not connected.</em>@endif
                 </span>
             </div>
             <div class="box-body table-responsive">
                 <table class="table table-bordered" style="font-size:12px; white-space:nowrap;">
                     <thead>
                         <tr style="background:#f1f5f9;">
-                            <th style="position:sticky; left:0; background:#f1f5f9; min-width:200px;">Line item</th>
+                            <th rowspan="2" style="position:sticky; left:0; background:#f1f5f9; min-width:200px; vertical-align:middle;">Line item</th>
                             @foreach($weeks as $w)
-                                <th class="text-right" style="min-width:90px;">
-                                    {{ $w['label'] }}<br>
-                                    <small class="text-muted">{{ $w['range'] }}</small>
+                                <th colspan="2" class="text-center" style="{{ $bDivider }} min-width:140px;">
+                                    {{ $w['label'] }}
+                                    <br><small class="text-muted">{{ $w['range'] }}</small>
                                 </th>
+                            @endforeach
+                        </tr>
+                        <tr style="background:#f1f5f9;">
+                            @foreach($weeks as $w)
+                                <th class="text-right" style="{{ $bDivider }} color:#64748b; font-weight:600;">Budget</th>
+                                <th class="text-right" style="font-weight:600;">Actual</th>
                             @endforeach
                         </tr>
                     </thead>
@@ -132,17 +155,14 @@
                         <tr style="background:#ecfeff; font-weight:700;">
                             <td style="position:sticky; left:0; background:#ecfeff;">Money at the beginning</td>
                             @for($i = 0; $i < $weekCount; $i++)
-                                <td class="text-right">
-                                    @if($hasActuals)<div style="color:{{ $signColor($grid['opening_actual'][$i]) }};">{{ $money($grid['opening_actual'][$i]) }}</div>@endif
-                                    <div style="color:#64748b; font-weight:400;">{{ $money($grid['opening_budget'][$i]) }}</div>
-                                </td>
+                                {!! $pair($grid['opening_budget'][$i], $grid['opening_actual'][$i], true) !!}
                             @endfor
                         </tr>
 
                         {{-- Sections --}}
                         @foreach($grid['sections'] as $sec)
                             <tr style="background:#f8fafc;">
-                                <td colspan="{{ $weekCount + 1 }}" style="position:sticky; left:0; background:#f8fafc; font-weight:700; letter-spacing:.5px; color:#475569;">
+                                <td colspan="{{ $weekCount * 2 + 1 }}" style="position:sticky; left:0; background:#f8fafc; font-weight:700; letter-spacing:.5px; color:#475569;">
                                     {{ $sec['title'] }}
                                 </td>
                             </tr>
@@ -150,20 +170,14 @@
                                 <tr @if(!empty($item['is_unmapped'])) style="font-style:italic; color:#92400e;" @endif>
                                     <td style="position:sticky; left:0; background:#fff; padding-left:24px;">{{ $item['label'] }}</td>
                                     @for($i = 0; $i < $weekCount; $i++)
-                                        <td class="text-right">
-                                            @if($hasActuals)<div>{{ $money($item['actual'][$i]) }}</div>@endif
-                                            <div style="color:#94a3b8;">{{ $money($item['budget'][$i]) }}</div>
-                                        </td>
+                                        {!! $pair($item['budget'][$i], $item['actual'][$i]) !!}
                                     @endfor
                                 </tr>
                             @endforeach
                             <tr style="font-weight:700; background:#f1f5f9;">
                                 <td style="position:sticky; left:0; background:#f1f5f9; padding-left:24px;">Total {{ ucfirst(strtolower($sec['title'])) }}</td>
                                 @for($i = 0; $i < $weekCount; $i++)
-                                    <td class="text-right">
-                                        @if($hasActuals)<div>{{ $money($sec['subtotal_actual'][$i]) }}</div>@endif
-                                        <div style="color:#64748b; font-weight:400;">{{ $money($sec['subtotal_budget'][$i]) }}</div>
-                                    </td>
+                                    {!! $pair($sec['subtotal_budget'][$i], $sec['subtotal_actual'][$i], false, false) !!}
                                 @endfor
                             </tr>
                         @endforeach
@@ -172,10 +186,7 @@
                         <tr style="font-weight:700; background:#fffbeb;">
                             <td style="position:sticky; left:0; background:#fffbeb;">Net cash flow</td>
                             @for($i = 0; $i < $weekCount; $i++)
-                                <td class="text-right">
-                                    @if($hasActuals)<div style="color:{{ $signColor($grid['net_actual'][$i]) }};">{{ $money($grid['net_actual'][$i]) }}</div>@endif
-                                    <div style="color:#64748b; font-weight:400;">{{ $money($grid['net_budget'][$i]) }}</div>
-                                </td>
+                                {!! $pair($grid['net_budget'][$i], $grid['net_actual'][$i], true) !!}
                             @endfor
                         </tr>
 
@@ -183,10 +194,7 @@
                         <tr style="font-weight:700; background:#ecfeff;">
                             <td style="position:sticky; left:0; background:#ecfeff;">Money at the end</td>
                             @for($i = 0; $i < $weekCount; $i++)
-                                <td class="text-right">
-                                    @if($hasActuals)<div style="color:{{ $signColor($grid['closing_actual'][$i]) }};">{{ $money($grid['closing_actual'][$i]) }}</div>@endif
-                                    <div style="color:#64748b; font-weight:400;">{{ $money($grid['closing_budget'][$i]) }}</div>
-                                </td>
+                                {!! $pair($grid['closing_budget'][$i], $grid['closing_actual'][$i], true) !!}
                             @endfor
                         </tr>
                     </tbody>
