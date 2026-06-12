@@ -489,28 +489,27 @@ class QuickBooksService
     }
 
     /**
-     * Pull QuickBooks's standard Cash Flow report for a date range.
-     * Returns the raw report payload — caller flattens for display.
-     *
-     * QB's /reports/CashFlow returns a tree of sections (Operating,
-     * Investing, Financing) with nested rows + a summary "Net cash
-     * increase" line. We hand the structured payload back so the view
-     * can walk it however it wants.
+     * Profit & Loss broken into weekly columns. Powers the weekly cash-flow
+     * grid (budget vs actual). Cash basis, since the grid tracks money that
+     * actually moved, not accrued. QB returns Columns[] (first = account name,
+     * a column per week with StartDate/EndDate metadata, last = Total) and a
+     * Rows tree whose leaf rows carry one ColData value per column.
      */
-    public function getCashFlowReport($startDate, $endDate)
+    public function getProfitLossByWeek($startDate, $endDate, $accountingMethod = 'Cash')
     {
         $params = [
             'start_date' => $startDate,
-            'end_date'   => $endDate,
-            'accounting_method' => 'Accrual',
+            'end_date' => $endDate,
+            'accounting_method' => $accountingMethod,
+            'summarize_column_by' => 'Week',
         ];
-        $result = $this->apiRequest('GET', '/reports/CashFlow', null, $params);
+        $result = $this->apiRequest('GET', '/reports/ProfitAndLoss', null, $params);
         if (empty($result['success'])) {
             return $result;
         }
         return [
             'success' => true,
-            'report'  => $result['data'] ?? [],
+            'report' => $result['data'] ?? [],
         ];
     }
 

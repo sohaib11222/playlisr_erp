@@ -450,6 +450,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/discogs', 'ReportController@discogsReport');
     Route::get('/reports/ebay', 'ReportController@ebayReport');
     Route::get('/reports/cash-flow', 'ReportController@cashFlowReport');
+    Route::post('/reports/cash-flow/budget', 'ReportController@uploadCashFlowBudget');
     Route::get('/admin/qb-balance-fix', 'QbBalanceFixController@index');
     Route::post('/admin/qb-balance-fix', 'QbBalanceFixController@apply');
 

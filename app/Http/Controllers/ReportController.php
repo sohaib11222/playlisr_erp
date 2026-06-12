@@ -6597,39 +6597,368 @@ class ReportController extends Controller
     }
 
     /**
-     * Cash Flow report — pulls bank account balances + the standard QB
-     * Cash Flow statement straight from QuickBooks. Closes slide 7's
-     * "real-time cash visibility" ask without rebuilding bank-feed sync
-     * (QB already does it).
+     * Where the uploaded weekly budget (parsed from Sarah's "Weekly v2"
+     * sheet) lives. JSON on disk — no migration, same pattern as the
+     * clover-manual-matches / return-approvals stores.
+     */
+    protected function cashFlowBudgetPath($business_id)
+    {
+        return storage_path('app/cashflow-budget-' . $business_id . '.json');
+    }
+
+    /**
+     * Read the saved budget JSON, or null if nothing's been uploaded.
+     */
+    protected function loadCashFlowBudget($business_id)
+    {
+        $path = $this->cashFlowBudgetPath($business_id);
+        if (!is_file($path)) {
+            return null;
+        }
+        $data = json_decode(file_get_contents($path), true);
+        return is_array($data) ? $data : null;
+    }
+
+    /**
+     * Handle the budget-sheet upload. Parses the "Weekly v2" tab into the
+     * weeks + line-item structure the report renders, saves it as JSON.
+     */
+    public function uploadCashFlowBudget(Request $request)
+    {
+        $this->ensureAdminOnlyReportAccess();
+        $business_id = $request->session()->get('user.business_id');
+
+        $request->validate([
+            'budget_file' => 'required|file|mimes:xlsx,xls',
+        ]);
+
+        try {
+            $budget = $this->parseCashFlowBudgetFile($request->file('budget_file')->getRealPath());
+        } catch (\Exception $e) {
+            return redirect()->back()->with(['status' => [
+                'success' => 0,
+                'msg' => 'Could not read the budget sheet: ' . $e->getMessage(),
+            ]]);
+        }
+
+        if (empty($budget['weeks']) || empty($budget['sections'])) {
+            return redirect()->back()->with(['status' => [
+                'success' => 0,
+                'msg' => 'No weekly budget found. Make sure the file has a "Weekly v2" tab laid out like your cash-flow sheet.',
+            ]]);
+        }
+
+        $budget['uploaded_at'] = \Carbon::now()->format('Y-m-d H:i:s');
+        $budget['uploaded_filename'] = $request->file('budget_file')->getClientOriginalName();
+        file_put_contents(
+            $this->cashFlowBudgetPath($business_id),
+            json_encode($budget, JSON_PRETTY_PRINT)
+        );
+
+        return redirect()->back()->with(['status' => [
+            'success' => 1,
+            'msg' => 'Budget loaded: ' . count($budget['weeks']) . ' weeks from "' . $budget['source_sheet'] . '".',
+        ]]);
+    }
+
+    /**
+     * Parse the "Weekly v2" sheet into:
+     *   weeks[]    — {label, range, start, end} (dates inferred, see below)
+     *   opening_seed — week-1 "Money at the begining" value
+     *   sections[] — revenue / cogs / opex, each with line items carrying a
+     *                13-long budget[] array (sheet signs preserved: revenue
+     *                positive, cogs/opex negative)
+     *
+     * Robust to row shuffling: we anchor on the header row ("Line Item") and
+     * on the known UPPERCASE section titles rather than fixed row numbers,
+     * and skip computed total rows (Revenue / Purchase / Cash flow).
+     */
+    protected function parseCashFlowBudgetFile($path)
+    {
+        // The full workbook has ~20 sheets (pivot caches, 70k-row history
+        // tabs). Load ONLY the budget tab, data-only, so we don't blow memory
+        // or time. Pick the sheet by name case-insensitively; fall back to the
+        // first sheet if "Weekly v2" isn't found.
+        $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReaderForFile($path);
+        $reader->setReadDataOnly(true);
+
+        $names = $reader->listWorksheetNames($path);
+        $target = null;
+        foreach ($names as $n) {
+            if (strcasecmp(trim($n), 'Weekly v2') === 0) {
+                $target = $n;
+                break;
+            }
+        }
+        if ($target === null) {
+            $target = $names[0] ?? null;
+        }
+        if ($target === null) {
+            throw new \Exception('The workbook has no sheets.');
+        }
+        $reader->setLoadSheetsOnly([$target]);
+        $spreadsheet = $reader->load($path);
+        $sheet = $spreadsheet->getSheetByName($target) ?? $spreadsheet->getActiveSheet();
+
+        $rows = $sheet->toArray(null, true, false, false); // 0-indexed, raw values
+
+        // 1. Find the header row (col A == "Line Item") and read week columns.
+        $headerIdx = null;
+        foreach ($rows as $i => $row) {
+            if (isset($row[0]) && strcasecmp(trim((string) $row[0]), 'Line Item') === 0) {
+                $headerIdx = $i;
+                break;
+            }
+        }
+        if ($headerIdx === null) {
+            throw new \Exception('Could not find the "Line Item" header row.');
+        }
+
+        $weeks = [];
+        $weekCols = [];
+        foreach ($rows[$headerIdx] as $col => $val) {
+            if ($col === 0 || $val === null || trim((string) $val) === '') {
+                continue;
+            }
+            $parsed = $this->parseBudgetWeekHeader((string) $val);
+            $weekCols[] = $col;
+            $weeks[] = [
+                'label' => $parsed['label'],
+                'range' => $parsed['range'],
+                'start' => null, // filled after year inference
+                'end'   => null,
+            ];
+        }
+        if (empty($weeks)) {
+            throw new \Exception('No week columns found in the header row.');
+        }
+        $this->inferBudgetWeekDates($weeks);
+
+        // 2. Walk the rows, tracking the current section.
+        $sectionMap = [
+            'REVENUE'            => 'revenue',
+            'COST OF GOODS'      => 'cogs',
+            'OPERATING EXPENSES' => 'opex',
+            'OPENING BALANCE'    => 'opening',
+            'NET CASH FLOW'      => 'net',
+            'CLOSING BALANCE'    => 'closing',
+        ];
+        // Computed totals we never want as line items (they'd double count).
+        $skipLabels = ['revenue', 'purchase', 'cash flow'];
+
+        $sections = [
+            'revenue' => ['key' => 'revenue', 'title' => 'REVENUE', 'items' => []],
+            'cogs'    => ['key' => 'cogs', 'title' => 'COST OF GOODS', 'items' => []],
+            'opex'    => ['key' => 'opex', 'title' => 'OPERATING EXPENSES', 'items' => []],
+        ];
+        $opening_seed = 0.0;
+        // Sarah's own opening / net / closing rows. We keep them verbatim
+        // for the budget side because her "Cash flow" and "Money at the end"
+        // rows don't always equal the visible line items — recomputing would
+        // contradict the numbers she actually planned against.
+        $opening_row = null;
+        $net_row = null;
+        $closing_row = null;
+
+        $current = null;
+        for ($i = $headerIdx + 1; $i < count($rows); $i++) {
+            $row = $rows[$i];
+            $label = isset($row[0]) ? trim((string) $row[0]) : '';
+            if ($label === '') {
+                continue;
+            }
+
+            $upper = strtoupper($label);
+            if (isset($sectionMap[$upper])) {
+                $current = $sectionMap[$upper];
+                // OPERATING EXPENSES carries its own total on the header row;
+                // that's fine, we just switch section and read items below.
+                continue;
+            }
+
+            $values = $this->readBudgetRowValues($row, $weekCols);
+
+            if ($current === 'opening') {
+                if ($opening_row === null) {
+                    $opening_row = $values;
+                    $opening_seed = $values[0] ?? 0.0;
+                }
+                continue;
+            }
+            if ($current === 'net') {
+                if ($net_row === null) $net_row = $values;
+                continue;
+            }
+            if ($current === 'closing') {
+                if ($closing_row === null) $closing_row = $values;
+                continue;
+            }
+            if (in_array(strtolower($label), $skipLabels, true)) {
+                continue; // computed "Revenue" / "Purchase" totals
+            }
+            if (!isset($sections[$current])) {
+                continue;
+            }
+            // Skip empty rows (all zero/blank).
+            if (count(array_filter($values, function ($v) { return $v != 0; })) === 0) {
+                continue;
+            }
+
+            $sections[$current]['items'][] = [
+                'label'  => $label,
+                'budget' => $values,
+            ];
+        }
+
+        return [
+            'source_sheet' => $sheet->getTitle(),
+            'opening_seed' => $opening_seed,
+            'opening_row'  => $opening_row,
+            'net_row'      => $net_row,
+            'closing_row'  => $closing_row,
+            'weeks'        => $weeks,
+            'sections'     => array_values($sections),
+        ];
+    }
+
+    /**
+     * Read the per-week numeric values for a row, in week order. Sheet uses
+     * "-" and blanks for zero; both become 0.0.
+     */
+    protected function readBudgetRowValues($row, $weekCols)
+    {
+        $values = [];
+        foreach ($weekCols as $col) {
+            $raw = $row[$col] ?? null;
+            if ($raw === null || $raw === '-' || trim((string) $raw) === '') {
+                $values[] = 0.0;
+            } else {
+                $values[] = (float) str_replace([',', '$'], '', (string) $raw);
+            }
+        }
+        return $values;
+    }
+
+    /**
+     * Turn a header cell like "Week 1\n18-24.05" or "Week 7\n29.06-5.07" into
+     * a label + day/month range. Year is resolved later in
+     * inferBudgetWeekDates() since the sheet doesn't carry one.
+     */
+    protected function parseBudgetWeekHeader($header)
+    {
+        $parts = preg_split('/\r\n|\r|\n/', trim($header));
+        $label = trim($parts[0]);
+        $range = isset($parts[1]) ? trim($parts[1]) : '';
+        return ['label' => $label, 'range' => $range];
+    }
+
+    /**
+     * The sheet's week headers carry day/month but no year. Resolve a concrete
+     * start/end date for each week: pick the year that lands week-1's start
+     * nearest to today (within a year either way), then carry the year forward,
+     * bumping it whenever the month rolls back (Dec -> Jan).
+     */
+    protected function inferBudgetWeekDates(array &$weeks)
+    {
+        $today = \Carbon::now();
+        $sides = [];
+        foreach ($weeks as $w) {
+            $sides[] = $this->parseWeekRangeSides($w['range']);
+        }
+
+        // First week's start month is our anchor.
+        $anchorMonth = $sides[0]['start_m'] ?? $today->month;
+        $anchorDay   = $sides[0]['start_d'] ?? 1;
+
+        $bestYear = $today->year;
+        $bestDiff = PHP_INT_MAX;
+        foreach ([$today->year - 1, $today->year, $today->year + 1] as $y) {
+            if (!checkdate($anchorMonth, $anchorDay, $y)) {
+                continue;
+            }
+            $d = \Carbon::create($y, $anchorMonth, $anchorDay);
+            $diff = abs($d->diffInDays($today));
+            if ($diff < $bestDiff) {
+                $bestDiff = $diff;
+                $bestYear = $y;
+            }
+        }
+
+        $year = $bestYear;
+        $prevMonth = null;
+        foreach ($weeks as $idx => &$w) {
+            $s = $sides[$idx];
+            if ($s === null) {
+                continue;
+            }
+            if ($prevMonth !== null && $s['start_m'] < $prevMonth) {
+                $year++;
+            }
+            $startYear = $year;
+            $endYear = $year;
+            // Range that crosses into a lower month (e.g. 29.12-04.01) ends next year.
+            if ($s['end_m'] < $s['start_m']) {
+                $endYear = $year + 1;
+            }
+            if (checkdate($s['start_m'], $s['start_d'], $startYear)) {
+                $w['start'] = \Carbon::create($startYear, $s['start_m'], $s['start_d'])->format('Y-m-d');
+            }
+            if (checkdate($s['end_m'], $s['end_d'], $endYear)) {
+                $w['end'] = \Carbon::create($endYear, $s['end_m'], $s['end_d'])->format('Y-m-d');
+            }
+            $prevMonth = $s['start_m'];
+        }
+        unset($w);
+    }
+
+    /**
+     * Parse a "18-24.05" / "29.06-5.07" / "27.07-02.08" range into
+     * start/end day+month. A side without its own month borrows the other's.
+     */
+    protected function parseWeekRangeSides($range)
+    {
+        if (trim($range) === '' || strpos($range, '-') === false) {
+            return null;
+        }
+        [$left, $right] = explode('-', $range, 2);
+        $parseSide = function ($s) {
+            $s = trim($s);
+            $bits = explode('.', $s);
+            $day = isset($bits[0]) && $bits[0] !== '' ? (int) $bits[0] : null;
+            $month = isset($bits[1]) && $bits[1] !== '' ? (int) $bits[1] : null;
+            return ['d' => $day, 'm' => $month];
+        };
+        $l = $parseSide($left);
+        $r = $parseSide($right);
+        if ($l['m'] === null) $l['m'] = $r['m'];
+        if ($r['m'] === null) $r['m'] = $l['m'];
+        if ($l['d'] === null || $l['m'] === null || $r['d'] === null || $r['m'] === null) {
+            return null;
+        }
+        return ['start_d' => $l['d'], 'start_m' => $l['m'], 'end_d' => $r['d'], 'end_m' => $r['m']];
+    }
+
+    /**
+     * Cash Flow report — Sarah's weekly model, not QB's accounting statement.
+     * Shows, per week: opening balance, revenue / COGS / operating-expense
+     * line items, and closing balance — each as BUDGET (from the uploaded
+     * "Weekly v2" sheet) vs ACTUAL (reformatted from QuickBooks). Falls back
+     * gracefully: the budget grid renders even if QB is down, and the report
+     * explains itself if no budget has been uploaded yet.
      */
     public function cashFlowReport(Request $request)
     {
         $this->ensureAdminOnlyReportAccess();
 
         $business_id = $request->session()->get('user.business_id');
-        $start_date = $request->input('start_date');
-        $end_date   = $request->input('end_date');
-        // Default to last 30 days ending today. Always includes today's
-        // activity and gives a meaningful window (current-month-to-date
-        // collapses to a single day on the 1st, useless for cash flow).
-        if (empty($start_date) || empty($end_date)) {
-            $start_date = $start_date ?: \Carbon::now()->subDays(30)->format('Y-m-d');
-            $end_date   = $end_date ?: \Carbon::now()->format('Y-m-d');
-        }
+        $budget = $this->loadCashFlowBudget($business_id);
 
         $qb = new \App\Services\QuickBooksService($business_id);
         $configured = $qb->isConfigured();
 
+        // Live bank position (reference figure shown at the top).
         $accounts = [];
         $accounts_error = null;
-        $report = null;
-        $report_error = null;
-        $report_rows = [];
-        $totals = ['beginning' => 0.0, 'ending' => 0.0, 'net' => 0.0];
-        // Plain-English summary for non-accountants.
-        $summary = ['income' => 0.0, 'expenses' => 0.0, 'net' => 0.0, 'top_expenses' => []];
-        $summary_error = null;
-
         if ($configured) {
             $bank = $qb->getBankAccounts();
             if (!empty($bank['success'])) {
@@ -6637,167 +6966,337 @@ class ReportController extends Controller
             } else {
                 $accounts_error = $bank['msg'] ?? 'Could not fetch bank accounts.';
             }
-
-            $cf = $qb->getCashFlowReport($start_date, $end_date);
-            if (!empty($cf['success'])) {
-                $report = $cf['report'] ?? null;
-                [$report_rows, $totals] = $this->flattenCashFlowReport($report);
-            } else {
-                $report_error = $cf['msg'] ?? 'Could not fetch cash flow report.';
-            }
-
-            $pl = $qb->getProfitLossReport($start_date, $end_date, 'Cash');
-            if (!empty($pl['success'])) {
-                $summary = $this->buildPlainSummary($pl['report'] ?? null);
-            } else {
-                $summary_error = $pl['msg'] ?? 'Could not fetch P&L report.';
-            }
         }
-
         $bank_total = 0.0;
         foreach ($accounts as $a) {
             if (strtolower($a['type']) === 'credit card') {
-                $bank_total -= (float)$a['balance'];
+                $bank_total -= (float) $a['balance'];
             } else {
-                $bank_total += (float)$a['balance'];
+                $bank_total += (float) $a['balance'];
             }
         }
 
-        return view('report.cash_flow')->with(compact(
-            'configured', 'accounts', 'accounts_error', 'bank_total',
-            'report_rows', 'totals', 'report_error', 'report',
-            'summary', 'summary_error',
-            'start_date', 'end_date'
-        ));
+        // No budget uploaded yet — render the empty state (view shows the
+        // upload form + explanation).
+        if (empty($budget)) {
+            return view('report.cash_flow')->with([
+                'configured' => $configured,
+                'accounts' => $accounts,
+                'accounts_error' => $accounts_error,
+                'bank_total' => $bank_total,
+                'budget' => null,
+                'grid' => null,
+                'actuals_error' => null,
+            ]);
+        }
+
+        $weeks = $budget['weeks'];
+        $weekCount = count($weeks);
+        $span_start = $weeks[0]['start'] ?? null;
+        $span_end = $weeks[$weekCount - 1]['end'] ?? null;
+
+        // Pull weekly actuals from QB across the budget's date span and bucket
+        // each account into one of Sarah's line items.
+        $actuals = null;
+        $actuals_error = null;
+        $unmapped = [];
+        if ($configured && $span_start && $span_end) {
+            $pl = $qb->getProfitLossByWeek($span_start, $span_end, 'Cash');
+            if (!empty($pl['success'])) {
+                [$actuals, $unmapped] = $this->mapQbActualsToBudget($pl['report'] ?? null, $weeks, $budget['sections']);
+            } else {
+                $actuals_error = $pl['msg'] ?? 'Could not fetch weekly actuals from QuickBooks.';
+            }
+        } elseif (!$configured) {
+            $actuals_error = 'QuickBooks is not connected, so only the budget is shown.';
+        }
+
+        $grid = $this->buildCashFlowGrid($budget, $actuals, $unmapped, $weekCount);
+
+        return view('report.cash_flow')->with([
+            'configured' => $configured,
+            'accounts' => $accounts,
+            'accounts_error' => $accounts_error,
+            'bank_total' => $bank_total,
+            'budget' => $budget,
+            'grid' => $grid,
+            'actuals_error' => $actuals_error,
+        ]);
     }
 
     /**
-     * Walk QB's P&L report payload and produce a plain "money in / money
-     * out / net + top 5 expense categories" summary that's readable
-     * without an accounting background.
+     * Default mapping from QuickBooks account names to Sarah's line items.
+     * Keys are the line-item labels from her sheet; values are lowercase
+     * substrings — if a QB account name contains any of them, its amounts
+     * roll into that line. Anything unmatched lands in an "Other (QB)" line
+     * for its section, so no money silently disappears.
      */
-    protected function buildPlainSummary($report)
+    protected function cashFlowQbMapping()
     {
-        $out = ['income' => 0.0, 'expenses' => 0.0, 'net' => 0.0, 'top_expenses' => []];
-        if (empty($report) || empty($report['Rows']['Row'])) return $out;
+        return [
+            'revenue' => [
+                'Nivessa Hollywood' => ['hollywood', 'nivessa hw', 'hw sales'],
+                'Nivessa Pico'      => ['pico'],
+                'Discogs'           => ['discogs'],
+                'Whatnot'           => ['whatnot'],
+                'nivessa.com'       => ['nivessa.com', 'website', 'online', 'shopify', 'web sales'],
+            ],
+            'cogs' => [
+                'Purchase' => ['purchase', 'cost of goods', 'cogs', 'inventory'],
+            ],
+            'opex' => [
+                'Rent'                    => ['rent', 'lease'],
+                'Clover fees'             => ['clover', 'merchant fee', 'processing fee', 'card fee'],
+                'Nick payroll'            => ['nick'],
+                'Shipping'                => ['shipping', 'postage', 'usps', 'fedex', 'ups'],
+                'Whatnot Host Commission' => ['host commission', 'whatnot host', 'host'],
+                'Payroll'                 => ['payroll', 'wages', 'salary', 'salaries'],
+                'Freelance Work'          => ['freelance', 'contractor', 'contract labor'],
+                'Payroll taxes'           => ['payroll tax', 'employer tax'],
+                'Meals'                   => ['meal', 'food', 'restaurant'],
+                'Insurance'               => ['insurance'],
+                'Electricity HW'          => ['electric', 'power', 'utility', 'utilities'],
+                'Supplies'                => ['supply', 'supplies'],
+                'Internet'                => ['internet', 'wifi'],
+                'Phone service'           => ['phone', 'mobile', 'cell'],
+                'Subscriptions'           => ['subscription', 'software', 'saas'],
+                'Vehicle gas & fuel'      => ['gas', 'fuel', 'vehicle', 'mileage'],
+                "Owner's Draw"            => ['owner', 'draw', 'distribution'],
+            ],
+        ];
+    }
 
-        $expense_lines = [];
+    /**
+     * Walk QB's weekly P&L tree and produce, for each of Sarah's line items, a
+     * per-week actual array aligned to the budget's weeks. Returns
+     * [actuals, unmapped] where:
+     *   actuals  = ['revenue'=>['Label'=>[w0..wN]], 'cogs'=>..., 'opex'=>...]
+     *   unmapped = ['revenue'=>[w0..wN], 'opex'=>[...]] catch-all per section
+     *
+     * QB groups rows under Income / COGS / Expenses; we map Income->revenue,
+     * COGS->cogs, Expenses->opex. Revenue keeps QB's positive sign; costs are
+     * stored negative to match the sheet.
+     */
+    protected function mapQbActualsToBudget($report, $weeks, $budgetSections)
+    {
+        $weekCount = count($weeks);
+        $zero = array_fill(0, $weekCount, 0.0);
 
-        $walk = function ($rows, $section = null) use (&$walk, &$expense_lines, &$out) {
+        $actuals = ['revenue' => [], 'cogs' => [], 'opex' => []];
+        $unmapped = ['revenue' => $zero, 'cogs' => $zero, 'opex' => $zero];
+
+        // Seed line items from the budget so order matches and zero-actual
+        // lines still render.
+        foreach ($budgetSections as $sec) {
+            foreach ($sec['items'] as $item) {
+                $actuals[$sec['key']][$item['label']] = $zero;
+            }
+        }
+        if (empty($report) || empty($report['Columns']['Column']) || empty($report['Rows']['Row'])) {
+            return [$actuals, $unmapped];
+        }
+
+        // Map each QB column index -> our week index by matching the column's
+        // StartDate to the week it falls in.
+        $colWeek = $this->mapQbColumnsToWeeks($report['Columns']['Column'], $weeks);
+        $mapping = $this->cashFlowQbMapping();
+
+        // Resolve a QB account name + section to one of our line items.
+        $resolve = function ($sectionKey, $name) use ($mapping) {
+            $name = strtolower($name);
+            foreach (($mapping[$sectionKey] ?? []) as $label => $needles) {
+                foreach ($needles as $needle) {
+                    if (strpos($name, strtolower($needle)) !== false) {
+                        return $label;
+                    }
+                }
+            }
+            return null;
+        };
+
+        $walk = function ($rows, $sectionKey) use (
+            &$walk, &$actuals, &$unmapped, $colWeek, $resolve, $weekCount
+        ) {
             foreach ($rows as $r) {
+                // Section grouping: QB tags top groups with a "group" key.
                 $group = $r['group'] ?? null;
-                $current_section = $group ?: $section;
+                $childSection = $sectionKey;
+                if ($group === 'Income') $childSection = 'revenue';
+                elseif ($group === 'COGS') $childSection = 'cogs';
+                elseif ($group === 'Expenses') $childSection = 'opex';
 
-                if ($current_section === 'Income' || $current_section === 'Expenses') {
-                    // Capture leaf rows (data rows) for top-N expense list,
-                    // and use Summary rows for the section totals.
-                    if (($r['type'] ?? '') === 'Data' && $current_section === 'Expenses') {
-                        $label = $r['ColData'][0]['value'] ?? '';
-                        $amt = isset($r['ColData'][1]['value']) ? (float) str_replace(',', '', $r['ColData'][1]['value']) : 0;
-                        if ($amt > 0 && $label !== '') {
-                            $expense_lines[] = ['label' => $label, 'amount' => $amt];
+                if (($r['type'] ?? '') === 'Data' && $childSection !== null && !empty($r['ColData'])) {
+                    $name = $r['ColData'][0]['value'] ?? '';
+                    $label = $resolve($childSection, $name);
+                    $sign = $childSection === 'revenue' ? 1.0 : -1.0;
+                    foreach ($r['ColData'] as $ci => $cd) {
+                        if ($ci === 0 || !isset($colWeek[$ci])) {
+                            continue; // account-name col or the Total col
+                        }
+                        $wi = $colWeek[$ci];
+                        if ($wi < 0 || $wi >= $weekCount) {
+                            continue;
+                        }
+                        $val = isset($cd['value']) && $cd['value'] !== ''
+                            ? (float) str_replace(',', '', $cd['value']) : 0.0;
+                        if ($val == 0) {
+                            continue;
+                        }
+                        $amt = $sign * abs($val);
+                        if ($label !== null) {
+                            $actuals[$childSection][$label][$wi] += $amt;
+                        } else {
+                            $unmapped[$childSection][$wi] += $amt;
                         }
                     }
-                    if (!empty($r['Summary']['ColData'][1]['value'])) {
-                        $sum = (float) str_replace(',', '', $r['Summary']['ColData'][1]['value']);
-                        if ($current_section === 'Income') $out['income'] = $sum;
-                        if ($current_section === 'Expenses') $out['expenses'] = $sum;
-                    }
                 }
 
                 if (!empty($r['Rows']['Row'])) {
-                    $walk($r['Rows']['Row'], $current_section);
+                    $walk($r['Rows']['Row'], $childSection);
                 }
             }
         };
-        $walk($report['Rows']['Row']);
+        $walk($report['Rows']['Row'], null);
 
-        // Top 5 expenses by amount.
-        usort($expense_lines, function ($a, $b) { return $b['amount'] <=> $a['amount']; });
-        $out['top_expenses'] = array_slice($expense_lines, 0, 5);
-        $out['net'] = $out['income'] - $out['expenses'];
-        return $out;
+        return [$actuals, $unmapped];
     }
 
     /**
-     * QB returns CashFlow as nested Section/Header/Row/Summary nodes.
-     * Walk the tree once, return a flat list of [label, depth, type, amount]
-     * plus three KPIs read straight from the report's known total lines:
-     * Beginning cash, Ending cash, and Net change for the period.
-     *
-     * Why not sum positives/negatives ourselves: QB's tree includes
-     * "Beginning cash" and "Ending cash" rows whose magnitudes dwarf the
-     * actual period flow, plus nested adjustment rows that net to zero
-     * inside their parent. Pulling the labelled summary lines is the
-     * only reliable way to get the right numbers.
+     * Match each QB report column to a budget week index. QB columns carry
+     * MetaData with ColKey "StartDate"/"EndDate"; we place a column in the
+     * week whose [start,end] contains its start date. Columns without dates
+     * (account-name col, Total col) map to -1 and are skipped by callers.
      */
-    protected function flattenCashFlowReport($report)
+    protected function mapQbColumnsToWeeks($columns, $weeks)
     {
-        $out = [];
-        $totals = ['beginning' => 0.0, 'ending' => 0.0, 'net' => 0.0];
-        if (empty($report) || empty($report['Rows']['Row'])) {
-            return [$out, $totals];
-        }
-
-        $walker = function ($rows, $depth) use (&$walker, &$out) {
-            foreach ($rows as $r) {
-                $type = $r['type'] ?? '';
-                $label = $r['Header']['ColData'][0]['value'] ?? ($r['ColData'][0]['value'] ?? '');
-                $amount = isset($r['ColData'][1]['value']) ? (float) str_replace(',', '', $r['ColData'][1]['value']) : null;
-                if (!isset($amount) && isset($r['Summary']['ColData'][1]['value'])) {
-                    $amount = (float) str_replace(',', '', $r['Summary']['ColData'][1]['value']);
-                }
-
-                $out[] = [
-                    'label'  => $label,
-                    'depth'  => $depth,
-                    'type'   => $type,
-                    'amount' => $amount,
-                    'is_summary' => $type === 'Section' && !empty($r['Summary']),
-                ];
-
-                if (!empty($r['Rows']['Row'])) {
-                    $walker($r['Rows']['Row'], $depth + 1);
-                    if (!empty($r['Summary'])) {
-                        $sumLabel = $r['Summary']['ColData'][0]['value'] ?? ('Total ' . $label);
-                        $sumAmount = isset($r['Summary']['ColData'][1]['value'])
-                            ? (float) str_replace(',', '', $r['Summary']['ColData'][1]['value'])
-                            : 0;
-                        $out[] = [
-                            'label' => $sumLabel,
-                            'depth' => $depth,
-                            'type'  => 'Summary',
-                            'amount' => $sumAmount,
-                            'is_summary' => true,
-                        ];
-                    }
+        $colWeek = [];
+        foreach ($columns as $ci => $col) {
+            $start = null;
+            foreach (($col['MetaData'] ?? []) as $meta) {
+                if (($meta['Name'] ?? '') === 'StartDate') {
+                    $start = $meta['Value'] ?? null;
                 }
             }
+            if ($start === null) {
+                $colWeek[$ci] = -1;
+                continue;
+            }
+            $colWeek[$ci] = $this->weekIndexForDate($start, $weeks);
+        }
+        return $colWeek;
+    }
+
+    /**
+     * Index of the week whose [start,end] contains $date, else nearest by
+     * start date (QB week boundaries can drift a day from the sheet's).
+     */
+    protected function weekIndexForDate($date, $weeks)
+    {
+        $d = strtotime($date);
+        $best = -1;
+        $bestDiff = PHP_INT_MAX;
+        foreach ($weeks as $i => $w) {
+            if (empty($w['start'])) {
+                continue;
+            }
+            $ws = strtotime($w['start']);
+            $we = !empty($w['end']) ? strtotime($w['end']) : $ws + 6 * 86400;
+            if ($d >= $ws && $d <= $we) {
+                return $i;
+            }
+            $diff = abs($d - $ws);
+            if ($diff < $bestDiff) {
+                $bestDiff = $diff;
+                $best = $i;
+            }
+        }
+        return $best;
+    }
+
+    /**
+     * Assemble the render-ready grid: per-section line items with budget +
+     * actual arrays, section subtotals, and the running opening/closing
+     * balance rows (budget and actual roll forward week to week from the
+     * same opening seed). Net = revenue + cogs + opex (costs already negative).
+     */
+    protected function buildCashFlowGrid($budget, $actuals, $unmapped, $weekCount)
+    {
+        $zero = array_fill(0, $weekCount, 0.0);
+        $hasActuals = $actuals !== null;
+
+        $out = ['sections' => [], 'has_actuals' => $hasActuals];
+
+        $sectionSubtotalActual = [];
+
+        foreach ($budget['sections'] as $sec) {
+            $key = $sec['key'];
+            $items = [];
+            $subB = $zero;
+            $subA = $zero;
+            foreach ($sec['items'] as $item) {
+                $b = array_pad(array_slice($item['budget'], 0, $weekCount), $weekCount, 0.0);
+                $a = $hasActuals && isset($actuals[$key][$item['label']])
+                    ? $actuals[$key][$item['label']] : $zero;
+                for ($w = 0; $w < $weekCount; $w++) {
+                    $subB[$w] += $b[$w];
+                    $subA[$w] += $a[$w];
+                }
+                $items[] = ['label' => $item['label'], 'budget' => $b, 'actual' => $a];
+            }
+            // Catch-all for QB accounts that didn't match any line item.
+            if ($hasActuals && !empty($unmapped[$key]) && array_sum($unmapped[$key]) != 0) {
+                $u = $unmapped[$key];
+                for ($w = 0; $w < $weekCount; $w++) {
+                    $subA[$w] += $u[$w];
+                }
+                $items[] = ['label' => 'Other (QuickBooks, unmapped)', 'budget' => $zero, 'actual' => $u, 'is_unmapped' => true];
+            }
+            $sectionSubtotalActual[$key] = $subA;
+            $out['sections'][] = [
+                'key' => $key,
+                'title' => $sec['title'],
+                'items' => $items,
+                'subtotal_budget' => $subB,
+                'subtotal_actual' => $subA,
+            ];
+        }
+
+        // Budget net + opening/closing balances come straight from Sarah's
+        // sheet rows — never recomputed (see parser note).
+        $pad = function ($arr) use ($weekCount) {
+            $arr = is_array($arr) ? $arr : [];
+            return array_pad(array_slice($arr, 0, $weekCount), $weekCount, 0.0);
         };
+        $netB   = $pad($budget['net_row'] ?? null);
+        $openB  = $pad($budget['opening_row'] ?? null);
+        $closeB = $pad($budget['closing_row'] ?? null);
 
-        $walker($report['Rows']['Row'], 0);
-
-        // Pull the three headline numbers by label match. QB's exact
-        // wording can vary slightly ("Cash at beginning of period" vs
-        // "Beginning cash"), so we substring-match.
-        foreach ($out as $row) {
-            if (!is_numeric($row['amount'])) continue;
-            $lbl = strtolower((string)$row['label']);
-            if ($totals['beginning'] === 0.0 && (strpos($lbl, 'cash at beginning') !== false || strpos($lbl, 'beginning cash') !== false)) {
-                $totals['beginning'] = (float)$row['amount'];
-            } elseif ($totals['ending'] === 0.0 && (strpos($lbl, 'cash at end') !== false || strpos($lbl, 'ending cash') !== false)) {
-                $totals['ending'] = (float)$row['amount'];
-            } elseif ($totals['net'] === 0.0 && (strpos($lbl, 'net cash increase') !== false || strpos($lbl, 'net change in cash') !== false || strpos($lbl, 'net cash change') !== false)) {
-                $totals['net'] = (float)$row['amount'];
+        // Actual net = sum of section actuals; actual balances roll forward
+        // from the same week-1 opening seed.
+        $netA = $zero;
+        foreach (['revenue', 'cogs', 'opex'] as $key) {
+            for ($w = 0; $w < $weekCount; $w++) {
+                $netA[$w] += $sectionSubtotalActual[$key][$w] ?? 0;
             }
         }
-
-        // Fallback if "Net change" line wasn't found but we have begin/end.
-        if ($totals['net'] === 0.0 && ($totals['beginning'] !== 0.0 || $totals['ending'] !== 0.0)) {
-            $totals['net'] = $totals['ending'] - $totals['beginning'];
+        $seed = (float) ($budget['opening_seed'] ?? ($openB[0] ?? 0));
+        $openA = $zero; $closeA = $zero;
+        $runA = $seed;
+        for ($w = 0; $w < $weekCount; $w++) {
+            $openA[$w] = $runA;
+            $runA += $netA[$w];
+            $closeA[$w] = $runA;
         }
 
-        return [$out, $totals];
+        $out['net_budget'] = $netB;
+        $out['net_actual'] = $netA;
+        $out['opening_budget'] = $openB;
+        $out['opening_actual'] = $openA;
+        $out['closing_budget'] = $closeB;
+        $out['closing_actual'] = $closeA;
+        $out['opening_seed'] = $seed;
+
+        return $out;
     }
 
     /**
