@@ -938,6 +938,35 @@
             $(`#products_${rowIndex}_sub_category_id`).val(subCategoryId);
         });
 
+        // Auto-fill category from the store's curated Artist→Bin list when an
+        // operator types/picks a known artist — same sheet that overrides
+        // Discogs genres in the bulk-IDs flow. Only fills when the category
+        // combo is still empty, so it never clobbers a manual choice.
+        $(document).on('change', '.mass-add-artist-input', function () {
+            const $input = $(this);
+            const $row = $input.closest('.tr, .product-row');
+            const $combo = $row.find('.category-combo-select');
+            if (!$combo.length || ($combo.val() || '') !== '') {
+                return; // operator already chose a category — leave it alone
+            }
+            const artist = ($input.val() || '').trim();
+            if (!artist) return;
+
+            $.getJSON("{{ route('product.massCreate.resolveArtistCategory') }}", { artist: artist })
+                .done(function (res) {
+                    if (!res || !res.matched || !res.category_id) return;
+                    if (($combo.val() || '') !== '') return; // raced with a manual pick
+                    const comboVal = res.category_id + '_' + (res.sub_category_id || 0);
+                    const $opt = $combo.find('option[value="' + comboVal + '"]');
+                    if ($opt.length) {
+                        $combo.val(comboVal).trigger('change');
+                        if (/used vinyl/i.test($opt.text())) {
+                            $row.find('input[name*="[single_dpp_inc_tax]"]').val('0.35');
+                        }
+                    }
+                });
+        });
+
         // Store valid subcategory IDs for each category
         window.categorySubcategories = {};
 

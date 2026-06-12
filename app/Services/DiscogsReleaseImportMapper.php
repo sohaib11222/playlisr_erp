@@ -6,6 +6,14 @@ use App\Category;
 
 class DiscogsReleaseImportMapper
 {
+    /** @var ArtistGenreLookup */
+    private $artistGenreLookup;
+
+    public function __construct(?ArtistGenreLookup $artistGenreLookup = null)
+    {
+        $this->artistGenreLookup = $artistGenreLookup ?? new ArtistGenreLookup();
+    }
+
     /**
      * Map Discogs GET /releases/{id} JSON payload to ERP product fields.
      *
@@ -80,13 +88,34 @@ class DiscogsReleaseImportMapper
         // right ERP category — e.g. `7", 45 RPM > Pop` for a 45 single
         // vs `Used Vinyl > Pop` for an LP.
         $formatTokens = $this->extractFormatTokens($payload->formats ?? []);
-        $resolved = $this->resolveCategoryFromGenres(
-            $businessId,
-            $payload->genres ?? [],
-            $payload->styles ?? [],
-            $formatTokens,
-            $this->deriveTitlePriorityTerms($title, $payload->labels ?? [])
-        );
+
+        // Jon 2026-06-12: the store's curated Artist→Bin sheet is more correct
+        // than Discogs' genres for how records get binned, so when the artist
+        // is listed its bin overrides Discogs entirely. We still run the same
+        // format-aware resolver (Used Vinyl > Genre vs 7" > Genre etc.) on the
+        // bin's terms. Fall back to Discogs genres only when the artist isn't
+        // in the sheet, or its bin has no matching ERP category for this
+        // business.
+        $overrideTerms = $this->artistGenreLookup->termsForArtist($artistStr !== '' ? $artistStr : null);
+        $resolved = null;
+        if ($overrideTerms !== []) {
+            $override = $this->resolveCategoryFromGenres($businessId, $overrideTerms, [], $formatTokens, []);
+            if ($override['category_id'] !== null) {
+                $resolved = $override;
+                $warnings[] = 'Category from store artist-genre list (overrode Discogs genres).';
+            } else {
+                $warnings[] = 'Artist in store genre list but its bin has no matching ERP category — used Discogs genres.';
+            }
+        }
+        if ($resolved === null) {
+            $resolved = $this->resolveCategoryFromGenres(
+                $businessId,
+                $payload->genres ?? [],
+                $payload->styles ?? [],
+                $formatTokens,
+                $this->deriveTitlePriorityTerms($title, $payload->labels ?? [])
+            );
+        }
         $categoryId = $resolved['category_id'];
         $subCategoryId = $resolved['sub_category_id'];
         foreach ($resolved['warnings'] as $w) {
@@ -139,6 +168,32 @@ class DiscogsReleaseImportMapper
             'sku' => $sku,
             'discogs_release_id' => $releaseId,
             'warnings' => array_values(array_unique($warnings)),
+        ];
+    }
+
+    /**
+     * Resolve a category/subcategory for a bare artist name using only the
+     * store's curated Artist→Bin sheet (no Discogs payload). Powers the Mass
+     * Add auto-fill: typing a known artist pre-selects its bin's category.
+     * Returns matched=false when the artist isn't in the sheet or its bin has
+     * no matching ERP category for this business.
+     *
+     * @param  string[]  $formatTokens  optional lowercase format tokens (see extractFormatTokens)
+     * @return array{matched: bool, bin: string|null, category_id: int|null, sub_category_id: int|null}
+     */
+    public function resolveCategoryForArtist(int $businessId, ?string $artist, array $formatTokens = []): array
+    {
+        $bin = $this->artistGenreLookup->binForArtist($artist);
+        $terms = $this->artistGenreLookup->termsForArtist($artist);
+        if ($terms === []) {
+            return ['matched' => false, 'bin' => null, 'category_id' => null, 'sub_category_id' => null];
+        }
+        $resolved = $this->resolveCategoryFromGenres($businessId, $terms, [], $formatTokens, []);
+        return [
+            'matched' => $resolved['category_id'] !== null,
+            'bin' => $bin,
+            'category_id' => $resolved['category_id'],
+            'sub_category_id' => $resolved['sub_category_id'],
         ];
     }
 

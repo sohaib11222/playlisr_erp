@@ -223,6 +223,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
         ->name('product.massCreate.fetchDiscogsRelease');
     Route::post('/product/mass-create/past-sales-lookup', [ProductController::class, 'lookupPastSalesBulk'])
         ->name('product.massCreate.pastSalesLookup');
+    Route::get('/product/mass-create/resolve-artist-category', [ProductController::class, 'resolveArtistCategoryForMassCreate'])
+        ->name('product.massCreate.resolveArtistCategory');
     Route::post('/product/mass-store', [ProductController::class, 'massStore'])->name('product.massStore');
     Route::post('/products/bulk-send-to-purchase', [ProductController::class, 'bulkSendToPurchase'])->name('products.bulkSendToPurchase');
     Route::get('/products/get-combo-product-entry-row', 'ProductController@getComboProductEntryRow');

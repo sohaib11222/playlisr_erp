@@ -3792,6 +3792,32 @@ class ProductController extends Controller
         ]);
     }
 
+    /**
+     * Mass-create helper: resolve a typed artist name to a category/subcategory
+     * using the store's curated Artist→Bin list. Lets the Mass Add form
+     * auto-fill the category when an operator types a known artist — same sheet
+     * that overrides Discogs genres in the bulk-IDs flow.
+     */
+    public function resolveArtistCategoryForMassCreate(Request $request)
+    {
+        $business_id = $request->session()->get('user.business_id');
+        $artist = trim((string) $request->input('artist', ''));
+        if ($artist === '') {
+            return response()->json(['success' => true, 'matched' => false]);
+        }
+
+        $mapper = new \App\Services\DiscogsReleaseImportMapper();
+        $resolved = $mapper->resolveCategoryForArtist((int) $business_id, $artist);
+
+        return response()->json([
+            'success' => true,
+            'matched' => $resolved['matched'],
+            'bin' => $resolved['bin'],
+            'category_id' => $resolved['category_id'],
+            'sub_category_id' => $resolved['sub_category_id'],
+        ]);
+    }
+
     public function getDiscogsPrices(Request $request)
     {
         $releaseId = $request->input('release_id');
