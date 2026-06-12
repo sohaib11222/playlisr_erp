@@ -1,3 +1,16 @@
+@php
+	// Embed the Nivessa logo inline (base64) for the 2x2 label, same as the
+	// barcode image, so it renders reliably in the print view regardless of
+	// asset-URL resolution. Computed once per page render.
+	$is_nivessa_2x2_page = (abs(($barcode_details->width * 1) - 2) < 0.01 && abs(($barcode_details->height * 1) - 2) < 0.01);
+	$nivessa_logo_b64 = '';
+	if ($is_nivessa_2x2_page) {
+		$logo_path = public_path('img/nivessa-logo.png');
+		if (is_file($logo_path)) {
+			$nivessa_logo_b64 = base64_encode(file_get_contents($logo_path));
+		}
+	}
+@endphp
 <table align="center" style="border-spacing: {{$barcode_details->col_distance * 1}}in {{$barcode_details->row_distance * 1}}in; overflow: hidden !important;">
 @foreach($page_products as $page_product)
 
@@ -10,10 +23,10 @@
 			@php $is_nivessa_2x2 = (abs(($barcode_details->width * 1) - 2) < 0.01 && abs(($barcode_details->height * 1) - 2) < 0.01); @endphp
 			@if($is_nivessa_2x2)
 			{{-- Nivessa 2"x2" large-barcode layout --}}
-			<div style="overflow: hidden !important; width: {{$barcode_details->width * 1}}in; height: {{$barcode_details->height * 1}}in; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 0.06in 0.04in; box-sizing: border-box; text-align: center;">
+			<div style="overflow: hidden !important; width: {{$barcode_details->width * 1}}in; height: {{$barcode_details->height * 1}}in; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 0.03in; box-sizing: border-box; text-align: center;">
 
 				{{-- Nivessa logo --}}
-				<img src="{{ asset('img/nivessa-logo.png') }}" style="height: 0.4in; width: auto; display: block; margin: 0 auto;">
+				@if(!empty($nivessa_logo_b64))<img src="data:image/png;base64,{{ $nivessa_logo_b64 }}" style="height: 0.55in; width: auto; display: block; margin: 0 auto;">@endif
 
 				{{-- Optional text fields (kept compact so the barcode dominates) --}}
 				<div style="line-height: 1.05;">
@@ -39,7 +52,7 @@
 
 				{{-- Large barcode fills the remaining width --}}
 				<div style="width: 100%;">
-					<img style="width: 96% !important; height: 0.75in !important; display: block; margin: 0 auto;" src="data:image/png;base64,{{DNS1D::getBarcodePNG($page_product->sub_sku, $page_product->barcode_type, 1, 30, array(0, 0, 0), false)}}">
+					<img style="width: 98% !important; height: 1in !important; display: block; margin: 0 auto;" src="data:image/png;base64,{{DNS1D::getBarcodePNG($page_product->sub_sku, $page_product->barcode_type, 1, 30, array(0, 0, 0), false)}}">
 					<span style="font-size: 12px !important; letter-spacing: 1px;">{{ $page_product->sub_sku }}</span>
 				</div>
 			</div>
