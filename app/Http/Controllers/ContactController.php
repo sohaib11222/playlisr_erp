@@ -1754,6 +1754,14 @@ class ContactController extends Controller
 
         $mobile_number = $request->input('mobile_number');
 
+        // No mobile provided (e.g. email-only customer) — nothing to check against.
+        if (empty($mobile_number)) {
+            return [
+                'is_mobile_exists' => false,
+                'msg' => '',
+            ];
+        }
+
         $query = Contact::where('business_id', $business_id)
                         ->where('mobile', 'like', "%{$mobile_number}");
 
