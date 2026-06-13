@@ -26,12 +26,18 @@
 			<div style="overflow: hidden !important; width: {{$barcode_details->width * 1}}in; height: {{$barcode_details->height * 1}}in; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 0.02in; box-sizing: border-box; text-align: center;">
 
 				{{-- Nivessa logo --}}
-				@if(!empty($nivessa_logo_b64))<img src="data:image/png;base64,{{ $nivessa_logo_b64 }}" style="height: 0.5in; width: auto; display: block; margin: 0 auto; flex-shrink: 0;">@endif
+				@if(!empty($nivessa_logo_b64))<img src="data:image/png;base64,{{ $nivessa_logo_b64 }}" style="height: 0.3in; width: auto; display: block; margin: 0 auto; flex-shrink: 0;">@endif
 
 				{{-- Optional text fields (kept compact so the barcode dominates) --}}
 				<div style="line-height: 1.05;">
 					@if(!empty($print['name']))
-						<span style="display: block !important; font-size: {{$print['name_size']}}px;">{{$page_product->product_actual_name}}</span>
+						<span style="display: block !important; font-weight: bold; font-size: {{$print['name_size']}}px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;">{{$page_product->product_actual_name}}</span>
+						@endif
+						@if(!empty($page_product->artist))
+							<span style="display: block !important; font-size: {{$print['name_size']}}px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;">{{$page_product->artist}}</span>
+						@endif
+						@if(!empty($page_product->category) || !empty($page_product->sub_category))
+							<span style="display: block !important; font-size: {{ max((int)($print['name_size'] ?? 10) - 1, 8) }}px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;">{{ trim(($page_product->category ?? '') . (!empty($page_product->category) && !empty($page_product->sub_category) ? ' / ' : '') . ($page_product->sub_category ?? '')) }}</span>
 					@endif
 
 					@if(!empty($print['variations']) && $page_product->is_dummy != 1)
@@ -39,7 +45,7 @@
 					@endif
 
 					@if(!empty($print['price']))
-						<span style="display: block !important; font-size: {{$print['price_size']}}px;">
+						<span style="display: block !important; font-weight: bold; font-size: {{ max((int)($print['price_size'] ?? 17), 24) }}px; line-height: 1.1;">
 							<b>{{session('currency')['symbol'] ?? ''}}@if($print['price_type'] == 'inclusive'){{@num_format($page_product->sell_price_inc_tax)}}@else{{@num_format($page_product->default_sell_price)}}@endif</b>
 							@if(!empty($page_product->purchase_date) && array_key_exists('purchase_date', $print ?? []))
 								<span style="font-size: {{ (int) ($print['purchase_date_size'] ?? 12) }}px;">&nbsp;<b>{{ $page_product->purchase_date }}</b></span>

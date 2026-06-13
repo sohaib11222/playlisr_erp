@@ -206,7 +206,8 @@ class LabelsController extends Controller
                     }
                     $sub_category_id = Product::where('id', $details->product_id)->value('sub_category_id');
                     $details->sub_category = Category::where('id', $sub_category_id)->value('name');
-                    
+                    $details->category = Category::where('id', $details->category_id)->value('name');
+
                     $product_details_page_wise[$page][] = $details;
                     $total_qty++;
                 }
