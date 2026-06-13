@@ -58,7 +58,7 @@
 
 				{{-- Large barcode fills the remaining width --}}
 				<div style="width: 100%; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;">
-					<img style="max-width: 96% !important; height: 0.36in !important; width: auto; display: block;" src="data:image/png;base64,{{DNS1D::getBarcodePNG($page_product->sub_sku, $page_product->barcode_type, 1, 30, array(0, 0, 0), false)}}">
+					<img style="max-width: 96% !important; height: 0.45in !important; width: auto; display: block;" src="data:image/png;base64,{{DNS1D::getBarcodePNG($page_product->sub_sku, $page_product->barcode_type, 1, 30, array(0, 0, 0), false)}}">
 					<span style="font-size: 13px !important; letter-spacing: 1px; flex-shrink: 0;">{{ $page_product->sub_sku }}</span>
 				</div>
 			</div>
