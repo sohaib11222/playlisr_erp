@@ -23,10 +23,10 @@
 			@php $is_nivessa_2x2 = (abs(($barcode_details->width * 1) - 2) < 0.01 && abs(($barcode_details->height * 1) - 2) < 0.01); @endphp
 			@if($is_nivessa_2x2)
 			{{-- Nivessa 2"x2" large-barcode layout --}}
-			<div style="overflow: hidden !important; width: {{$barcode_details->width * 1}}in; height: {{$barcode_details->height * 1}}in; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 0.03in; box-sizing: border-box; text-align: center;">
+			<div style="overflow: hidden !important; width: {{$barcode_details->width * 1}}in; height: {{$barcode_details->height * 1}}in; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 0.02in; box-sizing: border-box; text-align: center;">
 
 				{{-- Nivessa logo --}}
-				@if(!empty($nivessa_logo_b64))<img src="data:image/png;base64,{{ $nivessa_logo_b64 }}" style="height: 0.55in; width: auto; display: block; margin: 0 auto;">@endif
+				@if(!empty($nivessa_logo_b64))<img src="data:image/png;base64,{{ $nivessa_logo_b64 }}" style="height: 0.5in; width: auto; display: block; margin: 0 auto; flex-shrink: 0;">@endif
 
 				{{-- Optional text fields (kept compact so the barcode dominates) --}}
 				<div style="line-height: 1.05;">
@@ -51,9 +51,9 @@
 				</div>
 
 				{{-- Large barcode fills the remaining width --}}
-				<div style="width: 100%;">
-					<img style="width: 98% !important; height: 1in !important; display: block; margin: 0 auto;" src="data:image/png;base64,{{DNS1D::getBarcodePNG($page_product->sub_sku, $page_product->barcode_type, 1, 30, array(0, 0, 0), false)}}">
-					<span style="font-size: 12px !important; letter-spacing: 1px;">{{ $page_product->sub_sku }}</span>
+				<div style="width: 100%; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;">
+					<img style="width: 100% !important; flex: 1 1 auto !important; min-height: 0 !important; max-height: 100% !important; object-fit: fill; display: block;" src="data:image/png;base64,{{DNS1D::getBarcodePNG($page_product->sub_sku, $page_product->barcode_type, 1, 30, array(0, 0, 0), false)}}">
+					<span style="font-size: 13px !important; letter-spacing: 1px; flex-shrink: 0;">{{ $page_product->sub_sku }}</span>
 				</div>
 			</div>
 			@else
@@ -162,9 +162,14 @@
 
 <style type="text/css">
 
+@if(!empty($is_nivessa_2x2_page))
+	table{ border-spacing: 0 !important; border-collapse: collapse !important; }
+	td{ border: none !important; padding: 0 !important; }
+@else
 	td{
 		border: 1px dotted lightgray;
 	}
+@endif
 	@media print{
 		
 		table{
