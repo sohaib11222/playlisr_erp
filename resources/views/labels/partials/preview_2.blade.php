@@ -31,13 +31,13 @@
 				{{-- Optional text fields (kept compact so the barcode dominates) --}}
 				<div style="line-height: 1.05;">
 					@if(!empty($print['name']))
-						<span style="display: block !important; font-weight: bold; font-size: {{$print['name_size']}}px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;">{{$page_product->product_actual_name}}</span>
+						<span style="display: block !important; font-weight: bold; font-size: {{ max((int)($print['name_size'] ?? 10) + 5, 16) }}px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;">{{$page_product->product_actual_name}}</span>
 						@endif
 						@if(!empty($page_product->artist))
-							<span style="display: block !important; font-size: {{$print['name_size']}}px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;">{{$page_product->artist}}</span>
+							<span style="display: block !important; font-size: {{ max((int)($print['name_size'] ?? 10) + 4, 15) }}px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;">{{$page_product->artist}}</span>
 						@endif
 						@if(!empty($page_product->category) || !empty($page_product->sub_category))
-							<span style="display: block !important; font-size: {{ max((int)($print['name_size'] ?? 10) - 1, 8) }}px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;">{{ trim(($page_product->category ?? '') . (!empty($page_product->category) && !empty($page_product->sub_category) ? ' / ' : '') . ($page_product->sub_category ?? '')) }}</span>
+							<span style="display: block !important; font-size: {{ max((int)($print['name_size'] ?? 10) + 3, 14) }}px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;">{{ trim(($page_product->category ?? '') . (!empty($page_product->category) && !empty($page_product->sub_category) ? ' / ' : '') . ($page_product->sub_category ?? '')) }}</span>
 					@endif
 
 					@if(!empty($print['variations']) && $page_product->is_dummy != 1)
@@ -58,7 +58,7 @@
 
 				{{-- Large barcode fills the remaining width --}}
 				<div style="width: 100%; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;">
-					<img style="max-width: 90% !important; height: 0.24in !important; width: auto; display: block;" src="data:image/png;base64,{{DNS1D::getBarcodePNG($page_product->sub_sku, $page_product->barcode_type, 1, 30, array(0, 0, 0), false)}}">
+					<img style="max-width: 96% !important; height: 0.36in !important; width: auto; display: block;" src="data:image/png;base64,{{DNS1D::getBarcodePNG($page_product->sub_sku, $page_product->barcode_type, 1, 30, array(0, 0, 0), false)}}">
 					<span style="font-size: 13px !important; letter-spacing: 1px; flex-shrink: 0;">{{ $page_product->sub_sku }}</span>
 				</div>
 			</div>
