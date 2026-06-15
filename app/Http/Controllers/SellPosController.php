@@ -408,7 +408,7 @@ class SellPosController extends Controller
         }
 
         $request->validate([
-            'duty' => 'required|in:cashier,shipping,inventory,admin',
+            'duty' => 'required|in:cashier,warehouse,discogs,admin',
             'location_id' => 'nullable|integer',
             'intended' => 'nullable|string|max:2048',
         ]);

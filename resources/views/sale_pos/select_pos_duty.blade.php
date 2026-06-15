@@ -368,12 +368,12 @@
                         <span class="opt-title">Cashier</span>
                     </label>
                     <label class="duty-option">
-                        <input type="radio" name="duty" value="shipping" id="duty_shipping">
-                        <span class="opt-title">Shipping</span>
+                        <input type="radio" name="duty" value="warehouse" id="duty_warehouse">
+                        <span class="opt-title">Warehouse</span>
                     </label>
                     <label class="duty-option">
-                        <input type="radio" name="duty" value="inventory" id="duty_inventory">
-                        <span class="opt-title">Inventory</span>
+                        <input type="radio" name="duty" value="discogs" id="duty_discogs">
+                        <span class="opt-title">Discogs</span>
                     </label>
                     <label class="duty-option">
                         <input type="radio" name="duty" value="admin" id="duty_admin">
@@ -445,7 +445,7 @@
                         }
                     }
                 }
-                ['duty_cashier','duty_shipping','duty_inventory','duty_admin'].forEach(function (id) {
+                ['duty_cashier','duty_warehouse','duty_discogs','duty_admin'].forEach(function (id) {
                     var el = document.getElementById(id);
                     if (el) el.addEventListener('change', refresh);
                 });
