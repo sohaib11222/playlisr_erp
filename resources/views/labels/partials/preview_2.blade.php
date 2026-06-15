@@ -151,13 +151,17 @@
 
 					{{-- Barcode --}}
 					@php
-						// 2"x1" labels get a taller/wider barcode so it scans reliably.
-						// Generation params stay standard (1,30) — only the CSS size changes.
+						// 2"x1" labels: render the barcode at a higher NATIVE resolution so
+						// the bars stay crisp at print size (CSS only constrains, never upscales).
+						// Symbology (barcode_type) is unchanged — only widthFactor/native height
+						// are raised. All other label sizes keep the standard (1,30) call.
 						$is_2x1 = (abs(($barcode_details->width * 1) - 2) < 0.01 && abs(($barcode_details->height * 1) - 1) < 0.01);
-						$barcode_height_in = $is_2x1 ? ($barcode_details->height * 0.42) : ($barcode_details->height * 0.24);
-						$barcode_max_width = $is_2x1 ? 98 : 90;
+						$barcode_height_in   = $is_2x1 ? ($barcode_details->height * 0.42) : ($barcode_details->height * 0.24);
+						$barcode_max_width   = $is_2x1 ? 98 : 90;
+						$barcode_width_factor   = $is_2x1 ? 3  : 1;
+						$barcode_native_height  = $is_2x1 ? 60 : 30;
 					@endphp
-					<img style="max-width:{{ $barcode_max_width }}% !important;height: {{ $barcode_height_in }}in !important; display: block;" src="data:image/png;base64,{{DNS1D::getBarcodePNG($page_product->sub_sku, $page_product->barcode_type, 1,30, array(0, 0, 0), false)}}">
+					<img style="max-width:{{ $barcode_max_width }}% !important;height: {{ $barcode_height_in }}in !important; display: block;" src="data:image/png;base64,{{DNS1D::getBarcodePNG($page_product->sub_sku, $page_product->barcode_type, $barcode_width_factor, $barcode_native_height, array(0, 0, 0), false)}}">
 					<span style="font-size: 10px !important">
 						{{ $page_product->sub_sku }}
 					</span>
