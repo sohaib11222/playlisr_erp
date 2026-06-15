@@ -12,6 +12,7 @@ use App\Contact;
 
 use App\CustomerGroup;
 use App\ExpenseCategory;
+use App\LoginActivity;
 use App\Product;
 use App\ProductStockCache;
 use App\PurchaseLine;
@@ -4765,6 +4766,180 @@ class ReportController extends Controller
                            
     }
     
+    /**
+     * Smallest cumulative coverage of staff logins that counts as "the store".
+     * The store IPs are learned from history: rank the IPs non-admin staff log
+     * in from, and take the top ones until they cover this share of all staff
+     * logins. Anything outside that set is treated as off-site.
+     */
+    const OUTSIDE_LOGIN_COVERAGE = 0.90;
+
+    /** Don't flag anything until we've seen at least this many staff logins. */
+    const OUTSIDE_LOGIN_MIN_SAMPLE = 20;
+
+    /**
+     * Build the set of "store" IPs for a business from login history.
+     * Returns [ip => login_count] for the trusted IPs, plus totals, so the
+     * report can both filter and explain itself.
+     */
+    private function storeIpProfile($business_id)
+    {
+        // Migration not run yet — behave as "learning" rather than 500.
+        if (!\Schema::hasTable('login_activities')) {
+            return ['trusted' => [], 'total' => 0, 'learning' => true];
+        }
+
+        $counts = LoginActivity::where('business_id', $business_id)
+            ->where('successful', 1)
+            ->where('is_admin', 0)
+            ->whereNotNull('ip_address')
+            ->select('ip_address', DB::raw('COUNT(*) as cnt'))
+            ->groupBy('ip_address')
+            ->orderBy('cnt', 'desc')
+            ->pluck('cnt', 'ip_address')
+            ->toArray();
+
+        $total = array_sum($counts);
+        $trusted = [];
+
+        // Not enough data yet — "learning" mode, trust everything so we don't
+        // drown the admin in false positives on a fresh table.
+        if ($total < self::OUTSIDE_LOGIN_MIN_SAMPLE) {
+            return [
+                'trusted'  => $counts,
+                'total'    => $total,
+                'learning' => true,
+            ];
+        }
+
+        $cumulative = 0;
+        foreach ($counts as $ip => $cnt) {
+            $trusted[$ip] = $cnt;
+            $cumulative += $cnt;
+            if ($cumulative / $total >= self::OUTSIDE_LOGIN_COVERAGE) {
+                break;
+            }
+        }
+
+        return [
+            'trusted'  => $trusted,
+            'total'    => $total,
+            'learning' => false,
+        ];
+    }
+
+    /**
+     * Outside-Store Logins report — flags login attempts from IPs the stores
+     * don't normally use. Admin only. The "store" IPs are derived from staff
+     * login history (see storeIpProfile), so no manual IP config is needed.
+     */
+    public function outsideLoginsReport(Request $request)
+    {
+        $this->ensureAdminOnlyReportAccess();
+
+        $business_id = $request->session()->get('user.business_id');
+        $profile = $this->storeIpProfile($business_id);
+        $trusted_ips = array_keys($profile['trusted']);
+
+        if ($request->ajax()) {
+            $query = LoginActivity::leftjoin('users as u', 'u.id', '=', 'login_activities.user_id')
+                ->where('login_activities.business_id', $business_id)
+                ->select(
+                    'login_activities.*',
+                    DB::raw("CONCAT(COALESCE(u.surname, ''), ' ', COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as employee_name")
+                );
+
+            // While learning we have no trusted set yet — show nothing rather
+            // than flag every row. Once enough history exists, exclude the
+            // store IPs so only the off-site logins remain.
+            if ($profile['learning']) {
+                $query->whereRaw('1 = 0');
+            } elseif (!empty($trusted_ips)) {
+                $query->whereNotIn('login_activities.ip_address', $trusted_ips);
+            }
+
+            if (!empty($request->start_date) && !empty($request->end_date)) {
+                $query->whereDate('login_activities.created_at', '>=', $request->start_date)
+                    ->whereDate('login_activities.created_at', '<=', $request->end_date);
+            }
+
+            if (!empty($request->user_id)) {
+                $query->where('login_activities.user_id', $request->user_id);
+            }
+
+            if ($request->result === 'success') {
+                $query->where('login_activities.successful', 1);
+            } elseif ($request->result === 'failed') {
+                $query->where('login_activities.successful', 0);
+            }
+
+            return Datatables::of($query)
+                ->editColumn('created_at', '{{@format_datetime($created_at)}}')
+                ->editColumn('employee_name', function ($row) {
+                    $name = trim($row->employee_name);
+                    return $name !== '' ? e($name)
+                        : '<span class="text-muted">No matching user</span>';
+                })
+                ->editColumn('username', function ($row) {
+                    return e($row->username);
+                })
+                ->editColumn('ip_address', function ($row) {
+                    return e($row->ip_address);
+                })
+                ->addColumn('device', function ($row) {
+                    return '<span title="' . e($row->user_agent) . '">'
+                        . e($this->shortDevice($row->user_agent)) . '</span>';
+                })
+                ->addColumn('result', function ($row) {
+                    return $row->successful
+                        ? '<span class="label label-success">' . __('lang_v1.success') . '</span>'
+                        : '<span class="label label-danger">Failed</span>';
+                })
+                ->filterColumn('employee_name', function ($q, $keyword) {
+                    $q->whereRaw("CONCAT(COALESCE(u.surname, ''), ' ', COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) like ?", ["%{$keyword}%"]);
+                })
+                ->rawColumns(['employee_name', 'device', 'result'])
+                ->make(true);
+        }
+
+        $users = User::allUsersDropdown($business_id, false);
+
+        return view('report.outside_logins')->with([
+            'users'       => $users,
+            'trusted_ips' => $profile['trusted'],
+            'total_staff_logins' => $profile['total'],
+            'learning'    => $profile['learning'],
+            'min_sample'  => self::OUTSIDE_LOGIN_MIN_SAMPLE,
+        ]);
+    }
+
+    /** Compact, human-readable device label from a raw user-agent string. */
+    private function shortDevice($ua)
+    {
+        if (empty($ua)) {
+            return '—';
+        }
+
+        $os = 'Unknown OS';
+        foreach ([
+            'Windows' => 'Windows', 'iPhone' => 'iPhone', 'iPad' => 'iPad',
+            'Android' => 'Android', 'Mac OS X' => 'Mac', 'Macintosh' => 'Mac',
+            'Linux' => 'Linux',
+        ] as $needle => $label) {
+            if (stripos($ua, $needle) !== false) { $os = $label; break; }
+        }
+
+        $browser = 'Unknown';
+        foreach ([
+            'Edg' => 'Edge', 'OPR' => 'Opera', 'Chrome' => 'Chrome',
+            'Firefox' => 'Firefox', 'Safari' => 'Safari',
+        ] as $needle => $label) {
+            if (stripos($ua, $needle) !== false) { $browser = $label; break; }
+        }
+
+        return $browser . ' / ' . $os;
+    }
+
     public function categorySalesReport(Request $request){
         // Sales-by-category is an aggregated revenue report — admin-only
         // (Sarah 2026-04-28).

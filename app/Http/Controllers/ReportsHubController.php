@@ -107,6 +107,7 @@ class ReportsHubController extends Controller
                     ['key' => 'expense-report',        'name' => 'Expense Report',        'icon' => 'fa-receipt',            'action' => 'ReportController@getExpenseReport',           'desc' => 'Expenses by category.'],
                     ['key' => 'purchase-payment',      'name' => 'Purchase Payment Report', 'icon' => 'fa-hand-holding-usd', 'action' => 'ReportController@getPurchasePaymentReport',   'desc' => 'Payments against purchases.'],
                     ['key' => 'activity-log',          'name' => 'Activity Log',          'icon' => 'fa-stream',             'action' => 'ReportController@activityLog',                'desc' => 'System activity audit trail.'],
+                    ['key' => 'outside-logins',        'name' => 'Outside-Store Logins',  'icon' => 'fa-map-marker-alt',     'action' => 'ReportController@outsideLoginsReport',        'desc' => 'Logins from IPs the stores don\'t normally use — possible off-site or unauthorized access.', 'admin_only' => true],
                 ],
             ],
         ];

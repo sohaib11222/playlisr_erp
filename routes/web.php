@@ -714,6 +714,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('edit-sales-orders/{id}/status', 'SalesOrderController@getEditSalesOrderStatus');
     Route::put('update-sales-orders/{id}/status', 'SalesOrderController@postEditSalesOrderStatus');
     Route::get('reports/activity-log', 'ReportController@activityLog');
+    Route::get('reports/outside-logins', 'ReportController@outsideLoginsReport');
     Route::get('user-location/{latlng}', 'HomeController@getUserLocation');
 
     // Browser-based runner for the Nivessa Backend xlsx imports.
