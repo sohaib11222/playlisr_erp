@@ -150,7 +150,14 @@
 					<br>
 
 					{{-- Barcode --}}
-					<img style="max-width:90% !important;height: {{ $barcode_details->height * 0.24 }}in !important; display: block;" src="data:image/png;base64,{{DNS1D::getBarcodePNG($page_product->sub_sku, $page_product->barcode_type, 1,30, array(0, 0, 0), false)}}">
+					@php
+						// 2"x1" labels get a taller/wider barcode so it scans reliably.
+						// Generation params stay standard (1,30) — only the CSS size changes.
+						$is_2x1 = (abs(($barcode_details->width * 1) - 2) < 0.01 && abs(($barcode_details->height * 1) - 1) < 0.01);
+						$barcode_height_in = $is_2x1 ? ($barcode_details->height * 0.34) : ($barcode_details->height * 0.24);
+						$barcode_max_width = $is_2x1 ? 96 : 90;
+					@endphp
+					<img style="max-width:{{ $barcode_max_width }}% !important;height: {{ $barcode_height_in }}in !important; display: block;" src="data:image/png;base64,{{DNS1D::getBarcodePNG($page_product->sub_sku, $page_product->barcode_type, 1,30, array(0, 0, 0), false)}}">
 					<span style="font-size: 10px !important">
 						{{ $page_product->sub_sku }}
 					</span>
