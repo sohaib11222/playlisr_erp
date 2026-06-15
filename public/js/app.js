@@ -410,6 +410,10 @@ $(document).ready(function() {
     contact_table = $('#contact_table').DataTable({
         processing: true,
         serverSide: true,
+        // Export buttons (Excel/CSV/PDF/Copy/Print) would let any user download
+        // the full customer/supplier list. Restrict to ERP admins — the blade
+        // drops in #disable_contact_export for everyone else.
+        buttons: ($('#disable_contact_export').length > 0) ? [] : $.fn.dataTable.defaults.buttons,
         scrollY:        "75vh",
             scrollX:        false,
         scrollCollapse: true,

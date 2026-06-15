@@ -18,6 +18,12 @@
 
 <!-- Main content -->
 <section class="content">
+    {{-- Only ERP admins may export the customer/supplier list to Excel/CSV/PDF.
+         This marker tells app.js to drop the DataTables export buttons for
+         everyone else. Phone numbers are also masked server-side. --}}
+    @if(empty($is_admin))
+        <span id="disable_contact_export" class="hide"></span>
+    @endif
     @if($type == 'customer')
         {{-- Hero search — Sarah 2026-04-22: the default DataTables filter box
              is tiny and sits top-right, so cashiers don't realize it's the

@@ -51,6 +51,30 @@ class ContactController extends Controller
     }
 
     /**
+     * Masks a phone number so only the last 4 digits remain visible.
+     * Used to protect customer/supplier phone numbers from non-admin staff
+     * in the contact lists (and any export of them).
+     *
+     * @param  string|null  $number
+     * @return string
+     */
+    private function maskPhone($number)
+    {
+        $number = trim((string) $number);
+        if ($number === '') {
+            return '';
+        }
+
+        $digits = preg_replace('/\D/', '', $number);
+        if (strlen($digits) < 4) {
+            // Too short to safely reveal any part — hide it entirely.
+            return str_repeat('•', max(strlen($digits), 1));
+        }
+
+        return '••• ••• ' . substr($digits, -4);
+    }
+
+    /**
      * Display a listing of the resource.
      *
      * @return \Illuminate\Http\Response
@@ -85,9 +109,13 @@ class ContactController extends Controller
         if ($type == 'customer') {
             $customer_groups = CustomerGroup::forDropdown($business_id);
         }
-        
+
+        // Only ERP admins may export the customer/supplier list. The view uses
+        // this to drop the DataTables export buttons for everyone else.
+        $is_admin = $this->contactUtil->is_admin(auth()->user());
+
         return view('contact.index')
-            ->with(compact('type', 'reward_enabled', 'customer_groups', 'users'));
+            ->with(compact('type', 'reward_enabled', 'customer_groups', 'users', 'is_admin'));
     }
 
     /**
@@ -102,6 +130,8 @@ class ContactController extends Controller
         }
 
         $business_id = request()->session()->get('user.business_id');
+
+        $is_admin = $this->contactUtil->is_admin(auth()->user());
 
         $contact = $this->contactUtil->getContactQuery($business_id, 'supplier');
 
@@ -192,6 +222,9 @@ class ContactController extends Controller
                 } else {
                     return $row->name;
                 }
+            })
+            ->editColumn('mobile', function ($row) use ($is_admin) {
+                return $is_admin ? ($row->mobile ?? '') : $this->maskPhone($row->mobile);
             })
             ->editColumn('created_at', '{{@format_date($created_at)}}')
             ->removeColumn('opening_balance_paid')
@@ -397,8 +430,8 @@ class ContactController extends Controller
                 
                 return $name;
             })
-            ->editColumn('mobile', function ($row) {
-                return $row->mobile ?? '';
+            ->editColumn('mobile', function ($row) use ($is_admin) {
+                return $is_admin ? ($row->mobile ?? '') : $this->maskPhone($row->mobile);
             })
             ->addColumn('store_credit', function ($row) {
                 // Customer balance IS the store-credit pool. Surface it in the list
