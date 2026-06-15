@@ -3538,14 +3538,16 @@ class SellPosController extends Controller
             \Log::warning('prior-shift-close gate failed: ' . $e->getMessage());
         }
 
-        // Nivessa: non-cashier roles (Discogs / Warehouse / Admin) don't run
-        // a register, so don't force them to open one / count the drawer.
-        // They can still use the POS screen for lookups and rings.
+        // Nivessa: only the Cashier duty runs a register. Anyone who picked a
+        // non-cashier duty (Warehouse / Discogs / Admin) — or who holds a
+        // non-cashier role — proceeds without being forced to open a register
+        // / count the drawer. They can still use the POS for lookups & rings.
         $non_cashier_roles = ['Admin', 'Discogs', 'Warehouse'];
         $user_roles = array_map(function ($role) {
             return explode('#', $role)[0];
         }, auth()->user()->getRoleNames()->toArray());
-        $skip_register = count(array_intersect($non_cashier_roles, $user_roles)) > 0;
+        $skip_register = session('pos_duty') !== 'cashier'
+            || count(array_intersect($non_cashier_roles, $user_roles)) > 0;
 
         //Check if there is a open register, if no then redirect to Create Register screen.
         if (!$skip_register && $this->cashRegisterUtil->countOpenedRegister() == 0) {
@@ -3713,16 +3715,17 @@ class SellPosController extends Controller
             $is_direct_sale = true;
         }
 
-        // Nivessa: non-cashier roles (Admin / Discogs / Warehouse) don't run a
-        // register, so don't block their rings on an open drawer. Mirrors the
-        // skip_register exemption in create() — without this, those roles can
-        // load POS but the sale POST gets redirected to the register screen and
-        // silently fails (AJAX expects JSON, gets a 302 to HTML).
+        // Nivessa: only the Cashier duty runs a register. A non-cashier duty
+        // (Warehouse / Discogs / Admin) — or a non-cashier role — doesn't block
+        // the ring on an open drawer. Mirrors the skip_register exemption in
+        // create() — without this, the sale POST gets redirected to the register
+        // screen and silently fails (AJAX expects JSON, gets a 302 to HTML).
         $non_cashier_roles = ['Admin', 'Discogs', 'Warehouse'];
         $user_roles = array_map(function ($role) {
             return explode('#', $role)[0];
         }, auth()->user()->getRoleNames()->toArray());
-        $skip_register = count(array_intersect($non_cashier_roles, $user_roles)) > 0;
+        $skip_register = session('pos_duty') !== 'cashier'
+            || count(array_intersect($non_cashier_roles, $user_roles)) > 0;
 
         //Check if there is a open register, if no then redirect to Create Register screen.
         if (!$is_direct_sale && !$skip_register && $this->cashRegisterUtil->countOpenedRegister() == 0) {
