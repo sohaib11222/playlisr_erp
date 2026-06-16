@@ -998,6 +998,8 @@ class ProductUtil extends Util
     public function getDetailsFromProduct($business_id, $product_id, $variation_id = null)
     {
         $product = Product::leftjoin('variations as v', 'products.id', '=', 'v.product_id')
+                        ->leftJoin('categories as cat', 'products.category_id', '=', 'cat.id')
+                        ->leftJoin('categories as sub_cat', 'products.sub_category_id', '=', 'sub_cat.id')
                         ->whereNull('v.deleted_at')
                         ->where('products.business_id', $business_id);
 
@@ -1011,7 +1013,11 @@ class ProductUtil extends Util
             'products.id as product_id',
             'products.name as product_name',
             'v.id as variation_id',
-            'v.name as variation_name'
+            'v.name as variation_name',
+            'v.sell_price_inc_tax as price',
+            'v.sub_sku as sub_sku',
+            'cat.name as catname',
+            'sub_cat.name as subcatname'
         )->get();
 
         return $products;
@@ -1029,6 +1035,8 @@ class ProductUtil extends Util
     public function getDetailsFromProducts($business_id, $product_ids, $variation_id = null)
     {
         $product = Product::leftjoin('variations as v', 'products.id', '=', 'v.product_id')
+                        ->leftJoin('categories as cat', 'products.category_id', '=', 'cat.id')
+                        ->leftJoin('categories as sub_cat', 'products.sub_category_id', '=', 'sub_cat.id')
                         ->whereNull('v.deleted_at')
                         ->where('products.business_id', $business_id);
 
@@ -1042,7 +1050,11 @@ class ProductUtil extends Util
             'products.id as product_id',
             'products.name as product_name',
             'v.id as variation_id',
-            'v.name as variation_name'
+            'v.name as variation_name',
+            'v.sell_price_inc_tax as price',
+            'v.sub_sku as sub_sku',
+            'cat.name as catname',
+            'sub_cat.name as subcatname'
         )->get();
 
         return $products;

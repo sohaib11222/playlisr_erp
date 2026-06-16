@@ -6,8 +6,8 @@
     @endphp
     <tr id="row_{{$row_index}}">
         <td>
-            {{$product->product_name}} - {{$product->sub_sku}} - {{$product->price}} - {{$product->catname}}
-                
+            {{$product->product_name}} - {{$product->sub_sku}} - {{$product->price}} - {{$product->catname}}@if(!empty($product->subcatname)) / {{$product->subcatname}}@endif
+
             @if($product->variation_name != "DUMMY")
                 <b>{{$product->variation_name}}</b>
             @endif

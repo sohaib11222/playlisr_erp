@@ -2408,10 +2408,12 @@ class TransactionUtil extends Util
         $products = Transaction::join('purchase_lines as pl', 'transactions.id', '=', 'pl.transaction_id')
                             ->leftjoin('products as p', 'pl.product_id', '=', 'p.id')
                             ->leftjoin('variations as v', 'pl.variation_id', '=', 'v.id')
+                            ->leftJoin('categories as cat', 'p.category_id', '=', 'cat.id')
+                            ->leftJoin('categories as sub_cat', 'p.sub_category_id', '=', 'sub_cat.id')
                             ->where('transactions.business_id', $business_id)
                             ->where('transactions.id', $transaction_id)
                             ->where('transactions.type', 'purchase')
-                            ->select('p.id as product_id', 'p.name as product_name', 'v.id as variation_id', 'v.name as variation_name', 'pl.quantity as quantity', 'pl.exp_date', 'pl.lot_number')
+                            ->select('p.id as product_id', 'p.name as product_name', 'v.id as variation_id', 'v.name as variation_name', 'v.sell_price_inc_tax as price', 'v.sub_sku as sub_sku', 'cat.name as catname', 'sub_cat.name as subcatname', 'pl.quantity as quantity', 'pl.exp_date', 'pl.lot_number')
                             ->get();
         return $products;
     }

@@ -92,6 +92,7 @@ class LabelsController extends Controller
                 // $products = $this->productUtil->getDetailsFromProduct($business_id, $product_id, $variation_id);
                 $products = Product::leftJoin('variations', 'products.id', '=', 'variations.product_id')
                     ->leftJoin('categories', 'products.category_id', '=', 'categories.id')
+                    ->leftJoin('categories as sub_cat', 'products.sub_category_id', '=', 'sub_cat.id')
                     ->where('products.business_id', $business_id)
                     ->where('products.id', $product_id)
                     ->where('variations.id', $variation_id)
@@ -104,6 +105,7 @@ class LabelsController extends Controller
                         'variations.name as variation_name',
                         'variations.sell_price_inc_tax as price',
                         'categories.name as catname',
+                        'sub_cat.name as subcatname',
                         'variations.sub_sku as sub_sku',
                         DB::raw("(SELECT DATE_FORMAT(t.transaction_date, '%m/%d/%Y') 
                             FROM purchase_lines pl 
