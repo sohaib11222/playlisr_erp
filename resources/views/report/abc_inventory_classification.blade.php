@@ -22,6 +22,10 @@
         <a href="{{ url('/admin/abc-import') }}">Upload sales-based ABC</a>
     </div>
     @endif
+    <div class="alert alert-success">
+        <strong>Markdown list:</strong> set <strong>ABC Class = C</strong> (plus a Store and Genre) to see slow movers to clear.
+        Suggested markdown is <strong>30% off</strong> the current sticker for C items; A and B keep full price.
+    </div>
     <div class="row">
         <div class="col-md-12">
             @component('components.filters', ['title' => __('report.filters')])
@@ -72,6 +76,8 @@
                                 <th>Qty On Hand</th>
                                 <th>Qty Sold</th>
                                 <th>Inventory Value</th>
+                                <th>Current Price</th>
+                                <th>Markdown (30% off, C)</th>
                                 <th>Cumulative %</th>
                                 <th>Class</th>
                             </tr>
@@ -113,6 +119,18 @@ $(document).ready(function () {
                 data: 'inventory_value',
                 name: 'inventory_value',
                 render: function(data) { return __currency_trans_from_en(data || 0, true); }
+            },
+            {
+                data: 'current_price',
+                name: 'current_price',
+                render: function(data) { return __currency_trans_from_en(data || 0, true); }
+            },
+            {
+                data: 'markdown_price',
+                name: 'markdown_price',
+                render: function(data) {
+                    return (data === null || data === undefined) ? '' : __currency_trans_from_en(data, true);
+                }
             },
             {
                 data: 'cumulative_value_pct',

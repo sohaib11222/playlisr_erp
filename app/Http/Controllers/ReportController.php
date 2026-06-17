@@ -5461,7 +5461,8 @@ class ReportController extends Controller
                     DB::raw('MAX(psc.sku) as sku'),
                     DB::raw('MAX(COALESCE(sc.name, psc.category_name)) as format'),
                     DB::raw('SUM(psc.stock) as qty_on_hand'),
-                    DB::raw('SUM(psc.stock_price) as inventory_value')
+                    DB::raw('SUM(psc.stock_price) as inventory_value'),
+                    DB::raw('MAX(psc.unit_price) as current_price')
                 )
                 ->groupBy('psc.product_id')
                 ->get();
@@ -5527,6 +5528,13 @@ class ReportController extends Controller
                     continue;
                 }
 
+                // Markdown suggestion: C-class slow movers get 30% off the
+                // current sticker (tax-inclusive). A/B keep full price.
+                $current_price = (float) $row->current_price;
+                $markdown_price = ($class === 'C' && $current_price > 0)
+                    ? round($current_price * 0.70, 2)
+                    : null;
+
                 $classified[] = [
                     'product' => $row->product,
                     'sku' => $row->sku,
@@ -5534,6 +5542,8 @@ class ReportController extends Controller
                     'qty_on_hand' => (float) $row->qty_on_hand,
                     'qty_sold' => (float) $row->qty_sold,
                     'inventory_value' => $value,
+                    'current_price' => $current_price,
+                    'markdown_price' => $markdown_price,
                     'cumulative_value_pct' => round($cumulative_pct, 2),
                     'abc_class' => $class,
                 ];
