@@ -183,14 +183,9 @@
 
                     <div class="tab-pane active" id="product_list_tab">
 
-                        @if($is_admin)
-                        <div id="ebay_listing_status_banner" class="alert @if(!empty($ebay_listing_ready)) alert-success @elseif(!empty($ebay_configured)) alert-warning @else alert-danger @endif" style="margin-bottom:12px;">
-                            @if(!empty($ebay_listing_ready))
-                                <i class="fa fa-check-circle"></i>
-                                <strong>eBay listing ready.</strong>
-                                Seller connected — you can list products from the eBay column or bulk button.
-                                <a href="{{ url('/admin/ebay-seller') }}">Seller settings</a>
-                            @elseif(!empty($ebay_configured))
+                        @if($is_admin && empty($ebay_listing_ready))
+                        <div id="ebay_listing_status_banner" class="alert @if(!empty($ebay_configured)) alert-warning @else alert-danger @endif" style="margin-bottom:12px;">
+                            @if(!empty($ebay_configured))
                                 <i class="fa fa-exclamation-triangle"></i>
                                 <strong>eBay credentials saved but seller not connected.</strong>
                                 <a href="{{ url('/admin/ebay-seller') }}">Connect your eBay seller account</a> before listing.
