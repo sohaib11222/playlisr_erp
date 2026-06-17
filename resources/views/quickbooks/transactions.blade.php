@@ -10,7 +10,7 @@
 <section class="content">
     <div class="box box-primary">
         <div class="box-header with-border">
-            <h3 class="box-title">Date range</h3>
+            <h3 class="box-title">Date range &amp; filters</h3>
         </div>
         <div class="box-body">
             <form method="GET" action="{{ action('QuickBooksController@transactionList') }}" class="form-inline">
@@ -22,9 +22,40 @@
                     <label>To</label>
                     <input type="date" class="form-control" name="to_date" value="{{ $to_date }}">
                 </div>
+                <div class="form-group" style="margin-left:8px;">
+                    <label>Type</label>
+                    <select name="f_type" class="form-control">
+                        <option value="">All</option>
+                        @foreach($filter_options['type'] as $opt)
+                            <option value="{{ $opt }}" {{ ($filters['type'] ?? '') === $opt ? 'selected' : '' }}>{{ $opt }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="form-group" style="margin-left:8px;">
+                    <label>Account</label>
+                    <select name="f_account" class="form-control">
+                        <option value="">All</option>
+                        @foreach($filter_options['account'] as $opt)
+                            <option value="{{ $opt }}" {{ ($filters['account'] ?? '') === $opt ? 'selected' : '' }}>{{ $opt }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="form-group" style="margin-left:8px;">
+                    <label>Split</label>
+                    <select name="f_split" class="form-control">
+                        <option value="">All</option>
+                        @foreach($filter_options['split'] as $opt)
+                            <option value="{{ $opt }}" {{ ($filters['split'] ?? '') === $opt ? 'selected' : '' }}>{{ $opt }}</option>
+                        @endforeach
+                    </select>
+                </div>
                 <button type="submit" class="btn btn-primary" style="margin-left:8px;">
                     <i class="fa fa-refresh"></i> View
                 </button>
+                <a href="{{ action('QuickBooksController@transactionList') }}?{{ http_build_query(array_merge(request()->query(), ['export' => 'csv'])) }}"
+                   class="btn btn-success" style="margin-left:8px;">
+                    <i class="fa fa-download"></i> Export CSV
+                </a>
             </form>
         </div>
     </div>
@@ -42,7 +73,7 @@
                 <table class="table table-bordered table-striped">
                     <thead>
                         <tr>
-                            @foreach($report['columns'] as $col)
+                            @foreach($columns as $col)
                                 <th>{{ $col }}</th>
                             @endforeach
                         </tr>
@@ -50,23 +81,23 @@
                     <tbody>
                         @forelse($report['rows'] as $row)
                             <tr>
-                                @foreach($report['columns'] as $col)
+                                @foreach($columns as $col)
                                     <td>{{ $row[$col] ?? '' }}</td>
                                 @endforeach
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="{{ max(1, count($report['columns'])) }}" class="text-center">
-                                    No transactions in this date range.
+                                <td colspan="{{ max(1, count($columns)) }}" class="text-center">
+                                    No transactions match these filters.
                                 </td>
                             </tr>
                         @endforelse
                     </tbody>
-                    @if(!is_null($report['total']))
+                    @if(!is_null($total))
                         <tfoot>
                             <tr>
-                                <th colspan="{{ max(1, count($report['columns']) - 1) }}" class="text-right">Total</th>
-                                <th>{{ number_format($report['total'], 2) }}</th>
+                                <th colspan="{{ max(1, count($columns) - 1) }}" class="text-right">Total</th>
+                                <th>{{ number_format($total, 2) }}</th>
                             </tr>
                         </tfoot>
                     @endif

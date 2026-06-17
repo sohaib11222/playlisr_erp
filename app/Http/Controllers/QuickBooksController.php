@@ -268,10 +268,148 @@ class QuickBooksController extends Controller
         $qbService = new QuickBooksService($business_id);
         $report = $qbService->getTransactionListForDisplay($from, $to);
 
+        if (empty($report['success'])) {
+            return view('quickbooks.transactions', [
+                'report' => $report,
+                'from_date' => $from,
+                'to_date' => $to,
+                'columns' => [],
+                'filters' => ['type' => '', 'account' => '', 'split' => ''],
+                'filter_options' => ['type' => [], 'account' => [], 'split' => []],
+                'total' => null,
+            ]);
+        }
+
+        $columns = $report['columns'];
+
+        // Resolve the actual QB column titles for the filterable/hidden columns.
+        $findCol = function (array $candidates) use ($columns) {
+            foreach ($columns as $c) {
+                foreach ($candidates as $cand) {
+                    if (strcasecmp(trim($c), $cand) === 0) {
+                        return $c;
+                    }
+                }
+            }
+            return null;
+        };
+        $typeCol    = $findCol(['Transaction Type', 'Transaction type', 'Type']);
+        $accountCol = $findCol(['Account name', 'Account']);
+        $splitCol   = $findCol(['Split', 'Category']);
+        $amountCol  = $findCol(['Amount', 'Total']);
+
+        // Dropdown options from the full (unfiltered) result set.
+        $distinct = function ($col) use ($report) {
+            if (!$col) {
+                return [];
+            }
+            $vals = [];
+            foreach ($report['rows'] as $r) {
+                $v = trim($r[$col] ?? '');
+                if ($v !== '') {
+                    $vals[$v] = true;
+                }
+            }
+            $vals = array_keys($vals);
+            sort($vals, SORT_NATURAL | SORT_FLAG_CASE);
+            return $vals;
+        };
+        $filterOptions = [
+            'type'    => $distinct($typeCol),
+            'account' => $distinct($accountCol),
+            'split'   => $distinct($splitCol),
+        ];
+
+        $filters = [
+            'type'    => trim((string) $request->input('f_type', '')),
+            'account' => trim((string) $request->input('f_account', '')),
+            'split'   => trim((string) $request->input('f_split', '')),
+        ];
+
+        $rows = array_values(array_filter($report['rows'], function ($r) use ($filters, $typeCol, $accountCol, $splitCol) {
+            if ($filters['type'] !== '' && $typeCol && ($r[$typeCol] ?? '') !== $filters['type']) {
+                return false;
+            }
+            if ($filters['account'] !== '' && $accountCol && ($r[$accountCol] ?? '') !== $filters['account']) {
+                return false;
+            }
+            if ($filters['split'] !== '' && $splitCol && ($r[$splitCol] ?? '') !== $filters['split']) {
+                return false;
+            }
+            return true;
+        }));
+
+        // Hide Num and Memo columns from display + export.
+        $hiddenTitles = ['num', 'no.', 'memo', 'memo/description', 'description'];
+        $visibleColumns = array_values(array_filter($columns, function ($c) use ($hiddenTitles) {
+            return !in_array(strtolower(trim($c)), $hiddenTitles, true);
+        }));
+
+        // Recompute the total over the filtered rows.
+        $total = null;
+        if ($amountCol) {
+            $total = 0.0;
+            foreach ($rows as $r) {
+                $amt = $this->parseCsvAmount($r[$amountCol] ?? '');
+                if ($amt !== null) {
+                    $total += $amt;
+                }
+            }
+            $total = round($total, 2);
+        }
+
+        if (strtolower((string) $request->input('export')) === 'csv') {
+            return $this->streamTransactionCsv($visibleColumns, $rows, $from, $to);
+        }
+
         return view('quickbooks.transactions', [
-            'report' => $report,
+            'report' => ['success' => true, 'rows' => $rows],
             'from_date' => $from,
             'to_date' => $to,
+            'columns' => $visibleColumns,
+            'filters' => $filters,
+            'filter_options' => $filterOptions,
+            'total' => $total,
+        ]);
+    }
+
+    /** Parse a QB report amount cell ("(1,234.56)", "-12.00") to a float. */
+    protected function parseCsvAmount($raw)
+    {
+        $raw = trim((string) $raw);
+        if ($raw === '') {
+            return null;
+        }
+        $neg = false;
+        if (preg_match('/^\((.+)\)$/', $raw, $m)) {
+            $neg = true;
+            $raw = $m[1];
+        }
+        $raw = str_replace([',', '$', ' '], '', $raw);
+        if (!is_numeric($raw)) {
+            return null;
+        }
+        $val = (float) $raw;
+        return $neg ? -$val : $val;
+    }
+
+    protected function streamTransactionCsv(array $columns, array $rows, $from, $to)
+    {
+        $filename = 'qb-transactions-' . $from . '-to-' . $to . '.csv';
+
+        return response()->streamDownload(function () use ($columns, $rows) {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, $columns);
+            foreach ($rows as $r) {
+                $line = [];
+                foreach ($columns as $c) {
+                    $line[] = $r[$c] ?? '';
+                }
+                fputcsv($out, $line);
+            }
+            fclose($out);
+        }, $filename, [
+            'Content-Type' => 'text/csv',
         ]);
     }
 
