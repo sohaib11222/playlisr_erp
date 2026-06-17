@@ -107,7 +107,7 @@
 					{{-- Artist --}}
 					@if(!empty($page_product->artist))
 						<span style="display: block !important; font-size: {{ round($print['name_size']*$txt) }}px">
-							Artist:<b>{{$page_product->artist}}</b>
+							Artist:<b>{{ $is_2x1 ? \Illuminate\Support\Str::limit($page_product->artist, 30, '') : $page_product->artist }}</b>
 						</span>
 					@endif
 				@endif
