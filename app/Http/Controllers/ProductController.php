@@ -245,6 +245,11 @@ class ProductController extends Controller
             if (\Schema::hasColumn('products', 'discogs_release_id')) {
                 $products->addSelect('products.discogs_release_id');
             }
+            // Source flag so the list can show "Discogs Import" as the last
+            // editor for auto-imported rows that no human has touched yet.
+            if (\Schema::hasColumn('products', 'added_via')) {
+                $products->addSelect('products.added_via');
+            }
             if (\Schema::hasColumn('products', 'ebay_listing_id')) {
                 $products->addSelect('products.ebay_listing_id');
             }
@@ -348,8 +353,13 @@ class ProductController extends Controller
                 })
                 ->addColumn('updated_by_name', function ($row) use ($updatedByMap) {
                     $name = isset($updatedByMap[$row->id]) ? trim($updatedByMap[$row->id]) : '';
-                    // No edit logged yet — fall back to whoever created the product.
+                    // No human edit logged yet. For rows the Discogs importer
+                    // created (and nobody has edited since), credit the import
+                    // rather than the account that happened to run it.
                     if ($name === '') {
+                        if (($row->added_via ?? null) === 'discogs_inventory_import') {
+                            return 'Discogs Import';
+                        }
                         $name = trim($row->created_by_name ?? '');
                     }
                     return $name !== '' ? $name : '--';
