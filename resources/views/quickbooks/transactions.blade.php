@@ -1,5 +1,5 @@
 @extends('layouts.app')
-@section('title', 'QuickBooks Transaction List')
+@section('title', 'QuickBooks Transaction List by Date')
 
 @section('content')
 <section class="content-header">

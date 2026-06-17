@@ -5,7 +5,7 @@
 <section class="content-header">
     <h1>QuickBooks Sync Dashboard</h1>
     <a href="{{ action('QuickBooksController@transactionList') }}" class="btn btn-primary btn-sm" style="margin-top:6px;">
-        <i class="fa fa-list"></i> View live Transaction List (QBO)
+        <i class="fa fa-list"></i> QuickBooks Transaction List by Date
     </a>
 </section>
 

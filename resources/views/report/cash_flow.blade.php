@@ -14,7 +14,7 @@
     @endphp
     <a href="{{ action('QuickBooksController@transactionList') }}{{ $cf_tx_qs ? '?' . http_build_query($cf_tx_qs) : '' }}"
        class="btn btn-default btn-sm" style="margin-top:6px;">
-        <i class="fa fa-list"></i> Live QBO transactions (drill-down)
+        <i class="fa fa-list"></i> QuickBooks Transaction List by Date
     </a>
 </section>
 
