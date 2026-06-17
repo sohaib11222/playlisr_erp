@@ -137,6 +137,24 @@ class ProductController extends Controller
                 }
             );
 
+            // Map of product_id => name of the user who last edited it, read from
+            // the latest activity_log row per product (logged in update()). Built
+            // as a single grouped query rather than joined into the main query so
+            // the 50k+ product list stays fast. Products never edited since this
+            // shipped won't appear here and fall back to the creator below.
+            $latestProductActivity = DB::table('activity_log')
+                ->select('subject_id', DB::raw('MAX(id) as max_id'))
+                ->where('subject_type', 'App\\Product')
+                ->whereNotNull('causer_id')
+                ->groupBy('subject_id');
+
+            $updatedByMap = DB::table('activity_log as al')
+                ->joinSub($latestProductActivity, 'la', 'al.id', '=', 'la.max_id')
+                ->leftJoin('users as au', 'al.causer_id', '=', 'au.id')
+                ->select('al.subject_id', DB::raw("TRIM(CONCAT(COALESCE(au.first_name, ''), ' ', COALESCE(au.last_name, ''))) as updated_by_name"))
+                ->pluck('updated_by_name', 'subject_id')
+                ->toArray();
+
             $query = Product::with(['media'])
                 ->leftJoin('brands', 'products.brand_id', '=', 'brands.id')
                 ->join('units', 'products.unit_id', '=', 'units.id')
@@ -327,6 +345,14 @@ class ProductController extends Controller
                 ->addColumn('total_sold', function ($q) use ($soldTotalsMap) {
                     $val = $soldTotalsMap[$q->id] ?? 0;
                     return number_format((int) round((float) $val), 0);
+                })
+                ->addColumn('updated_by_name', function ($row) use ($updatedByMap) {
+                    $name = isset($updatedByMap[$row->id]) ? trim($updatedByMap[$row->id]) : '';
+                    // No edit logged yet — fall back to whoever created the product.
+                    if ($name === '') {
+                        $name = trim($row->created_by_name ?? '');
+                    }
+                    return $name !== '' ? $name : '--';
                 })
                 ->editColumn('category', '{{$category}}')
                 ->addColumn('subcategory', function ($row) {
@@ -1392,8 +1418,23 @@ class ProductController extends Controller
             }
             
             Media::uploadMedia($product->business_id, $product, $request, 'product_brochure', true);
-            
+
             DB::commit();
+
+            // Record who last edited this product into the existing activity_log
+            // table (no migration needed). The products list reads the latest
+            // causer per product to show a "Last updated by" column. Never let a
+            // logging failure roll back a successful save.
+            try {
+                $logActivity = activity()
+                    ->performedOn($product)
+                    ->causedBy(auth()->user())
+                    ->log('edited');
+                $logActivity->business_id = $business_id;
+                $logActivity->save();
+            } catch (\Throwable $logEx) {
+                \Log::warning('Product edit activity log failed: ' . $logEx->getMessage());
+            }
 
             // Diagnostic: also capture the AFTER state for cost columns so we
             // can confirm the variation row actually got the new value.
