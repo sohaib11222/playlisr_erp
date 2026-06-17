@@ -4,6 +4,18 @@
 @section('content')
 <section class="content-header">
     <h1>Cash Flow <small>weekly — budget vs actual</small></h1>
+    @php
+        $cf_tx_qs = [];
+        if (!empty($budget['weeks'])) {
+            $cf_tx_qs['from_date'] = $budget['weeks'][0]['start'] ?? null;
+            $cf_tx_qs['to_date'] = $budget['weeks'][count($budget['weeks']) - 1]['end'] ?? null;
+        }
+        $cf_tx_qs = array_filter($cf_tx_qs);
+    @endphp
+    <a href="{{ action('QuickBooksController@transactionList') }}{{ $cf_tx_qs ? '?' . http_build_query($cf_tx_qs) : '' }}"
+       class="btn btn-default btn-sm" style="margin-top:6px;">
+        <i class="fa fa-list"></i> Live QBO transactions (drill-down)
+    </a>
 </section>
 
 <section class="content">
