@@ -68,7 +68,7 @@
 				$is_2x1 = (abs(($barcode_details->width * 1) - 2) < 0.01 && abs(($barcode_details->height * 1) - 1) < 0.01);
 				$txt = $is_2x1 ? 0.8 : 1;
 			@endphp
-			<div style="overflow: {{ $is_2x1 ? 'visible' : 'hidden' }} !important;display: flex; flex-wrap: wrap;align-content: center;width: {{$barcode_details->width * 1}}in; height: {{$barcode_details->height * 1}}in; justify-content: center;">
+			<div style="overflow: hidden !important;display: flex; flex-wrap: wrap;align-content: center;width: {{$barcode_details->width * 1}}in; height: {{$barcode_details->height * 1}}in; justify-content: center;">
 
 
 				<div style="@if($is_2x1) width:{{ $barcode_details->width * 1 }}in; text-align:center; @endif">
