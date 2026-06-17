@@ -160,8 +160,12 @@
 						$barcode_max_width   = $is_2x1 ? 98 : 90;
 						$barcode_width_factor   = $is_2x1 ? 3  : 1;
 						$barcode_native_height  = $is_2x1 ? 60 : 30;
+						// 2"x1": drive width explicitly so the barcode spans the label
+						// instead of staying skinny (height-driven auto width). Stretching
+						// a 1D barcode horizontally just widens the bars — improves scanning.
+						$barcode_width_css   = $is_2x1 ? 'width:96% !important;' : '';
 					@endphp
-					<img style="max-width:{{ $barcode_max_width }}% !important;height: {{ $barcode_height_in }}in !important; display: block;" src="data:image/png;base64,{{DNS1D::getBarcodePNG($page_product->sub_sku, $page_product->barcode_type, $barcode_width_factor, $barcode_native_height, array(0, 0, 0), false)}}">
+					<img style="max-width:{{ $barcode_max_width }}% !important;{{ $barcode_width_css }}height: {{ $barcode_height_in }}in !important; display: block;" src="data:image/png;base64,{{DNS1D::getBarcodePNG($page_product->sub_sku, $page_product->barcode_type, $barcode_width_factor, $barcode_native_height, array(0, 0, 0), false)}}">
 					<span style="font-size: 10px !important">
 						{{ $page_product->sub_sku }}
 					</span>
