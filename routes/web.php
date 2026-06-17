@@ -958,7 +958,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
             ->where('balance_notes', 'like', '%store-credit +%')
             ->count();
         $storeCreditPending = (clone $scBase)
-            ->where('balance_notes', 'not like', '%store-credit +%')
+            ->where(function ($q) {
+                $q->whereNull('balance_notes')
+                  ->orWhere('balance_notes', 'not like', '%store-credit +%');
+            })
             ->count();
         $storeCreditBalanceNow = (float) (clone $scBase)->sum('balance');
 
