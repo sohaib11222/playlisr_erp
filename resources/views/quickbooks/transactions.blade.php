@@ -1,9 +1,9 @@
 @extends('layouts.app')
-@section('title', 'QuickBooks Transaction List by Date')
+@section('title', 'Transaction List by Date')
 
 @section('content')
 <section class="content-header">
-    <h1>QuickBooks Transaction List by Date</h1>
+    <h1>Transaction List by Date</h1>
     <p class="text-muted">Live from QuickBooks Online — refreshes on every load.</p>
 </section>
 
