@@ -66,7 +66,7 @@
 			@php
 				// 2"x1" detection + a text downscale so the barcode can dominate the label.
 				$is_2x1 = (abs(($barcode_details->width * 1) - 2) < 0.01 && abs(($barcode_details->height * 1) - 1) < 0.01);
-				$txt = $is_2x1 ? 0.72 : 1;
+				$txt = $is_2x1 ? 0.8 : 1;
 			@endphp
 			<div style="overflow: hidden !important;display: flex; flex-wrap: wrap;align-content: center;width: {{$barcode_details->width * 1}}in; height: {{$barcode_details->height * 1}}in; justify-content: center;">
 
@@ -160,18 +160,18 @@
 						// the bars stay crisp at print size (CSS only constrains, never upscales).
 						// Symbology (barcode_type) is unchanged — only widthFactor/native height
 						// are raised. All other label sizes keep the standard (1,30) call.
-						$barcode_height_in   = $is_2x1 ? ($barcode_details->height * 0.52) : ($barcode_details->height * 0.24);
+						$barcode_height_in   = $is_2x1 ? ($barcode_details->height * 0.66) : ($barcode_details->height * 0.24);
 						$barcode_width_factor   = $is_2x1 ? 3  : 1;
 						$barcode_native_height  = $is_2x1 ? 60 : 30;
 						// 2"x1": the bar image is anchored to the FULL label width (the parent
 						// div is width:100%), centered, and held to 88% so ~6% white space
 						// remains on each side as the quiet zone scanners require.
 						$barcode_css = $is_2x1
-							? 'display:block; width:88%; height:'.$barcode_height_in.'in !important; margin:0.02in auto; background:#fff;'
+							? 'display:block; width:94%; height:'.$barcode_height_in.'in !important; margin:0.02in auto; background:#fff;'
 							: 'display:block; max-width:90% !important; height:'.$barcode_height_in.'in !important;';
 					@endphp
 					<img style="{{ $barcode_css }}" src="data:image/png;base64,{{DNS1D::getBarcodePNG($page_product->sub_sku, $page_product->barcode_type, $barcode_width_factor, $barcode_native_height, array(0, 0, 0), false)}}">
-					<span style="font-size: {{ $is_2x1 ? 8 : 10 }}px !important">
+					<span style="font-size: {{ $is_2x1 ? 9 : 10 }}px !important">
 						{{ $page_product->sub_sku }}
 					</span>
 				</div>
