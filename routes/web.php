@@ -87,6 +87,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/business/quickbooks/test-connection', 'QuickBooksController@testConnection')->name('business.quickbooks.testConnection');
     Route::post('/business/quickbooks/sync-sale', 'QuickBooksController@syncSale')->name('business.quickbooks.syncSale');
     Route::get('/business/quickbooks/dashboard', 'QuickBooksController@dashboard')->name('business.quickbooks.dashboard');
+    Route::get('/business/quickbooks/transactions', 'QuickBooksController@transactionList')->name('business.quickbooks.transactions');
     Route::post('/business/quickbooks/backfill', 'QuickBooksController@backfill')->name('business.quickbooks.backfill');
     Route::post('/business/quickbooks/sync-expenses', 'QuickBooksController@syncExpenses')->name('business.quickbooks.syncExpenses');
     
@@ -986,6 +987,84 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
             'customer_asks' => [
                 'customer_wants' => $customerWants,
             ],
+        ], 200, [], JSON_PRETTY_PRINT);
+    });
+
+    // Read-only review of the legacy store-credit CSV so credits can be applied
+    // by hand WITHOUT double-crediting anyone who already has a balance.
+    // For each pending row: CSV amount vs the contact's CURRENT balance, plus a
+    // caution flag for anyone who already holds credit or was already applied.
+    // Writes nothing — this is a worksheet, not an apply tool.
+    Route::get('/admin/store-credit-review', function () {
+        $files = glob(storage_path('app/imports/nivessa_pending_store_credits_*.csv'));
+        if (empty($files)) {
+            return response()->json(['error' => 'No nivessa_pending_store_credits_*.csv found in storage/app/imports/.'], 404);
+        }
+        rsort($files); // newest filename (timestamped) first
+        $csvPath = $files[0];
+
+        $rows = [];
+        if (($fh = fopen($csvPath, 'r')) !== false) {
+            $header = fgetcsv($fh); // contact_id, import_external_id, name, phone, credit_amount, notes
+            while (($r = fgetcsv($fh)) !== false) {
+                if (count($r) === count($header)) {
+                    $rows[] = array_combine($header, $r);
+                }
+            }
+            fclose($fh);
+        }
+
+        $review = [];
+        $totals = ['rows' => 0, 'safe_to_apply' => 0, 'already_applied' => 0,
+                   'already_has_balance' => 0, 'csv_total' => 0.0];
+        foreach ($rows as $row) {
+            $cid = (int) ($row['contact_id'] ?? 0);
+            $csvAmount = (float) ($row['credit_amount'] ?? 0);
+            $totals['rows']++;
+            $totals['csv_total'] += $csvAmount;
+
+            $contact = $cid ? \DB::table('contacts')
+                ->where('id', $cid)
+                ->select('id', 'name', 'mobile', 'balance', 'balance_notes')
+                ->first() : null;
+
+            $currentBalance = $contact ? (float) $contact->balance : null;
+            $alreadyApplied = $contact && strpos((string) $contact->balance_notes, 'store-credit +') !== false;
+            $hasBalance = $currentBalance !== null && $currentBalance > 0.001;
+
+            if ($alreadyApplied) $totals['already_applied']++;
+            if ($hasBalance) $totals['already_has_balance']++;
+
+            // "Safe" = exists, no prior apply line, and currently zero balance.
+            $safe = $contact && !$alreadyApplied && !$hasBalance;
+            if ($safe) $totals['safe_to_apply']++;
+
+            $flags = [];
+            if (!$contact) $flags[] = 'contact_not_found';
+            if ($alreadyApplied) $flags[] = 'already_applied';
+            if ($hasBalance) $flags[] = 'CAUTION_already_has_balance';
+
+            $review[] = [
+                'contact_id' => $cid,
+                'name' => $row['name'] ?? ($contact->name ?? ''),
+                'phone' => $row['phone'] ?? '',
+                'csv_credit' => round($csvAmount, 2),
+                'current_balance' => $currentBalance === null ? null : round($currentBalance, 2),
+                'status' => $safe ? 'safe_to_apply' : 'review',
+                'flags' => $flags,
+            ];
+        }
+
+        // Surface the risky/needs-review rows first.
+        usort($review, function ($a, $b) {
+            return ($a['status'] === 'safe_to_apply' ? 1 : 0) <=> ($b['status'] === 'safe_to_apply' ? 1 : 0);
+        });
+
+        $totals['csv_total'] = round($totals['csv_total'], 2);
+        return response()->json([
+            'csv_file' => basename($csvPath),
+            'totals' => $totals,
+            'rows' => $review,
         ], 200, [], JSON_PRETTY_PRINT);
     });
 });
