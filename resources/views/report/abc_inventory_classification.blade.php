@@ -27,11 +27,29 @@
             @component('components.filters', ['title' => __('report.filters')])
                 <div class="col-md-3">
                     <div class="form-group">
+                        {!! Form::label('abc_location_id', 'Store:') !!}
+                        {!! Form::select('abc_location_id', $business_locations, null, ['class' => 'form-control', 'id' => 'abc_location_id']) !!}
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="form-group">
+                        {!! Form::label('abc_format', 'Genre / Format:') !!}
+                        {!! Form::select('abc_format', ['' => 'All Genres'] + $formats, null, ['class' => 'form-control', 'id' => 'abc_format']) !!}
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="form-group">
+                        {!! Form::label('abc_class', 'ABC Class:') !!}
+                        {!! Form::select('abc_class', ['' => 'All', 'A' => 'A', 'B' => 'B', 'C' => 'C'], null, ['class' => 'form-control', 'id' => 'abc_class']) !!}
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="form-group">
                         {!! Form::label('abc_start_date', __('report.start_date') . ':') !!}
                         {!! Form::date('abc_start_date', null, ['class' => 'form-control']) !!}
                     </div>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <div class="form-group">
                         {!! Form::label('abc_end_date', __('report.end_date') . ':') !!}
                         {!! Form::date('abc_end_date', null, ['class' => 'form-control']) !!}
@@ -50,6 +68,7 @@
                             <tr>
                                 <th>Product</th>
                                 <th>SKU</th>
+                                <th>Genre / Format</th>
                                 <th>Qty On Hand</th>
                                 <th>Qty Sold</th>
                                 <th>Inventory Value</th>
@@ -74,16 +93,20 @@ $(document).ready(function () {
         ajax: {
             url: '{{ action("ReportController@abcInventoryClassification") }}',
             data: function (d) {
+                d.location_id = $('#abc_location_id').val();
+                d.format = $('#abc_format').val();
+                d.class = $('#abc_class').val();
                 d.start_date = $('#abc_start_date').val();
                 d.end_date = $('#abc_end_date').val();
             }
         },
         dom: 'Bfrtip',
         buttons: ['csv', 'excel', 'print'],
-        order: [[4, 'desc']],
+        order: [[5, 'desc']],
         columns: [
             { data: 'product', name: 'product' },
             { data: 'sku', name: 'sku' },
+            { data: 'format', name: 'format' },
             { data: 'qty_on_hand', name: 'qty_on_hand' },
             { data: 'qty_sold', name: 'qty_sold' },
             {
@@ -100,7 +123,7 @@ $(document).ready(function () {
         ]
     });
 
-    $('#abc_start_date, #abc_end_date').change(function () {
+    $('#abc_location_id, #abc_format, #abc_class, #abc_start_date, #abc_end_date').change(function () {
         table.ajax.reload();
     });
 });

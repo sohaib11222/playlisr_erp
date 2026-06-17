@@ -5419,17 +5419,47 @@ class ReportController extends Controller
         // When an imported ABC file is active, classes come from
         // /admin/abc-import (sales-based). Otherwise fall back to the live
         // inventory-value Pareto computation.
-        $imported = (new \App\Services\AbcImportService())->loadGlobalMap();
-        $importedMeta = (new \App\Services\AbcImportService())->load();
+        $abcSvc = new \App\Services\AbcImportService();
+        $imported = $abcSvc->loadGlobalMap();
+        $importedMeta = $abcSvc->load();
+
+        // Per-store class maps from the import (location_id => [pid => class]).
+        // When a store filter is active and the import has that store, classes
+        // come from its per-location map so the breakdown is store-specific.
+        $locationMaps = [];
+        if (!empty($importedMeta['location_map']) && is_array($importedMeta['location_map'])) {
+            foreach ($importedMeta['location_map'] as $loc => $map) {
+                $lm = [];
+                foreach ((array) $map as $pid => $cls) {
+                    $lm[(int) $pid] = (string) $cls;
+                }
+                $locationMaps[(int) $loc] = $lm;
+            }
+        }
 
         if ($request->ajax()) {
-            $inventory_rows = DB::table('product_stock_cache as psc')
+            $location_id = $request->input('location_id');
+            $format = $request->input('format');
+            $class_filter = strtoupper(trim((string) $request->input('class', '')));
+
+            $inventory_query = DB::table('product_stock_cache as psc')
+                ->leftJoin('categories as sc', 'psc.sub_category_id', '=', 'sc.id')
                 ->where('psc.business_id', $business_id)
-                ->where('psc.enable_stock', 1)
+                ->where('psc.enable_stock', 1);
+
+            if (!empty($location_id)) {
+                $inventory_query->where('psc.location_id', $location_id);
+            }
+            if ($format !== null && $format !== '') {
+                $inventory_query->whereRaw('COALESCE(sc.name, psc.category_name) = ?', [$format]);
+            }
+
+            $inventory_rows = $inventory_query
                 ->select(
                     'psc.product_id',
                     DB::raw('MAX(psc.product) as product'),
                     DB::raw('MAX(psc.sku) as sku'),
+                    DB::raw('MAX(COALESCE(sc.name, psc.category_name)) as format'),
                     DB::raw('SUM(psc.stock) as qty_on_hand'),
                     DB::raw('SUM(psc.stock_price) as inventory_value')
                 )
@@ -5449,6 +5479,9 @@ class ReportController extends Controller
                 )
                 ->groupBy('v.product_id');
 
+            if (!empty($location_id)) {
+                $sales_query->where('t.location_id', $location_id);
+            }
             if (!empty($request->input('start_date'))) {
                 $sales_query->whereDate('t.transaction_date', '>=', $request->input('start_date'));
             }
@@ -5457,6 +5490,14 @@ class ReportController extends Controller
             }
 
             $sales_map = $sales_query->pluck('qty_sold', 'product_id')->toArray();
+
+            // Use the store's own class map when a single store is selected and
+            // the import covers it; otherwise the global (best-class) map.
+            $classMap = $imported;
+            if (!empty($location_id) && isset($locationMaps[(int) $location_id])) {
+                $classMap = $locationMaps[(int) $location_id];
+            }
+
             $rows = $inventory_rows->map(function ($row) use ($sales_map) {
                 $row->qty_sold = isset($sales_map[$row->product_id]) ? (float) $sales_map[$row->product_id] : 0;
                 return $row;
@@ -5473,7 +5514,7 @@ class ReportController extends Controller
                 if (!empty($imported)) {
                     // Imported takes precedence; unmapped products show as
                     // blank rather than a misleading live class.
-                    $class = $imported[(int) $row->product_id] ?? '';
+                    $class = $classMap[(int) $row->product_id] ?? '';
                 } elseif ($cumulative_pct <= 80) {
                     $class = 'A';
                 } elseif ($cumulative_pct <= 95) {
@@ -5482,9 +5523,14 @@ class ReportController extends Controller
                     $class = 'C';
                 }
 
+                if ($class_filter !== '' && $class !== $class_filter) {
+                    continue;
+                }
+
                 $classified[] = [
                     'product' => $row->product,
                     'sku' => $row->sku,
+                    'format' => $row->format ?: '— Uncategorized —',
                     'qty_on_hand' => (float) $row->qty_on_hand,
                     'qty_sold' => (float) $row->qty_sold,
                     'inventory_value' => $value,
@@ -5496,8 +5542,23 @@ class ReportController extends Controller
             return Datatables::of(collect($classified))->make(true);
         }
 
+        $business_locations = BusinessLocation::forDropdown($business_id, true);
+        $formats = DB::table('product_stock_cache as psc')
+            ->leftJoin('categories as sc', 'psc.sub_category_id', '=', 'sc.id')
+            ->where('psc.business_id', $business_id)
+            ->where('psc.enable_stock', 1)
+            ->whereRaw('COALESCE(sc.name, psc.category_name) IS NOT NULL')
+            ->whereRaw("TRIM(COALESCE(sc.name, psc.category_name)) <> ''")
+            ->select(DB::raw('COALESCE(sc.name, psc.category_name) as format'))
+            ->distinct()
+            ->orderBy('format')
+            ->pluck('format', 'format')
+            ->toArray();
+
         return view('report.abc_inventory_classification', [
             'imported_meta' => $importedMeta,
+            'business_locations' => $business_locations,
+            'formats' => $formats,
         ]);
     }
 
