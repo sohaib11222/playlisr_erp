@@ -221,6 +221,7 @@ class ProductController extends Controller
                 'v.id as vid',
                 'products.alert_quantity',
                 DB::raw("CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as created_by_name"),
+                DB::raw('COALESCE(u.allow_login, 1) as created_by_allow_login'),
                 DB::raw('SUM(vld.qty_available) as current_stock'),
                 DB::raw('MAX(v.sell_price_inc_tax) as max_price'),
                 DB::raw('MIN(v.sell_price_inc_tax) as min_price'),
@@ -353,11 +354,15 @@ class ProductController extends Controller
                 })
                 ->addColumn('updated_by_name', function ($row) use ($updatedByMap) {
                     $name = isset($updatedByMap[$row->id]) ? trim($updatedByMap[$row->id]) : '';
-                    // No human edit logged yet. For rows the Discogs importer
-                    // created (and nobody has edited since), credit the import
-                    // rather than the account that happened to run it.
+                    // No human edit logged yet. These came in through a bulk/auto
+                    // import. If the creating account is the Discogs importer or
+                    // an ex-employee account (no longer allowed to log in), credit
+                    // the import instead of the stale name on the account.
                     if ($name === '') {
-                        if (($row->added_via ?? null) === 'discogs_inventory_import') {
+                        $isImport = ($row->added_via ?? null) === 'discogs_inventory_import';
+                        $creatorInactive = isset($row->created_by_allow_login)
+                            && (int) $row->created_by_allow_login !== 1;
+                        if ($isImport || $creatorInactive) {
                             return 'Discogs Import';
                         }
                         $name = trim($row->created_by_name ?? '');
