@@ -78,7 +78,7 @@ class AdminActionHistoryController extends Controller
         // line, marks the auto-created product inactive, and flips the
         // linked transaction back to draft. Skips any line that's already
         // had stock sold against it.
-        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'backfill-cash-buys', 'update-product-cost'];
+        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit'];
         if (!in_array($action, $supportedActions, true)) {
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 0, 'msg' => "Don't know how to undo action: " . $action]);
@@ -86,6 +86,10 @@ class AdminActionHistoryController extends Controller
 
         if ($action === 'bfc-receive') {
             return $this->undoBfcReceive($data, $key);
+        }
+
+        if ($action === 'apply-legacy-store-credit') {
+            return $this->undoApplyLegacyStoreCredit($data, $key);
         }
 
         // delete-register: snapshot holds the full cash_registers row +
@@ -229,6 +233,55 @@ class AdminActionHistoryController extends Controller
 
         return redirect('/admin/admin-action-history')
             ->with('status', ['success' => 1, 'msg' => "Restored $restored rows from snapshot $key."]);
+    }
+
+    // Undo a legacy store-credit bulk apply. Restores each contact's BEFORE
+    // balance + balance_notes, but only if our apply line (tagged with the
+    // batch key) is still present — i.e. the credit hasn't been spent or
+    // hand-edited since. Reverses the website sync with the negative delta so
+    // both sides stay in step.
+    protected function undoApplyLegacyStoreCredit(array $data, $key)
+    {
+        $restored = 0;
+        $skipped = 0;
+        foreach ($data['rows'] as $row) {
+            $cid = $row['contact_id'] ?? null;
+            if (!$cid) { continue; }
+            $contact = DB::table('contacts')->where('id', $cid)->first();
+            if (!$contact) { $skipped++; continue; }
+
+            // Only undo if this batch's apply line is still on the contact.
+            if (stripos((string) $contact->balance_notes, $key) === false) {
+                $skipped++;
+                continue;
+            }
+
+            DB::table('contacts')->where('id', $cid)->update([
+                'balance'       => $row['balance'],
+                'balance_notes' => $row['balance_notes'],
+                'updated_at'    => now(),
+            ]);
+
+            // Reverse the website-side credit too.
+            $delta = (float) ($row['applied_delta'] ?? 0);
+            $email = $row['email'] ?? null;
+            if ($email && abs($delta) >= 0.01) {
+                app(\App\Services\NivessaBackendCreditSyncService::class)->syncDeltaByEmail(
+                    (string) $email,
+                    -$delta,
+                    "Undo legacy store credit apply (batch {$key})",
+                    ['contact_id' => (int) $cid, 'action' => 'undo-apply-legacy-store-credit', 'batch' => $key]
+                );
+            }
+            $restored++;
+        }
+
+        $msg = "Reverted {$restored} legacy store-credit apply(s) from snapshot {$key}";
+        $msg .= $skipped > 0
+            ? "; skipped {$skipped} that were spent or edited since (left as-is)."
+            : '.';
+        return redirect('/admin/admin-action-history')
+            ->with('status', ['success' => 1, 'msg' => $msg]);
     }
 
     // Undo a "Buy from customer" receive. Per-line: skip if already sold,

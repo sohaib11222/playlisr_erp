@@ -857,6 +857,14 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/admin-action-history', 'AdminActionHistoryController@index');
     Route::post('/admin/admin-action-history/undo', 'AdminActionHistoryController@undo');
 
+    // Guarded bulk-apply of the legacy Nivessa store credit. Preview shows the
+    // safe-to-credit contacts (zero balance, never credited); Apply snapshots
+    // balances first and is undoable via admin-action-history
+    // (action 'apply-legacy-store-credit'). Never touches anyone who already
+    // has a balance — see /admin/store-credit-review.
+    Route::get('/admin/apply-legacy-store-credit', 'ApplyLegacyStoreCreditController@preview');
+    Route::post('/admin/apply-legacy-store-credit/run', 'ApplyLegacyStoreCreditController@apply');
+
     // Direct cost-update path for when the regular product-edit form is
     // misbehaving for a given user (see Fatteen 2026-05-14). Search → set
     // new cost → snapshot + write. Undoable via admin-action-history.
