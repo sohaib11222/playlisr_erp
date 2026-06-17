@@ -996,73 +996,80 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // caution flag for anyone who already holds credit or was already applied.
     // Writes nothing — this is a worksheet, not an apply tool.
     Route::get('/admin/store-credit-review', function () {
-        $files = glob(storage_path('app/imports/nivessa_pending_store_credits_*.csv'));
-        if (empty($files)) {
-            return response()->json(['error' => 'No nivessa_pending_store_credits_*.csv found in storage/app/imports/.'], 404);
-        }
-        rsort($files); // newest filename (timestamped) first
-        $csvPath = $files[0];
+        // Source of truth for WHO is pending = the tagged contacts, not whichever
+        // CSV happens to be newest (a small re-run can shadow the original 136-row
+        // file). Amounts are merged across ALL CSVs and summed per contact, since
+        // one person can have several legacy credit lines.
+        $files = glob(storage_path('app/imports/nivessa_pending_store_credits_*.csv')) ?: [];
 
-        $rows = [];
-        if (($fh = fopen($csvPath, 'r')) !== false) {
+        $csvByContact = [];   // contact_id => ['amount'=>float, 'phone'=>string, 'lines'=>int]
+        foreach ($files as $f) {
+            if (($fh = fopen($f, 'r')) === false) continue;
             $header = fgetcsv($fh); // contact_id, import_external_id, name, phone, credit_amount, notes
             while (($r = fgetcsv($fh)) !== false) {
-                if (count($r) === count($header)) {
-                    $rows[] = array_combine($header, $r);
+                if (count($r) !== count($header)) continue;
+                $row = array_combine($header, $r);
+                $cid = (int) ($row['contact_id'] ?? 0);
+                if (!$cid) continue;
+                if (!isset($csvByContact[$cid])) {
+                    $csvByContact[$cid] = ['amount' => 0.0, 'phone' => $row['phone'] ?? '', 'lines' => 0];
                 }
+                $csvByContact[$cid]['amount'] += (float) ($row['credit_amount'] ?? 0);
+                $csvByContact[$cid]['lines']++;
             }
             fclose($fh);
         }
 
+        $contacts = \DB::table('contacts')
+            ->where('import_source', 'nivessa_backend_store_credit')
+            ->select('id', 'name', 'mobile', 'balance', 'balance_notes')
+            ->get();
+
         $review = [];
-        $totals = ['rows' => 0, 'safe_to_apply' => 0, 'already_applied' => 0,
-                   'already_has_balance' => 0, 'csv_total' => 0.0];
-        foreach ($rows as $row) {
-            $cid = (int) ($row['contact_id'] ?? 0);
-            $csvAmount = (float) ($row['credit_amount'] ?? 0);
-            $totals['rows']++;
-            $totals['csv_total'] += $csvAmount;
+        $totals = ['tagged' => $contacts->count(), 'safe_to_apply' => 0,
+                   'already_applied' => 0, 'already_has_balance' => 0,
+                   'amount_unknown' => 0, 'csv_total_known' => 0.0];
+        foreach ($contacts as $c) {
+            $csv = $csvByContact[$c->id] ?? null;
+            $amount = $csv ? round($csv['amount'], 2) : null;
+            if ($amount !== null) $totals['csv_total_known'] += $amount;
 
-            $contact = $cid ? \DB::table('contacts')
-                ->where('id', $cid)
-                ->select('id', 'name', 'mobile', 'balance', 'balance_notes')
-                ->first() : null;
-
-            $currentBalance = $contact ? (float) $contact->balance : null;
-            $alreadyApplied = $contact && strpos((string) $contact->balance_notes, 'store-credit +') !== false;
-            $hasBalance = $currentBalance !== null && $currentBalance > 0.001;
+            $currentBalance = (float) $c->balance;
+            $alreadyApplied = strpos((string) $c->balance_notes, 'store-credit +') !== false;
+            $hasBalance = $currentBalance > 0.001;
 
             if ($alreadyApplied) $totals['already_applied']++;
             if ($hasBalance) $totals['already_has_balance']++;
+            if ($amount === null) $totals['amount_unknown']++;
 
-            // "Safe" = exists, no prior apply line, and currently zero balance.
-            $safe = $contact && !$alreadyApplied && !$hasBalance;
+            // Safe = zero balance, never applied, and we actually know the amount.
+            $safe = !$alreadyApplied && !$hasBalance && $amount !== null;
             if ($safe) $totals['safe_to_apply']++;
 
             $flags = [];
-            if (!$contact) $flags[] = 'contact_not_found';
             if ($alreadyApplied) $flags[] = 'already_applied';
             if ($hasBalance) $flags[] = 'CAUTION_already_has_balance';
+            if ($amount === null) $flags[] = 'amount_unknown';
 
             $review[] = [
-                'contact_id' => $cid,
-                'name' => $row['name'] ?? ($contact->name ?? ''),
-                'phone' => $row['phone'] ?? '',
-                'csv_credit' => round($csvAmount, 2),
-                'current_balance' => $currentBalance === null ? null : round($currentBalance, 2),
+                'contact_id' => $c->id,
+                'name' => $c->name,
+                'phone' => $c->mobile ?: ($csv['phone'] ?? ''),
+                'csv_credit' => $amount,
+                'current_balance' => round($currentBalance, 2),
                 'status' => $safe ? 'safe_to_apply' : 'review',
                 'flags' => $flags,
             ];
         }
 
-        // Surface the risky/needs-review rows first.
+        // Needs-review rows first.
         usort($review, function ($a, $b) {
             return ($a['status'] === 'safe_to_apply' ? 1 : 0) <=> ($b['status'] === 'safe_to_apply' ? 1 : 0);
         });
 
-        $totals['csv_total'] = round($totals['csv_total'], 2);
+        $totals['csv_total_known'] = round($totals['csv_total_known'], 2);
         return response()->json([
-            'csv_file' => basename($csvPath),
+            'csv_files_read' => array_map('basename', $files),
             'totals' => $totals,
             'rows' => $review,
         ], 200, [], JSON_PRETTY_PRINT);
