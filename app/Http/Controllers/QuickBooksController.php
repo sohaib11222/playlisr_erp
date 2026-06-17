@@ -249,6 +249,32 @@ class QuickBooksController extends Controller
         return view('quickbooks.dashboard', compact('connection', 'logs'));
     }
 
+    /**
+     * Live, read-only "Transaction List by Date" pulled straight from QBO on
+     * each load — the same report the accountant views in QuickBooks, now
+     * visible inside the ERP. Defaults to month-to-date; ?from_date=&to_date=
+     * override.
+     */
+    public function transactionList(Request $request)
+    {
+        if (!auth()->user()->can('business_settings.access')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = $request->session()->get('user.business_id');
+        $from = $request->input('from_date') ?: Carbon::now()->startOfMonth()->format('Y-m-d');
+        $to   = $request->input('to_date')   ?: Carbon::now()->format('Y-m-d');
+
+        $qbService = new QuickBooksService($business_id);
+        $report = $qbService->getTransactionListForDisplay($from, $to);
+
+        return view('quickbooks.transactions', [
+            'report' => $report,
+            'from_date' => $from,
+            'to_date' => $to,
+        ]);
+    }
+
     public function backfill(Request $request)
     {
         if (!auth()->user()->can('business_settings.access')) {

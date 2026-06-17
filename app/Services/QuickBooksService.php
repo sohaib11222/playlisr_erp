@@ -534,6 +534,78 @@ class QuickBooksService
     }
 
     /**
+     * Flatten QB's "Transaction List by Date" report into rows + column
+     * headers for read-only display inside the ERP — this is the live,
+     * real-time view the accountant looks at (pulled straight from QBO on
+     * each page load, not the synced ERP expense rows). Preserves QB's own
+     * column order/titles so it mirrors the report in QuickBooks.
+     *
+     * Returns ['success' => true, 'columns' => ['Date', ...],
+     *          'rows' => [['Date' => '...', ...]], 'total' => float|null].
+     */
+    public function getTransactionListForDisplay($startDate, $endDate)
+    {
+        $report = $this->getTransactionListReport($startDate, $endDate);
+        if (empty($report['success'])) {
+            return $report;
+        }
+        $payload = $report['report'];
+
+        $columns = $payload['Columns']['Column'] ?? [];
+        $headers = [];
+        foreach ($columns as $i => $c) {
+            $title = trim((string) ($c['ColTitle'] ?? ''));
+            $headers[$i] = $title !== '' ? $title : ('Col ' . ($i + 1));
+        }
+
+        // Walk the (possibly nested) row tree, keeping only leaf data rows.
+        $flat = [];
+        $walker = function ($rows) use (&$walker, &$flat) {
+            foreach ($rows as $r) {
+                if (!empty($r['Rows']['Row'])) {
+                    $walker($r['Rows']['Row']);
+                }
+                if (!empty($r['ColData'])) {
+                    $flat[] = $r['ColData'];
+                }
+            }
+        };
+        $walker($payload['Rows']['Row'] ?? []);
+
+        $amountIdx = null;
+        foreach ($headers as $i => $h) {
+            if (strcasecmp($h, 'Amount') === 0 || strcasecmp($h, 'Total') === 0) {
+                $amountIdx = $i;
+                break;
+            }
+        }
+
+        $rows = [];
+        $total = $amountIdx !== null ? 0.0 : null;
+        foreach ($flat as $cd) {
+            $row = [];
+            foreach ($headers as $i => $h) {
+                $cell = $cd[$i] ?? null;
+                $row[$h] = is_array($cell) ? (string) ($cell['value'] ?? '') : (string) $cell;
+            }
+            if ($amountIdx !== null) {
+                $amt = $this->parseReportAmount($cd[$amountIdx]['value'] ?? ($cd[$amountIdx] ?? ''));
+                if ($amt !== null) {
+                    $total += $amt;
+                }
+            }
+            $rows[] = $row;
+        }
+
+        return [
+            'success' => true,
+            'columns' => array_values($headers),
+            'rows' => $rows,
+            'total' => $total !== null ? round($total, 2) : null,
+        ];
+    }
+
+    /**
      * Pull QB transactions in [from, to] via the TransactionList report and
      * upsert them as ERP expense rows (type=expense for outflows,
      * expense_refund for inflows). Idempotent via ref_no=QBO-EXP-{type}-{id}.

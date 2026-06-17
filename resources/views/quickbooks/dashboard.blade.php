@@ -4,6 +4,9 @@
 @section('content')
 <section class="content-header">
     <h1>QuickBooks Sync Dashboard</h1>
+    <a href="{{ action('QuickBooksController@transactionList') }}" class="btn btn-primary btn-sm" style="margin-top:6px;">
+        <i class="fa fa-list"></i> View live Transaction List (QBO)
+    </a>
 </section>
 
 <section class="content">
