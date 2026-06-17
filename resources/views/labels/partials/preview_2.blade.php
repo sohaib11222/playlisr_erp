@@ -63,19 +63,24 @@
 				</div>
 			</div>
 			@else
+			@php
+				// 2"x1" detection + a text downscale so the barcode can dominate the label.
+				$is_2x1 = (abs(($barcode_details->width * 1) - 2) < 0.01 && abs(($barcode_details->height * 1) - 1) < 0.01);
+				$txt = $is_2x1 ? 0.72 : 1;
+			@endphp
 			<div style="overflow: hidden !important;display: flex; flex-wrap: wrap;align-content: center;width: {{$barcode_details->width * 1}}in; height: {{$barcode_details->height * 1}}in; justify-content: center;">
-				
 
-				<div>
+
+				<div style="@if($is_2x1) width:100%; text-align:center; @endif">
 
 					{{-- Business Name --}}
 					@if(!empty($print['business_name']))
-						<b style="display: block !important; font-size: {{$print['business_name_size']}}px">{{$business_name}}</b>
+						<b style="display: block !important; font-size: {{ round($print['business_name_size']*$txt) }}px">{{$business_name}}</b>
 					@endif
 
 					{{-- Product Name --}}
 					@if(!empty($print['name']))
-						<span style="display: block !important; font-size: {{$print['name_size']}}px">
+						<span style="display: block !important; font-size: {{ round($print['name_size']*$txt) }}px">
 							{{$page_product->product_actual_name}}
 
 							@if(!empty($print['lot_number']) && !empty($page_product->lot_number))
@@ -88,20 +93,20 @@
 
 					{{-- Variation --}}
 					@if(!empty($print['variations']) && $page_product->is_dummy != 1)
-						<span style="display: block !important; font-size: {{$print['variations_size']}}px">
+						<span style="display: block !important; font-size: {{ round($print['variations_size']*$txt) }}px">
 							{{$page_product->product_variation_name}}:<b>{{$page_product->variation_name}}</b>
 						</span>
 					@endif
 					
 					{{-- Genre --}}
 					@if(!empty($print['price']))
-						<span style="display: block !important; font-size: {{$print['name_size']}}px">
+						<span style="display: block !important; font-size: {{ round($print['name_size']*$txt) }}px">
 							Genre:<b>{{$page_product->sub_category}}</b>
 						</span>
 
 					{{-- Artist --}}
 					@if(!empty($page_product->artist))
-						<span style="display: block !important; font-size: {{$print['name_size']}}px">
+						<span style="display: block !important; font-size: {{ round($print['name_size']*$txt) }}px">
 							Artist:<b>{{$page_product->artist}}</b>
 						</span>
 					@endif
@@ -109,14 +114,14 @@
 
 				{{-- Bin Position --}}
 				@if(!empty($page_product->bin_position))
-					<span style="display: block !important; font-size: {{$print['name_size'] ?? 12}}px; font-weight: bold;">
+					<span style="display: block !important; font-size: {{ round(($print['name_size'] ?? 12)*$txt) }}px; font-weight: bold;">
 						Bin: {{ $page_product->bin_position }}
 					</span>
 				@endif
 
 				{{-- Price + purchase date on one line (no "Price" label) --}}
 					@if(!empty($print['price']))
-					<span style="font-size: {{$print['price_size']}}px;">
+					<span style="font-size: {{ round($print['price_size']*$txt) }}px;">
 						<b>{{session('currency')['symbol'] ?? ''}}
 						@if($print['price_type'] == 'inclusive')
 							{{@num_format($page_product->sell_price_inc_tax)}}
@@ -155,18 +160,18 @@
 						// the bars stay crisp at print size (CSS only constrains, never upscales).
 						// Symbology (barcode_type) is unchanged — only widthFactor/native height
 						// are raised. All other label sizes keep the standard (1,30) call.
-						$is_2x1 = (abs(($barcode_details->width * 1) - 2) < 0.01 && abs(($barcode_details->height * 1) - 1) < 0.01);
-						$barcode_height_in   = $is_2x1 ? ($barcode_details->height * 0.42) : ($barcode_details->height * 0.24);
-						$barcode_max_width   = $is_2x1 ? 98 : 90;
+						$barcode_height_in   = $is_2x1 ? ($barcode_details->height * 0.52) : ($barcode_details->height * 0.24);
 						$barcode_width_factor   = $is_2x1 ? 3  : 1;
 						$barcode_native_height  = $is_2x1 ? 60 : 30;
-						// 2"x1": drive width explicitly so the barcode spans the label
-						// instead of staying skinny (height-driven auto width). Stretching
-						// a 1D barcode horizontally just widens the bars — improves scanning.
-						$barcode_width_css   = $is_2x1 ? 'width:96% !important;' : '';
+						// 2"x1": the bar image is anchored to the FULL label width (the parent
+						// div is width:100%), centered, and held to 88% so ~6% white space
+						// remains on each side as the quiet zone scanners require.
+						$barcode_css = $is_2x1
+							? 'display:block; width:88%; height:'.$barcode_height_in.'in !important; margin:0.02in auto; background:#fff;'
+							: 'display:block; max-width:90% !important; height:'.$barcode_height_in.'in !important;';
 					@endphp
-					<img style="max-width:{{ $barcode_max_width }}% !important;{{ $barcode_width_css }}height: {{ $barcode_height_in }}in !important; display: block;" src="data:image/png;base64,{{DNS1D::getBarcodePNG($page_product->sub_sku, $page_product->barcode_type, $barcode_width_factor, $barcode_native_height, array(0, 0, 0), false)}}">
-					<span style="font-size: 10px !important">
+					<img style="{{ $barcode_css }}" src="data:image/png;base64,{{DNS1D::getBarcodePNG($page_product->sub_sku, $page_product->barcode_type, $barcode_width_factor, $barcode_native_height, array(0, 0, 0), false)}}">
+					<span style="font-size: {{ $is_2x1 ? 8 : 10 }}px !important">
 						{{ $page_product->sub_sku }}
 					</span>
 				</div>
