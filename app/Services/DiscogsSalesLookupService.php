@@ -201,9 +201,14 @@ class DiscogsSalesLookupService
 
     /**
      * Current unsold stock per business_location for products matching the
-     * given artist / title / release. Reads the denormalized
-     * `product_stock_cache` table so a stale cache is acceptable — the cache
-     * is refreshed periodically by the RefreshProductStockCache command.
+     * given artist / title / release. Reads live inventory straight from
+     * `variation_location_details` (qty_available), joined to variations /
+     * products, mirroring how RefreshProductStockCache builds its rows. We do
+     * NOT read product_stock_cache here: that cache is optional and may be
+     * absent or empty on a given environment, which would silently drop the
+     * whole stock section. The sales-history lookup already queries live
+     * transaction tables, so reading live stock keeps the two consistent and
+     * self-sufficient.
      *
      * @return array{
      *   total_qty: float,
@@ -231,16 +236,23 @@ class DiscogsSalesLookupService
         $useArtist  = $likeArtist !== null && in_array($mode, ['any', 'artist'], true);
         $useTitle   = $likeTitle  !== null && in_array($mode, ['any', 'title'],  true);
 
-        $q = DB::table('product_stock_cache as psc')
-            ->leftJoin('products as p', 'p.id', '=', 'psc.product_id')
-            ->where('psc.business_id', $businessId)
+        $q = DB::table('variation_location_details as vld')
+            ->join('variations as v', function ($join) {
+                $join->on('v.id', '=', 'vld.variation_id')
+                    ->whereNull('v.deleted_at');
+            })
+            ->join('products as p', 'p.id', '=', 'v.product_id')
+            ->leftJoin('business_locations as l', 'l.id', '=', 'vld.location_id')
+            ->where('p.business_id', $businessId)
+            ->whereIn('p.type', ['single', 'variable'])
+            ->whereNotNull('vld.location_id')
             // Positive stock only — negative usually means oversold/data drift.
-            ->where('psc.stock', '>', 0)
+            ->where('vld.qty_available', '>', 0)
             // "For sale" means sellable stock, not just on-hand: exclude
             // deactivated products and ones flagged not-for-selling, so the
             // count matches what a cashier could actually ring up.
-            ->where('psc.is_inactive', 0)
-            ->where('psc.not_for_selling', 0);
+            ->where('p.is_inactive', 0)
+            ->where('p.not_for_selling', 0);
 
         $q->where(function ($w) use ($releaseId, $likeArtist, $likeTitle, $useRelease, $useArtist, $useTitle) {
             $any = false;
@@ -263,13 +275,13 @@ class DiscogsSalesLookupService
         });
 
         $rows = $q->select([
-                'psc.location_id',
-                'psc.location_name',
-                DB::raw('SUM(psc.stock) as qty'),
+                'vld.location_id',
+                DB::raw('l.name as location_name'),
+                DB::raw('SUM(vld.qty_available) as qty'),
                 DB::raw('COUNT(*) as lines'),
             ])
-            ->groupBy('psc.location_id', 'psc.location_name')
-            ->orderBy('psc.location_name')
+            ->groupBy('vld.location_id', 'l.name')
+            ->orderBy('l.name')
             ->get();
 
         $total = 0.0;
