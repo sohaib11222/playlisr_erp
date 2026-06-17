@@ -235,7 +235,12 @@ class DiscogsSalesLookupService
             ->leftJoin('products as p', 'p.id', '=', 'psc.product_id')
             ->where('psc.business_id', $businessId)
             // Positive stock only — negative usually means oversold/data drift.
-            ->where('psc.stock', '>', 0);
+            ->where('psc.stock', '>', 0)
+            // "For sale" means sellable stock, not just on-hand: exclude
+            // deactivated products and ones flagged not-for-selling, so the
+            // count matches what a cashier could actually ring up.
+            ->where('psc.is_inactive', 0)
+            ->where('psc.not_for_selling', 0);
 
         $q->where(function ($w) use ($releaseId, $likeArtist, $likeTitle, $useRelease, $useArtist, $useTitle) {
             $any = false;
