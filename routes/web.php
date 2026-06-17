@@ -996,28 +996,47 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // caution flag for anyone who already holds credit or was already applied.
     // Writes nothing — this is a worksheet, not an apply tool.
     Route::get('/admin/store-credit-review', function () {
-        // Source of truth for WHO is pending = the tagged contacts, not whichever
-        // CSV happens to be newest (a small re-run can shadow the original 136-row
-        // file). Amounts are merged across ALL CSVs and summed per contact, since
-        // one person can have several legacy credit lines.
+        // WHO is pending = the tagged contacts. For the AMOUNT we must NOT sum
+        // across CSV files: the folder holds several re-runs of the same import,
+        // so a contact appearing in 3 files would be triple-counted. Instead we
+        // sum a contact's rows WITHIN each file (one person can have several
+        // legacy credit lines), then take the value from the NEWEST file that
+        // contains them (last export wins). A per-file summary is returned so the
+        // grand total can be sanity-checked against the known $6,159.38.
         $files = glob(storage_path('app/imports/nivessa_pending_store_credits_*.csv')) ?: [];
+        rsort($files); // newest first
 
-        $csvByContact = [];   // contact_id => ['amount'=>float, 'phone'=>string, 'lines'=>int]
+        $csvByContact = [];   // contact_id => ['amount'=>float, 'phone'=>string]
+        $perFile = [];        // diagnostics per file
         foreach ($files as $f) {
             if (($fh = fopen($f, 'r')) === false) continue;
             $header = fgetcsv($fh); // contact_id, import_external_id, name, phone, credit_amount, notes
+            $withinFile = [];   // cid => ['amount'=>float, 'phone'=>string]
             while (($r = fgetcsv($fh)) !== false) {
                 if (count($r) !== count($header)) continue;
                 $row = array_combine($header, $r);
                 $cid = (int) ($row['contact_id'] ?? 0);
                 if (!$cid) continue;
-                if (!isset($csvByContact[$cid])) {
-                    $csvByContact[$cid] = ['amount' => 0.0, 'phone' => $row['phone'] ?? '', 'lines' => 0];
+                if (!isset($withinFile[$cid])) {
+                    $withinFile[$cid] = ['amount' => 0.0, 'phone' => $row['phone'] ?? ''];
                 }
-                $csvByContact[$cid]['amount'] += (float) ($row['credit_amount'] ?? 0);
-                $csvByContact[$cid]['lines']++;
+                $withinFile[$cid]['amount'] += (float) ($row['credit_amount'] ?? 0);
             }
             fclose($fh);
+
+            $fileTotal = 0.0;
+            foreach ($withinFile as $cid => $info) {
+                $fileTotal += $info['amount'];
+                // Newest file wins: first occurrence in newest-first order.
+                if (!isset($csvByContact[$cid])) {
+                    $csvByContact[$cid] = ['amount' => $info['amount'], 'phone' => $info['phone']];
+                }
+            }
+            $perFile[] = [
+                'file' => basename($f),
+                'contacts' => count($withinFile),
+                'total' => round($fileTotal, 2),
+            ];
         }
 
         $contacts = \DB::table('contacts')
@@ -1069,7 +1088,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
 
         $totals['csv_total_known'] = round($totals['csv_total_known'], 2);
         return response()->json([
-            'csv_files_read' => array_map('basename', $files),
+            'per_file' => $perFile,
             'totals' => $totals,
             'rows' => $review,
         ], 200, [], JSON_PRETTY_PRINT);
