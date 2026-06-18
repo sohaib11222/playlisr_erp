@@ -5883,6 +5883,171 @@ class SellPosController extends Controller
     }
 
     /**
+     * Resolve the artist for a set of products, handling both catalog
+     * conventions: the `artist` column (Discogs imports) and the legacy
+     * "Title / Artist" name suffix. Returns a de-duped list of artist strings.
+     */
+    private function resolveArtistKeys($products)
+    {
+        $artists = [];
+        foreach ($products as $p) {
+            $a = trim((string) $p->artist);
+            if ($a === '' && strpos((string) $p->name, ' / ') !== false) {
+                $parts = explode(' / ', (string) $p->name);
+                $a = trim((string) end($parts));
+            }
+            if ($a !== '') {
+                $artists[mb_strtolower($a)] = $a;
+            }
+        }
+
+        return array_values($artists);
+    }
+
+    /**
+     * "Artists you may also like" — a collaborative-filtering hint built from
+     * the store's own sales: customers who bought the cart's artist(s) also
+     * bought these OTHER in-stock artists. Bounded to recent baskets so it
+     * stays fast, and fails soft (empty list) so it can never disrupt the POS.
+     */
+    public function getPosRelatedArtists(Request $request)
+    {
+        try {
+            $business_id = $request->session()->get('user.business_id');
+            $location_id = $request->get('location_id');
+
+            $product_ids = array_values(array_unique(array_filter(
+                array_map('intval', (array) $request->get('product_ids', []))
+            )));
+
+            if (empty($product_ids) || empty($location_id)) {
+                return response()->json(['success' => true, 'recommendations' => []]);
+            }
+
+            $artists = $this->resolveArtistKeys(
+                Product::whereIn('id', $product_ids)->get(['name', 'artist'])
+            );
+
+            if (empty($artists)) {
+                return response()->json(['success' => true, 'recommendations' => []]);
+            }
+
+            // Seed products = catalog items by the cart's artist(s). product_id
+            // is indexed on the sell-lines table, so resolving these first
+            // keeps the (non-sargable) name LIKE off the big join.
+            $seed_product_ids = Product::where('business_id', $business_id)
+                ->where(function ($q) use ($artists) {
+                    $q->whereIn('artist', $artists);
+                    foreach ($artists as $a) {
+                        $q->orWhere('name', 'like', '% / ' . addcslashes($a, '\\%_') . '%');
+                    }
+                })
+                ->limit(300)
+                ->pluck('id')
+                ->all();
+
+            if (empty($seed_product_ids)) {
+                return response()->json(['success' => true, 'recommendations' => []]);
+            }
+
+            // Recent final sales that included a seed product = the "baskets"
+            // we mine for co-purchased artists.
+            $basket_ids = TransactionSellLine::query()
+                ->join('transactions as t', 't.id', '=', 'transaction_sell_lines.transaction_id')
+                ->whereIn('transaction_sell_lines.product_id', $seed_product_ids)
+                ->where('t.business_id', $business_id)
+                ->where('t.type', 'sell')
+                ->where('t.status', 'final')
+                ->orderByDesc('t.id')
+                ->limit(500)
+                ->pluck('transaction_sell_lines.transaction_id')
+                ->unique()
+                ->values()
+                ->all();
+
+            if (empty($basket_ids)) {
+                return response()->json(['success' => true, 'recommendations' => []]);
+            }
+
+            // Other in-stock products in those baskets, ranked by how many
+            // baskets they co-occurred in. Pull a few extra so we can show one
+            // card per artist after de-duping.
+            $rows = Variation::join('products as p', 'variations.product_id', '=', 'p.id')
+                ->join('product_locations as pl', 'pl.product_id', '=', 'p.id')
+                ->join('transaction_sell_lines as tsl', 'tsl.variation_id', '=', 'variations.id')
+                ->leftjoin('variation_location_details AS VLD', function ($join) use ($location_id) {
+                    $join->on('variations.id', '=', 'VLD.variation_id')
+                         ->where('VLD.location_id', '=', $location_id);
+                })
+                ->whereIn('tsl.transaction_id', $basket_ids)
+                ->where('p.business_id', $business_id)
+                ->where('p.type', '!=', 'modifier')
+                ->where('p.is_inactive', 0)
+                ->where('p.not_for_selling', 0)
+                ->where('pl.location_id', $location_id)
+                ->where('VLD.qty_available', '>', 0)
+                ->whereNotIn('p.id', $seed_product_ids)
+                ->whereNotIn('p.id', $product_ids)
+                // Exclude the cart's own artist(s) — those live in the other panel.
+                ->where(function ($q) use ($artists) {
+                    $q->whereNotIn('p.artist', $artists)->orWhereNull('p.artist');
+                })
+                ->where(function ($q) use ($artists) {
+                    foreach ($artists as $a) {
+                        $q->where('p.name', 'not like', '% / ' . addcslashes($a, '\\%_') . '%');
+                    }
+                })
+                ->select(
+                    'p.id as product_id',
+                    'p.name as product_name',
+                    'p.artist',
+                    'variations.id as variation_id',
+                    'variations.sub_sku',
+                    'variations.default_sell_price as selling_price',
+                    'VLD.qty_available',
+                    DB::raw('COUNT(DISTINCT tsl.transaction_id) as basket_count')
+                )
+                ->groupBy(
+                    'variations.id', 'p.id', 'p.name', 'p.artist',
+                    'variations.sub_sku', 'variations.default_sell_price', 'VLD.qty_available'
+                )
+                ->orderByDesc('basket_count')
+                ->limit(40)
+                ->get();
+
+            // One card per artist so the panel showcases variety of artists.
+            $seen = [];
+            $recommendations = [];
+            foreach ($rows as $r) {
+                $key = $this->resolveArtistKeys([$r]);
+                $key = !empty($key) ? mb_strtolower($key[0]) : ('p' . $r->product_id);
+                if (isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                $recommendations[] = [
+                    'variation_id'  => $r->variation_id,
+                    'product_id'    => $r->product_id,
+                    'artist'        => $r->artist,
+                    'product_name'  => $r->product_name,
+                    'sub_sku'       => $r->sub_sku,
+                    'selling_price' => (float) $r->selling_price,
+                    'qty_available' => (float) $r->qty_available,
+                ];
+                if (count($recommendations) >= 8) {
+                    break;
+                }
+            }
+
+            return response()->json(['success' => true, 'recommendations' => $recommendations]);
+        } catch (\Exception $e) {
+            \Log::error('POS related-artists failed: ' . $e->getMessage());
+
+            return response()->json(['success' => true, 'recommendations' => []]);
+        }
+    }
+
+    /**
      * Shows invoice url.
      *
      * @param  int  $id

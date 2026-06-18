@@ -35,6 +35,10 @@
     <div class="pos-rec-title">You May Also Like — In Stock</div>
     <div id="pos_recommendations_body"></div>
 </div>
+<div id="pos_related_artists" style="display:none;">
+    <div class="pos-rec-title">Artists You May Also Like — In Stock</div>
+    <div id="pos_related_artists_body"></div>
+</div>
 <script>
 (function runWhenReady(attempts) {
     // jQuery loads at the bottom of the layout (after @yield('content')), so a
@@ -44,9 +48,15 @@
         return setTimeout(function () { runWhenReady((attempts || 0) + 1); }, 50);
     }
     jQuery(function ($) {
-        var $panel = $('#pos_recommendations');
-        var $body  = $('#pos_recommendations_body');
-        if (!$panel.length) return;
+        if (!$('#pos_recommendations').length) return;
+
+        // Two stacked panels, each fed by its own endpoint:
+        //   same-artist  -> more titles by an artist already in the cart
+        //   related      -> "customers also bought" different artists, in stock
+        var PANELS = [
+            { url: '/sells/pos/get-recommendations', panel: '#pos_recommendations',  body: '#pos_recommendations_body' },
+            { url: '/sells/pos/get-related-artists',  panel: '#pos_related_artists',  body: '#pos_related_artists_body' }
+        ];
 
         function escapeHtml(s) {
             return String(s == null ? '' : s)
@@ -63,7 +73,7 @@
             return ids;
         }
 
-        function render(list) {
+        function render($panel, $body, list) {
             if (!list || !list.length) { $panel.hide(); $body.empty(); return; }
             var html = '';
             list.forEach(function (r) {
@@ -84,19 +94,21 @@
 
         function refresh() {
             var ids = cartProductIds();
-            if (!ids.length) { render([]); return; }
             var location_id = $('#location_id').val();
-            if (!location_id) { render([]); return; }
-            $.ajax({
-                method: 'GET',
-                url: '/sells/pos/get-recommendations',
-                data: { location_id: location_id, product_ids: ids },
-                dataType: 'json'
-            }).done(function (res) {
-                render(res && res.success ? res.recommendations : []);
-            }).fail(function () {
-                // Soft-fail: a recommendations hiccup must never disrupt checkout.
-                render([]);
+            PANELS.forEach(function (cfg) {
+                var $panel = $(cfg.panel), $body = $(cfg.body);
+                if (!ids.length || !location_id) { render($panel, $body, []); return; }
+                $.ajax({
+                    method: 'GET',
+                    url: cfg.url,
+                    data: { location_id: location_id, product_ids: ids },
+                    dataType: 'json'
+                }).done(function (res) {
+                    render($panel, $body, res && res.success ? res.recommendations : []);
+                }).fail(function () {
+                    // Soft-fail: a recommendations hiccup must never disrupt checkout.
+                    render($panel, $body, []);
+                });
             });
         }
 
