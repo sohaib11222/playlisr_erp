@@ -542,12 +542,23 @@
 			</div>
 			@endif
 
-			{{-- Optional closing note (doubles as the shift note when the
-			     auto summary is on) --}}
-			<div class="cr-note">
-				{!! Form::label('closing_note', !empty($shift_summary) ? 'Shift notes — highlights, lowlights, anything important' : 'Closing note (optional)') !!}
-				{!! Form::textarea('closing_note', null, ['class' => '', 'placeholder' => !empty($shift_summary) ? 'What did you work on? Anything notable about the store or your shift?' : 'Anything unusual about today?', 'rows' => !empty($shift_summary) ? 4 : 2 ]); !!}
-			</div>
+			@if(!empty($shift_summary))
+				{{-- Shift note is system-generated — no free-text box, so the
+				     record reflects what was actually done in the system
+				     (sales, mass-add, purchases, labels) and can't be hand-
+				     typed. Send an empty closing_note so the backend's
+				     $request->only([...]) still gets the key. --}}
+				{!! Form::hidden('closing_note', ''); !!}
+				<div style="margin-top:14px; font-size:12px; color:#8E8273; display:flex; align-items:center; gap:6px;">
+					<i class="fa fa-lock"></i> This shift note is generated from the system — nothing to type.
+				</div>
+			@else
+				{{-- Optional closing note (legacy, when shift summary is off) --}}
+				<div class="cr-note">
+					{!! Form::label('closing_note', 'Closing note (optional)') !!}
+					{!! Form::textarea('closing_note', null, ['class' => '', 'placeholder' => 'Anything unusual about today?', 'rows' => 2 ]); !!}
+				</div>
+			@endif
 
 			{{-- Clover keying-error feedback (Sarah 2026-05-06): show
 			     during close so the cashier sees their typos before
