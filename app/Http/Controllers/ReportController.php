@@ -5441,6 +5441,7 @@ class ReportController extends Controller
             $location_id = $request->input('location_id');
             $category = $request->input('category');
             $genre = $request->input('format');
+            $class_filter = strtoupper(trim((string) $request->input('class', '')));
 
             $inventory_query = DB::table('product_stock_cache as psc')
                 ->leftJoin('categories as sc', 'psc.sub_category_id', '=', 'sc.id')
@@ -5505,7 +5506,13 @@ class ReportController extends Controller
                     $class = $cumulative_pct <= 95 ? 'AB' : 'C';
                 }
 
-                if ($class !== 'C') {
+                if ($class === '') {
+                    continue;
+                }
+
+                // Class filter (defaults to C — the markdown list). Pick A/B/All
+                // to inspect other tiers; only C rows actually get a markdown.
+                if ($class_filter !== '' && $class !== $class_filter) {
                     continue;
                 }
 
@@ -5515,13 +5522,14 @@ class ReportController extends Controller
                 }
 
                 $markdown[] = [
+                    'abc_class' => $class,
                     'category' => $row->category ?: '— Other —',
                     'genre' => $row->genre ?: '—',
                     'product' => $row->product,
                     'sku' => $row->sku,
                     'qty_on_hand' => (float) $row->qty_on_hand,
                     'current_price' => $current_price,
-                    'markdown_price' => round($current_price * 0.80, 2),
+                    'markdown_price' => $class === 'C' ? round($current_price * 0.80, 2) : null,
                 ];
             }
 
