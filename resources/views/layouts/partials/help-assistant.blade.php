@@ -119,12 +119,15 @@
     var sendBtn = document.getElementById('erp-help-send');
 
     var CHIPS = [
-        'How do I ring up a sale?',
-        'How do I add a new product?',
-        'How do I do a return or refund?',
-        'Where do I see today’s sales?',
-        'How do I receive new stock?',
-        'How do I close my register?'
+        'How do I give a refund?',
+        'Where are the supplies kept?',
+        'How do I order more supplies?',
+        'How do I use the new labels?',
+        'How do I change the printer paper?',
+        'Printer is broken — what do I do?',
+        'Where is the listening party merch?',
+        'Who is performing and when?',
+        'How do I ring up a sale?'
     ];
 
     // History sent to the API (role/content only).

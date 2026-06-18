@@ -39,6 +39,13 @@
                         <p class="help-block">Default <code>claude-haiku-4-5</code> (fast and cheap). Leave as-is unless told otherwise.</p>
                     </div>
 
+                    <hr>
+                    <div class="form-group">
+                        <label for="store_knowledge">Store knowledge the bot answers from</label>
+                        <p class="help-block" style="margin-top:0;">Fill in the blanks below (supplies, printer, events, listening parties, Spotify, refunds). Whatever you write here is what the bot tells staff. Anything left as <code>[FILL IN ...]</code> makes the bot say "ask a manager" instead of guessing. Edit and save this anytime.</p>
+                        <textarea name="store_knowledge" id="store_knowledge" class="form-control" rows="22" style="font-family:monospace;font-size:12.5px;line-height:1.5;">{{ $store_knowledge }}</textarea>
+                    </div>
+
                     @if($has_key)
                     <div class="checkbox">
                         <label><input type="checkbox" name="remove_key" value="1"> Remove the saved key (turns the assistant off)</label>
