@@ -5439,7 +5439,8 @@ class ReportController extends Controller
 
         if ($request->ajax()) {
             $location_id = $request->input('location_id');
-            $format = $request->input('format');
+            $category = $request->input('category');
+            $genre = $request->input('format');
 
             $inventory_query = DB::table('product_stock_cache as psc')
                 ->leftJoin('categories as sc', 'psc.sub_category_id', '=', 'sc.id')
@@ -5449,8 +5450,11 @@ class ReportController extends Controller
             if (!empty($location_id)) {
                 $inventory_query->where('psc.location_id', $location_id);
             }
-            if ($format !== null && $format !== '') {
-                $inventory_query->whereRaw('COALESCE(sc.name, psc.category_name) = ?', [$format]);
+            if ($category !== null && $category !== '') {
+                $inventory_query->where('psc.category_name', $category);
+            }
+            if ($genre !== null && $genre !== '') {
+                $inventory_query->where('sc.name', $genre);
             }
 
             $inventory_rows = $inventory_query
@@ -5458,7 +5462,8 @@ class ReportController extends Controller
                     'psc.product_id',
                     DB::raw('MAX(psc.product) as product'),
                     DB::raw('MAX(psc.sku) as sku'),
-                    DB::raw('MAX(COALESCE(sc.name, psc.category_name)) as format'),
+                    DB::raw('MAX(psc.category_name) as category'),
+                    DB::raw('MAX(sc.name) as genre'),
                     DB::raw('SUM(psc.stock) as qty_on_hand'),
                     DB::raw('SUM(psc.stock_price) as inventory_value'),
                     DB::raw('MAX(psc.unit_price) as current_price'),
@@ -5487,7 +5492,7 @@ class ReportController extends Controller
             $running = 0;
 
             // This report IS the markdown list: only slow movers (class C) that
-            // are still on hand. Each gets 30% off the current sticker.
+            // are still on hand. Each gets 20% off the current sticker.
             $markdown = [];
             foreach ($rows as $row) {
                 $value = (float) $row->inventory_value;
@@ -5510,40 +5515,55 @@ class ReportController extends Controller
                 }
 
                 $markdown[] = [
-                    'format' => $row->format ?: '— Other —',
+                    'category' => $row->category ?: '— Other —',
+                    'genre' => $row->genre ?: '—',
                     'product' => $row->product,
                     'sku' => $row->sku,
                     'qty_on_hand' => (float) $row->qty_on_hand,
                     'current_price' => $current_price,
-                    'markdown_price' => round($current_price * 0.70, 2),
+                    'markdown_price' => round($current_price * 0.80, 2),
                 ];
             }
 
-            // Group by genre: genre A→Z, then most-overstocked first within each.
+            // Group by category then genre (A→Z), most-overstocked first within.
             usort($markdown, function ($a, $b) {
-                return [$a['format'], -$a['qty_on_hand']] <=> [$b['format'], -$b['qty_on_hand']];
+                return [$a['category'], $a['genre'], -$a['qty_on_hand']]
+                    <=> [$b['category'], $b['genre'], -$b['qty_on_hand']];
             });
 
             return Datatables::of(collect($markdown))->make(true);
         }
 
         $business_locations = BusinessLocation::forDropdown($business_id, true);
-        $formats = DB::table('product_stock_cache as psc')
-            ->leftJoin('categories as sc', 'psc.sub_category_id', '=', 'sc.id')
+
+        $categories = DB::table('product_stock_cache as psc')
             ->where('psc.business_id', $business_id)
             ->where('psc.enable_stock', 1)
-            ->whereRaw('COALESCE(sc.name, psc.category_name) IS NOT NULL')
-            ->whereRaw("TRIM(COALESCE(sc.name, psc.category_name)) <> ''")
-            ->select(DB::raw('COALESCE(sc.name, psc.category_name) as format'))
+            ->whereNotNull('psc.category_name')
+            ->whereRaw("TRIM(psc.category_name) <> ''")
+            ->select('psc.category_name as name')
             ->distinct()
-            ->orderBy('format')
-            ->pluck('format', 'format')
+            ->orderBy('name')
+            ->pluck('name', 'name')
+            ->toArray();
+
+        $genres = DB::table('product_stock_cache as psc')
+            ->join('categories as sc', 'psc.sub_category_id', '=', 'sc.id')
+            ->where('psc.business_id', $business_id)
+            ->where('psc.enable_stock', 1)
+            ->whereNotNull('sc.name')
+            ->whereRaw("TRIM(sc.name) <> ''")
+            ->select('sc.name as name')
+            ->distinct()
+            ->orderBy('name')
+            ->pluck('name', 'name')
             ->toArray();
 
         return view('report.abc_inventory_classification', [
             'imported_meta' => $importedMeta,
             'business_locations' => $business_locations,
-            'formats' => $formats,
+            'categories' => $categories,
+            'genres' => $genres,
         ]);
     }
 

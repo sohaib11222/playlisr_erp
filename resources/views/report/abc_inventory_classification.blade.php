@@ -68,7 +68,7 @@ body.abc-v2 .genre-tag {
     display:inline-block; background:var(--accent-soft); border:1px solid var(--accent-deep);
     color:var(--accent-text); font-weight:700; font-size:13px; border-radius:999px; padding:3px 12px;
 }
-body.abc-v2 .was { color:var(--ink-3); text-decoration:line-through; font-size:13px; }
+body.abc-v2 .price { font-variant-numeric:tabular-nums; }
 body.abc-v2 .now { font-weight:800; color:var(--cr); font-variant-numeric:tabular-nums; font-size:16px; }
 
 body.abc-v2 .dt-buttons .btn {
@@ -85,7 +85,7 @@ body.abc-v2 .dataTables_wrapper .dataTables_paginate .paginate_button.current {
 <section class="content">
     <div class="abc-card">
         <h1 class="abc-h1">Markdown List — clear the slow movers</h1>
-        <p class="abc-sub">Every product below is a slow mover that should be marked down <strong>30% off</strong> to move it out faster. Sorted by genre. Pick a store or genre to narrow the list.</p>
+        <p class="abc-sub">Every product below is a slow mover that should be marked down <strong>20% off</strong> to move it out faster. Sorted by category and genre. Pick a store, category, or genre to narrow the list.</p>
     </div>
 
     <div class="abc-card">
@@ -95,8 +95,12 @@ body.abc-v2 .dataTables_wrapper .dataTables_paginate .paginate_button.current {
                 {!! Form::select('abc_location_id', $business_locations, null, ['class' => 'form-control', 'id' => 'abc_location_id']) !!}
             </div>
             <div class="abc-field">
+                <label for="abc_category">Category</label>
+                {!! Form::select('abc_category', ['' => 'All Categories'] + $categories, null, ['class' => 'form-control', 'id' => 'abc_category']) !!}
+            </div>
+            <div class="abc-field">
                 <label for="abc_format">Genre</label>
-                {!! Form::select('abc_format', ['' => 'All Genres'] + $formats, null, ['class' => 'form-control', 'id' => 'abc_format']) !!}
+                {!! Form::select('abc_format', ['' => 'All Genres'] + $genres, null, ['class' => 'form-control', 'id' => 'abc_format']) !!}
             </div>
         </div>
     </div>
@@ -106,12 +110,13 @@ body.abc-v2 .dataTables_wrapper .dataTables_paginate .paginate_button.current {
             <table class="table" id="abc_markdown_table" style="width: 100%;">
                 <thead>
                     <tr>
+                        <th>Category</th>
                         <th>Genre</th>
                         <th>Product</th>
                         <th>SKU</th>
                         <th class="num">In Stock</th>
                         <th class="num">Current Price</th>
-                        <th class="num">Markdown Price (30% off)</th>
+                        <th class="num">Markdown Price (20% off)</th>
                     </tr>
                 </thead>
             </table>
@@ -131,24 +136,26 @@ $(document).ready(function () {
             url: '{{ action("ReportController@abcInventoryClassification") }}',
             data: function (d) {
                 d.location_id = $('#abc_location_id').val();
+                d.category = $('#abc_category').val();
                 d.format = $('#abc_format').val();
             }
         },
         dom: 'Bfrtip',
         buttons: ['csv', 'excel', 'print'],
         ordering: false,
-        columnDefs: [{ targets: [3, 4, 5], className: 'num' }],
+        columnDefs: [{ targets: [4, 5, 6], className: 'num' }],
         columns: [
-            { data: 'format', name: 'format', render: function (data) { return '<span class="genre-tag">' + data + '</span>'; } },
+            { data: 'category', name: 'category', render: function (data) { return '<span class="genre-tag">' + data + '</span>'; } },
+            { data: 'genre', name: 'genre' },
             { data: 'product', name: 'product' },
             { data: 'sku', name: 'sku' },
             { data: 'qty_on_hand', name: 'qty_on_hand', render: function (data) { return parseInt(data || 0, 10); } },
-            { data: 'current_price', name: 'current_price', render: function (data) { return '<span class="was">' + __currency_trans_from_en(data || 0, true) + '</span>'; } },
+            { data: 'current_price', name: 'current_price', render: function (data) { return '<span class="price">' + __currency_trans_from_en(data || 0, true) + '</span>'; } },
             { data: 'markdown_price', name: 'markdown_price', render: function (data) { return '<span class="now">' + __currency_trans_from_en(data || 0, true) + '</span>'; } }
         ]
     });
 
-    $('#abc_location_id, #abc_format').change(function () {
+    $('#abc_location_id, #abc_category, #abc_format').change(function () {
         table.ajax.reload();
     });
 });
