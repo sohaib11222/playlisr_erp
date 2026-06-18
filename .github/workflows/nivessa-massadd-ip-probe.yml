@@ -35,7 +35,14 @@ jobs:
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          ssh-keyscan -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+          for i in 1 2 3 4 5 6; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null \
+               && [ -s ~/.ssh/known_hosts ]; then
+              echo "keyscan ok on attempt $i"; exit 0
+            fi
+            echo "keyscan attempt $i failed; retrying"; sleep 10
+          done
+          echo "keyscan failed after retries"; exit 1
 
       - name: Run probe over SSH
         uses: appleboy/ssh-action@v1.2.0
