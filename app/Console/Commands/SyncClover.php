@@ -144,6 +144,9 @@ class SyncClover extends Command
                     $linked++;
                 }
                 $product->clover_synced_at = now();
+                // clover_synced_at is sync bookkeeping, not a real product edit —
+                // don't let it bump updated_at (keeps the "Last updated" column honest).
+                $product->timestamps = false;
                 $product->save();
             } else {
                 // Unlinked item — log so Sarah can see what needs a matching
@@ -276,50 +279,13 @@ class SyncClover extends Command
     {
         $this->line('— push pending (ERP → Clover)');
 
-        // Products: push any row where updated_at > clover_synced_at
-        // (or clover_synced_at is null and it has an sku).
-        $products = Product::where('business_id', $businessId)
-            ->whereNotNull('sku')
-            ->where(function ($q) {
-                $q->whereNull('clover_synced_at')
-                  ->orWhereColumn('updated_at', '>', 'clover_synced_at');
-            })
-            ->limit(500)  // per-run cap, avoids a cold-start flood
-            ->get();
-
+        // Product push DISABLED (Sarah, 2026-06-17): Nivessa does not keep a
+        // product catalog in Clover. This block used to create a Clover item for
+        // every ERP product and save the row to stamp clover_synced_at, which
+        // bumped products.updated_at on every run and made the products list show
+        // bogus "updated today by System" entries. The contacts push below is
+        // intentionally left running.
         $pushedItems = 0;
-        foreach ($products as $p) {
-            $variation = DB::table('variations')
-                ->where('product_id', $p->id)
-                ->whereNull('deleted_at')
-                ->orderBy('id')
-                ->first();
-            $price = $variation->sell_price_inc_tax ?? $variation->default_sell_price ?? 0;
-
-            $payload = [
-                'name'  => $p->name,
-                'sku'   => $p->sku,
-                'price' => (float) $price,
-            ];
-
-            if (!empty($p->clover_item_id)) {
-                $resp = $clover->updateItem($p->clover_item_id, $payload);
-            } else {
-                $resp = $clover->createItem($payload);
-                if (!empty($resp['success']) && !empty($resp['clover_item_id'])) {
-                    $p->clover_item_id = $resp['clover_item_id'];
-                }
-            }
-            if (!empty($resp['success'])) {
-                $p->clover_synced_at = now();
-                $p->save();
-                $pushedItems++;
-            } else {
-                Log::warning('Clover push item failed', [
-                    'product_id' => $p->id, 'msg' => $resp['msg'] ?? 'unknown',
-                ]);
-            }
-        }
 
         // Contacts: same dirty-check, customers only.
         $contacts = Contact::where('business_id', $businessId)
