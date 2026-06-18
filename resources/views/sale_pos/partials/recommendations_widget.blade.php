@@ -46,10 +46,13 @@
     jQuery(function ($) {
         if (!$('#pos_recommendations').length) return;
 
-        // One combined list, fed by two endpoints and interleaved ~half/half:
+        // One combined list, fed by three endpoints and interleaved ~half/half:
         //   same-artist  -> more titles by an artist already in the cart
+        //   genre        -> other in-stock artists in the same genre (sales tags)
         //   related      -> "customers also bought" different artists, in stock
+        // The "different artist" half prefers genre, then fills with co-purchase.
         var SAME_URL    = '/sells/pos/get-recommendations';
+        var GENRE_URL   = '/sells/pos/get-genre-artists';
         var RELATED_URL = '/sells/pos/get-related-artists';
         var TOTAL = 8;
 
@@ -119,6 +122,19 @@
             });
         }
 
+        // Concat sources, deduped by variation, preserving order.
+        function concatUnique() {
+            var out = [], seen = {};
+            for (var a = 0; a < arguments.length; a++) {
+                var list = arguments[a] || [];
+                for (var i = 0; i < list.length; i++) {
+                    var r = list[i];
+                    if (r && !seen[r.variation_id]) { seen[r.variation_id] = 1; out.push(r); }
+                }
+            }
+            return out;
+        }
+
         function refresh() {
             var ids = cartProductIds();
             var location_id = $('#location_id').val();
@@ -126,9 +142,11 @@
             if (!ids.length || !location_id) { render($panel, $body, []); return; }
             $.when(
                 fetchRecs(SAME_URL, ids, location_id),
+                fetchRecs(GENRE_URL, ids, location_id),
                 fetchRecs(RELATED_URL, ids, location_id)
-            ).done(function (same, related) {
-                render($panel, $body, interleave(same, related));
+            ).done(function (same, genre, related) {
+                // Different-artist half = genre first, co-purchase as backup.
+                render($panel, $body, interleave(same, concatUnique(genre, related)));
             });
         }
 

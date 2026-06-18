@@ -6126,6 +6126,164 @@ class SellPosController extends Controller
     }
 
     /**
+     * "Other artists in the same genre" — uses the genre tags captured on the
+     * historical sales import (transaction_sell_lines.legacy_genre / legacy_artist):
+     * find the genre(s) the cart's artist(s) sell in, then surface OTHER in-stock
+     * artists who sell in those same genres. Fails soft so it can never disrupt
+     * the POS.
+     */
+    public function getPosGenreArtists(Request $request)
+    {
+        try {
+            $business_id = $request->session()->get('user.business_id');
+            $location_id = $request->get('location_id');
+
+            $product_ids = array_values(array_unique(array_filter(
+                array_map('intval', (array) $request->get('product_ids', []))
+            )));
+
+            if (empty($product_ids) || empty($location_id)) {
+                return response()->json(['success' => true, 'recommendations' => []]);
+            }
+
+            $artists = $this->resolveArtistKeys(
+                Product::whereIn('id', $product_ids)->get(['name', 'artist'])
+            );
+            if (empty($artists)) {
+                return response()->json(['success' => true, 'recommendations' => []]);
+            }
+            $lower_artists = array_map('mb_strtolower', $artists);
+
+            // Catalog items by the cart's artist(s) — lets us also match legacy
+            // sell lines that linked to a real product rather than just raw text.
+            $seed_product_ids = Product::where('business_id', $business_id)
+                ->where(function ($q) use ($artists) {
+                    $q->whereIn('artist', $artists);
+                    foreach ($artists as $a) {
+                        $q->orWhere('name', 'like', '% / ' . addcslashes($a, '\\%_') . '%');
+                    }
+                })
+                ->limit(300)
+                ->pluck('id')
+                ->all();
+
+            // Step A — the genre(s) the cart's artist(s) have sold under.
+            $artist_ph = implode(',', array_fill(0, count($lower_artists), '?'));
+            $genres = DB::table('transaction_sell_lines')
+                ->whereNotNull('legacy_genre')
+                ->where('legacy_genre', '<>', '')
+                ->where(function ($q) use ($artist_ph, $lower_artists, $seed_product_ids) {
+                    $q->whereRaw('LOWER(legacy_artist) IN (' . $artist_ph . ')', $lower_artists);
+                    if (!empty($seed_product_ids)) {
+                        $q->orWhereIn('product_id', $seed_product_ids);
+                    }
+                })
+                ->distinct()
+                ->limit(20)
+                ->pluck('legacy_genre')
+                ->all();
+
+            if (empty($genres)) {
+                return response()->json(['success' => true, 'recommendations' => []]);
+            }
+
+            // Step B — other artists who sell in those same genres, by volume.
+            $genre_ph = implode(',', array_fill(0, count($genres), '?'));
+            $cand = DB::table('transaction_sell_lines')
+                ->whereNotNull('legacy_artist')
+                ->where('legacy_artist', '<>', '')
+                ->whereIn('legacy_genre', $genres)
+                ->whereRaw('LOWER(legacy_artist) NOT IN (' . $artist_ph . ')', $lower_artists)
+                ->select(DB::raw('LOWER(legacy_artist) as artist_key'), DB::raw('COUNT(*) as c'))
+                ->groupBy(DB::raw('LOWER(legacy_artist)'))
+                ->orderByDesc('c')
+                ->limit(80)
+                ->get();
+
+            $artist_keys = [];
+            foreach ($cand as $row) {
+                $k = trim((string) $row->artist_key);
+                if ($k !== '') {
+                    $artist_keys[] = $k;
+                }
+            }
+            if (empty($artist_keys)) {
+                return response()->json(['success' => true, 'recommendations' => []]);
+            }
+
+            // Step C — one in-stock title per candidate artist, newest first.
+            $artistKeyExpr = "LOWER(TRIM(CASE WHEN p.artist IS NOT NULL AND p.artist <> '' "
+                . "THEN p.artist ELSE SUBSTRING_INDEX(p.name, ' / ', -1) END))";
+            $keys_ph = implode(',', array_fill(0, count($artist_keys), '?'));
+            $stock = DB::table('products as p')
+                ->join('variations', 'variations.product_id', '=', 'p.id')
+                ->join('product_locations as pl', 'pl.product_id', '=', 'p.id')
+                ->leftjoin('variation_location_details AS VLD', function ($join) use ($location_id) {
+                    $join->on('variations.id', '=', 'VLD.variation_id')
+                         ->where('VLD.location_id', '=', $location_id);
+                })
+                ->where('p.business_id', $business_id)
+                ->where('p.type', '!=', 'modifier')
+                ->where('p.is_inactive', 0)
+                ->where('p.not_for_selling', 0)
+                ->where('pl.location_id', $location_id)
+                ->where('VLD.qty_available', '>', 0)
+                ->whereNotIn('p.id', $seed_product_ids)
+                ->whereNotIn('p.id', $product_ids)
+                ->whereRaw($artistKeyExpr . ' IN (' . $keys_ph . ')', $artist_keys)
+                ->select(
+                    'p.id as product_id',
+                    'p.name as product_name',
+                    'p.artist',
+                    'variations.id as variation_id',
+                    'variations.sub_sku',
+                    'variations.default_sell_price as selling_price',
+                    'VLD.qty_available',
+                    'p.created_at',
+                    DB::raw($artistKeyExpr . ' as artist_key')
+                )
+                ->orderBy('p.created_at', 'desc')
+                ->get();
+
+            // One card per artist, ordered by how strongly they sell in-genre.
+            $rank = array_flip($artist_keys);
+            $by_artist = [];
+            foreach ($stock as $r) {
+                $k = trim((string) $r->artist_key);
+                if ($k === '' || isset($by_artist[$k])) {
+                    continue;
+                }
+                $by_artist[$k] = $r;
+            }
+            uasort($by_artist, function ($a, $b) use ($rank) {
+                return ($rank[$a->artist_key] ?? 999) <=> ($rank[$b->artist_key] ?? 999);
+            });
+
+            $recommendations = [];
+            foreach ($by_artist as $r) {
+                $recommendations[] = [
+                    'variation_id'  => $r->variation_id,
+                    'product_id'    => $r->product_id,
+                    'artist'        => $r->artist,
+                    'product_name'  => $r->product_name,
+                    'sub_sku'       => $r->sub_sku,
+                    'selling_price' => (float) $r->selling_price,
+                    'qty_available' => (float) $r->qty_available,
+                ];
+                if (count($recommendations) >= 8) {
+                    break;
+                }
+            }
+
+            return response()->json(['success' => true, 'recommendations' => $recommendations]);
+        } catch (\Exception $e) {
+            \Log::error('POS genre-artists failed: ' . $e->getMessage());
+
+            return response()->json(['success' => true, 'recommendations' => []]);
+        }
+    }
+
+    /**
      * Shows invoice url.
      *
      * @param  int  $id
