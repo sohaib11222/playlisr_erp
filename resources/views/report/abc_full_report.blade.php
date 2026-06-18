@@ -115,6 +115,10 @@ body.abc-v2 .dataTables_wrapper .dataTables_paginate .paginate_button.current {
     <div class="abc-card">
         <div class="abc-filters">
             <div class="abc-field">
+                <label for="full_search">Search</label>
+                <input type="text" id="full_search" class="form-control" placeholder="Product, SKU, format…" autocomplete="off">
+            </div>
+            <div class="abc-field">
                 <label for="full_scope">Scope</label>
                 {!! Form::select('full_scope', [
                     '' => 'All rows',
@@ -181,7 +185,7 @@ $(document).ready(function () {
                 d.abc_xyz = $('#full_combo').val();
             }
         },
-        dom: 'Bfrtip',
+        dom: 'Brtip',
         buttons: ['csv', 'excel', 'print'],
         ordering: false,
         columns: [
@@ -198,6 +202,13 @@ $(document).ready(function () {
 
     $('#full_scope, #full_class, #full_xyz, #full_combo').change(function () {
         table.ajax.reload();
+    });
+
+    var searchTimer = null;
+    $('#full_search').on('keyup', function () {
+        var term = this.value;
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(function () { table.search(term).draw(); }, 350);
     });
 });
 </script>

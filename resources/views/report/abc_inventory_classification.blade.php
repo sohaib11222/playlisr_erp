@@ -106,6 +106,10 @@ body.abc-v2 .dataTables_wrapper .dataTables_paginate .paginate_button.current {
     <div class="abc-card">
         <div class="abc-filters">
             <div class="abc-field">
+                <label for="abc_search">Search</label>
+                <input type="text" id="abc_search" class="form-control" placeholder="Product, SKU, category…" autocomplete="off">
+            </div>
+            <div class="abc-field">
                 <label for="abc_location_id">Store</label>
                 {!! Form::select('abc_location_id', $business_locations, null, ['class' => 'form-control', 'id' => 'abc_location_id']) !!}
             </div>
@@ -162,7 +166,7 @@ $(document).ready(function () {
                 d.class = $('#abc_class').val();
             }
         },
-        dom: 'Bfrtip',
+        dom: 'Brtip',
         buttons: ['csv', 'excel', 'print'],
         ordering: false,
         columnDefs: [{ targets: [6, 7, 8], className: 'num' }],
@@ -181,6 +185,13 @@ $(document).ready(function () {
 
     $('#abc_location_id, #abc_category, #abc_format, #abc_class').change(function () {
         table.ajax.reload();
+    });
+
+    var searchTimer = null;
+    $('#abc_search').on('keyup', function () {
+        var term = this.value;
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(function () { table.search(term).draw(); }, 350);
     });
 });
 </script>
