@@ -317,8 +317,25 @@ class InventoryCheckService
                 'over_budget' => $spentAmt > $budgetAmt,
             ];
         };
+        // Only surface the store(s) the viewer is permitted for, so a
+        // store-scoped cashier sees just their own store's sub-budget on the
+        // buy form. Admins (permitted_locations = 'all') still see every store.
+        $permittedNames = null;
+        if ($permittedLocations !== 'all') {
+            $permittedNames = BusinessLocation::whereIn('id', (array) $permittedLocations)
+                ->pluck('name')
+                ->map(fn ($n) => strtolower((string) $n))
+                ->all();
+        }
         $perStore = [];
         foreach ($this->storeBudgetSplits() as $split) {
+            if ($permittedNames !== null) {
+                $allowed = false;
+                foreach ($permittedNames as $pn) {
+                    if (stripos($pn, $split['match']) !== false) { $allowed = true; break; }
+                }
+                if (!$allowed) { continue; }
+            }
             $storeBudget = round($budget * $split['pct'], 2);
             $storeUsedBudget = round($storeBudget * 0.35, 2);
             $storeNewBudget = round($storeBudget - $storeUsedBudget, 2);
