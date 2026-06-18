@@ -543,14 +543,15 @@
 			@endif
 
 			@if(!empty($shift_summary))
-				{{-- Shift note is system-generated — no free-text box, so the
-				     record reflects what was actually done in the system
-				     (sales, mass-add, purchases, labels) and can't be hand-
-				     typed. Send an empty closing_note so the backend's
-				     $request->only([...]) still gets the key. --}}
-				{!! Form::hidden('closing_note', ''); !!}
-				<div style="margin-top:14px; font-size:12px; color:#8E8273; display:flex; align-items:center; gap:6px;">
-					<i class="fa fa-lock"></i> This shift note is generated from the system — nothing to type.
+				{{-- The stats above are auto-generated and not editable, so the
+				     record reflects what was actually done in the system. The
+				     box below is just for optional qualitative color. --}}
+				<div class="cr-note">
+					<div style="display:flex; align-items:center; gap:6px; font-size:12px; color:#8E8273; margin-bottom:6px;">
+						<i class="fa fa-magic"></i> Your shift summary fills in automatically above.
+					</div>
+					{!! Form::label('closing_note', 'Highlights, lowlights, or anything important for the staff (optional)') !!}
+					{!! Form::textarea('closing_note', null, ['class' => '', 'placeholder' => 'e.g. ran low on reggae, fixed the label printer, big collection came in…', 'rows' => 3 ]); !!}
 				</div>
 			@else
 				{{-- Optional closing note (legacy, when shift summary is off) --}}
