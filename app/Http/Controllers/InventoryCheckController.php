@@ -299,6 +299,45 @@ class InventoryCheckController extends Controller
     }
 
     /**
+     * Lazy-loaded accessories-restock bucket. Surfaces low/OOS items in the
+     * Accessories category (cleaning kits, sleeves, brushes) so they get
+     * reordered during the weekly check. Same lazy pattern as seasonal.
+     */
+    public function accessoriesBucket(Request $request)
+    {
+        try {
+            $business_id = (int) $request->session()->get('user.business_id');
+            $request->session()->save();
+            $input = $request->only(['location_id', 'preset']);
+            if (!empty($input['preset'])) {
+                $resolved = $this->inventoryCheckService->resolvePreset($business_id, $input['preset']);
+                $input = array_merge($resolved, $input);
+            }
+            $locationId = !empty($input['location_id']) ? (int) $input['location_id'] : null;
+            if (!$locationId) {
+                return response()->json(['bucket' => [
+                    'label' => 'Accessories — restock cleaning kits',
+                    'why' => 'Pick a store first.',
+                    'items' => [], 'count' => 0,
+                ]]);
+            }
+            $permitted = auth()->user()->permitted_locations();
+            $bucket = $this->inventoryCheckService->bucketAccessoriesLowPublic($business_id, $locationId, $permitted);
+            return response()->json(['bucket' => $bucket]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('ICA accessories bucket failed', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile() . ':' . $e->getLine(),
+            ]);
+            return response()->json(['bucket' => [
+                'label' => 'Accessories — restock cleaning kits',
+                'why' => 'Accessories list failed to load: ' . $e->getMessage(),
+                'items' => [], 'count' => 0, 'empty_reason' => 'fetch_error',
+            ]]);
+        }
+    }
+
+    /**
      * Lazy-loaded frozen-inventory bucket. The last-sold scan crosses the
      * full transaction history (70k+ rows imported 2026-04-23) so it gets
      * its own request, same pattern as events.

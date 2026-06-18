@@ -483,6 +483,7 @@ class InventoryCheckService
             'ume_spotlights' => $this->lazyPlaceholder('UMe Update — release spotlights'),
             'abc_a_restock' => $this->lazyPlaceholder('A-class items — restock priority'),
             'seasonal' => $this->lazyPlaceholder('Seasonal — stock up ahead of the season'),
+            'accessories_low' => $this->lazyPlaceholder('Accessories — restock cleaning kits'),
             'frozen_inventory' => $this->lazyPlaceholder('Frozen inventory — DO NOT reorder'),
         ];
 
@@ -2605,6 +2606,75 @@ class InventoryCheckService
     public function bucketSeasonalPublic(int $business_id, int $locationId, $permittedLocations): array
     {
         return $this->bucketSeasonal($business_id, $locationId, $permittedLocations);
+    }
+
+    /** Public alias for the lazy accessories-restock endpoint. */
+    public function bucketAccessoriesLowPublic(int $business_id, int $locationId, $permittedLocations): array
+    {
+        return $this->bucketAccessoriesLow($business_id, $locationId, $permittedLocations);
+    }
+
+    /**
+     * Accessories (cleaning kits, brushes, inner/outer sleeves, etc.) that
+     * are low or out of stock — a "do we need to order it?" stage for the
+     * non-music consumables that should always be on the shelf. Unlike the
+     * music buckets this isn't sales-velocity driven: anything in an
+     * Accessories category at or below max_stock surfaces so it gets
+     * reordered. Config-driven (buckets.accessories_low), no migration.
+     */
+    protected function bucketAccessoriesLow(int $business_id, int $locationId, $permittedLocations): array
+    {
+        $label = 'Accessories — restock cleaning kits';
+        $cfg = config('inventory_check.buckets.accessories_low', []);
+        $patterns = (array) ($cfg['category_patterns'] ?? ['Accessories']);
+        $maxStock = (float) ($cfg['max_stock'] ?? 2);
+        $targetStock = (int) ($cfg['target_stock'] ?? 4);
+        $maxItems = (int) ($cfg['max_items'] ?? 100);
+
+        $catIds = [];
+        foreach ($patterns as $pattern) {
+            foreach ($this->categoryIdsMatching($business_id, (string) $pattern) as $id) {
+                $catIds[(int) $id] = true;
+            }
+        }
+        $catIds = array_keys($catIds);
+
+        if (empty($catIds)) {
+            return [
+                'label' => $label,
+                'why' => 'No product category matched "' . implode('", "', $patterns) . '". Set the right category name under buckets.accessories_low in config/inventory_check.php.',
+                'items' => [], 'count' => 0,
+                'empty_reason' => 'no_categories',
+            ];
+        }
+
+        $rows = $this->queryPscRows($business_id, $locationId, $catIds, $permittedLocations);
+        $items = [];
+        foreach ($rows as $row) {
+            $stock = (float) ($row->stock ?? 0);
+            if ($stock > $maxStock) {
+                continue;
+            }
+            $items[] = $this->rowToCandidate($row, $stock, 0, $targetStock, [
+                'bucket' => 'accessories_low',
+                'reason' => 'accessory low — ' . (int) $stock . ' on hand, keep ' . $targetStock,
+                'tags' => ['accessories'],
+            ]);
+        }
+
+        $items = $this->dedupeByVariation($items);
+        // Lowest stock first so the truly-out items lead the list.
+        usort($items, fn ($a, $b) => $a['stock'] <=> $b['stock']);
+        if (count($items) > $maxItems) {
+            $items = array_slice($items, 0, $maxItems);
+        }
+
+        return [
+            'label' => $label,
+            'why' => 'Accessories (cleaning kits, sleeves, brushes) at or below ' . (int) $maxStock . ' on hand — reorder so they\'re never out.',
+            'items' => $items,
+            'count' => count($items),
+        ];
     }
 
     /**

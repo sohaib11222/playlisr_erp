@@ -88,6 +88,7 @@
         universal_top:   { key: 'universal_top',   step: 5, title: 'UMe / Universal Top',          note: 'This week\'s UMe Top 200 + new deliveries.' },
         street_pulse:    { key: 'street_pulse',    step: 6, title: 'Street Pulse / Luminate chart', note: 'Luminate top sellers — the industry-wide chart.' },
         seasonal:        { key: 'seasonal',        step: 7, title: 'Seasonal — stock up ahead', note: 'Low or out-of-stock titles for the season(s) coming up (Holiday, Valentine\'s, Halloween, plus anything in a Seasonal category). Order now so they\'re on the shelf in time.' },
+        accessories_low: { key: 'accessories_low', step: 8, title: 'Accessories — cleaning kits to restock', note: 'Cleaning kits, sleeves, brushes and other accessories that are low or out of stock. Reorder so they\'re always on the shelf.' },
     };
 
     /**
@@ -237,6 +238,7 @@
                 lazyLoadAuxBucket('ume_spotlights', window.ICA_UME_SPOT_URL);
                 lazyLoadAuxBucket('abc_a_restock', window.ICA_ABC_URL);
                 lazyLoadAuxBucket('seasonal', window.ICA_SEASONAL_URL);
+                lazyLoadAuxBucket('accessories_low', window.ICA_ACCESSORIES_URL);
                 lazyLoadAuxBucket('frozen_inventory', window.ICA_FROZEN_URL);
                 lazyLoadSecondaryBuckets();
             })
@@ -634,6 +636,7 @@
             { key: 'universal_top',    step: 5, title: 'UMe / Universal Top',          note: 'This week\'s UMe Top 200 + new deliveries.' },
             { key: 'street_pulse',     step: 6, title: 'Street Pulse / Luminate chart', note: 'Luminate top sellers — the industry-wide chart.' },
             { key: 'seasonal',         step: 7, title: 'Seasonal — stock up ahead', note: 'Low or out-of-stock titles for the season(s) coming up (Holiday, Valentine\'s, Halloween, plus anything in a Seasonal category). Order now so they\'re on the shelf in time.' },
+            { key: 'accessories_low',  step: 8, title: 'Accessories — cleaning kits to restock', note: 'Cleaning kits, sleeves, brushes and other accessories that are low or out of stock. Reorder so they\'re always on the shelf.' },
         ];
         // 2026-05-27 Sarah: ume_spotlights pulled out of the secondary list —
         // it was duplicating the UMe vibe of STEP 4. Spotlights now render
@@ -2243,7 +2246,7 @@
             // Priority order — items in higher-priority buckets get auto-
             // checked first until the running cost crosses the remaining
             // budget. Rows in lower-priority buckets get unchecked.
-            const priority = ['fast_oos', 'abc_a_restock', 'seasonal', 'top_artist_new_releases', 'customer_wants', 'universal_top', 'street_pulse', 'apple_music_top', 'long_oos_essentials', 'events_upcoming', 'ume_spotlights', 'hot_used_oos'];
+            const priority = ['fast_oos', 'abc_a_restock', 'seasonal', 'accessories_low', 'top_artist_new_releases', 'customer_wants', 'universal_top', 'street_pulse', 'apple_music_top', 'long_oos_essentials', 'events_upcoming', 'ume_spotlights', 'hot_used_oos'];
             let running = 0;
             let checkedCount = 0;
             const usedRows = new WeakSet();
@@ -2714,6 +2717,7 @@
         { key: 'universal_top',   label: 'UMe Top',      importStep: true, sel: () => $root.querySelector('.ica-step-card[data-step="5"]') },
         { key: 'street_pulse',    label: 'Street Pulse', importStep: true, sel: () => $root.querySelector('.ica-step-card[data-step="6"]') },
         { key: 'seasonal',        label: 'Seasonal',     sel: () => $root.querySelector('.ica-step-card[data-step="7"]') },
+        { key: 'accessories_low', label: 'Accessories',  sel: () => $root.querySelector('.ica-step-card[data-step="8"]') },
         { key: 'other_lists',     label: 'Other lists',  sel: () => $root.querySelector('.ica-secondary-disclosure:not(.ica-frozen-disclosure)') },
         { key: 'frozen_review',   label: "Frozen — don't reorder", sel: () => $root.querySelector('.ica-frozen-disclosure') },
         { key: 'manual_nonmusic', label: 'Other categories', sel: () => document.getElementById('ica_manual_reorder_step') },

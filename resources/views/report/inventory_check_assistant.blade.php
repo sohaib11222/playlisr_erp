@@ -1288,6 +1288,7 @@ body.ica-wizard-active { padding-bottom: 64px; }
     window.ICA_SECONDARY_URL = "{{ action('InventoryCheckController@secondaryBuckets') }}";
     window.ICA_ABC_URL = "{{ action('InventoryCheckController@abcRestockBucket') }}";
     window.ICA_SEASONAL_URL = "{{ action('InventoryCheckController@seasonalBucket') }}";
+    window.ICA_ACCESSORIES_URL = "{{ action('InventoryCheckController@accessoriesBucket') }}";
     window.ICA_FROZEN_URL = "{{ action('InventoryCheckController@frozenInventoryBucket') }}";
     window.ICA_FROZEN_UPDATE_URL = "{{ action('InventoryCheckController@frozenStockUpdate') }}";
     window.ICA_PRODUCT_VIEW_URL_BASE = "{{ url('products/view') }}";

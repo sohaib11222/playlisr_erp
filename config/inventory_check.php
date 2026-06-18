@@ -85,6 +85,18 @@ return [
             'redeye'   => ['label' => 'Redeye', 'notes' => 'Redeye Worldwide — Indie / world / reggae catalog'],
             'vp'       => ['label' => 'VP', 'notes' => 'VP Records — reggae specialist'],
         ],
+        // 🧴 Accessories low — cleaning kits + other accessories running low.
+        // Non-music consumables (vinyl cleaning kits, brushes, sleeves) that
+        // should always be on the shelf. Unlike the music buckets this isn't
+        // sales-velocity driven — any item in an Accessories category at or
+        // below max_stock surfaces so it gets reordered during the weekly
+        // check. Tune the category name / thresholds here, no deploy needed.
+        'accessories_low' => [
+            'category_patterns' => ['Accessories'],
+            'max_stock' => 2,
+            'target_stock' => 4,
+            'max_items' => 100,
+        ],
         // ❄️ Frozen inventory — stock-on-shelf with no recent sale.
         // Listed as a "do not reorder" warning bucket; tags cross-reference
         // matches in other buckets.
