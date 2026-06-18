@@ -760,6 +760,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/cost-price-rules', 'CostPriceRulesController@index');
     Route::post('/admin/cost-price-rules/run', 'CostPriceRulesController@run');
 
+    // Help assistant key config (self-serve, no SSH / .env editing needed).
+    Route::get('/admin/help-assistant', 'HelpAssistantSettingsController@index')->name('help-assistant.settings');
+    Route::post('/admin/help-assistant/save', 'HelpAssistantSettingsController@save');
+
     // Listing commissions owed to staff for items they listed. Derived live
     // from products.created_by + users.cmmsn_percent × sell price; "paid" is
     // tracked in storage/app/listing-commission-payouts.json (no migration).

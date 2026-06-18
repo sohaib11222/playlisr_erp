@@ -22,12 +22,15 @@ class HelpAssistantController extends Controller
     {
         $fallback = "I can't reach the help assistant right now. Ask a manager, or check the sidebar menu for the section you need.";
 
-        // Fall back through every way the key might reach us, so a cached
-        // config doesn't make a present key look missing.
-        $apiKey = config('services.anthropic.api_key') ?: env('ANTHROPIC_API_KEY') ?: getenv('ANTHROPIC_API_KEY');
+        // Key comes from the in-ERP settings page first (storage/app, no SSH
+        // needed), then falls back to .env for anyone who prefers that.
+        $cfg = HelpAssistantSettingsController::readConfig();
+        $apiKey = $cfg['api_key'] ?? null;
+        $apiKey = $apiKey ?: config('services.anthropic.api_key') ?: env('ANTHROPIC_API_KEY') ?: getenv('ANTHROPIC_API_KEY');
         if (empty($apiKey)) {
-            return response()->json(['reply' => "Setup needed: the help assistant's API key isn't loaded on the server yet. A manager should add ANTHROPIC_API_KEY to the .env file (and rebuild config cache if the server caches config). Once that's done I'll be able to answer."]);
+            return response()->json(['reply' => "Setup needed: a manager needs to add the AI key at /admin/help-assistant before I can answer. Once it's saved there, I'll work right away."]);
         }
+        $model = $cfg['model'] ?? config('services.anthropic.model', 'claude-haiku-4-5');
 
         $history = $request->input('messages', []);
         if (!is_array($history)) {
@@ -64,7 +67,7 @@ class HelpAssistantController extends Controller
                     'content-type' => 'application/json',
                 ],
                 'json' => [
-                    'model' => config('services.anthropic.model', 'claude-haiku-4-5'),
+                    'model' => $model,
                     'max_tokens' => 700,
                     'system' => [
                         [
