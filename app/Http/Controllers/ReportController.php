@@ -72,21 +72,30 @@ class ReportController extends Controller
 
     public function getStockBySellingPrice(Request $request)
     {
+        // Open to all staff — inventory valuation, not aggregated sales.
         $business_id = $request->session()->get('user.business_id');
-        $start_date = $request->get('start_date');
-        $end_date = $request->get('end_date');
-        $location_id = $request->get('location_id');
 
-        $day_before_start_date = \Carbon::createFromFormat('Y-m-d', $start_date)->subDay()->format('Y-m-d');
+        //Return the details in ajax call
+        if ($request->ajax()) {
+            $start_date = $request->get('start_date');
+            $end_date = $request->get('end_date');
+            $location_id = $request->get('location_id');
 
-        $opening_stock_by_sp = $this->transactionUtil->getOpeningClosingStock($business_id, $day_before_start_date, $location_id, true, true);
+            $day_before_start_date = \Carbon::createFromFormat('Y-m-d', $start_date)->subDay()->format('Y-m-d');
 
-        $closing_stock_by_sp = $this->transactionUtil->getOpeningClosingStock( $business_id, $end_date, $location_id, false, true);
+            $opening_stock_by_sp = $this->transactionUtil->getOpeningClosingStock($business_id, $day_before_start_date, $location_id, true, true);
 
-        return [
-            'opening_stock_by_sp' => $opening_stock_by_sp,
-            'closing_stock_by_sp' => $closing_stock_by_sp
-        ];
+            $closing_stock_by_sp = $this->transactionUtil->getOpeningClosingStock($business_id, $end_date, $location_id, false, true);
+
+            return [
+                'opening_stock_by_sp' => $opening_stock_by_sp,
+                'closing_stock_by_sp' => $closing_stock_by_sp
+            ];
+        }
+
+        $business_locations = BusinessLocation::forDropdown($business_id, true);
+
+        return view('report.stock_by_selling_price', compact('business_locations'));
     }
 
     /**
