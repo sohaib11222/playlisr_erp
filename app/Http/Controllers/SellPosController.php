@@ -5804,16 +5804,23 @@ class SellPosController extends Controller
                 return response()->json(['success' => true, 'recommendations' => []]);
             }
 
-            // Artists already in the cart drive the suggestions.
-            $artists = Product::whereIn('id', $product_ids)
-                ->whereNotNull('artist')
-                ->where('artist', '!=', '')
-                ->pluck('artist')
-                ->map(function ($a) { return trim($a); })
-                ->filter()
-                ->unique()
-                ->values()
-                ->all();
+            // Artists already in the cart drive the suggestions. The catalog
+            // stores artist two ways: Discogs imports fill the `artist` column
+            // (name = "Artist - Title"), while legacy records leave it empty
+            // and bake the artist into the name as "Title / Artist". Handle
+            // both so suggestions work regardless of how a record was added.
+            $artists = [];
+            foreach (Product::whereIn('id', $product_ids)->get(['name', 'artist']) as $p) {
+                $a = trim((string) $p->artist);
+                if ($a === '' && strpos((string) $p->name, ' / ') !== false) {
+                    $parts = explode(' / ', (string) $p->name);
+                    $a = trim((string) end($parts));
+                }
+                if ($a !== '') {
+                    $artists[mb_strtolower($a)] = $a; // case-insensitive dedupe
+                }
+            }
+            $artists = array_values($artists);
 
             if (empty($artists)) {
                 return response()->json(['success' => true, 'recommendations' => []]);
@@ -5830,7 +5837,15 @@ class SellPosController extends Controller
                 ->where('p.is_inactive', 0)
                 ->where('p.not_for_selling', 0)
                 ->where('pl.location_id', $location_id)
-                ->whereIn('p.artist', $artists)
+                // Match either storage convention: the artist column (Discogs)
+                // or the "... / Artist" name suffix (legacy records).
+                ->where(function ($q) use ($artists) {
+                    $q->whereIn('p.artist', $artists);
+                    foreach ($artists as $a) {
+                        $esc = addcslashes($a, '\\%_');
+                        $q->orWhere('p.name', 'like', '% / ' . $esc . '%');
+                    }
+                })
                 ->whereNotIn('p.id', $product_ids)
                 ->where('VLD.qty_available', '>', 0)
                 ->select(
