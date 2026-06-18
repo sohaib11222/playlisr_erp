@@ -54,7 +54,7 @@
                                 <td>{{ $r['contact_id'] }}</td>
                                 <td>{{ $r['name'] }}</td>
                                 <td>{{ $r['phone'] }}</td>
-                                <td class="text-right">${{ number_format($r['amount'], 2) }}</td>
+                                <td class="text-right">${{ number_format($r['csv_credit'], 2) }}</td>
                             </tr>
                         @endforeach
                     </tbody>

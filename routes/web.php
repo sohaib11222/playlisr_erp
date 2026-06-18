@@ -998,109 +998,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
         ], 200, [], JSON_PRETTY_PRINT);
     });
 
-    // Read-only review of the legacy store-credit CSV so credits can be applied
-    // by hand WITHOUT double-crediting anyone who already has a balance.
-    // For each pending row: CSV amount vs the contact's CURRENT balance, plus a
-    // caution flag for anyone who already holds credit or was already applied.
-    // Writes nothing — this is a worksheet, not an apply tool.
-    Route::get('/admin/store-credit-review', function () {
-        // WHO is pending = the tagged contacts. For the AMOUNT we must NOT sum
-        // across CSV files: the folder holds several re-runs of the same import,
-        // so a contact appearing in 3 files would be triple-counted. Instead we
-        // sum a contact's rows WITHIN each file (one person can have several
-        // legacy credit lines), then take the value from the NEWEST file that
-        // contains them (last export wins). A per-file summary is returned so the
-        // grand total can be sanity-checked against the known $6,159.38.
-        $files = glob(storage_path('app/imports/nivessa_pending_store_credits_*.csv')) ?: [];
-        rsort($files); // newest first
-
-        $csvByContact = [];   // contact_id => ['amount'=>float, 'phone'=>string]
-        $perFile = [];        // diagnostics per file
-        foreach ($files as $f) {
-            if (($fh = fopen($f, 'r')) === false) continue;
-            $header = fgetcsv($fh); // contact_id, import_external_id, name, phone, credit_amount, notes
-            $withinFile = [];   // cid => ['amount'=>float, 'phone'=>string]
-            while (($r = fgetcsv($fh)) !== false) {
-                if (count($r) !== count($header)) continue;
-                $row = array_combine($header, $r);
-                $cid = (int) ($row['contact_id'] ?? 0);
-                if (!$cid) continue;
-                if (!isset($withinFile[$cid])) {
-                    $withinFile[$cid] = ['amount' => 0.0, 'phone' => $row['phone'] ?? ''];
-                }
-                $withinFile[$cid]['amount'] += (float) ($row['credit_amount'] ?? 0);
-            }
-            fclose($fh);
-
-            $fileTotal = 0.0;
-            foreach ($withinFile as $cid => $info) {
-                $fileTotal += $info['amount'];
-                // Newest file wins: first occurrence in newest-first order.
-                if (!isset($csvByContact[$cid])) {
-                    $csvByContact[$cid] = ['amount' => $info['amount'], 'phone' => $info['phone']];
-                }
-            }
-            $perFile[] = [
-                'file' => basename($f),
-                'contacts' => count($withinFile),
-                'total' => round($fileTotal, 2),
-            ];
-        }
-
-        $contacts = \DB::table('contacts')
-            ->where('import_source', 'nivessa_backend_store_credit')
-            ->select('id', 'name', 'mobile', 'balance', 'balance_notes')
-            ->get();
-
-        $review = [];
-        $totals = ['tagged' => $contacts->count(), 'safe_to_apply' => 0,
-                   'already_applied' => 0, 'already_has_balance' => 0,
-                   'amount_unknown' => 0, 'csv_total_known' => 0.0];
-        foreach ($contacts as $c) {
-            $csv = $csvByContact[$c->id] ?? null;
-            $amount = $csv ? round($csv['amount'], 2) : null;
-            if ($amount !== null) $totals['csv_total_known'] += $amount;
-
-            $currentBalance = (float) $c->balance;
-            $alreadyApplied = strpos((string) $c->balance_notes, 'store-credit +') !== false;
-            $hasBalance = $currentBalance > 0.001;
-
-            if ($alreadyApplied) $totals['already_applied']++;
-            if ($hasBalance) $totals['already_has_balance']++;
-            if ($amount === null) $totals['amount_unknown']++;
-
-            // Safe = zero balance, never applied, and we actually know the amount.
-            $safe = !$alreadyApplied && !$hasBalance && $amount !== null;
-            if ($safe) $totals['safe_to_apply']++;
-
-            $flags = [];
-            if ($alreadyApplied) $flags[] = 'already_applied';
-            if ($hasBalance) $flags[] = 'CAUTION_already_has_balance';
-            if ($amount === null) $flags[] = 'amount_unknown';
-
-            $review[] = [
-                'contact_id' => $c->id,
-                'name' => $c->name,
-                'phone' => $c->mobile ?: ($csv['phone'] ?? ''),
-                'csv_credit' => $amount,
-                'current_balance' => round($currentBalance, 2),
-                'status' => $safe ? 'safe_to_apply' : 'review',
-                'flags' => $flags,
-            ];
-        }
-
-        // Needs-review rows first.
-        usort($review, function ($a, $b) {
-            return ($a['status'] === 'safe_to_apply' ? 1 : 0) <=> ($b['status'] === 'safe_to_apply' ? 1 : 0);
-        });
-
-        $totals['csv_total_known'] = round($totals['csv_total_known'], 2);
-        return response()->json([
-            'per_file' => $perFile,
-            'totals' => $totals,
-            'rows' => $review,
-        ], 200, [], JSON_PRETTY_PRINT);
-    });
+    // Read-only review of the legacy store-credit pending list: per contact,
+    // CSV amount vs current balance, plus duplicate-contact detection (same
+    // phone, other id) so credit already in the system under another record is
+    // flagged before any apply. JSON + a CSV download to eyeball offline.
+    Route::get('/admin/store-credit-review', 'ApplyLegacyStoreCreditController@review');
+    Route::get('/admin/store-credit-review.csv', 'ApplyLegacyStoreCreditController@reviewCsv');
 });
 
 
