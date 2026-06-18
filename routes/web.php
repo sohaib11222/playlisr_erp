@@ -764,6 +764,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/help-assistant', 'HelpAssistantSettingsController@index')->name('help-assistant.settings');
     Route::post('/admin/help-assistant/save', 'HelpAssistantSettingsController@save');
 
+    // Consumable supplies tracker (waters, bags, paper, sleeves). The help
+    // assistant reads this to answer "are we low on X / when's the next shipment".
+    Route::get('/admin/supplies', 'SuppliesController@index')->name('supplies.index');
+    Route::post('/admin/supplies/save', 'SuppliesController@save');
+
     // Listing commissions owed to staff for items they listed. Derived live
     // from products.created_by + users.cmmsn_percent × sell price; "paid" is
     // tracked in storage/app/listing-commission-payouts.json (no migration).

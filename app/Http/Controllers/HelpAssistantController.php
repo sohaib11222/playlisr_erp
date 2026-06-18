@@ -198,6 +198,12 @@ KB;
             $notes = "(No store-operations notes have been added yet. For questions about supplies, the printer, events, listening parties, or Spotify, tell the employee these haven't been filled in yet and to ask a manager.)";
         }
 
-        return $base . "\n\n=== STORE OPERATIONS NOTES (maintained by Nivessa managers) ===\n" . $notes;
+        $supplies = SuppliesController::formatForBot();
+
+        return $base
+            . "\n\n=== STORE OPERATIONS NOTES (maintained by Nivessa managers) ===\n" . $notes
+            . "\n\n=== CURRENT SUPPLIES STATUS (live; managers update at /admin/supplies) ===\n"
+            . "Use this to answer whether we're low/out of something and when the next restock is due:\n"
+            . $supplies;
     }
 }
