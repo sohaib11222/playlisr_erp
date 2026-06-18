@@ -519,24 +519,20 @@ class CashRegisterController extends Controller
     }
 
     /**
-     * Auto shift-notes visible? On for everyone when the config flag is
-     * flipped live; always on for admins/owners so the feature can be
-     * verified in production before rollout. Never throws.
+     * Auto shift-notes live in the close modal? Strictly the config flag.
+     * Deliberately NOT auto-on for admins: the live close modal must stay
+     * byte-identical to the original for EVERYONE until launch, so nothing
+     * can interfere with cashiers closing their registers. Admins preview
+     * the summary on the dedicated /shift-notes/preview page instead, which
+     * never touches the POS close flow. Never throws.
      */
     private function shiftNotesEnabled(): bool
     {
-        if (config('nivessa.shift_notes_enabled')) {
-            return true;
-        }
         try {
-            $u = auth()->user();
-            if ($u && ($u->can('superadmin') || $u->hasAnyPermission('Admin#' . $u->business_id))) {
-                return true;
-            }
+            return (bool) config('nivessa.shift_notes_enabled');
         } catch (\Throwable $e) {
-            // permission backend hiccup — fall through to hidden
+            return false;
         }
-        return false;
     }
 
     /** Admin-only guard for the shift-notes settings screen. */
@@ -587,6 +583,44 @@ class CashRegisterController extends Controller
             : '';
         $env_locked = trim((string) config('nivessa.shift_notes_slack_webhook', '')) !== '';
         return view('cash_register.shift_notes_settings', compact('masked', 'env_locked'));
+    }
+
+    /**
+     * Admin-only standalone preview of the auto shift summary. Builds the
+     * summary for the most recent register (open or just-closed) so Sarah
+     * can see exactly what the cashier will get at close — WITHOUT touching
+     * the live POS close modal. Never persists or posts anything.
+     */
+    public function shiftNotesPreview()
+    {
+        $this->requireShiftNotesAdmin();
+        $business_id = request()->session()->get('user.business_id');
+
+        $shift_summary = null;
+        $register = null;
+        $error = null;
+        try {
+            $register = \DB::table('cash_registers')
+                ->where('business_id', $business_id)
+                ->orderByDesc('id')
+                ->first();
+            if ($register) {
+                $open_time = (string) $register->created_at;
+                $close_time = !empty($register->closed_at)
+                    ? (string) $register->closed_at
+                    : \Carbon::now()->toDateTimeString();
+                $shift_summary = $this->buildShiftSummary(
+                    $business_id, $register->user_id, $register->location_id, $open_time, $close_time
+                );
+            } else {
+                $error = 'No registers found yet to preview.';
+            }
+        } catch (\Throwable $ex) {
+            \Log::warning('shiftNotesPreview failed: ' . $ex->getMessage());
+            $error = 'Could not build the preview: ' . $ex->getMessage();
+        }
+
+        return view('cash_register.shift_notes_preview', compact('shift_summary', 'error'));
     }
 
     /** Save the webhook to the gitignored settings file (admin only). */
