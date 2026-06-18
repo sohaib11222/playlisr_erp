@@ -150,21 +150,16 @@ class ApplyNivessaStoreCredit extends Command
                     continue;
                 }
 
-                // --- match, strongest signal first ---
+                // --- match ---
+                // Name FIRST: it's the reliable signal for this data. The
+                // import's import_external_id tags are cross-wired (overwritten
+                // when several rows hit one contact by phone), so a tag is only
+                // used as a fallback and only when its contact's name agrees
+                // (enforced by the name-agreement guard below).
                 $contact = null;
                 $matchedBy = null;
 
-                if ($externalId !== '') {
-                    $contact = DB::table('contacts')
-                        ->where('business_id', $businessId)
-                        ->where('import_source', self::IMPORT_SOURCE)
-                        ->where('import_external_id', $externalId)
-                        ->whereNull('deleted_at')
-                        ->first();
-                    if ($contact) $matchedBy = 'tag';
-                }
-
-                if (!$contact && $name !== '') {
+                if ($name !== '') {
                     $byName = DB::table('contacts')
                         ->where('business_id', $businessId)
                         ->whereNull('deleted_at')
@@ -174,6 +169,16 @@ class ApplyNivessaStoreCredit extends Command
                         $contact = $byName->first();
                         $matchedBy = 'name';
                     }
+                }
+
+                if (!$contact && $externalId !== '') {
+                    $contact = DB::table('contacts')
+                        ->where('business_id', $businessId)
+                        ->where('import_source', self::IMPORT_SOURCE)
+                        ->where('import_external_id', $externalId)
+                        ->whereNull('deleted_at')
+                        ->first();
+                    if ($contact) $matchedBy = 'tag';
                 }
 
                 if (!$contact) {
