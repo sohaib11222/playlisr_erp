@@ -359,7 +359,13 @@ class ProductController extends Controller
                     // an ex-employee account (no longer allowed to log in), credit
                     // the import instead of the stale name on the account.
                     if ($name === '') {
-                        $isImport = ($row->added_via ?? null) === 'discogs_inventory_import';
+                        // Manual single-product creation (store()) never sets
+                        // added_via, so a non-empty value means the row came
+                        // through a bulk/auto flow (mass add, Discogs import,
+                        // etc.). Those, plus anything an ex-employee account
+                        // created, get credited to the import rather than a
+                        // stale personal name.
+                        $isImport = !empty($row->added_via);
                         $creatorInactive = isset($row->created_by_allow_login)
                             && (int) $row->created_by_allow_login !== 1;
                         if ($isImport || $creatorInactive) {
