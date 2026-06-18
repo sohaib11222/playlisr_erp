@@ -5440,7 +5440,6 @@ class ReportController extends Controller
         if ($request->ajax()) {
             $location_id = $request->input('location_id');
             $format = $request->input('format');
-            $class_filter = strtoupper(trim((string) $request->input('class', '')));
 
             $inventory_query = DB::table('product_stock_cache as psc')
                 ->leftJoin('categories as sc', 'psc.sub_category_id', '=', 'sc.id')
@@ -5480,54 +5479,52 @@ class ReportController extends Controller
                 $classMap = $locationMaps[(int) $location_id];
             }
 
+            // For the live fallback (no import), rank by inventory value so the
+            // bottom slice can be flagged C. With an import, class comes straight
+            // from the map and order doesn't matter here.
             $rows = $inventory_rows->sortByDesc('inventory_value')->values();
-
             $total_value = (float) $rows->sum('inventory_value');
             $running = 0;
-            $classified = [];
+
+            // This report IS the markdown list: only slow movers (class C) that
+            // are still on hand. Each gets 30% off the current sticker.
+            $markdown = [];
             foreach ($rows as $row) {
                 $value = (float) $row->inventory_value;
                 $running += $value;
                 $cumulative_pct = $total_value > 0 ? ($running / $total_value) * 100 : 0;
 
                 if (!empty($imported)) {
-                    // Imported takes precedence; unmapped products show as
-                    // blank rather than a misleading live class.
                     $class = $classMap[(int) $row->product_id] ?? '';
-                } elseif ($cumulative_pct <= 80) {
-                    $class = 'A';
-                } elseif ($cumulative_pct <= 95) {
-                    $class = 'B';
                 } else {
-                    $class = 'C';
+                    $class = $cumulative_pct <= 95 ? 'AB' : 'C';
                 }
 
-                if ($class_filter !== '' && $class !== $class_filter) {
+                if ($class !== 'C') {
                     continue;
                 }
 
-                // Markdown suggestion: C-class slow movers get 30% off the
-                // current sticker (tax-inclusive). A/B keep full price.
                 $current_price = (float) $row->current_price;
-                $markdown_price = ($class === 'C' && $current_price > 0)
-                    ? round($current_price * 0.70, 2)
-                    : null;
+                if ($current_price <= 0) {
+                    continue;
+                }
 
-                $classified[] = [
+                $markdown[] = [
+                    'format' => $row->format ?: '— Other —',
                     'product' => $row->product,
                     'sku' => $row->sku,
-                    'format' => $row->format ?: '— Uncategorized —',
                     'qty_on_hand' => (float) $row->qty_on_hand,
-                    'qty_sold' => (float) $row->qty_sold,
-                    'inventory_value' => $value,
                     'current_price' => $current_price,
-                    'markdown_price' => $markdown_price,
-                    'cumulative_value_pct' => round($cumulative_pct, 2),
-                    'abc_class' => $class,
+                    'markdown_price' => round($current_price * 0.70, 2),
                 ];
             }
 
-            return Datatables::of(collect($classified))->make(true);
+            // Group by genre: genre A→Z, then most-overstocked first within each.
+            usort($markdown, function ($a, $b) {
+                return [$a['format'], -$a['qty_on_hand']] <=> [$b['format'], -$b['qty_on_hand']];
+            });
+
+            return Datatables::of(collect($markdown))->make(true);
         }
 
         $business_locations = BusinessLocation::forDropdown($business_id, true);
