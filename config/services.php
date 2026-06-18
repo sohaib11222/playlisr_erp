@@ -54,6 +54,15 @@ return [
         'backend_sync_url' => env('NIVESSA_BACKEND_SYNC_URL'),
     ],
 
+    // Anthropic Claude — powers the in-ERP "Ask the ERP" help assistant
+    // (HelpAssistantController). Key lives in .env as ANTHROPIC_API_KEY so it
+    // never lands in the repo. If the key is absent the widget still loads and
+    // falls back to a "ask a manager" message, so nothing breaks without it.
+    'anthropic' => [
+        'api_key' => env('ANTHROPIC_API_KEY'),
+        'model'   => env('ANTHROPIC_HELP_MODEL', 'claude-haiku-4-5'),
+    ],
+
     // eBay Marketplace Account Deletion webhook (Developer → Alerts & Notifications).
     // Endpoint URL in the portal must match marketplace_deletion_endpoint_url byte-for-byte.
     'ebay' => [

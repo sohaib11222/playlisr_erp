@@ -1062,3 +1062,8 @@ Route::post('store-purchase-excel', 'PurchaseController@importExcel')->name('pur
 Route::get('/import-purchase-excel-file', 'PurchaseController@importExcelFile')->name('purchases.import-excel-file');
 
 Route::post('updateStock' , [\App\Http\Controllers\ProductController::class , 'updateStock']);
+
+// In-ERP "Ask the ERP" help assistant (floating widget on every page).
+Route::middleware(['setData', 'auth', 'SetSessionData'])->group(function () {
+    Route::post('help-assistant/message', 'HelpAssistantController@message')->name('help-assistant.message');
+});

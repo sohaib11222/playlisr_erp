@@ -122,7 +122,9 @@
 
         @include('layouts.partials.javascripts')
 
-        <div class="modal fade view_modal" tabindex="-1" role="dialog" 
+        @include('layouts.partials.help-assistant')
+
+        <div class="modal fade view_modal" tabindex="-1" role="dialog"
         aria-labelledby="gridSystemModalLabel"></div>
 
         @if(!empty($__additional_views) && is_array($__additional_views))
