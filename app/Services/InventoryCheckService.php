@@ -905,9 +905,8 @@ class InventoryCheckService
         }
         if (empty($cache[$business_id])) return [];
 
-        $needleArtist = $artist ? mb_strtolower($artist) : '';
-        $needleTitle = $title ? mb_strtolower($title) : '';
-        if ($needleTitle === '' && $needleArtist === '') return [];
+        $candidates = $this->supplierMatchCandidates($artist, $title);
+        if (empty($candidates)) return [];
 
         $out = [];
         foreach ($cache[$business_id] as $key => $bundle) {
@@ -916,9 +915,7 @@ class InventoryCheckService
                 if (!is_array($row)) continue;
                 $rArtist = mb_strtolower((string) ($row['artist'] ?? ''));
                 $rTitle = mb_strtolower((string) ($row['title'] ?? ''));
-                $titleHit = $needleTitle !== '' && $rTitle !== '' && mb_strpos($rTitle, $needleTitle) !== false;
-                $artistHit = $needleArtist !== '' && $rArtist !== '' && mb_strpos($rArtist, $needleArtist) !== false;
-                if (!$titleHit || ($needleArtist !== '' && !$artistHit)) continue;
+                if (!$this->rowMatchesCandidates($rArtist, $rTitle, $candidates)) continue;
                 $cost = isset($row['cost']) ? (float) $row['cost'] : null;
                 if ($cost === null || $cost <= 0) continue;
                 if ($bestForThisSupplier === null || $cost < $bestForThisSupplier['cost']) {
@@ -940,48 +937,57 @@ class InventoryCheckService
 
     public function bestSupplierPrice(int $business_id, ?string $artist, ?string $title, ?string $format = null): ?array
     {
-        static $cache = []; // [business_id => [supplier_key => indexed_rows]]
-        if (!isset($cache[$business_id])) {
-            $cache[$business_id] = [];
-            foreach ($this->knownSuppliers() as $key => $meta) {
-                $feed = $this->loadSupplierFeed($business_id, $key);
-                if (empty($feed['rows']) || !is_array($feed['rows'])) continue;
-                $cache[$business_id][$key] = [
-                    'label' => $meta['label'] ?? $key,
-                    'rows' => $feed['rows'],
-                ];
-            }
-        }
-        if (empty($cache[$business_id])) return null;
+        // allSupplierPrices() returns every supplier's match sorted cheapest
+        // first, so the best price is just the head of that list. Sharing the
+        // same matcher keeps "best badge" and the per-supplier columns in sync.
+        $all = $this->allSupplierPrices($business_id, $artist, $title, $format);
+        return $all[0] ?? null;
+    }
 
-        $needleArtist = $artist ? mb_strtolower($artist) : '';
-        $needleTitle = $title ? mb_strtolower($title) : '';
-        if ($needleTitle === '' && $needleArtist === '') return null;
-
-        $best = null;
-        foreach ($cache[$business_id] as $key => $bundle) {
-            foreach ($bundle['rows'] as $row) {
-                if (!is_array($row)) continue;
-                $rArtist = mb_strtolower((string) ($row['artist'] ?? ''));
-                $rTitle = mb_strtolower((string) ($row['title'] ?? ''));
-                $titleHit = $needleTitle !== '' && $rTitle !== '' && mb_strpos($rTitle, $needleTitle) !== false;
-                $artistHit = $needleArtist !== '' && $rArtist !== '' && mb_strpos($rArtist, $needleArtist) !== false;
-                if (!$titleHit || ($needleArtist !== '' && !$artistHit)) continue;
-                $cost = isset($row['cost']) ? (float) $row['cost'] : null;
-                if ($cost === null || $cost <= 0) continue;
-                if ($best === null || $cost < $best['cost']) {
-                    $best = [
-                        'supplier_key' => $key,
-                        'supplier_label' => $bundle['label'],
-                        'cost' => $cost,
-                        'upc' => $row['upc'] ?? null,
-                        'format' => $row['format'] ?? null,
-                        'url' => $row['url'] ?? null,
-                    ];
+    /**
+     * Build the (artist, title) needle pairs to try when matching an ERP
+     * product against supplier feeds. Some products have a real artist
+     * column + clean title; legacy records leave artist empty and bake both
+     * into the product name as "Artist / Title" (or "Title / Artist", or
+     * "Artist - Title"). Supplier feeds always store artist and title
+     * separately, so the combined name never matches as-is — when the artist
+     * column is empty we split the name and try both orientations.
+     */
+    protected function supplierMatchCandidates(?string $artist, ?string $title): array
+    {
+        $artist = trim((string) $artist);
+        $title = trim((string) $title);
+        if ($title === '') return [];
+        $cands = [[$artist, $title]];
+        if ($artist === '') {
+            foreach ([' / ', ' - '] as $sep) {
+                if (mb_strpos($title, $sep) === false) continue;
+                [$a, $b] = array_map('trim', explode($sep, $title, 2));
+                if ($a !== '' && $b !== '') {
+                    $cands[] = [$a, $b];
+                    $cands[] = [$b, $a];
                 }
             }
         }
-        return $best;
+        return $cands;
+    }
+
+    /**
+     * True if a supplier-feed row's artist/title (already lowercased)
+     * satisfies any candidate needle pair: the title needle must be a
+     * substring of the row title, and — when an artist needle is given — the
+     * artist needle must be a substring of the row artist.
+     */
+    protected function rowMatchesCandidates(string $rArtist, string $rTitle, array $candidates): bool
+    {
+        foreach ($candidates as [$na, $nt]) {
+            $nt = mb_strtolower((string) $nt);
+            if ($nt === '' || $rTitle === '' || mb_strpos($rTitle, $nt) === false) continue;
+            $na = mb_strtolower((string) $na);
+            if ($na !== '' && ($rArtist === '' || mb_strpos($rArtist, $na) === false)) continue;
+            return true;
+        }
+        return false;
     }
 
     /**
