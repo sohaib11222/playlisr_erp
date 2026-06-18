@@ -199,11 +199,15 @@ KB;
         }
 
         $supplies = SuppliesController::formatForBot();
+        $requests = SupplyRequestController::formatForBot();
 
         return $base
             . "\n\n=== STORE OPERATIONS NOTES (maintained by Nivessa managers) ===\n" . $notes
             . "\n\n=== CURRENT SUPPLIES STATUS (live; managers update at /admin/supplies) ===\n"
             . "Use this to answer whether we're low/out of something and when the next restock is due:\n"
-            . $supplies;
+            . $supplies
+            . "\n\n=== OPEN SUPPLY REQUESTS (live; staff submit at Supplies > Request a Supply) ===\n"
+            . "Use this to answer 'did my request get ordered / when's it coming'. To request a new supply, tell staff to open Supplies > Request a Supply in the left sidebar:\n"
+            . $requests;
     }
 }

@@ -580,6 +580,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // gitignored server file, not in git).
     Route::get('/shift-notes/settings', 'CashRegisterController@shiftNotesSettings');
     Route::post('/shift-notes/settings', 'CashRegisterController@saveShiftNotesSettings');
+    // Admin-only preview of the auto shift summary — never touches the POS
+    // close modal, so it's safe to view without risking the close flow.
+    Route::get('/shift-notes/preview', 'CashRegisterController@shiftNotesPreview');
     // Handover confirm screen — the prior cashier acknowledges that the
     // next cashier opened with a fresh count of their drawer. Locked
     // closing_amount + required reason field. Sarah 2026-05-13.
@@ -772,6 +775,14 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // assistant reads this to answer "are we low on X / when's the next shipment".
     Route::get('/admin/supplies', 'SuppliesController@index')->name('supplies.index');
     Route::post('/admin/supplies/save', 'SuppliesController@save');
+
+    // Supply requests. Any staff member can submit + see their own requests
+    // (status / ordered date / ETA / tracking). Managers mark ordered and add
+    // tracking from the /admin view. JSON-backed (storage/app/supply_requests.json).
+    Route::get('/supply-requests', 'SupplyRequestController@myRequests')->name('supply-requests.my');
+    Route::post('/supply-requests', 'SupplyRequestController@submit')->name('supply-requests.submit');
+    Route::get('/admin/supply-requests', 'SupplyRequestController@admin')->name('supply-requests.admin');
+    Route::post('/admin/supply-requests/update', 'SupplyRequestController@update')->name('supply-requests.update');
 
     // Listing commissions owed to staff for items they listed. Derived live
     // from products.created_by + users.cmmsn_percent × sell price; "paid" is

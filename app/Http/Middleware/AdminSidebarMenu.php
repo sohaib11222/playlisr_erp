@@ -494,6 +494,36 @@ class AdminSidebarMenu
                 ['icon' => 'fa fas fa-life-ring', 'active' => request()->segment(1) == 'help']
             )->order(57);
 
+            //Supplies & requests. "Request a Supply" is open to every staff
+            //member; the manage views are admin-only (business_settings.access).
+            //Badge on "Request a Supply" = the user's requests a manager has
+            //updated (ordered/received) that they haven't seen yet.
+            $unseen = \App\Http\Controllers\SupplyRequestController::unseenCountFor(auth()->id());
+            $badge = $unseen > 0 ? ' <span class="label label-warning">' . $unseen . '</span>' : '';
+            $menu->dropdown(
+                'Supplies' . $badge,
+                function ($sub) use ($badge) {
+                    $sub->url(
+                        action('SupplyRequestController@myRequests'),
+                        'Request a Supply' . $badge,
+                        ['icon' => 'fa fas fa-hand-paper', 'active' => request()->segment(1) == 'supply-requests']
+                    );
+                    if (auth()->user()->can('business_settings.access')) {
+                        $sub->url(
+                            action('SupplyRequestController@admin'),
+                            'Manage Requests',
+                            ['icon' => 'fa fas fa-clipboard-list', 'active' => request()->segment(1) == 'admin' && request()->segment(2) == 'supply-requests']
+                        );
+                        $sub->url(
+                            action('SuppliesController@index'),
+                            'Stock Levels',
+                            ['icon' => 'fa fas fa-boxes', 'active' => request()->segment(1) == 'admin' && request()->segment(2) == 'supplies']
+                        );
+                    }
+                },
+                ['icon' => 'fa fas fa-truck-loading']
+            )->order(58);
+
 
             //Backup menu
             if (auth()->user()->can('backup')) {

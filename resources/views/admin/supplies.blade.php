@@ -4,7 +4,7 @@
 @section('content')
 <section class="content-header">
     <h1>Supplies</h1>
-    <p class="text-muted">Track consumables (waters, bags, receipt/label paper, sleeves, cleaning kits). Set each item's status and when the next restock is expected. The "Ask the ERP" assistant reads this, so staff can ask "are we low on waters?" or "when's the next shipment?".</p>
+    <p class="text-muted">Track consumables (waters, bags, receipt/label paper, sleeves, cleaning kits). Set each item's status, which store it's for, and when the next restock is expected. The "Ask the ERP" assistant reads this, so staff can ask "are we low on waters at Pico?" or "when's the next shipment?". To see what staff have requested, go to <a href="{{ action('SupplyRequestController@admin') }}">Manage Requests</a>.</p>
 </section>
 
 <section class="content">
@@ -17,9 +17,10 @@
                     <table class="table table-condensed" id="supplies-table">
                         <thead>
                             <tr>
-                                <th style="width:28%;">Item</th>
-                                <th style="width:18%;">Status</th>
-                                <th style="width:22%;">Next restock / shipment</th>
+                                <th style="width:24%;">Item</th>
+                                <th style="width:16%;">Status</th>
+                                <th style="width:16%;">Store</th>
+                                <th style="width:20%;">Next restock / shipment</th>
                                 <th>Note</th>
                                 <th style="width:40px;"></th>
                             </tr>
@@ -32,6 +33,14 @@
                                     <select name="status[]" class="form-control input-sm">
                                         @foreach ($statuses as $val => $label)
                                             <option value="{{ $val }}" @if(($it['status'] ?? 'ok') === $val) selected @endif>{{ $label }}</option>
+                                        @endforeach
+                                    </select>
+                                </td>
+                                <td>
+                                    <select name="location_id[]" class="form-control input-sm">
+                                        <option value="">All stores</option>
+                                        @foreach ($locations as $lid => $lname)
+                                            <option value="{{ $lid }}" @if(($it['location_id'] ?? null) == $lid) selected @endif>{{ $lname }}</option>
                                         @endforeach
                                     </select>
                                 </td>
@@ -55,12 +64,14 @@
 <script>
 (function () {
     var statusOptions = `@foreach($statuses as $val => $label)<option value="{{ $val }}">{{ $label }}</option>@endforeach`;
+    var locationOptions = `<option value="">All stores</option>@foreach($locations as $lid => $lname)<option value="{{ $lid }}">{{ $lname }}</option>@endforeach`;
 
     function newRow() {
         var tr = document.createElement('tr');
         tr.innerHTML =
             '<td><input type="text" name="name[]" class="form-control input-sm"></td>' +
             '<td><select name="status[]" class="form-control input-sm">' + statusOptions + '</select></td>' +
+            '<td><select name="location_id[]" class="form-control input-sm">' + locationOptions + '</select></td>' +
             '<td><input type="text" name="next_restock[]" class="form-control input-sm" placeholder="e.g. Mon Jun 23, or weekly"></td>' +
             '<td><input type="text" name="note[]" class="form-control input-sm"></td>' +
             '<td><button type="button" class="btn btn-link text-red supplies-remove" title="Remove row">&times;</button></td>';
