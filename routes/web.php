@@ -375,6 +375,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/expense-report', 'ReportController@getExpenseReport');
     Route::get('/reports/stock-adjustment-report', 'ReportController@getStockAdjustmentReport');
     Route::get('/reports/register-report', 'ReportController@getRegisterReport');
+    Route::get('/reports/cash-deposits', 'CashDepositsReportController@index');
     Route::get('/reports/sales-representative-report', 'ReportController@getSalesRepresentativeReport');
     Route::get('/reports/sales-representative-total-expense', 'ReportController@getSalesRepresentativeTotalExpense');
     Route::get('/reports/sales-representative-total-sell', 'ReportController@getSalesRepresentativeTotalSell');

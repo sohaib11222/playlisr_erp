@@ -283,7 +283,8 @@
 						Count what you're putting in the safe <u>very</u> carefully.
 					</div>
 					<div class="cr-safe-alert-postit">
-						Write this on a post-it and stick it on the bundle:
+						Put the cash in one of the <strong>small brown envelopes</strong>
+						next to the cash box, then write this on the envelope:
 					</div>
 					<div class="cr-deposit-slip">
 						<div class="cr-deposit-slip-title">Deposit slip</div>

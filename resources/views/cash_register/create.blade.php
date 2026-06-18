@@ -243,7 +243,8 @@
                 Count what you're putting in the safe <u>very</u> carefully.
               </div>
               <div style="font-size:14px; font-weight:600; margin-top:8px; color:#6B2A14;">
-                Write this on a post-it and stick it on the bundle:
+                Put the cash in one of the <strong>small brown envelopes</strong>
+                next to the cash box, then write this on the envelope:
               </div>
               <div style="margin-top:10px; background:#FFF7E8; border:1.5px dashed #E8A07A;
                   border-radius:10px; padding:12px 14px;">
