@@ -159,6 +159,7 @@ class AbcImportController extends Controller
             'abcxyz_map' => $result['abcxyz_map'] ?? [],
             'location_map' => $result['location_map'],
             'unmatched' => $result['unmatched'],
+            'report_rows' => $result['report_rows'] ?? [],
         ];
     }
 
