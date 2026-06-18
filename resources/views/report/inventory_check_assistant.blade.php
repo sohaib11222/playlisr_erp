@@ -117,6 +117,20 @@ HTML;
         {!! $renderSplitRow('USED', 'Cap 35% · keep low — slow sell-through', $usedBar, $usedBarClass, $usedColor, 'ica-bar-used') !!}
         {!! $renderSplitRow('NEW',  'Target 65% · majority of weekly spend', $newBar, $newBarClass, $newColor, 'ica-bar-new') !!}
 
+        {{-- ── Per-store Used/New sub-budgets (Sarah 2026-06-17) ──────── --}}
+        @if(!empty($pb['per_store']))
+        <div class="ica-budget-per-loc-label" style="margin-top:6px;"><small class="text-muted">By store this week — Hollywood 75% / Pico 25% of the weekly budget:</small></div>
+        @foreach($pb['per_store'] as $st)
+            @php
+                [$stUsedClass, $stUsedColor] = $bandFor($st['used']);
+                [$stNewClass, $stNewColor] = $bandFor($st['new']);
+                $stPct = rtrim(rtrim(number_format($st['pct_of_total'] * 100, 1), '0'), '.');
+            @endphp
+            {!! $renderSplitRow($st['label'] . ' · Used', $stPct . '% of week · 35% cap', $st['used'], $stUsedClass, $stUsedColor, 'ica-bar-used') !!}
+            {!! $renderSplitRow($st['label'] . ' · New',  $stPct . '% of week · the rest',  $st['new'],  $stNewClass,  $stNewColor,  'ica-bar-new') !!}
+        @endforeach
+        @endif
+
         @if(!empty($pb['manual_entries_this_week']))
         <div class="ica-budget-manual-list">
             <small class="text-muted">Manual entries this week:</small>
