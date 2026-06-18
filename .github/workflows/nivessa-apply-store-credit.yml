@@ -1,0 +1,119 @@
+# One-click apply of legacy store-credit balances onto contacts.
+#
+# The apply command (app/Console/Commands/ApplyNivessaStoreCredit.php) reads
+# the cleaned store-credit CSV (legacy_store_credit_WITH_DATES.csv) and SETS
+# contacts.balance = the amount for each row, matching by import_external_id
+# (the external_id column) with exact-name/phone fallback. ERP only — it does
+# NOT push to the Nivessa backend.
+#
+# The CSV must live on the server under storage/app/imports/. Upload it there
+# first (hPanel File Manager → /www/playlist.nivessa.com/app/storage/app/imports/,
+# or scp), then run this workflow. It auto-discovers the newest
+# "legacy_store_credit*.csv", or pass csv_path to override.
+#
+# Defaults to dry-run. Flip mode to "commit" only after the dry-run output —
+# especially the unmatched list and any NON-ZERO existing-balance warnings —
+# looks right.
+#
+# Reuses the same SSH secrets as Deploy production:
+#   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, (optional DEPLOY_PORT)
+
+name: Nivessa · apply store-credit balances
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Dry-run (no writes) or commit (writes contacts.balance)
+        required: true
+        default: dry_run
+        type: choice
+        options:
+          - dry_run
+          - commit
+      csv_path:
+        description: |
+          Override server path to the store-credit CSV. Leave blank to
+          auto-discover under /www/playlist.nivessa.com/app/storage/app/imports/
+          (picks the most recently modified "legacy_store_credit*.csv").
+        required: false
+        default: ''
+      limit:
+        description: Cap rows processed (0 = all). Useful for a smoke test.
+        required: false
+        default: '0'
+
+concurrency:
+  group: nivessa-apply-store-credit
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Run apply over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: true
+          script: |
+            set -e
+            APP=/www/playlist.nivessa.com/app
+            MODE='${{ github.event.inputs.mode }}'
+            OVERRIDE='${{ github.event.inputs.csv_path }}'
+            LIMIT='${{ github.event.inputs.limit }}'
+
+            cd "$APP"
+
+            if [ -n "$OVERRIDE" ]; then
+              CSV="$OVERRIDE"
+            else
+              SEARCH_DIR="$APP/storage/app/imports"
+              if [ ! -d "$SEARCH_DIR" ]; then
+                echo "Expected directory $SEARCH_DIR not found. Pass csv_path explicitly."
+                exit 1
+              fi
+              CSV=$(find "$SEARCH_DIR" -maxdepth 2 -type f -iname 'legacy_store_credit*.csv' -printf '%T@ %p\n' 2>/dev/null \
+                    | sort -nr | head -1 | cut -d' ' -f2-)
+              if [ -z "$CSV" ]; then
+                echo "No 'legacy_store_credit*.csv' found under $SEARCH_DIR."
+                echo "Upload the file there (hPanel File Manager or scp to $SEARCH_DIR/) or pass csv_path."
+                ls -la "$SEARCH_DIR" 2>/dev/null | tail -20
+                exit 1
+              fi
+            fi
+
+            if [ ! -f "$CSV" ]; then
+              echo "File not found at: $CSV"
+              exit 1
+            fi
+
+            echo "=== csv: $CSV ==="
+            ls -lh "$CSV"
+            echo
+            echo "=== mode: $MODE · limit: $LIMIT ==="
+            echo
+
+            ARGS=("$CSV" "--limit=$LIMIT")
+            if [ "$MODE" = "commit" ]; then
+              ARGS+=("--commit")
+            fi
+
+            php artisan nivessa:apply-store-credit "${ARGS[@]}"
