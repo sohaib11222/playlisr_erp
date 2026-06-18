@@ -6332,8 +6332,59 @@ class ReportController extends Controller
             'revenue_per_item' => $items_sold > 0 ? $total_revenue / $items_sold : 0.0,
         ];
 
+        // Per-store units sold by category/subcategory over the trailing 30 days.
+        // Business-wide (all sales, regardless of who barcoded the item), pivoted
+        // with stores as columns. Independent of the date filter above.
+        $stores = BusinessLocation::forDropdown($business_id);
+        $store_window_start = \Carbon::today()->subDays(30)->format('Y-m-d');
+        $store_window_end = \Carbon::today()->format('Y-m-d');
+
+        $store_cat_rows = DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+            ->join('products as p', 'tsl.product_id', '=', 'p.id')
+            ->leftJoin('categories as cat', 'p.category_id', '=', 'cat.id')
+            ->leftJoin('categories as subcat', 'p.sub_category_id', '=', 'subcat.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereDate('t.transaction_date', '>=', $store_window_start)
+            ->whereDate('t.transaction_date', '<=', $store_window_end)
+            ->select(
+                DB::raw('COALESCE(p.category_id, 0) as category_id'),
+                DB::raw('COALESCE(p.sub_category_id, 0) as sub_category_id'),
+                'cat.name as category_name',
+                'subcat.name as subcategory_name',
+                't.location_id',
+                DB::raw('SUM(tsl.quantity - tsl.quantity_returned) as units_sold')
+            )
+            ->groupBy('p.category_id', 'p.sub_category_id', 'cat.name', 'subcat.name', 't.location_id')
+            ->get();
+
+        $store_pivot = [];
+        foreach ($store_cat_rows as $r) {
+            // Only count units sold at stores the viewer is permitted to see.
+            if (!$stores->has($r->location_id)) {
+                continue;
+            }
+            $key = $r->category_id . ':' . $r->sub_category_id;
+            if (!isset($store_pivot[$key])) {
+                $store_pivot[$key] = (object) [
+                    'category_name' => $r->category_name ?: '— Uncategorized —',
+                    'subcategory_name' => $r->subcategory_name ?: '',
+                    'units_by_store' => [],
+                    'total_units' => 0,
+                ];
+            }
+            $units = (int) $r->units_sold;
+            $store_pivot[$key]->units_by_store[$r->location_id] =
+                ($store_pivot[$key]->units_by_store[$r->location_id] ?? 0) + $units;
+            $store_pivot[$key]->total_units += $units;
+        }
+        $store_pivot = collect($store_pivot)->sortByDesc('total_units')->values();
+
         return view('report.revenue_by_employee_barcoding_detail')->with(compact(
-            'items', 'totals', 'employee', 'user', 'start_date', 'end_date', 'by_category'
+            'items', 'totals', 'employee', 'user', 'start_date', 'end_date', 'by_category',
+            'stores', 'store_pivot', 'store_window_start', 'store_window_end'
         ));
     }
 

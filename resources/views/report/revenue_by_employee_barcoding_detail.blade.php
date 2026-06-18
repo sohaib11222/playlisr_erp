@@ -126,6 +126,52 @@
 
     <div class="box box-solid">
         <div class="box-header with-border">
+            <h3 class="box-title">Units Sold by Store &amp; Category</h3>
+            <small class="text-muted">All store sales over the last 30 days ({{ $store_window_start }} → {{ $store_window_end }}), by category/subcategory. Not limited to this employee.</small>
+        </div>
+        <div class="box-body table-responsive">
+            <table class="table table-bordered table-striped">
+                <thead>
+                    <tr>
+                        <th>Category</th>
+                        <th>Subcategory</th>
+                        @foreach($stores as $sid => $sname)
+                            <th class="text-right">{{ $sname }}</th>
+                        @endforeach
+                        <th class="text-right">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse($store_pivot as $row)
+                        <tr>
+                            <td>{{ $row->category_name }}</td>
+                            <td>{{ $row->subcategory_name ?: '—' }}</td>
+                            @foreach($stores as $sid => $sname)
+                                <td class="text-right">{{ number_format($row->units_by_store[$sid] ?? 0) }}</td>
+                            @endforeach
+                            <td class="text-right">{{ number_format($row->total_units) }}</td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="{{ count($stores) + 3 }}" class="text-center text-muted">No store sales in the last 30 days.</td></tr>
+                    @endforelse
+                </tbody>
+                @if($store_pivot->isNotEmpty())
+                <tfoot>
+                    <tr>
+                        <th colspan="2" class="text-right">Total</th>
+                        @foreach($stores as $sid => $sname)
+                            <th class="text-right">{{ number_format($store_pivot->sum(function ($r) use ($sid) { return $r->units_by_store[$sid] ?? 0; })) }}</th>
+                        @endforeach
+                        <th class="text-right">{{ number_format($store_pivot->sum('total_units')) }}</th>
+                    </tr>
+                </tfoot>
+                @endif
+            </table>
+        </div>
+    </div>
+
+    <div class="box box-solid">
+        <div class="box-header with-border">
             <h3 class="box-title">Items that sold {{ $start_date }} → {{ $end_date }}</h3>
         </div>
         <div class="box-body table-responsive">
