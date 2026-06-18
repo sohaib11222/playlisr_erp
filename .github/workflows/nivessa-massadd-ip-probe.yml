@@ -1,0 +1,74 @@
+# Read-only diagnostic: who/what is creating Mass Add products under the
+# Insha account (user id 44). Pulls (a) the client IPs behind POST
+# /product/mass-store from nginx access logs, and (b) the opening-stock
+# transaction creators for those products (session user.id, which differs
+# from product.created_by under "Sign in as user" impersonation).
+# No writes — pure reads. Reuses the Deploy production SSH secrets.
+
+name: Nivessa · mass-add IP probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: Look back this many days
+        required: true
+        default: '10'
+
+concurrency:
+  group: nivessa-massadd-ip-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Run probe over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 180s
+          script: |
+            echo "=== nginx access logs present ==="
+            ls -la /www/wwwlogs/ 2>/dev/null | grep -i playlist || ls -la /www/wwwlogs/ 2>/dev/null | head -30 || echo "no /www/wwwlogs"
+            echo
+            echo "=== POST /product/mass-store hits (IP + time + status), recent ==="
+            for f in /www/wwwlogs/*playlist*.log /www/wwwlogs/access*.log /www/wwwlogs/*.log; do
+              [ -f "$f" ] || continue
+              hits=$(grep -c "product/mass-store" "$f" 2>/dev/null || echo 0)
+              [ "$hits" = "0" ] && continue
+              echo "--- $f ($hits hits) ---"
+              grep "product/mass-store" "$f" 2>/dev/null | awk '{print $1, $4, $5, $6, $7, $9}' | tail -60
+            done
+            echo
+            echo "=== rotated/gz logs ==="
+            for f in /www/wwwlogs/*playlist*.log.gz /www/wwwlogs/*.log.*.gz; do
+              [ -f "$f" ] || continue
+              h=$(zcat "$f" 2>/dev/null | grep -c "product/mass-store")
+              [ "$h" = "0" ] && continue
+              echo "--- $f ($h hits) ---"
+              zcat "$f" 2>/dev/null | grep "product/mass-store" | awk '{print $1, $4, $5, $6, $7, $9}' | tail -40
+            done
+            echo
+            echo "=== DB: opening-stock creators behind user-44 mass_add products (last ${{ github.event.inputs.days }}d) ==="
+            echo 'PD9waHAKJGRheXMgPSAoaW50KSAoZ2V0ZW52KCdQUk9CRV9EQVlTJykgPzogMTApOwokcm93cyA9IERCOjpzZWxlY3QoIgogIFNFTEVDVCB0LmNyZWF0ZWRfYnkgQVMgY3JlYXRvcl9pZCwKICAgICAgICAgQ09BTEVTQ0UoQ09OQ0FUKHUuZmlyc3RfbmFtZSwgJyAnLCBDT0FMRVNDRSh1Lmxhc3RfbmFtZSwnJykpLCAnKG5vbmUpJykgQVMgb3BlbmluZ19jcmVhdG9yLAogICAgICAgICBDT1VOVChESVNUSU5DVCBwLmlkKSBBUyBwcm9kdWN0cwogIEZST00gcHJvZHVjdHMgcAogIExFRlQgSk9JTiB0cmFuc2FjdGlvbnMgdCBPTiB0Lm9wZW5pbmdfc3RvY2tfcHJvZHVjdF9pZCA9IHAuaWQgQU5EIHQudHlwZSA9ICdvcGVuaW5nX3N0b2NrJwogIExFRlQgSk9JTiB1c2VycyB1IE9OIHUuaWQgPSB0LmNyZWF0ZWRfYnkKICBXSEVSRSBwLmFkZGVkX3ZpYSA9ICdtYXNzX2FkZCcgQU5EIHAuY3JlYXRlZF9ieSA9IDQ0CiAgICBBTkQgcC5jcmVhdGVkX2F0ID49IERBVEVfU1VCKE5PVygpLCBJTlRFUlZBTCAkZGF5cyBEQVkpCiAgR1JPVVAgQlkgdC5jcmVhdGVkX2J5LCBvcGVuaW5nX2NyZWF0b3IKICBPUkRFUiBCWSBwcm9kdWN0cyBERVNDCiIpOwpmb3JlYWNoICgkcm93cyBhcyAkcikgewogIGVjaG8gIkRCUk9XXHQiLigkci0+Y3JlYXRvcl9pZCA/PyAnTlVMTCcpLiJcdCIuJHItPm9wZW5pbmdfY3JlYXRvci4iXHQiLiRyLT5wcm9kdWN0cy4iXG4iOwp9CmVjaG8gIkRPTkVcdCIuY291bnQoJHJvd3MpLiIgcm93c1xuIjsK' | base64 -d > /tmp/massadd_probe.php
+            cd /www/playlist.nivessa.com/app && PROBE_DAYS='${{ github.event.inputs.days }}' php artisan tinker /tmp/massadd_probe.php
+            rm -f /tmp/massadd_probe.php
