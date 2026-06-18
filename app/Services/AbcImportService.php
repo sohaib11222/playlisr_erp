@@ -26,6 +26,9 @@ class AbcImportService
 {
     const STORAGE_DIR = 'abc-import';
     const STORAGE_FILE = 'abc-import/latest.json';
+    // Full per-row dataset (all rows incl. unmatched/Manual). Kept out of
+    // latest.json so the hot report/ICA pages don't decode ~13k rows on load.
+    const REPORT_ROWS_FILE = 'abc-import/report_rows.json';
 
     /**
      * Parse a CSV file path. Returns rows:
@@ -172,6 +175,7 @@ class AbcImportService
         $matched_trace = []; // [{csv_*, matched_id, matched_name, matched_category, candidates_count}, ...]
         $matched_count = 0;
         $sku_matched = 0;
+        $report_rows = []; // every CSV row, matched or not — powers the full-report page
 
         $classRank = ['A' => 3, 'B' => 2, 'C' => 1];
 
@@ -196,6 +200,7 @@ class AbcImportService
                 $norm = $this->normalizeName($row['product']);
                 if ($norm === '' || empty($index[$norm])) {
                     $unmatched[] = $row;
+                    $report_rows[] = $this->reportRow($row, false, null, '');
                     continue;
                 }
                 $candidates = $index[$norm];
@@ -222,6 +227,7 @@ class AbcImportService
 
             $pid = (int) $pick->id;
             $matched_count++;
+            $report_rows[] = $this->reportRow($row, true, $pid, $method);
 
             $matched_trace[] = [
                 'csv_product' => $row['product'],
@@ -267,7 +273,29 @@ class AbcImportService
             'matched_trace' => $matched_trace,
             'matched_count' => $matched_count,
             'sku_matched' => $sku_matched,
+            'report_rows' => $report_rows,
             'total' => count($rows),
+        ];
+    }
+
+    /**
+     * One row of the full-report dataset: the analyzer's own data plus whether
+     * we could tie it to an ERP product. "manual" = the analyzer's no-SKU /
+     * "(Manual)" items, which are the ones the reorder tools can't see.
+     */
+    protected function reportRow(array $row, bool $inErp, ?int $pid, string $method): array
+    {
+        return [
+            'product' => $row['product'],
+            'sku' => $row['sku'] ?? '',
+            'format' => $row['format'] ?? '',
+            'class' => $row['class'],
+            'xyz' => $row['xyz'] ?? '',
+            'abc_xyz' => $row['abc_xyz'] ?? '',
+            'in_erp' => $inErp ? 1 : 0,
+            'matched_id' => $pid,
+            'method' => $method,
+            'manual' => (trim((string) ($row['sku'] ?? '')) === '') ? 1 : 0,
         ];
     }
 
@@ -289,10 +317,33 @@ class AbcImportService
         if (!Storage::disk('local')->exists(self::STORAGE_DIR)) {
             Storage::disk('local')->makeDirectory(self::STORAGE_DIR);
         }
-        // Keep dated backup so an upload can be rolled back if needed.
+        // Keep dated backup (with the full row set) so an upload can be rolled back.
         $stamp = date('Y-m-d_His');
         Storage::disk('local')->put(self::STORAGE_DIR . '/snapshot_' . $stamp . '.json', json_encode($payload, JSON_PRETTY_PRINT));
+
+        // The full per-row dataset goes to its own file; latest.json stays lean
+        // (maps only) because it's decoded on every report/ICA page load.
+        $reportRows = $payload['report_rows'] ?? null;
+        unset($payload['report_rows']);
         Storage::disk('local')->put(self::STORAGE_FILE, json_encode($payload, JSON_PRETTY_PRINT));
+        if (is_array($reportRows)) {
+            Storage::disk('local')->put(self::REPORT_ROWS_FILE, json_encode($reportRows));
+        } else {
+            Storage::disk('local')->delete(self::REPORT_ROWS_FILE);
+        }
+    }
+
+    /**
+     * The full per-row report (all uploaded rows incl. unmatched/Manual), or
+     * [] when none is stored. Read only by the full-report page.
+     */
+    public function loadReportRows(): array
+    {
+        if (!Storage::disk('local')->exists(self::REPORT_ROWS_FILE)) {
+            return [];
+        }
+        $data = json_decode(Storage::disk('local')->get(self::REPORT_ROWS_FILE), true);
+        return is_array($data) ? $data : [];
     }
 
     /**

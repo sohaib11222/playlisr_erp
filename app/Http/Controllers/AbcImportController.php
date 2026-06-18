@@ -133,6 +133,9 @@ class AbcImportController extends Controller
         if ($disk->exists(AbcImportService::STORAGE_FILE)) {
             $disk->delete(AbcImportService::STORAGE_FILE);
         }
+        if ($disk->exists(AbcImportService::REPORT_ROWS_FILE)) {
+            $disk->delete(AbcImportService::REPORT_ROWS_FILE);
+        }
         $business_id = $request->session()->get('user.business_id');
         \Illuminate\Support\Facades\Cache::forget('ica_abc_map_' . $business_id);
         return back()->with('status', 'Cleared. ABC classification is back on the live inventory-value computation.');

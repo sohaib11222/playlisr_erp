@@ -5578,6 +5578,68 @@ class ReportController extends Controller
     }
 
     /**
+     * Full ABC report — every row from the uploaded analyzer file, including
+     * the unmatched / Manual items that never reach the markdown report or the
+     * reorder tools (those only see products tied to an ERP record). Lets staff
+     * read reorder priorities straight off the analyzer's own ABC-XYZ codes.
+     */
+    public function abcFullReport(Request $request)
+    {
+        @set_time_limit(0);
+        @ini_set('memory_limit', '512M');
+
+        $abcSvc = new \App\Services\AbcImportService();
+
+        if ($request->ajax()) {
+            $class = strtoupper(trim((string) $request->input('class', '')));
+            $xyz = strtoupper(trim((string) $request->input('xyz', '')));
+            $combo = strtoupper(preg_replace('/\s+/', '', (string) $request->input('abc_xyz', '')));
+            $scope = (string) $request->input('scope', '');
+
+            $rows = collect($abcSvc->loadReportRows())->filter(function ($r) use ($class, $xyz, $combo, $scope) {
+                if ($class !== '' && strtoupper((string) ($r['class'] ?? '')) !== $class) {
+                    return false;
+                }
+                if ($xyz !== '' && strtoupper((string) ($r['xyz'] ?? '')) !== $xyz) {
+                    return false;
+                }
+                if ($combo !== '' && strtoupper((string) ($r['abc_xyz'] ?? '')) !== $combo) {
+                    return false;
+                }
+                if ($scope === 'manual' && empty($r['manual'])) {
+                    return false;
+                }
+                if ($scope === 'matched' && empty($r['in_erp'])) {
+                    return false;
+                }
+                if ($scope === 'unmatched' && !empty($r['in_erp'])) {
+                    return false;
+                }
+                // Manual reorder picks: no-SKU items that are steady sellers.
+                if ($scope === 'reorder_manual') {
+                    if (empty($r['manual'])) {
+                        return false;
+                    }
+                    if (!in_array(strtoupper((string) ($r['class'] ?? '')), ['A', 'B'], true)) {
+                        return false;
+                    }
+                    if (strtoupper((string) ($r['xyz'] ?? '')) !== 'X') {
+                        return false;
+                    }
+                }
+                return true;
+            })->values();
+
+            return Datatables::of($rows)->make(true);
+        }
+
+        return view('report.abc_full_report', [
+            'imported_meta' => $abcSvc->load(),
+            'has_rows' => count($abcSvc->loadReportRows()) > 0,
+        ]);
+    }
+
+    /**
      * Admin-only: Inventory aging summary.
      */
     public function inventoryAgingSummary(Request $request)

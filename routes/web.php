@@ -438,6 +438,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/sales-by-item-cost-margin', 'ReportController@salesByItemCostMargin');
     Route::get('/reports/purchases-by-item-vendor', 'ReportController@purchasesByItemVendor');
     Route::get('/reports/abc-inventory-classification', 'ReportController@abcInventoryClassification');
+    Route::get('/reports/abc-full-report', 'ReportController@abcFullReport');
     Route::get('/reports/inventory-aging-summary', 'ReportController@inventoryAgingSummary');
     Route::get('/reports/landed-cost-summary', 'ReportController@landedCostSummary');
     Route::get('/reports/purchase-order-vs-received', 'ReportController@purchaseOrderVsReceived');
