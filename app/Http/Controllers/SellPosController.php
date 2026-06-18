@@ -5810,7 +5810,8 @@ class SellPosController extends Controller
             // and bake the artist into the name as "Title / Artist". Handle
             // both so suggestions work regardless of how a record was added.
             $artists = [];
-            foreach (Product::whereIn('id', $product_ids)->get(['name', 'artist']) as $p) {
+            $cart_products = Product::whereIn('id', $product_ids)->get(['name', 'artist']);
+            foreach ($cart_products as $p) {
                 $a = trim((string) $p->artist);
                 if ($a === '' && strpos((string) $p->name, ' / ') !== false) {
                     $parts = explode(' / ', (string) $p->name);
@@ -5824,6 +5825,17 @@ class SellPosController extends Controller
 
             if (empty($artists)) {
                 return response()->json(['success' => true, 'recommendations' => []]);
+            }
+
+            // Normalized album titles already in the cart, so we never suggest a
+            // record the customer is already buying (a second copy carries a
+            // different product id, so the id-based exclusion below misses it).
+            $cart_titles = [];
+            foreach ($cart_products as $p) {
+                $t = $this->normalizeRecTitle((string) $p->name, $artists);
+                if (mb_strlen($t) >= 5) {
+                    $cart_titles[] = $t;
+                }
             }
 
             $rows = Variation::join('products as p', 'variations.product_id', '=', 'p.id')
@@ -5858,14 +5870,29 @@ class SellPosController extends Controller
                     'VLD.qty_available',
                     'p.created_at as added_at'
                 )
-                // Newest arrivals first, and only a few — cashiers want a nudge
-                // toward recent stock, not the artist's whole back catalog.
+                // Newest arrivals first (prefer new releases). Pull extra so we
+                // can drop cart-duplicate titles and still have a few to show.
                 ->orderBy('p.created_at', 'desc')
-                ->limit(4)
+                ->limit(12)
                 ->get();
 
-            $recommendations = $rows->map(function ($r) {
-                return [
+            $recommendations = [];
+            foreach ($rows as $r) {
+                // Skip a record whose title is already in the cart.
+                $t = $this->normalizeRecTitle((string) $r->product_name, $artists);
+                if (mb_strlen($t) >= 5) {
+                    $dupe = false;
+                    foreach ($cart_titles as $ct) {
+                        if (strpos($t, $ct) !== false || strpos($ct, $t) !== false) {
+                            $dupe = true;
+                            break;
+                        }
+                    }
+                    if ($dupe) {
+                        continue;
+                    }
+                }
+                $recommendations[] = [
                     'variation_id'  => $r->variation_id,
                     'product_id'    => $r->product_id,
                     'artist'        => $r->artist,
@@ -5874,7 +5901,10 @@ class SellPosController extends Controller
                     'selling_price' => (float) $r->selling_price,
                     'qty_available' => (float) $r->qty_available,
                 ];
-            })->values();
+                if (count($recommendations) >= 5) {
+                    break;
+                }
+            }
 
             return response()->json(['success' => true, 'recommendations' => $recommendations]);
         } catch (\Exception $e) {
@@ -5904,6 +5934,25 @@ class SellPosController extends Controller
         }
 
         return array_values($artists);
+    }
+
+    /**
+     * Normalize an album title for cart-duplicate matching: drop the artist
+     * name(s) and all punctuation/spacing so two catalog spellings of the same
+     * record (e.g. "James Taylor - Mud Slide Slim" vs "James Taylor (2) – Mud
+     * Slide Slim") collapse to the same comparable string.
+     */
+    private function normalizeRecTitle($name, $artists)
+    {
+        $t = mb_strtolower((string) $name);
+        foreach ($artists as $a) {
+            $a = mb_strtolower((string) $a);
+            if ($a !== '') {
+                $t = str_replace($a, ' ', $t);
+            }
+        }
+
+        return preg_replace('/[^a-z0-9]+/', '', $t);
     }
 
     /**

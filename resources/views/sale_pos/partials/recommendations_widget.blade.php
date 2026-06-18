@@ -35,10 +35,6 @@
     <div class="pos-rec-title">You May Also Like — In Stock</div>
     <div id="pos_recommendations_body"></div>
 </div>
-<div id="pos_related_artists" style="display:none;">
-    <div class="pos-rec-title">Artists You May Also Like — In Stock</div>
-    <div id="pos_related_artists_body"></div>
-</div>
 <script>
 (function runWhenReady(attempts) {
     // jQuery loads at the bottom of the layout (after @yield('content')), so a
@@ -50,13 +46,12 @@
     jQuery(function ($) {
         if (!$('#pos_recommendations').length) return;
 
-        // Two stacked panels, each fed by its own endpoint:
+        // One combined list, fed by two endpoints and interleaved ~half/half:
         //   same-artist  -> more titles by an artist already in the cart
         //   related      -> "customers also bought" different artists, in stock
-        var PANELS = [
-            { url: '/sells/pos/get-recommendations', panel: '#pos_recommendations',  body: '#pos_recommendations_body' },
-            { url: '/sells/pos/get-related-artists',  panel: '#pos_related_artists',  body: '#pos_related_artists_body' }
-        ];
+        var SAME_URL    = '/sells/pos/get-recommendations';
+        var RELATED_URL = '/sells/pos/get-related-artists';
+        var TOTAL = 8;
 
         function escapeHtml(s) {
             return String(s == null ? '' : s)
@@ -92,23 +87,48 @@
             $panel.show();
         }
 
+        // Interleave the two sources, one from each in turn, deduped by
+        // variation, up to TOTAL — roughly an even split, and if one source
+        // is thin the other simply fills the remaining slots.
+        function interleave(same, related) {
+            var out = [], seen = {}, i = 0, j = 0;
+            same = same || []; related = related || [];
+            while (out.length < TOTAL && (i < same.length || j < related.length)) {
+                if (i < same.length) {
+                    var s = same[i++];
+                    if (s && !seen[s.variation_id]) { seen[s.variation_id] = 1; out.push(s); }
+                }
+                if (out.length >= TOTAL) break;
+                if (j < related.length) {
+                    var r = related[j++];
+                    if (r && !seen[r.variation_id]) { seen[r.variation_id] = 1; out.push(r); }
+                }
+            }
+            return out;
+        }
+
+        function fetchRecs(url, ids, location_id) {
+            return $.ajax({
+                method: 'GET', url: url, dataType: 'json',
+                data: { location_id: location_id, product_ids: ids }
+            }).then(function (res) {
+                return res && res.success ? res.recommendations : [];
+            }, function () {
+                // Soft-fail: a recommendations hiccup must never disrupt checkout.
+                return [];
+            });
+        }
+
         function refresh() {
             var ids = cartProductIds();
             var location_id = $('#location_id').val();
-            PANELS.forEach(function (cfg) {
-                var $panel = $(cfg.panel), $body = $(cfg.body);
-                if (!ids.length || !location_id) { render($panel, $body, []); return; }
-                $.ajax({
-                    method: 'GET',
-                    url: cfg.url,
-                    data: { location_id: location_id, product_ids: ids },
-                    dataType: 'json'
-                }).done(function (res) {
-                    render($panel, $body, res && res.success ? res.recommendations : []);
-                }).fail(function () {
-                    // Soft-fail: a recommendations hiccup must never disrupt checkout.
-                    render($panel, $body, []);
-                });
+            var $panel = $('#pos_recommendations'), $body = $('#pos_recommendations_body');
+            if (!ids.length || !location_id) { render($panel, $body, []); return; }
+            $.when(
+                fetchRecs(SAME_URL, ids, location_id),
+                fetchRecs(RELATED_URL, ids, location_id)
+            ).done(function (same, related) {
+                render($panel, $body, interleave(same, related));
             });
         }
 
