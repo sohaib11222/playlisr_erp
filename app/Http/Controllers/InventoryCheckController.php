@@ -798,6 +798,10 @@ class InventoryCheckController extends Controller
         // Release the session lock so other lazy AJAX can keep running
         // while this potentially slow HTTP-out call is in flight.
         $request->session()->save();
+        // The AMS portal walk is several sequential cURL calls; PHP's
+        // default 30s cap can kill it mid-fetch. Give it room (the JS side
+        // has its own 120s client abort to bound the wait).
+        @set_time_limit(180);
 
         try {
             $exit = \Illuminate\Support\Facades\Artisan::call('supplier-prices:fetch', [

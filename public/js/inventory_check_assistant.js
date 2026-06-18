@@ -2012,14 +2012,30 @@
             .then((resp) => {
                 btn.disabled = false;
                 btn.textContent = orig;
-                // Refresh status from the canonical list endpoint
-                setTimeout(loadSupplierFeeds, 300);
+                console.log('[ICA] widget auto-fetch resp', key, resp);
+                const out = (resp && resp.output) || (resp && resp.message) || '';
+                if (resp && resp.success) {
+                    if (statusEl) statusEl.textContent = 'Pulled — refreshing feeds…';
+                    setTimeout(loadSupplierFeeds, 300);
+                    return;
+                }
+                // 200 OK but the fetch itself failed (exit != 0) — surface
+                // WHY so the click never looks like a no-op. Most common
+                // cause is missing portal credentials → point Sarah at the
+                // Credentials form right below in the same panel.
+                const needsCreds = /credential|env|missing portal|not set|not configured/i.test(out);
+                const firstLine = String(out).split('\n').map((l) => l.trim()).filter(Boolean)[0] || 'Fetch failed.';
+                if (statusEl) {
+                    statusEl.textContent = needsCreds
+                        ? 'No portal login saved yet — open "Credentials" below, save it, then retry.'
+                        : ('Fetch failed: ' + firstLine);
+                }
             })
             .catch((err) => {
                 btn.disabled = false;
                 btn.textContent = orig;
                 console.error('[ICA] supplier auto-fetch failed', err);
-                if (statusEl) statusEl.textContent = 'Network error — see console';
+                if (statusEl) statusEl.textContent = 'Network/timeout error — the portal may be slow; retry, or check the server log.';
             });
     }
 
