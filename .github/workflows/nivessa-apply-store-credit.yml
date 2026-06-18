@@ -38,6 +38,14 @@ on:
           (picks the most recently modified "legacy_store_credit*.csv").
         required: false
         default: ''
+      skip_nonzero:
+        description: Hold (don't overwrite) contacts that already have a non-zero balance
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
       limit:
         description: Cap rows processed (0 = all). Useful for a smoke test.
         required: false
@@ -79,6 +87,7 @@ jobs:
             MODE='${{ github.event.inputs.mode }}'
             OVERRIDE='${{ github.event.inputs.csv_path }}'
             LIMIT='${{ github.event.inputs.limit }}'
+            SKIP_NONZERO='${{ github.event.inputs.skip_nonzero }}'
 
             cd "$APP"
 
@@ -114,6 +123,9 @@ jobs:
             ARGS=("$CSV" "--limit=$LIMIT")
             if [ "$MODE" = "commit" ]; then
               ARGS+=("--commit")
+            fi
+            if [ "$SKIP_NONZERO" = "true" ]; then
+              ARGS+=("--skip-nonzero")
             fi
 
             php artisan nivessa:apply-store-credit "${ARGS[@]}"
