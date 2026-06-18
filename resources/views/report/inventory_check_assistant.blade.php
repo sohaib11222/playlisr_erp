@@ -114,9 +114,6 @@
 HTML;
             };
         @endphp
-        {!! $renderSplitRow('USED', 'Cap 35% · keep low — slow sell-through', $usedBar, $usedBarClass, $usedColor, 'ica-bar-used') !!}
-        {!! $renderSplitRow('NEW',  'Target 65% · majority of weekly spend', $newBar, $newBarClass, $newColor, 'ica-bar-new') !!}
-
         {{-- ── Per-store Used/New sub-budgets (Sarah 2026-06-17) ──────── --}}
         @if(!empty($pb['per_store']))
         <div class="ica-budget-per-loc-label" style="margin-top:6px;"><small class="text-muted">By store this week — Hollywood 75% / Pico 25% of the weekly budget:</small></div>
@@ -126,6 +123,7 @@ HTML;
                 [$stNewClass, $stNewColor] = $bandFor($st['new']);
                 $stPct = rtrim(rtrim(number_format($st['pct_of_total'] * 100, 1), '0'), '.');
             @endphp
+            <div class="ica-budget-store-total" style="margin:12px 0 4px;font-weight:700;font-size:15px;">{{ $st['label'] }} — ${{ number_format($st['budget'], 0) }}</div>
             {!! $renderSplitRow($st['label'] . ' · Used', $stPct . '% of week · 35% cap', $st['used'], $stUsedClass, $stUsedColor, 'ica-bar-used') !!}
             {!! $renderSplitRow($st['label'] . ' · New',  $stPct . '% of week · the rest',  $st['new'],  $stNewClass,  $stNewColor,  'ica-bar-new') !!}
         @endforeach
