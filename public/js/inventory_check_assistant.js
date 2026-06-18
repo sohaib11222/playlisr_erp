@@ -927,7 +927,22 @@
                 console.log('[ICA] fetch resp', key, resp);
                 const out = (resp && resp.output) || '';
                 if (resp && resp.success) {
-                    btn.textContent = '✓ Pulled — rebuilding…';
+                    // A "successful" run can still return ZERO rows (portal
+                    // login silently bounced, or the catalog HTML changed and
+                    // the parser matched nothing). That used to flash
+                    // "rebuilding…" and leave every price column empty —
+                    // indistinguishable from a dead click. Pull the row count
+                    // out of the command output and, if it's zero, say so
+                    // loudly instead of pretending it worked.
+                    const m = out.match(/fetched\s+([0-9][0-9,]*)\s+rows/i) || out.match(/([0-9][0-9,]*)\s+rows\s+fetched/i);
+                    const fetched = m ? parseInt(m[1].replace(/,/g, ''), 10) : null;
+                    if (fetched === 0) {
+                        btn.disabled = false;
+                        btn.textContent = origLabel;
+                        showInlineError(btn, key, key.toUpperCase() + ' returned 0 rows. The portal login likely bounced or the catalog page changed — prices can\'t populate. Re-save the portal credentials below and retry; if it still returns 0, the AMS portal layout changed and the parser needs updating.');
+                        return;
+                    }
+                    btn.textContent = '✓ Pulled ' + (fetched !== null ? (fetched.toLocaleString() + ' rows') : '') + ' — rebuilding…';
                     const activeBtn = document.querySelector('.ica-store-btn.is-active');
                     if (activeBtn) activeBtn.click();
                     return;
@@ -2015,7 +2030,13 @@
                 console.log('[ICA] widget auto-fetch resp', key, resp);
                 const out = (resp && resp.output) || (resp && resp.message) || '';
                 if (resp && resp.success) {
-                    if (statusEl) statusEl.textContent = 'Pulled — refreshing feeds…';
+                    const m = out.match(/fetched\s+([0-9][0-9,]*)\s+rows/i) || out.match(/([0-9][0-9,]*)\s+rows\s+fetched/i);
+                    const fetched = m ? parseInt(m[1].replace(/,/g, ''), 10) : null;
+                    if (fetched === 0) {
+                        if (statusEl) statusEl.textContent = 'Ran, but returned 0 rows — portal login likely bounced or the catalog page changed. Re-save credentials below and retry.';
+                        return;
+                    }
+                    if (statusEl) statusEl.textContent = 'Pulled ' + (fetched !== null ? (fetched.toLocaleString() + ' rows') : '') + ' — refreshing feeds…';
                     setTimeout(loadSupplierFeeds, 300);
                     return;
                 }
