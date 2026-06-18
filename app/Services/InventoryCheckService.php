@@ -176,8 +176,8 @@ class InventoryCheckService
             $lineAgg->whereIn('t.location_id', $permittedLocations);
         }
         $lineAgg = $lineAgg
-            ->selectRaw('t.id as txn_id, t.final_total as final_total, p.category_id as category_id, SUM(pl.quantity * pl.purchase_price_inc_tax) as line_total')
-            ->groupBy('t.id', 't.final_total', 'p.category_id')
+            ->selectRaw('t.id as txn_id, t.location_id as location_id, t.final_total as final_total, p.category_id as category_id, SUM(pl.quantity * pl.purchase_price_inc_tax) as line_total')
+            ->groupBy('t.id', 't.location_id', 't.final_total', 'p.category_id')
             ->get();
 
         // Group by txn -> total line value + used line value.
@@ -186,6 +186,7 @@ class InventoryCheckService
             $tid = (int) $row->txn_id;
             if (!isset($perTxn[$tid])) {
                 $perTxn[$tid] = [
+                    'location_id' => (int) $row->location_id,
                     'final_total' => (float) $row->final_total,
                     'lines_total' => 0.0,
                     'used_lines' => 0.0,
@@ -200,6 +201,8 @@ class InventoryCheckService
         }
         $spentTxnUsed = 0.0;
         $spentTxnNew = 0.0;
+        // Per-location Used/New actual spend, for the per-store sub-budgets.
+        $perLocUsedNew = [];
         foreach ($perTxn as $t) {
             $ft = $t['final_total'];
             if ($t['lines_total'] > 0) {
@@ -209,8 +212,16 @@ class InventoryCheckService
                 // as New so it doesn't vanish from the split.
                 $usedShare = 0.0;
             }
-            $spentTxnUsed += $ft * $usedShare;
-            $spentTxnNew += $ft * (1 - $usedShare);
+            $txnUsed = $ft * $usedShare;
+            $txnNew = $ft * (1 - $usedShare);
+            $spentTxnUsed += $txnUsed;
+            $spentTxnNew += $txnNew;
+            $lid = $t['location_id'];
+            if (!isset($perLocUsedNew[$lid])) {
+                $perLocUsedNew[$lid] = ['used' => 0.0, 'new' => 0.0];
+            }
+            $perLocUsedNew[$lid]['used'] += $txnUsed;
+            $perLocUsedNew[$lid]['new'] += $txnNew;
         }
         // Handle transactions with final_total > 0 but no purchase_lines
         // (shouldn't normally happen, but guard so totals reconcile).
@@ -289,6 +300,46 @@ class InventoryCheckService
         $usedPct = $usedBudget > 0 ? min(100, ($usedSpent / $usedBudget) * 100) : 0;
         $newPct = $newBudget > 0 ? min(100, ($newSpent / $newBudget) * 100) : 0;
 
+        // ── Per-store sub-budgets (Sarah 2026-06-17) ──────────────────
+        // Fixed share of the weekly budget per store, then each store's
+        // share split 35% Used / 65% New like the store-wide cap. Spend
+        // is the formal-purchase used/new actuals bucketed by t.location_id.
+        // Manual "+ Log a buy" entries carry no location, so they're not
+        // counted against any single store here.
+        $subBucket = function ($budgetAmt, $spentAmt) {
+            $budgetAmt = round($budgetAmt, 2);
+            $spentAmt = round($spentAmt, 2);
+            return [
+                'budget' => $budgetAmt,
+                'spent' => $spentAmt,
+                'remaining' => round($budgetAmt - $spentAmt, 2),
+                'pct_spent' => $budgetAmt > 0 ? round(min(100, ($spentAmt / $budgetAmt) * 100), 1) : 0,
+                'over_budget' => $spentAmt > $budgetAmt,
+            ];
+        };
+        $perStore = [];
+        foreach ($this->storeBudgetSplits() as $split) {
+            $storeBudget = round($budget * $split['pct'], 2);
+            $storeUsedBudget = round($storeBudget * 0.35, 2);
+            $storeNewBudget = round($storeBudget - $storeUsedBudget, 2);
+            $uSpent = 0.0;
+            $nSpent = 0.0;
+            foreach ($perLocation as $loc) {
+                if (stripos($loc['name'], $split['match']) !== false) {
+                    $lid = $loc['location_id'];
+                    $uSpent += $perLocUsedNew[$lid]['used'] ?? 0.0;
+                    $nSpent += $perLocUsedNew[$lid]['new'] ?? 0.0;
+                }
+            }
+            $perStore[] = [
+                'label' => $split['label'],
+                'pct_of_total' => $split['pct'],
+                'budget' => $storeBudget,
+                'used' => $subBucket($storeUsedBudget, $uSpent),
+                'new' => $subBucket($storeNewBudget, $nSpent),
+            ];
+        }
+
         return [
             'week_no' => $week['week_no'],
             'start' => $week['start'],
@@ -318,6 +369,22 @@ class InventoryCheckService
                 'over_budget' => $newSpent > $newBudget,
             ],
             'used_category_ids' => $usedCatIds,
+            'per_store' => $perStore,
+        ];
+    }
+
+    /**
+     * Fixed per-store share of the weekly purchasing budget (Sarah 2026-06-17:
+     * Hollywood 75% / Pico 25%). `match` is compared case-insensitively
+     * against business_locations.name. Each store's share is then split
+     * 35% Used / 65% New, same as the store-wide cap. Edit here to retune —
+     * percentages should sum to 1.0.
+     */
+    private function storeBudgetSplits(): array
+    {
+        return [
+            ['match' => 'hollywood', 'label' => 'Hollywood', 'pct' => 0.75],
+            ['match' => 'pico', 'label' => 'Pico', 'pct' => 0.25],
         ];
     }
 

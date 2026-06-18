@@ -97,16 +97,25 @@
         .bfc-create .bfc-compliance-row label { font-size: 13px; color: #333; text-transform: none; letter-spacing: 0; font-weight: 500; margin-bottom: 0; cursor: pointer; }
         .bfc-create .bfc-compliance-row .bfc-compliance-cb { margin-right: 6px; transform: scale(1.1); }
         .bfc-create #buy_signature_box { border: 2px dashed #c0392b !important; }
-        /* Used buying-budget bar — mirrors the ICA banner's Used row so the
-           cashier knows how much of this week's 35% used cap is left before
-           quoting. Data from InventoryCheckService::currentPurchaseBudget. */
+        /* Weekly buying-budget bars by store — mirrors the ICA banner figures
+           so the cashier knows how much of this week's per-store Used (35% cap)
+           and New budget is left before quoting. Hollywood 75% / Pico 25% of the
+           weekly total. Data from InventoryCheckService::currentPurchaseBudget. */
         .bfc-create .bfc-used-budget { background: #fafafa; border: 1px solid #eee; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; }
-        .bfc-create .bfc-used-budget-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+        .bfc-create .bfc-used-budget-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
         .bfc-create .bfc-used-budget-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; color: #333; }
         .bfc-create .bfc-used-budget-title small { text-transform: none; letter-spacing: 0; font-weight: 400; }
         .bfc-create .bfc-used-budget-figures { font-size: 12px; color: #555; }
         .bfc-create .bfc-used-budget-figures strong { color: #333; }
-        .bfc-create .bfc-used-budget-sep { color: #ccc; margin: 0 6px; }
+        .bfc-create .bfc-store-budget { padding: 8px 0; border-top: 1px solid #eee; }
+        .bfc-create .bfc-store-budget-name { font-size: 12px; font-weight: 700; color: #333; margin-bottom: 6px; }
+        .bfc-create .bfc-store-budget-name small { font-weight: 400; color: #888; }
+        .bfc-create .bfc-bar-row { display: grid; grid-template-columns: 70px 1fr 90px; gap: 10px; align-items: center; margin-bottom: 6px; }
+        .bfc-create .bfc-bar-row:last-child { margin-bottom: 0; }
+        .bfc-create .bfc-bar-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; color: #666; }
+        .bfc-create .bfc-bar-label small { display: block; font-weight: 400; text-transform: none; letter-spacing: 0; color: #aaa; }
+        .bfc-create .bfc-bar-remain { font-size: 11px; text-align: right; color: #555; }
+        .bfc-create .bfc-bar-remain.is-over { color: #a94442; font-weight: 600; }
         .bfc-create .bfc-used-budget-track { position: relative; height: 20px; background: #ececec; border-radius: 10px; overflow: hidden; }
         .bfc-create .bfc-used-budget-fill { height: 100%; border-radius: 10px 0 0 10px; transition: width 0.3s ease; }
         .bfc-create .bfc-used-budget-fill.is-ok { background: #2c699a; }
@@ -189,37 +198,55 @@
                 </div>
             </div>
 
-            {{-- Used buying-budget bar — same figures as the ICA banner's Used row.
-                 Buys are used inventory, so the cashier sees how much of this week's
-                 35% Used cap is left before quoting. --}}
-            @php $usedBar = ($purchaseBudget ?? null)['used'] ?? null; @endphp
-            @if(!empty($usedBar))
+            {{-- Weekly buying budget by store — same figures as the ICA banner.
+                 Hollywood 75% / Pico 25% of the weekly total, each split into a
+                 Used (35% cap) and New bar so the cashier sees how much is left
+                 at each store before quoting. --}}
+            @php $perStore = ($purchaseBudget ?? null)['per_store'] ?? null; @endphp
+            @if(!empty($perStore))
                 @php
-                    $ub = $usedBar;
-                    $ubPct = $ub['pct_spent'];
-                    if ($ub['over_budget']) { $ubBand = 'is-over'; }
-                    elseif ($ubPct >= 80) { $ubBand = 'is-warn'; }
-                    else { $ubBand = 'is-ok'; }
+                    $bfcBand = function ($bucket) {
+                        if ($bucket['over_budget']) return 'is-over';
+                        if ($bucket['pct_spent'] >= 80) return 'is-warn';
+                        return 'is-ok';
+                    };
+                    $bfcBar = function ($label, $cap, $bucket) use ($bfcBand) {
+                        $band = $bfcBand($bucket);
+                        $spent = number_format($bucket['spent'], 0);
+                        $budget = number_format($bucket['budget'], 0);
+                        $pct = $bucket['pct_spent'];
+                        if ($bucket['over_budget']) {
+                            $remain = '<span class="bfc-bar-remain is-over">over by $' . number_format(abs($bucket['remaining']), 0) . '</span>';
+                        } else {
+                            $remain = '<span class="bfc-bar-remain">$' . number_format($bucket['remaining'], 0) . ' left</span>';
+                        }
+                        return <<<HTML
+                    <div class="bfc-bar-row">
+                        <span class="bfc-bar-label">{$label}<small>{$cap}</small></span>
+                        <div class="bfc-used-budget-track">
+                            <div class="bfc-used-budget-fill {$band}" style="width: {$pct}%;"></div>
+                            <div class="bfc-used-budget-track-label">\${$spent} of \${$budget} · {$pct}%</div>
+                        </div>
+                        {$remain}
+                    </div>
+HTML;
+                    };
                 @endphp
                 <div class="bfc-used-budget">
                     <div class="bfc-used-budget-head">
-                        <span class="bfc-used-budget-title">Used buying budget — week {{ $purchaseBudget['week_no'] }} of 13 <small class="text-muted">({{ \Carbon\Carbon::parse($purchaseBudget['start'])->format('M j') }} – {{ \Carbon\Carbon::parse($purchaseBudget['end'])->format('M j') }}) · 35% cap</small></span>
-                        <span class="bfc-used-budget-figures">
-                            Spent <strong>${{ number_format($ub['spent'], 0) }}</strong> of <strong>${{ number_format($ub['budget'], 0) }}</strong>
-                            <span class="bfc-used-budget-sep">·</span>
-                            @if($ub['over_budget'])
-                                <strong style="color:#a94442;">over by ${{ number_format(abs($ub['remaining']), 0) }}</strong>
-                            @else
-                                <strong>${{ number_format($ub['remaining'], 0) }}</strong> left
-                            @endif
-                        </span>
+                        <span class="bfc-used-budget-title">Weekly buying budget by store — week {{ $purchaseBudget['week_no'] }} of 13 <small class="text-muted">({{ \Carbon\Carbon::parse($purchaseBudget['start'])->format('M j') }} – {{ \Carbon\Carbon::parse($purchaseBudget['end'])->format('M j') }})</small></span>
+                        <span class="bfc-used-budget-figures">Weekly total <strong>${{ number_format($purchaseBudget['budget'], 0) }}</strong></span>
                     </div>
-                    <div class="bfc-used-budget-track">
-                        <div class="bfc-used-budget-fill {{ $ubBand }}" style="width: {{ $ubPct }}%;"></div>
-                        <div class="bfc-used-budget-track-label">{{ $ubPct }}%</div>
-                    </div>
-                    @if($ub['over_budget'])
-                        <div class="bfc-used-budget-warn">Used over its 35% cap this week — frozen-inventory risk. Confirm with Jon before buying more.</div>
+                    @foreach($perStore as $st)
+                        <div class="bfc-store-budget">
+                            <div class="bfc-store-budget-name">{{ $st['label'] }} <small>{{ rtrim(rtrim(number_format($st['pct_of_total'] * 100, 1), '0'), '.') }}% · ${{ number_format($st['budget'], 0) }}/wk</small></div>
+                            {!! $bfcBar('Used', '35% cap', $st['used']) !!}
+                            {!! $bfcBar('New', 'rest', $st['new']) !!}
+                        </div>
+                    @endforeach
+                    @php $usedOver = collect($perStore)->contains(fn ($s) => $s['used']['over_budget']); @endphp
+                    @if($usedOver)
+                        <div class="bfc-used-budget-warn">A store is over its 35% Used cap this week — frozen-inventory risk. Confirm with Jon before buying more used.</div>
                     @endif
                 </div>
             @endif
