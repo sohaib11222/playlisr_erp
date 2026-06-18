@@ -5462,35 +5462,16 @@ class ReportController extends Controller
                     DB::raw('MAX(COALESCE(sc.name, psc.category_name)) as format'),
                     DB::raw('SUM(psc.stock) as qty_on_hand'),
                     DB::raw('SUM(psc.stock_price) as inventory_value'),
-                    DB::raw('MAX(psc.unit_price) as current_price')
+                    DB::raw('MAX(psc.unit_price) as current_price'),
+                    // Lifetime units sold straight from the stock cache — avoids
+                    // a full scan of transaction_sell_lines on every load.
+                    DB::raw('SUM(psc.total_sold) as qty_sold')
                 )
                 ->groupBy('psc.product_id')
+                // Only items actually on hand — you can't mark down what you
+                // don't have, and it keeps the classification loop fast.
+                ->havingRaw('SUM(psc.stock) > 0')
                 ->get();
-
-            $sales_query = DB::table('transaction_sell_lines as tsl')
-                ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
-                ->join('variations as v', 'tsl.variation_id', '=', 'v.id')
-                ->where('t.business_id', $business_id)
-                ->where('t.type', 'sell')
-                ->where('t.status', 'final')
-                ->whereNull('t.return_parent_id')
-                ->select(
-                    'v.product_id',
-                    DB::raw('SUM(tsl.quantity - tsl.quantity_returned) as qty_sold')
-                )
-                ->groupBy('v.product_id');
-
-            if (!empty($location_id)) {
-                $sales_query->where('t.location_id', $location_id);
-            }
-            if (!empty($request->input('start_date'))) {
-                $sales_query->whereDate('t.transaction_date', '>=', $request->input('start_date'));
-            }
-            if (!empty($request->input('end_date'))) {
-                $sales_query->whereDate('t.transaction_date', '<=', $request->input('end_date'));
-            }
-
-            $sales_map = $sales_query->pluck('qty_sold', 'product_id')->toArray();
 
             // Use the store's own class map when a single store is selected and
             // the import covers it; otherwise the global (best-class) map.
@@ -5499,10 +5480,7 @@ class ReportController extends Controller
                 $classMap = $locationMaps[(int) $location_id];
             }
 
-            $rows = $inventory_rows->map(function ($row) use ($sales_map) {
-                $row->qty_sold = isset($sales_map[$row->product_id]) ? (float) $sales_map[$row->product_id] : 0;
-                return $row;
-            })->sortByDesc('inventory_value')->values();
+            $rows = $inventory_rows->sortByDesc('inventory_value')->values();
 
             $total_value = (float) $rows->sum('inventory_value');
             $running = 0;
