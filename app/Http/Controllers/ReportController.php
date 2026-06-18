@@ -5522,6 +5522,22 @@ class ReportController extends Controller
                     continue;
                 }
 
+                // Per-unit cost: stock_price is SUM(qty * purchase_price_inc_tax),
+                // so inventory_value / qty_on_hand is the average cost we paid.
+                $qty_on_hand = (float) $row->qty_on_hand;
+                $unit_cost = $qty_on_hand > 0 ? ((float) $row->inventory_value) / $qty_on_hand : 0.0;
+
+                $markdown_price = null;
+                if ($class === 'C') {
+                    $markdown_price = round($current_price * 0.80, 2);
+                    // Never mark below what we paid. If 20%-off lands under cost,
+                    // floor at cost — but don't raise above the current sticker
+                    // (items already at/below cost just keep their price). (Sarah 2026-06-18)
+                    if ($unit_cost > 0 && $markdown_price < $unit_cost) {
+                        $markdown_price = min($current_price, round($unit_cost, 2));
+                    }
+                }
+
                 $markdown[] = [
                     'abc_class' => $class,
                     'abc_xyz' => $importedAbcXyz[(int) $row->product_id] ?? '',
@@ -5529,9 +5545,9 @@ class ReportController extends Controller
                     'genre' => $row->genre ?: '—',
                     'product' => $row->product,
                     'sku' => $row->sku,
-                    'qty_on_hand' => (float) $row->qty_on_hand,
+                    'qty_on_hand' => $qty_on_hand,
                     'current_price' => $current_price,
-                    'markdown_price' => $class === 'C' ? round($current_price * 0.80, 2) : null,
+                    'markdown_price' => $markdown_price,
                 ];
             }
 
