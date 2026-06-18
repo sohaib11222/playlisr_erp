@@ -576,6 +576,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/cash-register/register-details', 'CashRegisterController@getRegisterDetails');
     Route::get('/cash-register/close-register/{id?}', 'CashRegisterController@getCloseRegister');
     Route::post('/cash-register/close-register', 'CashRegisterController@postCloseRegister');
+    // Admin-only: paste the #shift-notes Slack webhook (stored in a
+    // gitignored server file, not in git).
+    Route::get('/shift-notes/settings', 'CashRegisterController@shiftNotesSettings');
+    Route::post('/shift-notes/settings', 'CashRegisterController@saveShiftNotesSettings');
     // Handover confirm screen — the prior cashier acknowledges that the
     // next cashier opened with a fresh count of their drawer. Locked
     // closing_amount + required reason field. Sarah 2026-05-13.

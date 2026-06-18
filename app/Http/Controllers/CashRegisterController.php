@@ -527,6 +527,81 @@ class CashRegisterController extends Controller
         return false;
     }
 
+    /** Admin-only guard for the shift-notes settings screen. */
+    private function requireShiftNotesAdmin(): void
+    {
+        $u = auth()->user();
+        $is_admin = false;
+        try {
+            $is_admin = $u && ($u->can('superadmin') || $u->hasAnyPermission('Admin#' . $u->business_id));
+        } catch (\Throwable $e) {
+        }
+        if (!$is_admin) {
+            abort(403, 'Unauthorized action.');
+        }
+    }
+
+    /** Path to the gitignored shift-notes settings file (per server). */
+    private function shiftNotesSettingsFile(): string
+    {
+        return storage_path('app/shift-notes/settings.json');
+    }
+
+    /** Resolved #shift-notes webhook: .env wins, else the admin-set file. */
+    private function shiftNotesWebhook(): string
+    {
+        $env = trim((string) config('nivessa.shift_notes_slack_webhook', ''));
+        if ($env !== '') {
+            return $env;
+        }
+        try {
+            $file = $this->shiftNotesSettingsFile();
+            if (is_file($file)) {
+                $data = json_decode((string) file_get_contents($file), true) ?: [];
+                return trim((string) ($data['slack_webhook'] ?? ''));
+            }
+        } catch (\Throwable $e) {
+        }
+        return '';
+    }
+
+    /** Settings screen: paste the #shift-notes Slack webhook (admin only). */
+    public function shiftNotesSettings()
+    {
+        $this->requireShiftNotesAdmin();
+        $webhook = $this->shiftNotesWebhook();
+        $masked = $webhook !== ''
+            ? '…' . substr($webhook, -8)
+            : '';
+        $env_locked = trim((string) config('nivessa.shift_notes_slack_webhook', '')) !== '';
+        return view('cash_register.shift_notes_settings', compact('masked', 'env_locked'));
+    }
+
+    /** Save the webhook to the gitignored settings file (admin only). */
+    public function saveShiftNotesSettings(Request $request)
+    {
+        $this->requireShiftNotesAdmin();
+        $url = trim((string) $request->input('slack_webhook'));
+
+        if ($url !== '' && strpos($url, 'https://hooks.slack.com/') !== 0) {
+            return redirect()->back()->with('status', [
+                'success' => 0,
+                'msg' => 'That does not look like a Slack incoming-webhook URL (should start with https://hooks.slack.com/).',
+            ]);
+        }
+
+        $file = $this->shiftNotesSettingsFile();
+        if (!is_dir(dirname($file))) {
+            @mkdir(dirname($file), 0775, true);
+        }
+        file_put_contents($file, json_encode(['slack_webhook' => $url], JSON_PRETTY_PRINT));
+
+        return redirect()->back()->with('status', [
+            'success' => 1,
+            'msg' => $url === '' ? 'Webhook cleared.' : 'Shift-notes Slack webhook saved.',
+        ]);
+    }
+
     /**
      * Build the auto-populated shift summary for one cashier's shift:
      * sales rung, items added via the mass-add form, items entered on the
@@ -679,7 +754,7 @@ class CashRegisterController extends Controller
      */
     private function postShiftNoteToSlack(array $payload): bool
     {
-        $webhook = trim((string) config('nivessa.shift_notes_slack_webhook', ''));
+        $webhook = $this->shiftNotesWebhook();
         if ($webhook === '') {
             return false;
         }
