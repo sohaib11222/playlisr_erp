@@ -22,9 +22,11 @@ class HelpAssistantController extends Controller
     {
         $fallback = "I can't reach the help assistant right now. Ask a manager, or check the sidebar menu for the section you need.";
 
-        $apiKey = config('services.anthropic.api_key');
+        // Fall back through every way the key might reach us, so a cached
+        // config doesn't make a present key look missing.
+        $apiKey = config('services.anthropic.api_key') ?: env('ANTHROPIC_API_KEY') ?: getenv('ANTHROPIC_API_KEY');
         if (empty($apiKey)) {
-            return response()->json(['reply' => $fallback]);
+            return response()->json(['reply' => "Setup needed: the help assistant's API key isn't loaded on the server yet. A manager should add ANTHROPIC_API_KEY to the .env file (and rebuild config cache if the server caches config). Once that's done I'll be able to answer."]);
         }
 
         $history = $request->input('messages', []);
@@ -76,8 +78,21 @@ class HelpAssistantController extends Controller
                 'http_errors' => false,
             ]);
 
-            if ($response->getStatusCode() !== 200) {
-                return response()->json(['reply' => $fallback]);
+            $status = $response->getStatusCode();
+            if ($status !== 200) {
+                $errBody = $response->getBody()->getContents();
+                $errData = json_decode($errBody, true);
+                $errType = $errData['error']['type'] ?? '';
+                $errMsg = $errData['error']['message'] ?? '';
+                \Log::warning('HelpAssistant Anthropic error', ['status' => $status, 'type' => $errType, 'message' => $errMsg]);
+
+                if ($status === 401 || $errType === 'authentication_error') {
+                    return response()->json(['reply' => "The AI key on the server was rejected (authentication error). The ANTHROPIC_API_KEY in .env is likely wrong or revoked."]);
+                }
+                if ($status === 400 && stripos($errMsg, 'credit') !== false) {
+                    return response()->json(['reply' => "The AI account is out of credit. Top up the Anthropic account, then I'll work again."]);
+                }
+                return response()->json(['reply' => "The AI service returned an error (status {$status}" . ($errType ? ", {$errType}" : '') . "). " . ($errMsg ?: 'Try again shortly.')]);
             }
 
             $data = json_decode($response->getBody()->getContents(), true);
@@ -93,7 +108,8 @@ class HelpAssistantController extends Controller
 
             return response()->json(['reply' => $reply !== '' ? $reply : $fallback]);
         } catch (\Exception $e) {
-            return response()->json(['reply' => $fallback]);
+            \Log::warning('HelpAssistant request failed', ['error' => $e->getMessage()]);
+            return response()->json(['reply' => "Couldn't reach the AI service from the server (network/timeout). The server may be blocking outbound HTTPS to api.anthropic.com."]);
         }
     }
 
