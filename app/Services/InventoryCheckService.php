@@ -898,6 +898,34 @@ class InventoryCheckService
         return $best;
     }
 
+    /**
+     * Attach distributor price columns to a bucket's item list — the same
+     * supplier_prices/best_supplier pair bucketFastOos already adds, so the
+     * per-distributor price columns light up on EVERY bucket that renders
+     * them (top-artist new releases, ABC-A restock, long-OOS essentials,
+     * hot-used, customer wants), not just fast-OOS + chart picks.
+     *
+     * Each item is matched on its artist/product/format. allSupplierPrices()
+     * shares a per-request static index, so this is just a substring scan
+     * over already-loaded supplier rows — cheap even at 500 items.
+     *
+     * @return int how many items got at least one supplier match.
+     */
+    protected function attachSupplierPrices(int $business_id, array &$items): int
+    {
+        $matched = 0;
+        foreach ($items as $idx => $it) {
+            $artist = $it['artist'] ?? '';
+            $title = $it['product'] ?? '';
+            $format = $it['format'] ?? null;
+            if ($title === '' || $title === null) continue;
+            $items[$idx]['supplier_prices'] = $this->allSupplierPrices($business_id, $artist, $title, $format);
+            $items[$idx]['best_supplier'] = $this->bestSupplierPrice($business_id, $artist, $title, $format);
+            if (!empty($items[$idx]['supplier_prices'])) $matched++;
+        }
+        return $matched;
+    }
+
     /** Public alias for the lazy UMe spotlights endpoint. */
     public function bucketUmeSpotlightsPublic(int $business_id, int $locationId, $permittedLocations): array
     {
@@ -1753,6 +1781,8 @@ class InventoryCheckService
             $deduped[] = $it;
         }
 
+        $this->attachSupplierPrices($business_id, $deduped);
+
         return [
             'label' => 'New releases from your top artists',
             'why' => 'Artists already selling well in-store with a NEW release on this week\'s charts. Prioritize like fast-OOS: A-class artists first, then B; skip C. Tag "top_artist" means we already know fans want them.',
@@ -2086,6 +2116,8 @@ class InventoryCheckService
 
         $items = $this->dedupeByVariation($items);
 
+        $this->attachSupplierPrices($business_id, $items);
+
         return [
             'label' => 'A-class items — restock priority',
             'why' => 'Items in the top 80% of inventory value (ABC class A) that are low or out of stock here. These drive most of the store\'s value — being out hurts the most.',
@@ -2363,6 +2395,8 @@ class InventoryCheckService
 
         usort($items, fn ($a, $b) => $b['sold_qty_window'] <=> $a['sold_qty_window']);
 
+        $this->attachSupplierPrices($business_id, $items);
+
         return [
             'label' => '⚠️ Long out-of-stock essentials',
             'why' => 'Core titles: sold ' . $cfg['min_lifetime_sold'] . '+ in the last ' . $cfg['lookback_days'] . 'd, currently OOS for ' . $cfg['min_oos_days'] . '+ days.',
@@ -2469,6 +2503,8 @@ class InventoryCheckService
 
         usort($items, fn ($a, $b) => $b['sold_qty_window'] <=> $a['sold_qty_window']);
 
+        $this->attachSupplierPrices($business_id, $items);
+
         return [
             'label' => 'Hot used, currently out',
             'why' => 'Used titles that sold ' . (int) $minSold . '+ copies in the last ' . $saleDays . 'd but are now gone. Watch for these on customer trade-ins and Discogs — no AMS order needed.',
@@ -2517,6 +2553,8 @@ class InventoryCheckService
                 'tags' => ['customer_request', 'priority_' . $w->priority],
             ];
         }
+
+        $this->attachSupplierPrices($business_id, $items);
 
         return [
             'label' => '💚 Customer wants',
