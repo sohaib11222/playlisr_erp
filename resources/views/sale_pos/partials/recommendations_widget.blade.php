@@ -30,6 +30,16 @@
     }
     .pos-rec-add:hover { background: #d97706; }
     .pos-rec-add:disabled { opacity: 0.6; cursor: progress; }
+    .pos-rec-format {
+        display: inline-block; font-size: 10px; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.3px; color: #78350f;
+        background: #fde68a; border-radius: 4px; padding: 1px 6px;
+    }
+    .pos-rec-new {
+        display: inline-block; font-size: 10px; font-weight: 800;
+        text-transform: uppercase; letter-spacing: 0.3px; color: #fff;
+        background: #16a34a; border-radius: 4px; padding: 1px 6px; margin-left: 5px;
+    }
 </style>
 <div id="pos_recommendations" style="display:none;">
     <div id="pos_rec_same" style="display:none;">
@@ -80,10 +90,16 @@
             list.forEach(function (r) {
                 var label = r.artist ? (r.artist + ' - ' + r.product_name) : r.product_name;
                 var price = '$' + Number(r.selling_price || 0).toFixed(2);
+                // Format (vinyl/CD/etc.) so a vinyl buyer isn't pushed CDs, plus
+                // a "New" flag for recent arrivals worth mentioning.
+                var meta = '';
+                if (r.format) meta += '<span class="pos-rec-format">' + escapeHtml(r.format) + '</span> ';
+                meta += escapeHtml(r.sub_sku || '') + ' &middot; ' + price;
+                if (r.is_new) meta += '<span class="pos-rec-new">New</span>';
                 html += '<div class="pos-rec-card">' +
                     '<div class="pos-rec-info">' +
                         '<div class="pos-rec-name">' + escapeHtml(label) + '</div>' +
-                        '<div class="pos-rec-meta">' + escapeHtml(r.sub_sku || '') + ' &middot; ' + price + '</div>' +
+                        '<div class="pos-rec-meta">' + meta + '</div>' +
                     '</div>' +
                     '<button type="button" class="pos-rec-add" data-variation_id="' +
                         escapeHtml(r.variation_id) + '">Add</button>' +

@@ -5840,6 +5840,8 @@ class SellPosController extends Controller
 
             $rows = Variation::join('products as p', 'variations.product_id', '=', 'p.id')
                 ->join('product_locations as pl', 'pl.product_id', '=', 'p.id')
+                ->leftjoin('categories as c', 'c.id', '=', 'p.category_id')
+                ->leftjoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')
                 ->leftjoin('variation_location_details AS VLD', function ($join) use ($location_id) {
                     $join->on('variations.id', '=', 'VLD.variation_id')
                          ->where('VLD.location_id', '=', $location_id);
@@ -5868,15 +5870,18 @@ class SellPosController extends Controller
                     'variations.sub_sku',
                     'variations.default_sell_price as selling_price',
                     'VLD.qty_available',
-                    'p.created_at as added_at'
+                    'p.created_at as added_at',
+                    'c.name as category_name',
+                    'sc.name as sub_category_name'
                 )
                 // Newest arrivals first (prefer new releases). Pull extra so we
                 // can drop cart-duplicate titles and still have a few to show.
                 ->orderBy('p.created_at', 'desc')
-                ->limit(12)
+                ->limit(18)
                 ->get();
 
-            $recommendations = [];
+            $cart_tokens = $this->posCartFormatTokens($product_ids);
+            $cards = [];
             foreach ($rows as $r) {
                 // Skip a record whose title is already in the cart.
                 $t = $this->normalizeRecTitle((string) $r->product_name, $artists);
@@ -5892,19 +5897,11 @@ class SellPosController extends Controller
                         continue;
                     }
                 }
-                $recommendations[] = [
-                    'variation_id'  => $r->variation_id,
-                    'product_id'    => $r->product_id,
-                    'artist'        => $r->artist,
-                    'product_name'  => $r->product_name,
-                    'sub_sku'       => $r->sub_sku,
-                    'selling_price' => (float) $r->selling_price,
-                    'qty_available' => (float) $r->qty_available,
-                ];
-                if (count($recommendations) >= 5) {
-                    break;
-                }
+                $cards[] = $this->posRecCard($r);
             }
+
+            // Vinyl-buyer-first, then take six.
+            $recommendations = array_slice($this->posOrderByFormat($cards, $cart_tokens), 0, 6);
 
             return response()->json(['success' => true, 'recommendations' => $recommendations]);
         } catch (\Exception $e) {
@@ -5956,10 +5953,153 @@ class SellPosController extends Controller
     }
 
     /**
-     * "Artists you may also like" — a collaborative-filtering hint built from
-     * the store's own sales: customers who bought the cart's artist(s) also
-     * bought these OTHER in-stock artists. Bounded to recent baskets so it
-     * stays fast, and fails soft (empty list) so it can never disrupt the POS.
+     * Normalize an artist name for matching: lowercase, trim, and drop the
+     * Discogs disambiguator suffix ("Green Day (2)" -> "green day", "Nirvana*").
+     */
+    private function normArtistName($a)
+    {
+        $a = mb_strtolower(trim((string) $a));
+        $a = preg_replace('/\s*\(\d+\)\s*$/', '', $a); // Discogs " (2)"
+        $a = rtrim($a, " *");
+
+        return trim($a);
+    }
+
+    /**
+     * Collapse a category/format label to a coarse token so a vinyl buyer is
+     * steered toward vinyl, not CDs. Unknown formats keep their raw text.
+     */
+    private function posFormatToken($name)
+    {
+        $n = mb_strtolower((string) $name);
+        if (strpos($n, 'vinyl') !== false || strpos($n, ' lp') !== false || strpos($n, 'lp ') !== false
+            || strpos($n, '45') !== false || strpos($n, '7"') !== false || strpos($n, '12"') !== false) {
+            return 'vinyl';
+        }
+        if (strpos($n, 'cd') !== false) {
+            return 'cd';
+        }
+        if (strpos($n, 'cassette') !== false || strpos($n, 'tape') !== false) {
+            return 'cassette';
+        }
+
+        return trim($n);
+    }
+
+    /**
+     * Build a recommendation card payload, including the product's format (from
+     * its category) and a "new" flag for records added in the last 30 days.
+     * Expects category_name / sub_category_name / added_at on the row.
+     */
+    private function posRecCard($r)
+    {
+        $cat = trim((string) ($r->category_name ?? ''));
+        $sub = trim((string) ($r->sub_category_name ?? ''));
+        $format = $cat !== '' ? $cat : $sub;
+
+        $is_new = false;
+        if (!empty($r->added_at)) {
+            try {
+                $is_new = \Carbon\Carbon::parse($r->added_at)
+                    ->greaterThan(\Carbon\Carbon::now()->subDays(30));
+            } catch (\Exception $e) {
+                $is_new = false;
+            }
+        }
+
+        return [
+            'variation_id'  => $r->variation_id,
+            'product_id'    => $r->product_id,
+            'artist'        => $r->artist,
+            'product_name'  => $r->product_name,
+            'sub_sku'       => $r->sub_sku,
+            'selling_price' => (float) $r->selling_price,
+            'qty_available' => (float) $r->qty_available,
+            'format'        => $format,
+            'is_new'        => $is_new,
+        ];
+    }
+
+    /**
+     * Stable-sort cards so ones matching a format already in the cart come
+     * first (vinyl buyer sees vinyl first), without dropping the others.
+     */
+    private function posOrderByFormat($cards, $cart_tokens)
+    {
+        if (empty($cart_tokens)) {
+            return $cards;
+        }
+        $match = [];
+        $other = [];
+        foreach ($cards as $c) {
+            $tok = $this->posFormatToken($c['format']);
+            if ($tok !== '' && isset($cart_tokens[$tok])) {
+                $match[] = $c;
+            } else {
+                $other[] = $c;
+            }
+        }
+
+        return array_merge($match, $other);
+    }
+
+    /**
+     * The format token(s) present in the current cart, for format-aware ranking.
+     */
+    private function posCartFormatTokens($product_ids)
+    {
+        $tokens = [];
+        try {
+            $rows = DB::table('products as p')
+                ->leftjoin('categories as c', 'c.id', '=', 'p.category_id')
+                ->leftjoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')
+                ->whereIn('p.id', $product_ids)
+                ->select('c.name as category_name', 'sc.name as sub_category_name')
+                ->get();
+            foreach ($rows as $row) {
+                $tok = $this->posFormatToken(trim(($row->category_name ?? '') . ' ' . ($row->sub_category_name ?? '')));
+                if ($tok !== '') {
+                    $tokens[$tok] = true;
+                }
+            }
+        } catch (\Exception $e) {
+            // Non-fatal: format ranking is a nicety, not required.
+        }
+
+        return $tokens;
+    }
+
+    /**
+     * Curated "artists you may also like" map, keyed by normalized artist name.
+     */
+    private function loadSimilarArtistsMap()
+    {
+        $map = [];
+        try {
+            $raw = config('pos_similar_artists', []);
+            if (is_array($raw)) {
+                foreach ($raw as $k => $v) {
+                    if (is_array($v)) {
+                        $map[$this->normArtistName($k)] = $v;
+                    }
+                }
+            }
+        } catch (\Exception $e) {
+            return [];
+        }
+
+        return $map;
+    }
+
+    /**
+     * "Artists you may also like" — surfaces OTHER in-stock artists a customer
+     * may enjoy based on the cart. The curated similar-artist map
+     * (config/pos_similar_artists.php) is the PRIMARY source: record-store
+     * baskets are mostly single-item, so internal co-purchase data is too sparse
+     * to drive cross-artist recs on its own. The store's own legacy_artist
+     * co-purchase history fills any remaining slots as a fallback. Each card
+     * carries the product's format (vinyl/CD) and a "New" flag, and vinyl-buyer
+     * carts see vinyl first. Fails soft (empty list) so it can never disrupt POS.
      */
     public function getPosRelatedArtists(Request $request)
     {
@@ -5983,84 +6123,103 @@ class SellPosController extends Controller
                 return response()->json(['success' => true, 'recommendations' => []]);
             }
 
-            $lower_artists = array_map('mb_strtolower', $artists);
+            // Normalized cart artists — never suggest an artist already in cart.
+            $cart_norm = [];
+            foreach ($artists as $a) {
+                $cart_norm[$this->normArtistName($a)] = true;
+            }
 
-            // Seed products = catalog items by the cart's artist(s); lets us also
-            // catch modern (post-import) sales that linked to a real product
-            // rather than carrying raw legacy_artist text. May be empty for an
-            // artist that only exists in legacy sales — that's fine.
-            $seed_product_ids = Product::where('business_id', $business_id)
-                ->where(function ($q) use ($artists) {
-                    $q->whereIn('artist', $artists);
-                    foreach ($artists as $a) {
-                        $q->orWhere('name', 'like', '% / ' . addcslashes($a, '\\%_') . '%');
+            // --- Candidate artists, in priority order ----------------------
+            // $candidates: normalized name => true, insertion order = priority.
+            $candidates = [];
+
+            // PRIMARY — the curated "you may also like" map.
+            $map = $this->loadSimilarArtistsMap();
+            foreach ($artists as $a) {
+                $key = $this->normArtistName($a);
+                if (empty($map[$key])) {
+                    continue;
+                }
+                foreach ($map[$key] as $sim) {
+                    $n = $this->normArtistName($sim);
+                    if ($n !== '' && !isset($cart_norm[$n])) {
+                        $candidates[$n] = true;
                     }
-                })
-                ->limit(300)
-                ->pluck('id')
-                ->all();
-
-            // Resolve a product's artist the two ways the catalog stores it:
-            // the `artist` column when filled, else the "Title / Artist" suffix.
-            // Used to match co-bought artists back to current in-stock products.
-            $artistKeyExpr = "LOWER(TRIM(CASE WHEN p.artist IS NOT NULL AND p.artist <> '' "
-                . "THEN p.artist ELSE SUBSTRING_INDEX(p.name, ' / ', -1) END))";
-
-            // Resolve a co-bought sell line's artist: prefer the raw legacy_artist
-            // text captured on the historical import, else the linked product's
-            // artist column / name suffix.
-            $coArtistExpr = "LOWER(TRIM(CASE "
-                . "WHEN tsl.legacy_artist IS NOT NULL AND tsl.legacy_artist <> '' THEN tsl.legacy_artist "
-                . "WHEN p.artist IS NOT NULL AND p.artist <> '' THEN p.artist "
-                . "ELSE SUBSTRING_INDEX(p.name, ' / ', -1) END))";
-
-            // Step 1 — "customers who bought the cart's artist also bought X",
-            // by artist, across ALL sales history. legacy_artist covers the 70k+
-            // imported lines (which often have no in-stock product to join on),
-            // so this is far denser than matching on current inventory. Self-join
-            // baskets that contain a seed line to the other lines in that basket.
-            // Keep the 2+ distinct-basket bar so one eclectic basket can't promote
-            // an unrelated artist.
-            $artist_ph = implode(',', array_fill(0, count($lower_artists), '?'));
-            $artist_counts = DB::table('transaction_sell_lines as seed')
-                ->join('transactions as t', 't.id', '=', 'seed.transaction_id')
-                ->join('transaction_sell_lines as tsl', 'tsl.transaction_id', '=', 'seed.transaction_id')
-                ->leftjoin('products as p', 'p.id', '=', 'tsl.product_id')
-                ->where('t.business_id', $business_id)
-                ->where('t.type', 'sell')
-                ->where('t.status', 'final')
-                ->where(function ($q) use ($artist_ph, $lower_artists, $seed_product_ids) {
-                    $q->whereRaw('LOWER(seed.legacy_artist) IN (' . $artist_ph . ')', $lower_artists);
-                    if (!empty($seed_product_ids)) {
-                        $q->orWhereIn('seed.product_id', $seed_product_ids);
-                    }
-                })
-                // Drop the cart's own artist(s) from the results.
-                ->whereRaw($coArtistExpr . ' NOT IN (' . $artist_ph . ')', $lower_artists)
-                ->select(
-                    DB::raw($coArtistExpr . ' as artist_key'),
-                    DB::raw('COUNT(DISTINCT seed.transaction_id) as basket_count')
-                )
-                ->groupByRaw($coArtistExpr)
-                ->havingRaw('COUNT(DISTINCT seed.transaction_id) >= 2')
-                ->orderByDesc('basket_count')
-                ->limit(20)
-                ->get();
-
-            $artist_keys = [];
-            foreach ($artist_counts as $ac) {
-                $k = trim((string) $ac->artist_key);
-                if ($k !== '') {
-                    $artist_keys[] = $k;
                 }
             }
 
-            if (empty($artist_keys)) {
+            // FALLBACK — co-purchase fill from the store's own sales history.
+            // legacy_artist covers the 70k+ imported lines; the 2+ distinct
+            // basket bar keeps one eclectic basket from promoting an unrelated
+            // artist. Wrapped so a query hiccup can't blank the curated recs.
+            try {
+                $lower_artists = array_map('mb_strtolower', $artists);
+
+                $seed_product_ids = Product::where('business_id', $business_id)
+                    ->where(function ($q) use ($artists) {
+                        $q->whereIn('artist', $artists);
+                        foreach ($artists as $a) {
+                            $q->orWhere('name', 'like', '% / ' . addcslashes($a, '\\%_') . '%');
+                        }
+                    })
+                    ->limit(300)
+                    ->pluck('id')
+                    ->all();
+
+                $coArtistExpr = "LOWER(TRIM(CASE "
+                    . "WHEN tsl.legacy_artist IS NOT NULL AND tsl.legacy_artist <> '' THEN tsl.legacy_artist "
+                    . "WHEN p.artist IS NOT NULL AND p.artist <> '' THEN p.artist "
+                    . "ELSE SUBSTRING_INDEX(p.name, ' / ', -1) END))";
+
+                $artist_ph = implode(',', array_fill(0, count($lower_artists), '?'));
+                $artist_counts = DB::table('transaction_sell_lines as seed')
+                    ->join('transactions as t', 't.id', '=', 'seed.transaction_id')
+                    ->join('transaction_sell_lines as tsl', 'tsl.transaction_id', '=', 'seed.transaction_id')
+                    ->leftjoin('products as p', 'p.id', '=', 'tsl.product_id')
+                    ->where('t.business_id', $business_id)
+                    ->where('t.type', 'sell')
+                    ->where('t.status', 'final')
+                    ->where(function ($q) use ($artist_ph, $lower_artists, $seed_product_ids) {
+                        $q->whereRaw('LOWER(seed.legacy_artist) IN (' . $artist_ph . ')', $lower_artists);
+                        if (!empty($seed_product_ids)) {
+                            $q->orWhereIn('seed.product_id', $seed_product_ids);
+                        }
+                    })
+                    ->whereRaw($coArtistExpr . ' NOT IN (' . $artist_ph . ')', $lower_artists)
+                    ->select(
+                        DB::raw($coArtistExpr . ' as artist_key'),
+                        DB::raw('COUNT(DISTINCT seed.transaction_id) as basket_count')
+                    )
+                    ->groupByRaw($coArtistExpr)
+                    ->havingRaw('COUNT(DISTINCT seed.transaction_id) >= 2')
+                    ->orderByDesc('basket_count')
+                    ->limit(20)
+                    ->get();
+
+                foreach ($artist_counts as $ac) {
+                    $n = $this->normArtistName($ac->artist_key);
+                    if ($n !== '' && !isset($cart_norm[$n]) && !isset($candidates[$n])) {
+                        $candidates[$n] = true;
+                    }
+                }
+            } catch (\Exception $e) {
+                // Optional fill; the curated map already drives the panel.
+            }
+
+            if (empty($candidates)) {
                 return response()->json(['success' => true, 'recommendations' => []]);
             }
 
-            // Step 2 — pull one in-stock title per qualifying artist, newest first.
-            $placeholders = implode(',', array_fill(0, count($artist_keys), '?'));
+            $candidate_list = array_keys($candidates);
+            $rank = array_flip($candidate_list);
+
+            // Match candidates to in-stock titles. Resolve a product's artist the
+            // two ways the catalog stores it (artist column, else "Title / Artist"
+            // suffix), joined to categories for format.
+            $artistKeyExpr = "LOWER(TRIM(CASE WHEN p.artist IS NOT NULL AND p.artist <> '' "
+                . "THEN p.artist ELSE SUBSTRING_INDEX(p.name, ' / ', -1) END))";
+
+            $placeholders = implode(',', array_fill(0, count($candidate_list), '?'));
             $stock = DB::table('products as p')
                 ->join('variations', 'variations.product_id', '=', 'p.id')
                 ->join('product_locations as pl', 'pl.product_id', '=', 'p.id')
@@ -6068,15 +6227,16 @@ class SellPosController extends Controller
                     $join->on('variations.id', '=', 'VLD.variation_id')
                          ->where('VLD.location_id', '=', $location_id);
                 })
+                ->leftjoin('categories as c', 'c.id', '=', 'p.category_id')
+                ->leftjoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')
                 ->where('p.business_id', $business_id)
                 ->where('p.type', '!=', 'modifier')
                 ->where('p.is_inactive', 0)
                 ->where('p.not_for_selling', 0)
                 ->where('pl.location_id', $location_id)
                 ->where('VLD.qty_available', '>', 0)
-                ->whereNotIn('p.id', $seed_product_ids)
                 ->whereNotIn('p.id', $product_ids)
-                ->whereRaw($artistKeyExpr . ' IN (' . $placeholders . ')', $artist_keys)
+                ->whereRaw($artistKeyExpr . ' IN (' . $placeholders . ')', $candidate_list)
                 ->select(
                     'p.id as product_id',
                     'p.name as product_name',
@@ -6085,41 +6245,39 @@ class SellPosController extends Controller
                     'variations.sub_sku',
                     'variations.default_sell_price as selling_price',
                     'VLD.qty_available',
-                    'p.created_at',
+                    'p.created_at as added_at',
+                    'c.name as category_name',
+                    'sc.name as sub_category_name',
                     DB::raw($artistKeyExpr . ' as artist_key')
                 )
                 ->orderBy('p.created_at', 'desc')
+                ->limit(400)
                 ->get();
 
-            // One card per artist, ordered by co-purchase strength from step 1.
-            $rank = array_flip($artist_keys);
+            // One card per candidate artist (newest title wins — already sorted
+            // desc), ordered by candidate priority (curated map first).
             $by_artist = [];
             foreach ($stock as $r) {
-                $k = trim((string) $r->artist_key);
-                if ($k === '' || isset($by_artist[$k])) {
+                $n = $this->normArtistName($r->artist_key);
+                if ($n === '' || !isset($rank[$n]) || isset($by_artist[$n])) {
                     continue;
                 }
-                $by_artist[$k] = $r;
+                $by_artist[$n] = $r;
             }
-            uasort($by_artist, function ($a, $b) use ($rank) {
-                return ($rank[$a->artist_key] ?? 999) <=> ($rank[$b->artist_key] ?? 999);
+            uksort($by_artist, function ($a, $b) use ($rank) {
+                return ($rank[$a] ?? 999) <=> ($rank[$b] ?? 999);
             });
 
-            $recommendations = [];
+            $cards = [];
             foreach ($by_artist as $r) {
-                $recommendations[] = [
-                    'variation_id'  => $r->variation_id,
-                    'product_id'    => $r->product_id,
-                    'artist'        => $r->artist,
-                    'product_name'  => $r->product_name,
-                    'sub_sku'       => $r->sub_sku,
-                    'selling_price' => (float) $r->selling_price,
-                    'qty_available' => (float) $r->qty_available,
-                ];
-                if (count($recommendations) >= 8) {
-                    break;
-                }
+                $cards[] = $this->posRecCard($r);
             }
+
+            // Vinyl-buyer carts see vinyl first; cap at six suggestions.
+            $cart_tokens = $this->posCartFormatTokens($product_ids);
+            $recommendations = array_slice(
+                $this->posOrderByFormat($cards, $cart_tokens), 0, 6
+            );
 
             return response()->json(['success' => true, 'recommendations' => $recommendations]);
         } catch (\Exception $e) {
