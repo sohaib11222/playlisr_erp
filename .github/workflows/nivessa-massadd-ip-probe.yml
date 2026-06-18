@@ -54,29 +54,7 @@ jobs:
           script_stop: false
           command_timeout: 180s
           script: |
-            echo "=== candidate access-log dirs ==="
-            for d in /www/wwwlogs /www/server/nginx/logs /usr/local/nginx/logs /var/log/nginx /usr/local/lsws/logs /var/log/apache2 /www/server/panel/logs; do
-              [ -d "$d" ] && echo "DIR $d:" && ls -la "$d" 2>/dev/null | head -20
-            done
-            echo
-            echo "=== plain .log files containing mass-store ==="
-            CAND=$(find /www/wwwlogs /www/server/nginx/logs /usr/local/nginx/logs /var/log/nginx /usr/local/lsws/logs /var/log/apache2 -maxdepth 2 -type f 2>/dev/null | grep -iE '\.log$|access' )
-            for f in $CAND; do
-              h=$(grep -c "product/mass-store" "$f" 2>/dev/null || echo 0)
-              [ "$h" = "0" ] && continue
-              echo "--- $f ($h hits) ---"
-              grep "product/mass-store" "$f" 2>/dev/null | tail -50
-            done
-            echo
-            echo "=== gz logs containing mass-store ==="
-            for f in $(find /www/wwwlogs /www/server/nginx/logs /usr/local/nginx/logs /var/log/nginx -maxdepth 2 -name '*.gz' 2>/dev/null); do
-              h=$(zcat "$f" 2>/dev/null | grep -c "product/mass-store")
-              [ "$h" = "0" ] && continue
-              echo "--- $f ($h hits) ---"
-              zcat "$f" 2>/dev/null | grep "product/mass-store" | tail -40
-            done
-            echo
-            echo "=== DB: opening-stock creators behind user-44 mass_add products (last ${{ github.event.inputs.days }}d) ==="
-            echo 'PD9waHAKJGRheXMgPSAoaW50KSAoZ2V0ZW52KCdQUk9CRV9EQVlTJykgPzogMTApOwokcm93cyA9IERCOjpzZWxlY3QoIgogIFNFTEVDVCB0LmNyZWF0ZWRfYnkgQVMgY3JlYXRvcl9pZCwKICAgICAgICAgQ09BTEVTQ0UoQ09OQ0FUKHUuZmlyc3RfbmFtZSwgJyAnLCBDT0FMRVNDRSh1Lmxhc3RfbmFtZSwnJykpLCAnKG5vbmUpJykgQVMgb3BlbmluZ19jcmVhdG9yLAogICAgICAgICBDT1VOVChESVNUSU5DVCBwLmlkKSBBUyBwcm9kdWN0cwogIEZST00gcHJvZHVjdHMgcAogIExFRlQgSk9JTiB0cmFuc2FjdGlvbnMgdCBPTiB0Lm9wZW5pbmdfc3RvY2tfcHJvZHVjdF9pZCA9IHAuaWQgQU5EIHQudHlwZSA9ICdvcGVuaW5nX3N0b2NrJwogIExFRlQgSk9JTiB1c2VycyB1IE9OIHUuaWQgPSB0LmNyZWF0ZWRfYnkKICBXSEVSRSBwLmFkZGVkX3ZpYSA9ICdtYXNzX2FkZCcgQU5EIHAuY3JlYXRlZF9ieSA9IDQ0CiAgICBBTkQgcC5jcmVhdGVkX2F0ID49IERBVEVfU1VCKE5PVygpLCBJTlRFUlZBTCAkZGF5cyBEQVkpCiAgR1JPVVAgQlkgdC5jcmVhdGVkX2J5LCBvcGVuaW5nX2NyZWF0b3IKICBPUkRFUiBCWSBwcm9kdWN0cyBERVNDCiIpOwpmb3JlYWNoICgkcm93cyBhcyAkcikgewogIGVjaG8gIkRCUk9XXHQiLigkci0+Y3JlYXRvcl9pZCA/PyAnTlVMTCcpLiJcdCIuJHItPm9wZW5pbmdfY3JlYXRvci4iXHQiLiRyLT5wcm9kdWN0cy4iXG4iOwp9CmVjaG8gIkRPTkVcdCIuY291bnQoJHJvd3MpLiIgcm93c1xuIjsK' | base64 -d > /tmp/massadd_probe.php
-            cd /www/playlist.nivessa.com/app && PROBE_DAYS='${{ github.event.inputs.days }}' php artisan tinker /tmp/massadd_probe.php
+            echo "=== DB: 8 most recent user-44 mass_add products — real creator + last editor by name ==="
+            echo 'PD9waHAKLy8gd2hvIHJlYWxseSBjcmVhdGVkIHRoZSB1c2VyLTQ0IG1hc3NfYWRkIHByb2R1Y3RzLCArIGxhdGVzdCBhY3Rpdml0eV9sb2cgZWRpdG9yLCBieSBuYW1lCiRyb3dzID0gREI6OnNlbGVjdCgiCiAgU0VMRUNUIHAuaWQsIHAubmFtZSwgcC5jcmVhdGVkX2F0LAogICAgICAgICBwLmNyZWF0ZWRfYnkgQVMgY3JlYXRlZF9ieV9pZCwKICAgICAgICAgVFJJTShDT05DQVQoQ09BTEVTQ0UoY3UuZmlyc3RfbmFtZSwnJyksJyAnLENPQUxFU0NFKGN1Lmxhc3RfbmFtZSwnJykpKSBBUyBjcmVhdGVkX2J5X25hbWUsCiAgICAgICAgIGN1LmFsbG93X2xvZ2luIEFTIGNyZWF0b3JfYWxsb3dfbG9naW4sIGN1LnVzZXJuYW1lIEFTIGNyZWF0b3JfdXNlcm5hbWUsCiAgICAgICAgIGFsLmNhdXNlcl9pZCBBUyBsYXN0X2VkaXRvcl9pZCwKICAgICAgICAgVFJJTShDT05DQVQoQ09BTEVTQ0UoZXUuZmlyc3RfbmFtZSwnJyksJyAnLENPQUxFU0NFKGV1Lmxhc3RfbmFtZSwnJykpKSBBUyBsYXN0X2VkaXRvcl9uYW1lLAogICAgICAgICBhbC5jcmVhdGVkX2F0IEFTIGxhc3RfZWRpdF9hdAogIEZST00gcHJvZHVjdHMgcAogIExFRlQgSk9JTiB1c2VycyBjdSBPTiBjdS5pZCA9IHAuY3JlYXRlZF9ieQogIExFRlQgSk9JTiAoCiAgICAgU0VMRUNUIGExLnN1YmplY3RfaWQsIGExLmNhdXNlcl9pZCwgYTEuY3JlYXRlZF9hdAogICAgIEZST00gYWN0aXZpdHlfbG9nIGExCiAgICAgSk9JTiAoU0VMRUNUIHN1YmplY3RfaWQsIE1BWChpZCkgbWlkIEZST00gYWN0aXZpdHlfbG9nCiAgICAgICAgICAgV0hFUkUgc3ViamVjdF90eXBlPSdBcHBcXFxcUHJvZHVjdCcgQU5EIGNhdXNlcl9pZCBJUyBOT1QgTlVMTAogICAgICAgICAgIEdST1VQIEJZIHN1YmplY3RfaWQpIG0gT04gbS5taWQ9YTEuaWQKICApIGFsIE9OIGFsLnN1YmplY3RfaWQgPSBwLmlkCiAgTEVGVCBKT0lOIHVzZXJzIGV1IE9OIGV1LmlkID0gYWwuY2F1c2VyX2lkCiAgV0hFUkUgcC5hZGRlZF92aWE9J21hc3NfYWRkJyBBTkQgcC5jcmVhdGVkX2J5ID0gNDQKICBPUkRFUiBCWSBwLmNyZWF0ZWRfYXQgREVTQwogIExJTUlUIDgKIik7CmZvcmVhY2ggKCRyb3dzIGFzICRyKSB7CiAgZWNobyAiUk9XXHRpZD17JHItPmlkfVx0Y3JlYXRlZD17JHItPmNyZWF0ZWRfYXR9XHRjcmVhdGVkX2J5PXskci0+Y3JlYXRlZF9ieV9pZH0oeyRyLT5jcmVhdGVkX2J5X25hbWV9LGxvZ2luPXskci0+Y3JlYXRvcl9hbGxvd19sb2dpbn0sdXNlcj17JHItPmNyZWF0b3JfdXNlcm5hbWV9KVx0bGFzdF9lZGl0b3I9Ii4oJHItPmxhc3RfZWRpdG9yX2lkPz8nbm9uZScpLiIoIi4oJHItPmxhc3RfZWRpdG9yX25hbWU/PyctJykuIikgYXQgIi4oJHItPmxhc3RfZWRpdF9hdD8/Jy0nKS4iXHRuYW1lPSIuc3Vic3RyKCRyLT5uYW1lLDAsNDApLiJcbiI7Cn0KZWNobyAiRE9ORVxuIjsK' | base64 -d > /tmp/massadd_probe.php
+            cd /www/playlist.nivessa.com/app && php artisan tinker /tmp/massadd_probe.php
             rm -f /tmp/massadd_probe.php
