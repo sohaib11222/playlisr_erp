@@ -348,14 +348,13 @@ class ProductController extends Controller
                 })
                 ->addColumn('updated_by_name', function ($row) use ($updatedByMap) {
                     $name = isset($updatedByMap[$row->id]) ? trim($updatedByMap[$row->id]) : '';
-                    // No human edit logged yet. These came in through a bulk/auto
-                    // import. If the creating account is the Discogs importer or
-                    // an ex-employee account (no longer allowed to log in), credit
-                    // the import instead of the stale name on the account.
-                    if ($name === '') {
-                        $name = trim($row->created_by_name ?? '');
-                    }
-                    return $name !== '' ? $name : '--';
+                    // No human edit is logged in activity_log. The "Last updated at"
+                    // date comes from an automated touch (Discogs/stock sync, price
+                    // recalc) that has no causer, so there is no real person to show.
+                    // Never fall back to the creator — that's a separate column, and
+                    // crediting the creator (often an ex-employee) as the updater is
+                    // exactly the stale-name bug this avoids. Show "System" instead.
+                    return $name !== '' ? $name : 'System';
                 })
                 ->editColumn('category', '{{$category}}')
                 ->addColumn('subcategory', function ($row) {
