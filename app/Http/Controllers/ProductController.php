@@ -1017,6 +1017,41 @@ class ProductController extends Controller
      * @param  int  $id  product id
      * @return \Illuminate\Http\JsonResponse
      */
+    /**
+     * Record that the current logged-in user edited the given product(s), so the
+     * products list "Last updated by" column can attribute the change to a real
+     * person instead of falling back to "System". Mirrors the activity log written
+     * in update(). No-ops when there is no authenticated user (console/background
+     * jobs) so automated touches correctly stay "System". Never throws — a logging
+     * failure must not break the surrounding save.
+     *
+     * @param int|int[] $productIds one product id or a list of ids
+     */
+    private function logProductEdited($productIds): void
+    {
+        $user = auth()->user();
+        if (!$user) {
+            return;
+        }
+        $ids = is_array($productIds) ? $productIds : [$productIds];
+        foreach ($ids as $pid) {
+            try {
+                $product = Product::find($pid);
+                if (!$product) {
+                    continue;
+                }
+                $log = activity()
+                    ->performedOn($product)
+                    ->causedBy($user)
+                    ->log('edited');
+                $log->business_id = $product->business_id;
+                $log->save();
+            } catch (\Throwable $e) {
+                \Log::warning('Product edit activity log failed: ' . $e->getMessage());
+            }
+        }
+    }
+
     public function setCurrentStock(Request $request, $id)
     {
         if (!auth()->user()->can('product.update')) {
@@ -2364,8 +2399,9 @@ class ProductController extends Controller
             }
             //Update product updated_at timestamp
             $product->touch();
-            
+
             DB::commit();
+            $this->logProductEdited($product->id);
             $output = ['success' => 1,
                             'msg' => __("lang_v1.updated_success")
                         ];
@@ -2449,6 +2485,7 @@ class ProductController extends Controller
                                     ->update(['is_inactive' => 1]);
 
                 DB::commit();
+                $this->logProductEdited($selected_products);
             }
 
             $output = ['success' => 1,
@@ -2484,6 +2521,8 @@ class ProductController extends Controller
                 $product = Product::where('id', $id)
                                 ->where('business_id', $business_id)
                                 ->update(['is_inactive' => 0]);
+
+                $this->logProductEdited((int) $id);
 
                 $output = ['success' => true,
                                 'msg' => __("lang_v1.updated_success")
@@ -2704,6 +2743,7 @@ class ProductController extends Controller
             $business_id = $request->session()->get('user.business_id');
 
             DB::beginTransaction();
+            $edited_ids = [];
             foreach ($products as $id => $product_data) {
                 $update_data = [
                     'category_id' => $product_data['category_id'],
@@ -2715,6 +2755,7 @@ class ProductController extends Controller
                 //Update product
                 $product = Product::where('business_id', $business_id)
                                 ->findOrFail($id);
+                $edited_ids[] = $product->id;
 
                 $product->update($update_data);
 
@@ -2748,6 +2789,7 @@ class ProductController extends Controller
                 $product->variations()->saveMany($variations_data);
             }
             DB::commit();
+            $this->logProductEdited($edited_ids);
 
             $output = ['success' => 1,
                             'msg' => __("lang_v1.updated_success")
@@ -3987,6 +4029,8 @@ class ProductController extends Controller
             $updated = Product::where('business_id', $business_id)
                 ->whereIn('id', $product_ids)
                 ->update($updateData);
+
+            $this->logProductEdited($products->pluck('id')->toArray());
 
             return response()->json([
                 'success' => true,
