@@ -243,10 +243,41 @@
                 Count what you're putting in the safe <u>very</u> carefully.
               </div>
               <div style="font-size:14px; font-weight:600; margin-top:8px; color:#6B2A14;">
-                Stick a post-it on the bundle with <strong>your initials</strong>
-                and the <strong>amount you're dropping</strong>.
+                Write this on a post-it and stick it on the bundle:
+              </div>
+              <div style="margin-top:10px; background:#FFF7E8; border:1.5px dashed #E8A07A;
+                  border-radius:10px; padding:12px 14px;">
+                <div style="font-size:11px; font-weight:800; letter-spacing:.12em;
+                    text-transform:uppercase; color:#8A3A2E; margin-bottom:8px;">Deposit slip</div>
+                <div style="display:flex; justify-content:space-between; align-items:baseline;
+                    gap:12px; padding:4px 0; border-bottom:1px dotted #E8C9B3;">
+                  <span style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#8A3A2E;">Deposit #</span>
+                  <span id="cr-deposit-seq" style="font-size:17px; font-weight:800; color:#6B2A14; font-variant-numeric:tabular-nums;">—</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:baseline;
+                    gap:12px; padding:4px 0; border-bottom:1px dotted #E8C9B3;">
+                  <span style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#8A3A2E;">Name</span>
+                  <span style="font-size:17px; font-weight:800; color:#6B2A14;">{{ $cashier_name ?: 'your name' }}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:baseline;
+                    gap:12px; padding:4px 0; border-bottom:1px dotted #E8C9B3;">
+                  <span style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#8A3A2E;">Time</span>
+                  <span style="font-size:17px; font-weight:800; color:#6B2A14;">{{ \Carbon::now()->setTimezone('America/Los_Angeles')->format('g:i A') }}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:baseline;
+                    gap:12px; padding:4px 0;">
+                  <span style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#8A3A2E;">Amount</span>
+                  <span style="font-size:17px; font-weight:800; color:#6B2A14; font-variant-numeric:tabular-nums;">$<span id="cr-slip-amount">0</span></span>
+                </div>
               </div>
             </div>
+
+            {{-- Per-store next deposit numbers, keyed by location id. JS
+                 swaps the "Deposit #" shown on the slip to match the
+                 location the cashier picks below. --}}
+            <script>
+              window.crDepositSeqs = {!! json_encode($next_deposit_seqs ?? []) !!};
+            </script>
 
             {{-- Capture the actual amount the cashier moved at open. Left
                  BLANK by design (Sarah 2026-05-08) so cashiers must
@@ -328,6 +359,7 @@
       }
 
       var hintEl = document.getElementById('cr-safe-drop-hint');
+      var slipEl = document.getElementById('cr-slip-amount');
       var lastSeen = null;
       function recheck() {
         var raw = (input.value || '').toString().replace(/,/g, '').trim();
@@ -337,6 +369,7 @@
         if (!isFinite(val)) {
           alertEl.style.display = 'none';
           if (hintEl) hintEl.textContent = '';
+          if (slipEl) slipEl.textContent = '0';
           return;
         }
         // Excess above $500, rounded down to the nearest $100.
@@ -345,12 +378,23 @@
         if (toSafe >= 100) {
           var label = '$' + toSafe.toLocaleString('en-US');
           amountEl.textContent = label;
+          if (slipEl) slipEl.textContent = toSafe.toLocaleString('en-US');
           alertEl.style.display = 'block';
           if (hintEl) hintEl.textContent = 'Suggested: ' + label;
         } else {
           alertEl.style.display = 'none';
           if (hintEl) hintEl.textContent = '';
+          if (slipEl) slipEl.textContent = '0';
         }
+      }
+
+      // Show the next deposit number for whichever store is selected.
+      var seqEl  = document.getElementById('cr-deposit-seq');
+      var seqMap = window.crDepositSeqs || {};
+      function updateDepositSeq(locId) {
+        if (!seqEl) return;
+        var n = locId != null && seqMap[locId] != null ? seqMap[locId] : null;
+        seqEl.textContent = n != null ? n : '—';
       }
 
       ['input', 'change', 'keyup', 'blur', 'paste'].forEach(function (ev) {
@@ -377,8 +421,14 @@
           }
           btn.classList.add('is-selected');
           locInput.value = btn.getAttribute('data-loc-id') || '';
+          updateDepositSeq(locInput.value);
         });
       }
+
+      // Initial deposit number: from the prefilled/hidden location (single
+      // store, or a remembered duty location). Falls back to "—" until the
+      // cashier picks a store.
+      updateDepositSeq(locInput ? locInput.value : null);
     }
 
     if (document.readyState === 'loading') {

@@ -137,7 +137,16 @@ class CashRegisterController extends Controller
             \Log::warning('prior-unclosed lookup failed: ' . $e->getMessage());
         }
 
-        return view('cash_register.create')->with(compact('business_locations', 'sub_type', 'other_open_cashiers', 'prior_unclosed'));
+        // Next deposit number to write on the post-it, per store. The open
+        // form lets the cashier pick a location, so JS swaps the displayed
+        // number to match the selected store's next number.
+        $next_deposit_seqs = [];
+        foreach ($business_locations as $loc_id => $loc_name) {
+            $next_deposit_seqs[$loc_id] = $this->nextDepositSeq($business_id, $loc_id);
+        }
+        $cashier_name = $this->cashierDisplayName(auth()->user());
+
+        return view('cash_register.create')->with(compact('business_locations', 'sub_type', 'other_open_cashiers', 'prior_unclosed', 'next_deposit_seqs', 'cashier_name'));
     }
 
     /**
@@ -280,6 +289,21 @@ class CashRegisterController extends Controller
                         ]);
             }
 
+            // Log the open-time safe drop as its own deposit (assigns the
+            // per-store deposit number the cashier wrote on the post-it).
+            // Independent of safe_drop_amount on the register row.
+            if ($open_safe_drop > 0) {
+                $this->recordDeposit(
+                    $business_id,
+                    $location_id,
+                    $register->id,
+                    $user_id,
+                    $this->cashierDisplayName(auth()->user()),
+                    $open_safe_drop,
+                    'open'
+                );
+            }
+
         } catch (\Exception $e) {
             \Log::emergency("File:" . $e->getFile(). "Line:" . $e->getLine(). "Message:" . $e->getMessage());
         }
@@ -349,6 +373,79 @@ class CashRegisterController extends Controller
      * @param  void
      * @return \Illuminate\Http\Response
      */
+    /**
+     * Cashier's display name in the same surname-first format used across
+     * the open-register banners. Safe on a null user.
+     */
+    private function cashierDisplayName($user): string
+    {
+        if (!$user) {
+            return '';
+        }
+        $name = trim(($user->surname ?? '') . ' ' . ($user->first_name ?? '') . ' ' . ($user->last_name ?? ''));
+        return preg_replace('/\s+/', ' ', $name) ?: '';
+    }
+
+    /**
+     * Next per-store deposit number to SHOW the cashier on the open/close
+     * form so they can write "Deposit #N" on the post-it. Display-only —
+     * the authoritative number is assigned in recordDeposit() at submit.
+     * Returns 1 when the table isn't installed yet.
+     */
+    private function nextDepositSeq($business_id, $location_id): int
+    {
+        if (!\Schema::hasTable('cash_deposits')) {
+            return 1;
+        }
+        $max = (int) \DB::table('cash_deposits')
+            ->where('business_id', $business_id)
+            ->where('location_id', $location_id)
+            ->max('deposit_seq');
+        return $max + 1;
+    }
+
+    /**
+     * Persist one safe-drop deposit and return its assigned per-store
+     * sequence number. Atomic max+1 under a row lock so two cashiers
+     * dropping at the same store don't collide; the unique index is the
+     * backstop. Never throws into the open/close flow — on any failure it
+     * logs and returns 0 (the drop amount is still saved on the register).
+     */
+    private function recordDeposit($business_id, $location_id, $cash_register_id, $user_id, $cashier_name, $amount, $phase): int
+    {
+        if (!\Schema::hasTable('cash_deposits') || (float) $amount <= 0) {
+            return 0;
+        }
+        try {
+            return \DB::transaction(function () use ($business_id, $location_id, $cash_register_id, $user_id, $cashier_name, $amount, $phase) {
+                $max = (int) \DB::table('cash_deposits')
+                    ->where('business_id', $business_id)
+                    ->where('location_id', $location_id)
+                    ->lockForUpdate()
+                    ->max('deposit_seq');
+                $seq = $max + 1;
+                $now = \Carbon::now()->format('Y-m-d H:i:s');
+                \DB::table('cash_deposits')->insert([
+                    'business_id'      => $business_id,
+                    'location_id'      => $location_id,
+                    'cash_register_id' => $cash_register_id,
+                    'user_id'          => $user_id,
+                    'cashier_name'     => $cashier_name,
+                    'deposit_seq'      => $seq,
+                    'amount'           => (float) $amount,
+                    'phase'            => $phase,
+                    'deposited_at'     => $now,
+                    'created_at'       => $now,
+                    'updated_at'       => $now,
+                ]);
+                return $seq;
+            });
+        } catch (\Throwable $e) {
+            \Log::warning('recordDeposit failed: ' . $e->getMessage());
+            return 0;
+        }
+    }
+
     public function getCloseRegister($id = null)
     {
         if (!auth()->user()->can('close_cash_register')) {
@@ -384,8 +481,13 @@ class CashRegisterController extends Controller
             \Log::warning('detectShiftKeyingErrors failed: ' . $ex->getMessage());
         }
 
+        // Next deposit number to write on the post-it for the safe drop at
+        // close. Location is known here (this register's store).
+        $next_deposit_seq = $this->nextDepositSeq($business_id, $register_details->location_id);
+        $cashier_name = $this->cashierDisplayName(\App\User::find($register_details->user_id));
+
         return view('cash_register.close_register_modal')
-                    ->with(compact('register_details', 'details', 'payment_types', 'pos_settings', 'keying_errors'));
+                    ->with(compact('register_details', 'details', 'payment_types', 'pos_settings', 'keying_errors', 'next_deposit_seq', 'cashier_name'));
     }
 
     /**
@@ -497,23 +599,43 @@ class CashRegisterController extends Controller
             // shift — important when the cashier drops both at open
             // (drawer started heavy) and again at close. A blank/zero
             // close drop preserves the open drop instead of clobbering it.
-            if (\Schema::hasColumn('cash_registers', 'safe_drop_amount')) {
-                $rawDrop = $request->input('safe_drop_amount');
-                $closeDrop = ($rawDrop === null || $rawDrop === '')
-                    ? 0.0
-                    : (float) $this->cashRegisterUtil->num_uf($rawDrop);
-                if ($closeDrop > 0) {
-                    $input['safe_drop_amount'] = \DB::raw(
-                        'COALESCE(safe_drop_amount, 0) + ' . (float) $closeDrop
-                    );
-                }
+            $rawDrop = $request->input('safe_drop_amount');
+            $closeDrop = ($rawDrop === null || $rawDrop === '')
+                ? 0.0
+                : (float) $this->cashRegisterUtil->num_uf($rawDrop);
+            if (\Schema::hasColumn('cash_registers', 'safe_drop_amount') && $closeDrop > 0) {
+                $input['safe_drop_amount'] = \DB::raw(
+                    'COALESCE(safe_drop_amount, 0) + ' . (float) $closeDrop
+                );
                 // closeDrop == 0 → no change; leave whatever the open
                 // drop wrote (or NULL/0 if there was no open drop).
             }
 
+            // Capture the register before the update so the deposit log can
+            // record its store + id (status flips to 'close' below).
+            $openRegister = CashRegister::where('user_id', $user_id)
+                                ->where('status', 'open')
+                                ->latest('id')
+                                ->first();
+
             CashRegister::where('user_id', $user_id)
                                 ->where('status', 'open')
                                 ->update($input);
+
+            // Log the close-time safe drop as its own deposit (assigns the
+            // per-store deposit number the cashier wrote on the post-it).
+            if ($closeDrop > 0 && $openRegister) {
+                $this->recordDeposit(
+                    $request->session()->get('user.business_id'),
+                    $openRegister->location_id,
+                    $openRegister->id,
+                    $user_id,
+                    $this->cashierDisplayName(\App\User::find($user_id)),
+                    $closeDrop,
+                    'close'
+                );
+            }
+
             $output = ['success' => 1,
                             'msg' => __('cash_register.close_success')
                         ];

@@ -184,6 +184,27 @@
 	.cr-safe-alert-postit {
 		font-size: 14px; font-weight: 600; margin-top: 8px; color: #6B2A14;
 	}
+	.cr-deposit-slip {
+		margin-top: 10px; background: #FFF7E8; border: 1.5px dashed #E8A07A;
+		border-radius: 10px; padding: 12px 14px;
+	}
+	.cr-deposit-slip-title {
+		font-size: 11px; font-weight: 800; letter-spacing: .12em;
+		text-transform: uppercase; color: #8A3A2E; margin-bottom: 8px;
+	}
+	.cr-deposit-line {
+		display: flex; justify-content: space-between; align-items: baseline;
+		gap: 12px; padding: 4px 0; border-bottom: 1px dotted #E8C9B3;
+	}
+	.cr-deposit-line:last-child { border-bottom: 0; }
+	.cr-deposit-line .cr-deposit-label {
+		font-size: 12px; font-weight: 700; text-transform: uppercase;
+		letter-spacing: .04em; color: #8A3A2E;
+	}
+	.cr-deposit-line .cr-deposit-val {
+		font-size: 17px; font-weight: 800; color: #6B2A14;
+		font-variant-numeric: tabular-nums; text-align: right;
+	}
 	.cr-safe-alert-confirm {
 		margin-top: 14px; padding-top: 12px; border-top: 1px dashed #E8A07A;
 		display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
@@ -262,8 +283,26 @@
 						Count what you're putting in the safe <u>very</u> carefully.
 					</div>
 					<div class="cr-safe-alert-postit">
-						Stick a post-it on the bundle with <strong>your initials</strong>
-						and the <strong>amount you're dropping</strong>.
+						Write this on a post-it and stick it on the bundle:
+					</div>
+					<div class="cr-deposit-slip">
+						<div class="cr-deposit-slip-title">Deposit slip</div>
+						<div class="cr-deposit-line">
+							<span class="cr-deposit-label">Deposit #</span>
+							<span class="cr-deposit-val">{{ $next_deposit_seq ?? '—' }}</span>
+						</div>
+						<div class="cr-deposit-line">
+							<span class="cr-deposit-label">Name</span>
+							<span class="cr-deposit-val">{{ $cashier_name ?: 'your name' }}</span>
+						</div>
+						<div class="cr-deposit-line">
+							<span class="cr-deposit-label">Time</span>
+							<span class="cr-deposit-val">{{ \Carbon::now()->setTimezone('America/Los_Angeles')->format('g:i A') }}</span>
+						</div>
+						<div class="cr-deposit-line">
+							<span class="cr-deposit-label">Amount</span>
+							<span class="cr-deposit-val">$<span id="cr-slip-amount">0</span></span>
+						</div>
 					</div>
 
 					{{-- Capture the actual amount the cashier moved to the safe so
@@ -362,6 +401,7 @@
 						var $input  = $('#cr_closing_amount');
 						var $alert  = $('#cr-safe-alert');
 						var $amount = $('#cr-safe-amount');
+						var $slip   = $('#cr-slip-amount');
 						var $drop   = $('#cr_safe_drop_amount');
 						if (!$input.length || !$alert.length) return;
 
@@ -370,7 +410,14 @@
 						// it with the suggestion. We still recompute the
 						// suggestion shown above, but don't overwrite their input.
 						var dropEdited = false;
-						$drop.on('input change keyup', function () { dropEdited = true; });
+						$drop.on('input change keyup', function () {
+							dropEdited = true;
+							if ($slip.length) {
+								var d = ($drop.val() || '').toString().replace(/,/g, '').trim();
+								var dv = parseFloat(d);
+								$slip.text(isFinite(dv) ? dv.toLocaleString('en-US') : '0');
+							}
+						});
 
 						function recheck() {
 							var raw = ($input.val() || '').toString().replace(/,/g, '').trim();
@@ -379,6 +426,7 @@
 							var toSafe = Math.floor((val - 500) / 100) * 100;
 							if (toSafe >= 100) {
 								$amount.text('$' + toSafe.toLocaleString('en-US'));
+								if ($slip.length) { $slip.text(toSafe.toLocaleString('en-US')); }
 								$alert.addClass('cr-safe-alert-on');
 								if (!dropEdited) { $drop.val(toSafe.toLocaleString('en-US')); }
 							} else {

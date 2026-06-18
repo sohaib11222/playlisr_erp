@@ -846,6 +846,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/install-safe-drop-column', 'InstallSafeDropColumnController@index');
     Route::post('/admin/install-safe-drop-column/run', 'InstallSafeDropColumnController@run');
 
+    // One-shot installer for the cash_deposits table — the per-deposit log
+    // behind the post-it deposit numbers (Deposit #N) shown when a cashier
+    // drops cash to the safe. Same scope-limited, idempotent pattern.
+    Route::get('/admin/install-cash-deposits-table', 'InstallCashDepositsTableController@index');
+    Route::post('/admin/install-cash-deposits-table/run', 'InstallCashDepositsTableController@run');
+
     // Same pattern, different column. Adds clover_reconciliations.employee_key
     // + index cr_bdek so the per-cashier "Mark reconciled" + notes textarea
     // on the EOD reconciliation page can save. Sarah 2026-05-08: notes save
