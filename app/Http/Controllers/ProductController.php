@@ -221,7 +221,6 @@ class ProductController extends Controller
                 'v.id as vid',
                 'products.alert_quantity',
                 DB::raw("CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as created_by_name"),
-                DB::raw('COALESCE(u.allow_login, 1) as created_by_allow_login'),
                 DB::raw('SUM(vld.qty_available) as current_stock'),
                 DB::raw('MAX(v.sell_price_inc_tax) as max_price'),
                 DB::raw('MIN(v.sell_price_inc_tax) as min_price'),
@@ -245,11 +244,6 @@ class ProductController extends Controller
             // already on Discogs (column may not be migrated — guard the select).
             if (\Schema::hasColumn('products', 'discogs_release_id')) {
                 $products->addSelect('products.discogs_release_id');
-            }
-            // Source flag so the list can show "Discogs Import" as the last
-            // editor for auto-imported rows that no human has touched yet.
-            if (\Schema::hasColumn('products', 'added_via')) {
-                $products->addSelect('products.added_via');
             }
             if (\Schema::hasColumn('products', 'ebay_listing_id')) {
                 $products->addSelect('products.ebay_listing_id');
@@ -359,18 +353,6 @@ class ProductController extends Controller
                     // an ex-employee account (no longer allowed to log in), credit
                     // the import instead of the stale name on the account.
                     if ($name === '') {
-                        // Manual single-product creation (store()) never sets
-                        // added_via, so a non-empty value means the row came
-                        // through a bulk/auto flow (mass add, Discogs import,
-                        // etc.). Those, plus anything an ex-employee account
-                        // created, get credited to the import rather than a
-                        // stale personal name.
-                        $isImport = !empty($row->added_via);
-                        $creatorInactive = isset($row->created_by_allow_login)
-                            && (int) $row->created_by_allow_login !== 1;
-                        if ($isImport || $creatorInactive) {
-                            return 'Discogs Import';
-                        }
                         $name = trim($row->created_by_name ?? '');
                     }
                     return $name !== '' ? $name : '--';
