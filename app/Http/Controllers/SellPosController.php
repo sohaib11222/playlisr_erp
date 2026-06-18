@@ -5855,11 +5855,13 @@ class SellPosController extends Controller
                     'variations.id as variation_id',
                     'variations.sub_sku',
                     'variations.default_sell_price as selling_price',
-                    'VLD.qty_available'
+                    'VLD.qty_available',
+                    'p.created_at as added_at'
                 )
-                ->orderBy('p.artist', 'asc')
-                ->orderBy('p.name', 'asc')
-                ->limit(8)
+                // Newest arrivals first, and only a few — cashiers want a nudge
+                // toward recent stock, not the artist's whole back catalog.
+                ->orderBy('p.created_at', 'desc')
+                ->limit(4)
                 ->get();
 
             $recommendations = $rows->map(function ($r) {
@@ -6011,6 +6013,9 @@ class SellPosController extends Controller
                     'variations.id', 'p.id', 'p.name', 'p.artist',
                     'variations.sub_sku', 'variations.default_sell_price', 'VLD.qty_available'
                 )
+                // Require a real pattern: co-bought in at least 2 separate sales,
+                // so a single eclectic basket can't surface an unrelated artist.
+                ->havingRaw('COUNT(DISTINCT tsl.transaction_id) >= 2')
                 ->orderByDesc('basket_count')
                 ->limit(40)
                 ->get();
