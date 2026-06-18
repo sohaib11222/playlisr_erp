@@ -32,8 +32,14 @@
     .pos-rec-add:disabled { opacity: 0.6; cursor: progress; }
 </style>
 <div id="pos_recommendations" style="display:none;">
-    <div class="pos-rec-title">You May Also Like — In Stock</div>
-    <div id="pos_recommendations_body"></div>
+    <div id="pos_rec_same" style="display:none;">
+        <div class="pos-rec-title">More From These Artists — In Stock</div>
+        <div id="pos_rec_same_body"></div>
+    </div>
+    <div id="pos_rec_new" style="display:none;">
+        <div class="pos-rec-title">New Arrivals — In Stock</div>
+        <div id="pos_rec_new_body"></div>
+    </div>
 </div>
 <script>
 (function runWhenReady(attempts) {
@@ -46,15 +52,11 @@
     jQuery(function ($) {
         if (!$('#pos_recommendations').length) return;
 
-        // One combined list, fed by three endpoints and interleaved ~half/half:
+        // Two clearly-labeled groups so nothing looks like a bad guess:
         //   same-artist  -> more titles by an artist already in the cart
-        //   genre        -> other in-stock artists in the same genre (sales tags)
-        //   related      -> "customers also bought" different artists, in stock
-        // The "different artist" half prefers genre, then fills with co-purchase.
-        var SAME_URL    = '/sells/pos/get-recommendations';
-        var GENRE_URL   = '/sells/pos/get-genre-artists';
-        var RELATED_URL = '/sells/pos/get-related-artists';
-        var TOTAL = 8;
+        //   new-arrivals -> recently-added records by other artists ("just in")
+        var SAME_URL = '/sells/pos/get-recommendations';
+        var NEW_URL  = '/sells/pos/get-new-arrivals';
 
         function escapeHtml(s) {
             return String(s == null ? '' : s)
@@ -71,8 +73,8 @@
             return ids;
         }
 
-        function render($panel, $body, list) {
-            if (!list || !list.length) { $panel.hide(); $body.empty(); return; }
+        function renderGroup($group, $body, list) {
+            if (!list || !list.length) { $group.hide(); $body.empty(); return false; }
             var html = '';
             list.forEach(function (r) {
                 var label = r.artist ? (r.artist + ' - ' + r.product_name) : r.product_name;
@@ -87,27 +89,8 @@
                 '</div>';
             });
             $body.html(html);
-            $panel.show();
-        }
-
-        // Interleave the two sources, one from each in turn, deduped by
-        // variation, up to TOTAL — roughly an even split, and if one source
-        // is thin the other simply fills the remaining slots.
-        function interleave(same, related) {
-            var out = [], seen = {}, i = 0, j = 0;
-            same = same || []; related = related || [];
-            while (out.length < TOTAL && (i < same.length || j < related.length)) {
-                if (i < same.length) {
-                    var s = same[i++];
-                    if (s && !seen[s.variation_id]) { seen[s.variation_id] = 1; out.push(s); }
-                }
-                if (out.length >= TOTAL) break;
-                if (j < related.length) {
-                    var r = related[j++];
-                    if (r && !seen[r.variation_id]) { seen[r.variation_id] = 1; out.push(r); }
-                }
-            }
-            return out;
+            $group.show();
+            return true;
         }
 
         function fetchRecs(url, ids, location_id) {
@@ -122,31 +105,23 @@
             });
         }
 
-        // Concat sources, deduped by variation, preserving order.
-        function concatUnique() {
-            var out = [], seen = {};
-            for (var a = 0; a < arguments.length; a++) {
-                var list = arguments[a] || [];
-                for (var i = 0; i < list.length; i++) {
-                    var r = list[i];
-                    if (r && !seen[r.variation_id]) { seen[r.variation_id] = 1; out.push(r); }
-                }
-            }
-            return out;
+        function hideAll() {
+            $('#pos_recommendations').hide();
+            $('#pos_rec_same').hide(); $('#pos_rec_same_body').empty();
+            $('#pos_rec_new').hide();  $('#pos_rec_new_body').empty();
         }
 
         function refresh() {
             var ids = cartProductIds();
             var location_id = $('#location_id').val();
-            var $panel = $('#pos_recommendations'), $body = $('#pos_recommendations_body');
-            if (!ids.length || !location_id) { render($panel, $body, []); return; }
+            if (!ids.length || !location_id) { hideAll(); return; }
             $.when(
                 fetchRecs(SAME_URL, ids, location_id),
-                fetchRecs(GENRE_URL, ids, location_id),
-                fetchRecs(RELATED_URL, ids, location_id)
-            ).done(function (same, genre, related) {
-                // Different-artist half = genre first, co-purchase as backup.
-                render($panel, $body, interleave(same, concatUnique(genre, related)));
+                fetchRecs(NEW_URL, ids, location_id)
+            ).done(function (same, arrivals) {
+                var a = renderGroup($('#pos_rec_same'), $('#pos_rec_same_body'), same);
+                var b = renderGroup($('#pos_rec_new'),  $('#pos_rec_new_body'),  arrivals);
+                $('#pos_recommendations').toggle(a || b);
             });
         }
 

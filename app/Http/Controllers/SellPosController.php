@@ -6284,6 +6284,98 @@ class SellPosController extends Controller
     }
 
     /**
+     * "New arrivals" — recently added IN-STOCK records by OTHER artists (the
+     * cart's own artists are covered by the same-artist panel). Honest discovery
+     * the cashier can pitch as "just got these in", rather than a guessed
+     * similar-artist match. Records only (snacks/merch have no artist token).
+     * Fails soft so it can never disrupt the POS.
+     */
+    public function getPosNewArrivals(Request $request)
+    {
+        try {
+            $business_id = $request->session()->get('user.business_id');
+            $location_id = $request->get('location_id');
+
+            $product_ids = array_values(array_unique(array_filter(
+                array_map('intval', (array) $request->get('product_ids', []))
+            )));
+
+            if (empty($product_ids) || empty($location_id)) {
+                return response()->json(['success' => true, 'recommendations' => []]);
+            }
+
+            $artists = $this->resolveArtistKeys(
+                Product::whereIn('id', $product_ids)->get(['name', 'artist'])
+            );
+
+            $rows = Variation::join('products as p', 'variations.product_id', '=', 'p.id')
+                ->join('product_locations as pl', 'pl.product_id', '=', 'p.id')
+                ->leftjoin('variation_location_details AS VLD', function ($join) use ($location_id) {
+                    $join->on('variations.id', '=', 'VLD.variation_id')
+                         ->where('VLD.location_id', '=', $location_id);
+                })
+                ->where('p.business_id', $business_id)
+                ->where('p.type', '!=', 'modifier')
+                ->where('p.is_inactive', 0)
+                ->where('p.not_for_selling', 0)
+                ->where('pl.location_id', $location_id)
+                ->where('VLD.qty_available', '>', 0)
+                ->whereNotIn('p.id', $product_ids)
+                // Records only: an artist token in the column or the name.
+                ->where(function ($q) {
+                    $q->where('p.artist', '<>', '')
+                      ->orWhere('p.name', 'like', '% / %')
+                      ->orWhere('p.name', 'like', '% - %');
+                })
+                ->select(
+                    'p.id as product_id',
+                    'p.name as product_name',
+                    'p.artist',
+                    'variations.id as variation_id',
+                    'variations.sub_sku',
+                    'variations.default_sell_price as selling_price',
+                    'VLD.qty_available',
+                    'p.created_at'
+                )
+                ->orderBy('p.created_at', 'desc')
+                ->limit(60)
+                ->get();
+
+            // Skip the cart's own artist(s) and show one card per artist so the
+            // list is varied rather than five new records by one act.
+            $cart_artist_keys = array_map('mb_strtolower', $artists);
+            $seen = [];
+            $recommendations = [];
+            foreach ($rows as $r) {
+                $key = $this->resolveArtistKeys([$r]);
+                $key = !empty($key) ? mb_strtolower($key[0]) : ('p' . $r->product_id);
+                if (in_array($key, $cart_artist_keys, true) || isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                $recommendations[] = [
+                    'variation_id'  => $r->variation_id,
+                    'product_id'    => $r->product_id,
+                    'artist'        => $r->artist,
+                    'product_name'  => $r->product_name,
+                    'sub_sku'       => $r->sub_sku,
+                    'selling_price' => (float) $r->selling_price,
+                    'qty_available' => (float) $r->qty_available,
+                ];
+                if (count($recommendations) >= 4) {
+                    break;
+                }
+            }
+
+            return response()->json(['success' => true, 'recommendations' => $recommendations]);
+        } catch (\Exception $e) {
+            \Log::error('POS new-arrivals failed: ' . $e->getMessage());
+
+            return response()->json(['success' => true, 'recommendations' => []]);
+        }
+    }
+
+    /**
      * Shows invoice url.
      *
      * @param  int  $id
