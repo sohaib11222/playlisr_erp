@@ -95,11 +95,13 @@ class ApplyNivessaStoreCredit extends Command
         $s = [
             'read' => 0, 'skip_no_amount' => 0, 'skip_nonpositive' => 0,
             'skip_no_name' => 0, 'skip_nonzero' => 0, 'skip_collision' => 0,
+            'skip_name_mismatch' => 0,
             'matched_tag' => 0, 'matched_name' => 0, 'matched_phone' => 0,
             'unmatched' => 0, 'applied' => 0, 'total_credit' => 0.0,
         ];
         $skippedNoName = [];
         $collisions = [];
+        $nameMismatches = [];
         $writtenContactIds = [];
         $reportRows = [[
             'external_id', 'name', 'matched_by', 'contact_id', 'contact_name',
@@ -201,6 +203,24 @@ class ApplyNivessaStoreCredit extends Command
                 $oldBalance = round((float) ($contact->balance ?? 0), 2);
                 $newBalance = round((float) $amount, 2);
 
+                // Name-agreement guard. The original import overwrote
+                // import_external_id whenever several sheet rows matched the
+                // same existing contact by phone, so a tag can point at the
+                // WRONG person (e.g. "Scott Stoops" → solomon dow's contact).
+                // Refuse to write money unless the matched contact's name
+                // actually agrees with the CSV name; hold the rest for review.
+                if ($this->normName($name) !== $this->normName($contact->name)) {
+                    $s['skip_name_mismatch']++;
+                    $nameMismatches[] = [
+                        'external_id' => $externalId, 'name' => $name,
+                        'matched_by' => $matchedBy,
+                        'contact_id' => (int) $contact->id,
+                        'contact_name' => (string) $contact->name,
+                        'amount' => $newBalance,
+                    ];
+                    continue;
+                }
+
                 // Collision guard: two CSV rows resolving to the SAME contact
                 // would make the final balance depend on row order. Honour the
                 // first, hold the rest for review.
@@ -289,10 +309,10 @@ class ApplyNivessaStoreCredit extends Command
         $this->line('');
         $this->info($commit ? '✅ Balances written.' : '🧪 DRY RUN — no balances written. Re-run with --commit.');
         $this->line(sprintf(
-            'Read: %d · Applied: %d (tag %d / name %d / phone %d) · Unmatched: %d · No-name-skip: %d · Nonzero-hold: %d · Collision-hold: %d · No-amount: %d · Non-positive: %d',
+            'Read: %d · Applied: %d (tag %d / name %d / phone %d) · Unmatched: %d · No-name: %d · Name-mismatch-hold: %d · Nonzero-hold: %d · Collision-hold: %d · No-amount: %d · Non-positive: %d',
             $s['read'], $s['applied'], $s['matched_tag'], $s['matched_name'],
             $s['matched_phone'], $s['unmatched'], $s['skip_no_name'],
-            $s['skip_nonzero'], $s['skip_collision'],
+            $s['skip_name_mismatch'], $s['skip_nonzero'], $s['skip_collision'],
             $s['skip_no_amount'], $s['skip_nonpositive']
         ));
         $this->line(sprintf('Total credit set: $%s', number_format($s['total_credit'], 2)));
@@ -304,6 +324,14 @@ class ApplyNivessaStoreCredit extends Command
             $this->warn('⚠️  ' . count($nonZeroFlags) . ' contact(s) with a NON-ZERO balance ' . $verb . ':');
             foreach ($nonZeroFlags as $f) {
                 $this->line(sprintf('   #%d %s: $%s → $%s', $f['contact_id'], $f['name'], number_format($f['old'], 2), number_format($f['new'], 2)));
+            }
+        }
+
+        if (!empty($nameMismatches)) {
+            $this->line('');
+            $this->warn('⚠️  ' . count($nameMismatches) . ' row(s) HELD — matched contact name disagrees (likely cross-wired import tag, review):');
+            foreach ($nameMismatches as $m) {
+                $this->line(sprintf('   %s "%s" ($%s) → matched by %s to #%d "%s"', $m['external_id'], $m['name'], number_format($m['amount'], 2), $m['matched_by'], $m['contact_id'], $m['contact_name']));
             }
         }
 
@@ -332,6 +360,14 @@ class ApplyNivessaStoreCredit extends Command
         }
 
         return 0;
+    }
+
+    /** Normalise a name for agreement checks: lowercase, alphanumerics only. */
+    private function normName($raw)
+    {
+        $s = mb_strtolower(trim((string) $raw));
+        $s = preg_replace('/[^a-z0-9]+/', '', $s);
+        return (string) $s;
     }
 
     /** Pull a positive dollar amount out of the amount cell. "" → null, "hello" → null. */
