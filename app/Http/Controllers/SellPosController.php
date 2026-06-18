@@ -5952,36 +5952,25 @@ class SellPosController extends Controller
                 return response()->json(['success' => true, 'recommendations' => []]);
             }
 
-            // Recent final sales that included a seed product = the "baskets"
-            // we mine for co-purchased artists.
-            $basket_ids = TransactionSellLine::query()
-                ->join('transactions as t', 't.id', '=', 'transaction_sell_lines.transaction_id')
-                ->whereIn('transaction_sell_lines.product_id', $seed_product_ids)
-                ->where('t.business_id', $business_id)
-                ->where('t.type', 'sell')
-                ->where('t.status', 'final')
-                ->orderByDesc('t.id')
-                ->limit(500)
-                ->pluck('transaction_sell_lines.transaction_id')
-                ->unique()
-                ->values()
-                ->all();
-
-            if (empty($basket_ids)) {
-                return response()->json(['success' => true, 'recommendations' => []]);
-            }
-
-            // Other in-stock products in those baskets, ranked by how many
-            // baskets they co-occurred in. Pull a few extra so we can show one
-            // card per artist after de-duping.
-            $rows = Variation::join('products as p', 'variations.product_id', '=', 'p.id')
+            // Co-purchase across ALL sales history: self-join seed lines to the
+            // other lines on the same transaction, ranked by how many distinct
+            // baskets each in-stock product co-occurred in with a seed. A single
+            // self-join avoids materializing a huge basket-id list, so we can
+            // scan the full history instead of just the most recent baskets.
+            $rows = DB::table('transaction_sell_lines as seed')
+                ->join('transactions as t', 't.id', '=', 'seed.transaction_id')
+                ->join('transaction_sell_lines as tsl', 'tsl.transaction_id', '=', 'seed.transaction_id')
+                ->join('variations', 'variations.id', '=', 'tsl.variation_id')
+                ->join('products as p', 'p.id', '=', 'variations.product_id')
                 ->join('product_locations as pl', 'pl.product_id', '=', 'p.id')
-                ->join('transaction_sell_lines as tsl', 'tsl.variation_id', '=', 'variations.id')
                 ->leftjoin('variation_location_details AS VLD', function ($join) use ($location_id) {
                     $join->on('variations.id', '=', 'VLD.variation_id')
                          ->where('VLD.location_id', '=', $location_id);
                 })
-                ->whereIn('tsl.transaction_id', $basket_ids)
+                ->whereIn('seed.product_id', $seed_product_ids)
+                ->where('t.business_id', $business_id)
+                ->where('t.type', 'sell')
+                ->where('t.status', 'final')
                 ->where('p.business_id', $business_id)
                 ->where('p.type', '!=', 'modifier')
                 ->where('p.is_inactive', 0)
@@ -6007,7 +5996,7 @@ class SellPosController extends Controller
                     'variations.sub_sku',
                     'variations.default_sell_price as selling_price',
                     'VLD.qty_available',
-                    DB::raw('COUNT(DISTINCT tsl.transaction_id) as basket_count')
+                    DB::raw('COUNT(DISTINCT seed.transaction_id) as basket_count')
                 )
                 ->groupBy(
                     'variations.id', 'p.id', 'p.name', 'p.artist',
@@ -6015,7 +6004,7 @@ class SellPosController extends Controller
                 )
                 // Require a real pattern: co-bought in at least 2 separate sales,
                 // so a single eclectic basket can't surface an unrelated artist.
-                ->havingRaw('COUNT(DISTINCT tsl.transaction_id) >= 2')
+                ->havingRaw('COUNT(DISTINCT seed.transaction_id) >= 2')
                 ->orderByDesc('basket_count')
                 ->limit(40)
                 ->get();
