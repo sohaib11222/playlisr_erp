@@ -92,6 +92,55 @@ return [
             'frozen_days' => 180,
             'max_items' => 200,
         ],
+        // Seasonal — titles to stock up on AHEAD of a season. Each season
+        // carries an `order_months` lead-time window (1-12); the bucket only
+        // surfaces that season's low/OOS titles during those months so they
+        // land on the shelf in time. An empty/omitted `order_months` = always
+        // active (e.g. an evergreen "Seasonal" category stocked year-round).
+        //
+        // A product matches a season if its category name matches any
+        // `category_patterns` substring OR its title contains any
+        // `title_keywords` substring. Tune patterns/keywords/months here to
+        // match Nivessa's actual seasonal lineup — no deploy needed.
+        'seasonal' => [
+            'max_items' => 100,
+            'seasons' => [
+                // Evergreen catch-all: anything filed under a "Seasonal"
+                // category shows whenever it's low, all year.
+                'evergreen' => [
+                    'label' => 'Seasonal',
+                    'category_patterns' => ['Seasonal'],
+                    'title_keywords' => [],
+                    'order_months' => [],
+                    'max_stock' => 1,
+                    'target_stock' => 3,
+                ],
+                'holiday' => [
+                    'label' => 'Holiday / Christmas',
+                    'category_patterns' => ['Holiday', 'Christmas'],
+                    'title_keywords' => ['christmas', 'holiday', 'xmas', 'noel', 'silent night'],
+                    'order_months' => [9, 10, 11],
+                    'max_stock' => 1,
+                    'target_stock' => 3,
+                ],
+                'valentines' => [
+                    'label' => "Valentine's",
+                    'category_patterns' => [],
+                    'title_keywords' => ['valentine', 'love songs'],
+                    'order_months' => [12, 1],
+                    'max_stock' => 1,
+                    'target_stock' => 2,
+                ],
+                'halloween' => [
+                    'label' => 'Halloween',
+                    'category_patterns' => [],
+                    'title_keywords' => ['halloween', 'spooky', 'horror', 'monster mash'],
+                    'order_months' => [8, 9],
+                    'max_stock' => 1,
+                    'target_stock' => 2,
+                ],
+            ],
+        ],
     ],
 
     /*

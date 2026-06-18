@@ -37,6 +37,7 @@
         apple_music_top: { key: 'apple_music_top', step: 4, title: 'Apple Music Top 100',          note: 'Trending Top 100 on Apple Music — make sure we carry the artists fans are streaming.' },
         universal_top:   { key: 'universal_top',   step: 5, title: 'UMe / Universal Top',          note: 'This week\'s UMe Top 200 + new deliveries.' },
         street_pulse:    { key: 'street_pulse',    step: 6, title: 'Street Pulse / Luminate chart', note: 'Luminate top sellers — the industry-wide chart.' },
+        seasonal:        { key: 'seasonal',        step: 7, title: 'Seasonal — stock up ahead', note: 'Low or out-of-stock titles for the season(s) coming up (Holiday, Valentine\'s, Halloween, plus anything in a Seasonal category). Order now so they\'re on the shelf in time.' },
     };
 
     /**
@@ -185,6 +186,7 @@
                 lazyLoadEventsBucket();
                 lazyLoadAuxBucket('ume_spotlights', window.ICA_UME_SPOT_URL);
                 lazyLoadAuxBucket('abc_a_restock', window.ICA_ABC_URL);
+                lazyLoadAuxBucket('seasonal', window.ICA_SEASONAL_URL);
                 lazyLoadAuxBucket('frozen_inventory', window.ICA_FROZEN_URL);
                 lazyLoadSecondaryBuckets();
             })
@@ -581,6 +583,7 @@
             { key: 'apple_music_top',  step: 4, title: 'Apple Music Top 100',          note: 'Trending Top 100 on Apple Music — make sure we carry the artists fans are streaming.' },
             { key: 'universal_top',    step: 5, title: 'UMe / Universal Top',          note: 'This week\'s UMe Top 200 + new deliveries.' },
             { key: 'street_pulse',     step: 6, title: 'Street Pulse / Luminate chart', note: 'Luminate top sellers — the industry-wide chart.' },
+            { key: 'seasonal',         step: 7, title: 'Seasonal — stock up ahead', note: 'Low or out-of-stock titles for the season(s) coming up (Holiday, Valentine\'s, Halloween, plus anything in a Seasonal category). Order now so they\'re on the shelf in time.' },
         ];
         // 2026-05-27 Sarah: ume_spotlights pulled out of the secondary list —
         // it was duplicating the UMe vibe of STEP 4. Spotlights now render
@@ -1315,7 +1318,7 @@
         // buckets so Sarah can see every supplier's price at a glance and
         // pick the cheapest. Inline chips dropped (now a column).
         const suppliers = (window.ICA_KNOWN_SUPPLIERS || []);
-        const showSupplierCols = suppliers.length > 0 && (key === 'fast_oos' || key === 'street_pulse' || key === 'universal_top' || key === 'apple_music_top' || key === 'top_artist_new_releases' || key === 'abc_a_restock' || key === 'long_oos_essentials' || key === 'hot_used_oos' || key === 'customer_wants');
+        const showSupplierCols = suppliers.length > 0 && (key === 'fast_oos' || key === 'street_pulse' || key === 'universal_top' || key === 'apple_music_top' || key === 'top_artist_new_releases' || key === 'abc_a_restock' || key === 'long_oos_essentials' || key === 'hot_used_oos' || key === 'customer_wants' || key === 'seasonal');
         if (showSupplierCols) {
             suppliers.forEach((sup) => {
                 headParts.push(sortable(sup.label, 'number', 'Latest wholesale price for this title from ' + sup.label + '. Cheapest cell across the row is highlighted green.'));
@@ -1504,7 +1507,7 @@
             bucket === 'fast_oos' || bucket === 'street_pulse' || bucket === 'universal_top' ||
             bucket === 'apple_music_top' || bucket === 'top_artist_new_releases' ||
             bucket === 'abc_a_restock' || bucket === 'long_oos_essentials' ||
-            bucket === 'hot_used_oos' || bucket === 'customer_wants'
+            bucket === 'hot_used_oos' || bucket === 'customer_wants' || bucket === 'seasonal'
         );
         let supplierCellsHtml = '';
         if (showSupplierCols) {
@@ -2198,7 +2201,7 @@
             // Priority order — items in higher-priority buckets get auto-
             // checked first until the running cost crosses the remaining
             // budget. Rows in lower-priority buckets get unchecked.
-            const priority = ['fast_oos', 'abc_a_restock', 'top_artist_new_releases', 'customer_wants', 'universal_top', 'street_pulse', 'apple_music_top', 'long_oos_essentials', 'events_upcoming', 'ume_spotlights', 'hot_used_oos'];
+            const priority = ['fast_oos', 'abc_a_restock', 'seasonal', 'top_artist_new_releases', 'customer_wants', 'universal_top', 'street_pulse', 'apple_music_top', 'long_oos_essentials', 'events_upcoming', 'ume_spotlights', 'hot_used_oos'];
             let running = 0;
             let checkedCount = 0;
             const usedRows = new WeakSet();
@@ -2668,6 +2671,7 @@
         { key: 'apple_music_top', label: 'Apple Top 100', importStep: true, sel: () => $root.querySelector('.ica-step-card[data-step="4"]') },
         { key: 'universal_top',   label: 'UMe Top',      importStep: true, sel: () => $root.querySelector('.ica-step-card[data-step="5"]') },
         { key: 'street_pulse',    label: 'Street Pulse', importStep: true, sel: () => $root.querySelector('.ica-step-card[data-step="6"]') },
+        { key: 'seasonal',        label: 'Seasonal',     sel: () => $root.querySelector('.ica-step-card[data-step="7"]') },
         { key: 'other_lists',     label: 'Other lists',  sel: () => $root.querySelector('.ica-secondary-disclosure:not(.ica-frozen-disclosure)') },
         { key: 'frozen_review',   label: "Frozen — don't reorder", sel: () => $root.querySelector('.ica-frozen-disclosure') },
         { key: 'manual_nonmusic', label: 'Other categories', sel: () => document.getElementById('ica_manual_reorder_step') },

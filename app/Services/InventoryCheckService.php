@@ -398,6 +398,7 @@ class InventoryCheckService
             'manager_picks' => $this->lazyPlaceholder('Manager picks'),
             'ume_spotlights' => $this->lazyPlaceholder('UMe Update — release spotlights'),
             'abc_a_restock' => $this->lazyPlaceholder('A-class items — restock priority'),
+            'seasonal' => $this->lazyPlaceholder('Seasonal — stock up ahead of the season'),
             'frozen_inventory' => $this->lazyPlaceholder('Frozen inventory — DO NOT reorder'),
         ];
 
@@ -2512,6 +2513,162 @@ class InventoryCheckService
             'count' => count($items),
             'advisory_only' => true,
         ];
+    }
+
+    // ── Seasonal restock ──────────────────────────────────────────────
+
+    /** Public alias for the lazy seasonal-restock endpoint. */
+    public function bucketSeasonalPublic(int $business_id, int $locationId, $permittedLocations): array
+    {
+        return $this->bucketSeasonal($business_id, $locationId, $permittedLocations);
+    }
+
+    /**
+     * Seasonal titles to stock up on AHEAD of the season. Each configured
+     * season (Holiday, Valentine's, Halloween, plus an evergreen "Seasonal"
+     * category) carries an order_months lead-time window — the bucket only
+     * surfaces that season's low/OOS titles during those months so they land
+     * on the shelf in time. A season with empty order_months is always active.
+     *
+     * A row matches a season by category-name pattern OR a title keyword.
+     * Config-driven + tunable in config/inventory_check.php, no migration
+     * (Sarah 2026-06-17, "we have seasonal products").
+     */
+    protected function bucketSeasonal(int $business_id, int $locationId, $permittedLocations): array
+    {
+        $label = 'Seasonal — stock up ahead of the season';
+        $cfg = config('inventory_check.buckets.seasonal', []);
+        $seasons = (array) ($cfg['seasons'] ?? []);
+        $maxItems = (int) ($cfg['max_items'] ?? 100);
+        $month = (int) Carbon::now()->month;
+
+        if (empty($seasons)) {
+            return [
+                'label' => $label,
+                'why' => 'No seasons configured — add them under inventory_check.buckets.seasonal in config/inventory_check.php.',
+                'items' => [], 'count' => 0,
+                'empty_reason' => 'no_seasons',
+            ];
+        }
+
+        // Resolve which seasons are in their ordering window this month and
+        // pre-compute their matching category ids + lowercased keywords.
+        $active = [];
+        foreach ($seasons as $key => $s) {
+            $months = array_map('intval', (array) ($s['order_months'] ?? []));
+            if (!empty($months) && !in_array($month, $months, true)) {
+                continue;
+            }
+            $catIds = [];
+            foreach ((array) ($s['category_patterns'] ?? []) as $pattern) {
+                foreach ($this->categoryIdsMatching($business_id, (string) $pattern) as $id) {
+                    $catIds[(int) $id] = true;
+                }
+            }
+            $keywords = array_values(array_filter(array_map(
+                fn ($k) => mb_strtolower(trim((string) $k)),
+                (array) ($s['title_keywords'] ?? [])
+            )));
+            $active[(string) $key] = [
+                'label' => (string) ($s['label'] ?? $key),
+                'cat_ids' => $catIds,
+                'keywords' => $keywords,
+                'max_stock' => (float) ($s['max_stock'] ?? 1),
+                'target_stock' => (int) ($s['target_stock'] ?? 3),
+            ];
+        }
+
+        if (empty($active)) {
+            $next = $this->seasonalNextWindow($seasons, $month);
+            return [
+                'label' => $label,
+                'why' => $next
+                    ? ('Nothing seasonal to order this week. Next up: ' . $next['label'] . ' — ordering opens in ' . $next['month_name'] . '.')
+                    : 'Nothing seasonal to order this week.',
+                'items' => [], 'count' => 0,
+                'empty_reason' => 'no_active_season',
+            ];
+        }
+
+        $rows = $this->queryPscRows($business_id, $locationId, [], $permittedLocations);
+        $items = [];
+        foreach ($rows as $row) {
+            $catId = (int) ($row->category_id ?? 0);
+            $nameLower = mb_strtolower((string) ($row->product ?? ''));
+            $matchKey = null;
+            $match = null;
+            foreach ($active as $sk => $s) {
+                $hit = ($catId !== 0 && isset($s['cat_ids'][$catId]));
+                if (!$hit) {
+                    foreach ($s['keywords'] as $kw) {
+                        if ($kw !== '' && mb_strpos($nameLower, $kw) !== false) { $hit = true; break; }
+                    }
+                }
+                if ($hit) { $matchKey = $sk; $match = $s; break; }
+            }
+            if ($match === null) {
+                continue;
+            }
+            $stock = (float) ($row->stock ?? 0);
+            if ($stock > $match['max_stock']) {
+                continue;
+            }
+            // RSD-exclusive titles aren't routine restocks — keep them out.
+            if ($this->isRsdTitle((string) ($row->product ?? ''))) {
+                continue;
+            }
+            $items[] = $this->rowToCandidate($row, $stock, 0, $match['target_stock'], [
+                'bucket' => 'seasonal',
+                'reason' => $match['label'] . ' — stock ' . (int) $stock . ', order ahead of the season',
+                'tags' => ['seasonal', $matchKey],
+            ]);
+        }
+
+        $items = $this->dedupeByVariation($items);
+        // Lowest stock first, then biggest historical seller.
+        usort($items, function ($a, $b) {
+            return ($a['stock'] <=> $b['stock']) ?: ($b['sold_qty_window'] <=> $a['sold_qty_window']);
+        });
+        if (count($items) > $maxItems) {
+            $items = array_slice($items, 0, $maxItems);
+        }
+
+        $names = implode(', ', array_map(fn ($s) => $s['label'], $active));
+
+        return [
+            'label' => $label,
+            'why' => 'Low or out-of-stock titles for the season(s) coming up (' . $names . '). Order these now so they\'re on the shelf in time.',
+            'items' => $items,
+            'count' => count($items),
+            'active_seasons' => array_values(array_map(fn ($s) => $s['label'], $active)),
+        ];
+    }
+
+    /** Soonest upcoming season window, for the empty-state "next up" hint. */
+    protected function seasonalNextWindow(array $seasons, int $month): ?array
+    {
+        $monthNames = [
+            1 => 'January', 2 => 'February', 3 => 'March', 4 => 'April',
+            5 => 'May', 6 => 'June', 7 => 'July', 8 => 'August',
+            9 => 'September', 10 => 'October', 11 => 'November', 12 => 'December',
+        ];
+        $best = null;
+        $bestDist = 13;
+        foreach ($seasons as $key => $s) {
+            $months = array_map('intval', (array) ($s['order_months'] ?? []));
+            foreach ($months as $m) {
+                $dist = (($m - $month) + 12) % 12;
+                if ($dist > 0 && $dist < $bestDist) {
+                    $bestDist = $dist;
+                    $best = [
+                        'label' => (string) ($s['label'] ?? $key),
+                        'month' => $m,
+                        'month_name' => $monthNames[$m] ?? ('month ' . $m),
+                    ];
+                }
+            }
+        }
+        return $best;
     }
 
     // ── Customer wants ────────────────────────────────────────────────
