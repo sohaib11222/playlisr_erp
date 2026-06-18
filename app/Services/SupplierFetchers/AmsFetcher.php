@@ -60,32 +60,89 @@ class AmsFetcher extends AbstractHttpFetcher
             throw new \RuntimeException('AMS: login appears to have failed — no "Sign out" link on home. Check AMS_PORTAL_* env values + that the account is unlocked.');
         }
 
-        // 4) Walk the vinyl + CD top-sellers and parse each product block.
-        $vinylPages = (int) env('AMS_VINYL_PAGES', 2);
-        $cdPages = (int) env('AMS_CD_PAGES', 2);
-        $ipp = (int) env('AMS_ITEMS_PER_PAGE', 250);
+        // 4) Walk the vinyl + CD catalogs page by page and parse each block.
+        // ipp=100 is AMS's proven page size (250 silently clamps to 100).
+        $vinylPages = (int) env('AMS_VINYL_PAGES', 25);
+        $cdPages = (int) env('AMS_CD_PAGES', 25);
+        $ipp = (int) env('AMS_ITEMS_PER_PAGE', 100);
 
         $rows = [];
         foreach ([['Vinyl', $vinylPages, 'LP'], ['CD', $cdPages, 'CD']] as [$path, $pages, $defaultFormat]) {
-            for ($p = 1; $p <= max(1, $pages); $p++) {
-                $url = 'https://www.allmediasupply.com/Search/' . $path . '?sort=SalesRank&pg=' . $p . '&ipp=' . $ipp;
+            foreach ($this->walkCatalog($path, $defaultFormat, max(1, $pages), $ipp) as $row) {
+                $rows[] = $row;
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Page through one AMS catalog section (Vinyl / CD) collecting every
+     * product row, deduped by EAN.
+     *
+     * Why this is more than a plain `for ($p=1..N)` loop: the page-number
+     * query param AMS uses isn't fixed across portal versions — a wrong
+     * param name is silently ignored and page 1 comes back again, which is
+     * exactly the "400 fetched → 200 after dedupe" symptom Sarah hit (every
+     * "page 2" was really page 1). So on the first advance we probe a few
+     * known param spellings (pg / page / p) and lock onto whichever one
+     * actually returns *new* EANs, then reuse it for the rest of the walk.
+     * We stop as soon as a page yields no new EANs (end of catalog, or the
+     * param stopped advancing) so we never spin re-fetching the same page.
+     *
+     * @return array<int, array<string,mixed>>
+     */
+    protected function walkCatalog(string $path, string $defaultFormat, int $maxPages, int $ipp): array
+    {
+        $base = 'https://www.allmediasupply.com/Search/' . $path . '?sort=SalesRank&ipp=' . $ipp;
+        $rows = [];
+        $seenEans = [];
+        $pageParam = null; // locked once a spelling is proven to advance
+
+        $absorb = function (array $parsed) use (&$rows, &$seenEans): int {
+            $fresh = 0;
+            foreach ($parsed as $r) {
+                $ean = (string) ($r['upc'] ?? '');
+                if ($ean !== '') {
+                    if (isset($seenEans[$ean])) continue;
+                    $seenEans[$ean] = true;
+                }
+                $rows[] = $r;
+                $fresh++;
+            }
+            return $fresh;
+        };
+
+        // Page 1 — any unknown param is harmless here, it just gets ignored.
+        try {
+            $parsed = $this->parseProductListHtml($this->get($base . '&pg=1'), $defaultFormat);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('AmsFetcher: page 1 fetch failed', ['path' => $path, 'err' => $e->getMessage()]);
+            return [];
+        }
+        if (empty($parsed)) return [];
+        $absorb($parsed);
+
+        for ($p = 2; $p <= $maxPages; $p++) {
+            $params = $pageParam !== null ? [$pageParam] : ['pg', 'page', 'p'];
+            $advanced = false;
+            foreach ($params as $param) {
                 try {
-                    $html = $this->get($url);
+                    $parsed = $this->parseProductListHtml($this->get($base . '&' . $param . '=' . $p), $defaultFormat);
                 } catch (\Throwable $e) {
-                    // One bad page shouldn't kill the whole fetch.
-                    \Illuminate\Support\Facades\Log::warning('AmsFetcher: page fetch failed', ['url' => $url, 'err' => $e->getMessage()]);
                     continue;
                 }
-                $parsed = $this->parseProductListHtml($html, $defaultFormat);
-                foreach ($parsed as $row) {
-                    $rows[] = $row;
-                }
-                // If a page came back with no products, no point paging
-                // further — we've fallen off the end of the catalog.
-                if (empty($parsed)) {
+                if (empty($parsed)) continue;
+                $fresh = $absorb($parsed);
+                // Treat the page as a real advance only if at least half its
+                // rows are new — a repeat of page 1 brings ~0 fresh EANs.
+                if ($fresh >= max(1, (int) floor(count($parsed) / 2))) {
+                    $pageParam = $param;
+                    $advanced = true;
                     break;
                 }
             }
+            if (!$advanced) break; // no spelling advanced → end of catalog
         }
 
         return $rows;
