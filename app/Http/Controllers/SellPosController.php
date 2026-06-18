@@ -5952,33 +5952,29 @@ class SellPosController extends Controller
                 return response()->json(['success' => true, 'recommendations' => []]);
             }
 
-            // Co-purchase across ALL sales history: self-join seed lines to the
-            // other lines on the same transaction, ranked by how many distinct
-            // baskets each in-stock product co-occurred in with a seed. A single
-            // self-join avoids materializing a huge basket-id list, so we can
-            // scan the full history instead of just the most recent baskets.
-            $rows = DB::table('transaction_sell_lines as seed')
+            // Resolve a product's artist the same two ways the catalog stores it:
+            // the `artist` column when filled, else the "Title / Artist" suffix in
+            // the name. Used for both grouping co-purchases and matching stock.
+            $artistKeyExpr = "LOWER(TRIM(CASE WHEN p.artist IS NOT NULL AND p.artist <> '' "
+                . "THEN p.artist ELSE SUBSTRING_INDEX(p.name, ' / ', -1) END))";
+
+            // Step 1 — co-purchase at the ARTIST level across ALL sales history.
+            // Vinyl is largely unique (qty 1), so the same *product* almost never
+            // sells in two baskets; counting by artist is what actually surfaces a
+            // pattern. Keep the 2+ distinct-basket bar so a single eclectic basket
+            // can't promote an unrelated artist.
+            $artist_counts = DB::table('transaction_sell_lines as seed')
                 ->join('transactions as t', 't.id', '=', 'seed.transaction_id')
                 ->join('transaction_sell_lines as tsl', 'tsl.transaction_id', '=', 'seed.transaction_id')
                 ->join('variations', 'variations.id', '=', 'tsl.variation_id')
                 ->join('products as p', 'p.id', '=', 'variations.product_id')
-                ->join('product_locations as pl', 'pl.product_id', '=', 'p.id')
-                ->leftjoin('variation_location_details AS VLD', function ($join) use ($location_id) {
-                    $join->on('variations.id', '=', 'VLD.variation_id')
-                         ->where('VLD.location_id', '=', $location_id);
-                })
                 ->whereIn('seed.product_id', $seed_product_ids)
                 ->where('t.business_id', $business_id)
                 ->where('t.type', 'sell')
                 ->where('t.status', 'final')
                 ->where('p.business_id', $business_id)
                 ->where('p.type', '!=', 'modifier')
-                ->where('p.is_inactive', 0)
-                ->where('p.not_for_selling', 0)
-                ->where('pl.location_id', $location_id)
-                ->where('VLD.qty_available', '>', 0)
                 ->whereNotIn('p.id', $seed_product_ids)
-                ->whereNotIn('p.id', $product_ids)
                 // Exclude the cart's own artist(s) — those live in the other panel.
                 ->where(function ($q) use ($artists) {
                     $q->whereNotIn('p.artist', $artists)->orWhereNull('p.artist');
@@ -5989,6 +5985,46 @@ class SellPosController extends Controller
                     }
                 })
                 ->select(
+                    DB::raw($artistKeyExpr . ' as artist_key'),
+                    DB::raw('COUNT(DISTINCT seed.transaction_id) as basket_count')
+                )
+                ->groupByRaw($artistKeyExpr)
+                ->havingRaw('COUNT(DISTINCT seed.transaction_id) >= 2')
+                ->orderByDesc('basket_count')
+                ->limit(12)
+                ->get();
+
+            $artist_keys = [];
+            foreach ($artist_counts as $ac) {
+                $k = trim((string) $ac->artist_key);
+                if ($k !== '') {
+                    $artist_keys[] = $k;
+                }
+            }
+
+            if (empty($artist_keys)) {
+                return response()->json(['success' => true, 'recommendations' => []]);
+            }
+
+            // Step 2 — pull one in-stock title per qualifying artist, newest first.
+            $placeholders = implode(',', array_fill(0, count($artist_keys), '?'));
+            $stock = DB::table('products as p')
+                ->join('variations', 'variations.product_id', '=', 'p.id')
+                ->join('product_locations as pl', 'pl.product_id', '=', 'p.id')
+                ->leftjoin('variation_location_details AS VLD', function ($join) use ($location_id) {
+                    $join->on('variations.id', '=', 'VLD.variation_id')
+                         ->where('VLD.location_id', '=', $location_id);
+                })
+                ->where('p.business_id', $business_id)
+                ->where('p.type', '!=', 'modifier')
+                ->where('p.is_inactive', 0)
+                ->where('p.not_for_selling', 0)
+                ->where('pl.location_id', $location_id)
+                ->where('VLD.qty_available', '>', 0)
+                ->whereNotIn('p.id', $seed_product_ids)
+                ->whereNotIn('p.id', $product_ids)
+                ->whereRaw($artistKeyExpr . ' IN (' . $placeholders . ')', $artist_keys)
+                ->select(
                     'p.id as product_id',
                     'p.name as product_name',
                     'p.artist',
@@ -5996,29 +6032,28 @@ class SellPosController extends Controller
                     'variations.sub_sku',
                     'variations.default_sell_price as selling_price',
                     'VLD.qty_available',
-                    DB::raw('COUNT(DISTINCT seed.transaction_id) as basket_count')
+                    'p.created_at',
+                    DB::raw($artistKeyExpr . ' as artist_key')
                 )
-                ->groupBy(
-                    'variations.id', 'p.id', 'p.name', 'p.artist',
-                    'variations.sub_sku', 'variations.default_sell_price', 'VLD.qty_available'
-                )
-                // Require a real pattern: co-bought in at least 2 separate sales,
-                // so a single eclectic basket can't surface an unrelated artist.
-                ->havingRaw('COUNT(DISTINCT seed.transaction_id) >= 2')
-                ->orderByDesc('basket_count')
-                ->limit(40)
+                ->orderBy('p.created_at', 'desc')
                 ->get();
 
-            // One card per artist so the panel showcases variety of artists.
-            $seen = [];
-            $recommendations = [];
-            foreach ($rows as $r) {
-                $key = $this->resolveArtistKeys([$r]);
-                $key = !empty($key) ? mb_strtolower($key[0]) : ('p' . $r->product_id);
-                if (isset($seen[$key])) {
+            // One card per artist, ordered by co-purchase strength from step 1.
+            $rank = array_flip($artist_keys);
+            $by_artist = [];
+            foreach ($stock as $r) {
+                $k = trim((string) $r->artist_key);
+                if ($k === '' || isset($by_artist[$k])) {
                     continue;
                 }
-                $seen[$key] = true;
+                $by_artist[$k] = $r;
+            }
+            uasort($by_artist, function ($a, $b) use ($rank) {
+                return ($rank[$a->artist_key] ?? 999) <=> ($rank[$b->artist_key] ?? 999);
+            });
+
+            $recommendations = [];
+            foreach ($by_artist as $r) {
                 $recommendations[] = [
                     'variation_id'  => $r->variation_id,
                     'product_id'    => $r->product_id,
