@@ -46,6 +46,7 @@ class ApplyNivessaStoreCredit extends Command
                             {file : Path to the cleaned store-credit CSV}
                             {--business=1 : business_id}
                             {--commit : Actually write balances (default: dry-run)}
+                            {--skip-nonzero : Hold (do not overwrite) contacts that already have a non-zero balance}
                             {--csv= : Optional path for the applied-credits report CSV}
                             {--limit=0 : Cap rows processed (0 = all)}';
 
@@ -62,6 +63,7 @@ class ApplyNivessaStoreCredit extends Command
         }
         $businessId = (int) $this->option('business');
         $commit = (bool) $this->option('commit');
+        $skipNonZero = (bool) $this->option('skip-nonzero');
         $limit = (int) $this->option('limit');
         $csvPath = $this->option('csv');
 
@@ -92,11 +94,13 @@ class ApplyNivessaStoreCredit extends Command
 
         $s = [
             'read' => 0, 'skip_no_amount' => 0, 'skip_nonpositive' => 0,
-            'skip_no_name' => 0,
+            'skip_no_name' => 0, 'skip_nonzero' => 0, 'skip_collision' => 0,
             'matched_tag' => 0, 'matched_name' => 0, 'matched_phone' => 0,
             'unmatched' => 0, 'applied' => 0, 'total_credit' => 0.0,
         ];
         $skippedNoName = [];
+        $collisions = [];
+        $writtenContactIds = [];
         $reportRows = [[
             'external_id', 'name', 'matched_by', 'contact_id', 'contact_name',
             'old_balance', 'new_balance', 'flag',
@@ -196,6 +200,22 @@ class ApplyNivessaStoreCredit extends Command
 
                 $oldBalance = round((float) ($contact->balance ?? 0), 2);
                 $newBalance = round((float) $amount, 2);
+
+                // Collision guard: two CSV rows resolving to the SAME contact
+                // would make the final balance depend on row order. Honour the
+                // first, hold the rest for review.
+                if (isset($writtenContactIds[$contact->id])) {
+                    $s['skip_collision']++;
+                    $collisions[] = [
+                        'external_id' => $externalId, 'name' => $name,
+                        'contact_id' => (int) $contact->id,
+                        'contact_name' => (string) $contact->name,
+                        'first_row' => $writtenContactIds[$contact->id],
+                        'amount' => $newBalance,
+                    ];
+                    continue;
+                }
+
                 $flag = '';
                 if (abs($oldBalance) > 0.009) {
                     $flag = 'NON-ZERO existing balance';
@@ -205,7 +225,15 @@ class ApplyNivessaStoreCredit extends Command
                         'old' => $oldBalance,
                         'new' => $newBalance,
                     ];
+                    // Hold contacts that already carry a real balance for the
+                    // owner to review instead of overwriting them.
+                    if ($skipNonZero) {
+                        $s['skip_nonzero']++;
+                        continue;
+                    }
                 }
+
+                $writtenContactIds[$contact->id] = $externalId;
 
                 if ($commit) {
                     $stamp = now()->format('Y-m-d H:i');
@@ -261,9 +289,10 @@ class ApplyNivessaStoreCredit extends Command
         $this->line('');
         $this->info($commit ? '✅ Balances written.' : '🧪 DRY RUN — no balances written. Re-run with --commit.');
         $this->line(sprintf(
-            'Read: %d · Applied: %d (tag %d / name %d / phone %d) · Unmatched: %d · No-name-skip: %d · No-amount: %d · Non-positive: %d',
+            'Read: %d · Applied: %d (tag %d / name %d / phone %d) · Unmatched: %d · No-name-skip: %d · Nonzero-hold: %d · Collision-hold: %d · No-amount: %d · Non-positive: %d',
             $s['read'], $s['applied'], $s['matched_tag'], $s['matched_name'],
             $s['matched_phone'], $s['unmatched'], $s['skip_no_name'],
+            $s['skip_nonzero'], $s['skip_collision'],
             $s['skip_no_amount'], $s['skip_nonpositive']
         ));
         $this->line(sprintf('Total credit set: $%s', number_format($s['total_credit'], 2)));
@@ -271,9 +300,18 @@ class ApplyNivessaStoreCredit extends Command
 
         if (!empty($nonZeroFlags)) {
             $this->line('');
-            $this->warn('⚠️  ' . count($nonZeroFlags) . ' contact(s) already had a NON-ZERO balance that ' . ($commit ? 'was' : 'would be') . ' overwritten:');
+            $verb = $skipNonZero ? 'HELD (not touched) — already has a non-zero balance' : ($commit ? 'was overwritten' : 'would be overwritten');
+            $this->warn('⚠️  ' . count($nonZeroFlags) . ' contact(s) with a NON-ZERO balance ' . $verb . ':');
             foreach ($nonZeroFlags as $f) {
                 $this->line(sprintf('   #%d %s: $%s → $%s', $f['contact_id'], $f['name'], number_format($f['old'], 2), number_format($f['new'], 2)));
+            }
+        }
+
+        if (!empty($collisions)) {
+            $this->line('');
+            $this->warn('⚠️  ' . count($collisions) . ' row(s) HELD — another row already targeted the same contact (ambiguous, review):');
+            foreach ($collisions as $c) {
+                $this->line(sprintf('   %s "%s" → #%d %s ($%s) — first claimed by %s', $c['external_id'], $c['name'], $c['contact_id'], $c['contact_name'], number_format($c['amount'], 2), $c['first_row']));
             }
         }
 
