@@ -92,9 +92,11 @@ class ApplyNivessaStoreCredit extends Command
 
         $s = [
             'read' => 0, 'skip_no_amount' => 0, 'skip_nonpositive' => 0,
+            'skip_no_name' => 0,
             'matched_tag' => 0, 'matched_name' => 0, 'matched_phone' => 0,
             'unmatched' => 0, 'applied' => 0, 'total_credit' => 0.0,
         ];
+        $skippedNoName = [];
         $reportRows = [[
             'external_id', 'name', 'matched_by', 'contact_id', 'contact_name',
             'old_balance', 'new_balance', 'flag',
@@ -119,6 +121,18 @@ class ApplyNivessaStoreCredit extends Command
                     continue; // truly blank line
                 }
                 $s['read']++;
+
+                // Per owner instruction: never apply credit to a row with no
+                // name or a single-character name — too ambiguous to trust.
+                if (mb_strlen($name) < 2) {
+                    $s['skip_no_name']++;
+                    $skippedNoName[] = [
+                        'external_id' => $externalId,
+                        'name' => $name,
+                        'amount' => $this->parseAmount($rawAmount),
+                    ];
+                    continue;
+                }
 
                 $amount = $this->parseAmount($rawAmount);
                 if ($amount === null) {
@@ -247,9 +261,10 @@ class ApplyNivessaStoreCredit extends Command
         $this->line('');
         $this->info($commit ? '✅ Balances written.' : '🧪 DRY RUN — no balances written. Re-run with --commit.');
         $this->line(sprintf(
-            'Read: %d · Applied: %d (tag %d / name %d / phone %d) · Unmatched: %d · No-amount: %d · Non-positive: %d',
+            'Read: %d · Applied: %d (tag %d / name %d / phone %d) · Unmatched: %d · No-name-skip: %d · No-amount: %d · Non-positive: %d',
             $s['read'], $s['applied'], $s['matched_tag'], $s['matched_name'],
-            $s['matched_phone'], $s['unmatched'], $s['skip_no_amount'], $s['skip_nonpositive']
+            $s['matched_phone'], $s['unmatched'], $s['skip_no_name'],
+            $s['skip_no_amount'], $s['skip_nonpositive']
         ));
         $this->line(sprintf('Total credit set: $%s', number_format($s['total_credit'], 2)));
         $this->line("Report CSV: {$csvOut}");
@@ -259,6 +274,14 @@ class ApplyNivessaStoreCredit extends Command
             $this->warn('⚠️  ' . count($nonZeroFlags) . ' contact(s) already had a NON-ZERO balance that ' . ($commit ? 'was' : 'would be') . ' overwritten:');
             foreach ($nonZeroFlags as $f) {
                 $this->line(sprintf('   #%d %s: $%s → $%s', $f['contact_id'], $f['name'], number_format($f['old'], 2), number_format($f['new'], 2)));
+            }
+        }
+
+        if (!empty($skippedNoName)) {
+            $this->line('');
+            $this->warn('⏭️  ' . count($skippedNoName) . ' row(s) skipped — no name or single-character name (not added to DB):');
+            foreach ($skippedNoName as $u) {
+                $this->line(sprintf('   %s  "%s"  $%s', $u['external_id'], $u['name'], $u['amount'] === null ? '?' : number_format($u['amount'], 2)));
             }
         }
 
