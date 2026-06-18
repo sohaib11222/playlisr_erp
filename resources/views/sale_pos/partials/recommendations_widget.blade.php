@@ -37,7 +37,7 @@
         <div id="pos_rec_same_body"></div>
     </div>
     <div id="pos_rec_new" style="display:none;">
-        <div class="pos-rec-title">New Arrivals — In Stock</div>
+        <div class="pos-rec-title">Artists You May Also Like — In Stock</div>
         <div id="pos_rec_new_body"></div>
     </div>
 </div>
@@ -52,11 +52,12 @@
     jQuery(function ($) {
         if (!$('#pos_recommendations').length) return;
 
-        // Two clearly-labeled groups so nothing looks like a bad guess:
+        // Two clearly-labeled groups:
         //   same-artist  -> more titles by an artist already in the cart
-        //   new-arrivals -> recently-added records by other artists ("just in")
-        var SAME_URL = '/sells/pos/get-recommendations';
-        var NEW_URL  = '/sells/pos/get-new-arrivals';
+        //   related      -> "customers who bought this also bought" other artists,
+        //                   from the store's full sales history, in stock now
+        var SAME_URL    = '/sells/pos/get-recommendations';
+        var RELATED_URL = '/sells/pos/get-related-artists';
 
         function escapeHtml(s) {
             return String(s == null ? '' : s)
@@ -117,10 +118,10 @@
             if (!ids.length || !location_id) { hideAll(); return; }
             $.when(
                 fetchRecs(SAME_URL, ids, location_id),
-                fetchRecs(NEW_URL, ids, location_id)
-            ).done(function (same, arrivals) {
+                fetchRecs(RELATED_URL, ids, location_id)
+            ).done(function (same, related) {
                 var a = renderGroup($('#pos_rec_same'), $('#pos_rec_same_body'), same);
-                var b = renderGroup($('#pos_rec_new'),  $('#pos_rec_new_body'),  arrivals);
+                var b = renderGroup($('#pos_rec_new'),  $('#pos_rec_new_body'),  related);
                 $('#pos_recommendations').toggle(a || b);
             });
         }

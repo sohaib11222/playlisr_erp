@@ -5983,9 +5983,12 @@ class SellPosController extends Controller
                 return response()->json(['success' => true, 'recommendations' => []]);
             }
 
-            // Seed products = catalog items by the cart's artist(s). product_id
-            // is indexed on the sell-lines table, so resolving these first
-            // keeps the (non-sargable) name LIKE off the big join.
+            $lower_artists = array_map('mb_strtolower', $artists);
+
+            // Seed products = catalog items by the cart's artist(s); lets us also
+            // catch modern (post-import) sales that linked to a real product
+            // rather than carrying raw legacy_artist text. May be empty for an
+            // artist that only exists in legacy sales — that's fine.
             $seed_product_ids = Product::where('business_id', $business_id)
                 ->where(function ($q) use ($artists) {
                     $q->whereIn('artist', $artists);
@@ -5997,50 +6000,51 @@ class SellPosController extends Controller
                 ->pluck('id')
                 ->all();
 
-            if (empty($seed_product_ids)) {
-                return response()->json(['success' => true, 'recommendations' => []]);
-            }
-
-            // Resolve a product's artist the same two ways the catalog stores it:
-            // the `artist` column when filled, else the "Title / Artist" suffix in
-            // the name. Used for both grouping co-purchases and matching stock.
+            // Resolve a product's artist the two ways the catalog stores it:
+            // the `artist` column when filled, else the "Title / Artist" suffix.
+            // Used to match co-bought artists back to current in-stock products.
             $artistKeyExpr = "LOWER(TRIM(CASE WHEN p.artist IS NOT NULL AND p.artist <> '' "
                 . "THEN p.artist ELSE SUBSTRING_INDEX(p.name, ' / ', -1) END))";
 
-            // Step 1 — co-purchase at the ARTIST level across ALL sales history.
-            // Vinyl is largely unique (qty 1), so the same *product* almost never
-            // sells in two baskets; counting by artist is what actually surfaces a
-            // pattern. Keep the 2+ distinct-basket bar so a single eclectic basket
-            // can't promote an unrelated artist.
+            // Resolve a co-bought sell line's artist: prefer the raw legacy_artist
+            // text captured on the historical import, else the linked product's
+            // artist column / name suffix.
+            $coArtistExpr = "LOWER(TRIM(CASE "
+                . "WHEN tsl.legacy_artist IS NOT NULL AND tsl.legacy_artist <> '' THEN tsl.legacy_artist "
+                . "WHEN p.artist IS NOT NULL AND p.artist <> '' THEN p.artist "
+                . "ELSE SUBSTRING_INDEX(p.name, ' / ', -1) END))";
+
+            // Step 1 — "customers who bought the cart's artist also bought X",
+            // by artist, across ALL sales history. legacy_artist covers the 70k+
+            // imported lines (which often have no in-stock product to join on),
+            // so this is far denser than matching on current inventory. Self-join
+            // baskets that contain a seed line to the other lines in that basket.
+            // Keep the 2+ distinct-basket bar so one eclectic basket can't promote
+            // an unrelated artist.
+            $artist_ph = implode(',', array_fill(0, count($lower_artists), '?'));
             $artist_counts = DB::table('transaction_sell_lines as seed')
                 ->join('transactions as t', 't.id', '=', 'seed.transaction_id')
                 ->join('transaction_sell_lines as tsl', 'tsl.transaction_id', '=', 'seed.transaction_id')
-                ->join('variations', 'variations.id', '=', 'tsl.variation_id')
-                ->join('products as p', 'p.id', '=', 'variations.product_id')
-                ->whereIn('seed.product_id', $seed_product_ids)
+                ->leftjoin('products as p', 'p.id', '=', 'tsl.product_id')
                 ->where('t.business_id', $business_id)
                 ->where('t.type', 'sell')
                 ->where('t.status', 'final')
-                ->where('p.business_id', $business_id)
-                ->where('p.type', '!=', 'modifier')
-                ->whereNotIn('p.id', $seed_product_ids)
-                // Exclude the cart's own artist(s) — those live in the other panel.
-                ->where(function ($q) use ($artists) {
-                    $q->whereNotIn('p.artist', $artists)->orWhereNull('p.artist');
-                })
-                ->where(function ($q) use ($artists) {
-                    foreach ($artists as $a) {
-                        $q->where('p.name', 'not like', '% / ' . addcslashes($a, '\\%_') . '%');
+                ->where(function ($q) use ($artist_ph, $lower_artists, $seed_product_ids) {
+                    $q->whereRaw('LOWER(seed.legacy_artist) IN (' . $artist_ph . ')', $lower_artists);
+                    if (!empty($seed_product_ids)) {
+                        $q->orWhereIn('seed.product_id', $seed_product_ids);
                     }
                 })
+                // Drop the cart's own artist(s) from the results.
+                ->whereRaw($coArtistExpr . ' NOT IN (' . $artist_ph . ')', $lower_artists)
                 ->select(
-                    DB::raw($artistKeyExpr . ' as artist_key'),
+                    DB::raw($coArtistExpr . ' as artist_key'),
                     DB::raw('COUNT(DISTINCT seed.transaction_id) as basket_count')
                 )
-                ->groupByRaw($artistKeyExpr)
+                ->groupByRaw($coArtistExpr)
                 ->havingRaw('COUNT(DISTINCT seed.transaction_id) >= 2')
                 ->orderByDesc('basket_count')
-                ->limit(12)
+                ->limit(20)
                 ->get();
 
             $artist_keys = [];
