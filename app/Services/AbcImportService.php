@@ -28,7 +28,17 @@ class AbcImportService
     const STORAGE_FILE = 'abc-import/latest.json';
 
     /**
-     * Parse a CSV file path. Returns rows: [ {product, format, location, sales, qty, class}, ... ]
+     * Parse a CSV file path. Returns rows:
+     *   [ {product, sku, format, location, sales, qty, class, xyz, abc_xyz}, ... ]
+     *
+     * The analyzer's "All" export carries a banner row above the real header
+     * (",,,Sales,,,Q-ty,,,") and repeats column labels (two "Sum"/"1..5"
+     * blocks for Sales then Q-ty). We therefore scan for the header row that
+     * actually contains "product" + "abc" instead of assuming row 1, and we
+     * read by column LABEL — later duplicate labels just overwrite earlier
+     * ones, which is fine because we only consume the unique labels
+     * (product, sku, format, abc, xyz, abc-xyz). Files with a Location column
+     * (older per-store exports) still work: the label is simply present.
      */
     public function parseCsv(string $path): array
     {
@@ -40,12 +50,18 @@ class AbcImportService
 
         $header = null;
         while (($cols = fgetcsv($fh)) !== false) {
+            $lower = array_map(function ($c) {
+                return strtolower(trim((string) $c));
+            }, $cols);
+
+            // Lock onto the first row that looks like the real header.
             if ($header === null) {
-                $header = array_map(function ($c) {
-                    return strtolower(trim($c));
-                }, $cols);
+                if (in_array('product', $lower, true) && in_array('abc', $lower, true)) {
+                    $header = $lower;
+                }
                 continue;
             }
+
             // Skip blank tail rows.
             if (count($cols) < 4) {
                 continue;
@@ -53,6 +69,9 @@ class AbcImportService
 
             $row = [];
             foreach ($header as $i => $key) {
+                if ($key === '') {
+                    continue;
+                }
                 $row[$key] = isset($cols[$i]) ? trim($cols[$i]) : '';
             }
             $product = $row['product'] ?? '';
@@ -60,13 +79,17 @@ class AbcImportService
             if ($product === '' || !in_array($class, ['A', 'B', 'C'], true)) {
                 continue;
             }
+            $abcXyz = strtoupper(preg_replace('/\s+/', '', $row['abc-xyz'] ?? ''));
             $rows[] = [
                 'product' => $product,
+                'sku' => $row['sku'] ?? '',
                 'format' => $row['format'] ?? '',
                 'location' => strtolower($row['location'] ?? ''),
                 'sales' => $this->parseEuroNumber($row['sales'] ?? '0'),
                 'qty' => (int) ($row['q-ty'] ?? 0),
                 'class' => $class,
+                'xyz' => strtoupper($row['xyz'] ?? ''),
+                'abc_xyz' => $abcXyz,
             ];
         }
         fclose($fh);
@@ -95,14 +118,46 @@ class AbcImportService
             ->select('p.id', 'p.name', 'c.name as category_name', 'sc.name as sub_category_name')
             ->get();
 
+        // id => product row (for SKU hits, which skip the name index).
         // norm_name => [ {id, category_name, sub_category_name}, ... ]
+        $byId = [];
         $index = [];
         foreach ($products as $p) {
+            $byId[(int) $p->id] = $p;
             $norm = $this->normalizeName($p->name);
             if ($norm === '') {
                 continue;
             }
             $index[$norm][] = $p;
+        }
+
+        // SKU index: the analyzer export now carries a SKU column, so an exact
+        // SKU hit beats fuzzy name matching outright. Variation sub_sku is the
+        // canonical UltimatePOS SKU; products.sku is the fallback. First writer
+        // wins so a variation sub_sku isn't clobbered by a product sku.
+        $skuIndex = [];
+        $varSkus = DB::table('variations as v')
+            ->join('products as p2', 'v.product_id', '=', 'p2.id')
+            ->where('p2.business_id', $business_id)
+            ->whereNotNull('v.sub_sku')
+            ->select('v.sub_sku', 'v.product_id')
+            ->get();
+        foreach ($varSkus as $s) {
+            $k = $this->normalizeSku($s->sub_sku);
+            if ($k !== '' && !isset($skuIndex[$k])) {
+                $skuIndex[$k] = (int) $s->product_id;
+            }
+        }
+        $prodSkus = DB::table('products')
+            ->where('business_id', $business_id)
+            ->whereNotNull('sku')
+            ->select('id', 'sku')
+            ->get();
+        foreach ($prodSkus as $s) {
+            $k = $this->normalizeSku($s->sku);
+            if ($k !== '' && !isset($skuIndex[$k])) {
+                $skuIndex[$k] = (int) $s->id;
+            }
         }
 
         // Location lookup: stripos(name, hollywood/pico/...) — same convention as HomeController.
@@ -112,58 +167,86 @@ class AbcImportService
 
         $location_map = [];
         $global_map = [];
+        $global_abcxyz = []; // pid => "AX".."CZ", tied to whichever row set the global class
         $unmatched = [];
         $matched_trace = []; // [{csv_*, matched_id, matched_name, matched_category, candidates_count}, ...]
         $matched_count = 0;
+        $sku_matched = 0;
 
         $classRank = ['A' => 3, 'B' => 2, 'C' => 1];
 
         foreach ($rows as $row) {
-            $norm = $this->normalizeName($row['product']);
-            if ($norm === '' || empty($index[$norm])) {
-                $unmatched[] = $row;
-                continue;
-            }
-            $candidates = $index[$norm];
-            $initial_count = count($candidates);
+            $pick = null;
+            $method = 'name';
+            $initial_count = 0;
+            $final_count = 0;
 
-            // Narrow by format/category when possible and more than one candidate.
-            if (count($candidates) > 1 && $row['format'] !== '') {
-                $fmt = $this->normalizeName($row['format']);
-                $narrowed = [];
-                foreach ($candidates as $cand) {
-                    $catNorm = $this->normalizeName($cand->category_name ?? '');
-                    $subNorm = $this->normalizeName($cand->sub_category_name ?? '');
-                    if ($this->fmtMatches($fmt, $catNorm) || $this->fmtMatches($fmt, $subNorm)) {
-                        $narrowed[] = $cand;
+            // 1. Exact SKU match first.
+            $skuKey = $this->normalizeSku($row['sku'] ?? '');
+            if ($skuKey !== '' && isset($skuIndex[$skuKey]) && isset($byId[$skuIndex[$skuKey]])) {
+                $pick = $byId[$skuIndex[$skuKey]];
+                $method = 'sku';
+                $initial_count = 1;
+                $final_count = 1;
+                $sku_matched++;
+            }
+
+            // 2. Fall back to normalized name + format narrowing.
+            if ($pick === null) {
+                $norm = $this->normalizeName($row['product']);
+                if ($norm === '' || empty($index[$norm])) {
+                    $unmatched[] = $row;
+                    continue;
+                }
+                $candidates = $index[$norm];
+                $initial_count = count($candidates);
+
+                if (count($candidates) > 1 && $row['format'] !== '') {
+                    $fmt = $this->normalizeName($row['format']);
+                    $narrowed = [];
+                    foreach ($candidates as $cand) {
+                        $catNorm = $this->normalizeName($cand->category_name ?? '');
+                        $subNorm = $this->normalizeName($cand->sub_category_name ?? '');
+                        if ($this->fmtMatches($fmt, $catNorm) || $this->fmtMatches($fmt, $subNorm)) {
+                            $narrowed[] = $cand;
+                        }
+                    }
+                    if (!empty($narrowed)) {
+                        $candidates = $narrowed;
                     }
                 }
-                if (!empty($narrowed)) {
-                    $candidates = $narrowed;
-                }
+
+                $pick = $candidates[0];
+                $final_count = count($candidates);
             }
 
-            $pick = $candidates[0];
             $pid = (int) $pick->id;
             $matched_count++;
 
             $matched_trace[] = [
                 'csv_product' => $row['product'],
+                'csv_sku' => $row['sku'] ?? '',
                 'csv_format' => $row['format'],
                 'csv_location' => $row['location'],
                 'csv_class' => $row['class'],
+                'csv_abc_xyz' => $row['abc_xyz'] ?? '',
+                'match_method' => $method,
                 'matched_id' => $pid,
                 'matched_name' => $pick->name,
                 'matched_category' => $pick->category_name ?? '',
                 'matched_sub_category' => $pick->sub_category_name ?? '',
                 'initial_candidates' => $initial_count,
-                'final_candidates' => count($candidates),
+                'final_candidates' => $final_count,
             ];
 
-            // Best class wins globally.
+            // Best class wins globally; the ABC-XYZ combo follows the same row
+            // that set the winning class so the two stay consistent.
             $existing = $global_map[$pid] ?? null;
             if ($existing === null || $classRank[$row['class']] > $classRank[$existing]) {
                 $global_map[$pid] = $row['class'];
+                if (!empty($row['abc_xyz'])) {
+                    $global_abcxyz[$pid] = $row['abc_xyz'];
+                }
             }
 
             // Per-location.
@@ -178,12 +261,24 @@ class AbcImportService
 
         return [
             'global_map' => $global_map,
+            'abcxyz_map' => $global_abcxyz,
             'location_map' => $location_map,
             'unmatched' => $unmatched,
             'matched_trace' => $matched_trace,
             'matched_count' => $matched_count,
+            'sku_matched' => $sku_matched,
             'total' => count($rows),
         ];
+    }
+
+    /**
+     * Normalize a SKU/barcode for exact matching: lowercase, trim, drop
+     * surrounding whitespace. Kept deliberately simple — SKUs are opaque IDs,
+     * not names, so we don't strip internal punctuation.
+     */
+    protected function normalizeSku($sku): string
+    {
+        return strtolower(trim((string) ($sku ?? '')));
     }
 
     /**
@@ -226,6 +321,23 @@ class AbcImportService
         $out = [];
         foreach ($data['global_map'] as $pid => $cls) {
             $out[(int) $pid] = (string) $cls;
+        }
+        return $out;
+    }
+
+    /**
+     * [product_id => "AX".."CZ"] combined ABC-XYZ map. Empty when the active
+     * import predates ABC-XYZ capture (older files had no col U).
+     */
+    public function loadAbcXyzMap(): array
+    {
+        $data = $this->load();
+        if (!$data || empty($data['abcxyz_map'])) {
+            return [];
+        }
+        $out = [];
+        foreach ($data['abcxyz_map'] as $pid => $combo) {
+            $out[(int) $pid] = (string) $combo;
         }
         return $out;
     }

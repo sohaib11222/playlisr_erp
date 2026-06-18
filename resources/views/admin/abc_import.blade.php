@@ -6,11 +6,14 @@
     <h1>ABC Import</h1>
     <p class="text-muted">
         Replaces the live inventory-value ABC with externally-computed (sales-based) classification.
-        Upload the analyzer CSV — columns: Product, Format, Location, Sales, Q-ty, ABC.
+        Upload the analyzer CSV — header columns: Product, SKU, Format, ABC, XYZ, ABC-XYZ (Location optional; a banner row above the header is fine).
+        Rows are matched to products by SKU first, then by name.
     </p>
 </section>
 
 <section class="content">
+
+@include('partials.abc_xyz_legend')
 
 @if(session('status'))
 <div class="alert alert-info">{{ session('status') }}</div>
@@ -49,7 +52,8 @@
                     <strong>Rows:</strong> {{ number_format($current['stats']['rows'] ?? 0) }} ·
                     <strong>Matched:</strong> {{ number_format($current['stats']['matched'] ?? 0) }} ·
                     <strong>Unmatched:</strong> {{ number_format($current['stats']['unmatched'] ?? 0) }} ·
-                    <strong>Distinct products:</strong> {{ number_format($current['stats']['distinct_products'] ?? 0) }}
+                    <strong>Distinct products:</strong> {{ number_format($current['stats']['distinct_products'] ?? 0) }} ·
+                    <strong>With ABC-XYZ:</strong> {{ number_format($current['stats']['distinct_abcxyz'] ?? 0) }}
                 </p>
             </div>
         </div>
@@ -152,22 +156,27 @@
         const pct = d.stats.rows ? Math.round((d.stats.matched / d.stats.rows) * 100) : 0;
         let html = '';
         html += '<p><strong>' + d.source_file + '</strong>' + (d.period_label ? ' · ' + escapeHtml(d.period_label) : '') + '</p>';
-        html += '<p>Rows: ' + d.stats.rows + ' · Matched: ' + d.stats.matched + ' (' + pct + '%) · Unmatched: ' + d.stats.unmatched + ' · Distinct products: ' + d.stats.distinct_products;
+        html += '<p>Rows: ' + d.stats.rows + ' · Matched: ' + d.stats.matched + ' (' + pct + '%)';
+        if (d.stats.sku_matched !== undefined) html += ' · by SKU: ' + d.stats.sku_matched;
+        html += ' · Unmatched: ' + d.stats.unmatched + ' · Distinct products: ' + d.stats.distinct_products;
+        if (d.stats.distinct_abcxyz) html += ' · with ABC-XYZ: ' + d.stats.distinct_abcxyz;
         if (d.stats.ambiguous) html += ' · <span style="color:#a40">Ambiguous: ' + d.stats.ambiguous + '</span>';
         html += '</p>';
 
         if (d.sample_matched && d.sample_matched.length) {
             html += '<h4>Matched (first 20) — CSV row → picked ERP product</h4>';
             html += '<table class="table table-condensed table-bordered" style="font-size:12px;"><thead><tr>'
-                  + '<th>Class</th><th>CSV Product</th><th>CSV Format</th><th>CSV Loc</th>'
+                  + '<th>Class</th><th>ABC-XYZ</th><th>Via</th><th>CSV Product</th><th>CSV SKU</th><th>CSV Format</th>'
                   + '<th>→ ERP Product (id)</th><th>ERP Category</th><th>Cands</th></tr></thead><tbody>';
             d.sample_matched.forEach(r => {
                 const flag = r.final_candidates > 1 ? ' style="background:#fff3cd"' : '';
                 html += '<tr' + flag + '>'
                       + '<td>' + escapeHtml(r.csv_class) + '</td>'
+                      + '<td>' + escapeHtml(r.csv_abc_xyz || '—') + '</td>'
+                      + '<td>' + escapeHtml(r.match_method || '') + '</td>'
                       + '<td>' + escapeHtml(r.csv_product) + '</td>'
+                      + '<td>' + escapeHtml(r.csv_sku || '—') + '</td>'
                       + '<td>' + escapeHtml(r.csv_format) + '</td>'
-                      + '<td>' + escapeHtml(r.csv_location) + '</td>'
                       + '<td>' + escapeHtml(r.matched_name) + ' <span style="color:#888">(#' + r.matched_id + ')</span></td>'
                       + '<td>' + escapeHtml(r.matched_category || r.matched_sub_category || '—') + '</td>'
                       + '<td>' + r.initial_candidates + '→' + r.final_candidates + '</td>'

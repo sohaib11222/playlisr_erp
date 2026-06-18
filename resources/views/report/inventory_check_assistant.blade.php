@@ -16,6 +16,11 @@
 
 <section class="content">
 
+    <details class="no-print" style="margin-bottom:14px;">
+        <summary style="cursor:pointer; font-weight:600; color:#5A5045; margin-bottom:8px;">What do the ABC / XYZ codes mean?</summary>
+        @include('partials.abc_xyz_legend')
+    </details>
+
     @if(!empty($migrationsMissing))
     <div class="alert alert-warning">
         <strong>Database migration required.</strong> The chart-import tables don't exist yet on this server. SSH in and run

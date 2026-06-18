@@ -55,7 +55,7 @@ class AbcImportController extends Controller
             $rows = $svc->parseCsv($tmpPath);
 
             if (empty($rows)) {
-                return response()->json(['ok' => false, 'error' => 'No usable rows found. Expected columns: Product, Format, Location, Sales, Q-ty, ABC.'], 422);
+                return response()->json(['ok' => false, 'error' => 'No usable rows found. Expected a header row with: Product, SKU, Format, ABC, XYZ, ABC-XYZ (Location optional). A leading banner row above the header is fine.'], 422);
             }
 
             $result = $svc->match($rows, $business_id);
@@ -147,10 +147,13 @@ class AbcImportController extends Controller
             'stats' => [
                 'rows' => $result['total'],
                 'matched' => $result['matched_count'],
+                'sku_matched' => $result['sku_matched'] ?? 0,
                 'unmatched' => count($result['unmatched']),
                 'distinct_products' => count($result['global_map']),
+                'distinct_abcxyz' => count($result['abcxyz_map'] ?? []),
             ],
             'global_map' => $result['global_map'],
+            'abcxyz_map' => $result['abcxyz_map'] ?? [],
             'location_map' => $result['location_map'],
             'unmatched' => $result['unmatched'],
         ];

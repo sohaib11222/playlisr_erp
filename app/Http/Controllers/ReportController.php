@@ -5421,6 +5421,7 @@ class ReportController extends Controller
         // inventory-value Pareto computation.
         $abcSvc = new \App\Services\AbcImportService();
         $imported = $abcSvc->loadGlobalMap();
+        $importedAbcXyz = $abcSvc->loadAbcXyzMap();
         $importedMeta = $abcSvc->load();
 
         // Per-store class maps from the import (location_id => [pid => class]).
@@ -5523,6 +5524,7 @@ class ReportController extends Controller
 
                 $markdown[] = [
                     'abc_class' => $class,
+                    'abc_xyz' => $importedAbcXyz[(int) $row->product_id] ?? '',
                     'category' => $row->category ?: '— Other —',
                     'genre' => $row->genre ?: '—',
                     'product' => $row->product,

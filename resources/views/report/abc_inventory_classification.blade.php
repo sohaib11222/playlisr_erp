@@ -75,6 +75,11 @@ body.abc-v2 .class-tag {
 body.abc-v2 .class-A { background:#E5F0E8; border-color:var(--success); color:var(--success); }
 body.abc-v2 .class-B { background:var(--accent-soft); border-color:var(--accent-deep); color:var(--accent-text); }
 body.abc-v2 .class-C { background:#F6E3DF; border-color:var(--cr); color:var(--cr); }
+body.abc-v2 .combo-tag {
+    display:inline-block; font-weight:800; font-size:13px; border-radius:999px;
+    padding:3px 12px; min-width:42px; text-align:center;
+    background:#EDEAF6; border:1px solid #5B4B9A; color:#5B4B9A;
+}
 body.abc-v2 .muted { color:var(--ink-3); }
 body.abc-v2 .price { font-variant-numeric:tabular-nums; }
 body.abc-v2 .now { font-weight:800; color:var(--cr); font-variant-numeric:tabular-nums; font-size:16px; }
@@ -95,6 +100,8 @@ body.abc-v2 .dataTables_wrapper .dataTables_paginate .paginate_button.current {
         <h1 class="abc-h1">Markdown List — clear the slow movers</h1>
         <p class="abc-sub">Every product below is a slow mover that should be marked down <strong>20% off</strong> to move it out faster. Sorted by category and genre. Pick a store, category, genre, or ABC class to narrow the list — only C (slow movers) get the 20% markdown price.</p>
     </div>
+
+    @include('partials.abc_xyz_legend')
 
     <div class="abc-card">
         <div class="abc-filters">
@@ -123,6 +130,7 @@ body.abc-v2 .dataTables_wrapper .dataTables_paginate .paginate_button.current {
                 <thead>
                     <tr>
                         <th>Class</th>
+                        <th>ABC-XYZ</th>
                         <th>Category</th>
                         <th>Genre</th>
                         <th>Product</th>
@@ -157,9 +165,10 @@ $(document).ready(function () {
         dom: 'Bfrtip',
         buttons: ['csv', 'excel', 'print'],
         ordering: false,
-        columnDefs: [{ targets: [5, 6, 7], className: 'num' }],
+        columnDefs: [{ targets: [6, 7, 8], className: 'num' }],
         columns: [
             { data: 'abc_class', name: 'abc_class', render: function (data) { return '<span class="class-tag class-' + (data || '') + '">' + (data || '—') + '</span>'; } },
+            { data: 'abc_xyz', name: 'abc_xyz', render: function (data) { return data ? '<span class="combo-tag">' + data + '</span>' : '<span class="muted">—</span>'; } },
             { data: 'category', name: 'category', render: function (data) { return '<span class="genre-tag">' + data + '</span>'; } },
             { data: 'genre', name: 'genre' },
             { data: 'product', name: 'product' },
