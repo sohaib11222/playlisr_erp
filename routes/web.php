@@ -291,6 +291,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/sells/pos/get-recent-transactions', 'SellPosController@getRecentTransactions');
     Route::get('/sells/pos/get-product-suggestion', 'SellPosController@getProductSuggestion');
     Route::get('/sells/pos/get-featured-products/{location_id}', 'SellPosController@getFeaturedProducts');
+    Route::get('/sells/pos/get-recommendations', 'SellPosController@getPosRecommendations');
     Route::get('/settings/manual-item-price-rules', 'ManualItemPriceRuleController@index')->name('manual-item-price-rules.index');
     Route::post('/settings/manual-item-price-rules', 'ManualItemPriceRuleController@store')->name('manual-item-price-rules.store');
     Route::put('/settings/manual-item-price-rules/{id}', 'ManualItemPriceRuleController@update')->name('manual-item-price-rules.update');

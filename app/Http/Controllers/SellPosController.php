@@ -5783,6 +5783,91 @@ class SellPosController extends Controller
     }
 
     /**
+     * "You may also like" — given the products currently in the cart, returns
+     * other in-stock titles by the same artist(s) so a cashier can suggest
+     * them at checkout. This is a soft upsell hint: it must NEVER break the
+     * POS, so every failure path returns an empty list rather than an error.
+     */
+    public function getPosRecommendations(Request $request)
+    {
+        try {
+            $business_id = $request->session()->get('user.business_id');
+            $location_id = $request->get('location_id');
+
+            // Only numeric product ids — quick-add / manual / gift-card rows
+            // carry non-numeric ids and have no artist to match on.
+            $product_ids = array_values(array_unique(array_filter(
+                array_map('intval', (array) $request->get('product_ids', []))
+            )));
+
+            if (empty($product_ids) || empty($location_id)) {
+                return response()->json(['success' => true, 'recommendations' => []]);
+            }
+
+            // Artists already in the cart drive the suggestions.
+            $artists = Product::whereIn('id', $product_ids)
+                ->whereNotNull('artist')
+                ->where('artist', '!=', '')
+                ->pluck('artist')
+                ->map(function ($a) { return trim($a); })
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+
+            if (empty($artists)) {
+                return response()->json(['success' => true, 'recommendations' => []]);
+            }
+
+            $rows = Variation::join('products as p', 'variations.product_id', '=', 'p.id')
+                ->join('product_locations as pl', 'pl.product_id', '=', 'p.id')
+                ->leftjoin('variation_location_details AS VLD', function ($join) use ($location_id) {
+                    $join->on('variations.id', '=', 'VLD.variation_id')
+                         ->where('VLD.location_id', '=', $location_id);
+                })
+                ->where('p.business_id', $business_id)
+                ->where('p.type', '!=', 'modifier')
+                ->where('p.is_inactive', 0)
+                ->where('p.not_for_selling', 0)
+                ->where('pl.location_id', $location_id)
+                ->whereIn('p.artist', $artists)
+                ->whereNotIn('p.id', $product_ids)
+                ->where('VLD.qty_available', '>', 0)
+                ->select(
+                    'p.id as product_id',
+                    'p.name as product_name',
+                    'p.artist',
+                    'variations.id as variation_id',
+                    'variations.sub_sku',
+                    'variations.default_sell_price as selling_price',
+                    'VLD.qty_available'
+                )
+                ->orderBy('p.artist', 'asc')
+                ->orderBy('p.name', 'asc')
+                ->limit(8)
+                ->get();
+
+            $recommendations = $rows->map(function ($r) {
+                return [
+                    'variation_id'  => $r->variation_id,
+                    'product_id'    => $r->product_id,
+                    'artist'        => $r->artist,
+                    'product_name'  => $r->product_name,
+                    'sub_sku'       => $r->sub_sku,
+                    'selling_price' => (float) $r->selling_price,
+                    'qty_available' => (float) $r->qty_available,
+                ];
+            })->values();
+
+            return response()->json(['success' => true, 'recommendations' => $recommendations]);
+        } catch (\Exception $e) {
+            \Log::error('POS recommendations failed: ' . $e->getMessage());
+
+            return response()->json(['success' => true, 'recommendations' => []]);
+        }
+    }
+
+    /**
      * Shows invoice url.
      *
      * @param  int  $id

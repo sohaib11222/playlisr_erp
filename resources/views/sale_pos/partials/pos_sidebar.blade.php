@@ -68,6 +68,10 @@
      the cashier can say "oh hey, we got the Green Day LP in yesterday." --}}
 @include('sale_pos.partials.customer_wants_widget')
 
+{{-- "You may also like" — in-stock titles by the same artist(s) already in the
+     cart, so cashiers can suggest an add-on at checkout. --}}
+@include('sale_pos.partials.recommendations_widget')
+
 {{-- Quick-add preset tiles for items always entered manually (drinks, candy, pins, stickers).
      Tapping a tile adds the preset straight to the cart — it DOES NOT open a modal. --}}
 <style>
