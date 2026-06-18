@@ -514,6 +514,18 @@
 						<span class="cr-shift-num">{{ (int) $shift_summary['purchase_add_count'] }}</span>
 						<span class="cr-shift-cap">Items added (purchase form)</span>
 					</div>
+					@if(!empty($shift_summary['packages_picked_count']))
+					<div class="cr-shift-stat">
+						<span class="cr-shift-num">{{ (int) $shift_summary['packages_picked_count'] }}</span>
+						<span class="cr-shift-cap">Packages picked</span>
+					</div>
+					@endif
+					@if(!empty($shift_summary['packages_shipped_count']))
+					<div class="cr-shift-stat">
+						<span class="cr-shift-num">{{ (int) $shift_summary['packages_shipped_count'] }}</span>
+						<span class="cr-shift-cap">Packages shipped</span>
+					</div>
+					@endif
 				</div>
 				@if(!empty($shift_summary['labels_categories']))
 				<div class="cr-shift-cats">

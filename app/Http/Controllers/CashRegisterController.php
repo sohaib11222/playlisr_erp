@@ -584,6 +584,36 @@ class CashRegisterController extends Controller
         }
         arsort($labels_categories);
 
+        // Packages picked / shipped this shift. Same source as the Employee
+        // Productivity report: activity_log rows where this user flipped a
+        // transaction's shipping_status into "packed"/"shipped". Counts
+        // distinct transactions per state. Almost always 0 for cashiers
+        // (shipping is Nick on nivessa.com, not the ERP) — surfaced only
+        // when non-zero so the panel stays clean.
+        $packages_picked = [];
+        $packages_shipped = [];
+        $shipping_edits = \DB::table('activity_log')
+            ->where('description', 'shipping_edited')
+            ->where('business_id', $business_id)
+            ->where('subject_type', 'App\\Transaction')
+            ->where('causer_id', $user_id)
+            ->whereBetween('created_at', [$open_time, $close_time])
+            ->select('subject_id', 'properties')
+            ->get();
+        foreach ($shipping_edits as $edit) {
+            $p = json_decode($edit->properties, true) ?: [];
+            $new = $p['attributes']['shipping_status'] ?? null;
+            $old = $p['old']['shipping_status'] ?? null;
+            if (!$new || $new === $old) {
+                continue;
+            }
+            if ($new === 'packed') {
+                $packages_picked[$edit->subject_id] = true;
+            } elseif ($new === 'shipped') {
+                $packages_shipped[$edit->subject_id] = true;
+            }
+        }
+
         return [
             'sales' => round($sales, 2),
             'mass_add_count' => $mass_add_count,
@@ -591,6 +621,8 @@ class CashRegisterController extends Controller
             'labels_printed_count' => $labels_printed_count,
             'labels_value' => round($labels_value, 2),
             'labels_categories' => $labels_categories,
+            'packages_picked_count' => count($packages_picked),
+            'packages_shipped_count' => count($packages_shipped),
         ];
     }
 
@@ -624,6 +656,13 @@ class CashRegisterController extends Controller
             'created_at' => $close_time,
         ];
 
+        // Auto-post to the #shift-notes Slack channel, replacing the manual
+        // copy/paste. Never throws — a Slack outage must not affect the
+        // close. Skips silently if no webhook is configured (so the feature
+        // captures JSON now and starts posting the moment the webhook is
+        // set). The webhook itself is channel-bound to #shift-notes.
+        $payload['posted_to_slack'] = $this->postShiftNoteToSlack($payload);
+
         $date = \Carbon::now()->format('Y-m-d');
         $dir = storage_path('app/shift-notes/' . $date);
         if (!is_dir($dir)) {
@@ -631,6 +670,100 @@ class CashRegisterController extends Controller
         }
         $file = $dir . '/register-' . $register->id . '-' . \Carbon::now()->format('His') . '.json';
         file_put_contents($file, json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+    }
+
+    /**
+     * Post a shift note to the #shift-notes Slack channel via an incoming
+     * webhook. Returns true on a 2xx response, false on any failure or when
+     * no webhook is configured. Never throws.
+     */
+    private function postShiftNoteToSlack(array $payload): bool
+    {
+        $webhook = trim((string) config('nivessa.shift_notes_slack_webhook', ''));
+        if ($webhook === '') {
+            return false;
+        }
+        try {
+            $text = $this->formatShiftNoteForSlack($payload);
+            $ch = curl_init($webhook);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_POST => true,
+                CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+                CURLOPT_POSTFIELDS => json_encode(['text' => $text]),
+                CURLOPT_TIMEOUT => 4,
+                CURLOPT_CONNECTTIMEOUT => 3,
+            ]);
+            curl_exec($ch);
+            $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            return $code >= 200 && $code < 300;
+        } catch (\Throwable $e) {
+            \Log::warning('postShiftNoteToSlack failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Render a shift note as Slack mrkdwn, mirroring how staff already
+     * write them in #shift-notes (employee · store, shift window, sales,
+     * what they put out, then their free-text note).
+     */
+    private function formatShiftNoteForSlack(array $payload): string
+    {
+        $s = $payload['summary'] ?? [];
+        $tz = config('app.timezone');
+        $start = \Carbon::parse($payload['shift_start'])->setTimezone($tz);
+        $end = \Carbon::parse($payload['shift_end'])->setTimezone($tz);
+
+        $lines = [];
+        $lines[] = '*' . ($payload['employee'] ?: 'Cashier') . '*'
+            . (!empty($payload['location']) ? ' — ' . $payload['location'] : '');
+        $lines[] = $start->format('n/j, g:i A') . ' → ' . $end->format('g:i A');
+        $lines[] = 'Sales: $' . number_format((float) ($s['sales'] ?? 0), 2);
+
+        $cats = $s['labels_categories'] ?? [];
+        if (!empty($cats)) {
+            $parts = [];
+            foreach ($cats as $name => $cnt) {
+                $parts[] = $cnt . ' ' . $name;
+            }
+            $value = (float) ($s['labels_value'] ?? 0);
+            $lines[] = 'Put out: ' . implode(', ', $parts)
+                . ' (' . (int) ($s['labels_printed_count'] ?? 0) . ' labeled'
+                . ($value > 0 ? ', $' . number_format($value, 2) . ' value' : '') . ')';
+        } elseif (!empty($s['labels_printed_count'])) {
+            $lines[] = 'Labels printed: ' . (int) $s['labels_printed_count'];
+        }
+
+        $added = [];
+        if (!empty($s['mass_add_count'])) {
+            $added[] = $s['mass_add_count'] . ' mass-added';
+        }
+        if (!empty($s['purchase_add_count'])) {
+            $added[] = $s['purchase_add_count'] . ' purchased';
+        }
+        if (!empty($added)) {
+            $lines[] = 'Items entered: ' . implode(' · ', $added);
+        }
+
+        $fulfil = [];
+        if (!empty($s['packages_picked_count'])) {
+            $fulfil[] = 'picked ' . $s['packages_picked_count'];
+        }
+        if (!empty($s['packages_shipped_count'])) {
+            $fulfil[] = 'shipped ' . $s['packages_shipped_count'];
+        }
+        if (!empty($fulfil)) {
+            $lines[] = ucfirst(implode(', ', $fulfil));
+        }
+
+        $note = trim((string) ($payload['note'] ?? ''));
+        if ($note !== '') {
+            $lines[] = "\n" . $note;
+        }
+
+        return implode("\n", $lines);
     }
 
     /**

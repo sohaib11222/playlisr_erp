@@ -33,6 +33,12 @@ return [
     */
     'shift_notes_enabled' => env('SHIFT_NOTES_ENABLED', false),
 
+    // Slack incoming-webhook URL for the #shift-notes channel. When set,
+    // each register close auto-posts the shift note there. Leave blank to
+    // keep capturing JSON only (no posting). Webhook is channel-bound, so
+    // no channel name is needed here.
+    'shift_notes_slack_webhook' => env('SHIFT_NOTES_SLACK_WEBHOOK', ''),
+
     /*
     |--------------------------------------------------------------------------
     | Database backup settings (ERP local + optional Google Drive upload)
