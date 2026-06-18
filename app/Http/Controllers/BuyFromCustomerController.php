@@ -8,6 +8,7 @@ use App\Contact;
 use App\Product;
 use App\PurchaseLine;
 use App\Services\BuyOfferCalculatorService;
+use App\Services\InventoryCheckService;
 use App\Transaction;
 use App\Utils\ProductUtil;
 use App\Variation;
@@ -29,10 +30,34 @@ class BuyFromCustomerController extends Controller
      */
     protected $productUtil;
 
-    public function __construct(BuyOfferCalculatorService $calculator, ProductUtil $productUtil)
+    /**
+     * @var InventoryCheckService
+     */
+    protected $inventoryCheckService;
+
+    public function __construct(BuyOfferCalculatorService $calculator, ProductUtil $productUtil, InventoryCheckService $inventoryCheckService)
     {
         $this->calculator = $calculator;
         $this->productUtil = $productUtil;
+        $this->inventoryCheckService = $inventoryCheckService;
+    }
+
+    /**
+     * This week's purchasing budget for the Used-bar shown on the buy form.
+     * Buy-from-customer is used inventory, so the cashier sees how much of the
+     * weekly Used sub-budget (35% cap) is left before quoting. Reuses the same
+     * figures as the ICA banner. Guarded so the form never breaks if it fails.
+     */
+    private function usedBudgetBar()
+    {
+        try {
+            $business_id = request()->session()->get('user.business_id');
+            $permitted = auth()->user()->permitted_locations();
+            return $this->inventoryCheckService->currentPurchaseBudget($business_id, $permitted);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('BFC used-budget bar failed', ['err' => $e->getMessage()]);
+            return null;
+        }
     }
 
     public function create()
@@ -47,8 +72,9 @@ class BuyFromCustomerController extends Controller
         $contacts = Contact::suppliersDropdown($business_id, true, true);
         $itemTypes = $this->calculator->getItemTypesForDropdown();
         $grades = $this->calculator->getGradesForDropdown();
+        $purchaseBudget = $this->usedBudgetBar();
 
-        return view('buy_from_customer.create', compact('locations', 'contacts', 'itemTypes', 'grades'));
+        return view('buy_from_customer.create', compact('locations', 'contacts', 'itemTypes', 'grades', 'purchaseBudget'));
     }
 
     public function calculate(Request $request)
@@ -82,8 +108,9 @@ class BuyFromCustomerController extends Controller
         $contacts = Contact::suppliersDropdown($business_id, true, true);
         $itemTypes = $this->calculator->getItemTypesForDropdown();
         $grades = $this->calculator->getGradesForDropdown();
+        $purchaseBudget = $this->usedBudgetBar();
 
-        return view('buy_from_customer.create', compact('locations', 'contacts', 'itemTypes', 'grades', 'calculation'))
+        return view('buy_from_customer.create', compact('locations', 'contacts', 'itemTypes', 'grades', 'calculation', 'purchaseBudget'))
             ->with('input_data', $request->all())
             ->with('saved_offer_id', $saved->id);
     }

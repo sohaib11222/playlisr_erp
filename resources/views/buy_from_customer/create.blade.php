@@ -97,6 +97,23 @@
         .bfc-create .bfc-compliance-row label { font-size: 13px; color: #333; text-transform: none; letter-spacing: 0; font-weight: 500; margin-bottom: 0; cursor: pointer; }
         .bfc-create .bfc-compliance-row .bfc-compliance-cb { margin-right: 6px; transform: scale(1.1); }
         .bfc-create #buy_signature_box { border: 2px dashed #c0392b !important; }
+        /* Used buying-budget bar — mirrors the ICA banner's Used row so the
+           cashier knows how much of this week's 35% used cap is left before
+           quoting. Data from InventoryCheckService::currentPurchaseBudget. */
+        .bfc-create .bfc-used-budget { background: #fafafa; border: 1px solid #eee; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; }
+        .bfc-create .bfc-used-budget-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+        .bfc-create .bfc-used-budget-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; color: #333; }
+        .bfc-create .bfc-used-budget-title small { text-transform: none; letter-spacing: 0; font-weight: 400; }
+        .bfc-create .bfc-used-budget-figures { font-size: 12px; color: #555; }
+        .bfc-create .bfc-used-budget-figures strong { color: #333; }
+        .bfc-create .bfc-used-budget-sep { color: #ccc; margin: 0 6px; }
+        .bfc-create .bfc-used-budget-track { position: relative; height: 20px; background: #ececec; border-radius: 10px; overflow: hidden; }
+        .bfc-create .bfc-used-budget-fill { height: 100%; border-radius: 10px 0 0 10px; transition: width 0.3s ease; }
+        .bfc-create .bfc-used-budget-fill.is-ok { background: #2c699a; }
+        .bfc-create .bfc-used-budget-fill.is-warn { background: #d4a017; }
+        .bfc-create .bfc-used-budget-fill.is-over { background: #c0392b; }
+        .bfc-create .bfc-used-budget-track-label { position: absolute; top: 0; left: 0; right: 0; height: 20px; line-height: 20px; text-align: center; font-size: 11px; font-weight: 600; color: #333; }
+        .bfc-create .bfc-used-budget-warn { margin-top: 8px; font-size: 12px; font-weight: 600; color: #a94442; }
     </style>
     @if($is_embed)
         {{-- When opened inside the POS modal iframe, hide the admin chrome so only the calculator shows. --}}
@@ -171,6 +188,41 @@
                     <div class="col-sm-4"><strong>Buy record #:</strong> @if(($saved_offer_id ?? session('saved_offer_id'))) BFC-{{ str_pad((string) ($saved_offer_id ?? session('saved_offer_id')), 6, '0', STR_PAD_LEFT) }} @else <span class="text-muted">assigned on Calculate</span> @endif</div>
                 </div>
             </div>
+
+            {{-- Used buying-budget bar — same figures as the ICA banner's Used row.
+                 Buys are used inventory, so the cashier sees how much of this week's
+                 35% Used cap is left before quoting. --}}
+            @php $usedBar = ($purchaseBudget ?? null)['used'] ?? null; @endphp
+            @if(!empty($usedBar))
+                @php
+                    $ub = $usedBar;
+                    $ubPct = $ub['pct_spent'];
+                    if ($ub['over_budget']) { $ubBand = 'is-over'; }
+                    elseif ($ubPct >= 80) { $ubBand = 'is-warn'; }
+                    else { $ubBand = 'is-ok'; }
+                @endphp
+                <div class="bfc-used-budget">
+                    <div class="bfc-used-budget-head">
+                        <span class="bfc-used-budget-title">Used buying budget — week {{ $purchaseBudget['week_no'] }} of 13 <small class="text-muted">({{ \Carbon\Carbon::parse($purchaseBudget['start'])->format('M j') }} – {{ \Carbon\Carbon::parse($purchaseBudget['end'])->format('M j') }}) · 35% cap</small></span>
+                        <span class="bfc-used-budget-figures">
+                            Spent <strong>${{ number_format($ub['spent'], 0) }}</strong> of <strong>${{ number_format($ub['budget'], 0) }}</strong>
+                            <span class="bfc-used-budget-sep">·</span>
+                            @if($ub['over_budget'])
+                                <strong style="color:#a94442;">over by ${{ number_format(abs($ub['remaining']), 0) }}</strong>
+                            @else
+                                <strong>${{ number_format($ub['remaining'], 0) }}</strong> left
+                            @endif
+                        </span>
+                    </div>
+                    <div class="bfc-used-budget-track">
+                        <div class="bfc-used-budget-fill {{ $ubBand }}" style="width: {{ $ubPct }}%;"></div>
+                        <div class="bfc-used-budget-track-label">{{ $ubPct }}%</div>
+                    </div>
+                    @if($ub['over_budget'])
+                        <div class="bfc-used-budget-warn">Used over its 35% cap this week — frozen-inventory risk. Confirm with Jon before buying more.</div>
+                    @endif
+                </div>
+            @endif
 
             <div class="box box-solid">
                 <div class="box-header with-border">
