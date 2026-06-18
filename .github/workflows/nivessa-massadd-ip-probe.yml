@@ -47,25 +47,26 @@ jobs:
           script_stop: false
           command_timeout: 180s
           script: |
-            echo "=== nginx access logs present ==="
-            ls -la /www/wwwlogs/ 2>/dev/null | grep -i playlist || ls -la /www/wwwlogs/ 2>/dev/null | head -30 || echo "no /www/wwwlogs"
-            echo
-            echo "=== POST /product/mass-store hits (IP + time + status), recent ==="
-            for f in /www/wwwlogs/*playlist*.log /www/wwwlogs/access*.log /www/wwwlogs/*.log; do
-              [ -f "$f" ] || continue
-              hits=$(grep -c "product/mass-store" "$f" 2>/dev/null || echo 0)
-              [ "$hits" = "0" ] && continue
-              echo "--- $f ($hits hits) ---"
-              grep "product/mass-store" "$f" 2>/dev/null | awk '{print $1, $4, $5, $6, $7, $9}' | tail -60
+            echo "=== candidate access-log dirs ==="
+            for d in /www/wwwlogs /www/server/nginx/logs /usr/local/nginx/logs /var/log/nginx /usr/local/lsws/logs /var/log/apache2 /www/server/panel/logs; do
+              [ -d "$d" ] && echo "DIR $d:" && ls -la "$d" 2>/dev/null | head -20
             done
             echo
-            echo "=== rotated/gz logs ==="
-            for f in /www/wwwlogs/*playlist*.log.gz /www/wwwlogs/*.log.*.gz; do
-              [ -f "$f" ] || continue
+            echo "=== plain .log files containing mass-store ==="
+            CAND=$(find /www/wwwlogs /www/server/nginx/logs /usr/local/nginx/logs /var/log/nginx /usr/local/lsws/logs /var/log/apache2 -maxdepth 2 -type f 2>/dev/null | grep -iE '\.log$|access' )
+            for f in $CAND; do
+              h=$(grep -c "product/mass-store" "$f" 2>/dev/null || echo 0)
+              [ "$h" = "0" ] && continue
+              echo "--- $f ($h hits) ---"
+              grep "product/mass-store" "$f" 2>/dev/null | tail -50
+            done
+            echo
+            echo "=== gz logs containing mass-store ==="
+            for f in $(find /www/wwwlogs /www/server/nginx/logs /usr/local/nginx/logs /var/log/nginx -maxdepth 2 -name '*.gz' 2>/dev/null); do
               h=$(zcat "$f" 2>/dev/null | grep -c "product/mass-store")
               [ "$h" = "0" ] && continue
               echo "--- $f ($h hits) ---"
-              zcat "$f" 2>/dev/null | grep "product/mass-store" | awk '{print $1, $4, $5, $6, $7, $9}' | tail -40
+              zcat "$f" 2>/dev/null | grep "product/mass-store" | tail -40
             done
             echo
             echo "=== DB: opening-stock creators behind user-44 mass_add products (last ${{ github.event.inputs.days }}d) ==="
