@@ -239,6 +239,21 @@ class LabelsController extends Controller
             //         );
             //print_r($mpdf);exit;
 
+            // Roll up value + category mix of everything printed this run so
+            // the shift-notes summary can show "$X of products labeled" and
+            // the category breakdown. Each printed sticker = one item put out.
+            $label_value = 0.0;
+            $label_categories = [];
+            foreach ($product_details_page_wise as $page_products) {
+                foreach ($page_products as $pd) {
+                    $label_value += (float) ($pd->sell_price_inc_tax ?? 0);
+                    $cat = trim((string) ($pd->category ?? '')) ?: 'Uncategorized';
+                    $sub = trim((string) ($pd->sub_category ?? ''));
+                    $key = $sub !== '' ? $cat . ' › ' . $sub : $cat;
+                    $label_categories[$key] = ($label_categories[$key] ?? 0) + 1;
+                }
+            }
+
             $i = 0;
             $len = count($product_details_page_wise);
             $is_first = false;
@@ -284,7 +299,11 @@ class LabelsController extends Controller
                         'causer_id' => auth()->id(),
                         'causer_type' => auth()->id() ? 'App\\User' : null,
                         'business_id' => $business_id,
-                        'properties' => json_encode(['qty' => (int) $total_qty]),
+                        'properties' => json_encode([
+                            'qty' => (int) $total_qty,
+                            'value' => round($label_value, 2),
+                            'categories' => $label_categories,
+                        ]),
                         'created_at' => now(),
                         'updated_at' => now(),
                     ]);

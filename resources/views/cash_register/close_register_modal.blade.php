@@ -237,6 +237,52 @@
 		margin: 0 0 10px; font-size: 12px; font-weight: 700;
 		color: #5A5045; text-transform: uppercase; letter-spacing: .08em;
 	}
+
+	/* Auto shift summary — read-only stats pulled for this shift. */
+	.cr-shift-sum {
+		margin-top: 20px;
+		background: #fff; border: 1px solid #ECE3CF; border-radius: 12px;
+		padding: 16px 18px;
+	}
+	.cr-shift-sum-tag {
+		display: inline-block; font-size: 10px; font-weight: 800;
+		letter-spacing: .14em; text-transform: uppercase;
+		color: #5A4410; background: #FFF2B3; border: 1px solid #E8CF68;
+		border-radius: 999px; padding: 3px 10px; margin-bottom: 12px;
+	}
+	.cr-shift-grid {
+		display: grid; grid-template-columns: repeat(2, 1fr);
+		gap: 10px 18px;
+	}
+	.cr-shift-stat {
+		display: flex; flex-direction: column; gap: 2px;
+		padding: 8px 10px; background: #FAF6EE;
+		border: 1px solid #ECE3CF; border-radius: 8px;
+	}
+	.cr-shift-stat .cr-shift-num {
+		font-size: 20px; font-weight: 800; color: #1F1B16;
+		font-variant-numeric: tabular-nums; line-height: 1.1;
+	}
+	.cr-shift-stat .cr-shift-cap {
+		font-size: 11px; font-weight: 600; color: #8E8273;
+		letter-spacing: .02em;
+	}
+	.cr-shift-cats {
+		margin-top: 12px; padding-top: 10px;
+		border-top: 1px dashed #ECE3CF;
+	}
+	.cr-shift-cats-title {
+		font-size: 11px; font-weight: 700; color: #5A5045;
+		text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px;
+	}
+	.cr-shift-cat {
+		display: inline-flex; align-items: center; gap: 5px;
+		font-size: 12px; color: #1F1B16;
+		background: #FAF6EE; border: 1px solid #ECE3CF;
+		border-radius: 999px; padding: 3px 10px; margin: 0 5px 5px 0;
+	}
+	.cr-shift-cat b { font-weight: 800; }
+	.cr-shift-empty { font-size: 12px; color: #8E8273; }
 </style>
 
 <div class="modal-dialog modal-lg cr-v2" role="document">
@@ -443,10 +489,48 @@
 				</script>
 			</div>
 
-			{{-- Optional closing note --}}
+			{{-- Auto shift summary (Sarah): replaces the manual #shift-notes
+			     Slack post. Read-only — these numbers are pulled for the
+			     shift; the cashier only types the free-text note below.
+			     Only present when the feature is enabled (admins always;
+			     all staff once flipped live). --}}
+			@if(!empty($shift_summary))
+			<div class="cr-shift-sum">
+				<span class="cr-shift-sum-tag">Shift summary · auto-filled</span>
+				<div class="cr-shift-grid">
+					<div class="cr-shift-stat">
+						<span class="cr-shift-num">${{ number_format((float) $shift_summary['sales'], 2) }}</span>
+						<span class="cr-shift-cap">Sales this shift</span>
+					</div>
+					<div class="cr-shift-stat">
+						<span class="cr-shift-num">{{ (int) $shift_summary['labels_printed_count'] }}</span>
+						<span class="cr-shift-cap">Labels printed (items put out){{ $shift_summary['labels_value'] > 0 ? ' · $' . number_format((float) $shift_summary['labels_value'], 2) . ' value' : '' }}</span>
+					</div>
+					<div class="cr-shift-stat">
+						<span class="cr-shift-num">{{ (int) $shift_summary['mass_add_count'] }}</span>
+						<span class="cr-shift-cap">Items added (mass add)</span>
+					</div>
+					<div class="cr-shift-stat">
+						<span class="cr-shift-num">{{ (int) $shift_summary['purchase_add_count'] }}</span>
+						<span class="cr-shift-cap">Items added (purchase form)</span>
+					</div>
+				</div>
+				@if(!empty($shift_summary['labels_categories']))
+				<div class="cr-shift-cats">
+					<div class="cr-shift-cats-title">Categories labeled</div>
+					@foreach($shift_summary['labels_categories'] as $cat => $cnt)
+						<span class="cr-shift-cat">{{ $cat }} <b>{{ (int) $cnt }}</b></span>
+					@endforeach
+				</div>
+				@endif
+			</div>
+			@endif
+
+			{{-- Optional closing note (doubles as the shift note when the
+			     auto summary is on) --}}
 			<div class="cr-note">
-				{!! Form::label('closing_note', 'Closing note (optional)') !!}
-				{!! Form::textarea('closing_note', null, ['class' => '', 'placeholder' => 'Anything unusual about today?', 'rows' => 2 ]); !!}
+				{!! Form::label('closing_note', !empty($shift_summary) ? 'Shift notes — highlights, lowlights, anything important' : 'Closing note (optional)') !!}
+				{!! Form::textarea('closing_note', null, ['class' => '', 'placeholder' => !empty($shift_summary) ? 'What did you work on? Anything notable about the store or your shift?' : 'Anything unusual about today?', 'rows' => !empty($shift_summary) ? 4 : 2 ]); !!}
 			</div>
 
 			{{-- Clover keying-error feedback (Sarah 2026-05-06): show

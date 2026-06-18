@@ -486,8 +486,151 @@ class CashRegisterController extends Controller
         $next_deposit_seq = $this->nextDepositSeq($business_id, $register_details->location_id);
         $cashier_name = $this->cashierDisplayName(\App\User::find($register_details->user_id));
 
+        // Auto shift-notes summary (Sarah): sales + items mass-added + items
+        // purchased + labels printed/value/categories for this shift, shown
+        // read-only in the close modal. Gated so it stays dark for cashiers
+        // until the feature is flipped live; admins always see it (preview).
+        // Wrapped in try/catch — close flow MUST never break.
+        $shift_summary = null;
+        if ($this->shiftNotesEnabled()) {
+            try {
+                $shift_summary = $this->buildShiftSummary(
+                    $business_id, $user_id, $register_details->location_id, $open_time, $close_time
+                );
+            } catch (\Throwable $ex) {
+                \Log::warning('buildShiftSummary failed: ' . $ex->getMessage());
+            }
+        }
+
         return view('cash_register.close_register_modal')
-                    ->with(compact('register_details', 'details', 'payment_types', 'pos_settings', 'keying_errors', 'next_deposit_seq', 'cashier_name'));
+                    ->with(compact('register_details', 'details', 'payment_types', 'pos_settings', 'keying_errors', 'next_deposit_seq', 'cashier_name', 'shift_summary'));
+    }
+
+    /**
+     * Auto shift-notes visible? On for everyone when the config flag is
+     * flipped live; always on for admins/owners so the feature can be
+     * verified in production before rollout. Never throws.
+     */
+    private function shiftNotesEnabled(): bool
+    {
+        if (config('nivessa.shift_notes_enabled')) {
+            return true;
+        }
+        try {
+            $u = auth()->user();
+            if ($u && ($u->can('superadmin') || $u->hasAnyPermission('Admin#' . $u->business_id))) {
+                return true;
+            }
+        } catch (\Throwable $e) {
+            // permission backend hiccup — fall through to hidden
+        }
+        return false;
+    }
+
+    /**
+     * Build the auto-populated shift summary for one cashier's shift:
+     * sales rung, items added via the mass-add form, items entered on the
+     * purchase form, and labels printed (count, total value, category mix).
+     * Mirrors the per-user queries in the Employee Productivity report,
+     * scoped to a single user + this shift's time window.
+     */
+    private function buildShiftSummary($business_id, $user_id, $location_id, $open_time, $close_time): array
+    {
+        $sales = (float) \DB::table('transactions')
+            ->where('business_id', $business_id)
+            ->where('created_by', $user_id)
+            ->where('type', 'sell')
+            ->where('status', 'final')
+            ->whereBetween('created_at', [$open_time, $close_time])
+            ->sum('final_total');
+
+        $mass_add_count = 0;
+        if (\Schema::hasColumn('products', 'added_via')) {
+            $mass_add_count = (int) \DB::table('products')
+                ->where('business_id', $business_id)
+                ->where('created_by', $user_id)
+                ->where('added_via', 'mass_add')
+                ->whereBetween('created_at', [$open_time, $close_time])
+                ->count();
+        }
+
+        $purchase_add_count = (int) \DB::table('purchase_lines as pl')
+            ->join('transactions as t', 'pl.transaction_id', '=', 't.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.created_by', $user_id)
+            ->whereIn('t.type', ['purchase', 'opening_stock', 'purchase_transfer'])
+            ->whereBetween('t.transaction_date', [$open_time, $close_time])
+            ->count();
+
+        // Labels printed = products put out from the supplier this shift.
+        // LabelsController@preview logs one activity_log row per print run
+        // with qty + value + category mix in properties.
+        $labels_printed_count = 0;
+        $labels_value = 0.0;
+        $labels_categories = [];
+        $label_rows = \DB::table('activity_log')
+            ->where('description', 'labels_printed')
+            ->where('business_id', $business_id)
+            ->where('causer_id', $user_id)
+            ->whereBetween('created_at', [$open_time, $close_time])
+            ->pluck('properties');
+        foreach ($label_rows as $props) {
+            $d = json_decode($props, true) ?: [];
+            $labels_printed_count += (int) ($d['qty'] ?? 0);
+            $labels_value += (float) ($d['value'] ?? 0);
+            foreach (($d['categories'] ?? []) as $k => $c) {
+                $labels_categories[$k] = ($labels_categories[$k] ?? 0) + (int) $c;
+            }
+        }
+        arsort($labels_categories);
+
+        return [
+            'sales' => round($sales, 2),
+            'mass_add_count' => $mass_add_count,
+            'purchase_add_count' => $purchase_add_count,
+            'labels_printed_count' => $labels_printed_count,
+            'labels_value' => round($labels_value, 2),
+            'labels_categories' => $labels_categories,
+        ];
+    }
+
+    /**
+     * Persist the shift note (auto summary + the cashier's free-text note)
+     * to storage/app/shift-notes/ at close. JSON file per close — no
+     * migration, no extra table. This is the durable record the eventual
+     * Slack auto-poster will read; for now it just captures the data so
+     * the feature can be validated before going live. Never throws into
+     * the caller (caller wraps in try/catch as well).
+     */
+    private function persistShiftNote(Request $request, $register, $user_id, $note): void
+    {
+        $business_id = $request->session()->get('user.business_id');
+        $open_time = (string) $register->created_at;
+        $close_time = \Carbon::now()->toDateTimeString();
+
+        $summary = $this->buildShiftSummary($business_id, $user_id, $register->location_id, $open_time, $close_time);
+        $location = \App\BusinessLocation::find($register->location_id);
+
+        $payload = [
+            'register_id' => $register->id,
+            'business_id' => $business_id,
+            'employee' => $this->cashierDisplayName(\App\User::find($user_id)),
+            'location' => $location->name ?? null,
+            'shift_start' => $open_time,
+            'shift_end' => $close_time,
+            'summary' => $summary,
+            'note' => $note,
+            'posted_to_slack' => false,
+            'created_at' => $close_time,
+        ];
+
+        $date = \Carbon::now()->format('Y-m-d');
+        $dir = storage_path('app/shift-notes/' . $date);
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+        $file = $dir . '/register-' . $register->id . '-' . \Carbon::now()->format('His') . '.json';
+        file_put_contents($file, json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
     }
 
     /**
@@ -634,6 +777,17 @@ class CashRegisterController extends Controller
                     $closeDrop,
                     'close'
                 );
+            }
+
+            // Auto shift-notes: write the shift summary + the cashier's note
+            // to storage/app/shift-notes/ (Sarah). Gated + isolated in its
+            // own try/catch so a failure here can never break the close.
+            if ($this->shiftNotesEnabled() && $openRegister) {
+                try {
+                    $this->persistShiftNote($request, $openRegister, $user_id, $input['closing_note'] ?? null);
+                } catch (\Throwable $ex) {
+                    \Log::warning('persistShiftNote failed: ' . $ex->getMessage());
+                }
             }
 
             $output = ['success' => 1,

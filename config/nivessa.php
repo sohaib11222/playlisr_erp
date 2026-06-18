@@ -16,6 +16,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Auto shift notes at register close
+    |--------------------------------------------------------------------------
+    |
+    | When true, the register-close modal shows an auto-built shift summary
+    | (sales, items mass-added, items purchased, labels printed + value +
+    | categories) and the close writes a shift-note JSON to
+    | storage/app/shift-notes/ — the eventual replacement for the manual
+    | #shift-notes Slack posts.
+    |
+    | Kept FALSE so it stays dark for cashiers until the feature is fully
+    | functional. Admins/owners always see it (preview) regardless of this
+    | flag, so the feature can be verified before flipping it on for
+    | everyone. To go live for all staff, change this default to true and
+    | push (no .env / SSH change needed).
+    */
+    'shift_notes_enabled' => env('SHIFT_NOTES_ENABLED', false),
+
+    /*
+    |--------------------------------------------------------------------------
     | Database backup settings (ERP local + optional Google Drive upload)
     |--------------------------------------------------------------------------
     */
