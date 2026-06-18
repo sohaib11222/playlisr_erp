@@ -502,8 +502,20 @@ class CashRegisterController extends Controller
             }
         }
 
-        return view('cash_register.close_register_modal')
-                    ->with(compact('register_details', 'details', 'payment_types', 'pos_settings', 'keying_errors', 'next_deposit_seq', 'cashier_name', 'shift_summary'));
+        // Render eagerly so a runtime error inside the (new) shift-summary
+        // block can't escape into the middleware as a 500 — the .btn-modal
+        // AJAX has no error handler, so a 500 here shows the cashier nothing
+        // ("clicking Close Register does nothing"). If the modal fails to
+        // render for any reason, fall back to the legacy modal with no
+        // summary. The close flow MUST never break.
+        $view_data = compact('register_details', 'details', 'payment_types', 'pos_settings', 'keying_errors', 'next_deposit_seq', 'cashier_name', 'shift_summary');
+        try {
+            return view('cash_register.close_register_modal')->with($view_data)->render();
+        } catch (\Throwable $ex) {
+            \Log::error('close_register_modal render failed, falling back to legacy: ' . $ex->getMessage());
+            $view_data['shift_summary'] = null;
+            return view('cash_register.close_register_modal')->with($view_data)->render();
+        }
     }
 
     /**

@@ -46,6 +46,13 @@ $(document).ready(function() {
                     .html(result)
                     .modal('show');
             },
+            error: function() {
+                // Never fail silently: a modal that won't load used to look
+                // like "nothing happens when I click". Surface it instead.
+                if (typeof toastr !== 'undefined') {
+                    toastr.error('Could not open. Please refresh and try again.');
+                }
+            },
         });
     });
 
