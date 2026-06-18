@@ -611,13 +611,14 @@ class CashRegisterController extends Controller
      */
     private function buildShiftSummary($business_id, $user_id, $location_id, $open_time, $close_time): array
     {
-        $sales = (float) \DB::table('transactions')
+        $sells = \DB::table('transactions')
             ->where('business_id', $business_id)
             ->where('created_by', $user_id)
             ->where('type', 'sell')
             ->where('status', 'final')
-            ->whereBetween('created_at', [$open_time, $close_time])
-            ->sum('final_total');
+            ->whereBetween('created_at', [$open_time, $close_time]);
+        $sales = (float) (clone $sells)->sum('final_total');
+        $transactions_count = (int) $sells->count();
 
         $mass_add_count = 0;
         if (\Schema::hasColumn('products', 'added_via')) {
@@ -691,6 +692,7 @@ class CashRegisterController extends Controller
 
         return [
             'sales' => round($sales, 2),
+            'transactions_count' => $transactions_count,
             'mass_add_count' => $mass_add_count,
             'purchase_add_count' => $purchase_add_count,
             'labels_printed_count' => $labels_printed_count,
@@ -795,7 +797,10 @@ class CashRegisterController extends Controller
         $lines[] = '*' . ($payload['employee'] ?: 'Cashier') . '*'
             . (!empty($payload['location']) ? ' — ' . $payload['location'] : '');
         $lines[] = $start->format('n/j, g:i A') . ' → ' . $end->format('g:i A');
-        $lines[] = 'Sales: $' . number_format((float) ($s['sales'] ?? 0), 2);
+        $lines[] = 'Sales: $' . number_format((float) ($s['sales'] ?? 0), 2)
+            . (!empty($s['transactions_count'])
+                ? ' · ' . (int) $s['transactions_count'] . ' transaction' . ($s['transactions_count'] == 1 ? '' : 's')
+                : '');
 
         $cats = $s['labels_categories'] ?? [];
         if (!empty($cats)) {

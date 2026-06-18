@@ -503,6 +503,10 @@
 						<span class="cr-shift-cap">Sales this shift</span>
 					</div>
 					<div class="cr-shift-stat">
+						<span class="cr-shift-num">{{ (int) $shift_summary['transactions_count'] }}</span>
+						<span class="cr-shift-cap">Transactions rung</span>
+					</div>
+					<div class="cr-shift-stat">
 						<span class="cr-shift-num">{{ (int) $shift_summary['labels_printed_count'] }}</span>
 						<span class="cr-shift-cap">Labels printed (items put out){{ $shift_summary['labels_value'] > 0 ? ' · $' . number_format((float) $shift_summary['labels_value'], 2) . ' value' : '' }}</span>
 					</div>
