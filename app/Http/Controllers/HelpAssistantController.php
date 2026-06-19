@@ -203,8 +203,8 @@ KB;
         $handbook = $this->handbookForBot();
 
         return $base
-            . "\n\n=== STAFF HANDBOOK (the same articles staff see at Help & Handbook / playlist.nivessa.com/help) ===\n"
-            . "This is the detailed, authoritative how-to for day-to-day work. Prefer it over the short summaries above when answering 'how do I...' questions, and you may point staff to the matching handbook article:\n"
+            . "\n\n=== STAFF HANDBOOK INDEX (the articles staff see at Help & Handbook / playlist.nivessa.com/help) ===\n"
+            . "Each line is one handbook article: title, section, a one-line summary, and the link to its full step-by-step guide. Answer 'how do I...' questions from the summary, and ALWAYS point staff to the matching 'full guide' link for the complete instructions:\n"
             . $handbook
             . "\n\n=== LISTENING PARTY PREP (rules & procedures; from /admin/listening-party-prep) ===\n"
             . self::LISTENING_PARTY_RULES
@@ -218,8 +218,11 @@ KB;
     }
 
     /**
-     * The full staff handbook (App\Help\Catalog) flattened to plain text so the
-     * bot answers "how do I..." from the same source staff read at /help.
+     * The staff handbook (App\Help\Catalog) as a compact title + summary index.
+     * We deliberately drop the full article bodies: the cached system prompt has
+     * to stay under the org's per-minute input-token rate limit, and the full
+     * text of every article blows past it. The bot answers from the summary and
+     * points staff to the matching article at /help for step-by-step detail.
      */
     private function handbookForBot()
     {
@@ -231,25 +234,20 @@ KB;
         foreach (\App\Help\Catalog::articles() as $a) {
             $title = $a['title'] ?? 'Article';
             $section = $a['section'] ?? '';
-            $summary = $a['summary'] ?? '';
-            $bodyHtml = $a['body_html'] ?? '';
+            $summary = trim((string) ($a['summary'] ?? ''));
+            $slug = $a['slug'] ?? '';
 
-            // Strip HTML to readable text: list items become "- ", block tags
-            // become line breaks, then decode entities (e.g. &rarr; -> ->).
-            $body = preg_replace('/<li[^>]*>/i', "\n- ", $bodyHtml);
-            $body = preg_replace('#</(p|h[1-6]|li|ul|ol|div|tr)>#i', "\n", $body);
-            $body = strip_tags($body);
-            $body = html_entity_decode($body, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-            $body = preg_replace('/[ \t]+/', ' ', $body);
-            $body = preg_replace('/\n{3,}/', "\n\n", $body);
-            $body = trim($body);
-
-            $lines[] = "## {$title}" . ($section ? " [{$section}]" : '')
-                . ($summary ? "\n{$summary}" : '')
-                . ($body ? "\n{$body}" : '');
+            $line = "- {$title}" . ($section ? " [{$section}]" : '');
+            if ($summary !== '') {
+                $line .= ": {$summary}";
+            }
+            if ($slug !== '') {
+                $line .= " (full guide: /help/{$slug})";
+            }
+            $lines[] = $line;
         }
 
-        return implode("\n\n", $lines);
+        return implode("\n", $lines);
     }
 
     // Canonical listening-party prep checklist, mirrored from the website's
