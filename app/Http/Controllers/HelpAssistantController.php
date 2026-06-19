@@ -196,6 +196,11 @@ Common tasks and how to do them:
   anything sticky blocking it — remove any sticky residue or labels stuck inside. That's
   the first thing to check.
 
+- Emergency / need help while alone in the store: call or text Hollywood Partnership
+  dispatch "on demand" at 567-459-9663 to request assistance — they respond faster than
+  police. Also alert Jon; he may be able to come help. (If it's a life-threatening
+  emergency, call 911 first.)
+
 If someone asks something you genuinely don't know how to do in this ERP, tell them
 which menu section to look under and suggest checking with a manager.
 KB;
