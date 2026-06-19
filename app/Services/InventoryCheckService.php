@@ -351,29 +351,37 @@ class InventoryCheckService
             // The store budget is one shared pot: when New runs over its share,
             // that overspend eats into what's left for Used. Shrink the Used cap
             // by New's overage, floored at $0 (Sarah 2026-06-19).
+            // One shared store pot: New's overspend eats into the room left for
+            // Used. Keep the Used CAP at its honest 35% ($storeUsedBudget) so the
+            // bar and the "35% cap" caption agree; instead shrink what's LEFT and
+            // gray out the slice New consumed. The three pieces always reconcile:
+            // spent + eaten-by-New + actually-left = full cap. Used only reads
+            // "over" if it blows its OWN 35% cap, never from New's overspend.
             $newOverage = max(0.0, $nSpent - $storeNewBudget);
-            $erodedCap = max(0.0, $storeUsedBudget - $newOverage);
-            // The store budget is one shared pot: when New runs over its share,
-            // that overspend eats into what's left for Used. But New's overspend
-            // must NOT manufacture a fake "Used over budget" — Used is only "over"
-            // when it blows its OWN 35% cap. So when erosion would drop the cap
-            // below what Used has already legitimately spent, floor it there:
-            // Used then shows "$0 left" (no room for more), never "over by".
-            if ($uSpent > $storeUsedBudget) {
-                $effectiveUsedBudget = round($storeUsedBudget, 2); // genuine Used overspend
+            $usedFullCap = round($storeUsedBudget, 2);
+            $usedRoom = max(0.0, $usedFullCap - $uSpent);            // room before New eats
+            $usedEaten = round(min($usedRoom, $newOverage), 2);      // New's bite into Used room
+            $usedLeft = round(max(0.0, $usedRoom - $newOverage), 2); // what's actually left
+            if ($uSpent > $usedFullCap) {
+                $usedRemaining = round($usedFullCap - $uSpent, 2);   // genuine Used overspend (negative)
+                $usedOver = true;
             } else {
-                $effectiveUsedBudget = round(max($erodedCap, $uSpent), 2);
+                $usedRemaining = $usedLeft;                          // reduced by New, floored at 0
+                $usedOver = false;
             }
-            // How much of the full 35% cap New's overspend removed, so the buy
-            // form can gray that slice out on the bar.
-            $usedReducedBy = round(max(0.0, $storeUsedBudget - $effectiveUsedBudget), 2);
             $perStore[] = [
                 'label' => $split['label'],
                 'pct_of_total' => $split['pct'],
                 'budget' => $storeBudget,
-                'used' => $subBucket($effectiveUsedBudget, $uSpent),
-                'used_cap_full' => round($storeUsedBudget, 2),
-                'used_reduced_by' => $usedReducedBy,
+                'used' => [
+                    'budget' => $usedFullCap,
+                    'spent' => round($uSpent, 2),
+                    'remaining' => $usedRemaining,
+                    'pct_spent' => $usedFullCap > 0 ? round(min(100, ($uSpent / $usedFullCap) * 100), 1) : 0,
+                    'over_budget' => $usedOver,
+                ],
+                'used_cap_full' => $usedFullCap,
+                'used_eaten' => $usedEaten,
                 'new' => $subBucket($storeNewBudget, $nSpent),
             ];
         }

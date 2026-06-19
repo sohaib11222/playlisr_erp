@@ -84,7 +84,7 @@
 
         {{-- ── Used / New split rows ────────────────────────────────── --}}
         @php
-            $renderSplitRow = function ($label, $caption, $bucket, $barClass, $accentColor, $kindClass) {
+            $renderSplitRow = function ($label, $caption, $bucket, $barClass, $accentColor, $kindClass, $capFull = null, $eaten = null) {
                 if (empty($bucket)) return '';
                 $spent = number_format($bucket['spent'], 0);
                 $budget = number_format($bucket['budget'], 0);
@@ -94,6 +94,16 @@
                 $remainLine = $over
                     ? '<span class="ica-bar-remaining-over">over by $' . number_format(abs($remaining), 0) . '</span>'
                     : '<span class="ica-bar-remaining">$' . number_format($remaining, 0) . ' left</span>';
+                // Slice of the cap that New's overspend ate, drawn gray right after
+                // the spent fill so the bar reads: spent | eaten-by-New | left.
+                $grayEl = '';
+                $eaten = (float) ($eaten ?? 0);
+                $capFull = (float) ($capFull ?? $bucket['budget']);
+                if ($eaten > 0 && $capFull > 0) {
+                    $grayPct = min(100, ($eaten / $capFull) * 100);
+                    $grayTitle = 'Held by New overspend: $' . number_format($eaten, 0);
+                    $grayEl = '<div class="ica-bar-eaten" style="left: ' . $pct . '%; width: ' . $grayPct . '%;" title="' . $grayTitle . '"></div>';
+                }
                 return <<<HTML
         <div class="ica-bar-row {$kindClass}">
             <div class="ica-bar-left">
@@ -103,6 +113,7 @@
             <div class="ica-bar-track-wrap">
                 <div class="ica-bar-track">
                     <div class="ica-bar-fill {$barClass}" style="width: {$pct}%;"></div>
+                    {$grayEl}
                     <div class="ica-bar-track-label">\${$spent} <span class="ica-bar-track-of">of</span> \${$budget}</div>
                 </div>
             </div>
@@ -125,12 +136,12 @@ HTML;
             @endphp
             @php
                 $usedCaption = $stPct . '% of week · 35% cap';
-                if (!empty($st['used_reduced_by'])) {
-                    $usedCaption .= ' · $' . number_format($st['used_reduced_by'], 0) . ' cut — New over the pot';
+                if (!empty($st['used_eaten'])) {
+                    $usedCaption .= ' · $' . number_format($st['used_eaten'], 0) . ' held by New overspend';
                 }
             @endphp
             <div class="ica-budget-store-total" style="margin:12px 0 4px;font-weight:700;font-size:15px;">{{ $st['label'] }} — ${{ number_format($st['budget'], 0) }}</div>
-            {!! $renderSplitRow($st['label'] . ' · Used', $usedCaption, $st['used'], $stUsedClass, $stUsedColor, 'ica-bar-used') !!}
+            {!! $renderSplitRow($st['label'] . ' · Used', $usedCaption, $st['used'], $stUsedClass, $stUsedColor, 'ica-bar-used', $st['used_cap_full'] ?? null, $st['used_eaten'] ?? null) !!}
             {!! $renderSplitRow($st['label'] . ' · New',  $stPct . '% of week · the rest',  $st['new'],  $stNewClass,  $stNewColor,  'ica-bar-new') !!}
         @endforeach
         @endif
@@ -1231,6 +1242,11 @@ body.ica-wizard-active { padding-bottom: 64px; }
 .ica-bar-fill.progress-bar-success { background-color: #5cb85c; }
 .ica-bar-fill.progress-bar-warning { background-color: #f0ad4e; }
 .ica-bar-fill.progress-bar-danger  { background-color: #d9534f; }
+/* Slice of the Used cap New's overspend consumed — sits after the spent fill. */
+.ica-bar-eaten {
+    position: absolute; top: 0; bottom: 0; z-index: 1;
+    background-image: repeating-linear-gradient(45deg, #cfcfcf, #cfcfcf 5px, #c2c2c2 5px, #c2c2c2 10px);
+}
 .ica-bar-track-label {
     position: relative; z-index: 2;
     line-height: 28px; padding: 0 12px;
