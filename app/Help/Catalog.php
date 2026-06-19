@@ -628,6 +628,13 @@ HTML,
     <li><strong>Check the cable.</strong> USB unplugged is the most common label-print issue.</li>
 </ul>
 
+<h3>Changing the Label Roll (Zebra printer)</h3>
+<ol>
+    <li><strong>Pull the two yellow tabs</strong> on the side of the printer outward. These two yellow dispensers hold the roll in place — widening them releases it.</li>
+    <li><strong>Pull the old roll out</strong> and remove the leftover paper.</li>
+    <li><strong>Drop the new roll in</strong>, then let the yellow tabs close back in to hold it.</li>
+</ol>
+
 <h3>How to Reach Muhammad</h3>
 <ol>
     <li><strong>Open WhatsApp</strong> and message Muhammad at <strong>+880 1723-948653</strong>. Tell him what's broken, what you've already tried, and which device.</li>
