@@ -738,6 +738,13 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/admin/nivessa-backend-import/chunk', 'NivessaBackendImportController@chunk');
     Route::post('/admin/nivessa-backend-import/run', 'NivessaBackendImportController@run');
 
+    // Channel Sales Sync — pull nivessa.com web orders + space rentals and
+    // Discogs marketplace orders into ERP transactions (ERP = source of truth).
+    // Dry-run/commit, streams artisan output. No SSH needed.
+    Route::get('/admin/channel-sales-sync', 'ChannelSalesSyncController@index');
+    Route::post('/admin/channel-sales-sync/web', 'ChannelSalesSyncController@runWeb');
+    Route::post('/admin/channel-sales-sync/discogs', 'ChannelSalesSyncController@runDiscogs');
+
     // ABC import — externally-computed sales-based classification overrides
     // the live inventory-value ABC used in ICA + ABC report.
     Route::get('/admin/abc-import', 'AbcImportController@index');

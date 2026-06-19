@@ -6778,11 +6778,20 @@ class ReportController extends Controller
         // Reset diagnostics — populated by the per-channel fetchers below.
         $this->channelDiagnostics = [];
 
+        // Channels that are also live-fetched below from their source API
+        // (Discogs orders, nivessa.com web orders + space rentals). The
+        // Channel Sales Sync now stores these as ERP transactions too, so we
+        // exclude them from this DB group-by to avoid double-counting them
+        // against the live fetch — this one report stays a live dashboard for
+        // them. They remain source-of-truth for every other report/ledger.
+        $live_fetched_channels = ['discogs', 'web', 'space_rental'];
+
         // Revenue + transaction count per (location, channel).
         $rev = DB::table('transactions as t')
             ->where('t.business_id', $business_id)
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
+            ->whereNotIn('t.channel', $live_fetched_channels)
             ->whereDate('t.transaction_date', '>=', $start_date)
             ->whereDate('t.transaction_date', '<=', $end_date)
             ->selectRaw("t.location_id, t.channel,
@@ -6802,6 +6811,7 @@ class ReportController extends Controller
             ->where('sale.business_id', $business_id)
             ->where('sale.type', 'sell')
             ->where('sale.status', 'final')
+            ->whereNotIn('sale.channel', $live_fetched_channels)
             ->whereDate('sale.transaction_date', '>=', $start_date)
             ->whereDate('sale.transaction_date', '<=', $end_date)
             ->where('tsl.children_type', '!=', 'combo')
