@@ -136,7 +136,9 @@
             .bfc-create .ica-bar-right { text-align: left; display: flex; align-items: baseline; gap: 12px; }
             .bfc-create .ica-bar-remaining-wrap { margin-top: 0; }
         }
-        .bfc-create .bfc-used-budget-warn { margin-top: 8px; font-size: 12px; font-weight: 600; color: #a94442; }
+        .bfc-create .bfc-used-budget-warn { margin-top: 10px; padding: 10px 12px; font-size: 13px; font-weight: 400; line-height: 1.45; color: #842029; background: #fff5f5; border: 1px solid #f1c2c2; border-left: 4px solid #c0392b; border-radius: 4px; }
+        .bfc-create .bfc-used-budget-warn strong { color: #842029; }
+        .bfc-create .bfc-used-budget-warn + .bfc-used-budget-warn { margin-top: 6px; }
     </style>
     @if($is_embed)
         {{-- When opened inside the POS modal iframe, hide the admin chrome so only the calculator shows. --}}
@@ -275,10 +277,20 @@ HTML;
                         @endphp
                         {!! $bfcBar($st['label'], $bfcCaption, $st['used'], $st['used_cap_full'] ?? null, $st['used_eaten'] ?? null) !!}
                     @endforeach
-                    @php $usedOver = collect($perStore)->contains(fn ($s) => $s['used']['over_budget']); @endphp
-                    @if($usedOver)
-                        <div class="bfc-used-budget-warn">A store is over its 35% Used cap this week — frozen-inventory risk. Confirm with Jon before buying more used.</div>
-                    @endif
+                    @php
+                        // Stores where New's overspend ate the whole shared pot, so
+                        // there's no used budget left to buy collections against.
+                        $blocked = collect($perStore)->filter(function ($s) {
+                            return !empty($s['used_eaten']) && ($s['used']['remaining'] ?? 0) <= 0;
+                        });
+                    @endphp
+                    @foreach($blocked as $s)
+                        @php $newOver = abs($s['new']['remaining'] ?? 0); @endphp
+                        <div class="bfc-used-budget-warn">
+                            <strong>{{ $s['label'] }}: no used buying budget left this week.</strong>
+                            New purchases ran ${{ number_format($newOver, 0) }} over and used up {{ $s['label'] }}'s whole weekly pot — so there's nothing left to buy collections against. Hold off on buying more used here, or get Jon's OK first.
+                        </div>
+                    @endforeach
                 </div>
             @endif
 
