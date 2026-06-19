@@ -60,7 +60,22 @@ jobs:
           echo "ssh-keyscan verbose:"
           ssh-keyscan -v -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" 2>&1 | head -30 || true
           echo "::endgroup::"
-          ssh-keyscan -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+          # ssh-keyscan intermittently returns nothing (transient network hiccup
+          # on the runner), which used to fail the whole deploy and force a manual
+          # re-run. Retry up to 5 times until we actually capture a host key.
+          for attempt in 1 2 3 4 5; do
+            ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+            if grep -q . ~/.ssh/known_hosts 2>/dev/null; then
+              echo "known_hosts populated on attempt $attempt"
+              break
+            fi
+            echo "ssh-keyscan attempt $attempt got nothing; retrying in 5s"
+            sleep 5
+          done
+          if ! grep -q . ~/.ssh/known_hosts 2>/dev/null; then
+            echo "ssh-keyscan failed after 5 attempts"
+            exit 1
+          fi
 
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.0
