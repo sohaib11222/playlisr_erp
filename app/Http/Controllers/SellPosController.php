@@ -5903,6 +5903,13 @@ class SellPosController extends Controller
             // Vinyl-buyer-first, then take six.
             $recommendations = array_slice($this->posOrderByFormat($cards, $cart_tokens), 0, 6);
 
+            // TEMP DIAGNOSTIC (remove): trace where same-artist recs go empty.
+            \Log::info('RECDIAG same-artist', [
+                'ids' => $product_ids, 'loc' => $location_id,
+                'artists' => $artists, 'raw_rows' => count($rows),
+                'final' => count($recommendations),
+            ]);
+
             return response()->json(['success' => true, 'recommendations' => $recommendations]);
         } catch (\Exception $e) {
             \Log::error('POS recommendations failed: ' . $e->getMessage());
@@ -6278,6 +6285,13 @@ class SellPosController extends Controller
             $recommendations = array_slice(
                 $this->posOrderByFormat($cards, $cart_tokens), 0, 6
             );
+
+            // TEMP DIAGNOSTIC (remove): trace where related-artist recs go empty.
+            \Log::info('RECDIAG related', [
+                'ids' => $product_ids, 'loc' => $location_id,
+                'artists' => $artists, 'candidates' => count($candidate_list),
+                'stock_rows' => count($stock), 'final' => count($recommendations),
+            ]);
 
             return response()->json(['success' => true, 'recommendations' => $recommendations]);
         } catch (\Exception $e) {
