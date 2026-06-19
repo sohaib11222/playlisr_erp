@@ -55,6 +55,11 @@ class CashDepositsReportController extends Controller
         $query = DB::table('cash_deposits as cd')
             ->leftJoin('business_locations as bl', 'bl.id', '=', 'cd.location_id')
             ->where('cd.business_id', $business_id)
+            // Hide carryforward markers — they only advance the counter
+            // (zero amount), they're not real deposits.
+            ->where(function ($q) {
+                $q->where('cd.phase', '!=', 'carryforward')->orWhereNull('cd.phase');
+            })
             ->whereDate('cd.deposited_at', '>=', $start_date)
             ->whereDate('cd.deposited_at', '<=', $end_date)
             ->select('cd.*', 'bl.name as location_name');

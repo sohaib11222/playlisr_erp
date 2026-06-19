@@ -881,6 +881,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/install-cash-deposits-table', 'InstallCashDepositsTableController@index');
     Route::post('/admin/install-cash-deposits-table/run', 'InstallCashDepositsTableController@run');
 
+    // Set where each store's deposit numbering continues from — used when
+    // physical deposits happened before the log existed (so #1/#2 were
+    // never recorded and the counter should resume at #3, etc.).
+    Route::get('/admin/deposit-number-tool', 'DepositNumberToolController@index');
+    Route::post('/admin/deposit-number-tool/run', 'DepositNumberToolController@run');
+
     // Same pattern, different column. Adds clover_reconciliations.employee_key
     // + index cr_bdek so the per-cashier "Mark reconciled" + notes textarea
     // on the EOD reconciliation page can save. Sarah 2026-05-08: notes save
