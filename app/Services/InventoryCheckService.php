@@ -348,11 +348,16 @@ class InventoryCheckService
                     $nSpent += $perLocUsedNew[$lid]['new'] ?? 0.0;
                 }
             }
+            // The store budget is one shared pot: when New runs over its share,
+            // that overspend eats into what's left for Used. Shrink the Used cap
+            // by New's overage, floored at $0 (Sarah 2026-06-19).
+            $newOverage = max(0.0, $nSpent - $storeNewBudget);
+            $effectiveUsedBudget = max(0.0, round($storeUsedBudget - $newOverage, 2));
             $perStore[] = [
                 'label' => $split['label'],
                 'pct_of_total' => $split['pct'],
                 'budget' => $storeBudget,
-                'used' => $subBucket($storeUsedBudget, $uSpent),
+                'used' => $subBucket($effectiveUsedBudget, $uSpent),
                 'new' => $subBucket($storeNewBudget, $nSpent),
             ];
         }
