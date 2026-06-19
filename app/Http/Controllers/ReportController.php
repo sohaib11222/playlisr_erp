@@ -6520,6 +6520,107 @@ class ReportController extends Controller
     }
 
     /**
+     * Selling Below Cost report.
+     *
+     * Lists variations whose current selling price (sell_price_inc_tax — the
+     * canonical sticker the rest of the ERP's reports read) is below what we
+     * currently paid for them (dpp_inc_tax). i.e. items priced to sell at a
+     * loss. Both columns are inc-tax so it's an apples-to-apples comparison
+     * (and Nivessa's resale cert means exc == inc anyway).
+     *
+     * Item-level pricing hygiene, not aggregated sales — open to all staff,
+     * same as Dead Stock / Inventory Valuation Detail.
+     */
+    public function sellingBelowCostReport(Request $request)
+    {
+        $business_id = $request->session()->get('user.business_id');
+
+        $location_id = $request->input('location_id');
+        $business_locations = BusinessLocation::forDropdown($business_id);
+
+        // Qty on hand per variation, optionally scoped to one location. Summed
+        // so a variation stocked at several stores stays a single row.
+        $stockSub = DB::table('variation_location_details as vld')
+            ->select('vld.variation_id', DB::raw('SUM(vld.qty_available) as qty_available'))
+            ->groupBy('vld.variation_id');
+        if (!empty($location_id)) {
+            $stockSub->where('vld.location_id', $location_id);
+        }
+
+        $query = DB::table('variations as v')
+            ->join('products as p', 'v.product_id', '=', 'p.id')
+            ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
+            ->leftJoinSub($stockSub, 'st', function ($join) {
+                $join->on('v.id', '=', 'st.variation_id');
+            })
+            ->where('p.business_id', $business_id)
+            ->where('p.type', '!=', 'modifier')
+            ->whereNull('v.deleted_at')
+            ->where('v.sell_price_inc_tax', '>', 0)
+            ->where('v.dpp_inc_tax', '>', 0)
+            // Below cost: what we charge is under what we paid. 0.01 guard so
+            // rounding noise on break-even items doesn't get flagged.
+            ->whereRaw('ROUND(v.dpp_inc_tax, 2) > ROUND(v.sell_price_inc_tax, 2) + 0.01');
+
+        // Default to in-stock only — you can only sell-at-a-loss what you hold.
+        // Untick to audit the whole catalog's pricing regardless of stock.
+        $in_stock_only = $request->input('in_stock_only', '1') === '1';
+        if ($in_stock_only) {
+            $query->where('st.qty_available', '>', 0);
+        }
+
+        $query->select(
+            'v.id as variation_id',
+            'p.id as product_id',
+            'p.artist',
+            'p.name',
+            'p.format',
+            'v.sub_sku',
+            'c.name as category',
+            DB::raw('COALESCE(st.qty_available, 0) as qty_available'),
+            'v.dpp_inc_tax as cost',
+            'v.sell_price_inc_tax as selling_price',
+            DB::raw('(v.dpp_inc_tax - v.sell_price_inc_tax) as loss_per_unit'),
+            DB::raw('(v.dpp_inc_tax - v.sell_price_inc_tax) * COALESCE(st.qty_available, 0) as exposure')
+        );
+
+        // Totals across the full filtered set (before pagination + sort)
+        $totals_base = (clone $query);
+        $totals = DB::query()
+            ->fromSub($totals_base, 'x')
+            ->selectRaw('COUNT(*) as total_variations, COALESCE(SUM(qty_available), 0) as total_qty, COALESCE(SUM(exposure), 0) as total_exposure')
+            ->first();
+
+        // Column sort: whitelist columns to prevent SQL injection
+        $sort = $request->input('sort', 'loss_per_unit');
+        $dir  = strtolower($request->input('dir', 'desc')) === 'asc' ? 'asc' : 'desc';
+        $sort_map = [
+            'artist'        => 'p.artist',
+            'title'         => 'p.name',
+            'format'        => 'p.format',
+            'sku'           => 'v.sub_sku',
+            'category'      => 'c.name',
+            'qty'           => 'qty_available',
+            'cost'          => 'v.dpp_inc_tax',
+            'price'         => 'v.sell_price_inc_tax',
+            'loss_per_unit' => 'loss_per_unit',
+            'exposure'      => 'exposure',
+        ];
+        $sort_col = $sort_map[$sort] ?? 'loss_per_unit';
+        if (in_array($sort_col, ['loss_per_unit', 'exposure', 'qty_available'])) {
+            $query->orderByRaw($sort_col . ' ' . $dir);
+        } else {
+            $query->orderBy($sort_col, $dir);
+        }
+
+        $rows = $query->paginate(50)->appends($request->except('page'));
+
+        return view('report.selling_below_cost')->with(compact(
+            'rows', 'business_locations', 'location_id', 'totals', 'sort', 'dir', 'in_stock_only'
+        ));
+    }
+
+    /**
      * Whatnot Sales Report
      *
      * Compares Whatnot transactions vs non-Whatnot transactions for a given

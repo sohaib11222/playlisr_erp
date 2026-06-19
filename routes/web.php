@@ -452,6 +452,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/revenue-by-employee-barcoding', 'ReportController@revenueByEmployeeBarcoding')->name('reports.revenue-by-employee-barcoding');
     Route::get('/reports/revenue-by-employee-barcoding/{user_id}', 'ReportController@revenueByEmployeeBarcodingDetail')->name('reports.revenue-by-employee-barcoding.detail');
     Route::get('/reports/dead-stock', 'ReportController@deadStockReport');
+    Route::get('/reports/selling-below-cost', 'ReportController@sellingBelowCostReport');
     Route::get('/reports/whatnot', 'ReportController@whatnotReport');
     Route::get('/whatnot/import-statement', 'ImportWhatnotStatementController@index')->name('whatnot.import-statement');
     Route::post('/whatnot/import-statement', 'ImportWhatnotStatementController@store');

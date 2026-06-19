@@ -57,6 +57,7 @@ class ReportsHubController extends Controller
                     ['key' => 'opening-stock',         'name' => 'Opening Stock',         'icon' => 'fa-archive',            'action' => 'ReportController@getOpeningStock',            'desc' => 'Opening stock records.'],
                     ['key' => 'stock-expiry',          'name' => 'Stock Expiry',          'icon' => 'fa-calendar-times',     'action' => 'ReportController@getStockExpiryReport',       'desc' => 'Items nearing expiry.'],
                     ['key' => 'dead-stock',            'name' => 'Dead Stock',            'icon' => 'fa-snowflake',          'action' => 'ReportController@deadStockReport',            'desc' => 'Items on hand that haven\'t sold in X days.'],
+                    ['key' => 'selling-below-cost',    'name' => 'Selling Below Cost',    'icon' => 'fa-arrow-down',         'action' => 'ReportController@sellingBelowCostReport',     'desc' => 'Items whose sell price is currently below what we paid.'],
                 ],
             ],
             'products' => [
