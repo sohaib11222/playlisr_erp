@@ -464,6 +464,18 @@ class BuyFromCustomerController extends Controller
             if (!empty($last) && empty($existing->last_name))   { $existing->last_name  = $last;  $dirty = true; }
             if (!empty($email) && empty($existing->email))      { $existing->email      = $email; $dirty = true; }
             if (!empty($phone) && empty($existing->mobile))     { $existing->mobile     = $phone; $dirty = true; }
+            // Make sure a matched seller is type 'both', not just 'customer' or
+            // 'supplier'. Otherwise a customer-only contact stays usable as a
+            // purchase supplier but, more importantly, a supplier-only contact
+            // (e.g. one we created on a previous buy) is invisible to every
+            // customer search — which filters type IN (customer, both) — while
+            // still tripping the "mobile already registered" check (which has no
+            // type filter). That mismatch is exactly the "can't find them but
+            // says they're registered" bug.
+            if (in_array($existing->type, ['customer', 'supplier'], true)) {
+                $existing->type = 'both';
+                $dirty = true;
+            }
             if ($dirty) $existing->save();
             return $existing;
         }
@@ -475,9 +487,14 @@ class BuyFromCustomerController extends Controller
         // a phone we store the literal 0 — matches the convention used in
         // ContactController::createCustomer (the API-token path).
         $fallbackName = $name ?: ('Walk-in Seller ' . ($phone ?: $email ?: uniqid('buy-')));
+        // type 'both': we bought from them (supplier side) AND they should be
+        // findable in customer search + able to hold store credit (customer
+        // side). Creating them as 'supplier' only made them invisible to every
+        // customer lookup (which filters type IN (customer, both)) while still
+        // tripping the no-type-filter "mobile already registered" check.
         return Contact::create([
             'business_id'    => $business_id,
-            'type'           => 'supplier',
+            'type'           => 'both',
             'name'           => $fallbackName,
             'first_name'     => $first ?: null,
             'last_name'      => $last ?: null,
