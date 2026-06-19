@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use GuzzleHttp\Client;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Powers the floating "Ask the ERP" help widget. Employees type a question
@@ -208,6 +209,9 @@ KB;
             . "\n\n=== STAFF HANDBOOK INDEX (the articles staff see at Help & Handbook / playlist.nivessa.com/help) ===\n"
             . "Each line is one handbook article: title, section, a one-line summary, and the link to its full step-by-step guide. Answer 'how do I...' questions from the summary, and ALWAYS point staff to the matching 'full guide' link for the complete instructions:\n"
             . $handbook
+            . "\n\n=== UPCOMING EVENTS (live, from the Nivessa events Google Calendar) ===\n"
+            . "Use this to answer who is performing / playing and when, and what's coming up at the stores. Times are store-local (Los Angeles). If a question asks about an event not listed here, say it's not on the upcoming calendar and to check with a manager:\n"
+            . $this->eventsForBot()
             . "\n\n=== LISTENING PARTY PREP (rules & procedures; from /admin/listening-party-prep) ===\n"
             . self::LISTENING_PARTY_RULES
             . "\n\n=== STORE OPERATIONS NOTES (maintained by Nivessa managers) ===\n" . $notes
@@ -250,6 +254,128 @@ KB;
         }
 
         return implode("\n", $lines);
+    }
+
+    // Public ICS feed for the Nivessa events Google Calendar (the calendar Sarah
+    // shares). Read-only and public — no auth needed.
+    const EVENTS_ICS_URL = 'https://calendar.google.com/calendar/ical/f85396a19930116f27c80b16ca85e8e15ea90677053b565ddd390ba649851b74%40group.calendar.google.com/public/basic.ics';
+    const EVENTS_TZ = 'America/Los_Angeles';
+
+    /**
+     * The next handful of upcoming events from the public Google Calendar, one
+     * compact line each ("Mon Jun 23, 7:00 PM — Artist"). Cached for 30 min so
+     * we don't fetch the (large) ICS on every chat turn, and fully wrapped so a
+     * calendar/network failure never breaks the assistant.
+     */
+    private function eventsForBot()
+    {
+        try {
+            return Cache::remember('help_assistant_events', 1800, function () {
+                $ics = (new Client())->get(self::EVENTS_ICS_URL, ['timeout' => 6])
+                    ->getBody()->getContents();
+
+                return $this->formatEventsFromIcs($ics);
+            });
+        } catch (\Throwable $e) {
+            \Log::warning('help assistant calendar fetch failed: ' . $e->getMessage());
+
+            return "(Couldn't load the events calendar right now — check the calendar directly or ask a manager.)";
+        }
+    }
+
+    /**
+     * Parse an ICS string into the next ~15 upcoming, non-cancelled events.
+     */
+    private function formatEventsFromIcs($ics)
+    {
+        // RFC5545 line unfolding: a CRLF followed by a space/tab continues the
+        // previous line.
+        $unfolded = preg_replace("/\r?\n[ \t]/", '', (string) $ics);
+        $lines = preg_split("/\r?\n/", $unfolded);
+
+        $tz = new \DateTimeZone(self::EVENTS_TZ);
+        $now = new \DateTime('now', $tz);
+        $events = [];
+        $cur = null;
+
+        foreach ($lines as $line) {
+            if ($line === 'BEGIN:VEVENT') {
+                $cur = ['summary' => '', 'start' => null, 'allDay' => false];
+            } elseif ($line === 'END:VEVENT') {
+                if ($cur && $cur['start'] && stripos($cur['summary'], 'canceled') !== 0
+                    && stripos($cur['summary'], 'cancelled') !== 0) {
+                    $events[] = $cur;
+                }
+                $cur = null;
+            } elseif ($cur !== null) {
+                if (strpos($line, 'SUMMARY') === 0 && ($p = strpos($line, ':')) !== false) {
+                    $cur['summary'] = trim($this->icsUnescape(substr($line, $p + 1)));
+                } elseif (strpos($line, 'DTSTART') === 0 && ($p = strpos($line, ':')) !== false) {
+                    [$dt, $allDay] = $this->parseIcsDate(substr($line, 0, $p), substr($line, $p + 1), $tz);
+                    if ($dt) {
+                        $cur['start'] = $dt;
+                        $cur['allDay'] = $allDay;
+                    }
+                }
+            }
+        }
+
+        // Future only, soonest first.
+        $events = array_filter($events, function ($e) use ($now) {
+            return $e['start'] >= $now;
+        });
+        usort($events, function ($a, $b) {
+            return $a['start'] <=> $b['start'];
+        });
+        $events = array_slice($events, 0, 15);
+
+        if (empty($events)) {
+            return "(No upcoming events on the calendar.)";
+        }
+
+        $out = [];
+        foreach ($events as $e) {
+            $when = $e['allDay']
+                ? $e['start']->format('D M j') . ' (all day)'
+                : $e['start']->format('D M j, g:i A');
+            $out[] = "- {$when} — {$e['summary']}";
+        }
+
+        return implode("\n", $out);
+    }
+
+    /**
+     * Parse an ICS DTSTART value. Handles "DTSTART;VALUE=DATE:20260623" (all
+     * day), UTC "20260623T030000Z", and floating "20260623T190000" (treated as
+     * already store-local). Returns [\DateTime|null, bool $allDay].
+     */
+    private function parseIcsDate($prop, $value, \DateTimeZone $tz)
+    {
+        $value = trim($value);
+
+        if (stripos($prop, 'VALUE=DATE') !== false || preg_match('/^\d{8}$/', $value)) {
+            $dt = \DateTime::createFromFormat('Ymd', substr($value, 0, 8), $tz);
+
+            return [$dt ?: null, true];
+        }
+
+        if (substr($value, -1) === 'Z') {
+            $dt = \DateTime::createFromFormat('Ymd\THis\Z', $value, new \DateTimeZone('UTC'));
+            if ($dt) {
+                $dt->setTimezone($tz);
+            }
+
+            return [$dt ?: null, false];
+        }
+
+        $dt = \DateTime::createFromFormat('Ymd\THis', $value, $tz);
+
+        return [$dt ?: null, false];
+    }
+
+    private function icsUnescape($s)
+    {
+        return str_replace(['\\,', '\\;', '\\n', '\\N', '\\\\'], [',', ';', "\n", "\n", '\\'], $s);
     }
 
     // Canonical listening-party prep checklist, mirrored from the website's
