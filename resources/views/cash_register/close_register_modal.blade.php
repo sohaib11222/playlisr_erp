@@ -299,7 +299,7 @@
 			<button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
 			<h3 class="modal-title">Close Register</h3>
 			<small class="cr-shift">
-				Shift: {{ \Carbon::createFromFormat('Y-m-d H:i:s', $register_details->open_time)->format('M j, g:i A') }}
+				Shift: {{ !empty($register_details->open_time) ? \Carbon::parse($register_details->open_time)->format('M j, g:i A') : '—' }}
 				&nbsp;→&nbsp;
 				{{ \Carbon::now()->format('M j, g:i A') }}
 			</small>
