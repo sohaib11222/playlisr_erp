@@ -89,6 +89,22 @@ class Kernel extends ConsoleKernel
             ->timezone('America/Los_Angeles')
             ->withoutOverlapping(45);
 
+        // Channel Sales Sync → store nivessa.com web orders + space rentals
+        // (nivessa:sync-web-sales) and Discogs marketplace orders
+        // (nivessa:sync-discogs-sales) as ERP transactions. Daily 06:00 PST.
+        // 14-day look-back re-walks recent orders; idempotent on
+        // (import_source, import_external_id) so re-runs upsert without
+        // duplicating. Same buttons live at /admin/channel-sales-sync for
+        // manual/backfill runs. Sarah 2026-06-19.
+        $schedule->command('nivessa:sync-web-sales --days=14 --commit')
+            ->dailyAt('06:00')
+            ->timezone('America/Los_Angeles')
+            ->withoutOverlapping(30);
+        $schedule->command('nivessa:sync-discogs-sales --days=14 --commit')
+            ->dailyAt('06:00')
+            ->timezone('America/Los_Angeles')
+            ->withoutOverlapping(30);
+
         // QuickBooks → ERP expense sync. Runs every 30 min so Sabina's QB
         // edits land in the ERP expense report without a manual import. The
         // 14-day window is intentional — late posts and reconcile edits in
