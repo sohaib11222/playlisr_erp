@@ -9,6 +9,7 @@ use App\Utils\BusinessUtil;
 use App\Utils\ModuleUtil;
 use Illuminate\Foundation\Auth\AuthenticatesUsers;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class LoginController extends Controller
 {
@@ -142,7 +143,12 @@ class LoginController extends Controller
     {
         $this->recordLoginActivity($request, null, false);
 
-        return parent::sendFailedLoginResponse($request);
+        // NOTE: sendFailedLoginResponse comes from the AuthenticatesUsers trait
+        // (flattened into this class), NOT a parent class — so `parent::` can't
+        // reach it and throws BadMethodCallException. Inline the trait's behavior.
+        throw ValidationException::withMessages([
+            $this->username() => [trans('auth.failed')],
+        ]);
     }
 
     /**
