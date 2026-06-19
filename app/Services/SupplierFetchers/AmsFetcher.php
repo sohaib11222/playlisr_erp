@@ -167,7 +167,7 @@ class AmsFetcher extends AbstractHttpFetcher
     {
         if (empty($eans)) return [];
         $budget = (float) env('AMS_FETCH_BUDGET_SEC', 95);
-        $concurrency = max(1, (int) env('AMS_BARCODE_CONCURRENCY', 6));
+        $concurrency = max(1, (int) env('AMS_BARCODE_CONCURRENCY', 12));
 
         $out = [];
         foreach (array_chunk($eans, $concurrency) as $chunk) {
