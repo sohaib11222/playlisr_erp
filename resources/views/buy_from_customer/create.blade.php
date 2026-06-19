@@ -120,7 +120,9 @@
         .bfc-create .bfc-used-budget-fill.is-ok { background: #2c699a; }
         .bfc-create .bfc-used-budget-fill.is-warn { background: #d4a017; }
         .bfc-create .bfc-used-budget-fill.is-over { background: #c0392b; }
-        .bfc-create .bfc-used-budget-track-label { position: absolute; top: 0; left: 0; right: 0; height: 20px; line-height: 20px; text-align: center; font-size: 11px; font-weight: 600; color: #333; }
+        /* Right-hand slice of the cap that New's overspend consumed (Sarah 2026-06-19). */
+        .bfc-create .bfc-used-budget-eaten { position: absolute; top: 0; right: 0; height: 100%; background: #cfcfcf; background-image: repeating-linear-gradient(45deg, #cfcfcf, #cfcfcf 5px, #c2c2c2 5px, #c2c2c2 10px); }
+        .bfc-create .bfc-used-budget-track-label { position: absolute; top: 0; left: 0; right: 0; height: 20px; line-height: 20px; text-align: center; font-size: 11px; font-weight: 600; color: #333; z-index: 1; }
         .bfc-create .bfc-used-budget-warn { margin-top: 8px; font-size: 12px; font-weight: 600; color: #a94442; }
     </style>
     @if($is_embed)
@@ -204,7 +206,7 @@
             @php $perStore = ($purchaseBudget ?? null)['per_store'] ?? null; @endphp
             @if(!empty($perStore))
                 @php
-                    $bfcBar = function ($label, $cap, $bucket) {
+                    $bfcBar = function ($label, $cap, $bucket, $capFull = null, $eaten = null) {
                         if ($bucket['over_budget']) { $band = 'is-over'; }
                         elseif ($bucket['pct_spent'] >= 80) { $band = 'is-warn'; }
                         else { $band = 'is-ok'; }
@@ -216,11 +218,28 @@
                         } else {
                             $remain = '<span class="bfc-bar-remain">$' . number_format($bucket['remaining'], 0) . ' left</span>';
                         }
+                        // When New ran over, part of the full 35% cap is no longer
+                        // available — scale the whole track to the full cap, draw the
+                        // eaten chunk grayed on the right, and keep the spent fill
+                        // inside the remaining usable region.
+                        $grayEl = '';
+                        $eaten = (float) ($eaten ?? 0);
+                        $capFull = (float) ($capFull ?? $bucket['budget']);
+                        if ($eaten > 0 && $capFull > 0) {
+                            $grayPct = min(100, ($eaten / $capFull) * 100);
+                            $availPct = max(0, 100 - $grayPct);
+                            $fillPct = $capFull > 0 ? min($availPct, ($bucket['spent'] / $capFull) * 100) : 0;
+                            $grayTitle = 'Lost to New overspend: $' . number_format($eaten, 0);
+                            $grayEl = '<div class="bfc-used-budget-eaten" style="width: ' . $grayPct . '%;" title="' . $grayTitle . '"></div>';
+                        } else {
+                            $fillPct = $pct;
+                        }
                         return <<<HTML
                     <div class="bfc-bar-row">
                         <span class="bfc-bar-label">{$label}<small>{$cap}</small></span>
                         <div class="bfc-used-budget-track">
-                            <div class="bfc-used-budget-fill {$band}" style="width: {$pct}%;"></div>
+                            <div class="bfc-used-budget-fill {$band}" style="width: {$fillPct}%;"></div>
+                            {$grayEl}
                             <div class="bfc-used-budget-track-label">\${$spent} of \${$budget} · {$pct}%</div>
                         </div>
                         {$remain}
@@ -234,7 +253,7 @@ HTML;
                         <span class="bfc-used-budget-figures">Weekly total <strong>${{ number_format($purchaseBudget['budget'], 0) }}</strong></span>
                     </div>
                     @foreach($perStore as $st)
-                        {!! $bfcBar($st['label'], rtrim(rtrim(number_format($st['pct_of_total'] * 100, 1), '0'), '.') . '% of week', $st['used']) !!}
+                        {!! $bfcBar($st['label'], rtrim(rtrim(number_format($st['pct_of_total'] * 100, 1), '0'), '.') . '% of week', $st['used'], $st['used_cap_full'] ?? null, $st['used_eaten'] ?? null) !!}
                     @endforeach
                     @php $usedOver = collect($perStore)->contains(fn ($s) => $s['used']['over_budget']); @endphp
                     @if($usedOver)

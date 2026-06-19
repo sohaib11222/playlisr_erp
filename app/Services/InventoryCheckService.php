@@ -353,11 +353,16 @@ class InventoryCheckService
             // by New's overage, floored at $0 (Sarah 2026-06-19).
             $newOverage = max(0.0, $nSpent - $storeNewBudget);
             $effectiveUsedBudget = max(0.0, round($storeUsedBudget - $newOverage, 2));
+            // Portion of the full 35% Used cap that New's overspend consumed,
+            // so the buy form can gray it out on the bar.
+            $usedEaten = round(min($storeUsedBudget, $newOverage), 2);
             $perStore[] = [
                 'label' => $split['label'],
                 'pct_of_total' => $split['pct'],
                 'budget' => $storeBudget,
                 'used' => $subBucket($effectiveUsedBudget, $uSpent),
+                'used_cap_full' => round($storeUsedBudget, 2),
+                'used_eaten' => $usedEaten,
                 'new' => $subBucket($storeNewBudget, $nSpent),
             ];
         }
