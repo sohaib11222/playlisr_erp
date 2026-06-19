@@ -256,9 +256,12 @@ Common tasks and how to do them:
 - Set up / load the new 2 x 2 labels: on the PC, search "Zebra Setup Utilities" in the
   Windows search bar and open it. Click "Configure Printer Settings", then set the label
   size to 2 x 2.
-- Fix the label printer when it's broken: open the printer and check the sensor for
-  anything sticky blocking it — remove any sticky residue or labels stuck inside. That's
-  the first thing to check.
+- Fix the label printer when it's broken: first open the printer and check the sensor for
+  anything sticky blocking it — remove any sticky residue or labels stuck inside. Also
+  check it's not just out of labels/ribbon, and try a power cycle. If it still won't work,
+  message Muhammad (remote tech support, based in Bangladesh, fixes things via AnyDesk) on
+  WhatsApp at +880 1723-948653 — tell him what's broken, what you tried, and which device.
+  The same goes for the front-desk computer.
 
 - Emergency / need help while alone in the store: call or text Hollywood Partnership
   dispatch "on demand" at 567-459-9663 to request assistance — they respond faster than
