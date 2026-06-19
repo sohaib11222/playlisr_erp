@@ -109,20 +109,33 @@
         .bfc-create .bfc-used-budget-title small { text-transform: none; letter-spacing: 0; font-weight: 400; }
         .bfc-create .bfc-used-budget-figures { font-size: 12px; color: #555; }
         .bfc-create .bfc-used-budget-figures strong { color: #333; }
-        .bfc-create .bfc-bar-row { display: grid; grid-template-columns: 100px 1fr 90px; gap: 10px; align-items: center; margin-bottom: 6px; }
-        .bfc-create .bfc-bar-row:last-child { margin-bottom: 0; }
-        .bfc-create .bfc-bar-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; color: #666; }
-        .bfc-create .bfc-bar-label small { display: block; font-weight: 400; text-transform: none; letter-spacing: 0; color: #aaa; }
-        .bfc-create .bfc-bar-remain { font-size: 11px; text-align: right; color: #555; }
-        .bfc-create .bfc-bar-remain.is-over { color: #a94442; font-weight: 600; }
-        .bfc-create .bfc-used-budget-track { position: relative; height: 20px; background: #ececec; border-radius: 10px; overflow: hidden; }
-        .bfc-create .bfc-used-budget-fill { height: 100%; border-radius: 10px 0 0 10px; transition: width 0.3s ease; }
-        .bfc-create .bfc-used-budget-fill.is-ok { background: #2c699a; }
-        .bfc-create .bfc-used-budget-fill.is-warn { background: #d4a017; }
-        .bfc-create .bfc-used-budget-fill.is-over { background: #c0392b; }
-        /* Right-hand slice of the cap that New's overspend consumed (Sarah 2026-06-19). */
-        .bfc-create .bfc-used-budget-eaten { position: absolute; top: 0; right: 0; height: 100%; background: #cfcfcf; background-image: repeating-linear-gradient(45deg, #cfcfcf, #cfcfcf 5px, #c2c2c2 5px, #c2c2c2 10px); }
-        .bfc-create .bfc-used-budget-track-label { position: absolute; top: 0; left: 0; right: 0; height: 20px; line-height: 20px; text-align: center; font-size: 11px; font-weight: 600; color: #333; z-index: 1; }
+        /* Mirror the inventory-check-assistant budget bars (Sarah 2026-06-19). */
+        .bfc-create .ica-bar-row { display: grid; grid-template-columns: 200px 1fr 180px; gap: 18px; align-items: center; margin-top: 14px; padding: 10px 12px; border-radius: 6px; background: #fafafa; border: 1px solid #ececec; }
+        .bfc-create .ica-bar-row:first-of-type { margin-top: 6px; }
+        .bfc-create .ica-bar-used { background: #f5faf6; border-color: #d6ead9; }
+        .bfc-create .ica-bar-left { min-width: 0; }
+        .bfc-create .ica-bar-kind { font-size: 18px; font-weight: 800; letter-spacing: 1.2px; color: #2e7d32; line-height: 1.1; }
+        .bfc-create .ica-bar-caption { font-size: 11px; color: #888; margin-top: 2px; line-height: 1.3; }
+        .bfc-create .ica-bar-track-wrap { min-width: 0; }
+        .bfc-create .ica-bar-track { position: relative; height: 28px; border-radius: 4px; background: #e8e8e8; overflow: hidden; box-shadow: inset 0 1px 2px rgba(0,0,0,0.04); }
+        .bfc-create .ica-bar-fill { position: absolute; top: 0; left: 0; bottom: 0; transition: width 0.3s ease; background-color: #5cb85c; }
+        .bfc-create .ica-bar-fill.progress-bar-success { background-color: #5cb85c; }
+        .bfc-create .ica-bar-fill.progress-bar-warning { background-color: #f0ad4e; }
+        .bfc-create .ica-bar-fill.progress-bar-danger  { background-color: #d9534f; }
+        /* Slice of the Used cap New's overspend consumed — sits after the spent fill. */
+        .bfc-create .ica-bar-eaten { position: absolute; top: 0; bottom: 0; z-index: 1; background-image: repeating-linear-gradient(45deg, #cfcfcf, #cfcfcf 5px, #c2c2c2 5px, #c2c2c2 10px); }
+        .bfc-create .ica-bar-track-label { position: relative; z-index: 2; line-height: 28px; padding: 0 12px; font-size: 14px; font-weight: 600; color: #222; text-shadow: 0 1px 0 rgba(255,255,255,0.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .bfc-create .ica-bar-track-of { color: #888; font-weight: 400; font-size: 12px; }
+        .bfc-create .ica-bar-right { text-align: right; }
+        .bfc-create .ica-bar-pct { font-size: 22px; font-weight: 800; color: #2e7d32; line-height: 1; }
+        .bfc-create .ica-bar-remaining-wrap { font-size: 12px; color: #666; margin-top: 4px; }
+        .bfc-create .ica-bar-remaining { color: #2c699a; font-weight: 600; }
+        .bfc-create .ica-bar-remaining-over { color: #a94442; font-weight: 700; }
+        @media (max-width: 900px) {
+            .bfc-create .ica-bar-row { grid-template-columns: 1fr; gap: 8px; }
+            .bfc-create .ica-bar-right { text-align: left; display: flex; align-items: baseline; gap: 12px; }
+            .bfc-create .ica-bar-remaining-wrap { margin-top: 0; }
+        }
         .bfc-create .bfc-used-budget-warn { margin-top: 8px; font-size: 12px; font-weight: 600; color: #a94442; }
     </style>
     @if($is_embed)
@@ -206,43 +219,44 @@
             @php $perStore = ($purchaseBudget ?? null)['per_store'] ?? null; @endphp
             @if(!empty($perStore))
                 @php
-                    $bfcBar = function ($label, $cap, $bucket, $capFull = null, $eaten = null) {
-                        if ($bucket['over_budget']) { $band = 'is-over'; }
-                        elseif ($bucket['pct_spent'] >= 80) { $band = 'is-warn'; }
-                        else { $band = 'is-ok'; }
+                    $bfcBar = function ($label, $caption, $bucket, $capFull = null, $eaten = null) {
+                        if ($bucket['over_budget']) { $band = 'progress-bar-danger'; $accent = '#a94442'; }
+                        elseif ($bucket['pct_spent'] >= 80) { $band = 'progress-bar-warning'; $accent = '#8a6d3b'; }
+                        else { $band = 'progress-bar-success'; $accent = '#2c699a'; }
                         $spent = number_format($bucket['spent'], 0);
                         $budget = number_format($bucket['budget'], 0);
                         $pct = $bucket['pct_spent'];
-                        if ($bucket['over_budget']) {
-                            $remain = '<span class="bfc-bar-remain is-over">over by $' . number_format(abs($bucket['remaining']), 0) . '</span>';
-                        } else {
-                            $remain = '<span class="bfc-bar-remain">$' . number_format($bucket['remaining'], 0) . ' left</span>';
-                        }
-                        // When New ran over, part of the full 35% cap is no longer
-                        // available — scale the whole track to the full cap, draw the
-                        // eaten chunk grayed on the right, and keep the spent fill
-                        // inside the remaining usable region.
+                        $remaining = $bucket['remaining'];
+                        $remainLine = $bucket['over_budget']
+                            ? '<span class="ica-bar-remaining-over">over by $' . number_format(abs($remaining), 0) . '</span>'
+                            : '<span class="ica-bar-remaining">$' . number_format($remaining, 0) . ' left</span>';
+                        // Slice of the cap that New's overspend ate, drawn gray right
+                        // after the spent fill so the bar reads: spent | eaten | left.
                         $grayEl = '';
                         $eaten = (float) ($eaten ?? 0);
                         $capFull = (float) ($capFull ?? $bucket['budget']);
                         if ($eaten > 0 && $capFull > 0) {
                             $grayPct = min(100, ($eaten / $capFull) * 100);
-                            $availPct = max(0, 100 - $grayPct);
-                            $fillPct = $capFull > 0 ? min($availPct, ($bucket['spent'] / $capFull) * 100) : 0;
-                            $grayTitle = 'Lost to New overspend: $' . number_format($eaten, 0);
-                            $grayEl = '<div class="bfc-used-budget-eaten" style="width: ' . $grayPct . '%;" title="' . $grayTitle . '"></div>';
-                        } else {
-                            $fillPct = $pct;
+                            $grayTitle = 'Held by New overspend: $' . number_format($eaten, 0);
+                            $grayEl = '<div class="ica-bar-eaten" style="left: ' . $pct . '%; width: ' . $grayPct . '%;" title="' . $grayTitle . '"></div>';
                         }
                         return <<<HTML
-                    <div class="bfc-bar-row">
-                        <span class="bfc-bar-label">{$label}<small>{$cap}</small></span>
-                        <div class="bfc-used-budget-track">
-                            <div class="bfc-used-budget-fill {$band}" style="width: {$fillPct}%;"></div>
-                            {$grayEl}
-                            <div class="bfc-used-budget-track-label">\${$spent} of \${$budget} · {$pct}%</div>
+                    <div class="ica-bar-row ica-bar-used">
+                        <div class="ica-bar-left">
+                            <div class="ica-bar-kind">{$label}</div>
+                            <div class="ica-bar-caption">{$caption}</div>
                         </div>
-                        {$remain}
+                        <div class="ica-bar-track-wrap">
+                            <div class="ica-bar-track">
+                                <div class="ica-bar-fill {$band}" style="width: {$pct}%;"></div>
+                                {$grayEl}
+                                <div class="ica-bar-track-label">\${$spent} <span class="ica-bar-track-of">of</span> \${$budget}</div>
+                            </div>
+                        </div>
+                        <div class="ica-bar-right">
+                            <div class="ica-bar-pct" style="color: {$accent};">{$pct}%</div>
+                            <div class="ica-bar-remaining-wrap">{$remainLine}</div>
+                        </div>
                     </div>
 HTML;
                     };
@@ -253,7 +267,13 @@ HTML;
                         <span class="bfc-used-budget-figures">Weekly total <strong>${{ number_format($purchaseBudget['budget'], 0) }}</strong></span>
                     </div>
                     @foreach($perStore as $st)
-                        {!! $bfcBar($st['label'], rtrim(rtrim(number_format($st['pct_of_total'] * 100, 1), '0'), '.') . '% of week', $st['used'], $st['used_cap_full'] ?? null, $st['used_eaten'] ?? null) !!}
+                        @php
+                            $bfcCaption = rtrim(rtrim(number_format($st['pct_of_total'] * 100, 1), '0'), '.') . '% of week · 35% cap';
+                            if (!empty($st['used_eaten'])) {
+                                $bfcCaption .= ' · $' . number_format($st['used_eaten'], 0) . ' held by New overspend';
+                            }
+                        @endphp
+                        {!! $bfcBar($st['label'], $bfcCaption, $st['used'], $st['used_cap_full'] ?? null, $st['used_eaten'] ?? null) !!}
                     @endforeach
                     @php $usedOver = collect($perStore)->contains(fn ($s) => $s['used']['over_budget']); @endphp
                     @if($usedOver)
