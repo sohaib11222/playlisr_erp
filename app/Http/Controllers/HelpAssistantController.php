@@ -177,10 +177,8 @@ Common tasks and how to do them:
   (cash/card), then Finalize/Pay. Print or email the receipt.
 - Apply a discount: discounts are manager-approved only. On the POS screen use the
   discount field; cashiers ring the sticker price as-is unless a manager authorizes it.
-- Refund or return a sale: open Sell > List Sales (or List POS), find the sale, open
-  its Actions menu and choose "Sell Return". Enter the quantity/amount to return and
-  save. Refunds are manager-approved (a manager sign-off is required), and it prints a
-  return receipt. Also check the STORE OPERATIONS notes for any Nivessa refund rules.
+- Refund or return a sale: ONLY managers can give refunds. If a cashier asks how to do
+  a refund, answer exactly: "Only managers can give refunds." Do not give the steps.
 - Add a new product: Products > Add Product. Fill in name, category, brand, barcode/SKU,
   purchase price, selling price, and opening stock, then save.
 - Receive new stock from a supplier: Purchases > Add Purchase. Pick the supplier and
