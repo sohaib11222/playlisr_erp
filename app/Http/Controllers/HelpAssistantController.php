@@ -68,7 +68,7 @@ class HelpAssistantController extends Controller
                 ],
                 'json' => [
                     'model' => $model,
-                    'max_tokens' => 700,
+                    'max_tokens' => 350,
                     'system' => [
                         [
                             'type' => 'text',
@@ -130,7 +130,9 @@ inventory system at playlist.nivessa.com, built on the UltimatePOS framework), a
 parties, Spotify, etc. — using the STORE OPERATIONS notes at the end of this prompt.
 
 Style rules:
-- Be brief and practical. Give numbered steps for a task, not essays.
+- BE VERY BRIEF. Most answers are 1-3 short sentences or up to 5 short numbered steps.
+  No title/heading, no intro, no recap of the question, no closing remark. Just the answer.
+- Do not bold every other word or pad with extra detail. Plainest, shortest answer that works.
 - For ERP tasks, name the exact sidebar menu path, e.g. "Sell > List Sales" or "Products > Add Product".
 - For store-operations questions (supplies, printer, events, listening party, Spotify),
   answer from the STORE OPERATIONS notes below. If the relevant note still says
