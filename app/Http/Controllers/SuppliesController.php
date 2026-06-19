@@ -23,13 +23,13 @@ class SuppliesController extends Controller
     // Seed list on first visit, based on what the floor actually runs out of.
     // location_id blank = applies to all stores until a manager assigns one.
     const DEFAULT_ITEMS = [
-        ['name' => 'Bottled water',        'status' => 'ok', 'location_id' => null, 'location_name' => '', 'next_restock' => '', 'note' => ''],
-        ['name' => 'Shopping bags',        'status' => 'ok', 'location_id' => null, 'location_name' => '', 'next_restock' => '', 'note' => ''],
-        ['name' => 'Receipt paper rolls',  'status' => 'ok', 'location_id' => null, 'location_name' => '', 'next_restock' => '', 'note' => ''],
-        ['name' => 'Label paper / rolls',  'status' => 'ok', 'location_id' => null, 'location_name' => '', 'next_restock' => '', 'note' => ''],
-        ['name' => 'Record sleeves',       'status' => 'ok', 'location_id' => null, 'location_name' => '', 'next_restock' => '', 'note' => ''],
-        ['name' => 'Mailers / boxes',      'status' => 'ok', 'location_id' => null, 'location_name' => '', 'next_restock' => '', 'note' => ''],
-        ['name' => 'Cleaning kits',        'status' => 'ok', 'location_id' => null, 'location_name' => '', 'next_restock' => '', 'note' => ''],
+        ['name' => 'Bottled water',        'status' => 'ok', 'location_id' => null, 'location_name' => '', 'next_restock' => '', 'order_info' => '', 'note' => ''],
+        ['name' => 'Shopping bags',        'status' => 'ok', 'location_id' => null, 'location_name' => '', 'next_restock' => '', 'order_info' => '', 'note' => ''],
+        ['name' => 'Receipt paper rolls',  'status' => 'ok', 'location_id' => null, 'location_name' => '', 'next_restock' => '', 'order_info' => '', 'note' => ''],
+        ['name' => 'Label paper / rolls',  'status' => 'ok', 'location_id' => null, 'location_name' => '', 'next_restock' => '', 'order_info' => '', 'note' => ''],
+        ['name' => 'Record sleeves',       'status' => 'ok', 'location_id' => null, 'location_name' => '', 'next_restock' => '', 'order_info' => '', 'note' => ''],
+        ['name' => 'Mailers / boxes',      'status' => 'ok', 'location_id' => null, 'location_name' => '', 'next_restock' => '', 'order_info' => '', 'note' => ''],
+        ['name' => 'Cleaning kits',        'status' => 'ok', 'location_id' => null, 'location_name' => '', 'next_restock' => '', 'order_info' => '', 'note' => ''],
     ];
 
     private function guard()
@@ -52,8 +52,17 @@ class SuppliesController extends Controller
     {
         $this->guard();
         $business_id = request()->session()->get('user.business_id');
+        $items = self::readSupplies();
+
+        // Reorder list: anything Low or Out, so a manager can see at a glance
+        // what needs ordering and where to order it.
+        $needsOrder = array_values(array_filter($items, function ($it) {
+            return in_array($it['status'] ?? 'ok', ['low', 'out']);
+        }));
+
         return view('admin.supplies', [
-            'items' => self::readSupplies(),
+            'items' => $items,
+            'needsOrder' => $needsOrder,
             'statuses' => self::STATUSES,
             'locations' => BusinessLocation::forDropdown($business_id, false, false, false, false),
         ]);
@@ -67,6 +76,7 @@ class SuppliesController extends Controller
         $statuses = $request->input('status', []);
         $locationIds = $request->input('location_id', []);
         $restocks = $request->input('next_restock', []);
+        $orderInfos = $request->input('order_info', []);
         $notes = $request->input('note', []);
 
         // Resolve location names once for the bot/readout (avoid per-row queries).
@@ -90,6 +100,7 @@ class SuppliesController extends Controller
                 'location_id' => $locationId,
                 'location_name' => $locationId ? ($locationNames[$locationId] ?? '') : '',
                 'next_restock' => trim((string) ($restocks[$i] ?? '')),
+                'order_info' => trim((string) ($orderInfos[$i] ?? '')),
                 'note' => trim((string) ($notes[$i] ?? '')),
             ];
         }
@@ -119,6 +130,9 @@ class SuppliesController extends Controller
             $line .= ': ' . $label;
             if (!empty($it['next_restock'])) {
                 $line .= '; next restock ' . $it['next_restock'];
+            }
+            if (!empty($it['order_info'])) {
+                $line .= '; order from ' . $it['order_info'];
             }
             if (!empty($it['note'])) {
                 $line .= ' (' . $it['note'] . ')';
