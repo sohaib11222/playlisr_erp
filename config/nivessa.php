@@ -31,7 +31,7 @@ return [
     | everyone. To go live for all staff, change this default to true and
     | push (no .env / SSH change needed).
     */
-    'shift_notes_enabled' => env('SHIFT_NOTES_ENABLED', false),
+    'shift_notes_enabled' => env('SHIFT_NOTES_ENABLED', true),
 
     // Slack incoming-webhook URL for the #shift-notes channel. When set,
     // each register close auto-posts the shift note there. Leave blank to
