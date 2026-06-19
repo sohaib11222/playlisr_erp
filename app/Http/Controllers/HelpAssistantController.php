@@ -282,8 +282,8 @@ KB;
         $handbook = $this->handbookForBot();
 
         return $base
-            . "\n\n=== STAFF HANDBOOK INDEX (the articles staff see at Help & Handbook / playlist.nivessa.com/help) ===\n"
-            . "Each line is one handbook article: title, section, a one-line summary, and the link to its full step-by-step guide. Answer 'how do I...' questions from the summary, and ALWAYS point staff to the matching 'full guide' link for the complete instructions:\n"
+            . "\n\n=== STAFF HANDBOOK (the same articles staff see at Help & Handbook / playlist.nivessa.com/help) ===\n"
+            . "This is the detailed, authoritative how-to for day-to-day work. Answer 'how do I...' questions from it directly with the actual steps, and you may also point staff to the matching /help article:\n"
             . $handbook
             . "\n\n=== UPCOMING EVENTS (live, from the Nivessa events Google Calendar) ===\n"
             . "Use this to answer who is performing / playing and when, and what's coming up at the stores. Times are store-local (Los Angeles). If a question asks about an event not listed here, say it's not on the upcoming calendar and to check with a manager:\n"
@@ -300,11 +300,12 @@ KB;
     }
 
     /**
-     * The staff handbook (App\Help\Catalog) as a compact title + summary index.
-     * We deliberately drop the full article bodies: the cached system prompt has
-     * to stay under the org's per-minute input-token rate limit, and the full
-     * text of every article blows past it. The bot answers from the summary and
-     * points staff to the matching article at /help for step-by-step detail.
+     * The full staff handbook (App\Help\Catalog) flattened to plain text so the
+     * bot answers "how do I..." from the same source staff read at /help. This
+     * makes the cached system prompt large; it's fine now that the org's API
+     * tier raises the per-minute input-token limit well above the prompt size.
+     * If you ever hit a 429 rate_limit_error again, switch this back to a
+     * title+summary index (see git history) or raise the Anthropic tier.
      */
     private function handbookForBot()
     {
@@ -316,20 +317,27 @@ KB;
         foreach (\App\Help\Catalog::articles() as $a) {
             $title = $a['title'] ?? 'Article';
             $section = $a['section'] ?? '';
-            $summary = trim((string) ($a['summary'] ?? ''));
+            $summary = $a['summary'] ?? '';
+            $bodyHtml = $a['body_html'] ?? '';
             $slug = $a['slug'] ?? '';
 
-            $line = "- {$title}" . ($section ? " [{$section}]" : '');
-            if ($summary !== '') {
-                $line .= ": {$summary}";
-            }
-            if ($slug !== '') {
-                $line .= " (full guide: /help/{$slug})";
-            }
-            $lines[] = $line;
+            // Strip HTML to readable text: list items become "- ", block tags
+            // become line breaks, then decode entities (e.g. &rarr; -> ->).
+            $body = preg_replace('/<li[^>]*>/i', "\n- ", $bodyHtml);
+            $body = preg_replace('#</(p|h[1-6]|li|ul|ol|div|tr)>#i', "\n", $body);
+            $body = strip_tags($body);
+            $body = html_entity_decode($body, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $body = preg_replace('/[ \t]+/', ' ', $body);
+            $body = preg_replace('/\n{3,}/', "\n\n", $body);
+            $body = trim($body);
+
+            $lines[] = "## {$title}" . ($section ? " [{$section}]" : '')
+                . ($slug ? " (/help/{$slug})" : '')
+                . ($summary ? "\n{$summary}" : '')
+                . ($body ? "\n{$body}" : '');
         }
 
-        return implode("\n", $lines);
+        return implode("\n\n", $lines);
     }
 
     // Public ICS feed for the Nivessa events Google Calendar (the calendar Sarah
