@@ -253,7 +253,7 @@ HTML;
                         <span class="bfc-used-budget-figures">Weekly total <strong>${{ number_format($purchaseBudget['budget'], 0) }}</strong></span>
                     </div>
                     @foreach($perStore as $st)
-                        {!! $bfcBar($st['label'], rtrim(rtrim(number_format($st['pct_of_total'] * 100, 1), '0'), '.') . '% of week', $st['used'], $st['used_cap_full'] ?? null, $st['used_eaten'] ?? null) !!}
+                        {!! $bfcBar($st['label'], rtrim(rtrim(number_format($st['pct_of_total'] * 100, 1), '0'), '.') . '% of week', $st['used'], $st['used_cap_full'] ?? null, $st['used_reduced_by'] ?? null) !!}
                     @endforeach
                     @php $usedOver = collect($perStore)->contains(fn ($s) => $s['used']['over_budget']); @endphp
                     @if($usedOver)

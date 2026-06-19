@@ -107,7 +107,7 @@
                 </div>
             </div>
             <div class="ica-bar-right">
-                <div class="ica-bar-pct">{$pct}%</div>
+                <div class="ica-bar-pct" style="color: {$accentColor};">{$pct}%</div>
                 <div class="ica-bar-remaining-wrap">{$remainLine}</div>
             </div>
         </div>
@@ -123,8 +123,14 @@ HTML;
                 [$stNewClass, $stNewColor] = $bandFor($st['new']);
                 $stPct = rtrim(rtrim(number_format($st['pct_of_total'] * 100, 1), '0'), '.');
             @endphp
+            @php
+                $usedCaption = $stPct . '% of week · 35% cap';
+                if (!empty($st['used_reduced_by'])) {
+                    $usedCaption .= ' · $' . number_format($st['used_reduced_by'], 0) . ' cut — New over the pot';
+                }
+            @endphp
             <div class="ica-budget-store-total" style="margin:12px 0 4px;font-weight:700;font-size:15px;">{{ $st['label'] }} — ${{ number_format($st['budget'], 0) }}</div>
-            {!! $renderSplitRow($st['label'] . ' · Used', $stPct . '% of week · 35% cap', $st['used'], $stUsedClass, $stUsedColor, 'ica-bar-used') !!}
+            {!! $renderSplitRow($st['label'] . ' · Used', $usedCaption, $st['used'], $stUsedClass, $stUsedColor, 'ica-bar-used') !!}
             {!! $renderSplitRow($st['label'] . ' · New',  $stPct . '% of week · the rest',  $st['new'],  $stNewClass,  $stNewColor,  'ica-bar-new') !!}
         @endforeach
         @endif
