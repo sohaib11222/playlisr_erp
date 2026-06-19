@@ -771,6 +771,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // Help assistant key config (self-serve, no SSH / .env editing needed).
     Route::get('/admin/help-assistant', 'HelpAssistantSettingsController@index')->name('help-assistant.settings');
     Route::post('/admin/help-assistant/save', 'HelpAssistantSettingsController@save');
+    Route::get('/admin/help-assistant/questions', 'HelpAssistantController@questions')->name('help-assistant.questions');
 
     // Consumable supplies tracker (waters, bags, paper, sleeves). The help
     // assistant reads this to answer "are we low on X / when's the next shipment".

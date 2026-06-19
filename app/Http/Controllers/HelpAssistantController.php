@@ -59,6 +59,10 @@ class HelpAssistantController extends Controller
             return response()->json(['reply' => $fallback]);
         }
 
+        // Log the question (best-effort) so managers can see what staff ask at
+        // /admin/help-assistant/questions. Never let logging break the chat.
+        $this->logQuestion(end($messages)['content']);
+
         try {
             $client = new Client(['timeout' => 30]);
             $response = $client->post(self::ANTHROPIC_URL, [
@@ -115,6 +119,66 @@ class HelpAssistantController extends Controller
             \Log::warning('HelpAssistant request failed', ['error' => $e->getMessage()]);
             return response()->json(['reply' => "Couldn't reach the AI service from the server (network/timeout). The server may be blocking outbound HTTPS to api.anthropic.com."]);
         }
+    }
+
+    // Where asked questions are stored. No DB/migration — a JSON file in
+    // storage/app, same pattern as the other admin tools.
+    const QUESTIONS_PATH = 'help_assistant_questions.json';
+    const QUESTIONS_KEEP = 2000;
+
+    /**
+     * Append one asked question to the log. Best-effort and fully guarded — a
+     * logging failure must never stop the assistant from answering.
+     */
+    private function logQuestion($question)
+    {
+        try {
+            $question = trim((string) $question);
+            if ($question === '') {
+                return;
+            }
+
+            $log = [];
+            if (\Illuminate\Support\Facades\Storage::exists(self::QUESTIONS_PATH)) {
+                $log = json_decode(\Illuminate\Support\Facades\Storage::get(self::QUESTIONS_PATH), true);
+                $log = is_array($log) ? $log : [];
+            }
+
+            $user = auth()->user();
+            $log[] = [
+                'at'   => now()->toDateTimeString(),
+                'user' => $user ? trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? '')) ?: ($user->username ?? '') : 'Unknown',
+                'q'    => mb_substr($question, 0, 500),
+            ];
+
+            // Keep the file bounded.
+            if (count($log) > self::QUESTIONS_KEEP) {
+                $log = array_slice($log, -self::QUESTIONS_KEEP);
+            }
+
+            \Illuminate\Support\Facades\Storage::put(self::QUESTIONS_PATH, json_encode($log, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        } catch (\Throwable $e) {
+            \Log::warning('HelpAssistant logQuestion failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Manager view of what staff have asked the bot, most recent first.
+     */
+    public function questions()
+    {
+        if (!auth()->user()->can('business_settings.access')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $log = [];
+        if (\Illuminate\Support\Facades\Storage::exists(self::QUESTIONS_PATH)) {
+            $log = json_decode(\Illuminate\Support\Facades\Storage::get(self::QUESTIONS_PATH), true);
+            $log = is_array($log) ? $log : [];
+        }
+        $log = array_reverse($log);
+
+        return view('admin.help_assistant_questions', ['questions' => $log]);
     }
 
     /**
