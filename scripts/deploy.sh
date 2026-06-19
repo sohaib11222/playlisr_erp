@@ -108,4 +108,22 @@ else
   echo "deploy: .env not readable, skipping FPM OPcache reset"
 fi
 
+# Recycle PHP-FPM workers so new code actually goes live. optimize:clear and
+# the OPcache endpoint above don't reliably refresh already-running FPM workers
+# — changed controller/middleware classes keep serving stale bytecode until the
+# workers restart. SIGKILL the workers we own; the root-owned FPM master
+# respawns fresh ones immediately, and they recompile from the new code on disk.
+# This is exactly what the manual "FPM kill workers" job did — now it runs on
+# every deploy, so no manual recycle step is ever needed again.
+ME=$(whoami)
+echo "deploy: recycling php-fpm workers owned by $ME"
+pkill -9 -u "$ME" -f 'php-?fpm.*pool' 2>/dev/null || true
+sleep 3
+for i in 1 2 3 4 5; do
+  CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 15 https://playlist.nivessa.com/login || echo TIMEOUT)
+  echo "deploy: post-recycle smoke test attempt $i: HTTP $CODE"
+  [ "$CODE" = "200" ] && break
+  sleep 3
+done
+
 echo "deploy: done"
