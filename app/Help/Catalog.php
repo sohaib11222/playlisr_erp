@@ -622,6 +622,7 @@ HTML,
 
 <h3>Before You Reach Out</h3>
 <ul>
+    <li><strong>Check the sensor for anything sticky.</strong> Open the label printer and look at the sensor — remove any sticky residue or a label stuck inside. A blocked sensor is a common cause of the printer "not working."</li>
     <li><strong>Restart first.</strong> A fresh power cycle of the computer or printer fixes a surprising amount of stuff.</li>
     <li><strong>Check paper + ribbon</strong> on the Zebra label printer. "It's broken" is often "out of labels."</li>
     <li><strong>Check the cable.</strong> USB unplugged is the most common label-print issue.</li>
