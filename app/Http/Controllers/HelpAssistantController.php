@@ -200,8 +200,14 @@ KB;
 
         $supplies = SuppliesController::formatForBot();
         $requests = SupplyRequestController::formatForBot();
+        $handbook = $this->handbookForBot();
 
         return $base
+            . "\n\n=== STAFF HANDBOOK (the same articles staff see at Help & Handbook / playlist.nivessa.com/help) ===\n"
+            . "This is the detailed, authoritative how-to for day-to-day work. Prefer it over the short summaries above when answering 'how do I...' questions, and you may point staff to the matching handbook article:\n"
+            . $handbook
+            . "\n\n=== LISTENING PARTY PREP (rules & procedures; from /admin/listening-party-prep) ===\n"
+            . self::LISTENING_PARTY_RULES
             . "\n\n=== STORE OPERATIONS NOTES (maintained by Nivessa managers) ===\n" . $notes
             . "\n\n=== CURRENT SUPPLIES STATUS (live; managers update at /admin/supplies) ===\n"
             . "Use this to answer whether we're low/out of something and when the next restock is due:\n"
@@ -210,4 +216,58 @@ KB;
             . "Use this to answer 'did my request get ordered / when's it coming'. To request a new supply, tell staff to open Supplies > Request a Supply in the left sidebar:\n"
             . $requests;
     }
+
+    /**
+     * The full staff handbook (App\Help\Catalog) flattened to plain text so the
+     * bot answers "how do I..." from the same source staff read at /help.
+     */
+    private function handbookForBot()
+    {
+        if (!class_exists(\App\Help\Catalog::class)) {
+            return "(Handbook unavailable.)";
+        }
+
+        $lines = [];
+        foreach (\App\Help\Catalog::articles() as $a) {
+            $title = $a['title'] ?? 'Article';
+            $section = $a['section'] ?? '';
+            $summary = $a['summary'] ?? '';
+            $bodyHtml = $a['body_html'] ?? '';
+
+            // Strip HTML to readable text: list items become "- ", block tags
+            // become line breaks, then decode entities (e.g. &rarr; -> ->).
+            $body = preg_replace('/<li[^>]*>/i', "\n- ", $bodyHtml);
+            $body = preg_replace('#</(p|h[1-6]|li|ul|ol|div|tr)>#i', "\n", $body);
+            $body = strip_tags($body);
+            $body = html_entity_decode($body, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $body = preg_replace('/[ \t]+/', ' ', $body);
+            $body = preg_replace('/\n{3,}/', "\n\n", $body);
+            $body = trim($body);
+
+            $lines[] = "## {$title}" . ($section ? " [{$section}]" : '')
+                . ($summary ? "\n{$summary}" : '')
+                . ($body ? "\n{$body}" : '');
+        }
+
+        return implode("\n\n", $lines);
+    }
+
+    // Canonical listening-party prep checklist, mirrored from the website's
+    // /admin/listening-party-prep page (src/lib/listeningPartyPrep.js). Rules &
+    // procedures only — per-event details (host, box location, playback link)
+    // live on the website and are filled in per party there.
+    const LISTENING_PARTY_RULES = <<<'LP'
+Run through this before every listening party. The dates below are how far ahead each step is due (the website page shows exact dates per event). The giveaway box is stored in the employee room at each participating store.
+
+- About 2 weeks before: Confirm both stores are approved to participate.
+- About 1 week before: Post the event on social media once Carrie sends the assets. Timing matters — do NOT announce earlier than RSD does. Schedule posts in PST.
+- About 5 days before: Confirm the giveaway box(es) have arrived. Verify with one employee at each participating store, and have them label each box with the event name and date.
+- About 4 days before: Get a photo of the giveaway box in the employee room to confirm it's there before the event.
+- About 3 days before: Review RSVPs and confirm enough staff are scheduled.
+- About 2 days before: Review all event rules with the host/designated employee: giveaway procedures; preorder procedures (if applicable); purchase / release-day rules; any special instructions from the label or Carrie.
+- About 1 day before: Share the playback link with the person hosting.
+- Day of the event: The host must test the playback link at least 1 hour before the party — confirm the audio works. Do not wait until guests arrive to test it.
+
+If someone asks for a specific party's details (who's hosting, where this party's box is, the playback link), those are filled in per event on the website's Listening Party Prep page — point them there or to a manager.
+LP;
 }
