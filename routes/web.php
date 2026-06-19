@@ -772,6 +772,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/help-assistant', 'HelpAssistantSettingsController@index')->name('help-assistant.settings');
     Route::post('/admin/help-assistant/save', 'HelpAssistantSettingsController@save');
     Route::get('/admin/help-assistant/questions', 'HelpAssistantController@questions')->name('help-assistant.questions');
+    Route::get('/admin/help-knowledge', 'HelpKnowledgeController@index')->name('help-knowledge.index');
+    Route::post('/admin/help-knowledge', 'HelpKnowledgeController@save');
+    Route::post('/admin/help-knowledge/delete', 'HelpKnowledgeController@delete');
 
     // Consumable supplies tracker (waters, bags, paper, sleeves). The help
     // assistant reads this to answer "are we low on X / when's the next shipment".

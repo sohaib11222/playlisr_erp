@@ -3,7 +3,10 @@
 
 @section('content')
 <section class="content-header">
-    <h1>Help Assistant <a href="{{ url('/admin/help-assistant/questions') }}" class="btn btn-default btn-sm pull-right">See what staff asked</a></h1>
+    <h1>Help Assistant
+        <a href="{{ url('/admin/help-knowledge') }}" class="btn btn-primary btn-sm pull-right" style="margin-left:6px;">Add bot &amp; handbook knowledge</a>
+        <a href="{{ url('/admin/help-assistant/questions') }}" class="btn btn-default btn-sm pull-right">See what staff asked</a>
+    </h1>
     <p class="text-muted">Powers the "Ask the ERP" chat widget that helps staff figure out how to do things in here. Paste your Anthropic (Claude) API key below to switch it on. The key is stored on the server only and is never shown in full again.</p>
 </section>
 

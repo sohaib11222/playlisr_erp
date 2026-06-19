@@ -14,7 +14,7 @@ class Catalog
 {
     public static function articles(): array
     {
-        return [
+        $articles = [
             [
                 'slug' => 'getting-started',
                 'title' => 'Getting Started with the ERP',
@@ -1134,6 +1134,15 @@ HTML,
 HTML,
             ],
         ];
+
+        // Merge in manager-added entries from the self-serve knowledge editor
+        // (/admin/help-knowledge). Read live from storage, so saves show up on
+        // the /help pages and in the bot with no code change or deploy.
+        if (class_exists(\App\Http\Controllers\HelpKnowledgeController::class)) {
+            $articles = array_merge($articles, \App\Http\Controllers\HelpKnowledgeController::forCatalog());
+        }
+
+        return $articles;
     }
 
     /**
