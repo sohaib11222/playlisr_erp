@@ -189,6 +189,12 @@ Common tasks and how to do them:
 - Open or close the register for your shift: Cash Register section; each cashier closes
   their own register at the end of their shift.
 - Print barcode labels: Products > Print Labels, pick the products and label sheet.
+- Set up / load the new 2 x 2 labels: on the PC, search "Zebra Setup Utilities" in the
+  Windows search bar and open it. Click "Configure Printer Settings", then set the label
+  size to 2 x 2.
+- Fix the label printer when it's broken: open the printer and check the sensor for
+  anything sticky blocking it — remove any sticky residue or labels stuck inside. That's
+  the first thing to check.
 
 If someone asks something you genuinely don't know how to do in this ERP, tell them
 which menu section to look under and suggest checking with a manager.
