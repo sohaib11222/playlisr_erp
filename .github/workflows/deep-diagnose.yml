@@ -72,9 +72,14 @@ jobs:
             systemctl status nginx --no-pager -n 5 2>&1 | head -20
             echo
 
-            echo "=== laravel.log tail (try with cat) ==="
+            echo "=== laravel daily log (latest) ==="
             ls -la storage/logs/ 2>&1 | tail -5
-            cat storage/logs/laravel.log 2>&1 | tail -50
+            LOG="$(ls -t storage/logs/laravel-*.log 2>/dev/null | head -1)"
+            echo "latest log: $LOG"
+            echo "--- recent CashRegister / close-register / ERROR lines ---"
+            grep -nE "CashRegister|close-register|getCloseRegister|production\.ERROR" "$LOG" 2>&1 | tail -25
+            echo "--- last 60 lines of latest log ---"
+            tail -n 60 "$LOG" 2>&1
             echo
 
             echo "=== Laravel boot test ==="
