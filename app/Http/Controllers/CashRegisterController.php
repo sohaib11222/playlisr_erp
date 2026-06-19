@@ -455,6 +455,16 @@ class CashRegisterController extends Controller
         $business_id = request()->session()->get('user.business_id');
         $register_details =  $this->cashRegisterUtil->getRegisterDetails($id);
 
+        // No open register for this user (e.g. an owner/admin who never opened
+        // one) -> getRegisterDetails returns an all-NULL aggregate row, and the
+        // modal's Carbon::createFromFormat($open_time) then throws "Data missing",
+        // 500-ing the .btn-modal AJAX so the cashier sees NOTHING happen. Short-
+        // circuit with a friendly modal instead of crashing. The close flow must
+        // never break.
+        if (empty($register_details) || empty($register_details->open_time)) {
+            return view('cash_register.no_open_register_modal')->render();
+        }
+
         $user_id = $register_details->user_id;
         $open_time = $register_details['open_time'];
         $close_time = \Carbon::now()->toDateTimeString();
