@@ -77,14 +77,22 @@ class FetchSupplierPrices extends Command
                 }
                 $existing = $ica->loadSupplierFeed($businessId, $k);
                 $existingRows = is_array($existing['rows'] ?? null) ? $existing['rows'] : [];
+                // Dedupe key: prefer the UPC (digits only, leading zeros
+                // stripped) when present — barcode-looked-up rows may have no
+                // clean artist/title, so an artist|title|format key would
+                // collapse them all into one bogus "||" bucket. Fall back to
+                // the name key only when there's no barcode.
+                $keyOf = function ($r) {
+                    $upc = ltrim((string) preg_replace('/\D+/', '', (string) ($r['upc'] ?? '')), '0');
+                    if ($upc !== '') return 'upc:' . $upc;
+                    return 'nt:' . mb_strtolower(($r['artist'] ?? '') . '|' . ($r['title'] ?? '') . '|' . ($r['format'] ?? ''));
+                };
                 $byKey = [];
                 foreach ($existingRows as $r) {
-                    $kk = mb_strtolower(($r['artist'] ?? '') . '|' . ($r['title'] ?? '') . '|' . ($r['format'] ?? ''));
-                    $byKey[$kk] = $r;
+                    $byKey[$keyOf($r)] = $r;
                 }
                 foreach ($rows as $r) {
-                    $kk = mb_strtolower(($r['artist'] ?? '') . '|' . ($r['title'] ?? '') . '|' . ($r['format'] ?? ''));
-                    $byKey[$kk] = $r;
+                    $byKey[$keyOf($r)] = $r;
                 }
                 $merged = array_values($byKey);
                 $ica->saveSupplierFeed($businessId, $k, [

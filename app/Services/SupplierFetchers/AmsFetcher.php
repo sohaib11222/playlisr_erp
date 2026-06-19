@@ -36,6 +36,7 @@ class AmsFetcher extends AbstractHttpFetcher
 
     public function fetch(): array
     {
+        $startedAt = microtime(true);
         $creds = $this->readCredentials();
 
         // 1) Get the login page first so the cookie jar has any
@@ -73,7 +74,222 @@ class AmsFetcher extends AbstractHttpFetcher
             }
         }
 
+        // 5) Barcode lookups for reorder candidates AMS doesn't surface in its
+        // SalesRank lists (deep catalog — older titles that still sell for us
+        // but aren't current best-sellers). Every product page is keyed purely
+        // by the trailing barcode segment (the artist/title slugs are ignored),
+        // so /Product/x/x/<ean> resolves straight to the item + "Your Price".
+        // We feed it the barcodes of our own low-stock movers and merge the
+        // hits in. Bounded by a wall-clock budget so the synchronous
+        // "Fetch AMS now" button finishes before the JS client aborts.
+        $have = [];
+        foreach ($rows as $r) {
+            $n = $this->normalizeBarcode((string) ($r['upc'] ?? ''));
+            if ($n !== '') $have[$n] = true;
+        }
+        // Also skip barcodes already priced in a previous run's feed so each
+        // run advances into new territory instead of re-pulling the same items.
+        try {
+            $svc = app(\App\Services\InventoryCheckService::class);
+            $bizId = $this->resolveBusinessId();
+            $feed = $bizId ? $svc->loadSupplierFeed($bizId, $this->supplierKey()) : [];
+            foreach (($feed['rows'] ?? []) as $r) {
+                if (!is_array($r)) continue;
+                $n = $this->normalizeBarcode((string) ($r['upc'] ?? ''));
+                if ($n !== '' && isset($r['cost']) && (float) $r['cost'] > 0) $have[$n] = true;
+            }
+        } catch (\Throwable $e) {
+            // Non-fatal — worst case we re-look-up a few we already had.
+        }
+
+        foreach ($this->lookupByBarcodes($this->candidateBarcodes($have), $startedAt) as $row) {
+            $rows[] = $row;
+        }
+
         return $rows;
+    }
+
+    /**
+     * Pull the barcodes of our own low-stock reorder candidates, most-sold
+     * first, so the barcode lookup spends its budget on the items most likely
+     * to need restocking. Numeric UPC/EAN SKUs only (legacy internal SKUs like
+     * "0119" or "RXT 09" can't be looked up on AMS). $skip holds normalized
+     * barcodes we already have a price for.
+     *
+     * @return array<int, string> normalized (leading-zeros-stripped) barcodes
+     */
+    protected function candidateBarcodes(array $skip): array
+    {
+        $cap = max(0, (int) env('AMS_BARCODE_LOOKUPS', 400));
+        if ($cap === 0) return [];
+        $bizId = $this->resolveBusinessId();
+        if (!$bizId) return [];
+        $maxStock = (int) env('AMS_BARCODE_MAX_STOCK', 3);
+
+        try {
+            $rows = \Illuminate\Support\Facades\DB::table('product_stock_cache')
+                ->where('business_id', $bizId)
+                ->where('stock', '<=', $maxStock)
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->orderByDesc('total_sold')
+                ->limit(20000)
+                ->pluck('sku');
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('AmsFetcher: candidateBarcodes query failed', ['err' => $e->getMessage()]);
+            return [];
+        }
+
+        $out = [];
+        $seen = [];
+        foreach ($rows as $sku) {
+            $digits = preg_replace('/\D+/', '', (string) $sku);
+            if (strlen($digits) < 11 || strlen($digits) > 13) continue; // not a UPC/EAN
+            $norm = ltrim($digits, '0');
+            if ($norm === '' || isset($seen[$norm]) || isset($skip[$norm])) continue;
+            $seen[$norm] = true;
+            $out[] = $norm;
+            if (count($out) >= $cap) break;
+        }
+        return $out;
+    }
+
+    /**
+     * Look each barcode up on its AMS product page and parse the wholesale
+     * price. Runs in small concurrent batches (curl_multi) and stops once the
+     * overall fetch wall-clock budget is hit, so a deep candidate list never
+     * runs the synchronous request past the client abort.
+     *
+     * @param array<int, string> $eans normalized barcodes
+     * @return array<int, array<string,mixed>>
+     */
+    protected function lookupByBarcodes(array $eans, float $startedAt): array
+    {
+        if (empty($eans)) return [];
+        $budget = (float) env('AMS_FETCH_BUDGET_SEC', 95);
+        $concurrency = max(1, (int) env('AMS_BARCODE_CONCURRENCY', 6));
+
+        $out = [];
+        foreach (array_chunk($eans, $concurrency) as $chunk) {
+            if ((microtime(true) - $startedAt) > $budget) break;
+            $urls = [];
+            foreach ($chunk as $ean) {
+                $urls[$ean] = 'https://www.allmediasupply.com/Product/x/x/' . $ean;
+            }
+            foreach ($this->multiGet($urls) as $ean => $html) {
+                if ($html === null || $html === '') continue;
+                $row = $this->parseProductPageHtml($html, (string) $ean);
+                if ($row !== null) $out[] = $row;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Fetch several URLs concurrently against the established cookie jar.
+     * Read-only: we set COOKIEFILE (read) but NOT COOKIEJAR (write) so the
+     * parallel handles never race to rewrite the session cookie file.
+     *
+     * @param array<string,string> $urls keyed by an arbitrary id (the EAN)
+     * @return array<string, ?string> same keys → body (or null on HTTP error)
+     */
+    protected function multiGet(array $urls): array
+    {
+        $mh = curl_multi_init();
+        $handles = [];
+        foreach ($urls as $key => $url) {
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_TIMEOUT => 30,
+                CURLOPT_CONNECTTIMEOUT => 10,
+                CURLOPT_USERAGENT => $this->userAgent,
+                CURLOPT_COOKIEFILE => $this->cookieJar,
+            ]);
+            curl_multi_add_handle($mh, $ch);
+            $handles[$key] = $ch;
+        }
+
+        $running = null;
+        do {
+            curl_multi_exec($mh, $running);
+            if ($running > 0) curl_multi_select($mh, 1.0);
+        } while ($running > 0);
+
+        $out = [];
+        foreach ($handles as $key => $ch) {
+            $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $body = curl_multi_getcontent($ch);
+            $out[$key] = ($status >= 200 && $status < 400 && $body !== false) ? (string) $body : null;
+            curl_multi_remove_handle($mh, $ch);
+            curl_close($ch);
+        }
+        curl_multi_close($mh);
+        return $out;
+    }
+
+    /**
+     * Parse a single AMS product page into a feed row. Only the wholesale
+     * "Your Price" is required — if it's absent (barcode not carried, or not
+     * logged in) we return null and the caller skips it. Title/artist/format
+     * are best-effort for display; matching downstream keys on the barcode.
+     *
+     * @return array<string,mixed>|null
+     */
+    protected function parseProductPageHtml(string $html, string $ean): ?array
+    {
+        $text = preg_replace('/\s+/', ' ', strip_tags($html));
+
+        // "Your Price: $7.40" (NOT "MSRP: $11.99" — that's list price).
+        $cost = null;
+        if (preg_match('#Your\s*Price\s*:?\s*\$?\s*([0-9]+(?:\.[0-9]{1,2})?)#i', (string) $text, $m)) {
+            $cost = (float) $m[1];
+        }
+        if ($cost === null || $cost <= 0) return null;
+
+        $upc = $ean;
+        if (preg_match('#BARCODE\s*:?\s*([0-9]{8,14})#i', (string) $text, $bm)) {
+            $upc = $bm[1];
+        }
+
+        $format = null;
+        if (preg_match('#\bFORMAT\s*:?\s*([A-Za-z][A-Za-z0-9 /\-]{0,30}?)\s+(?:LABEL|GENRE|CATALOG|NO OF|BARCODE|RELEASE)\b#i', (string) $text, $fm)) {
+            $raw = strtolower(trim($fm[1]));
+            if (strpos($raw, 'vinyl') !== false || strpos($raw, 'lp') !== false) {
+                $format = 'LP';
+            } elseif (strpos($raw, 'cd') !== false) {
+                $format = 'CD';
+            } elseif (strpos($raw, 'cassette') !== false || strpos($raw, 'tape') !== false) {
+                $format = 'Cassette';
+            } else {
+                $format = trim($fm[1]);
+            }
+        }
+
+        $title = null;
+        if (preg_match('#<h1[^>]*>\s*(.+?)\s*</h1>#is', $html, $tm)) {
+            $title = trim(html_entity_decode(strip_tags($tm[1]), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        }
+        $artist = null;
+        if (preg_match('#Artist\b\s*(?:</[a-z0-9]+>\s*)*<a\b[^>]*>\s*(.+?)\s*</a>#is', $html, $am)) {
+            $artist = trim(html_entity_decode(strip_tags($am[1]), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        }
+
+        return [
+            'artist' => $artist !== '' ? $artist : null,
+            'title' => $title !== '' ? $title : null,
+            'format' => $format,
+            'cost' => $cost,
+            'upc' => $upc,
+            'url' => 'https://www.allmediasupply.com/Product/x/x/' . $ean,
+        ];
+    }
+
+    /** Digits-only, leading zeros stripped — matches AMS's product-URL key. */
+    protected function normalizeBarcode(string $raw): string
+    {
+        return ltrim((string) preg_replace('/\D+/', '', $raw), '0');
     }
 
     /**

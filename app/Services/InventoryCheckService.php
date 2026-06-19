@@ -889,7 +889,7 @@ class InventoryCheckService
      *
      * @return array<int, array{supplier_key:string, supplier_label:string, cost:float, upc:?string, format:?string}>
      */
-    public function allSupplierPrices(int $business_id, ?string $artist, ?string $title, ?string $format = null): array
+    public function allSupplierPrices(int $business_id, ?string $artist, ?string $title, ?string $format = null, ?string $upc = null): array
     {
         static $cache = []; // [business_id => [supplier_key => indexed_rows]]
         if (!isset($cache[$business_id])) {
@@ -905,8 +905,15 @@ class InventoryCheckService
         }
         if (empty($cache[$business_id])) return [];
 
+        // Exact barcode match is the strongest signal. Legacy ERP records bake
+        // "Title / Artist" into one name field while supplier feeds store them
+        // separately, so name matching is fuzzy — but a UPC is a UPC. When the
+        // ERP row carries a barcode, match it against the feed row's upc (digits
+        // only, leading zeros stripped) and accept regardless of how the names
+        // line up. Name matching stays the fallback when there's no barcode hit.
+        $upcNorm = $this->normalizeUpc($upc);
         $candidates = $this->supplierMatchCandidates($artist, $title);
-        if (empty($candidates)) return [];
+        if (empty($candidates) && $upcNorm === '') return [];
 
         $out = [];
         foreach ($cache[$business_id] as $key => $bundle) {
@@ -915,7 +922,8 @@ class InventoryCheckService
                 if (!is_array($row)) continue;
                 $rArtist = mb_strtolower((string) ($row['artist'] ?? ''));
                 $rTitle = mb_strtolower((string) ($row['title'] ?? ''));
-                if (!$this->rowMatchesCandidates($rArtist, $rTitle, $candidates)) continue;
+                $upcMatch = $upcNorm !== '' && $this->normalizeUpc($row['upc'] ?? null) === $upcNorm;
+                if (!$upcMatch && !$this->rowMatchesCandidates($rArtist, $rTitle, $candidates)) continue;
                 $cost = isset($row['cost']) ? (float) $row['cost'] : null;
                 if ($cost === null || $cost <= 0) continue;
                 if ($bestForThisSupplier === null || $cost < $bestForThisSupplier['cost']) {
@@ -935,13 +943,20 @@ class InventoryCheckService
         return $out;
     }
 
-    public function bestSupplierPrice(int $business_id, ?string $artist, ?string $title, ?string $format = null): ?array
+    public function bestSupplierPrice(int $business_id, ?string $artist, ?string $title, ?string $format = null, ?string $upc = null): ?array
     {
         // allSupplierPrices() returns every supplier's match sorted cheapest
         // first, so the best price is just the head of that list. Sharing the
         // same matcher keeps "best badge" and the per-supplier columns in sync.
-        $all = $this->allSupplierPrices($business_id, $artist, $title, $format);
+        $all = $this->allSupplierPrices($business_id, $artist, $title, $format, $upc);
         return $all[0] ?? null;
+    }
+
+    /** Normalize a UPC/EAN to digits-only with leading zeros stripped. */
+    protected function normalizeUpc($raw): string
+    {
+        $digits = preg_replace('/\D+/', '', (string) $raw);
+        return ltrim((string) $digits, '0');
     }
 
     /**
@@ -1010,9 +1025,10 @@ class InventoryCheckService
             $artist = $it['artist'] ?? '';
             $title = $it['product'] ?? '';
             $format = $it['format'] ?? null;
-            if ($title === '' || $title === null) continue;
-            $items[$idx]['supplier_prices'] = $this->allSupplierPrices($business_id, $artist, $title, $format);
-            $items[$idx]['best_supplier'] = $this->bestSupplierPrice($business_id, $artist, $title, $format);
+            $upc = $it['sku'] ?? null;
+            if (($title === '' || $title === null) && empty($upc)) continue;
+            $items[$idx]['supplier_prices'] = $this->allSupplierPrices($business_id, $artist, $title, $format, $upc);
+            $items[$idx]['best_supplier'] = $this->bestSupplierPrice($business_id, $artist, $title, $format, $upc);
             if (!empty($items[$idx]['supplier_prices'])) $matched++;
         }
         return $matched;
@@ -1475,9 +1491,10 @@ class InventoryCheckService
             $artist = $it['artist'] ?? '';
             $title = $it['product'] ?? '';
             $format = $it['format'] ?? null;
-            if ($title === '') continue;
-            $items[$idx]['supplier_prices'] = $this->allSupplierPrices($business_id, $artist, $title, $format);
-            $items[$idx]['best_supplier'] = $this->bestSupplierPrice($business_id, $artist, $title, $format);
+            $upc = $it['sku'] ?? null;
+            if ($title === '' && empty($upc)) continue;
+            $items[$idx]['supplier_prices'] = $this->allSupplierPrices($business_id, $artist, $title, $format, $upc);
+            $items[$idx]['best_supplier'] = $this->bestSupplierPrice($business_id, $artist, $title, $format, $upc);
             if (!empty($items[$idx]['supplier_prices'])) $itemsWithMatch++;
         }
 
