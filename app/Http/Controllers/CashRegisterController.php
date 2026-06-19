@@ -387,14 +387,50 @@ class CashRegisterController extends Controller
     }
 
     /**
+     * Make sure the cash_deposits table exists, creating it on the fly if
+     * the one-click installer (/admin/install-cash-deposits-table) was
+     * never run on this environment. Idempotent — the CREATE only fires
+     * once, every later call short-circuits on hasTable(). This is what
+     * keeps deposit numbers actually incrementing: without it, a missing
+     * table silently made every deposit show "#1". Returns false only if
+     * the table is missing AND we couldn't create it.
+     */
+    private function ensureDepositsTable(): bool
+    {
+        try {
+            if (\Schema::hasTable('cash_deposits')) {
+                return true;
+            }
+            \Schema::create('cash_deposits', function ($table) {
+                $table->increments('id');
+                $table->unsignedInteger('business_id');
+                $table->unsignedInteger('location_id')->nullable();
+                $table->unsignedInteger('cash_register_id')->nullable();
+                $table->unsignedInteger('user_id')->nullable();
+                $table->string('cashier_name')->nullable();
+                $table->unsignedInteger('deposit_seq');
+                $table->decimal('amount', 22, 4)->default(0);
+                $table->string('phase', 20)->nullable();
+                $table->dateTime('deposited_at');
+                $table->timestamps();
+                $table->unique(['business_id', 'location_id', 'deposit_seq'], 'cd_biz_loc_seq_uniq');
+                $table->index(['business_id', 'location_id'], 'cd_biz_loc_idx');
+            });
+            return true;
+        } catch (\Throwable $e) {
+            \Log::warning('ensureDepositsTable failed: ' . $e->getMessage());
+            return \Schema::hasTable('cash_deposits');
+        }
+    }
+
+    /**
      * Next per-store deposit number to SHOW the cashier on the open/close
-     * form so they can write "Deposit #N" on the post-it. Display-only —
+     * form so they can write "Deposit #N" on the envelope. Display-only —
      * the authoritative number is assigned in recordDeposit() at submit.
-     * Returns 1 when the table isn't installed yet.
      */
     private function nextDepositSeq($business_id, $location_id): int
     {
-        if (!\Schema::hasTable('cash_deposits')) {
+        if (!$this->ensureDepositsTable()) {
             return 1;
         }
         $max = (int) \DB::table('cash_deposits')
@@ -406,25 +442,27 @@ class CashRegisterController extends Controller
 
     /**
      * Persist one safe-drop deposit and return its assigned per-store
-     * sequence number. Atomic max+1 under a row lock so two cashiers
-     * dropping at the same store don't collide; the unique index is the
-     * backstop. Never throws into the open/close flow — on any failure it
-     * logs and returns 0 (the drop amount is still saved on the register).
+     * sequence number. Computes max+1 then inserts; if a concurrent drop
+     * grabbed the same number, the unique (business, location, deposit_seq)
+     * index rejects it and we recompute and retry. This replaces an earlier
+     * "SELECT MAX(...) FOR UPDATE" lock that errored on some MySQL setups —
+     * and because that error was swallowed, no rows were ever written, so
+     * every deposit kept showing "#1". Never throws into the open/close
+     * flow — on persistent failure it logs and returns 0 (the drop amount
+     * is still saved on the register row).
      */
     private function recordDeposit($business_id, $location_id, $cash_register_id, $user_id, $cashier_name, $amount, $phase): int
     {
-        if (!\Schema::hasTable('cash_deposits') || (float) $amount <= 0) {
+        if ((float) $amount <= 0 || !$this->ensureDepositsTable()) {
             return 0;
         }
-        try {
-            return \DB::transaction(function () use ($business_id, $location_id, $cash_register_id, $user_id, $cashier_name, $amount, $phase) {
-                $max = (int) \DB::table('cash_deposits')
-                    ->where('business_id', $business_id)
-                    ->where('location_id', $location_id)
-                    ->lockForUpdate()
-                    ->max('deposit_seq');
-                $seq = $max + 1;
-                $now = \Carbon::now()->format('Y-m-d H:i:s');
+        $now = \Carbon::now()->format('Y-m-d H:i:s');
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $seq = 1 + (int) \DB::table('cash_deposits')
+                ->where('business_id', $business_id)
+                ->where('location_id', $location_id)
+                ->max('deposit_seq');
+            try {
                 \DB::table('cash_deposits')->insert([
                     'business_id'      => $business_id,
                     'location_id'      => $location_id,
@@ -439,11 +477,20 @@ class CashRegisterController extends Controller
                     'updated_at'       => $now,
                 ]);
                 return $seq;
-            });
-        } catch (\Throwable $e) {
-            \Log::warning('recordDeposit failed: ' . $e->getMessage());
-            return 0;
+            } catch (\Illuminate\Database\QueryException $e) {
+                // Most likely the unique index caught a concurrent insert
+                // that grabbed this same seq first — recompute and retry.
+                // Any other DB error: give up after the last attempt.
+                if ($attempt === 4) {
+                    \Log::warning('recordDeposit gave up after retries: ' . $e->getMessage());
+                    return 0;
+                }
+            } catch (\Throwable $e) {
+                \Log::warning('recordDeposit failed: ' . $e->getMessage());
+                return 0;
+            }
         }
+        return 0;
     }
 
     public function getCloseRegister($id = null)
