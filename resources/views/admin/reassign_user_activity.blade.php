@@ -117,7 +117,7 @@ body.role-picker .rua-pill { display:inline-block; padding:2px 8px; border-radiu
                 </div>
 
                 <div class="rua-card">
-                    <h3>Listings on {{ $date }} ({{ $listings->count() }})</h3>
+                    <h3>Listings on {{ $date }} ({{ $listings->count() }}, ${{ number_format((float)$listings->sum('sell_value'), 2) }} value)</h3>
                     @if($listings->isEmpty())
                         <p class="rua-muted">No products listed by that user on this day.</p>
                     @else
@@ -125,7 +125,7 @@ body.role-picker .rua-pill { display:inline-block; padding:2px 8px; border-radiu
                             <thead>
                                 <tr>
                                     <th><input type="checkbox" checked onclick="document.querySelectorAll('.prod-cb').forEach(c=>c.checked=this.checked)"></th>
-                                    <th>Time</th><th>SKU</th><th>Product</th>
+                                    <th>Time</th><th>SKU</th><th>Product</th><th>Value</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -135,9 +135,16 @@ body.role-picker .rua-pill { display:inline-block; padding:2px 8px; border-radiu
                                         <td class="rua-muted">{{ \Carbon::parse($p->created_at)->format('g:i A') }}</td>
                                         <td><code>{{ $p->sku }}</code></td>
                                         <td>{{ $p->name }}</td>
+                                        <td>${{ number_format((float)$p->sell_value, 2) }}</td>
                                     </tr>
                                 @endforeach
                             </tbody>
+                            <tfoot>
+                                <tr>
+                                    <th colspan="4" style="text-align:right;">Total</th>
+                                    <th>${{ number_format((float)$listings->sum('sell_value'), 2) }}</th>
+                                </tr>
+                            </tfoot>
                         </table>
                     @endif
                 </div>

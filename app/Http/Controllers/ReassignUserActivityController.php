@@ -56,12 +56,21 @@ class ReassignUserActivityController extends Controller
                     DB::raw("CONCAT(COALESCE(c.first_name,''),' ',COALESCE(c.last_name,'')) as contact_name"),
                 ]);
 
-            $listings = DB::table('products')
-                ->where('business_id', $businessId)
-                ->where('created_by', $fromUserId)
-                ->whereBetween('created_at', [$start, $end])
-                ->orderBy('created_at')
-                ->get(['id', 'name', 'sku', 'created_at']);
+            // Sell value per listing = sum of its variations' sell price, so
+            // the listings total here can be sanity-checked against the
+            // labeled-value figure from the leaderboard/listing report.
+            $listings = DB::table('products as p')
+                ->leftJoin('variations as v', 'v.product_id', '=', 'p.id')
+                ->where('p.business_id', $businessId)
+                ->where('p.created_by', $fromUserId)
+                ->whereBetween('p.created_at', [$start, $end])
+                ->whereNull('v.deleted_at')
+                ->groupBy('p.id', 'p.name', 'p.sku', 'p.created_at')
+                ->orderBy('p.created_at')
+                ->get([
+                    'p.id', 'p.name', 'p.sku', 'p.created_at',
+                    DB::raw('COALESCE(SUM(v.default_sell_price), 0) as sell_value'),
+                ]);
         }
 
         return view('admin.reassign_user_activity', [
