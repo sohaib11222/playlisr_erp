@@ -176,8 +176,8 @@ class InventoryCheckService
             $lineAgg->whereIn('t.location_id', $permittedLocations);
         }
         $lineAgg = $lineAgg
-            ->selectRaw('t.id as txn_id, t.location_id as location_id, t.final_total as final_total, p.category_id as category_id, SUM(pl.quantity * pl.purchase_price_inc_tax) as line_total')
-            ->groupBy('t.id', 't.location_id', 't.final_total', 'p.category_id')
+            ->selectRaw('t.id as txn_id, t.location_id as location_id, t.final_total as final_total, p.category_id as category_id, p.added_via as added_via, SUM(pl.quantity * pl.purchase_price_inc_tax) as line_total')
+            ->groupBy('t.id', 't.location_id', 't.final_total', 'p.category_id', 'p.added_via')
             ->get();
 
         // Group by txn -> total line value + used line value.
@@ -194,7 +194,12 @@ class InventoryCheckService
             }
             $val = (float) $row->line_total;
             $perTxn[$tid]['lines_total'] += $val;
-            $isUsed = $row->category_id !== null && in_array((int) $row->category_id, $usedCatIds, true);
+            // A line counts as Used if its product sits in a "used"-named category
+            // OR it came in through the buy-from-customer flow (customer collections
+            // are created with no category, but are always used inventory — without
+            // this they'd all be miscounted as New). 2026-06-19 Sarah.
+            $isUsed = ($row->category_id !== null && in_array((int) $row->category_id, $usedCatIds, true))
+                || ($row->added_via === 'buy_from_customer');
             if ($isUsed) {
                 $perTxn[$tid]['used_lines'] += $val;
             }
