@@ -169,6 +169,7 @@ class InventoryCheckService
         $lineAgg = DB::table('purchase_lines as pl')
             ->join('transactions as t', 't.id', '=', 'pl.transaction_id')
             ->leftJoin('products as p', 'p.id', '=', 'pl.product_id')
+            ->leftJoin('contacts as ct', 'ct.id', '=', 't.contact_id')
             ->where('t.business_id', $business_id)
             ->where('t.type', 'purchase')
             ->whereBetween(DB::raw('date(t.transaction_date)'), [$week['start'], $week['end']]);
@@ -176,8 +177,8 @@ class InventoryCheckService
             $lineAgg->whereIn('t.location_id', $permittedLocations);
         }
         $lineAgg = $lineAgg
-            ->selectRaw('t.id as txn_id, t.location_id as location_id, t.final_total as final_total, p.category_id as category_id, p.added_via as added_via, SUM(pl.quantity * pl.purchase_price_inc_tax) as line_total')
-            ->groupBy('t.id', 't.location_id', 't.final_total', 'p.category_id', 'p.added_via')
+            ->selectRaw('t.id as txn_id, t.location_id as location_id, t.final_total as final_total, t.ref_no as ref_no, t.transaction_date as txn_date, ct.name as supplier, p.category_id as category_id, p.added_via as added_via, SUM(pl.quantity * pl.purchase_price_inc_tax) as line_total')
+            ->groupBy('t.id', 't.location_id', 't.final_total', 't.ref_no', 't.transaction_date', 'ct.name', 'p.category_id', 'p.added_via')
             ->get();
 
         // Group by txn -> total line value + used line value.
@@ -188,6 +189,9 @@ class InventoryCheckService
                 $perTxn[$tid] = [
                     'location_id' => (int) $row->location_id,
                     'final_total' => (float) $row->final_total,
+                    'ref_no' => $row->ref_no,
+                    'txn_date' => $row->txn_date,
+                    'supplier' => $row->supplier,
                     'lines_total' => 0.0,
                     'used_lines' => 0.0,
                 ];
@@ -208,7 +212,10 @@ class InventoryCheckService
         $spentTxnNew = 0.0;
         // Per-location Used/New actual spend, for the per-store sub-budgets.
         $perLocUsedNew = [];
-        foreach ($perTxn as $t) {
+        // Per-transaction list so the split is auditable — every purchase and
+        // how much of it landed in New vs Used.
+        $txnList = [];
+        foreach ($perTxn as $tid => $t) {
             $ft = $t['final_total'];
             if ($t['lines_total'] > 0) {
                 $usedShare = $t['used_lines'] / $t['lines_total'];
@@ -227,7 +234,20 @@ class InventoryCheckService
             }
             $perLocUsedNew[$lid]['used'] += $txnUsed;
             $perLocUsedNew[$lid]['new'] += $txnNew;
+            $txnList[] = [
+                'id' => $tid,
+                'ref_no' => $t['ref_no'],
+                'date' => $t['txn_date'] ? substr((string) $t['txn_date'], 0, 10) : null,
+                'location_id' => $lid,
+                'supplier' => $t['supplier'],
+                'total' => round($ft, 2),
+                'new_amount' => round($txnNew, 2),
+                'used_amount' => round($txnUsed, 2),
+                'used_share' => round($usedShare * 100, 0),
+            ];
         }
+        // Biggest New contributions first — that's what's filling the New budget.
+        usort($txnList, fn ($a, $b) => $b['new_amount'] <=> $a['new_amount']);
         // Handle transactions with final_total > 0 but no purchase_lines
         // (shouldn't normally happen, but guard so totals reconcile).
         $reconciled = $spentTxnUsed + $spentTxnNew;
@@ -296,6 +316,16 @@ class InventoryCheckService
             ];
         }
         usort($perLocation, fn ($a, $b) => $b['spent'] <=> $a['spent']);
+
+        // Resolve a readable store name onto each audited transaction.
+        $locNameMap = [];
+        foreach ($perLocation as $loc) {
+            $locNameMap[$loc['location_id']] = $loc['name'];
+        }
+        foreach ($txnList as &$tx) {
+            $tx['location'] = $locNameMap[$tx['location_id']] ?? ('Location #' . $tx['location_id']);
+        }
+        unset($tx);
 
         // Used/New sub-budgets (35/65 mid-range of the 30-40 / 60-70 plan).
         $usedBudget = round($budget * 0.35, 2);
@@ -455,6 +485,7 @@ class InventoryCheckService
             'used_category_ids' => $usedCatIds,
             'per_store' => $perStore,
             'spend_breakdown' => $spendBreakdown,
+            'transactions' => $txnList,
         ];
     }
 

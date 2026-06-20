@@ -189,6 +189,38 @@ HTML;
         </details>
         @endif
 
+        {{-- Transaction-level audit of the split (Sarah 2026-06-19) — every
+             purchase this week and how much of it landed in New vs Used. --}}
+        @if(!empty($pb['transactions']))
+        <details class="ica-spend-breakdown">
+            <summary>Transactions behind the split — every purchase this week ({{ count($pb['transactions']) }})</summary>
+            <table class="ica-breakdown-table ica-txn-table">
+                <thead>
+                    <tr>
+                        <th>Date</th><th>Ref</th><th>Store</th><th>Supplier</th>
+                        <th class="ica-bd-amt">Total</th><th class="ica-bd-amt">New</th><th class="ica-bd-amt">Used</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($pb['transactions'] as $tx)
+                    <tr>
+                        <td class="ica-bd-via">{{ $tx['date'] ? \Carbon\Carbon::parse($tx['date'])->format('M j') : '—' }}</td>
+                        <td class="ica-bd-via">{{ $tx['ref_no'] ?: ('#' . $tx['id']) }}</td>
+                        <td>{{ $tx['location'] }}</td>
+                        <td>{{ $tx['supplier'] ?: '—' }}</td>
+                        <td class="ica-bd-amt">${{ number_format($tx['total'], 0) }}</td>
+                        <td class="ica-bd-amt ica-txn-new">{{ $tx['new_amount'] > 0 ? '$' . number_format($tx['new_amount'], 0) : '—' }}</td>
+                        <td class="ica-bd-amt ica-txn-used">{{ $tx['used_amount'] > 0 ? '$' . number_format($tx['used_amount'], 0) : '—' }}</td>
+                    </tr>
+                    @endforeach
+                </tbody>
+            </table>
+            <div class="ica-bd-note">
+                Each purchase's total is split by the share of its line items tagged used. A row landing fully in <strong>New</strong> with a used supplier or collection is a miscategorised buy — those are what inflate New.
+            </div>
+        </details>
+        @endif
+
         @if(!empty($pb['manual_entries_this_week']))
         <div class="ica-budget-manual-list">
             <small class="text-muted">Manual entries this week:</small>
@@ -1326,6 +1358,8 @@ body.ica-wizard-active { padding-bottom: 64px; }
 .ica-bd-tag-used { background: #e8f5e9; color: #2e7d32; }
 .ica-bd-new td:first-child { box-shadow: inset 3px 0 0 #f0ad4e; }
 .ica-bd-note { font-size: 12px; color: #777; padding: 6px 0 12px; line-height: 1.45; }
+.ica-txn-table .ica-txn-new { color: #1565c0; font-weight: 700; }
+.ica-txn-table .ica-txn-used { color: #2e7d32; font-weight: 700; }
 /* Used-blocked callout on the per-store budget block */
 .ica-used-blocked { margin-top: 8px; padding: 10px 12px; font-size: 13px; font-weight: 400; line-height: 1.45; color: #842029; background: #fff5f5; border: 1px solid #f1c2c2; border-left: 4px solid #c0392b; border-radius: 4px; }
 .ica-used-blocked strong { color: #842029; }
