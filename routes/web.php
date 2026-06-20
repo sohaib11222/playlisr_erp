@@ -584,6 +584,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // Admin-only preview of the auto shift summary — never touches the POS
     // close modal, so it's safe to view without risking the close flow.
     Route::get('/shift-notes/preview', 'CashRegisterController@shiftNotesPreview');
+    // Staff-facing "End Shift" for non-cashier roles (pricing/listing like
+    // Zella, fulfillment like Nick) who don't close a register. Standalone
+    // page — never touches the POS close flow.
+    Route::get('/shift-notes/end', 'CashRegisterController@endShiftForm');
+    Route::post('/shift-notes/end', 'CashRegisterController@endShift');
     // Handover confirm screen — the prior cashier acknowledges that the
     // next cashier opened with a fresh count of their drawer. Locked
     // closing_amount + required reason field. Sarah 2026-05-13.
