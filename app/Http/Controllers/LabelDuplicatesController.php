@@ -55,12 +55,19 @@ class LabelDuplicatesController extends Controller
             $val = round((float) ($d['value'] ?? 0), 2);
             $cid = (int) $r->causer_id;
             $ts  = \Carbon::parse($r->created_at);
+            // Category histogram signature — two genuinely different sets are
+            // extremely unlikely to match on count + value AND the same
+            // per-category counts, so requiring this near-eliminates false
+            // positives that could wrongly dock commission.
+            $cats = $d['categories'] ?? [];
+            ksort($cats);
+            $catSig = json_encode($cats);
 
             $isDup = false;
             if (isset($prevByEmp[$cid])) {
                 $p = $prevByEmp[$cid];
                 $gap = $ts->diffInSeconds($p['ts']);
-                if ($p['qty'] === $qty && abs($p['val'] - $val) < 0.005 && $gap <= $window) {
+                if ($p['qty'] === $qty && abs($p['val'] - $val) < 0.005 && $p['cat'] === $catSig && $gap <= $window) {
                     $isDup = true;
                 }
             }
@@ -88,7 +95,7 @@ class LabelDuplicatesController extends Controller
                 ];
             }
 
-            $prevByEmp[$cid] = ['qty' => $qty, 'val' => $val, 'ts' => $ts, 'time' => $r->created_at];
+            $prevByEmp[$cid] = ['qty' => $qty, 'val' => $val, 'cat' => $catSig, 'ts' => $ts, 'time' => $r->created_at];
         }
 
         // Employees with at least one suspected dup first, biggest dup value on top.
