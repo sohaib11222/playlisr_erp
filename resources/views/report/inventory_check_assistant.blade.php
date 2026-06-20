@@ -91,9 +91,14 @@
                 $pct = $bucket['pct_spent'];
                 $remaining = $bucket['remaining'];
                 $over = $bucket['over_budget'];
-                $remainLine = $over
-                    ? '<span class="ica-bar-remaining-over">over by $' . number_format(abs($remaining), 0) . '</span>'
-                    : '<span class="ica-bar-remaining">$' . number_format($remaining, 0) . ' left</span>';
+                if ($over) {
+                    $remainLine = '<span class="ica-bar-remaining-over">over by $' . number_format(abs($remaining), 0) . '</span>';
+                } elseif ($remaining <= 0) {
+                    // Depleted (e.g. Used eaten to $0 by New's overspend) — flag it red, not calm blue.
+                    $remainLine = '<span class="ica-bar-remaining-over">$0 left</span>';
+                } else {
+                    $remainLine = '<span class="ica-bar-remaining">$' . number_format($remaining, 0) . ' left</span>';
+                }
                 // Slice of the cap that New's overspend ate, drawn gray right after
                 // the spent fill so the bar reads: spent | eaten-by-New | left.
                 $grayEl = '';
@@ -143,6 +148,13 @@ HTML;
             <div class="ica-budget-store-total" style="margin:12px 0 4px;font-weight:700;font-size:15px;">{{ $st['label'] }} — ${{ number_format($st['budget'], 0) }}</div>
             {!! $renderSplitRow($st['label'] . ' · Used', $usedCaption, $st['used'], $stUsedClass, $stUsedColor, 'ica-bar-used', $st['used_cap_full'] ?? null, $st['used_eaten'] ?? null) !!}
             {!! $renderSplitRow($st['label'] . ' · New',  $stPct . '% of week · the rest',  $st['new'],  $stNewClass,  $stNewColor,  'ica-bar-new') !!}
+            @if(!empty($st['used_eaten']) && ($st['used']['remaining'] ?? 0) <= 0)
+                @php $newOver = abs($st['new']['remaining'] ?? 0); @endphp
+                <div class="ica-used-blocked">
+                    <strong>No used budget left for {{ $st['label'] }} this week.</strong>
+                    New went ${{ number_format($newOver, 0) }} over and used up {{ $st['label'] }}'s whole pot — so there's nothing left to buy collections against. Don't buy more used here until next week, or clear it with Jon first.
+                </div>
+            @endif
         @endforeach
         @endif
 
@@ -1178,6 +1190,8 @@ body.ica-wizard-active { padding-bottom: 64px; }
 .ica-budget-bar { margin: 0; height: 14px; }
 .ica-budget-bar .progress-bar { font-size: 10px; line-height: 14px; font-weight: 600; }
 .ica-budget-warn { color: #a94442; font-weight: 600; margin-top: 6px; font-size: 13px; }
+.ica-used-blocked { margin: 6px 0 2px; padding: 10px 12px; font-size: 13px; font-weight: 400; line-height: 1.45; color: #842029; background: #fff5f5; border: 1px solid #f1c2c2; border-left: 4px solid #c0392b; border-radius: 4px; }
+.ica-used-blocked strong { color: #842029; }
 /* Per-store spend chips (2026-05-27 Sarah) */
 .ica-budget-per-loc {
     margin-top: 10px; display: flex; flex-wrap: wrap;
