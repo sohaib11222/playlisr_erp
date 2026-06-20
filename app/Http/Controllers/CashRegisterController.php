@@ -706,6 +706,185 @@ class CashRegisterController extends Controller
     }
 
     /**
+     * Staff-facing "End Shift" page for non-cashier roles who don't close a
+     * register but still want their shift auto-summarized to #shift-notes —
+     * e.g. Zella (pricing/listing) and Nick (fulfillment). Standalone page;
+     * it never touches the POS close flow, so it can't endanger cashiers.
+     */
+    public function endShiftForm()
+    {
+        $business_id = request()->session()->get('user.business_id');
+        $user = auth()->user();
+        list($start, $end) = $this->defaultShiftWindow();
+
+        $shift_summary = null;
+        $error = null;
+        try {
+            $shift_summary = $this->buildShiftSummary(
+                $business_id, $user->id, null,
+                $start->toDateTimeString(), $end->toDateTimeString()
+            );
+            $this->mergeFulfillmentCounts($shift_summary, $user, $start);
+        } catch (\Throwable $ex) {
+            \Log::warning('endShiftForm summary failed: ' . $ex->getMessage());
+            $error = 'Could not build your shift summary: ' . $ex->getMessage();
+        }
+
+        $employee = $this->cashierDisplayName($user);
+        $webhook_set = $this->shiftNotesWebhook() !== '';
+
+        return view('cash_register.shift_notes_end', compact(
+            'shift_summary', 'error', 'employee', 'webhook_set'
+        ));
+    }
+
+    /**
+     * Build + post the current user's shift note to #shift-notes. Optional
+     * shift_start / shift_end (HH:MM today) define the window; otherwise
+     * today 00:00 -> now. Always records a JSON copy; the Slack post degrades
+     * gracefully if the webhook isn't set yet.
+     */
+    public function endShift(Request $request)
+    {
+        $business_id = $request->session()->get('user.business_id');
+        $user = auth()->user();
+        list($start, $end) = $this->resolveShiftWindow($request);
+
+        try {
+            $summary = $this->buildShiftSummary(
+                $business_id, $user->id, null,
+                $start->toDateTimeString(), $end->toDateTimeString()
+            );
+            $this->mergeFulfillmentCounts($summary, $user, $start);
+        } catch (\Throwable $ex) {
+            \Log::warning('endShift summary failed: ' . $ex->getMessage());
+            return redirect()->back()->with('status', [
+                'success' => 0,
+                'msg' => 'Could not build your shift summary. Nothing was posted.',
+            ]);
+        }
+
+        $payload = [
+            'register_id' => null,
+            'business_id' => $business_id,
+            'employee' => $this->cashierDisplayName($user),
+            'location' => null,
+            'shift_start' => $start->toDateTimeString(),
+            'shift_end' => $end->toDateTimeString(),
+            'summary' => $summary,
+            'note' => trim((string) $request->input('note', '')),
+            'posted_to_slack' => false,
+            'created_at' => \Carbon::now()->toDateTimeString(),
+        ];
+
+        $posted = $this->postShiftNoteToSlack($payload);
+        $payload['posted_to_slack'] = $posted;
+
+        // Durable record (no migration), same folder as register closes.
+        try {
+            $date = \Carbon::now()->format('Y-m-d');
+            $dir = storage_path('app/shift-notes/' . $date);
+            if (!is_dir($dir)) {
+                @mkdir($dir, 0775, true);
+            }
+            $file = $dir . '/endshift-' . $user->id . '-' . \Carbon::now()->format('His') . '.json';
+            file_put_contents($file, json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        } catch (\Throwable $e) {
+            \Log::warning('endShift persist failed: ' . $e->getMessage());
+        }
+
+        if ($posted) {
+            return redirect()->back()->with('status', [
+                'success' => 1,
+                'msg' => 'Shift note posted to #shift-notes.',
+            ]);
+        }
+        return redirect()->back()->with('status', [
+            'success' => 0,
+            'msg' => $this->shiftNotesWebhook() === ''
+                ? 'Your shift was recorded, but the #shift-notes Slack webhook is not set yet — nothing was posted. An admin can add it under Shift Notes settings.'
+                : 'Your shift was recorded but the Slack post did not go through. Please try again.',
+        ]);
+    }
+
+    /** Today 00:00 -> now, in the app timezone. */
+    private function defaultShiftWindow(): array
+    {
+        $tz = config('app.timezone');
+        return [\Carbon::today($tz), \Carbon::now($tz)];
+    }
+
+    /** Window from optional HH:MM inputs (today); falls back to the default. */
+    private function resolveShiftWindow(Request $request): array
+    {
+        list($start, $end) = $this->defaultShiftWindow();
+        $tz = config('app.timezone');
+        $s = trim((string) $request->input('shift_start', ''));
+        $e = trim((string) $request->input('shift_end', ''));
+        try {
+            if ($s !== '' && preg_match('/^\d{1,2}:\d{2}$/', $s)) {
+                $start = \Carbon::today($tz)->setTimeFromTimeString($s . ':00');
+            }
+            if ($e !== '' && preg_match('/^\d{1,2}:\d{2}$/', $e)) {
+                $end = \Carbon::today($tz)->setTimeFromTimeString($e . ':00');
+            }
+        } catch (\Throwable $ex) {
+            return $this->defaultShiftWindow();
+        }
+        if ($end->lessThanOrEqualTo($start)) {
+            return $this->defaultShiftWindow();
+        }
+        return [$start, $end];
+    }
+
+    /**
+     * Fulfillment staff (Nick) ship on nivessa.com, not the ERP, so their
+     * picked/shipped come from the website backend — same source and
+     * Nick-by-first-name convention as the Employee Productivity report.
+     * No-ops on any failure so it can never block the shift note.
+     */
+    private function mergeFulfillmentCounts(array &$summary, $user, $day): void
+    {
+        $first = strtolower(trim((string) ($user->first_name ?? '')));
+        if ($first === '') {
+            $first = strtolower(trim(explode(' ', (string) ($user->full_name ?? ''))[0] ?? ''));
+        }
+        if ($first !== 'nick') {
+            return;
+        }
+        try {
+            $base = rtrim((string) config('nivessa.website_api_url', 'https://nivessa.com'), '/');
+            $key = trim((string) config('nivessa.website_api_key', ''));
+            if ($key === '') {
+                return;
+            }
+            $date = $day->format('Y-m-d');
+            $url = $base . '/api/v1/admin/fulfillment-counts'
+                . '?start_date=' . urlencode($date) . '&end_date=' . urlencode($date);
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_HTTPHEADER => ['X-API-Key: ' . $key, 'Accept: application/json'],
+                CURLOPT_TIMEOUT => 10,
+                CURLOPT_CONNECTTIMEOUT => 5,
+            ]);
+            $resp = curl_exec($ch);
+            $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            if ($code >= 200 && $code < 300 && is_string($resp) && $resp !== '') {
+                $body = json_decode($resp, true) ?: [];
+                if (!empty($body['success'])) {
+                    $summary['packages_picked_count'] =
+                        (int) ($body['picked_items'] ?? 0) + (int) ($body['packed_items'] ?? 0);
+                    $summary['packages_shipped_count'] = (int) ($body['shipped_orders'] ?? 0);
+                }
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('endShift fulfillment fetch failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * Build the auto-populated shift summary for one cashier's shift:
      * sales rung, items added via the mass-add form, items entered on the
      * purchase form, and labels printed (count, total value, category mix).
@@ -900,16 +1079,35 @@ class CashRegisterController extends Controller
         $lines[] = '*' . ($payload['employee'] ?: 'Cashier') . '*'
             . (!empty($payload['location']) ? ' — ' . $payload['location'] : '');
         $lines[] = $start->format('n/j, g:i A') . ' → ' . $end->format('g:i A');
-        $lines[] = 'Sales: $' . number_format((float) ($s['sales'] ?? 0), 2)
-            . (!empty($s['transactions_count'])
-                ? ' · ' . (int) $s['transactions_count'] . ' transaction' . ($s['transactions_count'] == 1 ? '' : 's')
-                : '');
+        // Skip the Sales line entirely when there's nothing to report (e.g.
+        // pricing/fulfillment staff who never ring a sale) so their note
+        // stays clean. Cashier shifts always have sales, so this is a no-op
+        // for them.
+        if ((float) ($s['sales'] ?? 0) > 0 || !empty($s['transactions_count'])) {
+            $lines[] = 'Sales: $' . number_format((float) ($s['sales'] ?? 0), 2)
+                . (!empty($s['transactions_count'])
+                    ? ' · ' . (int) $s['transactions_count'] . ' transaction' . ($s['transactions_count'] == 1 ? '' : 's')
+                    : '');
+        }
 
         $cats = $s['labels_categories'] ?? [];
         if (!empty($cats)) {
-            $parts = [];
+            // Roll the long per-subgenre breakdown up to the top-level format
+            // (the part before the first "›"), e.g. "Sealed Vinyl › Pop" and
+            // "Sealed Vinyl › Rock" both fold into "Sealed Vinyl". Keeps every
+            // item counted but collapses 40+ entries into a few readable groups.
+            $groups = [];
             foreach ($cats as $name => $cnt) {
-                $parts[] = $cnt . ' ' . $name;
+                $format = trim(preg_split('/\s*›\s*/u', (string) $name)[0]);
+                if ($format === '') {
+                    $format = 'Uncategorized';
+                }
+                $groups[$format] = ($groups[$format] ?? 0) + (int) $cnt;
+            }
+            arsort($groups);
+            $parts = [];
+            foreach ($groups as $format => $cnt) {
+                $parts[] = $cnt . ' ' . $format;
             }
             $value = (float) ($s['labels_value'] ?? 0);
             $lines[] = 'Put out: ' . implode(', ', $parts)
