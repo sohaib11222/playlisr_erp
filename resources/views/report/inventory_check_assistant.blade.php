@@ -192,7 +192,13 @@ HTML;
         {{-- Transaction-level audit of the split (Sarah 2026-06-19) — every
              purchase this week and how much of it landed in New vs Used. --}}
         @if(!empty($pb['transactions']))
-        <details class="ica-spend-breakdown">
+        @if(!empty($pb['dupe_groups']))
+        <div class="ica-dupe-warn">
+            <strong>{{ $pb['dupe_groups'] }} possible duplicate {{ \Illuminate\Support\Str::plural('purchase', $pb['dupe_groups']) }} this week</strong>
+            — same store, total, and day entered more than once (about ${{ number_format($pb['dupe_redundant_amount'], 0) }} of redundant spend if they're real dupes). Flagged in yellow below — open each and void the extra copy if it's the same shipment twice.
+        </div>
+        @endif
+        <details class="ica-spend-breakdown"@if(!empty($pb['dupe_groups'])) open @endif>
             <summary>Transactions behind the split — every purchase this week ({{ count($pb['transactions']) }})</summary>
             <table class="ica-breakdown-table ica-txn-table">
                 <thead>
@@ -203,9 +209,9 @@ HTML;
                 </thead>
                 <tbody>
                     @foreach($pb['transactions'] as $tx)
-                    <tr>
+                    <tr class="{{ !empty($tx['maybe_dupe']) ? 'ica-txn-dupe' : '' }}">
                         <td class="ica-bd-via">{{ $tx['date'] ? \Carbon\Carbon::parse($tx['date'])->format('M j') : '—' }}</td>
-                        <td class="ica-bd-via">{{ $tx['ref_no'] ?: ('#' . $tx['id']) }}</td>
+                        <td class="ica-bd-via">{{ $tx['ref_no'] ?: ('#' . $tx['id']) }}@if(!empty($tx['maybe_dupe'])) <span class="ica-dupe-tag">DUP?</span>@endif</td>
                         <td>{{ $tx['location'] }}</td>
                         <td>{{ $tx['supplier'] ?: '—' }}</td>
                         <td class="ica-bd-amt">${{ number_format($tx['total'], 0) }}</td>
@@ -1360,6 +1366,11 @@ body.ica-wizard-active { padding-bottom: 64px; }
 .ica-bd-note { font-size: 12px; color: #777; padding: 6px 0 12px; line-height: 1.45; }
 .ica-txn-table .ica-txn-new { color: #1565c0; font-weight: 700; }
 .ica-txn-table .ica-txn-used { color: #2e7d32; font-weight: 700; }
+.ica-txn-table tr.ica-txn-dupe td { background: #fff8e1; }
+.ica-txn-table tr.ica-txn-dupe td:first-child { box-shadow: inset 3px 0 0 #f0ad4e; }
+.ica-dupe-tag { display: inline-block; font-size: 9px; font-weight: 800; color: #8a6d00; background: #ffe082; padding: 0 4px; border-radius: 3px; letter-spacing: 0.4px; margin-left: 4px; vertical-align: middle; }
+.ica-dupe-warn { margin-top: 12px; padding: 10px 12px; font-size: 13px; line-height: 1.45; color: #7a5b00; background: #fffaf0; border: 1px solid #f0d98c; border-left: 4px solid #f0ad4e; border-radius: 4px; }
+.ica-dupe-warn strong { color: #6b4f00; }
 /* Used-blocked callout on the per-store budget block */
 .ica-used-blocked { margin-top: 8px; padding: 10px 12px; font-size: 13px; font-weight: 400; line-height: 1.45; color: #842029; background: #fff5f5; border: 1px solid #f1c2c2; border-left: 4px solid #c0392b; border-radius: 4px; }
 .ica-used-blocked strong { color: #842029; }

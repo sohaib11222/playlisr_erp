@@ -327,6 +327,32 @@ class InventoryCheckService
         }
         unset($tx);
 
+        // ── Duplicate-entry detector (Sarah 2026-06-19) ───────────────
+        // Flag purchases that share the SAME store + total + day — the
+        // fingerprint of the same shipment entered twice (e.g. once as a
+        // normal purchase and once via mass-add), which would double-count
+        // real spend. Exact match only, to avoid false positives.
+        $dupeIndex = [];
+        foreach ($txnList as $tx) {
+            $k = $tx['location_id'] . '|' . number_format($tx['total'], 2, '.', '') . '|' . ($tx['date'] ?? '');
+            $dupeIndex[$k] = ($dupeIndex[$k] ?? 0) + 1;
+        }
+        $dupeGroups = 0;
+        $dupeRedundantAmount = 0.0;
+        foreach ($dupeIndex as $k => $cnt) {
+            if ($cnt > 1) {
+                $dupeGroups++;
+                $parts = explode('|', $k);
+                // Redundant dollars = every copy beyond the first.
+                $dupeRedundantAmount += (float) $parts[1] * ($cnt - 1);
+            }
+        }
+        foreach ($txnList as &$tx) {
+            $k = $tx['location_id'] . '|' . number_format($tx['total'], 2, '.', '') . '|' . ($tx['date'] ?? '');
+            $tx['maybe_dupe'] = ($dupeIndex[$k] ?? 0) > 1;
+        }
+        unset($tx);
+
         // Used/New sub-budgets (35/65 mid-range of the 30-40 / 60-70 plan).
         $usedBudget = round($budget * 0.35, 2);
         $newBudget = round($budget - $usedBudget, 2); // exact complement
@@ -486,6 +512,8 @@ class InventoryCheckService
             'per_store' => $perStore,
             'spend_breakdown' => $spendBreakdown,
             'transactions' => $txnList,
+            'dupe_groups' => $dupeGroups,
+            'dupe_redundant_amount' => round($dupeRedundantAmount, 2),
         ];
     }
 
