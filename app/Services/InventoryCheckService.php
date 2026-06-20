@@ -391,6 +391,39 @@ class InventoryCheckService
             ];
         }
 
+        // ── Category breakdown (Sarah 2026-06-19) ─────────────────────
+        // So we can SEE what's landing in New vs Used this week, grouped by the
+        // product's category (+ how it was added). Same classification as the
+        // split above: a row counts as Used if its category name contains
+        // "used" OR it came in through the buy-from-customer form.
+        $breakdownQ = DB::table('purchase_lines as pl')
+            ->join('transactions as t', 't.id', '=', 'pl.transaction_id')
+            ->leftJoin('products as p', 'p.id', '=', 'pl.product_id')
+            ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'purchase')
+            ->whereBetween(DB::raw('date(t.transaction_date)'), [$week['start'], $week['end']]);
+        if ($permittedLocations !== 'all') {
+            $breakdownQ->whereIn('t.location_id', $permittedLocations);
+        }
+        $breakdownRows = $breakdownQ
+            ->selectRaw("p.category_id as category_id, COALESCE(c.name, '(no category)') as category_name, p.added_via as added_via, SUM(pl.quantity * pl.purchase_price_inc_tax) as amount, COUNT(DISTINCT t.id) as txns")
+            ->groupBy('p.category_id', 'c.name', 'p.added_via')
+            ->get();
+        $spendBreakdown = [];
+        foreach ($breakdownRows as $r) {
+            $isUsed = ($r->category_id !== null && in_array((int) $r->category_id, $usedCatIds, true))
+                || $r->added_via === 'buy_from_customer';
+            $spendBreakdown[] = [
+                'category' => $r->category_name,
+                'added_via' => $r->added_via ?: '—',
+                'amount' => round((float) $r->amount, 2),
+                'txns' => (int) $r->txns,
+                'classified' => $isUsed ? 'used' : 'new',
+            ];
+        }
+        usort($spendBreakdown, fn ($a, $b) => $b['amount'] <=> $a['amount']);
+
         return [
             'week_no' => $week['week_no'],
             'start' => $week['start'],
@@ -421,6 +454,7 @@ class InventoryCheckService
             ],
             'used_category_ids' => $usedCatIds,
             'per_store' => $perStore,
+            'spend_breakdown' => $spendBreakdown,
         ];
     }
 

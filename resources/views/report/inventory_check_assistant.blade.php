@@ -158,6 +158,37 @@ HTML;
         @endforeach
         @endif
 
+        {{-- ── What's actually in New vs Used this week (Sarah 2026-06-19) ──
+             Shows where the spend is landing by category, so miscategorised
+             used buys hiding inside "New" are visible. --}}
+        @if(!empty($pb['spend_breakdown']))
+        @php
+            $bdNew = collect($pb['spend_breakdown'])->where('classified', 'new');
+            $bdNewTotal = $bdNew->sum('amount');
+        @endphp
+        <details class="ica-spend-breakdown">
+            <summary>Where this week's spend is landing — by category ({{ count($pb['spend_breakdown']) }} groups)</summary>
+            <table class="ica-breakdown-table">
+                <thead>
+                    <tr><th>Category</th><th>Added via</th><th>Counts as</th><th class="ica-bd-amt">Amount</th></tr>
+                </thead>
+                <tbody>
+                    @foreach($pb['spend_breakdown'] as $b)
+                    <tr class="ica-bd-{{ $b['classified'] }}">
+                        <td>{{ $b['category'] }}</td>
+                        <td class="ica-bd-via">{{ $b['added_via'] }}</td>
+                        <td><span class="ica-bd-tag ica-bd-tag-{{ $b['classified'] }}">{{ strtoupper($b['classified']) }}</span></td>
+                        <td class="ica-bd-amt">${{ number_format($b['amount'], 0) }}</td>
+                    </tr>
+                    @endforeach
+                </tbody>
+            </table>
+            <div class="ica-bd-note">
+                Anything counting as <strong>NEW</strong> that's really used vinyl is inflating the New budget. Used buys only count correctly when their category name contains "used", or they come through the buy-from-customer form.
+            </div>
+        </details>
+        @endif
+
         @if(!empty($pb['manual_entries_this_week']))
         <div class="ica-budget-manual-list">
             <small class="text-muted">Manual entries this week:</small>
@@ -1281,6 +1312,23 @@ body.ica-wizard-active { padding-bottom: 64px; }
 .ica-bar-remaining { color: #2c699a; font-weight: 600; }
 .ica-bar-remaining-over { color: #a94442; font-weight: 700; }
 
+/* Category breakdown — what's in New vs Used this week (Sarah 2026-06-19) */
+.ica-spend-breakdown { margin-top: 14px; border: 1px solid #e3e3e3; border-radius: 6px; background: #fff; padding: 0 12px; }
+.ica-spend-breakdown summary { cursor: pointer; padding: 10px 0; font-size: 13px; font-weight: 600; color: #444; }
+.ica-spend-breakdown[open] summary { border-bottom: 1px solid #eee; }
+.ica-breakdown-table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 13px; }
+.ica-breakdown-table th { text-align: left; padding: 6px 8px; color: #888; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; border-bottom: 1px solid #eee; }
+.ica-breakdown-table td { padding: 6px 8px; border-bottom: 1px solid #f3f3f3; color: #333; }
+.ica-breakdown-table .ica-bd-amt { text-align: right; font-weight: 600; white-space: nowrap; }
+.ica-breakdown-table .ica-bd-via { color: #999; font-size: 12px; }
+.ica-bd-tag { display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 3px; letter-spacing: 0.4px; }
+.ica-bd-tag-new { background: #e3f2fd; color: #1565c0; }
+.ica-bd-tag-used { background: #e8f5e9; color: #2e7d32; }
+.ica-bd-new td:first-child { box-shadow: inset 3px 0 0 #f0ad4e; }
+.ica-bd-note { font-size: 12px; color: #777; padding: 6px 0 12px; line-height: 1.45; }
+/* Used-blocked callout on the per-store budget block */
+.ica-used-blocked { margin-top: 8px; padding: 10px 12px; font-size: 13px; font-weight: 400; line-height: 1.45; color: #842029; background: #fff5f5; border: 1px solid #f1c2c2; border-left: 4px solid #c0392b; border-radius: 4px; }
+.ica-used-blocked strong { color: #842029; }
 /* Kind badges (still used on manual entry chips) */
 .ica-budget-kind-badge {
     display: inline-block; font-size: 11px; font-weight: 700;
