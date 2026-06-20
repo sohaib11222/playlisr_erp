@@ -149,10 +149,44 @@ body.role-picker .rua-pill { display:inline-block; padding:2px 8px; border-radiu
                     @endif
                 </div>
 
-                @if($sales->isNotEmpty() || $listings->isNotEmpty())
+                <div class="rua-card">
+                    <h3>Labeled on {{ $date }} ({{ $labels->sum('qty') }} items, ${{ number_format((float)$labels->sum('value'), 2) }} value)</h3>
+                    @if($labels->isEmpty())
+                        <p class="rua-muted">No label runs logged for that user on this day.</p>
+                    @else
+                        <p class="rua-muted" style="margin:-4px 0 12px;">Each row is a print run logged at the printer. Reassigning moves its credit (item count + value) to the selected person.</p>
+                        <table class="rua-table">
+                            <thead>
+                                <tr>
+                                    <th><input type="checkbox" checked onclick="document.querySelectorAll('.label-cb').forEach(c=>c.checked=this.checked)"></th>
+                                    <th>Time</th><th>Items</th><th>Value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach($labels as $l)
+                                    <tr>
+                                        <td><input type="checkbox" class="label-cb" name="label_ids[]" value="{{ $l->id }}" checked></td>
+                                        <td class="rua-muted">{{ \Carbon::parse($l->created_at)->format('g:i A') }}</td>
+                                        <td>{{ $l->qty }}</td>
+                                        <td>${{ number_format((float)$l->value, 2) }}</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                            <tfoot>
+                                <tr>
+                                    <th style="text-align:right;" colspan="2">Total</th>
+                                    <th>{{ $labels->sum('qty') }}</th>
+                                    <th>${{ number_format((float)$labels->sum('value'), 2) }}</th>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    @endif
+                </div>
+
+                @if($sales->isNotEmpty() || $listings->isNotEmpty() || $labels->isNotEmpty())
                     <div class="rua-card">
                         <p class="rua-muted" style="margin:0 0 12px;">Checked rows above will be reassigned. This is undoable.</p>
-                        <button type="submit" class="rua-btn apply" onclick="return confirm('Reassign the checked sales + listings to the selected user?')">Apply reassignment</button>
+                        <button type="submit" class="rua-btn apply" onclick="return confirm('Reassign the checked sales + listings + labels to the selected user?')">Apply reassignment</button>
                     </div>
                 @endif
             </form>

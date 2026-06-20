@@ -100,21 +100,25 @@ class AdminActionHistoryController extends Controller
             $toUserId = $data['to_user_id'] ?? null;
             $restored = 0;
             $skipped = 0;
+            // Rows: {table, id, column, value}. Older snapshots used a bare
+            // 'created_by' key with no column/value — fall back to that.
+            $allowedTables = ['transactions' => 'created_by', 'products' => 'created_by', 'activity_log' => 'causer_id'];
             foreach ($data['rows'] as $row) {
                 $table = $row['table'] ?? null;
                 $id = $row['id'] ?? null;
-                if (!in_array($table, ['transactions', 'products'], true) || !$id) { continue; }
+                if (!isset($allowedTables[$table]) || !$id) { continue; }
+                $column = $row['column'] ?? $allowedTables[$table];
+                $oldVal = array_key_exists('value', $row) ? $row['value'] : ($row['created_by'] ?? null);
                 $current = DB::table($table)->where('id', $id)->first();
                 // Only revert if the row is still owned by the user we moved it
                 // to — otherwise it's been hand-edited since; leave it alone.
-                if (!$current || ($toUserId !== null && (int) $current->created_by !== (int) $toUserId)) {
+                if (!$current || ($toUserId !== null && (int) $current->{$column} !== (int) $toUserId)) {
                     $skipped++;
                     continue;
                 }
-                DB::table($table)->where('id', $id)->update([
-                    'created_by' => $row['created_by'],
-                    'updated_at' => now(),
-                ]);
+                $update = [$column => $oldVal];
+                if (\Schema::hasColumn($table, 'updated_at')) { $update['updated_at'] = now(); }
+                DB::table($table)->where('id', $id)->update($update);
                 $restored++;
             }
             $msg = "Reverted {$restored} row(s) to their original owner from snapshot {$key}";

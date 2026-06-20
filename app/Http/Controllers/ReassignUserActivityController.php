@@ -38,6 +38,7 @@ class ReassignUserActivityController extends Controller
 
         $sales = collect();
         $listings = collect();
+        $labels = collect();
         $previewed = false;
 
         if ($fromUserId && $toUserId && $fromUserId !== $toUserId) {
@@ -71,6 +72,27 @@ class ReassignUserActivityController extends Controller
                     'p.id', 'p.name', 'p.sku', 'p.created_at',
                     DB::raw('COALESCE(SUM(v.default_sell_price), 0) as sell_value'),
                 ]);
+
+            // "Labeled" credit isn't a product column — it's activity_log rows
+            // (description=labels_printed, causer_id=who printed) with qty +
+            // value in the properties JSON. This is what the shift summary /
+            // productivity report counts, so it's reassigned by causer_id.
+            $labels = DB::table('activity_log')
+                ->where('description', 'labels_printed')
+                ->where('business_id', $businessId)
+                ->where('causer_id', $fromUserId)
+                ->whereBetween('created_at', [$start, $end])
+                ->orderBy('created_at')
+                ->get(['id', 'created_at', 'properties'])
+                ->map(function ($r) {
+                    $d = json_decode($r->properties, true) ?: [];
+                    return (object) [
+                        'id'         => $r->id,
+                        'created_at' => $r->created_at,
+                        'qty'        => (int) ($d['qty'] ?? 0),
+                        'value'      => (float) ($d['value'] ?? 0),
+                    ];
+                });
         }
 
         return view('admin.reassign_user_activity', [
@@ -80,6 +102,7 @@ class ReassignUserActivityController extends Controller
             'date'       => $date,
             'sales'      => $sales,
             'listings'   => $listings,
+            'labels'     => $labels,
             'previewed'  => $previewed,
         ]);
     }
@@ -94,6 +117,7 @@ class ReassignUserActivityController extends Controller
         $date       = trim((string) $request->input('date', '')) ?: now()->toDateString();
         $txIds      = array_filter(array_map('intval', (array) $request->input('tx_ids', [])));
         $prodIds    = array_filter(array_map('intval', (array) $request->input('prod_ids', [])));
+        $labelIds   = array_filter(array_map('intval', (array) $request->input('label_ids', [])));
 
         if (!$fromUserId || !$toUserId) {
             return back()->with('status', ['success' => 0, 'msg' => 'Pick both a "from" and a "to" user.']);
@@ -101,7 +125,7 @@ class ReassignUserActivityController extends Controller
         if ($fromUserId === $toUserId) {
             return back()->with('status', ['success' => 0, 'msg' => 'From and To are the same user.']);
         }
-        if (empty($txIds) && empty($prodIds)) {
+        if (empty($txIds) && empty($prodIds) && empty($labelIds)) {
             return back()->with('status', ['success' => 0, 'msg' => 'Nothing selected to reassign.']);
         }
 
@@ -125,14 +149,24 @@ class ReassignUserActivityController extends Controller
             ->whereIn('id', $prodIds)
             ->get(['id', 'created_by']);
 
-        if ($txRows->isEmpty() && $prodRows->isEmpty()) {
+        // Labels = activity_log 'labels_printed' rows; reassigned by causer_id.
+        $labelRows = empty($labelIds) ? collect() : DB::table('activity_log')
+            ->where('description', 'labels_printed')
+            ->where('business_id', $businessId)
+            ->where('causer_id', $fromUserId)
+            ->whereIn('id', $labelIds)
+            ->get(['id', 'causer_id']);
+
+        if ($txRows->isEmpty() && $prodRows->isEmpty() && $labelRows->isEmpty()) {
             return back()->with('status', ['success' => 0, 'msg' => 'Selected rows no longer belong to the from-user (already moved?).']);
         }
 
-        // Snapshot BEFORE state so the move is undoable.
+        // Snapshot BEFORE state so the move is undoable. Uniform row shape:
+        // {table, id, column, value} — value is the original owner id.
         $snapRows = [];
-        foreach ($txRows as $r)   { $snapRows[] = ['table' => 'transactions', 'id' => $r->id, 'created_by' => $r->created_by]; }
-        foreach ($prodRows as $r) { $snapRows[] = ['table' => 'products',     'id' => $r->id, 'created_by' => $r->created_by]; }
+        foreach ($txRows as $r)    { $snapRows[] = ['table' => 'transactions', 'id' => $r->id, 'column' => 'created_by', 'value' => $r->created_by]; }
+        foreach ($prodRows as $r)  { $snapRows[] = ['table' => 'products',     'id' => $r->id, 'column' => 'created_by', 'value' => $r->created_by]; }
+        foreach ($labelRows as $r) { $snapRows[] = ['table' => 'activity_log', 'id' => $r->id, 'column' => 'causer_id',  'value' => $r->causer_id]; }
 
         $timestamp = now()->format('Y-m-d_His');
         $snapshotKey = "reassign-user-created-by-{$timestamp}-{$fromUserId}-to-{$toUserId}";
@@ -164,12 +198,19 @@ class ReassignUserActivityController extends Controller
                 ->update(['created_by' => $toUserId, 'updated_at' => now()]);
         }
 
+        $labelsMoved = 0;
+        if ($labelRows->isNotEmpty()) {
+            $labelsMoved = DB::table('activity_log')
+                ->whereIn('id', $labelRows->pluck('id')->all())
+                ->update(['causer_id' => $toUserId]);
+        }
+
         $toName = trim(($toUser->first_name ?? '') . ' ' . ($toUser->last_name ?? '')) ?: ($toUser->username ?? "#{$toUserId}");
 
         return redirect('/admin/reassign-user-activity')
             ->with('status', [
                 'success' => 1,
-                'msg' => "Reassigned {$txMoved} sale(s) + {$prodMoved} listing(s) to {$toName}. Snapshot: {$snapshotKey} (undo at /admin/admin-action-history).",
+                'msg' => "Reassigned {$txMoved} sale(s) + {$prodMoved} listing(s) + {$labelsMoved} label run(s) to {$toName}. Snapshot: {$snapshotKey} (undo at /admin/admin-action-history).",
             ]);
     }
 
