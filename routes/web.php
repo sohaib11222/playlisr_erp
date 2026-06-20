@@ -925,6 +925,13 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/update-product-cost', 'UpdateProductCostController@index');
     Route::post('/admin/update-product-cost/run', 'UpdateProductCostController@run');
 
+    // Reassign a day's sales + listings from one user to another when staff
+    // rang up / listed under the wrong login. Preview with per-row checkboxes
+    // → snapshot created_by → move. Undoable via admin-action-history
+    // (action 'reassign-user-created-by').
+    Route::get('/admin/reassign-user-activity', 'ReassignUserActivityController@index');
+    Route::post('/admin/reassign-user-activity/run', 'ReassignUserActivityController@run');
+
     // Diagnostic viewer for ProductController@update — captures every attempt
     // (cost fields, before/after, any exception) to storage/product-update-debug/
     // so we can see why saves silently fail.

@@ -78,7 +78,11 @@ class AdminActionHistoryController extends Controller
         // line, marks the auto-created product inactive, and flips the
         // linked transaction back to draft. Skips any line that's already
         // had stock sold against it.
-        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit'];
+        // reassign-user-created-by: rows hold {table, id, created_by} — the
+        // original owner before a wrong-login reassignment. Undo restores each
+        // row's created_by, but only if it's still pointing at the to-user
+        // (so a later manual change isn't clobbered).
+        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by'];
         if (!in_array($action, $supportedActions, true)) {
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 0, 'msg' => "Don't know how to undo action: " . $action]);
@@ -90,6 +94,33 @@ class AdminActionHistoryController extends Controller
 
         if ($action === 'apply-legacy-store-credit') {
             return $this->undoApplyLegacyStoreCredit($data, $key);
+        }
+
+        if ($action === 'reassign-user-created-by') {
+            $toUserId = $data['to_user_id'] ?? null;
+            $restored = 0;
+            $skipped = 0;
+            foreach ($data['rows'] as $row) {
+                $table = $row['table'] ?? null;
+                $id = $row['id'] ?? null;
+                if (!in_array($table, ['transactions', 'products'], true) || !$id) { continue; }
+                $current = DB::table($table)->where('id', $id)->first();
+                // Only revert if the row is still owned by the user we moved it
+                // to — otherwise it's been hand-edited since; leave it alone.
+                if (!$current || ($toUserId !== null && (int) $current->created_by !== (int) $toUserId)) {
+                    $skipped++;
+                    continue;
+                }
+                DB::table($table)->where('id', $id)->update([
+                    'created_by' => $row['created_by'],
+                    'updated_at' => now(),
+                ]);
+                $restored++;
+            }
+            $msg = "Reverted {$restored} row(s) to their original owner from snapshot {$key}";
+            $msg .= $skipped > 0 ? "; skipped {$skipped} changed since." : '.';
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 1, 'msg' => $msg]);
         }
 
         // delete-register: snapshot holds the full cash_registers row +
