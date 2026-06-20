@@ -932,6 +932,13 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/reassign-user-activity', 'ReassignUserActivityController@index');
     Route::post('/admin/reassign-user-activity/run', 'ReassignUserActivityController@run');
 
+    // Store-wide scan for duplicate label print runs (double-logged
+    // labels_printed activity_log rows) that inflate "labeled" totals and
+    // commission. Review + remove checked dupes; snapshot/undo via
+    // admin-action-history (action 'remove-label-duplicates').
+    Route::get('/admin/label-duplicates', 'LabelDuplicatesController@index');
+    Route::post('/admin/label-duplicates/remove', 'LabelDuplicatesController@remove');
+
     // Diagnostic viewer for ProductController@update — captures every attempt
     // (cost fields, before/after, any exception) to storage/product-update-debug/
     // so we can see why saves silently fail.

@@ -82,7 +82,9 @@ class AdminActionHistoryController extends Controller
         // original owner before a wrong-login reassignment. Undo restores each
         // row's created_by, but only if it's still pointing at the to-user
         // (so a later manual change isn't clobbered).
-        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by'];
+        // remove-label-duplicates: rows hold the FULL deleted activity_log rows;
+        // undo re-inserts them verbatim (skips any id that already exists).
+        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates'];
         if (!in_array($action, $supportedActions, true)) {
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 0, 'msg' => "Don't know how to undo action: " . $action]);
@@ -94,6 +96,22 @@ class AdminActionHistoryController extends Controller
 
         if ($action === 'apply-legacy-store-credit') {
             return $this->undoApplyLegacyStoreCredit($data, $key);
+        }
+
+        if ($action === 'remove-label-duplicates') {
+            $restored = 0;
+            $skipped = 0;
+            foreach ($data['rows'] as $row) {
+                $id = $row['id'] ?? null;
+                if (!$id) { continue; }
+                if (DB::table('activity_log')->where('id', $id)->exists()) { $skipped++; continue; }
+                DB::table('activity_log')->insert($row);
+                $restored++;
+            }
+            $msg = "Re-inserted {$restored} removed label run(s) from snapshot {$key}";
+            $msg .= $skipped > 0 ? "; skipped {$skipped} already present." : '.';
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 1, 'msg' => $msg]);
         }
 
         if ($action === 'reassign-user-created-by') {
