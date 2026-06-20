@@ -1097,22 +1097,44 @@ class CashRegisterController extends Controller
             // "Sealed Vinyl › Rock" both fold into "Sealed Vinyl". Keeps every
             // item counted but collapses 40+ entries into a few readable groups.
             $groups = [];
+            $genres = [];     // count per subgenre, aggregated across formats
+            $genreLabel = []; // canonical display for each lowercased genre
             foreach ($cats as $name => $cnt) {
-                $format = trim(preg_split('/\s*›\s*/u', (string) $name)[0]);
+                $bits = preg_split('/\s*›\s*/u', (string) $name);
+                $format = trim($bits[0]);
                 if ($format === '') {
                     $format = 'Uncategorized';
                 }
                 $groups[$format] = ($groups[$format] ?? 0) + (int) $cnt;
+
+                $genre = isset($bits[1]) ? trim($bits[1]) : '';
+                if ($genre !== '') {
+                    $key = mb_strtolower($genre);
+                    // $cats is arsort'd, so the first display we see for a
+                    // genre is its highest-count casing — keep that.
+                    if (!isset($genreLabel[$key])) {
+                        $genreLabel[$key] = $genre;
+                    }
+                    $genres[$key] = ($genres[$key] ?? 0) + (int) $cnt;
+                }
             }
             arsort($groups);
+            arsort($genres);
             $parts = [];
             foreach ($groups as $format => $cnt) {
                 $parts[] = $cnt . ' ' . $format;
             }
+            // Surface the top few genres so the note keeps a sense of what was
+            // put out (e.g. "mostly Pop, Hip-Hop, Pop (New)").
+            $topGenres = [];
+            foreach (array_slice($genres, 0, 3, true) as $key => $cnt) {
+                $topGenres[] = $genreLabel[$key];
+            }
             $value = (float) ($s['labels_value'] ?? 0);
             $lines[] = 'Put out: ' . implode(', ', $parts)
                 . ' (' . (int) ($s['labels_printed_count'] ?? 0) . ' labeled'
-                . ($value > 0 ? ', $' . number_format($value, 2) . ' value' : '') . ')';
+                . ($value > 0 ? ', $' . number_format($value, 2) . ' value' : '') . ')'
+                . (!empty($topGenres) ? ' — mostly ' . implode(', ', $topGenres) : '');
         } elseif (!empty($s['labels_printed_count'])) {
             $lines[] = 'Labels printed: ' . (int) $s['labels_printed_count'];
         }
