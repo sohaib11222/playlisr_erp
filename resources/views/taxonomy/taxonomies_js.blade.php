@@ -60,7 +60,7 @@
                 if (result.success === true) {
                     $('div.category_modal').modal('hide');
                     toastr.success(result.msg);
-                    category_table.ajax.reload();
+                    if (typeof category_table !== 'undefined' && category_table) { category_table.ajax.reload(); } else { window.location.reload(); }
                 } else {
                     toastr.error(result.msg);
                 }
@@ -88,7 +88,7 @@
                         if (result.success === true) {
                             $('div.category_modal').modal('hide');
                             toastr.success(result.msg);
-                            category_table.ajax.reload();
+                            if (typeof category_table !== 'undefined' && category_table) { category_table.ajax.reload(); } else { window.location.reload(); }
                         } else {
                             toastr.error(result.msg);
                         }
@@ -117,7 +117,7 @@
                     success: function(result) {
                         if (result.success === true) {
                             toastr.success(result.msg);
-                            category_table.ajax.reload();
+                            if (typeof category_table !== 'undefined' && category_table) { category_table.ajax.reload(); } else { window.location.reload(); }
                         } else {
                             toastr.error(result.msg);
                         }

@@ -110,7 +110,64 @@ class TaxonomyController extends Controller
 
         $module_category_data = $this->moduleUtil->getTaxonomyData($category_type);
 
-        return view('taxonomy.index')->with(compact('module_category_data', 'module_category_data'));
+        $business_id = request()->session()->get('user.business_id');
+
+        $can_edit = true;
+        $can_delete = true;
+        if ($category_type == 'product' && !auth()->user()->can('category.update')) {
+            $can_edit = false;
+            $can_delete = false;
+        }
+
+        $all = Category::where('business_id', $business_id)
+                    ->where('category_type', $category_type)
+                    ->select('id', 'name', 'short_code', 'description', 'parent_id')
+                    ->orderByRaw('LOWER(name)')
+                    ->get();
+
+        // Product counts. A product's category_id is always its parent category,
+        // so category_id counts roll up the whole parent; sub_category_id counts
+        // the individual child.
+        $parentCounts = \DB::table('products')
+                        ->where('business_id', $business_id)
+                        ->where('type', '!=', 'modifier')
+                        ->select('category_id', \DB::raw('COUNT(*) as c'))
+                        ->groupBy('category_id')
+                        ->pluck('c', 'category_id');
+
+        $subCounts = \DB::table('products')
+                        ->where('business_id', $business_id)
+                        ->where('type', '!=', 'modifier')
+                        ->select('sub_category_id', \DB::raw('COUNT(*) as c'))
+                        ->groupBy('sub_category_id')
+                        ->pluck('c', 'sub_category_id');
+
+        $parents = $all->filter(function ($c) {
+            return (int) $c->parent_id === 0;
+        })->values();
+
+        $children = $all->filter(function ($c) {
+            return (int) $c->parent_id !== 0;
+        });
+        $childrenByParent = $children->groupBy('parent_id');
+
+        // Sub-categories whose parent no longer exists -> "Ungrouped" bucket.
+        $parentIds = $parents->pluck('id')->all();
+        $ungrouped = $children->filter(function ($c) use ($parentIds) {
+            return !in_array($c->parent_id, $parentIds);
+        })->values();
+
+        return view('taxonomy.index')->with(compact(
+            'module_category_data',
+            'category_type',
+            'parents',
+            'childrenByParent',
+            'ungrouped',
+            'parentCounts',
+            'subCounts',
+            'can_edit',
+            'can_delete'
+        ));
     }
 
     /**
