@@ -36,6 +36,13 @@ body.role-picker .li-tot { text-align:right; }
 body.role-picker .li-tot .n { font-size:22px; font-weight:800; color:#1F1B16; }
 body.role-picker .li-tot .l { font-size:11px; color:#8E8273; text-transform:uppercase; letter-spacing:.4px; }
 body.role-picker .li-tot.comm .n { color:#2F6B3E; }
+body.role-picker .li-insight { background:#FFF2B3; border:1px solid #EADFAE; border-radius:14px; padding:18px 22px; margin-bottom:16px; }
+body.role-picker .li-insight .hd { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#6B5E2E; margin-bottom:6px; }
+body.role-picker .li-insight .big { font-size:19px; font-weight:700; color:#1F1B16; line-height:1.35; }
+body.role-picker .li-genres { display:flex; gap:12px; flex-wrap:wrap; margin-top:14px; }
+body.role-picker .li-genre { background:#FFFCF5; border:1px solid #EADFAE; border-radius:10px; padding:10px 16px; min-width:150px; }
+body.role-picker .li-genre .g { font-size:15px; font-weight:800; color:#1F1B16; }
+body.role-picker .li-genre .d { font-size:12px; color:#6B5E2E; margin-top:2px; }
 </style>
 
 <section class="content-header">
@@ -49,6 +56,23 @@ body.role-picker .li-tot.comm .n { color:#2F6B3E; }
 <section class="content">
     <div class="li-wrap">
         @php $filterBase = url('/my-earnings/items').'?user_id='.$user_id.'&sort='.$sort.'&dir='.$dir; @endphp
+
+        @if($top_genres->isNotEmpty())
+            <div class="li-insight">
+                <div class="hd">Your top genres — listed &amp; sold</div>
+                <div class="big">Most of what {{ $is_self ? 'you' : $target_name }} listed and sold was
+                    @foreach($top_genres as $i => $g){{ $i === 0 ? '' : ($i === $top_genres->count()-1 ? ' and ' : ', ') }}<strong>{{ $g->genre }}</strong>@endforeach.</div>
+                <div class="li-genres">
+                    @foreach($top_genres as $g)
+                        <div class="li-genre">
+                            <div class="g">{{ $g->genre }}</div>
+                            <div class="d">{{ rtrim(rtrim(number_format($g->units,2),'0'),'.') }} sold · {{ $g->pct }}% · ${{ number_format($g->comm,2) }} commission</div>
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+        @endif
+
         <div class="li-bar">
             <div class="li-filters">
                 <a class="li-tab {{ $filter === 'all' ? 'active' : '' }}" href="{{ $filterBase.'&filter=all' }}">All listed</a>

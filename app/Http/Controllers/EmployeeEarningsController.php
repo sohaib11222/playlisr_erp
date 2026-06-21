@@ -216,6 +216,31 @@ class EmployeeEarningsController extends Controller
         )->first();
         $filteredCount = (int) ($tot->cnt ?? 0);
 
+        // Insight: top genres among items this person LISTED that SOLD (always
+        // over the full sold set, independent of the page filter). Genre = the
+        // sub-category (Pop, Jazz, Hip-Hop…) when present, else the category.
+        $genreExpr = "COALESCE(NULLIF(TRIM(sc.name), ''), NULLIF(TRIM(c.name), ''), 'Uncategorized')";
+        $soldBase = (clone $base)
+            ->leftJoin(DB::raw($soldSub), 's.product_id', '=', 'p.id')
+            ->whereRaw("{$unitsExpr} > 0");
+        $soldTotals = (clone $soldBase)->selectRaw("COALESCE(SUM({$unitsExpr}), 0) as units")->first();
+        $genreTotalUnits = (float) ($soldTotals->units ?? 0);
+        $topGenres = (clone $soldBase)
+            ->selectRaw("{$genreExpr} as genre, SUM({$unitsExpr}) as units, COUNT(*) as items, COALESCE(SUM({$commExpr}), 0) as comm")
+            ->groupByRaw($genreExpr)
+            ->orderByDesc('units')
+            ->limit(3)
+            ->get()
+            ->map(function ($g) use ($genreTotalUnits) {
+                return (object) [
+                    'genre' => $g->genre,
+                    'units' => (float) $g->units,
+                    'items' => (int) $g->items,
+                    'comm'  => round((float) $g->comm, 2),
+                    'pct'   => $genreTotalUnits > 0 ? round($g->units / $genreTotalUnits * 100) : 0,
+                ];
+            });
+
         $products = (clone $withSold)
             ->selectRaw("p.name, p.sku, p.created_at, c.name as cat, sc.name as subcat,"
                 . " (SELECT MAX(v.sell_price_inc_tax) FROM variations v WHERE v.product_id = p.id AND v.deleted_at IS NULL) as list_price,"
@@ -258,6 +283,7 @@ class EmployeeEarningsController extends Controller
             'tot_sale'    => (float) ($tot->tot_sale ?? 0),
             'tot_comm'    => round((float) ($tot->tot_comm ?? 0), 2),
             'sold_count'  => (int) ($tot->sold_cnt ?? 0),
+            'top_genres'  => $topGenres,
         ]);
     }
 
