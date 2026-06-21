@@ -57,17 +57,19 @@ class ListingCommissionController extends Controller
         $paidLineIds = $this->paidLineIds($paid);
 
         $lines = $this->ownedSoldLines($businessId, $from, $paidLineIds);
-        $listedCounts = $this->listedCountByUser($businessId, $from);
+        $listedTotals = $this->listedTotalsByUser($businessId, $from);
 
         // Group the unpaid sold lines by lister.
         $people = [];
         foreach ($lines as $row) {
             $uid = $row->user_id;
             if (!isset($people[$uid])) {
+                $lt = $listedTotals->get($uid);
                 $people[$uid] = (object) [
                     'user_id'      => $uid,
                     'name'         => $this->personName($row),
-                    'listed_count' => (int) ($listedCounts[$uid] ?? 0),
+                    'listed_count' => (int) ($lt->listed_count ?? 0),
+                    'listed_value' => (float) ($lt->listed_value ?? 0),
                     'count'        => 0,
                     'sale_total'   => 0.0,
                     'owed'         => 0.0,
@@ -220,7 +222,7 @@ class ListingCommissionController extends Controller
     // sold), keyed by user_id. Same product + category filters as the
     // commission query so "listed" and "sold" describe the same eligible
     // universe; just no transaction join.
-    private function listedCountByUser($businessId, $from)
+    private function listedTotalsByUser($businessId, $from)
     {
         $start = $from . ' 00:00:00';
 
@@ -241,10 +243,14 @@ class ListingCommissionController extends Controller
             });
         $this->excludeOwners($q);
 
-        return $q->selectRaw('p.created_by as user_id, COUNT(*) as listed_count')
+        return $q->selectRaw(
+                'p.created_by as user_id, COUNT(*) as listed_count, '
+                . 'COALESCE(SUM((SELECT MAX(v.sell_price_inc_tax) FROM variations v '
+                . 'WHERE v.product_id = p.id AND v.deleted_at IS NULL)), 0) as listed_value'
+            )
             ->groupBy('p.created_by')
-            ->pluck('listed_count', 'user_id')
-            ->toArray();
+            ->get()
+            ->keyBy('user_id');
     }
 
     // Drop owner/back-office accounts from a query that has joined `users as u`.

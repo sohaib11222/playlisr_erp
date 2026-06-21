@@ -51,6 +51,7 @@
                         <tr>
                             <th>Person</th>
                             <th style="text-align:right;">Items listed</th>
+                            <th style="text-align:right;">Listed value</th>
                             <th style="text-align:right;">Items sold</th>
                             <th style="text-align:right;">Sale total</th>
                             <th style="text-align:right;">Owed</th>
@@ -62,6 +63,7 @@
                             <tr>
                                 <td><a href="{{ url('/my-earnings/items') }}?user_id={{ $p->user_id }}" title="See every item {{ $p->name }} listed">{{ $p->name }}</a></td>
                                 <td style="text-align:right;"><a href="{{ url('/my-earnings/items') }}?user_id={{ $p->user_id }}">{{ number_format($p->listed_count) }}</a></td>
+                                <td style="text-align:right;">${{ number_format($p->listed_value, 2) }}</td>
                                 <td style="text-align:right;">{{ number_format($p->count) }}</td>
                                 <td style="text-align:right;">${{ number_format($p->sale_total, 2) }}</td>
                                 <td style="text-align:right;"><strong>${{ number_format($p->owed, 2) }}</strong></td>
