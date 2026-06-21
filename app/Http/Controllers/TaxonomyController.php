@@ -54,6 +54,7 @@ class TaxonomyController extends Controller
             $category = Category::where('business_id', $business_id)
                             ->where('category_type', $category_type)
                             ->select(['name', 'short_code', 'description', 'id', 'parent_id'])
+                            ->selectRaw('(SELECT p.name FROM categories p WHERE p.id = categories.parent_id) as parent_name')
                             ->selectRaw(
                                 "(SELECT COUNT(*) FROM products
                                   WHERE products.business_id = ?
@@ -86,6 +87,9 @@ class TaxonomyController extends Controller
                         return $row->name;
                     }
                 })
+                ->editColumn('parent_name', function ($row) {
+                    return $row->parent_id != 0 ? $row->parent_name : '<span class="text-muted">—</span>';
+                })
                 ->editColumn('product_count', function ($row) {
                     $count = (int) $row->product_count;
                     if ($count === 0) {
@@ -100,7 +104,7 @@ class TaxonomyController extends Controller
                 })
                 ->removeColumn('id')
                 ->removeColumn('parent_id')
-                ->rawColumns(['action', 'product_count'])
+                ->rawColumns(['action', 'product_count', 'parent_name'])
                 ->make(true);
         }
 
