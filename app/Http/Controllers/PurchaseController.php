@@ -459,6 +459,30 @@ class PurchaseController extends Controller
                 $transaction_data['additional_expense_value_4'] = $this->productUtil->num_uf($request->input('additional_expense_value_4'), $currency_details)*$exchange_rate;
             }
             
+            // Duplicate-entry guard (Sarah 2026-06-20): purchases are typed in by
+            // hand and the same order sometimes gets entered twice (e.g. AMS
+            // PO2026/3850 & 3851, both $792). Block an exact repeat — same store,
+            // supplier, day and total — saved in the last 10 minutes, which is the
+            // double-submit / re-type pattern. The window self-clears, so a
+            // genuinely separate identical order can be saved by waiting briefly.
+            $dupeExisting = Transaction::where('business_id', $business_id)
+                ->where('type', 'purchase')
+                ->where('location_id', $transaction_data['location_id'])
+                ->where('contact_id', $transaction_data['contact_id'])
+                ->whereDate('transaction_date', \Carbon::parse($transaction_data['transaction_date'])->format('Y-m-d'))
+                ->whereRaw('ABS(final_total - ?) < 0.01', [(float) $transaction_data['final_total']])
+                ->where('created_at', '>=', \Carbon::now()->subMinutes(10))
+                ->orderBy('id', 'desc')
+                ->first();
+            if (!empty($dupeExisting)) {
+                return redirect('purchases')->with('status', [
+                    'success' => 0,
+                    'msg' => 'Looks like a duplicate of ' . ($dupeExisting->ref_no ?: ('#' . $dupeExisting->id))
+                        . ' — same supplier, store, day and amount ($' . number_format((float) $transaction_data['final_total'], 2)
+                        . ') was saved minutes ago, so this one was NOT created. If it is a separate order, wait a moment and save again.',
+                ]);
+            }
+
             DB::beginTransaction();
 
             //Update reference count
