@@ -257,8 +257,9 @@ class InventoryCheckService
                 'used_share' => round($usedShare * 100, 0),
             ];
         }
-        // Biggest New contributions first — that's what's filling the New budget.
-        usort($txnList, fn ($a, $b) => $b['new_amount'] <=> $a['new_amount']);
+        // Sort by date (newest first), then by total so same-day same-amount
+        // entries sit next to each other — makes duplicates easy to spot.
+        usort($txnList, fn ($a, $b) => [$b['date'] ?? '', $b['total']] <=> [$a['date'] ?? '', $a['total']]);
         // Handle transactions with final_total > 0 but no purchase_lines
         // (shouldn't normally happen, but guard so totals reconcile).
         $reconciled = $spentTxnUsed + $spentTxnNew;
