@@ -29,6 +29,7 @@
                             { data: 'short_code', name: 'short_code' },
                         @endif
                         { data: 'description', name: 'description' },
+                        { data: 'product_count', name: 'product_count', orderable: false, searchable: false},
                         { data: 'action', name: 'action', orderable: false, searchable: false},
                     ],
                 });

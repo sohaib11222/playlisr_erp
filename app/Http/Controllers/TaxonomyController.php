@@ -53,7 +53,15 @@ class TaxonomyController extends Controller
 
             $category = Category::where('business_id', $business_id)
                             ->where('category_type', $category_type)
-                            ->select(['name', 'short_code', 'description', 'id', 'parent_id']);
+                            ->select(['name', 'short_code', 'description', 'id', 'parent_id'])
+                            ->selectRaw(
+                                "(SELECT COUNT(*) FROM products
+                                  WHERE products.business_id = ?
+                                    AND products.type != 'modifier'
+                                    AND (products.category_id = categories.id OR products.sub_category_id = categories.id)
+                                 ) as product_count",
+                                [$business_id]
+                            );
 
             return Datatables::of($category)
                 ->addColumn(
@@ -78,9 +86,21 @@ class TaxonomyController extends Controller
                         return $row->name;
                     }
                 })
+                ->editColumn('product_count', function ($row) {
+                    $count = (int) $row->product_count;
+                    if ($count === 0) {
+                        return '<span class="text-muted">0</span>';
+                    }
+                    // Parent categories filter the product list by category_id;
+                    // sub-categories filter by sub_category_id.
+                    $param = $row->parent_id != 0 ? 'sub_category_id' : 'category_id';
+                    $url = action('ProductController@index') . '?' . $param . '=' . $row->id;
+
+                    return '<a href="' . $url . '" target="_blank">' . $count . '</a>';
+                })
                 ->removeColumn('id')
                 ->removeColumn('parent_id')
-                ->rawColumns(['action'])
+                ->rawColumns(['action', 'product_count'])
                 ->make(true);
         }
 
