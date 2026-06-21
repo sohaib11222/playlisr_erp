@@ -63,6 +63,37 @@
             </span>
         </div>
 
+        {{-- ── Plain-English spend summary (Sarah 2026-06-21) ──────────────
+             Two buckets, no caps/bars: Used in-store collection buys per store,
+             and the rest = New distributor orders. --}}
+        @if(!empty($pb['per_store']))
+        @php
+            $usedByStore = [];
+            $newTotal = 0.0;
+            foreach ($pb['per_store'] as $st) {
+                $usedByStore[$st['label']] = ($usedByStore[$st['label']] ?? 0) + ($st['used']['spent'] ?? 0);
+                $newTotal += ($st['new']['spent'] ?? 0);
+            }
+            $newTotal += (float) ($pb['spent_from_manual'] ?? 0); // manual log-a-buy counts as New unless flagged
+        @endphp
+        <div class="ica-simple-summary">
+            <div class="ica-ss-card ica-ss-used">
+                <div class="ica-ss-title">Used — in-store collection buys</div>
+                <div class="ica-ss-rows">
+                    @foreach($usedByStore as $store => $amt)
+                        <span class="ica-ss-row"><span class="ica-ss-store">{{ $store }}</span><span class="ica-ss-amt">${{ number_format($amt, 0) }}</span></span>
+                    @endforeach
+                </div>
+            </div>
+            <div class="ica-ss-card ica-ss-new">
+                <div class="ica-ss-title">New — distributor orders (AMS, SHein, DeeJay, …)</div>
+                <div class="ica-ss-rows">
+                    <span class="ica-ss-row"><span class="ica-ss-store">All new purchases</span><span class="ica-ss-amt">${{ number_format($newTotal, 0) }}</span></span>
+                </div>
+            </div>
+        </div>
+        @endif
+
         {{-- ── Per-store spend split (2026-05-27 Sarah) ─────────────────── --}}
         @if(!empty($pb['per_location']))
         <div class="ica-budget-per-loc">
@@ -1331,6 +1362,19 @@ body.ica-wizard-active { padding-bottom: 64px; }
 .ica-bar-remaining { color: #2c699a; font-weight: 600; }
 .ica-bar-remaining-over { color: #a94442; font-weight: 700; }
 
+/* Plain-English spend summary (Sarah 2026-06-21) */
+.ica-simple-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 10px 0 4px; }
+.ica-ss-card { padding: 12px 14px; border-radius: 8px; border: 1px solid #e3e3e3; background: #fafafa; }
+.ica-ss-used { background: #f5faf6; border-color: #d6ead9; }
+.ica-ss-new { background: #f4f8fc; border-color: #d4e3f1; }
+.ica-ss-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 8px; }
+.ica-ss-used .ica-ss-title { color: #2e7d32; }
+.ica-ss-new .ica-ss-title { color: #1565c0; }
+.ica-ss-rows { display: flex; flex-direction: column; gap: 4px; }
+.ica-ss-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.ica-ss-store { font-size: 14px; color: #444; }
+.ica-ss-amt { font-size: 20px; font-weight: 800; color: #222; }
+@media (max-width: 700px) { .ica-simple-summary { grid-template-columns: 1fr; } }
 /* Category breakdown — what's in New vs Used this week (Sarah 2026-06-19) */
 .ica-spend-breakdown { margin-top: 14px; border: 1px solid #e3e3e3; border-radius: 6px; background: #fff; padding: 0 12px; }
 .ica-spend-breakdown summary { cursor: pointer; padding: 10px 0; font-size: 13px; font-weight: 600; color: #444; }
