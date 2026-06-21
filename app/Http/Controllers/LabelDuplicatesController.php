@@ -44,33 +44,23 @@ class LabelDuplicatesController extends Controller
                 'u.username',
             ]);
 
-        // Group by employee, walk each employee's runs in time order, and flag
-        // a run as a suspected duplicate when it matches the immediately
-        // previous run's qty+value within the window.
+        // Group by employee, walk each employee's runs in time order, and build
+        // "clusters" of identical back-to-back runs: the FIRST run in a cluster
+        // is the real one (kept), and any following run that matches it on
+        // count + value + category mix within the window is a duplicate copy
+        // (removable). Tracking the kept run lets the page SHOW the original
+        // next to each duplicate, so it's clear nothing real is deleted.
         $byEmp = [];
-        $prevByEmp = [];
+        $cur = []; // per employee: current cluster anchor + last-seen timestamp
         foreach ($rows as $r) {
             $d = json_decode($r->properties, true) ?: [];
             $qty = (int) ($d['qty'] ?? 0);
             $val = round((float) ($d['value'] ?? 0), 2);
             $cid = (int) $r->causer_id;
             $ts  = \Carbon::parse($r->created_at);
-            // Category histogram signature — two genuinely different sets are
-            // extremely unlikely to match on count + value AND the same
-            // per-category counts, so requiring this near-eliminates false
-            // positives that could wrongly dock commission.
             $cats = $d['categories'] ?? [];
             ksort($cats);
             $catSig = json_encode($cats);
-
-            $isDup = false;
-            if (isset($prevByEmp[$cid])) {
-                $p = $prevByEmp[$cid];
-                $gap = $ts->diffInSeconds($p['ts']);
-                if ($p['qty'] === $qty && abs($p['val'] - $val) < 0.005 && $p['cat'] === $catSig && $gap <= $window) {
-                    $isDup = true;
-                }
-            }
 
             $name = trim($r->emp_name) ?: ($r->username ?: "User #{$cid}");
             if (!isset($byEmp[$cid])) {
@@ -78,25 +68,50 @@ class LabelDuplicatesController extends Controller
                     'causer_id' => $cid, 'name' => $name,
                     'runs' => 0, 'items' => 0, 'value' => 0.0,
                     'dup_runs' => 0, 'dup_items' => 0, 'dup_value' => 0.0,
-                    'dups' => [],
+                    'clusters' => [],
                 ];
             }
             $byEmp[$cid]['runs']  += 1;
             $byEmp[$cid]['items'] += $qty;
             $byEmp[$cid]['value'] += $val;
 
-            if ($isDup) {
+            $a = $cur[$cid] ?? null;
+            $matches = $a
+                && $a['qty'] === $qty
+                && abs($a['val'] - $val) < 0.005
+                && $a['cat'] === $catSig
+                && $ts->diffInSeconds($a['lastTs']) <= $window;
+
+            if ($matches) {
+                // Duplicate copy of the current cluster's kept run.
+                $idx = $a['idx'];
+                $byEmp[$cid]['clusters'][$idx]['dups'][] = [
+                    'id' => $r->id, 'time' => $r->created_at, 'qty' => $qty, 'value' => $val,
+                ];
                 $byEmp[$cid]['dup_runs']  += 1;
                 $byEmp[$cid]['dup_items'] += $qty;
                 $byEmp[$cid]['dup_value'] += $val;
-                $byEmp[$cid]['dups'][] = (object) [
-                    'id' => $r->id, 'time' => $r->created_at, 'qty' => $qty, 'value' => $val,
-                    'prev_time' => $prevByEmp[$cid]['time'],
+                $cur[$cid]['lastTs'] = $ts; // chain within window from previous copy
+            } else {
+                // Start a new cluster anchored on this (kept) run.
+                $byEmp[$cid]['clusters'][] = [
+                    'kept' => ['time' => $r->created_at, 'qty' => $qty, 'value' => $val],
+                    'dups' => [],
+                ];
+                $cur[$cid] = [
+                    'qty' => $qty, 'val' => $val, 'cat' => $catSig,
+                    'lastTs' => $ts, 'idx' => count($byEmp[$cid]['clusters']) - 1,
                 ];
             }
-
-            $prevByEmp[$cid] = ['qty' => $qty, 'val' => $val, 'cat' => $catSig, 'ts' => $ts, 'time' => $r->created_at];
         }
+
+        // Keep only clusters that actually have duplicates for the detail view.
+        foreach ($byEmp as $cid => &$e) {
+            $e['clusters'] = array_values(array_filter($e['clusters'], function ($c) {
+                return !empty($c['dups']);
+            }));
+        }
+        unset($e);
 
         // Employees with at least one suspected dup first, biggest dup value on top.
         $employees = collect($byEmp)->map(function ($e) { return (object) $e; })

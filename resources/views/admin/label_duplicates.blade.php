@@ -103,24 +103,33 @@ body.role-picker .ld-emp { font-weight:700; font-size:15px; margin:18px 0 8px; }
                 @csrf
                 <div class="ld-card">
                     <h3>Suspected duplicates — review before removing</h3>
-                    <p class="ld-muted" style="margin:-4px 0 14px;">Each flagged row is the <em>second</em> copy of an identical back-to-back run. Unchecking leaves it in place. Removing deletes only the checked duplicate rows (the originals are never touched) and is undoable.</p>
+                    <p class="ld-muted" style="margin:-4px 0 14px;">Each group below shows the <strong>original run (KEPT, in green)</strong> and the <strong>extra copies</strong> the system logged seconds later. Only the copies have a checkbox and only they are removed — the original is never touched. Fully undoable.</p>
 
                     @foreach($employees as $e)
                         @if($e->dup_runs > 0)
-                            <div class="ld-emp">{{ $e->name }} — {{ $e->dup_runs }} dup(s), {{ $e->dup_items }} items, ${{ number_format($e->dup_value, 2) }}</div>
+                            <div class="ld-emp">{{ $e->name }} — {{ $e->dup_runs }} extra cop(ies), {{ $e->dup_items }} items, ${{ number_format($e->dup_value, 2) }}</div>
                             <table class="ld-table">
                                 <thead>
-                                    <tr><th style="width:36px;"><input type="checkbox" checked onclick="this.closest('table').querySelectorAll('.dup-cb').forEach(c=>c.checked=this.checked)"></th><th>Duplicate at</th><th>Matches run at</th><th>Items</th><th>Value</th></tr>
+                                    <tr><th style="width:36px;"><input type="checkbox" checked onclick="this.closest('table').querySelectorAll('.dup-cb').forEach(c=>c.checked=this.checked)"></th><th>Time</th><th>Status</th><th>Items</th><th>Value</th></tr>
                                 </thead>
                                 <tbody>
-                                    @foreach($e->dups as $d)
-                                        <tr>
-                                            <td><input type="checkbox" class="dup-cb" name="dup_ids[]" value="{{ $d->id }}" checked></td>
-                                            <td>{{ \Carbon::parse($d->time)->format('M j, g:i:s A') }}</td>
-                                            <td class="ld-muted">{{ \Carbon::parse($d->prev_time)->format('g:i:s A') }}</td>
-                                            <td>{{ $d->qty }}</td>
-                                            <td>${{ number_format($d->value, 2) }}</td>
+                                    @foreach($e->clusters as $c)
+                                        <tr style="background:#EAF6E6;">
+                                            <td></td>
+                                            <td>{{ \Carbon::parse($c['kept']['time'])->format('M j, g:i:s A') }}</td>
+                                            <td class="ld-clean">ORIGINAL — kept</td>
+                                            <td>{{ $c['kept']['qty'] }}</td>
+                                            <td>${{ number_format($c['kept']['value'], 2) }}</td>
                                         </tr>
+                                        @foreach($c['dups'] as $d)
+                                            <tr>
+                                                <td><input type="checkbox" class="dup-cb" name="dup_ids[]" value="{{ $d['id'] }}" checked></td>
+                                                <td>{{ \Carbon::parse($d['time'])->format('M j, g:i:s A') }}</td>
+                                                <td class="ld-flag">Extra copy — remove</td>
+                                                <td>{{ $d['qty'] }}</td>
+                                                <td>${{ number_format($d['value'], 2) }}</td>
+                                            </tr>
+                                        @endforeach
                                     @endforeach
                                 </tbody>
                             </table>
