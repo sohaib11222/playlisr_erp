@@ -271,7 +271,19 @@ class ProductController extends Controller
             if (!empty($sub_category_id)) {
                 $products->where('products.sub_category_id', $sub_category_id);
             }
-            
+
+            // any_category_id: match a category whether it's referenced as the
+            // product's category_id (parent) OR sub_category_id (child). Used by
+            // the Categories page count links so a merged category's products
+            // show up regardless of which column they landed in.
+            $any_category_id = request()->get('any_category_id', null);
+            if (!empty($any_category_id)) {
+                $products->where(function ($q) use ($any_category_id) {
+                    $q->where('products.category_id', $any_category_id)
+                      ->orWhere('products.sub_category_id', $any_category_id);
+                });
+            }
+
             // Filter for uncategorized products
             $uncategorized_only = request()->get('uncategorized_only', 0);
             if ($uncategorized_only == 1 || $uncategorized_only === '1' || $uncategorized_only === true) {

@@ -122,12 +122,18 @@ body.taxonomy-v2 th.tax-sortable.active .tax-sort-ind { color:#2F6B3E; }
         }
         return $h;
     };
-    $countCell = function ($count, $param, $id) {
-        $count = (int) $count;
+    // A category's product count includes anything attached via EITHER column
+    // (category_id parent OR sub_category_id child) so merged products always
+    // show up on the target regardless of which column they landed in.
+    $catCount = function ($id) use ($parentCounts, $subCounts) {
+        return (int) ($parentCounts[$id] ?? 0) + (int) ($subCounts[$id] ?? 0);
+    };
+    $countCell = function ($id) use ($catCount) {
+        $count = $catCount($id);
         if ($count === 0) {
             return '<span class="tax-zero">0</span>';
         }
-        return '<a class="tax-count" target="_blank" href="'.url('/products').'?'.$param.'='.$id.'">'.$count.'</a>';
+        return '<a class="tax-count" target="_blank" href="'.url('/products').'?any_category_id='.$id.'">'.$count.'</a>';
     };
 @endphp
 
@@ -170,23 +176,23 @@ body.taxonomy-v2 th.tax-sortable.active .tax-sort-ind { color:#2F6B3E; }
                             $hasKids = $kids->count() > 0;
                         @endphp
                         <tr class="parent-row" data-pid="{{ $parent->id }}"
-                            data-count="{{ (int) ($parentCounts[$parent->id] ?? 0) }}"
+                            data-count="{{ $catCount($parent->id) }}"
                             data-search="{{ strtolower($parent->name) }}">
                             <td>
                                 <span class="tax-caret {{ $hasKids ? '' : 'leaf' }}">&#9656;</span>{{ $parent->name }}
                                 @if($hasKids)<span class="tax-subcount">{{ $kids->count() }} {{ $kids->count() == 1 ? 'sub' : 'subs' }}</span>@endif
                             </td>
                             <td class="tax-desc">{{ $parent->description }}</td>
-                            <td>{!! $countCell($parentCounts[$parent->id] ?? 0, 'category_id', $parent->id) !!}</td>
+                            <td>{!! $countCell($parent->id) !!}</td>
                             <td class="tax-actions">{!! $actionBtns($parent) !!}</td>
                         </tr>
                         @foreach($kids as $child)
                             <tr class="child-row" data-pid="{{ $parent->id }}"
-                                data-count="{{ (int) ($subCounts[$child->id] ?? 0) }}"
+                                data-count="{{ $catCount($child->id) }}"
                                 data-search="{{ strtolower($child->name.' '.$child->description) }}" hidden>
                                 <td>{{ $child->name }}</td>
                                 <td class="tax-desc">{{ $child->description }}</td>
-                                <td>{!! $countCell($subCounts[$child->id] ?? 0, 'sub_category_id', $child->id) !!}</td>
+                                <td>{!! $countCell($child->id) !!}</td>
                                 <td class="tax-actions">{!! $actionBtns($child) !!}</td>
                             </tr>
                         @endforeach
@@ -197,7 +203,7 @@ body.taxonomy-v2 th.tax-sortable.active .tax-sort-ind { color:#2F6B3E; }
                     @if($ungrouped->count() > 0)
                         @php
                             $ungroupedTotal = 0;
-                            foreach ($ungrouped as $u) { $ungroupedTotal += (int) ($subCounts[$u->id] ?? 0); }
+                            foreach ($ungrouped as $u) { $ungroupedTotal += $catCount($u->id); }
                         @endphp
                         <tr class="parent-row" data-pid="ungrouped" data-count="{{ $ungroupedTotal }}" data-search="ungrouped">
                             <td>
@@ -210,11 +216,11 @@ body.taxonomy-v2 th.tax-sortable.active .tax-sort-ind { color:#2F6B3E; }
                         </tr>
                         @foreach($ungrouped as $child)
                             <tr class="child-row" data-pid="ungrouped"
-                                data-count="{{ (int) ($subCounts[$child->id] ?? 0) }}"
+                                data-count="{{ $catCount($child->id) }}"
                                 data-search="{{ strtolower($child->name.' '.$child->description) }}" hidden>
                                 <td>{{ $child->name }}</td>
                                 <td class="tax-desc">{{ $child->description }}</td>
-                                <td>{!! $countCell($subCounts[$child->id] ?? 0, 'sub_category_id', $child->id) !!}</td>
+                                <td>{!! $countCell($child->id) !!}</td>
                                 <td class="tax-actions">{!! $actionBtns($child) !!}</td>
                             </tr>
                         @endforeach
