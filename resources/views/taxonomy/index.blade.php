@@ -74,6 +74,13 @@ body.taxonomy-v2 .delete_category_button { background:#FFFFFF; border-color:#E0B
 body.taxonomy-v2 .delete_category_button:hover { background:#F8D7DA; }
 body.taxonomy-v2 .tax-actions { white-space:nowrap; text-align:right; }
 body.taxonomy-v2 .tax-empty { padding:26px 16px; text-align:center; color:#8E8273; }
+
+/* sortable header */
+body.taxonomy-v2 th.tax-sortable { cursor:pointer; user-select:none; }
+body.taxonomy-v2 th.tax-sortable:hover { color:#1F1B16; }
+body.taxonomy-v2 .tax-sort-ind { display:inline-block; width:10px; color:#B7AC97; font-size:11px; }
+body.taxonomy-v2 th.tax-sortable.active { color:#1F1B16; }
+body.taxonomy-v2 th.tax-sortable.active .tax-sort-ind { color:#2F6B3E; }
 </style>
 
 @php
@@ -125,7 +132,7 @@ body.taxonomy-v2 .tax-empty { padding:26px 16px; text-align:center; color:#8E827
                     <tr>
                         <th>@if(!empty($module_category_data['taxonomy_label'])) {{ $module_category_data['taxonomy_label'] }} @else @lang('category.category') @endif</th>
                         <th>@lang('lang_v1.description')</th>
-                        <th>Products</th>
+                        <th id="tax_sort_products" class="tax-sortable">Products <span class="tax-sort-ind"></span></th>
                         <th class="tax-actions">@lang('messages.action')</th>
                     </tr>
                 </thead>
@@ -136,6 +143,7 @@ body.taxonomy-v2 .tax-empty { padding:26px 16px; text-align:center; color:#8E827
                             $hasKids = $kids->count() > 0;
                         @endphp
                         <tr class="parent-row" data-pid="{{ $parent->id }}"
+                            data-count="{{ (int) ($parentCounts[$parent->id] ?? 0) }}"
                             data-search="{{ strtolower($parent->name) }}">
                             <td>
                                 <span class="tax-caret {{ $hasKids ? '' : 'leaf' }}">&#9656;</span>{{ $parent->name }}
@@ -147,6 +155,7 @@ body.taxonomy-v2 .tax-empty { padding:26px 16px; text-align:center; color:#8E827
                         </tr>
                         @foreach($kids as $child)
                             <tr class="child-row" data-pid="{{ $parent->id }}"
+                                data-count="{{ (int) ($subCounts[$child->id] ?? 0) }}"
                                 data-search="{{ strtolower($child->name.' '.$child->description) }}" hidden>
                                 <td>{{ $child->name }}</td>
                                 <td class="tax-desc">{{ $child->description }}</td>
@@ -159,7 +168,11 @@ body.taxonomy-v2 .tax-empty { padding:26px 16px; text-align:center; color:#8E827
                     @endforelse
 
                     @if($ungrouped->count() > 0)
-                        <tr class="parent-row" data-pid="ungrouped" data-search="ungrouped">
+                        @php
+                            $ungroupedTotal = 0;
+                            foreach ($ungrouped as $u) { $ungroupedTotal += (int) ($subCounts[$u->id] ?? 0); }
+                        @endphp
+                        <tr class="parent-row" data-pid="ungrouped" data-count="{{ $ungroupedTotal }}" data-search="ungrouped">
                             <td>
                                 <span class="tax-caret">&#9656;</span>Ungrouped
                                 <span class="tax-subcount">{{ $ungrouped->count() }} item@if($ungrouped->count() != 1)s@endif</span>
@@ -170,6 +183,7 @@ body.taxonomy-v2 .tax-empty { padding:26px 16px; text-align:center; color:#8E827
                         </tr>
                         @foreach($ungrouped as $child)
                             <tr class="child-row" data-pid="ungrouped"
+                                data-count="{{ (int) ($subCounts[$child->id] ?? 0) }}"
                                 data-search="{{ strtolower($child->name.' '.$child->description) }}" hidden>
                                 <td>{{ $child->name }}</td>
                                 <td class="tax-desc">{{ $child->description }}</td>
@@ -213,6 +227,50 @@ body.taxonomy-v2 .tax-empty { padding:26px 16px; text-align:center; color:#8E827
     });
     if (collapseAll) collapseAll.addEventListener('click', function () {
         document.querySelectorAll('.parent-row').forEach(function (p) { setOpen(p.dataset.pid, false); });
+    });
+
+    // Sort by product count. Reorders whole parent groups (children stay nested,
+    // and are sorted within their group). Cycles: none -> desc -> asc -> none.
+    var table = document.querySelector('table.tax-tree');
+    var tbody = table ? table.querySelector('tbody') : null;
+    var groups = [];
+    if (tbody) {
+        Array.prototype.forEach.call(tbody.querySelectorAll('.parent-row'), function (p) {
+            groups.push({
+                parent: p,
+                count: parseInt(p.dataset.count || '0', 10),
+                children: Array.prototype.slice.call(kids(p.dataset.pid))
+            });
+        });
+    }
+    var sortHeader = document.getElementById('tax_sort_products');
+    var sortState = 'none';
+
+    function applySort() {
+        if (!tbody) return;
+        var dir = sortState === 'desc' ? -1 : 1;
+        var ordered = groups.slice();
+        if (sortState !== 'none') {
+            ordered.sort(function (a, b) { return (a.count - b.count) * dir; });
+        }
+        ordered.forEach(function (g) {
+            tbody.appendChild(g.parent);
+            var ch = g.children.slice();
+            if (sortState !== 'none') {
+                ch.sort(function (a, b) {
+                    return ((parseInt(a.dataset.count || '0', 10)) - (parseInt(b.dataset.count || '0', 10))) * dir;
+                });
+            }
+            ch.forEach(function (c) { tbody.appendChild(c); });
+        });
+        var ind = sortHeader ? sortHeader.querySelector('.tax-sort-ind') : null;
+        if (sortHeader) sortHeader.classList.toggle('active', sortState !== 'none');
+        if (ind) ind.textContent = sortState === 'desc' ? '▼' : (sortState === 'asc' ? '▲' : '');
+    }
+
+    if (sortHeader) sortHeader.addEventListener('click', function () {
+        sortState = sortState === 'none' ? 'desc' : (sortState === 'desc' ? 'asc' : 'none');
+        applySort();
     });
 
     var search = document.getElementById('tax_search');
