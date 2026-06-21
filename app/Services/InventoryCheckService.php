@@ -188,8 +188,8 @@ class InventoryCheckService
             $lineAgg->whereIn('t.location_id', $permittedLocations);
         }
         $lineAgg = $lineAgg
-            ->selectRaw('t.id as txn_id, t.location_id as location_id, t.final_total as final_total, t.ref_no as ref_no, t.transaction_date as txn_date, ct.name as supplier, p.category_id as category_id, p.added_via as added_via, SUM(pl.quantity * pl.purchase_price_inc_tax) as line_total')
-            ->groupBy('t.id', 't.location_id', 't.final_total', 't.ref_no', 't.transaction_date', 'ct.name', 'p.category_id', 'p.added_via')
+            ->selectRaw('t.id as txn_id, t.location_id as location_id, t.final_total as final_total, t.ref_no as ref_no, t.transaction_date as txn_date, ct.name as supplier, ct.type as contact_type, p.category_id as category_id, p.added_via as added_via, SUM(pl.quantity * pl.purchase_price_inc_tax) as line_total')
+            ->groupBy('t.id', 't.location_id', 't.final_total', 't.ref_no', 't.transaction_date', 'ct.name', 'ct.type', 'p.category_id', 'p.added_via')
             ->get();
 
         // Group by txn -> total line value + used line value.
@@ -203,6 +203,7 @@ class InventoryCheckService
                     'ref_no' => $row->ref_no,
                     'txn_date' => $row->txn_date,
                     'supplier' => $row->supplier,
+                    'contact_type' => $row->contact_type,
                     'lines_total' => 0.0,
                     'used_lines' => 0.0,
                 ];
@@ -234,6 +235,13 @@ class InventoryCheckService
                 // No lines (rare — empty purchase, returns, etc). Treat
                 // as New so it doesn't vanish from the split.
                 $usedShare = 0.0;
+            }
+            // A buy whose contact is a customer (walk-in / individual selling us
+            // records) is a Used collection — NOT a new distributor order — even
+            // if the items carry no "used" category. Distributors (AMS, posters
+            // wholesale) are supplier-type contacts and stay New. 2026-06-20 Sarah.
+            if (strtolower((string) ($t['contact_type'] ?? '')) === 'customer') {
+                $usedShare = 1.0;
             }
             $txnUsed = $ft * $usedShare;
             $txnNew = $ft * (1 - $usedShare);
