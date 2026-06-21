@@ -202,6 +202,7 @@ class InventoryCheckService
                     'entered_by' => trim((string) ($row->entered_by_name ?? '')) ?: ($row->entered_by_username ?? ''),
                     'lines_total' => 0.0,
                     'used_lines' => 0.0,
+                    'massadd_lines' => 0.0,
                     'is_bfc' => false,
                 ];
             }
@@ -209,6 +210,11 @@ class InventoryCheckService
             $perTxn[$tid]['lines_total'] += $val;
             if ($row->added_via === 'buy_from_customer') {
                 $perTxn[$tid]['is_bfc'] = true;
+            }
+            // Products from the mass-add tool ("Save & send to add purchase") —
+            // the warehouse-stock re-dating flow, not money spent this week.
+            if ($row->added_via === 'mass_add') {
+                $perTxn[$tid]['massadd_lines'] += $val;
             }
             // A line counts as Used if its product sits in a "used"-named category
             // OR it came in through the buy-from-customer flow (customer collections
@@ -244,13 +250,21 @@ class InventoryCheckService
                 || strtolower((string) ($t['contact_type'] ?? '')) === 'customer'
                 || strpos(strtolower($contactName), 'walk') !== false;
             $isDistributor = $this->isDistributorSupplier($contactName);
+            // Warehouse re-dating: the purchase is built mostly from freshly
+            // mass-added products (only the mass-add tool stamps 'mass_add'; the
+            // Purchases screen leaves it null). These get this-week dates and a
+            // supplier but are NOT money spent this week, so they never count —
+            // even if the supplier happens to be a distributor.
+            $massAddShare = $t['lines_total'] > 0 ? ($t['massadd_lines'] / $t['lines_total']) : 0;
+            $isWarehouseRedate = $massAddShare > 0.5;
 
             if ($isCollectionBuy) {
                 $usedShare = 1.0;   // whole buy is Used
-            } elseif ($isDistributor) {
-                $usedShare = 0.0;   // whole order is New
+            } elseif ($isDistributor && !$isWarehouseRedate) {
+                $usedShare = 0.0;   // real distributor order — whole order is New
             } else {
-                // Not a real weekly outlay — skip it.
+                // Mass-add warehouse re-dating, or a non-distributor/non-collection
+                // purchase — not a real weekly outlay. Skip it.
                 $excludedCount++;
                 $excludedTotal += $ft;
                 continue;
