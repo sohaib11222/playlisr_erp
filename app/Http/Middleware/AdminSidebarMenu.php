@@ -31,6 +31,10 @@ class AdminSidebarMenu
             //Home
             $menu->url(action('HomeController@index'), __('home.home'), ['icon' => 'fa fas fa-tachometer-alt', 'active' => request()->segment(1) == 'home'])->order(5);
 
+            //End Shift — staff-facing, visible to everyone (non-cashiers like
+            //Zella/Nick end their shift here; posts to #shift-notes).
+            $menu->url(url('/shift-notes/end'), 'End Shift', ['icon' => 'fa fas fa-clock', 'active' => request()->segment(1) == 'shift-notes'])->order(6);
+
             //Discounts (top-level for quick access)
             if (auth()->user()->can('discount.access')) {
                 $menu->url(
