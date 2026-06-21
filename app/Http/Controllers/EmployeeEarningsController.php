@@ -117,52 +117,77 @@ class EmployeeEarningsController extends Controller
         $from = self::DEFAULT_FROM;
         $start = $from . ' 00:00:00';
         $end = now()->toDateTimeString();
+        $bizId = (int) $businessId;
 
         $perPage = 200;
         $page = max(1, (int) $request->input('page', 1));
         $offset = ($page - 1) * $perPage;
 
+        // Whitelisted sort columns -> the SQL they map to (so the sort param
+        // can't inject). Sold/Sale/Commission sort on the computed aggregates,
+        // so it orders the WHOLE dataset, not just the visible page.
+        $sortable = [
+            'listed'     => 'p.created_at',
+            'item'       => 'p.name',
+            'sku'        => 'p.sku',
+            'category'   => 'c.name',
+            'sold'       => 'units_val',
+            'sale'       => 'sale_val',
+            'commission' => 'comm_val',
+        ];
+        $sort = $request->input('sort', 'listed');
+        if (!isset($sortable[$sort])) { $sort = 'listed'; }
+        $dir = strtolower($request->input('dir', 'desc')) === 'asc' ? 'asc' : 'desc';
+
+        // Ineligible-category test (same rule as the commission calc), built
+        // from static lists only — safe to inline into raw SQL.
+        $patConds = [];
+        foreach (['%sealed%', '%new vinyl%', '%new cd%', '%new cassette%'] as $pat) {
+            $patConds[] = "LOWER(c.name) LIKE '{$pat}'";
+            $patConds[] = "LOWER(COALESCE(sc.name,'')) LIKE '{$pat}'";
+        }
+        $nameList = implode(',', array_map(function ($n) { return "'" . $n . "'"; }, $this->excludedCategoryNames));
+        $ineligible = '(' . implode(' OR ', $patConds)
+            . " OR LOWER(TRIM(c.name)) IN ({$nameList})"
+            . " OR LOWER(TRIM(COALESCE(sc.name,''))) IN ({$nameList}))";
+
+        $saleExpr  = 'COALESCE(s.sale_value, 0)';
+        $unitsExpr = 'COALESCE(s.units, 0)';
+        $commExpr  = "CASE WHEN NOT {$ineligible} AND {$saleExpr} > 0 THEN {$saleExpr} * " . self::RATE . " ELSE 0 END";
+
+        $soldSub = "(SELECT tsl.product_id, SUM(tsl.quantity) units, SUM(tsl.quantity * tsl.unit_price_inc_tax) sale_value"
+            . " FROM transaction_sell_lines tsl JOIN transactions t ON t.id = tsl.transaction_id"
+            . " WHERE t.type = 'sell' AND t.status = 'final' AND t.import_source IS NULL AND t.business_id = {$bizId}"
+            . " AND t.transaction_date >= '{$start}' AND t.transaction_date <= '{$end}' GROUP BY tsl.product_id) s";
+
         $base = DB::table('products as p')
             ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
             ->leftJoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')
-            ->where('p.business_id', $businessId)
+            ->where('p.business_id', $bizId)
             ->where('p.created_by', $targetId)
             ->where('p.created_at', '>=', $start);
 
         $totalListed = (clone $base)->count();
 
         $products = (clone $base)
-            ->orderByDesc('p.created_at')
+            ->leftJoin(DB::raw($soldSub), 's.product_id', '=', 'p.id')
+            ->selectRaw("p.name, p.sku, p.created_at, c.name as cat, sc.name as subcat,"
+                . " {$unitsExpr} as units_val, {$saleExpr} as sale_val, {$commExpr} as comm_val,"
+                . " CASE WHEN {$ineligible} THEN 0 ELSE 1 END as elig")
+            ->orderByRaw($sortable[$sort] . ' ' . $dir)
+            ->orderBy('p.id', 'desc')
             ->offset($offset)->limit($perPage)
-            ->get(['p.id', 'p.name', 'p.sku', 'p.created_at', 'c.name as cat', 'sc.name as subcat']);
+            ->get();
 
-        // Sold rollup for just this page of products.
-        $sold = collect();
-        $ids = $products->pluck('id')->all();
-        if (!empty($ids)) {
-            $sold = DB::table('transaction_sell_lines as tsl')
-                ->join('transactions as t', 't.id', '=', 'tsl.transaction_id')
-                ->where('t.type', 'sell')->where('t.status', 'final')
-                ->whereNull('t.import_source')
-                ->whereBetween('t.transaction_date', [$start, $end])
-                ->whereIn('tsl.product_id', $ids)
-                ->groupBy('tsl.product_id')
-                ->selectRaw('tsl.product_id, SUM(tsl.quantity) as units, SUM(tsl.quantity * tsl.unit_price_inc_tax) as sale_value')
-                ->get()->keyBy('product_id');
-        }
-
-        $rows = $products->map(function ($p) use ($sold) {
-            $eligible = $this->isEligibleCategory($p->cat, $p->subcat);
-            $s = $sold[$p->id] ?? null;
-            $units = $s ? (float) $s->units : 0;
-            $saleValue = $s ? (float) $s->sale_value : 0.0;
-            $commission = ($eligible && $saleValue > 0) ? round($saleValue * self::RATE, 2) : 0.0;
+        $rows = $products->map(function ($p) {
             return (object) [
                 'name' => $p->name, 'sku' => $p->sku,
                 'listed_at' => $p->created_at,
                 'category' => trim(($p->cat ?? '') . ($p->subcat ? ' › ' . $p->subcat : '')) ?: '—',
-                'eligible' => $eligible,
-                'units' => $units, 'sale_value' => $saleValue, 'commission' => $commission,
+                'eligible' => (int) $p->elig === 1,
+                'units' => (float) $p->units_val,
+                'sale_value' => (float) $p->sale_val,
+                'commission' => round((float) $p->comm_val, 2),
             ];
         });
 
@@ -178,6 +203,8 @@ class EmployeeEarningsController extends Controller
             'page'        => $page,
             'per_page'    => $perPage,
             'has_more'    => ($offset + $products->count()) < $totalListed,
+            'sort'        => $sort,
+            'dir'         => $dir,
         ]);
     }
 

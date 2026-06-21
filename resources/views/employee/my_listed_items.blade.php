@@ -42,7 +42,20 @@ body.role-picker a.li-back { color:#5A5045; font-size:13px; text-decoration:none
         <div class="li-card">
             <table class="li-table">
                 <thead>
-                    <tr><th>Listed</th><th>Item</th><th>SKU</th><th>Category</th><th>Sold</th><th>Sale value</th><th>Commission</th></tr>
+                    @php
+                        $cols = ['listed'=>'Listed','item'=>'Item','sku'=>'SKU','category'=>'Category','sold'=>'Sold','sale'=>'Sale value','commission'=>'Commission'];
+                        $sortBase = url('/my-earnings/items').'?user_id='.$user_id;
+                    @endphp
+                    <tr>
+                        @foreach($cols as $key => $label)
+                            @php
+                                $active = $sort === $key;
+                                $next = $active ? ($dir === 'asc' ? 'desc' : 'asc') : (in_array($key, ['sold','sale','commission','listed']) ? 'desc' : 'asc');
+                                $arrow = $active ? ($dir === 'asc' ? ' ↑' : ' ↓') : '';
+                            @endphp
+                            <th><a href="{{ $sortBase.'&sort='.$key.'&dir='.$next }}" style="color:inherit;text-decoration:none;white-space:nowrap;">{{ $label }}{{ $arrow }}</a></th>
+                        @endforeach
+                    </tr>
                 </thead>
                 <tbody>
                     @forelse($rows as $r)
@@ -65,11 +78,11 @@ body.role-picker a.li-back { color:#5A5045; font-size:13px; text-decoration:none
         @if($page > 1 || $has_more)
             <div class="li-pager">
                 @if($page > 1)
-                    <a class="li-btn" href="{{ url('/my-earnings/items') }}?user_id={{ $user_id }}&page={{ $page - 1 }}">&larr; Newer</a>
+                    <a class="li-btn" href="{{ url('/my-earnings/items') }}?user_id={{ $user_id }}&sort={{ $sort }}&dir={{ $dir }}&page={{ $page - 1 }}">&larr; Prev</a>
                 @endif
                 <span class="li-muted">Page {{ $page }}</span>
                 @if($has_more)
-                    <a class="li-btn" href="{{ url('/my-earnings/items') }}?user_id={{ $user_id }}&page={{ $page + 1 }}">Older &rarr;</a>
+                    <a class="li-btn" href="{{ url('/my-earnings/items') }}?user_id={{ $user_id }}&sort={{ $sort }}&dir={{ $dir }}&page={{ $page + 1 }}">Next &rarr;</a>
                 @endif
             </div>
         @endif
