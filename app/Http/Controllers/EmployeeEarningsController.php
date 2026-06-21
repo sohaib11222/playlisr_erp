@@ -94,6 +94,106 @@ class EmployeeEarningsController extends Controller
         ]);
     }
 
+    // Itemized drill-down: every product a person listed (since rollout) with
+    // its sold status + the commission it earned. The employee sees their own;
+    // an admin can pass ?user_id= to view anyone's (same gate the leaderboard
+    // listed-items drill uses).
+    public function items(Request $request)
+    {
+        $me = auth()->user();
+        $businessId = $request->session()->get('user.business_id');
+        $isAdmin = app(\App\Utils\BusinessUtil::class)->is_admin($me);
+
+        $targetId = (int) $request->input('user_id', $me->id);
+        if ($targetId !== (int) $me->id && !$isAdmin) {
+            $targetId = (int) $me->id; // non-admins only ever see themselves
+        }
+
+        $target = DB::table('users')->where('id', $targetId)->first();
+        $targetName = $target
+            ? (trim(($target->first_name ?? '') . ' ' . ($target->last_name ?? '')) ?: ($target->username ?? "User #{$targetId}"))
+            : "User #{$targetId}";
+
+        $from = self::DEFAULT_FROM;
+        $start = $from . ' 00:00:00';
+        $end = now()->toDateTimeString();
+
+        $perPage = 200;
+        $page = max(1, (int) $request->input('page', 1));
+        $offset = ($page - 1) * $perPage;
+
+        $base = DB::table('products as p')
+            ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+            ->leftJoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')
+            ->where('p.business_id', $businessId)
+            ->where('p.created_by', $targetId)
+            ->where('p.created_at', '>=', $start);
+
+        $totalListed = (clone $base)->count();
+
+        $products = (clone $base)
+            ->orderByDesc('p.created_at')
+            ->offset($offset)->limit($perPage)
+            ->get(['p.id', 'p.name', 'p.sku', 'p.created_at', 'c.name as cat', 'sc.name as subcat']);
+
+        // Sold rollup for just this page of products.
+        $sold = collect();
+        $ids = $products->pluck('id')->all();
+        if (!empty($ids)) {
+            $sold = DB::table('transaction_sell_lines as tsl')
+                ->join('transactions as t', 't.id', '=', 'tsl.transaction_id')
+                ->where('t.type', 'sell')->where('t.status', 'final')
+                ->whereNull('t.import_source')
+                ->whereBetween('t.transaction_date', [$start, $end])
+                ->whereIn('tsl.product_id', $ids)
+                ->groupBy('tsl.product_id')
+                ->selectRaw('tsl.product_id, SUM(tsl.quantity) as units, SUM(tsl.quantity * tsl.unit_price_inc_tax) as sale_value')
+                ->get()->keyBy('product_id');
+        }
+
+        $rows = $products->map(function ($p) use ($sold) {
+            $eligible = $this->isEligibleCategory($p->cat, $p->subcat);
+            $s = $sold[$p->id] ?? null;
+            $units = $s ? (float) $s->units : 0;
+            $saleValue = $s ? (float) $s->sale_value : 0.0;
+            $commission = ($eligible && $saleValue > 0) ? round($saleValue * self::RATE, 2) : 0.0;
+            return (object) [
+                'name' => $p->name, 'sku' => $p->sku,
+                'listed_at' => $p->created_at,
+                'category' => trim(($p->cat ?? '') . ($p->subcat ? ' › ' . $p->subcat : '')) ?: '—',
+                'eligible' => $eligible,
+                'units' => $units, 'sale_value' => $saleValue, 'commission' => $commission,
+            ];
+        });
+
+        return view('employee.my_listed_items', [
+            'target_name' => $targetName,
+            'is_self'     => $targetId === (int) $me->id,
+            'is_admin'    => $isAdmin,
+            'user_id'     => $targetId,
+            'from'        => $from,
+            'rate_pct'    => self::RATE * 100,
+            'rows'        => $rows,
+            'total'       => $totalListed,
+            'page'        => $page,
+            'per_page'    => $perPage,
+            'has_more'    => ($offset + $products->count()) < $totalListed,
+        ]);
+    }
+
+    private function isEligibleCategory($cat, $subcat)
+    {
+        foreach ([$cat, $subcat] as $name) {
+            $n = mb_strtolower(trim((string) $name));
+            if ($n === '') { continue; }
+            foreach (['sealed', 'new vinyl', 'new cd', 'new cassette'] as $pat) {
+                if (mb_strpos($n, $pat) !== false) { return false; }
+            }
+            if (in_array($n, $this->excludedCategoryNames, true)) { return false; }
+        }
+        return true;
+    }
+
     // Qualifying sold lines for ONE lister. Filters mirror
     // ListingCommissionController::ownedSoldLines exactly (so the math agrees),
     // but scoped to a single user_id and without the owner-name exclusion

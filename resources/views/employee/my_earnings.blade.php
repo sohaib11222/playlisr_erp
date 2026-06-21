@@ -61,6 +61,12 @@ body.role-picker .me-chip .l { font-size:12px; color:#8E8273; text-transform:upp
         </div>
 
         <div class="me-card">
+            <h3>See your items</h3>
+            <p class="me-muted" style="margin:-4px 0 12px;">Every item you listed, with which ones sold and what each earned.</p>
+            <a class="li-link" href="{{ url('/my-earnings/items') }}" style="display:inline-flex;align-items:center;min-height:42px;padding:9px 18px;border:0;border-radius:8px;font-weight:700;font-size:14px;text-decoration:none;background:#1F1B16;color:#FAF6EE;">View all {{ number_format($listed_count) }} items I listed &rarr;</a>
+        </div>
+
+        <div class="me-card">
             <h3>Payout history</h3>
             @if($payouts->isEmpty())
                 <p class="me-muted">No payouts recorded yet. Anything in "Still owed" will show here once it's paid.</p>

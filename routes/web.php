@@ -508,6 +508,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // listing commission (earned / paid out / still owed) + productivity stats.
     // Same 2% formula + payout ledger as /admin/listing-commissions.
     Route::get('/my-earnings', 'EmployeeEarningsController@index');
+    // Itemized list of everything a person listed (sold status + commission).
+    // Self by default; admins may pass ?user_id= to view a specific employee.
+    Route::get('/my-earnings/items', 'EmployeeEarningsController@items');
     Route::get('/reports/shift-targets', 'ReportController@shiftTargets');
 
     // Reports hub — organized index of all reports with per-user favorites
