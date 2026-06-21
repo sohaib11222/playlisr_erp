@@ -50,7 +50,11 @@ class ListingCommissionController extends Controller
 
     public function index(Request $request)
     {
-        $from = $this->normalizeFrom($request->input('from'));
+        // Fixed to the program start. The Leaderboard and My Earnings are both
+        // hard-locked to 2026-05-15, so an adjustable date here was the one
+        // thing that made this page disagree with them (Sarah 2026-06-21). One
+        // window everywhere = the numbers reconcile.
+        $from = self::DEFAULT_FROM;
         $businessId = $request->session()->get('user.business_id');
 
         $paid = $this->loadPayouts();

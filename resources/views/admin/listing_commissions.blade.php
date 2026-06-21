@@ -27,15 +27,12 @@
     <div class="col-md-12">
         <div class="box box-solid">
             <div class="box-body">
-                <form method="GET" action="{{ url('/admin/listing-commissions') }}" class="form-inline">
-                    <label for="from">Owed since</label>
-                    <input type="date" id="from" name="from" value="{{ $from }}" min="2026-05-15" class="form-control" style="margin:0 8px;">
-                    <button type="submit" class="btn btn-primary">Apply</button>
-                    <span class="text-muted" style="margin-left:8px;font-size:12px;">Commission starts May 15, 2026 — earlier dates are clamped to it so this matches the Leaderboard &amp; My Earnings.</span>
+                <div class="form-inline">
+                    <span>Owed since <strong>{{ \Carbon::parse($from)->format('M j, Y') }}</strong> (program start) — the same window as the Leaderboard &amp; My Earnings, so all three match.</span>
                     <span class="pull-right" style="font-size:18px;">
                         Total owed: <strong>${{ number_format($total_owed, 2) }}</strong>
                     </span>
-                </form>
+                </div>
             </div>
         </div>
     </div>
