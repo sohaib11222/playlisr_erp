@@ -328,28 +328,45 @@ class InventoryCheckService
         unset($tx);
 
         // ── Duplicate-entry detector (Sarah 2026-06-19) ───────────────
-        // Flag purchases that share the SAME store + total + day — the
-        // fingerprint of the same shipment entered twice (e.g. once as a
-        // normal purchase and once via mass-add), which would double-count
-        // real spend. Exact match only, to avoid false positives.
-        $dupeIndex = [];
-        foreach ($txnList as $tx) {
-            $k = $tx['location_id'] . '|' . number_format($tx['total'], 2, '.', '') . '|' . ($tx['date'] ?? '');
-            $dupeIndex[$k] = ($dupeIndex[$k] ?? 0) + 1;
+        // Same shipment entered twice double-counts real spend. Flag two ways
+        // within the same store + same day:
+        //   • exact — identical totals (clean re-entry)
+        //   • near  — large totals (≥$500) within 3% of each other (the same
+        //             buy re-keyed with a slightly different total, e.g. once
+        //             typed in and once via mass-add)
+        $byStoreDay = [];
+        foreach ($txnList as $i => $tx) {
+            $g = $tx['location_id'] . '|' . ($tx['date'] ?? '');
+            $byStoreDay[$g][] = $i;
         }
-        $dupeGroups = 0;
-        $dupeRedundantAmount = 0.0;
-        foreach ($dupeIndex as $k => $cnt) {
-            if ($cnt > 1) {
-                $dupeGroups++;
-                $parts = explode('|', $k);
-                // Redundant dollars = every copy beyond the first.
-                $dupeRedundantAmount += (float) $parts[1] * ($cnt - 1);
+        $dupeFlag = array_fill(0, count($txnList), false);
+        foreach ($byStoreDay as $idxs) {
+            if (count($idxs) < 2) continue;
+            for ($a = 0; $a < count($idxs); $a++) {
+                for ($b = $a + 1; $b < count($idxs); $b++) {
+                    $ta = $txnList[$idxs[$a]]['total'];
+                    $tb = $txnList[$idxs[$b]]['total'];
+                    $exact = abs($ta - $tb) < 0.01;
+                    $near = min($ta, $tb) >= 500 && abs($ta - $tb) <= 0.03 * max($ta, $tb);
+                    if ($exact || $near) {
+                        $dupeFlag[$idxs[$a]] = true;
+                        $dupeFlag[$idxs[$b]] = true;
+                    }
+                }
             }
         }
-        foreach ($txnList as &$tx) {
-            $k = $tx['location_id'] . '|' . number_format($tx['total'], 2, '.', '') . '|' . ($tx['date'] ?? '');
-            $tx['maybe_dupe'] = ($dupeIndex[$k] ?? 0) > 1;
+        // Redundant $ per store+day cluster = everything beyond the largest copy.
+        $dupeGroups = 0;
+        $dupeRedundantAmount = 0.0;
+        foreach ($byStoreDay as $idxs) {
+            $flagged = array_values(array_filter($idxs, fn ($i) => $dupeFlag[$i]));
+            if (count($flagged) < 2) continue;
+            $dupeGroups++;
+            $totals = array_map(fn ($i) => $txnList[$i]['total'], $flagged);
+            $dupeRedundantAmount += array_sum($totals) - max($totals);
+        }
+        foreach ($txnList as $i => &$tx) {
+            $tx['maybe_dupe'] = $dupeFlag[$i];
         }
         unset($tx);
 
