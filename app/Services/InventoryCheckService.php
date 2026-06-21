@@ -255,11 +255,21 @@ class InventoryCheckService
                 'new_amount' => round($txnNew, 2),
                 'used_amount' => round($txnUsed, 2),
                 'used_share' => round($usedShare * 100, 0),
+                // Bucket each purchase by which side it mostly is, so the audit
+                // can group New (distributor) buys vs Used collection buys.
+                'kind' => $txnUsed >= $txnNew ? 'used' : 'new',
             ];
         }
-        // Sort by date (newest first), then by total so same-day same-amount
-        // entries sit next to each other — makes duplicates easy to spot.
-        usort($txnList, fn ($a, $b) => [$b['date'] ?? '', $b['total']] <=> [$a['date'] ?? '', $a['total']]);
+        // Group by kind first — Used collection buys vs New distributor buys —
+        // then newest first within each group, so same-day entries sit together
+        // and duplicates are easy to spot.
+        usort($txnList, function ($a, $b) {
+            // 'used' group (0) before 'new' group (1).
+            $ka = $a['kind'] === 'used' ? 0 : 1;
+            $kb = $b['kind'] === 'used' ? 0 : 1;
+            if ($ka !== $kb) return $ka <=> $kb;
+            return ($b['date'] ?? '') <=> ($a['date'] ?? '');
+        });
         // Handle transactions with final_total > 0 but no purchase_lines
         // (shouldn't normally happen, but guard so totals reconcile).
         $reconciled = $spentTxnUsed + $spentTxnNew;

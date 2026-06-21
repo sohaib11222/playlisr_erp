@@ -203,13 +203,14 @@ HTML;
             <table class="ica-breakdown-table ica-txn-table">
                 <thead>
                     <tr>
-                        <th>Date</th><th>Ref</th><th>Store</th><th>Supplier</th>
+                        <th>Type</th><th>Date</th><th>Ref</th><th>Store</th><th>Supplier</th>
                         <th class="ica-bd-amt">Total</th><th class="ica-bd-amt">New</th><th class="ica-bd-amt">Used</th>
                     </tr>
                 </thead>
                 <tbody>
                     @foreach($pb['transactions'] as $tx)
                     <tr class="{{ !empty($tx['maybe_dupe']) ? 'ica-txn-dupe' : '' }}">
+                        <td><span class="ica-bd-tag ica-bd-tag-{{ $tx['kind'] }}">{{ $tx['kind'] === 'used' ? 'USED' : 'NEW' }}</span></td>
                         <td class="ica-bd-via">{{ $tx['date'] ? \Carbon\Carbon::parse($tx['date'])->format('M j') : '—' }}</td>
                         <td class="ica-bd-via"><a href="{{ url('/purchases/' . $tx['id']) }}" target="_blank" rel="noopener" class="ica-po-link" title="Open this purchase">{{ $tx['ref_no'] ?: ('#' . $tx['id']) }}</a>@if(!empty($tx['maybe_dupe'])) <span class="ica-dupe-tag">DUP?</span>@endif</td>
                         <td>{{ $tx['location'] }}</td>
