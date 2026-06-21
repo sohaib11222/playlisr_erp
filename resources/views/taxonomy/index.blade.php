@@ -102,9 +102,11 @@ body.taxonomy-v2 th.tax-sortable.active .tax-sort-ind { color:#2F6B3E; }
 </style>
 
 @php
-    // Merge is owner-only (Jon) — same gate as the backend (case-insensitive/trimmed).
-    $can_merge = $can_edit && $can_delete
-        && (strtolower(trim((string) optional(auth()->user())->first_name)) === 'jon');
+    // Merge is owner-only (Jon = Jonathan Hedvat) — same gate as the backend.
+    $merge_user = auth()->user();
+    $can_merge = $can_edit && $can_delete && $merge_user
+        && strtolower(trim((string) $merge_user->first_name)) === 'jonathan'
+        && strtolower(trim((string) $merge_user->last_name)) === 'hedvat';
 
     // Render helpers as closures so the markup below stays DRY.
     $actionBtns = function ($cat) use ($category_type, $can_edit, $can_delete, $can_merge) {

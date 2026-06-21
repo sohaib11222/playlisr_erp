@@ -194,12 +194,12 @@ class TaxonomyController extends Controller
         @set_time_limit(0);
         @ini_set('memory_limit', '512M');
 
-        // Merge is owner-only (Jon). Match first name case-insensitively /
-        // trimmed so "Jon", "jon", "Jon " all pass.
-        $firstName = strtolower(trim((string) auth()->user()->first_name));
-        if ($firstName !== 'jon'
-            || !auth()->user()->can('category.update')
-            || !auth()->user()->can('category.delete')) {
+        // Merge is owner-only (Jon = Jonathan Hedvat). His account first name
+        // is "Jonathan", not "Jon" — match first + last, case-insensitive.
+        $u = auth()->user();
+        $isJon = strtolower(trim((string) $u->first_name)) === 'jonathan'
+            && strtolower(trim((string) $u->last_name)) === 'hedvat';
+        if (!$isJon || !$u->can('category.update') || !$u->can('category.delete')) {
             return response()->json(['success' => false, 'msg' => 'Only Jon can merge categories.'], 403);
         }
 
