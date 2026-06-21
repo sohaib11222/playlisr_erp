@@ -142,6 +142,38 @@ class RingBackfillController extends Controller
         ];
     }
 
+    // Single (non-group) sales-tax rates for the business, for the order-level
+    // tax dropdown. Nivessa rings LA sales tax on top of the sticker price.
+    private function taxRates($business_id)
+    {
+        return DB::table('tax_rates')
+            ->where('business_id', $business_id)
+            ->where('is_tax_group', 0)
+            ->whereNull('deleted_at')
+            ->orderBy('amount')
+            ->get(['id', 'name', 'amount']);
+    }
+
+    // Pick the rate that lands the taxed total closest to the register's $705
+    // (≈9.64% on the $643 base → whatever the store actually has, ~9.5%).
+    private function defaultTaxRateId($rates, $base)
+    {
+        if ($rates->isEmpty() || $base <= 0) {
+            return null;
+        }
+        $target = (self::EXPECTED_TOTAL / $base - 1) * 100;
+        $best = null;
+        $bestDiff = null;
+        foreach ($rates as $r) {
+            $diff = abs((float) $r->amount - $target);
+            if ($bestDiff === null || $diff < $bestDiff) {
+                $bestDiff = $diff;
+                $best = $r->id;
+            }
+        }
+        return $best;
+    }
+
     public function index(Request $request)
     {
         $business_id = $request->session()->get('user.business_id');
@@ -167,6 +199,12 @@ class RingBackfillController extends Controller
 
         $resolved = $this->resolveLines($business_id, $location_id);
 
+        $tax_rates = $this->taxRates($business_id);
+        $base = $resolved['computed_total'];
+        $tax_rate_id = (int) $request->input('tax_rate_id', $this->defaultTaxRateId($tax_rates, $base));
+        $tax_rate = $tax_rates->firstWhere('id', $tax_rate_id);
+        $tax_amount = $tax_rate ? round($base * (float) $tax_rate->amount / 100, 2) : 0;
+
         return view('admin.ring_backfill', [
             'locations'      => $locations,
             'users'          => $users,
@@ -174,7 +212,11 @@ class RingBackfillController extends Controller
             'user_id'        => $user_id,
             'sale_datetime'  => self::SALE_DATETIME,
             'lines'          => $resolved['lines'],
-            'computed_total' => $resolved['computed_total'],
+            'computed_total' => $base,
+            'tax_rates'      => $tax_rates,
+            'tax_rate_id'    => $tax_rate_id,
+            'tax_amount'     => $tax_amount,
+            'total_with_tax' => round($base + $tax_amount, 2),
             'unit_count'     => $resolved['unit_count'],
             'line_count'     => count($resolved['lines']),
             'unmatched'      => $resolved['unmatched'],
@@ -223,7 +265,10 @@ class RingBackfillController extends Controller
                 ->with('status', ['success' => 0, 'msg' => 'Nothing to ring — no lines resolved.']);
         }
 
-        $invoice_total = $this->productUtil->calculateInvoiceTotal($products, null, null, false);
+        // Order-level sales tax (Nivessa rings LA tax on top of sticker). The
+        // chosen rate is applied to the whole basket so final_total = base+tax.
+        $tax_rate_id = (int) $request->input('tax_rate_id') ?: null;
+        $invoice_total = $this->productUtil->calculateInvoiceTotal($products, $tax_rate_id, null, false);
         $final_total = round($invoice_total['final_total'], 2);
 
         // Snapshot BEFORE stock for every matched barcoded line (auditable;
@@ -256,7 +301,7 @@ class RingBackfillController extends Controller
                 'final_total' => $final_total,
                 'discount_type' => 'fixed',
                 'discount_amount' => 0,
-                'tax_rate_id' => null,
+                'tax_rate_id' => $tax_rate_id,
                 'channel' => 'in_store',
                 'commission_agent' => $user_id,
                 'staff_note' => self::TAG . " (snapshot {$snapshotKey})",

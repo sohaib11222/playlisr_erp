@@ -42,15 +42,24 @@
                     <option value="{{ $u->id }}" {{ $u->id == $user_id ? 'selected' : '' }}>{{ $u->full_name }}</option>
                 @endforeach
             </select>
-            <span class="help-block" style="display:inline;margin-left:8px;">change Location to re-preview stock</span>
+            <span style="display:inline-block;width:12px;"></span>
+            <label>Sales tax</label>
+            <select name="tax_rate_id" class="form-control" onchange="this.form.submit()">
+                <option value="0" {{ !$tax_rate_id ? 'selected' : '' }}>No tax</option>
+                @foreach($tax_rates as $t)
+                    <option value="{{ $t->id }}" {{ $t->id == $tax_rate_id ? 'selected' : '' }}>{{ $t->name }} ({{ rtrim(rtrim(number_format($t->amount, 4), '0'), '.') }}%)</option>
+                @endforeach
+            </select>
+            <span class="help-block" style="display:inline;margin-left:8px;">change Location / tax to re-preview</span>
         </form>
 
         <p>
             <strong>{{ $line_count }}</strong> lines / <strong>{{ $unit_count }}</strong> units ·
-            computed total <strong>${{ number_format($computed_total, 2) }}</strong>
-            @if(abs($computed_total - $expected_total) >= 0.01)
+            items ${{ number_format($computed_total, 2) }} + tax ${{ number_format($tax_amount, 2) }} =
+            <strong>total ${{ number_format($total_with_tax, 2) }}</strong>
+            @if(abs($total_with_tax - $expected_total) >= 0.01)
                 <span class="text-red">— register said ${{ number_format($expected_total, 2) }}
-                (off by ${{ number_format($expected_total - $computed_total, 2) }}, reconcile before applying)</span>
+                (off by ${{ number_format($expected_total - $total_with_tax, 2) }})</span>
             @else
                 <span class="text-green">— matches the register's ${{ number_format($expected_total, 2) }}</span>
             @endif
@@ -60,13 +69,14 @@
         </p>
 
         <form id="applyForm" method="POST" action="/admin/ring-backfill/apply"
-              onsubmit="return confirm('Ring up this ${{ number_format($computed_total, 2) }} sale and decrement stock? A snapshot is taken first — undoable at /admin/admin-action-history.');">
+              onsubmit="return confirm('Ring up this ${{ number_format($total_with_tax, 2) }} sale (incl. ${{ number_format($tax_amount, 2) }} tax) and decrement stock? A snapshot is taken first — undoable at /admin/admin-action-history.');">
             {{ csrf_field() }}
             <input type="hidden" name="location_id" value="{{ $location_id }}">
+            <input type="hidden" name="tax_rate_id" value="{{ $tax_rate_id }}">
             <label>Sale date/time</label>
             <input type="datetime-local" name="transaction_date" value="{{ $sale_datetime }}" class="form-control" style="width:auto;display:inline-block;">
             <button type="submit" class="btn btn-primary btn-lg" {{ $already ? 'disabled' : '' }}>
-                Ring up sale (${{ number_format($computed_total, 2) }})
+                Ring up sale (${{ number_format($total_with_tax, 2) }})
             </button>
         </form>
     </div>
