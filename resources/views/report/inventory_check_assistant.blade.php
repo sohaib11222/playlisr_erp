@@ -199,17 +199,52 @@ HTML;
         </div>
         @endif
 
+        {{-- Grouped digest (Sarah 2026-06-21): collapse the long transaction
+             list into one row per supplier+store so it's readable at a glance.
+             Full per-transaction detail stays in the collapsed section below. --}}
+        @if(!empty($pb['transactions']))
+        @php
+            $groups = [];
+            foreach ($pb['transactions'] as $tx) {
+                $isUsed = ($tx['kind'] ?? 'new') === 'used';
+                $label = $isUsed ? 'In-store collections' : (trim((string)($tx['supplier'] ?? '')) ?: 'Other distributor');
+                $store = $tx['location'] ?? '—';
+                $key = ($isUsed ? '0' : '1') . '|' . $label . '|' . $store;
+                if (!isset($groups[$key])) {
+                    $groups[$key] = ['label' => $label, 'store' => $store, 'count' => 0, 'total' => 0.0, 'kind' => $isUsed ? 'used' : 'new'];
+                }
+                $groups[$key]['count']++;
+                $groups[$key]['total'] += $tx['total'];
+            }
+            uasort($groups, fn ($a, $b) => $b['total'] <=> $a['total']);
+        @endphp
+        <div class="ica-digest-title">This week's spend — {{ count($groups) }} supplier/store groups, {{ count($pb['transactions']) }} orders total</div>
+        <table class="ica-breakdown-table ica-digest-table">
+            <thead>
+                <tr><th>Supplier / type</th><th>Store</th><th class="ica-bd-amt">Orders</th><th class="ica-bd-amt">Total</th></tr>
+            </thead>
+            <tbody>
+                @foreach($groups as $g)
+                <tr>
+                    <td><span class="ica-bd-tag ica-bd-tag-{{ $g['kind'] }}">{{ $g['kind'] === 'used' ? 'USED' : 'NEW' }}</span> {{ $g['label'] }}</td>
+                    <td>{{ $g['store'] }}</td>
+                    <td class="ica-bd-amt">{{ $g['count'] }}</td>
+                    <td class="ica-bd-amt">${{ number_format($g['total'], 0) }}</td>
+                </tr>
+                @endforeach
+            </tbody>
+        </table>
+
         {{-- Transaction-level audit of the split (Sarah 2026-06-19) — every
              purchase this week and how much of it landed in New vs Used. --}}
-        @if(!empty($pb['transactions']))
         @if(!empty($pb['dupe_groups']))
         <div class="ica-dupe-warn">
             <strong>{{ $pb['dupe_groups'] }} possible duplicate {{ \Illuminate\Support\Str::plural('purchase', $pb['dupe_groups']) }} this week</strong>
             — same store, total, and day entered more than once (about ${{ number_format($pb['dupe_redundant_amount'], 0) }} of redundant spend if they're real dupes). Flagged in yellow below — open each and void the extra copy if it's the same shipment twice.
         </div>
         @endif
-        <details class="ica-spend-breakdown"@if(!empty($pb['dupe_groups'])) open @endif>
-            <summary>Transactions behind the split — every purchase this week ({{ count($pb['transactions']) }})</summary>
+        <details class="ica-spend-breakdown">
+            <summary>Show every individual order ({{ count($pb['transactions']) }}) — full detail</summary>
             <table class="ica-breakdown-table ica-txn-table">
                 <thead>
                     <tr>
@@ -1375,6 +1410,13 @@ body.ica-wizard-active { padding-bottom: 64px; }
 .ica-ss-store { font-size: 14px; color: #444; }
 .ica-ss-amt { font-size: 20px; font-weight: 800; color: #222; }
 @media (max-width: 700px) { .ica-simple-summary { grid-template-columns: 1fr; } }
+/* Grouped spend digest (Sarah 2026-06-21) */
+.ica-digest-title { margin: 14px 0 6px; font-size: 13px; font-weight: 700; color: #444; }
+.ica-digest-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.ica-digest-table th { text-align: left; padding: 7px 10px; color: #888; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; border-bottom: 2px solid #eee; }
+.ica-digest-table td { padding: 8px 10px; border-bottom: 1px solid #f3f3f3; color: #333; }
+.ica-digest-table .ica-bd-amt { text-align: right; font-weight: 700; white-space: nowrap; }
+.ica-digest-table tr:last-child td { border-bottom: none; }
 /* Category breakdown — what's in New vs Used this week (Sarah 2026-06-19) */
 .ica-spend-breakdown { margin-top: 14px; border: 1px solid #e3e3e3; border-radius: 6px; background: #fff; padding: 0 12px; }
 .ica-spend-breakdown summary { cursor: pointer; padding: 10px 0; font-size: 13px; font-weight: 600; color: #444; }
