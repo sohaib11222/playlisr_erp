@@ -27,12 +27,15 @@
     <div class="col-md-12">
         <div class="box box-solid">
             <div class="box-body">
-                <div class="form-inline">
-                    <span>Owed since <strong>{{ \Carbon::parse($from)->format('M j, Y') }}</strong> (program start) — the same window as the Leaderboard &amp; My Earnings, so all three match.</span>
-                    <span class="pull-right" style="font-size:18px;">
-                        Total owed: <strong>${{ number_format($total_owed, 2) }}</strong>
+                <form method="GET" action="{{ url('/admin/listing-commissions') }}" class="form-inline">
+                    <label for="from">Listed since</label>
+                    <input type="date" id="from" name="from" value="{{ $from }}" min="2026-05-15" class="form-control" style="margin:0 8px;">
+                    <button type="submit" class="btn btn-primary">Apply</button>
+                    <span class="text-muted" style="margin-left:8px;font-size:12px;">May 15 (program start) matches the Leaderboard &amp; My Earnings; a later date is a sub-window. Earned = Paid + Owed.</span>
+                    <span class="pull-right" style="font-size:16px;">
+                        Earned <strong>${{ number_format($total_earned, 2) }}</strong> &nbsp;·&nbsp; Paid <strong>${{ number_format($total_paid_window, 2) }}</strong> &nbsp;·&nbsp; Owed <strong>${{ number_format($total_owed, 2) }}</strong>
                     </span>
-                </div>
+                </form>
             </div>
         </div>
     </div>
@@ -40,9 +43,9 @@
 
 <div class="row">
     <div class="col-md-12">
-        @component('components.widget', ['title' => 'Owed now (since ' . $from . ')'])
+        @component('components.widget', ['title' => 'By person (listed since ' . $from . ')'])
             @if ($people->isEmpty())
-                <p class="text-muted">Nobody is owed listing commission for items listed since {{ $from }} that have sold.</p>
+                <p class="text-muted">No listing commission for items listed since {{ $from }} that have sold.</p>
             @else
                 <table class="table table-striped">
                     <thead>
@@ -52,6 +55,8 @@
                             <th style="text-align:right;">Listed value</th>
                             <th style="text-align:right;">Items sold</th>
                             <th style="text-align:right;">Sale total</th>
+                            <th style="text-align:right;">Earned</th>
+                            <th style="text-align:right;">Paid</th>
                             <th style="text-align:right;">Owed</th>
                             <th></th>
                         </tr>
@@ -62,10 +67,13 @@
                                 <td><a href="{{ url('/my-earnings') }}?user_id={{ $p->user_id }}" title="See {{ $p->name }}'s full earnings page (what they see)">{{ $p->name }}</a></td>
                                 <td style="text-align:right;"><a href="{{ url('/my-earnings/items') }}?user_id={{ $p->user_id }}">{{ number_format($p->listed_count) }}</a></td>
                                 <td style="text-align:right;">${{ number_format($p->listed_value, 2) }}</td>
-                                <td style="text-align:right;">{{ number_format($p->count) }}</td>
+                                <td style="text-align:right;">{{ number_format($p->sold_count) }}</td>
                                 <td style="text-align:right;">${{ number_format($p->sale_total, 2) }}</td>
+                                <td style="text-align:right;">${{ number_format($p->earned, 2) }}</td>
+                                <td style="text-align:right;">${{ number_format($p->paid, 2) }}</td>
                                 <td style="text-align:right;"><strong>${{ number_format($p->owed, 2) }}</strong></td>
                                 <td style="text-align:right;">
+                                    @if($p->owed > 0)
                                     <form method="POST" action="{{ url('/admin/listing-commissions/mark-paid') }}"
                                           onsubmit="return confirm('Mark {{ $p->count }} sold item(s) for {{ $p->name }} as paid (${{ number_format($p->owed, 2) }})?');"
                                           style="margin:0;">
@@ -74,6 +82,9 @@
                                         <input type="hidden" name="from" value="{{ $from }}">
                                         <button type="submit" class="btn btn-success btn-xs">Mark paid</button>
                                     </form>
+                                    @else
+                                        <span class="text-muted">paid up</span>
+                                    @endif
                                 </td>
                             </tr>
                         @endforeach

@@ -50,20 +50,22 @@ class ListingCommissionController extends Controller
 
     public function index(Request $request)
     {
-        // Fixed to the program start. The Leaderboard and My Earnings are both
-        // hard-locked to 2026-05-15, so an adjustable date here was the one
-        // thing that made this page disagree with them (Sarah 2026-06-21). One
-        // window everywhere = the numbers reconcile.
-        $from = self::DEFAULT_FROM;
+        // Window since the program start (clamped to it — earlier dates would
+        // pull in pre-rollout listings and disagree with the Leaderboard /
+        // My Earnings). At the default 2026-05-15 this matches those pages; a
+        // later date is a sub-window.
+        $from = $this->normalizeFrom($request->input('from'));
         $businessId = $request->session()->get('user.business_id');
 
         $paid = $this->loadPayouts();
         $paidLineIds = $this->paidLineIds($paid);
+        $paidSet = array_flip($paidLineIds);
 
-        $lines = $this->ownedSoldLines($businessId, $from, $paidLineIds);
+        // ALL qualifying sold lines (paid + unpaid) so each person's row adds
+        // up: Earned = Paid + Owed, and Paid/Owed both move with the date.
+        $lines = $this->ownedSoldLines($businessId, $from, []);
         $listedTotals = $this->listedTotalsByUser($businessId, $from);
 
-        // Group the unpaid sold lines by lister.
         $people = [];
         foreach ($lines as $row) {
             $uid = $row->user_id;
@@ -74,14 +76,25 @@ class ListingCommissionController extends Controller
                     'name'         => $this->personName($row),
                     'listed_count' => (int) ($lt->listed_count ?? 0),
                     'listed_value' => (float) ($lt->listed_value ?? 0),
-                    'count'        => 0,
+                    'sold_count'   => 0,
                     'sale_total'   => 0.0,
+                    'earned'       => 0.0,
+                    'paid'         => 0.0,
                     'owed'         => 0.0,
+                    'count'        => 0, // unpaid sold lines (what Mark paid covers)
                 ];
             }
-            $people[$uid]->count++;
-            $people[$uid]->sale_total += (float) $row->sale_amount;
-            $people[$uid]->owed += (float) $row->sale_amount * self::RATE;
+            $amt = (float) $row->sale_amount;
+            $comm = $amt * self::RATE;
+            $people[$uid]->sold_count++;
+            $people[$uid]->sale_total += $amt;
+            $people[$uid]->earned += $comm;
+            if (isset($paidSet[(int) $row->line_id])) {
+                $people[$uid]->paid += $comm;
+            } else {
+                $people[$uid]->owed += $comm;
+                $people[$uid]->count++;
+            }
         }
         $people = collect($people)->sortByDesc('owed')->values();
 
@@ -93,6 +106,8 @@ class ListingCommissionController extends Controller
             'people'      => $people,
             'history'     => $history,
             'total_owed'  => $people->sum('owed'),
+            'total_earned'=> $people->sum('earned'),
+            'total_paid_window' => $people->sum('paid'),
             'total_paid'  => $history->sum('amount'),
         ]);
     }
