@@ -194,8 +194,10 @@ class TaxonomyController extends Controller
         @set_time_limit(0);
         @ini_set('memory_limit', '512M');
 
-        // Merge is owner-only (Jon) — same gate convention as HomeController.
-        if (auth()->user()->first_name !== 'Jon'
+        // Merge is owner-only (Jon). Match first name case-insensitively /
+        // trimmed so "Jon", "jon", "Jon " all pass.
+        $firstName = strtolower(trim((string) auth()->user()->first_name));
+        if ($firstName !== 'jon'
             || !auth()->user()->can('category.update')
             || !auth()->user()->can('category.delete')) {
             return response()->json(['success' => false, 'msg' => 'Only Jon can merge categories.'], 403);
