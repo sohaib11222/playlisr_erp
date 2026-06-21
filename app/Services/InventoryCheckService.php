@@ -180,6 +180,7 @@ class InventoryCheckService
             ->join('transactions as t', 't.id', '=', 'pl.transaction_id')
             ->leftJoin('products as p', 'p.id', '=', 'pl.product_id')
             ->leftJoin('contacts as ct', 'ct.id', '=', 't.contact_id')
+            ->leftJoin('users as u', 'u.id', '=', 't.created_by')
             ->where('t.business_id', $business_id)
             ->where('t.type', 'purchase')
             ->whereIn('t.status', $countableStatuses)
@@ -188,8 +189,8 @@ class InventoryCheckService
             $lineAgg->whereIn('t.location_id', $permittedLocations);
         }
         $lineAgg = $lineAgg
-            ->selectRaw('t.id as txn_id, t.location_id as location_id, t.final_total as final_total, t.ref_no as ref_no, t.transaction_date as txn_date, t.created_at as created_at, ct.name as supplier, ct.type as contact_type, p.category_id as category_id, p.added_via as added_via, SUM(pl.quantity * pl.purchase_price_inc_tax) as line_total')
-            ->groupBy('t.id', 't.location_id', 't.final_total', 't.ref_no', 't.transaction_date', 't.created_at', 'ct.name', 'ct.type', 'p.category_id', 'p.added_via')
+            ->selectRaw("t.id as txn_id, t.location_id as location_id, t.final_total as final_total, t.ref_no as ref_no, t.transaction_date as txn_date, t.created_at as created_at, ct.name as supplier, ct.type as contact_type, TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.surname,''))) as entered_by_name, u.username as entered_by_username, p.category_id as category_id, p.added_via as added_via, SUM(pl.quantity * pl.purchase_price_inc_tax) as line_total")
+            ->groupBy('t.id', 't.location_id', 't.final_total', 't.ref_no', 't.transaction_date', 't.created_at', 'ct.name', 'ct.type', 'u.first_name', 'u.surname', 'u.username', 'p.category_id', 'p.added_via')
             ->get();
 
         // Group by txn -> total line value + used line value.
@@ -205,6 +206,7 @@ class InventoryCheckService
                     'created_at' => $row->created_at,
                     'supplier' => $row->supplier,
                     'contact_type' => $row->contact_type,
+                    'entered_by' => trim((string) ($row->entered_by_name ?? '')) ?: ($row->entered_by_username ?? ''),
                     'lines_total' => 0.0,
                     'used_lines' => 0.0,
                 ];
@@ -265,6 +267,7 @@ class InventoryCheckService
                 'ref_no' => $t['ref_no'],
                 'date' => $t['txn_date'] ? substr((string) $t['txn_date'], 0, 10) : null,
                 'entered' => $t['created_at'] ? substr((string) $t['created_at'], 0, 10) : null,
+                'entered_by' => $t['entered_by'] ?? '',
                 // Days between the order date on the PO and when it was keyed in.
                 // A big gap = entered late, which can pile old orders into this
                 // week if the order date was set to "today" by mistake.
