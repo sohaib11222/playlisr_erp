@@ -296,17 +296,36 @@ class LabelsController extends Controller
                     // or re-click when the preview opened in a background tab —
                     // which double-logged the same run and inflated the
                     // "labeled" totals that feed commission. Skip the insert if
-                    // this exact run (same user + qty + value) was already
-                    // logged in the last 60s. Mirrors the synchronous-submit
-                    // guard used for the booking double-charge fix.
-                    $dupExists = DB::table('activity_log')
+                    // the same run was already logged in the last 120s. The
+                    // signature matches the /admin/label-duplicates scanner
+                    // exactly — same user + qty + value + category mix, 120s
+                    // window — so the guard catches every re-click the scanner
+                    // would have flagged (incl. slower ~90s re-clicks), while
+                    // requiring the category mix to match avoids suppressing a
+                    // genuinely different batch that happens to share a total.
+                    $catSig = $label_categories;
+                    ksort($catSig);
+                    $catSig = json_encode($catSig);
+
+                    $recent = DB::table('activity_log')
                         ->where('description', 'labels_printed')
                         ->where('business_id', $business_id)
                         ->where('causer_id', auth()->id())
-                        ->where('created_at', '>=', now()->subSeconds(60))
+                        ->where('created_at', '>=', now()->subSeconds(120))
                         ->whereRaw("JSON_EXTRACT(properties, '$.qty') = ?", [(int) $total_qty])
                         ->whereRaw("CAST(JSON_EXTRACT(properties, '$.value') AS DECIMAL(12,2)) = ?", [round($label_value, 2)])
-                        ->exists();
+                        ->pluck('properties');
+
+                    $dupExists = false;
+                    foreach ($recent as $p) {
+                        $pd = json_decode($p, true) ?: [];
+                        $pc = $pd['categories'] ?? [];
+                        ksort($pc);
+                        if (json_encode($pc) === $catSig) {
+                            $dupExists = true;
+                            break;
+                        }
+                    }
 
                     if (!$dupExists) {
                         DB::table('activity_log')->insert([
