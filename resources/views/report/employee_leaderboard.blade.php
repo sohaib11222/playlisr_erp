@@ -204,9 +204,11 @@
                                     <th class="text-right">Pace</th>
                                     <th class="text-right">Items listed</th>
                                     <th class="text-right">Sales from listed</th>
-                                    <th class="text-right lb-comm">Listing pay</th>
+                                    <th class="text-right lb-comm" title="Total listing commission earned since May 15 — matches the Listing Commissions page">Listing earned</th>
+                                    <th class="text-right" title="Already paid out (from Listing Commissions)">Paid</th>
+                                    <th class="text-right" title="Earned minus paid — what you still owe for listings">Still owed</th>
                                     <th class="text-right lb-soon">Sales bonus</th>
-                                    <th class="text-right">Total commission</th>
+                                    <th class="text-right" title="Still-owed listing pay plus sales bonus">Total owed now</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -250,9 +252,9 @@
                                         @endphp
                                         <td class="text-right">@if($r->priced_count > 0)<a href="#" class="lb-listed-link" {!! $listedAttrs !!}>{{ number_format($r->priced_count, 0) }}</a>@else <span class="text-muted">—</span>@endif</td>
                                         <td class="text-right">@if($r->priced_revenue > 0)<a href="#" class="lb-listed-link" {!! $listedAttrs !!}>${{ number_format($r->priced_revenue, 0) }}</a>@else ${{ number_format($r->priced_revenue, 0) }}@endif</td>
-                                        <td class="text-right lb-comm">
-                                            @if($r->barcoding_commission > 0)${{ number_format($r->barcoding_commission, 2) }}@else <span class="text-muted">—</span>@endif
-                                        </td>
+                                        <td class="text-right lb-comm">@if($r->listing_earned > 0)${{ number_format($r->listing_earned, 2) }}@else <span class="text-muted">—</span>@endif</td>
+                                        <td class="text-right">@if($r->listing_paid > 0)<span class="text-muted">${{ number_format($r->listing_paid, 2) }}</span>@else <span class="text-muted">—</span>@endif</td>
+                                        <td class="text-right">@if($r->listing_owed > 0)<strong>${{ number_format($r->listing_owed, 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>
                                         <td class="text-right lb-soon">
                                             @if($r->sales_bonus_live)
                                                 @if($r->goal_bonus > 0)${{ number_format($r->goal_bonus, 2) }}@else <span class="text-muted">—</span>@endif
@@ -265,10 +267,11 @@
                                                 @endif
                                             @endif
                                         </td>
-                                        <td class="text-right">@if($r->total_commission > 0)<strong>${{ number_format($r->total_commission, 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>
+                                        @php $total_owed_now = round($r->listing_owed + $r->goal_bonus, 2); @endphp
+                                        <td class="text-right">@if($total_owed_now > 0)<strong>${{ number_format($total_owed_now, 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>
                                     </tr>
                                 @empty
-                                    <tr><td colspan="12" class="text-center text-muted">No activity in this window.</td></tr>
+                                    <tr><td colspan="14" class="text-center text-muted">No activity in this window.</td></tr>
                                 @endforelse
                             </tbody>
                         </table>

@@ -12428,8 +12428,15 @@ class ReportController extends Controller
         // layered on in attachHourTargets, not here, because it needs the
         // per-store hourly curve and clocked-in headcount (Sarah 2026-06-02).
         $commission = collect();
+        $listingSummary = collect();
         if ($with_commission) {
             $commission = $this->barcodingCommissionByUser($business_id, $start, $end, $location_id);
+            // Cumulative since-rollout earned/paid/owed, identical source to
+            // /admin/listing-commissions, so the board reconciles with the
+            // payables page (Sarah 2026-06-21). Global (all stores) — payouts
+            // aren't location-tagged — so it matches the single owed page.
+            $listingSummary = app(\App\Http\Controllers\ListingCommissionController::class)
+                ->summaryByUser($business_id);
         }
 
         // Merge keys from every side.
@@ -12463,7 +12470,7 @@ class ReportController extends Controller
 
         $user_ids = $user_ids->filter(fn ($uid) => $users->has($uid))->values();
 
-        $rows = $user_ids->map(function ($uid) use ($tx_agg, $items_agg, $priced_rev, $users, $hours_raw, $commission, $with_commission) {
+        $rows = $user_ids->map(function ($uid) use ($tx_agg, $items_agg, $priced_rev, $users, $hours_raw, $commission, $listingSummary, $with_commission) {
             $u = $users->get($uid);
             $t = $tx_agg->get($uid);
             $name = trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
@@ -12482,6 +12489,12 @@ class ReportController extends Controller
             $hr_eff = $hours >= 0.25 ? $hours : null;
 
             $barcoding_commission = (float) optional($commission->get($uid))->commission ?? 0;
+
+            // Cumulative listing pay since rollout (matches /admin/listing-commissions).
+            $ls = $listingSummary->get($uid);
+            $listing_earned = (float) optional($ls)->earned ?? 0;
+            $listing_paid   = (float) optional($ls)->paid ?? 0;
+            $listing_owed   = (float) optional($ls)->owed ?? 0;
 
             // Sales-goal target + bonus are hour-based now and filled in by
             // attachHourTargets (it owns the store hourly curve + headcount).
@@ -12511,6 +12524,9 @@ class ReportController extends Controller
                 'tx_per_hour'      => $hr_eff ? $tx_count / $hr_eff : null,
                 'priced_per_hour'  => $hr_eff ? $priced_count / $hr_eff : null,
                 'barcoding_commission' => $barcoding_commission,
+                'listing_earned' => $listing_earned,
+                'listing_paid' => $listing_paid,
+                'listing_owed' => $listing_owed,
                 'goal' => $goal,
                 'goal_hit' => $goal_hit,
                 'goal_bonus' => $goal_bonus,

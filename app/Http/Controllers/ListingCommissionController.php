@@ -165,6 +165,40 @@ class ListingCommissionController extends Controller
             ->with('status', ['success' => 1, 'msg' => 'Payout undone — those sales are owed again.']);
     }
 
+    // Per-user listing-commission summary since $from, keyed by user_id:
+    // owed (unpaid, current formula), paid (actual dollars from the payout
+    // ledger), and earned = owed + paid. Reuses the exact same owed/paid
+    // sources as the page above, so anything that renders this reconciles with
+    // /admin/listing-commissions to the penny. Used by the Employee Leaderboard
+    // so its listing numbers match this page (Sarah 2026-06-21).
+    public function summaryByUser($businessId, $from = self::DEFAULT_FROM)
+    {
+        $from = $this->normalizeFrom($from);
+        $paid = $this->loadPayouts();
+        $paidLineIds = $this->paidLineIds($paid);
+
+        $owedByUser = [];
+        foreach ($this->ownedSoldLines($businessId, $from, $paidLineIds) as $row) {
+            $uid = (int) $row->user_id;
+            $owedByUser[$uid] = ($owedByUser[$uid] ?? 0) + (float) $row->sale_amount * self::RATE;
+        }
+
+        $paidByUser = [];
+        foreach ($paid as $p) {
+            $uid = (int) ($p['user_id'] ?? 0);
+            if ($uid <= 0) { continue; }
+            $paidByUser[$uid] = ($paidByUser[$uid] ?? 0) + (float) ($p['amount'] ?? 0);
+        }
+
+        $out = [];
+        foreach (array_unique(array_merge(array_keys($owedByUser), array_keys($paidByUser))) as $uid) {
+            $owed = round($owedByUser[$uid] ?? 0, 2);
+            $pd   = round($paidByUser[$uid] ?? 0, 2);
+            $out[$uid] = (object) ['owed' => $owed, 'paid' => $pd, 'earned' => round($owed + $pd, 2)];
+        }
+        return collect($out);
+    }
+
     // Unpaid sold lines: one row per item sold (final sell) whose product was
     // listed on/after $from by the lister (products.created_by), excluding
     // sealed/new stock + non-vinyl categories, with the realized sale value and
