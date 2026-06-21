@@ -33,6 +33,10 @@ body.role-picker .me-chips { display:flex; gap:14px; flex-wrap:wrap; }
 body.role-picker .me-chip { background:#F7F1E3; border-radius:10px; padding:12px 16px; min-width:150px; }
 body.role-picker .me-chip .n { font-size:22px; font-weight:800; }
 body.role-picker .me-chip .l { font-size:12px; color:#8E8273; text-transform:uppercase; letter-spacing:.4px; }
+body.role-picker .me-hero { background:#FFF2B3; border:1px solid #EADFAE; border-radius:14px; padding:22px 24px; margin-bottom:16px; box-shadow:0 1px 2px rgba(31,27,22,.06); }
+body.role-picker .me-hero .lbl { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#6B5E2E; margin-bottom:4px; }
+body.role-picker .me-hero .val { font-size:44px; font-weight:800; letter-spacing:-1px; color:#1F1B16; line-height:1.05; }
+body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; font-weight:600; }
 </style>
 
 <section class="content-header">
@@ -42,7 +46,19 @@ body.role-picker .me-chip .l { font-size:12px; color:#8E8273; text-transform:upp
 
 <section class="content">
     <div class="me-wrap">
-        <div class="me-stats">
+        @php
+            $total_earned = round($earned + (float) $sales_bonus['bonus'], 2);
+            $total_owed = round($owed + (float) $sales_bonus['bonus'], 2);
+        @endphp
+        <div class="me-hero">
+            <div class="lbl">Total commission earned</div>
+            <div class="val">${{ number_format($total_earned, 2) }}</div>
+            <div class="sub">${{ number_format($earned, 2) }} listing pay + ${{ number_format($sales_bonus['bonus'], 2) }} sales bonus{{ $sales_bonus['live'] ? '' : ' (projected)' }}</div>
+        </div>
+
+        <div class="me-card" style="margin-bottom:14px;">
+            <h3 style="margin-bottom:10px;">Listing commission</h3>
+        <div class="me-stats" style="margin-bottom:0;">
             <div class="me-stat">
                 <div class="lbl">Earned to date</div>
                 <div class="val">${{ number_format($earned, 2) }}</div>
@@ -58,6 +74,7 @@ body.role-picker .me-chip .l { font-size:12px; color:#8E8273; text-transform:upp
                 <div class="val">${{ number_format($owed, 2) }}</div>
                 <div class="sub">{{ $owed_count }} sold item(s) not yet paid</div>
             </div>
+        </div>
         </div>
 
         <div class="me-card">
