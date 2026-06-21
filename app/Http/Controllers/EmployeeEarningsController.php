@@ -227,7 +227,7 @@ class EmployeeEarningsController extends Controller
         $genreTotalUnits = (float) ($soldTotals->units ?? 0);
         $topGenres = (clone $soldBase)
             ->selectRaw("{$genreExpr} as genre, SUM({$unitsExpr}) as units, COUNT(*) as items, COALESCE(SUM({$commExpr}), 0) as comm")
-            ->groupByRaw($genreExpr)
+            ->groupBy(DB::raw($genreExpr))
             ->orderByDesc('units')
             ->limit(3)
             ->get()
