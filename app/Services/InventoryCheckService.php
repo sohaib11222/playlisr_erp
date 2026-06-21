@@ -188,8 +188,8 @@ class InventoryCheckService
             $lineAgg->whereIn('t.location_id', $permittedLocations);
         }
         $lineAgg = $lineAgg
-            ->selectRaw('t.id as txn_id, t.location_id as location_id, t.final_total as final_total, t.ref_no as ref_no, t.transaction_date as txn_date, ct.name as supplier, ct.type as contact_type, p.category_id as category_id, p.added_via as added_via, SUM(pl.quantity * pl.purchase_price_inc_tax) as line_total')
-            ->groupBy('t.id', 't.location_id', 't.final_total', 't.ref_no', 't.transaction_date', 'ct.name', 'ct.type', 'p.category_id', 'p.added_via')
+            ->selectRaw('t.id as txn_id, t.location_id as location_id, t.final_total as final_total, t.ref_no as ref_no, t.transaction_date as txn_date, t.created_at as created_at, ct.name as supplier, ct.type as contact_type, p.category_id as category_id, p.added_via as added_via, SUM(pl.quantity * pl.purchase_price_inc_tax) as line_total')
+            ->groupBy('t.id', 't.location_id', 't.final_total', 't.ref_no', 't.transaction_date', 't.created_at', 'ct.name', 'ct.type', 'p.category_id', 'p.added_via')
             ->get();
 
         // Group by txn -> total line value + used line value.
@@ -202,6 +202,7 @@ class InventoryCheckService
                     'final_total' => (float) $row->final_total,
                     'ref_no' => $row->ref_no,
                     'txn_date' => $row->txn_date,
+                    'created_at' => $row->created_at,
                     'supplier' => $row->supplier,
                     'contact_type' => $row->contact_type,
                     'lines_total' => 0.0,
@@ -257,6 +258,13 @@ class InventoryCheckService
                 'id' => $tid,
                 'ref_no' => $t['ref_no'],
                 'date' => $t['txn_date'] ? substr((string) $t['txn_date'], 0, 10) : null,
+                'entered' => $t['created_at'] ? substr((string) $t['created_at'], 0, 10) : null,
+                // Days between the order date on the PO and when it was keyed in.
+                // A big gap = entered late, which can pile old orders into this
+                // week if the order date was set to "today" by mistake.
+                'late_days' => ($t['txn_date'] && $t['created_at'])
+                    ? (int) round((strtotime(substr((string) $t['created_at'], 0, 10)) - strtotime(substr((string) $t['txn_date'], 0, 10))) / 86400)
+                    : 0,
                 'location_id' => $lid,
                 'supplier' => $t['supplier'],
                 'total' => round($ft, 2),

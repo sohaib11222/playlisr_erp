@@ -203,7 +203,7 @@ HTML;
             <table class="ica-breakdown-table ica-txn-table">
                 <thead>
                     <tr>
-                        <th>Type</th><th>Date</th><th>Ref</th><th>Store</th><th>Supplier</th>
+                        <th>Type</th><th>Order date</th><th>Entered</th><th>Ref</th><th>Store</th><th>Supplier</th>
                         <th class="ica-bd-amt">Total</th><th class="ica-bd-amt">New</th><th class="ica-bd-amt">Used</th>
                     </tr>
                 </thead>
@@ -212,6 +212,7 @@ HTML;
                     <tr class="{{ !empty($tx['maybe_dupe']) ? 'ica-txn-dupe' : '' }}">
                         <td><span class="ica-bd-tag ica-bd-tag-{{ $tx['kind'] }}">{{ $tx['kind'] === 'used' ? 'USED' : 'NEW' }}</span></td>
                         <td class="ica-bd-via">{{ $tx['date'] ? \Carbon\Carbon::parse($tx['date'])->format('M j') : '—' }}</td>
+                        <td class="ica-bd-via">{{ !empty($tx['entered']) ? \Carbon\Carbon::parse($tx['entered'])->format('M j') : '—' }}@if(($tx['late_days'] ?? 0) >= 3) <span class="ica-late-tag" title="Keyed in {{ $tx['late_days'] }} days after the order date">+{{ $tx['late_days'] }}d</span>@endif</td>
                         <td class="ica-bd-via"><a href="{{ url('/purchases/' . $tx['id']) }}" target="_blank" rel="noopener" class="ica-po-link" title="Open this purchase">{{ $tx['ref_no'] ?: ('#' . $tx['id']) }}</a>@if(!empty($tx['maybe_dupe'])) <span class="ica-dupe-tag">DUP?</span>@endif</td>
                         <td>{{ $tx['location'] }}</td>
                         <td>{{ $tx['supplier'] ?: '—' }}</td>
@@ -1365,6 +1366,7 @@ body.ica-wizard-active { padding-bottom: 64px; }
 .ica-bd-tag-used { background: #e8f5e9; color: #2e7d32; }
 .ica-bd-new td:first-child { box-shadow: inset 3px 0 0 #f0ad4e; }
 .ica-bd-note { font-size: 12px; color: #777; padding: 6px 0 12px; line-height: 1.45; }
+.ica-late-tag { display: inline-block; font-size: 10px; font-weight: 800; color: #8a4b00; background: #ffe0b2; padding: 0 4px; border-radius: 3px; margin-left: 4px; }
 .ica-po-link { color: #2c699a; font-weight: 600; text-decoration: underline; }
 .ica-po-link:hover { color: #1d4a70; }
 .ica-txn-table .ica-txn-new { color: #1565c0; font-weight: 700; }
