@@ -3526,13 +3526,26 @@ class SellPosController extends Controller
                 ->orderBy('id', 'desc')
                 ->first();
             if ($priorShift) {
-                $opened = \Carbon::parse($priorShift->created_at)
-                    ->setTimezone('America/Los_Angeles')->format('M j, g:i A');
-                return redirect('/cash-register/close-register/' . $priorShift->id)
-                    ->with('status', [
-                        'success' => 0,
-                        'msg' => "You didn't close your shift from {$opened}. Count the drawer and record the closing cash + safe drop before starting a new shift.",
-                    ]);
+                // Sarah 2026-06-21: don't force a midnight cash count on an
+                // ACTIVE overnight shift. Night cashiers (e.g. Willy, 7:30pm–1am+)
+                // open before midnight and keep ringing past it — the calendar
+                // date rolling over shouldn't make them count the drawer
+                // mid-shift. Only treat a prior-day open register as abandoned
+                // (and force the close) when it's actually gone idle; a shift
+                // with recent activity is live, so let them keep ringing on it.
+                // Truly abandoned prior-day shifts are still swept by
+                // autoCloseInactiveRegisters(6) / autoCloseStaleOpenRegisters(12).
+                $lastActivity = $this->cashRegisterUtil->getLastActivityAt($priorShift);
+                $isLiveOvernight = $lastActivity->greaterThan(\Carbon::now()->subHours(6));
+                if (!$isLiveOvernight) {
+                    $opened = \Carbon::parse($priorShift->created_at)
+                        ->setTimezone('America/Los_Angeles')->format('M j, g:i A');
+                    return redirect('/cash-register/close-register/' . $priorShift->id)
+                        ->with('status', [
+                            'success' => 0,
+                            'msg' => "You didn't close your shift from {$opened}. Count the drawer and record the closing cash + safe drop before starting a new shift.",
+                        ]);
+                }
             }
         } catch (\Throwable $e) {
             \Log::warning('prior-shift-close gate failed: ' . $e->getMessage());
