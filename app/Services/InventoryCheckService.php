@@ -141,13 +141,14 @@ class InventoryCheckService
             return null;
         }
 
-        // Only count money committed to stock we've actually taken in: RECEIVED
-        // purchases, plus buy-from-customer collections (saved as 'draft' but
-        // the cash is already paid out). Open distributor orders (e.g. AMS POs
-        // not yet arrived) sit in other statuses and must NOT count as spend —
-        // they're commitments, not money out, and were inflating the total.
+        // Count spend the moment an order is placed — Sarah: "the AMS orders we
+        // put in this week ARE what we spent." So include open distributor
+        // orders ('ordered'/'pending') alongside received stock and
+        // buy-from-customer collections ('draft'). Pico's buying is mostly open
+        // AMS orders, so excluding those wrongly made Pico look near-empty.
+        // Duplicates are handled by the dupe flag, not by hiding orders.
         // (Sarah 2026-06-20)
-        $countableStatuses = ['received', 'draft'];
+        $countableStatuses = ['received', 'draft', 'ordered', 'pending'];
 
         // Total spend from formal purchase transactions (final_total). Kept
         // as the top-line figure for backwards compat with code that reads
