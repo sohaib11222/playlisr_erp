@@ -237,11 +237,17 @@ class InventoryCheckService
                 // as New so it doesn't vanish from the split.
                 $usedShare = 0.0;
             }
-            // A buy whose contact is a customer (walk-in / individual selling us
-            // records) is a Used collection — NOT a new distributor order — even
-            // if the items carry no "used" category. Distributors (AMS, posters
-            // wholesale) are supplier-type contacts and stay New. 2026-06-20 Sarah.
-            if (strtolower((string) ($t['contact_type'] ?? '')) === 'customer') {
+            // A buy from a walk-in / individual selling us records is a Used
+            // collection — NOT a new distributor order — even if the items carry
+            // no "used" category. Match a customer-type contact OR a contact name
+            // like "walk-in" (these are often set up as supplier-type so a
+            // purchase can be booked against them, so the name is the reliable
+            // signal). Distributors (AMS, posters wholesale) stay New.
+            // 2026-06-20 Sarah.
+            $contactName = strtolower((string) ($t['supplier'] ?? ''));
+            $isCollectionBuy = strtolower((string) ($t['contact_type'] ?? '')) === 'customer'
+                || strpos($contactName, 'walk') !== false;
+            if ($isCollectionBuy) {
                 $usedShare = 1.0;
             }
             $txnUsed = $ft * $usedShare;
