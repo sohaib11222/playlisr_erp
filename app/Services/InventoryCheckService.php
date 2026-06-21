@@ -250,21 +250,20 @@ class InventoryCheckService
                 || strtolower((string) ($t['contact_type'] ?? '')) === 'customer'
                 || strpos(strtolower($contactName), 'walk') !== false;
             $isDistributor = $this->isDistributorSupplier($contactName);
-            // Warehouse re-dating: the purchase is built mostly from freshly
-            // mass-added products (only the mass-add tool stamps 'mass_add'; the
-            // Purchases screen leaves it null). These get this-week dates and a
-            // supplier but are NOT money spent this week, so they never count —
-            // even if the supplier happens to be a distributor.
-            $massAddShare = $t['lines_total'] > 0 ? ($t['massadd_lines'] / $t['lines_total']) : 0;
-            $isWarehouseRedate = $massAddShare > 0.5;
+            // NOTE: we deliberately do NOT exclude on added_via='mass_add' here.
+            // Pico's real AMS orders are entered through the mass-add flow too, so
+            // that filter wrongly zeroed Pico's New. The reliable signal is the
+            // supplier: warehouse re-dating carries no real distributor, real
+            // orders do. So a real distributor name → counts; everything without
+            // a distributor (and not a collection) is excluded. (Sarah 2026-06-21)
 
             if ($isCollectionBuy) {
                 $usedShare = 1.0;   // whole buy is Used
-            } elseif ($isDistributor && !$isWarehouseRedate) {
+            } elseif ($isDistributor) {
                 $usedShare = 0.0;   // real distributor order — whole order is New
             } else {
-                // Mass-add warehouse re-dating, or a non-distributor/non-collection
-                // purchase — not a real weekly outlay. Skip it.
+                // No distributor supplier and not a collection — warehouse
+                // re-dating / non-purchase. Not real weekly spend. Skip it.
                 $excludedCount++;
                 $excludedTotal += $ft;
                 continue;
