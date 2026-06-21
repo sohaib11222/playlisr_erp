@@ -86,7 +86,7 @@
                 </div>
             </div>
             <div class="ica-ss-card ica-ss-new">
-                <div class="ica-ss-title">New — distributor orders (AMS, SHein, DeeJay, …)</div>
+                <div class="ica-ss-title">New — distributor / supplier orders</div>
                 <div class="ica-ss-rows">
                     <span class="ica-ss-row"><span class="ica-ss-store">All new purchases</span><span class="ica-ss-amt">${{ number_format($newTotal, 0) }}</span></span>
                 </div>
@@ -195,7 +195,7 @@ HTML;
         @if(!empty($pb['excluded_count']))
         <div class="ica-bd-excluded-note">
             <strong>{{ $pb['excluded_count'] }} {{ \Illuminate\Support\Str::plural('entry', $pb['excluded_count']) }} (${{ number_format($pb['excluded_total'], 0) }}) not counted as weekly spend</strong>
-            — purchases that aren't a distributor order or a buy-from-customer collection (mass-add warehouse stock being back-dated, etc.). The budget only counts real money out: distributor New + in-store Used.
+            — warehouse stock being date-stamped through the mass-add "send to add purchase" flow, not money spent this week. Every real order entered on the Purchases screen counts.
         </div>
         @endif
 

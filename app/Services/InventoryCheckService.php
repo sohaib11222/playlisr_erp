@@ -249,25 +249,23 @@ class InventoryCheckService
             $isCollectionBuy = !empty($t['is_bfc'])
                 || strtolower((string) ($t['contact_type'] ?? '')) === 'customer'
                 || strpos(strtolower($contactName), 'walk') !== false;
-            $isDistributor = $this->isDistributorSupplier($contactName);
-            // NOTE: we deliberately do NOT exclude on added_via='mass_add' here.
-            // Pico's real AMS orders are entered through the mass-add flow too, so
-            // that filter wrongly zeroed Pico's New. The reliable signal is the
-            // supplier: warehouse re-dating carries no real distributor, real
-            // orders do. So a real distributor name → counts; everything without
-            // a distributor (and not a collection) is excluded. (Sarah 2026-06-21)
-
-            if ($isCollectionBuy) {
-                $usedShare = 1.0;   // whole buy is Used
-            } elseif ($isDistributor) {
-                $usedShare = 0.0;   // real distributor order — whole order is New
-            } else {
-                // No distributor supplier and not a collection — warehouse
-                // re-dating / non-purchase. Not real weekly spend. Skip it.
+            // The ONLY thing that isn't real weekly spend is mass-add warehouse
+            // re-dating (clerks date-stamping existing stock via "Save & send to
+            // add purchase"). Those purchases are built from mass-added products
+            // (added_via='mass_add'; the Purchases screen leaves it null). Real
+            // orders — whatever their supplier/reference (AMS, CMURDA, jonmurda…)
+            // — are entered fresh on the Purchases screen and all count. There is
+            // NO distributor allow-list: it wrongly dropped every non-AMS order.
+            // (Sarah 2026-06-21, confirmed against the Hollywood PO list.)
+            $massAddShare = $t['lines_total'] > 0 ? ($t['massadd_lines'] / $t['lines_total']) : 0;
+            if ($massAddShare > 0.5) {
                 $excludedCount++;
                 $excludedTotal += $ft;
                 continue;
             }
+            // Collection buys (in-store, from a person/walk-in) are Used; every
+            // other real order is New.
+            $usedShare = $isCollectionBuy ? 1.0 : 0.0;
 
             $txnUsed = $ft * $usedShare;
             $txnNew = $ft * (1 - $usedShare);
