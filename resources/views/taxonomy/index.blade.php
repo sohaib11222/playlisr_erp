@@ -147,7 +147,7 @@ body.taxonomy-v2 th.tax-sortable.active .tax-sort-ind { color:#2F6B3E; }
                             data-search="{{ strtolower($parent->name) }}">
                             <td>
                                 <span class="tax-caret {{ $hasKids ? '' : 'leaf' }}">&#9656;</span>{{ $parent->name }}
-                                @if($hasKids)<span class="tax-subcount">{{ $kids->count() }} sub@if($kids->count() != 1)s@endif</span>@endif
+                                @if($hasKids)<span class="tax-subcount">{{ $kids->count() }} {{ $kids->count() == 1 ? 'sub' : 'subs' }}</span>@endif
                             </td>
                             <td class="tax-desc">{{ $parent->description }}</td>
                             <td>{!! $countCell($parentCounts[$parent->id] ?? 0, 'category_id', $parent->id) !!}</td>
@@ -175,7 +175,7 @@ body.taxonomy-v2 th.tax-sortable.active .tax-sort-ind { color:#2F6B3E; }
                         <tr class="parent-row" data-pid="ungrouped" data-count="{{ $ungroupedTotal }}" data-search="ungrouped">
                             <td>
                                 <span class="tax-caret">&#9656;</span>Ungrouped
-                                <span class="tax-subcount">{{ $ungrouped->count() }} item@if($ungrouped->count() != 1)s@endif</span>
+                                <span class="tax-subcount">{{ $ungrouped->count() }} {{ $ungrouped->count() == 1 ? 'item' : 'items' }}</span>
                             </td>
                             <td class="tax-desc">Sub-categories whose parent was deleted</td>
                             <td></td>
