@@ -116,6 +116,7 @@ class EmployeeEarningsController extends Controller
             'sales_bonus'  => $salesBonus,
             'bonus_from'   => $bonusFrom,
             'viewing_other'=> $viewingOther,
+            'target_id'    => $userId,
         ]);
     }
 

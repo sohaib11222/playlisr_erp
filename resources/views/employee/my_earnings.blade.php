@@ -111,7 +111,7 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
         <div class="me-card">
             <h3>See your items</h3>
             <p class="me-muted" style="margin:-4px 0 12px;">Every item you listed, with which ones sold and what each earned.</p>
-            <a class="li-link" href="{{ url('/my-earnings/items') }}{{ $viewing_other ? '?user_id='.$user->id : '' }}" style="display:inline-flex;align-items:center;min-height:42px;padding:9px 18px;border:0;border-radius:8px;font-weight:700;font-size:14px;text-decoration:none;background:#1F1B16;color:#FAF6EE;">View all {{ number_format($listed_count) }} items {{ $viewing_other ? 'they' : 'I' }} listed &rarr;</a>
+            <a class="li-link" href="{{ url('/my-earnings/items') }}{{ $viewing_other ? '?user_id='.$target_id : '' }}" style="display:inline-flex;align-items:center;min-height:42px;padding:9px 18px;border:0;border-radius:8px;font-weight:700;font-size:14px;text-decoration:none;background:#1F1B16;color:#FAF6EE;">View all {{ number_format($listed_count) }} items {{ $viewing_other ? 'they' : 'I' }} listed &rarr;</a>
         </div>
 
         <div class="me-card">
