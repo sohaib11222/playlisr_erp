@@ -141,6 +141,14 @@ class InventoryCheckService
             return null;
         }
 
+        // Only count money committed to stock we've actually taken in: RECEIVED
+        // purchases, plus buy-from-customer collections (saved as 'draft' but
+        // the cash is already paid out). Open distributor orders (e.g. AMS POs
+        // not yet arrived) sit in other statuses and must NOT count as spend —
+        // they're commitments, not money out, and were inflating the total.
+        // (Sarah 2026-06-20)
+        $countableStatuses = ['received', 'draft'];
+
         // Total spend from formal purchase transactions (final_total). Kept
         // as the top-line figure for backwards compat with code that reads
         // $pb['spent']. The used/new split below uses purchase_lines × the
@@ -148,6 +156,7 @@ class InventoryCheckService
         $q = DB::table('transactions as t')
             ->where('t.business_id', $business_id)
             ->where('t.type', 'purchase')
+            ->whereIn('t.status', $countableStatuses)
             ->whereBetween(DB::raw('date(t.transaction_date)'), [$week['start'], $week['end']]);
         if ($permittedLocations !== 'all') {
             $q->whereIn('t.location_id', $permittedLocations);
@@ -172,6 +181,7 @@ class InventoryCheckService
             ->leftJoin('contacts as ct', 'ct.id', '=', 't.contact_id')
             ->where('t.business_id', $business_id)
             ->where('t.type', 'purchase')
+            ->whereIn('t.status', $countableStatuses)
             ->whereBetween(DB::raw('date(t.transaction_date)'), [$week['start'], $week['end']]);
         if ($permittedLocations !== 'all') {
             $lineAgg->whereIn('t.location_id', $permittedLocations);
@@ -299,6 +309,7 @@ class InventoryCheckService
             ->leftJoin('business_locations as bl', 'bl.id', '=', 't.location_id')
             ->where('t.business_id', $business_id)
             ->where('t.type', 'purchase')
+            ->whereIn('t.status', $countableStatuses)
             ->whereBetween(DB::raw('date(t.transaction_date)'), [$week['start'], $week['end']]);
         if ($permittedLocations !== 'all') {
             $perLocQ->whereIn('t.location_id', $permittedLocations);
@@ -486,6 +497,7 @@ class InventoryCheckService
             ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
             ->where('t.business_id', $business_id)
             ->where('t.type', 'purchase')
+            ->whereIn('t.status', $countableStatuses)
             ->whereBetween(DB::raw('date(t.transaction_date)'), [$week['start'], $week['end']]);
         if ($permittedLocations !== 'all') {
             $breakdownQ->whereIn('t.location_id', $permittedLocations);
