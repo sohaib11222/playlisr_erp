@@ -12260,6 +12260,11 @@ class ReportController extends Controller
             ->where('t.status', 'final')
             ->whereNull('t.import_source')
             ->where('p.created_by', $user_id)
+            // Same May-15 rollout gate as barcodingCommissionByUser, so this
+            // drill only shows commission-ELIGIBLE items and its revenue × 2%
+            // reconciles with the commission on the board. Without it the list
+            // also showed pre-rollout listings that don't earn (Sarah 2026-06-21).
+            ->where('p.created_at', '>=', '2026-05-15 00:00:00')
             ->whereBetween('t.transaction_date', [$start->toDateTimeString(), $end->toDateTimeString()]);
         // USED items only, mirroring the board's priced_revenue query so totals reconcile.
         $this->applyUsedItemCategoryFilter($q);
@@ -12274,17 +12279,21 @@ class ReportController extends Controller
             ->limit(200)
             ->get()
             ->map(function ($r) {
+                $revenue = round((float) $r->revenue, 2);
                 return [
-                    'product' => $r->product,
-                    'units'   => (int) $r->units,
-                    'revenue' => round((float) $r->revenue, 2),
+                    'product'    => $r->product,
+                    'units'      => (int) $r->units,
+                    'revenue'    => $revenue,
+                    'commission' => round($revenue * 0.02, 2),
                 ];
             });
 
+        $totalRevenue = round($items->sum('revenue'), 2);
         return response()->json([
-            'items'         => $items,
-            'total_units'   => (int) $items->sum('units'),
-            'total_revenue' => round($items->sum('revenue'), 2),
+            'items'            => $items,
+            'total_units'      => (int) $items->sum('units'),
+            'total_revenue'    => $totalRevenue,
+            'total_commission' => round($totalRevenue * 0.02, 2),
         ]);
     }
 
@@ -12394,6 +12403,13 @@ class ReportController extends Controller
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
             ->whereNull('t.import_source')
+            ->whereNotNull('p.created_by')
+            // Match barcodingCommissionByUser's May-15 rollout gate so the
+            // board's "Items listed" / "Sales from listed" describe the same
+            // commission-eligible set as "Listing pay" and reconcile with it
+            // (without this, sales-from-listed showed pre-rollout listings that
+            // earn no commission — Sarah 2026-06-21).
+            ->where('p.created_at', '>=', '2026-05-15 00:00:00')
             ->whereBetween('t.transaction_date', [$start, $end]);
         $this->applyUsedItemCategoryFilter($priced_rev_q);
         if (!empty($location_id)) {

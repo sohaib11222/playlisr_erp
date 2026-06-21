@@ -297,6 +297,7 @@
                                 <th>Item</th>
                                 <th class="text-right">Units sold</th>
                                 <th class="text-right">Revenue</th>
+                                <th class="text-right">Listing pay (2%)</th>
                             </tr>
                         </thead>
                         <tbody id="lb-listed-body"></tbody>
@@ -305,6 +306,7 @@
                                 <td>Total</td>
                                 <td class="text-right" id="lb-listed-total-units"></td>
                                 <td class="text-right" id="lb-listed-total-rev"></td>
+                                <td class="text-right" id="lb-listed-total-comm"></td>
                             </tr>
                         </tfoot>
                     </table>
@@ -418,11 +420,13 @@
                     nameCell.textContent = it.product; // textContent escapes
                     return '<tr><td>' + nameCell.innerHTML + '</td>' +
                            '<td class="text-right">' + Number(it.units).toLocaleString() + '</td>' +
-                           '<td class="text-right">' + money(it.revenue) + '</td></tr>';
+                           '<td class="text-right">' + money(it.revenue) + '</td>' +
+                           '<td class="text-right">' + money(it.commission) + '</td></tr>';
                 }).join('');
                 document.getElementById('lb-listed-body').innerHTML = rows;
                 document.getElementById('lb-listed-total-units').textContent = Number(d.total_units).toLocaleString();
                 document.getElementById('lb-listed-total-rev').textContent = money(d.total_revenue);
+                document.getElementById('lb-listed-total-comm').textContent = money(d.total_commission);
                 document.getElementById('lb-listed-table').style.display = '';
             })
             .catch(function () {
