@@ -339,6 +339,12 @@ class InventoryCheckService
             $g = $tx['location_id'] . '|' . ($tx['date'] ?? '');
             $byStoreDay[$g][] = $i;
         }
+        // Tight matching to avoid flagging coincidentally-similar buys: only
+        // pair transactions ≥$100 on the same store+day when EITHER the totals
+        // are near-identical (≤0.5% apart — a re-keyed shipment), OR they share
+        // the same supplier and are within 2%. Two unrelated buys rarely land
+        // within half a percent of each other.
+        $dupeMin = 100.0;
         $dupeFlag = array_fill(0, count($txnList), false);
         foreach ($byStoreDay as $idxs) {
             if (count($idxs) < 2) continue;
@@ -346,9 +352,14 @@ class InventoryCheckService
                 for ($b = $a + 1; $b < count($idxs); $b++) {
                     $ta = $txnList[$idxs[$a]]['total'];
                     $tb = $txnList[$idxs[$b]]['total'];
-                    $exact = abs($ta - $tb) < 0.01;
-                    $near = min($ta, $tb) >= 500 && abs($ta - $tb) <= 0.03 * max($ta, $tb);
-                    if ($exact || $near) {
+                    if (min($ta, $tb) < $dupeMin) continue;
+                    $diff = abs($ta - $tb);
+                    $supA = trim((string) ($txnList[$idxs[$a]]['supplier'] ?? ''));
+                    $supB = trim((string) ($txnList[$idxs[$b]]['supplier'] ?? ''));
+                    $sameSupplier = $supA !== '' && strcasecmp($supA, $supB) === 0;
+                    $nearIdentical = $diff <= 0.005 * max($ta, $tb);
+                    $sameSupplierClose = $sameSupplier && $diff <= 0.02 * max($ta, $tb);
+                    if ($nearIdentical || $sameSupplierClose) {
                         $dupeFlag[$idxs[$a]] = true;
                         $dupeFlag[$idxs[$b]] = true;
                     }
