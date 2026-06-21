@@ -503,6 +503,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/reports/clover-eod-reconciliation/sync-now', 'ReportController@cloverEodSyncNow')->name('reports.clover-eod.sync');
     Route::get('/reports/employee-leaderboard', 'ReportController@employeeLeaderboard');
     Route::get('/reports/employee-leaderboard/listed-items', 'ReportController@employeeLeaderboardListedItems');
+
+    // Employee self-service: each logged-in staff member sees only their own
+    // listing commission (earned / paid out / still owed) + productivity stats.
+    // Same 2% formula + payout ledger as /admin/listing-commissions.
+    Route::get('/my-earnings', 'EmployeeEarningsController@index');
     Route::get('/reports/shift-targets', 'ReportController@shiftTargets');
 
     // Reports hub — organized index of all reports with per-user favorites
