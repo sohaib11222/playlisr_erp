@@ -61,6 +61,7 @@ body.role-picker .rp-alert { max-width: 760px; margin: 0 auto 16px; padding: 12p
         <p class="rp-hello">Hi <strong>{{ $hello }}</strong> — choose your role for this shift:</p>
     @endif
 
+    @if(!empty($can['cashier']))
     <div class="rp-card rp-cashier">
         <h3>Cashier <small>— Front Desk, ringing up customers</small></h3>
         <p>All sales rung at this store while you are the cashier will be attributed to <strong>you</strong>.</p>
@@ -83,6 +84,7 @@ body.role-picker .rp-alert { max-width: 760px; margin: 0 auto 16px; padding: 12p
             @endforelse
         </div>
     </div>
+    @endif
 
     @if($can_manager)
     <div class="rp-card rp-manager">
@@ -98,6 +100,7 @@ body.role-picker .rp-alert { max-width: 760px; margin: 0 auto 16px; padding: 12p
     </div>
     @endif
 
+    @if(!empty($can['inventory']))
     <div class="rp-card rp-inventory">
         <h3>Inventory / Receiving <small>— stocking, recording, photo upload</small></h3>
         <p>You can use the inventory pages. Sales will <strong>not</strong> be attributed to you.</p>
@@ -109,7 +112,9 @@ body.role-picker .rp-alert { max-width: 760px; margin: 0 auto 16px; padding: 12p
             </form>
         </div>
     </div>
+    @endif
 
+    @if(!empty($can['shipping']))
     <div class="rp-card rp-shipping">
         <h3>Shipping <small>— packing online / Discogs / eBay orders</small></h3>
         <p>Pack and dispatch orders. Sales will <strong>not</strong> be attributed to you.</p>
@@ -121,6 +126,7 @@ body.role-picker .rp-alert { max-width: 760px; margin: 0 auto 16px; padding: 12p
             </form>
         </div>
     </div>
+    @endif
 
     <p class="rp-foot">
         Need to switch later? Visit <code>/choose-role</code> any time, or just log out and back in.

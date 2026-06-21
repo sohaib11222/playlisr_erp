@@ -7,6 +7,7 @@ use App\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Spatie\Permission\Models\Permission;
 
 /**
  * "What are you working on today?" picker shown right after login.
@@ -35,6 +36,23 @@ class ChooseRoleController extends Controller
      */
     const MANAGER_FIRST_NAMES = ['Sarah', 'Jon', 'Fatteen', 'Lashyn'];
 
+    /**
+     * ERP permission(s) that gate each non-manager role card. A user sees a
+     * card when they hold at least one of the listed permissions — OR when the
+     * ERP doesn't even define any of them. That second clause is deliberate:
+     * we don't hide a role just because its permission was never set up in this
+     * business, otherwise a fresh/under-configured install would show an empty
+     * picker. Admins (Admin#<business_id>) auto-pass every can() check via the
+     * Gate::before in AuthServiceProvider, so they always see every card.
+     *
+     * Manager is gated separately by the first-name allow-list, not by a perm.
+     */
+    const ROLE_PERMISSIONS = [
+        'cashier'   => ['sell.create'],                       // same gate POS create uses
+        'inventory' => ['product.view'],                      // receiving / stocking
+        'shipping'  => ['access_shipping', 'access_own_shipping'], // packing online/Discogs/eBay
+    ];
+
     public function index(Request $request)
     {
         $business_id = $request->session()->get('user.business_id');
@@ -59,9 +77,18 @@ class ChooseRoleController extends Controller
             }
         }
 
+        // Per-card access by ERP permission. A user only sees the roles they
+        // can actually do (manager handled by its own allow-list above).
+        $can = [
+            'cashier'   => self::userCanRole($user, 'cashier'),
+            'inventory' => self::userCanRole($user, 'inventory'),
+            'shipping'  => self::userCanRole($user, 'shipping'),
+        ];
+
         return view('auth.choose_role', [
             'locations' => $locations,
             'can_manager' => $can_manager,
+            'can' => $can,
             'current_cashiers' => $current_cashiers,
         ]);
     }
@@ -78,6 +105,12 @@ class ChooseRoleController extends Controller
 
         if ($role === 'manager' && !self::userCanManager($user)) {
             return back()->with('status', ['success' => 0, 'msg' => 'Manager mode is limited to authorized staff.']);
+        }
+
+        // Server-side gate: hiding the button isn't enough — reject a POST for a
+        // role the user has no ERP permission for (covers cashier/inventory/shipping).
+        if (!self::userCanRole($user, $role)) {
+            return back()->with('status', ['success' => 0, 'msg' => 'You do not have access to that option.']);
         }
 
         if ($role === 'cashier') {
@@ -119,6 +152,31 @@ class ChooseRoleController extends Controller
         if ($first === '') return false;
         foreach (self::MANAGER_FIRST_NAMES as $allowed) {
             if (strtolower($allowed) === $first) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Whether $user may pick $role, honouring the graceful-degradation rule:
+     * if none of the role's gating permissions exist in this ERP, anyone may
+     * pick it; otherwise the user must hold at least one of them. Admins pass
+     * any can() check via the Gate::before in AuthServiceProvider.
+     */
+    public static function userCanRole($user, string $role): bool
+    {
+        if (!$user) return false;
+        if ($role === 'manager') return self::userCanManager($user);
+
+        $perms = self::ROLE_PERMISSIONS[$role] ?? [];
+        if (empty($perms)) return true; // role has no configured gate
+
+        // Which of these permissions does this ERP actually define? If none,
+        // the gate "doesn't even offer" the permission — so don't hide it.
+        $defined = Permission::whereIn('name', $perms)->pluck('name')->all();
+        if (empty($defined)) return true;
+
+        foreach ($defined as $perm) {
+            if ($user->can($perm)) return true;
         }
         return false;
     }
