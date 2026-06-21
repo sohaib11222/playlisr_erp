@@ -17,15 +17,19 @@
     <div class="col-sm-4 invoice-col">
       @lang('purchase.supplier'):
       <address>
-        {!! $purchase->contact->contact_address !!}
-        @if(!empty($purchase->contact->tax_number))
-          <br>@lang('contact.tax_no'): {{$purchase->contact->tax_number}}
-        @endif
-        @if(!empty($purchase->contact->mobile))
-          <br>@lang('contact.mobile'): {{$purchase->contact->mobile}}
-        @endif
-        @if(!empty($purchase->contact->email))
-          <br>@lang('business.email'): {{$purchase->contact->email}}
+        @if($purchase->contact)
+          {!! $purchase->contact->contact_address !!}
+          @if(!empty($purchase->contact->tax_number))
+            <br>@lang('contact.tax_no'): {{$purchase->contact->tax_number}}
+          @endif
+          @if(!empty($purchase->contact->mobile))
+            <br>@lang('contact.mobile'): {{$purchase->contact->mobile}}
+          @endif
+          @if(!empty($purchase->contact->email))
+            <br>@lang('business.email'): {{$purchase->contact->email}}
+          @endif
+        @else
+          <span class="text-muted">—</span>
         @endif
       </address>
       @if($purchase->document_path)
