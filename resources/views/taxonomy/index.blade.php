@@ -102,8 +102,11 @@ body.taxonomy-v2 th.tax-sortable.active .tax-sort-ind { color:#2F6B3E; }
 </style>
 
 @php
+    // Merge is owner-only (Jon) — same gate as the backend.
+    $can_merge = $can_edit && $can_delete && (optional(auth()->user())->first_name === 'Jon');
+
     // Render helpers as closures so the markup below stays DRY.
-    $actionBtns = function ($cat) use ($category_type, $can_edit, $can_delete) {
+    $actionBtns = function ($cat) use ($category_type, $can_edit, $can_delete, $can_merge) {
         $h = '';
         if ($can_edit) {
             $h .= '<button data-href="'.action('TaxonomyController@edit', [$cat->id]).'?type='.$category_type.'" class="edit_category_button"><i class="glyphicon glyphicon-edit"></i> '.__('messages.edit').'</button> ';
@@ -111,7 +114,7 @@ body.taxonomy-v2 th.tax-sortable.active .tax-sort-ind { color:#2F6B3E; }
         if ($can_delete) {
             $h .= '<button data-href="'.action('TaxonomyController@destroy', [$cat->id]).'" class="delete_category_button"><i class="glyphicon glyphicon-trash"></i> '.__('messages.delete').'</button> ';
         }
-        if ($can_edit && $can_delete) {
+        if ($can_merge) {
             $h .= '<button type="button" class="merge_category_button" data-id="'.$cat->id.'" data-name="'.e($cat->name).'"><i class="glyphicon glyphicon-random"></i> Merge</button>';
         }
         return $h;

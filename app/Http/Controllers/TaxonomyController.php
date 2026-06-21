@@ -194,8 +194,11 @@ class TaxonomyController extends Controller
         @set_time_limit(0);
         @ini_set('memory_limit', '512M');
 
-        if (!auth()->user()->can('category.update') || !auth()->user()->can('category.delete')) {
-            return response()->json(['success' => false, 'msg' => 'You are not allowed to merge categories.'], 403);
+        // Merge is owner-only (Jon) — same gate convention as HomeController.
+        if (auth()->user()->first_name !== 'Jon'
+            || !auth()->user()->can('category.update')
+            || !auth()->user()->can('category.delete')) {
+            return response()->json(['success' => false, 'msg' => 'Only Jon can merge categories.'], 403);
         }
 
         $business_id = $request->session()->get('user.business_id');
