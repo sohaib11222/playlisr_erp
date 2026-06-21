@@ -158,35 +158,14 @@ HTML;
         @endforeach
         @endif
 
-        {{-- ── What's actually in New vs Used this week (Sarah 2026-06-19) ──
-             Shows where the spend is landing by category, so miscategorised
-             used buys hiding inside "New" are visible. --}}
-        @if(!empty($pb['spend_breakdown']))
-        @php
-            $bdNew = collect($pb['spend_breakdown'])->where('classified', 'new');
-            $bdNewTotal = $bdNew->sum('amount');
-        @endphp
-        <details class="ica-spend-breakdown">
-            <summary>Where this week's spend is landing — by category ({{ count($pb['spend_breakdown']) }} groups)</summary>
-            <table class="ica-breakdown-table">
-                <thead>
-                    <tr><th>Category</th><th>Added via</th><th>Counts as</th><th class="ica-bd-amt">Amount</th></tr>
-                </thead>
-                <tbody>
-                    @foreach($pb['spend_breakdown'] as $b)
-                    <tr class="ica-bd-{{ $b['classified'] }}">
-                        <td>{{ $b['category'] }}</td>
-                        <td class="ica-bd-via">{{ $b['added_via'] }}</td>
-                        <td><span class="ica-bd-tag ica-bd-tag-{{ $b['classified'] }}">{{ strtoupper($b['classified']) }}</span></td>
-                        <td class="ica-bd-amt">${{ number_format($b['amount'], 0) }}</td>
-                    </tr>
-                    @endforeach
-                </tbody>
-            </table>
-            <div class="ica-bd-note">
-                Anything counting as <strong>NEW</strong> that's really used vinyl is inflating the New budget. Used buys only count correctly when their category name contains "used", or they come through the buy-from-customer form.
-            </div>
-        </details>
+        {{-- What was left out of the budget (Sarah 2026-06-21): only distributor
+             orders (New) and buy-from-customer collections (Used) count as real
+             weekly spend. Mass-add warehouse back-dating etc. is excluded. --}}
+        @if(!empty($pb['excluded_count']))
+        <div class="ica-bd-excluded-note">
+            <strong>{{ $pb['excluded_count'] }} {{ \Illuminate\Support\Str::plural('entry', $pb['excluded_count']) }} (${{ number_format($pb['excluded_total'], 0) }}) not counted as weekly spend</strong>
+            — purchases that aren't a distributor order or a buy-from-customer collection (mass-add warehouse stock being back-dated, etc.). The budget only counts real money out: distributor New + in-store Used.
+        </div>
         @endif
 
         {{-- Transaction-level audit of the split (Sarah 2026-06-19) — every
@@ -1377,6 +1356,8 @@ body.ica-wizard-active { padding-bottom: 64px; }
 .ica-dupe-tag { display: inline-block; font-size: 9px; font-weight: 800; color: #8a6d00; background: #ffe082; padding: 0 4px; border-radius: 3px; letter-spacing: 0.4px; margin-left: 4px; vertical-align: middle; }
 .ica-dupe-warn { margin-top: 12px; padding: 10px 12px; font-size: 13px; line-height: 1.45; color: #7a5b00; background: #fffaf0; border: 1px solid #f0d98c; border-left: 4px solid #f0ad4e; border-radius: 4px; }
 .ica-dupe-warn strong { color: #6b4f00; }
+.ica-bd-excluded-note { margin-top: 12px; padding: 10px 12px; font-size: 13px; line-height: 1.45; color: #555; background: #f5f5f5; border: 1px solid #e3e3e3; border-left: 4px solid #aaa; border-radius: 4px; }
+.ica-bd-excluded-note strong { color: #333; }
 /* Used-blocked callout on the per-store budget block */
 .ica-used-blocked { margin-top: 8px; padding: 10px 12px; font-size: 13px; font-weight: 400; line-height: 1.45; color: #842029; background: #fff5f5; border: 1px solid #f1c2c2; border-left: 4px solid #c0392b; border-radius: 4px; }
 .ica-used-blocked strong { color: #842029; }

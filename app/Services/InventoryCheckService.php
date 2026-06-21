@@ -150,19 +150,12 @@ class InventoryCheckService
         // (Sarah 2026-06-20)
         $countableStatuses = ['received', 'draft', 'ordered', 'pending'];
 
-        // Total spend from formal purchase transactions (final_total). Kept
-        // as the top-line figure for backwards compat with code that reads
-        // $pb['spent']. The used/new split below uses purchase_lines × the
-        // product's category to bucket the same dollars by Used vs New.
-        $q = DB::table('transactions as t')
-            ->where('t.business_id', $business_id)
-            ->where('t.type', 'purchase')
-            ->whereIn('t.status', $countableStatuses)
-            ->whereBetween(DB::raw('date(t.transaction_date)'), [$week['start'], $week['end']]);
-        if ($permittedLocations !== 'all') {
-            $q->whereIn('t.location_id', $permittedLocations);
-        }
-        $spentFromTransactions = (float) $q->sum('t.final_total');
+        // Top-line spend is computed from the per-transaction loop below, which
+        // counts ONLY real weekly outlays: distributor orders (New) and
+        // buy-from-customer collections (Used). Mass-add warehouse back-dating
+        // and other non-purchases are excluded. (Sarah 2026-06-21 — previously
+        // this summed every purchase txn, which inflated the week by thousands.)
+        $spentFromTransactions = 0.0;
 
         // ── Used vs New split (Sarah 2026-05-27) ──────────────────────
         // Sub-budget the weekly cap into 30-40% used / 60-70% new, per
@@ -209,14 +202,17 @@ class InventoryCheckService
                     'entered_by' => trim((string) ($row->entered_by_name ?? '')) ?: ($row->entered_by_username ?? ''),
                     'lines_total' => 0.0,
                     'used_lines' => 0.0,
+                    'is_bfc' => false,
                 ];
             }
             $val = (float) $row->line_total;
             $perTxn[$tid]['lines_total'] += $val;
+            if ($row->added_via === 'buy_from_customer') {
+                $perTxn[$tid]['is_bfc'] = true;
+            }
             // A line counts as Used if its product sits in a "used"-named category
             // OR it came in through the buy-from-customer flow (customer collections
-            // are created with no category, but are always used inventory — without
-            // this they'd all be miscounted as New). 2026-06-19 Sarah.
+            // are created with no category, but are always used inventory). 2026-06-19 Sarah.
             $isUsed = ($row->category_id !== null && in_array((int) $row->category_id, $usedCatIds, true))
                 || ($row->added_via === 'buy_from_customer');
             if ($isUsed) {
@@ -227,31 +223,39 @@ class InventoryCheckService
         $spentTxnNew = 0.0;
         // Per-location Used/New actual spend, for the per-store sub-budgets.
         $perLocUsedNew = [];
-        // Per-transaction list so the split is auditable — every purchase and
-        // how much of it landed in New vs Used.
+        // Per-transaction list so the split is auditable — every COUNTED purchase.
         $txnList = [];
+        // Excluded entries (mass-add warehouse back-dating, non-distributor buys
+        // that aren't collections) — tracked so we can show what was left out.
+        $excludedCount = 0;
+        $excludedTotal = 0.0;
         foreach ($perTxn as $tid => $t) {
             $ft = $t['final_total'];
-            if ($t['lines_total'] > 0) {
-                $usedShare = $t['used_lines'] / $t['lines_total'];
-            } else {
-                // No lines (rare — empty purchase, returns, etc). Treat
-                // as New so it doesn't vanish from the split.
-                $usedShare = 0.0;
-            }
-            // A buy from a walk-in / individual selling us records is a Used
-            // collection — NOT a new distributor order — even if the items carry
-            // no "used" category. Match a customer-type contact OR a contact name
-            // like "walk-in" (these are often set up as supplier-type so a
-            // purchase can be booked against them, so the name is the reliable
-            // signal). Distributors (AMS, posters wholesale) stay New.
-            // 2026-06-20 Sarah.
-            $contactName = strtolower((string) ($t['supplier'] ?? ''));
-            $isCollectionBuy = strtolower((string) ($t['contact_type'] ?? '')) === 'customer'
-                || strpos($contactName, 'walk') !== false;
+            // What counts as real weekly spend (Sarah 2026-06-21):
+            //  • USED  — a buy-from-customer collection (in-store used purchase):
+            //            BFC-origin lines, a customer-type contact, or a walk-in.
+            //  • NEW   — an order from a major distributor (AMS, SHein, DeeJay,
+            //            Vinylfuture, Alliance, …) by supplier name.
+            // Everything else — especially clerks back-dating warehouse stock via
+            // the mass-add → add-purchase flow — is NOT money spent this week and
+            // is EXCLUDED from the budget entirely.
+            $contactName = (string) ($t['supplier'] ?? '');
+            $isCollectionBuy = !empty($t['is_bfc'])
+                || strtolower((string) ($t['contact_type'] ?? '')) === 'customer'
+                || strpos(strtolower($contactName), 'walk') !== false;
+            $isDistributor = $this->isDistributorSupplier($contactName);
+
             if ($isCollectionBuy) {
-                $usedShare = 1.0;
+                $usedShare = 1.0;   // whole buy is Used
+            } elseif ($isDistributor) {
+                $usedShare = 0.0;   // whole order is New
+            } else {
+                // Not a real weekly outlay — skip it.
+                $excludedCount++;
+                $excludedTotal += $ft;
+                continue;
             }
+
             $txnUsed = $ft * $usedShare;
             $txnNew = $ft * (1 - $usedShare);
             $spentTxnUsed += $txnUsed;
@@ -295,14 +299,9 @@ class InventoryCheckService
             if ($ka !== $kb) return $ka <=> $kb;
             return ($b['date'] ?? '') <=> ($a['date'] ?? '');
         });
-        // Handle transactions with final_total > 0 but no purchase_lines
-        // (shouldn't normally happen, but guard so totals reconcile).
-        $reconciled = $spentTxnUsed + $spentTxnNew;
-        if (abs($reconciled - $spentFromTransactions) > 0.01) {
-            // Allocate the unreconciled delta to New (conservative — we
-            // can't classify it, so don't credit Used).
-            $spentTxnNew += ($spentFromTransactions - $reconciled);
-        }
+        // Top-line transaction spend = only the counted buys (distributor New +
+        // collection Used). Excluded entries never contribute.
+        $spentFromTransactions = $spentTxnUsed + $spentTxnNew;
 
         // Add manual budget entries logged from the ICA "+ Log a buy"
         // form (e.g. Jon's $2000 collection on Sunday that hasn't been
@@ -337,30 +336,19 @@ class InventoryCheckService
         $remaining = $budget - $spent;
         $pct = $budget > 0 ? min(100, ($spent / $budget) * 100) : 0;
 
-        // 2026-05-27 Sarah: per-store spend in the banner. Splits the
-        // formal-purchase spend by t.location_id and joins business_locations
-        // for readable names ("Hollywood" / "Pico"). Manual "+ Log a buy"
-        // entries don't carry a location yet — they show up only in the
-        // top-line "spent" figure, with a footnote in the JS.
-        $perLocQ = DB::table('transactions as t')
-            ->leftJoin('business_locations as bl', 'bl.id', '=', 't.location_id')
-            ->where('t.business_id', $business_id)
-            ->where('t.type', 'purchase')
-            ->whereIn('t.status', $countableStatuses)
-            ->whereBetween(DB::raw('date(t.transaction_date)'), [$week['start'], $week['end']]);
-        if ($permittedLocations !== 'all') {
-            $perLocQ->whereIn('t.location_id', $permittedLocations);
-        }
-        $perLocRows = $perLocQ
-            ->selectRaw('t.location_id, bl.name as location_name, SUM(t.final_total) as spent')
-            ->groupBy('t.location_id', 'bl.name')
-            ->get();
+        // Per-store spend chips — built from the SAME counted buys as the budget
+        // (distributor New + collection Used), so the chips match the bars. Names
+        // come from business_locations. (Sarah 2026-06-21: was a broad SUM that
+        // included the excluded warehouse back-dating.)
+        $locNames = DB::table('business_locations')
+            ->where('business_id', $business_id)
+            ->pluck('name', 'id');
         $perLocation = [];
-        foreach ($perLocRows as $r) {
+        foreach ($perLocUsedNew as $lid => $un) {
             $perLocation[] = [
-                'location_id' => (int) $r->location_id,
-                'name' => $r->location_name ?: ('Location #' . $r->location_id),
-                'spent' => round((float) $r->spent, 2),
+                'location_id' => (int) $lid,
+                'name' => $locNames[$lid] ?? ('Location #' . $lid),
+                'spent' => round((float) ($un['used'] + $un['new']), 2),
             ];
         }
         usort($perLocation, fn ($a, $b) => $b['spent'] <=> $a['spent']);
@@ -591,6 +579,8 @@ class InventoryCheckService
             'transactions' => $txnList,
             'dupe_groups' => $dupeGroups,
             'dupe_redundant_amount' => round($dupeRedundantAmount, 2),
+            'excluded_count' => $excludedCount,
+            'excluded_total' => round($excludedTotal, 2),
         ];
     }
 
@@ -616,6 +606,31 @@ class InventoryCheckService
      * config/inventory_check.php so the two stay in sync without an
      * explicit flag column. Cached per-request.
      */
+    /**
+     * Major distributors — purchases from these suppliers are real NEW weekly
+     * spend. Add new distributors here (lowercase); matched as whole words
+     * against the purchase's supplier/contact name. Anything that is neither a
+     * distributor order nor a buy-from-customer collection is NOT counted as
+     * weekly spend (e.g. clerks back-dating warehouse stock via mass-add).
+     * Sarah 2026-06-21.
+     */
+    protected function distributorSuppliers(): array
+    {
+        return ['ams', 'shein', 'dee jay', 'deejay', 'dee-jay', 'vinyl future', 'vinylfuture', 'alliance'];
+    }
+
+    protected function isDistributorSupplier(?string $name): bool
+    {
+        $name = strtolower(trim((string) $name));
+        if ($name === '') return false;
+        foreach ($this->distributorSuppliers() as $kw) {
+            if (preg_match('/(^|[^a-z])' . preg_quote(strtolower($kw), '/') . '([^a-z]|$)/', $name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     protected function usedCategoryIds(int $business_id): array
     {
         static $cache = [];
