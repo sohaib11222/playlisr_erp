@@ -61,6 +61,33 @@ body.role-picker .me-chip .l { font-size:12px; color:#8E8273; text-transform:upp
         </div>
 
         <div class="me-card">
+            <h3>Sales bonus</h3>
+            <div class="me-stats" style="margin-bottom:0;">
+                <div class="me-stat owed">
+                    <div class="lbl">Bonus earned{{ $sales_bonus['live'] ? '' : ' (projected)' }}</div>
+                    <div class="val">${{ number_format($sales_bonus['bonus'], 2) }}</div>
+                    <div class="sub">since {{ \Carbon::parse($bonus_from)->format('M j, Y') }}</div>
+                </div>
+                <div class="me-stat">
+                    <div class="lbl">Your sales (this bonus)</div>
+                    <div class="val" style="font-size:24px;">${{ number_format($sales_bonus['revenue'], 2) }}</div>
+                    <div class="sub">non-Whatnot, counted toward target</div>
+                </div>
+            </div>
+            <p class="me-note" style="margin-top:14px;">You earn 2% of every dollar you ring above your daily sales target (the target comes from the store's own hourly history). It's added up day by day.@unless($sales_bonus['live']) This bonus isn't live yet — the figure above is a projection.@endunless</p>
+            @if(count($sales_bonus['per_location']) > 1)
+                <table class="me-table" style="margin-top:12px;">
+                    <thead><tr><th>Store</th><th>Sales</th><th>Bonus</th></tr></thead>
+                    <tbody>
+                        @foreach($sales_bonus['per_location'] as $loc)
+                            <tr><td>{{ $loc['location'] }}</td><td>${{ number_format($loc['revenue'], 2) }}</td><td>${{ number_format($loc['bonus'], 2) }}</td></tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            @endif
+        </div>
+
+        <div class="me-card">
             <h3>See your items</h3>
             <p class="me-muted" style="margin:-4px 0 12px;">Every item you listed, with which ones sold and what each earned.</p>
             <a class="li-link" href="{{ url('/my-earnings/items') }}" style="display:inline-flex;align-items:center;min-height:42px;padding:9px 18px;border:0;border-radius:8px;font-weight:700;font-size:14px;text-decoration:none;background:#1F1B16;color:#FAF6EE;">View all {{ number_format($listed_count) }} items I listed &rarr;</a>

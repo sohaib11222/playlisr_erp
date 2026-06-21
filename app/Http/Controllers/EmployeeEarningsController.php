@@ -75,6 +75,18 @@ class EmployeeEarningsController extends Controller
         $owed   = round($owedSales * self::RATE, 2);
         $paidOut = round($myPayouts->sum('amount'), 2);
 
+        // Sales goal bonus — reuse the leaderboard's exact per-day target math.
+        // Only paid since it went live (2026-06-15), so the bonus window starts
+        // there, separate from the listing-commission rollout (2026-05-15).
+        $bonusFrom = '2026-06-15';
+        $salesBonus = ['bonus' => 0.0, 'revenue' => 0.0, 'live' => false, 'per_location' => []];
+        try {
+            $salesBonus = app(\App\Http\Controllers\ReportController::class)
+                ->userSalesBonus($businessId, $userId, $bonusFrom . ' 00:00:00', $end);
+        } catch (\Throwable $e) {
+            \Log::warning('my-earnings sales bonus failed: ' . $e->getMessage());
+        }
+
         // Productivity context (NOT pay): items listed + items put out (labeled).
         $listedCount = $this->listedCount($businessId, $userId, $start);
         $labeledCount = $this->labeledCount($businessId, $userId, $start, $end);
@@ -91,6 +103,8 @@ class EmployeeEarningsController extends Controller
             'listed_count' => $listedCount,
             'labeled_count'=> $labeledCount,
             'payouts'      => $myPayouts,
+            'sales_bonus'  => $salesBonus,
+            'bonus_from'   => $bonusFrom,
         ]);
     }
 

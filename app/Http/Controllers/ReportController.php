@@ -12714,6 +12714,58 @@ class ReportController extends Controller
     }
 
     /**
+     * One employee's sales goal bonus (the 2%-above-daily-target pay), summed
+     * across the active locations they worked, for a date range. Reuses the
+     * EXACT leaderboard math (buildLeaderboardRows + attachHourTargets) so the
+     * self-service /my-earnings page agrees with the leaderboard to the penny.
+     *
+     * Scoped to a single user_id; the CALLER is responsible for authorization
+     * (this does NOT call ensureAdminOnlyReportAccess, so an employee can see
+     * their own). Returns bonus, non-whatnot revenue, the live flag, and a
+     * per-location breakdown.
+     */
+    public function userSalesBonus($business_id, $user_id, $start, $end)
+    {
+        $bonus = 0.0;
+        $revenue = 0.0;
+        $live = \Carbon::now()->gte(\Carbon::parse(self::SALES_BONUS_LIVE_DATE));
+        $perLoc = [];
+
+        $locations = \DB::table('business_locations')
+            ->where('business_id', $business_id)
+            ->where('is_active', 1)
+            ->orderBy('id')
+            ->pluck('name', 'id');
+
+        foreach ($locations as $lid => $lname) {
+            $rows = $this->buildLeaderboardRows($business_id, $start, $end, null, $lid, ['with_commission' => true, 'exclude_owners' => false]);
+            $rows = $this->attachHourTargets($rows, $business_id, $lid, $start, $end);
+            $mine = $rows->first(function ($r) use ($user_id) { return (int) $r->user_id === (int) $user_id; });
+            if (!$mine) { continue; }
+
+            $b = (float) ($mine->goal_bonus ?? 0);
+            $rev = (float) ($mine->non_whatnot_revenue ?? 0);
+            $bonus += $b;
+            $revenue += $rev;
+            if ($b != 0 || $rev != 0) {
+                $perLoc[] = [
+                    'location' => $lname,
+                    'bonus'    => round($b, 2),
+                    'revenue'  => round($rev, 2),
+                    'target'   => isset($mine->hour_target) ? round((float) $mine->hour_target, 2) : null,
+                ];
+            }
+        }
+
+        return [
+            'bonus'        => round($bonus, 2),
+            'revenue'      => round($revenue, 2),
+            'live'         => $live,
+            'per_location' => $perLoc,
+        ];
+    }
+
+    /**
      * Restrict a sell-line query to USED items. Requires the products table to
      * be joined as `p` and its category/sub_category leftJoined as `c`/`sc`.
      * "Used" = not sealed/new vinyl/CD/cassette and not a non-record category —
