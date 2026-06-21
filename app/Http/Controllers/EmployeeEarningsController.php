@@ -131,6 +131,7 @@ class EmployeeEarningsController extends Controller
             'item'       => 'p.name',
             'sku'        => 'p.sku',
             'category'   => 'c.name',
+            'list'       => 'list_price',
             'sold'       => 'units_val',
             'sale'       => 'sale_val',
             'commission' => 'comm_val',
@@ -172,6 +173,7 @@ class EmployeeEarningsController extends Controller
         $products = (clone $base)
             ->leftJoin(DB::raw($soldSub), 's.product_id', '=', 'p.id')
             ->selectRaw("p.name, p.sku, p.created_at, c.name as cat, sc.name as subcat,"
+                . " (SELECT MAX(v.sell_price_inc_tax) FROM variations v WHERE v.product_id = p.id AND v.deleted_at IS NULL) as list_price,"
                 . " {$unitsExpr} as units_val, {$saleExpr} as sale_val, {$commExpr} as comm_val,"
                 . " CASE WHEN {$ineligible} THEN 0 ELSE 1 END as elig")
             ->orderByRaw($sortable[$sort] . ' ' . $dir)
@@ -184,6 +186,7 @@ class EmployeeEarningsController extends Controller
                 'name' => $p->name, 'sku' => $p->sku,
                 'listed_at' => $p->created_at,
                 'category' => trim(($p->cat ?? '') . ($p->subcat ? ' › ' . $p->subcat : '')) ?: '—',
+                'list_price' => $p->list_price !== null ? (float) $p->list_price : null,
                 'eligible' => (int) $p->elig === 1,
                 'units' => (float) $p->units_val,
                 'sale_value' => (float) $p->sale_val,

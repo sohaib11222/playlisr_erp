@@ -43,7 +43,7 @@ body.role-picker a.li-back { color:#5A5045; font-size:13px; text-decoration:none
             <table class="li-table">
                 <thead>
                     @php
-                        $cols = ['listed'=>'Listed','item'=>'Item','sku'=>'SKU','category'=>'Category','sold'=>'Sold','sale'=>'Sale value','commission'=>'Commission'];
+                        $cols = ['listed'=>'Listed','item'=>'Item','sku'=>'SKU','category'=>'Category','list'=>'List price','sold'=>'Sold','sale'=>'Sale value','commission'=>'Commission'];
                         $sortBase = url('/my-earnings/items').'?user_id='.$user_id;
                     @endphp
                     <tr>
@@ -64,12 +64,13 @@ body.role-picker a.li-back { color:#5A5045; font-size:13px; text-decoration:none
                             <td>{{ $r->name }}</td>
                             <td><code>{{ $r->sku }}</code></td>
                             <td class="li-muted">{{ $r->category }}@unless($r->eligible)<br><span class="li-inelig">not commission-eligible</span>@endunless</td>
+                            <td>@if($r->list_price !== null)${{ number_format($r->list_price, 2) }}@else<span class="li-unsold">—</span>@endif</td>
                             <td>@if($r->units > 0)<span class="li-sold">{{ rtrim(rtrim(number_format($r->units,2),'0'),'.') }} sold</span>@else<span class="li-unsold">—</span>@endif</td>
                             <td>@if($r->sale_value > 0)${{ number_format($r->sale_value, 2) }}@else<span class="li-unsold">—</span>@endif</td>
                             <td>@if($r->commission > 0)<span class="li-sold">${{ number_format($r->commission, 2) }}</span>@else<span class="li-unsold">$0.00</span>@endif</td>
                         </tr>
                     @empty
-                        <tr><td colspan="7" class="li-muted" style="padding:18px;">No items listed in this period.</td></tr>
+                        <tr><td colspan="8" class="li-muted" style="padding:18px;">No items listed in this period.</td></tr>
                     @endforelse
                 </tbody>
             </table>
