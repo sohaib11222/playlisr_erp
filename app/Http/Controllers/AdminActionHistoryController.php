@@ -30,14 +30,29 @@ class AdminActionHistoryController extends Controller
             if (!$data) continue;
 
             $key = pathinfo($f, PATHINFO_FILENAME);
+
+            // Human-readable detail per action (so e.g. category merges are
+            // identifiable at a glance instead of just a row count).
+            $detail = $data['direction'] ?? null;
+            if (($data['action'] ?? '') === 'merge-categories') {
+                $detail = ($data['source_name'] ?? '?') . ' → ' . ($data['target_name'] ?? '?');
+            }
+
             $snapshots[] = (object) [
                 'key' => $key,
                 'timestamp' => $data['timestamp'] ?? null,
                 'action' => $data['action'] ?? '?',
                 'direction' => $data['direction'] ?? null,
+                'detail' => $detail,
                 'rows_count' => isset($data['rows']) ? count($data['rows']) : 0,
             ];
         }
+
+        // True newest-first. (Filenames sort by action prefix, not time, which
+        // scrambles the chronology — sort by the embedded timestamp instead.)
+        usort($snapshots, function ($a, $b) {
+            return strcmp((string) ($b->timestamp ?? ''), (string) ($a->timestamp ?? ''));
+        });
 
         return view('admin.admin_action_history', ['snapshots' => $snapshots]);
     }

@@ -31,7 +31,7 @@
                             <tr>
                                 <th>Timestamp</th>
                                 <th>Action</th>
-                                <th>Direction</th>
+                                <th>Detail</th>
                                 <th style="text-align:right;">Rows</th>
                                 <th>Snapshot key</th>
                                 <th></th>
@@ -42,7 +42,7 @@
                                 <tr>
                                     <td>{{ $s->timestamp }}</td>
                                     <td>{{ $s->action }}</td>
-                                    <td>{{ $s->direction ?? '—' }}</td>
+                                    <td>{{ $s->detail ?? '—' }}</td>
                                     <td style="text-align:right;"><strong>{{ number_format($s->rows_count) }}</strong></td>
                                     <td><code>{{ $s->key }}</code></td>
                                     <td>
