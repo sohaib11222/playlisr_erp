@@ -31,7 +31,7 @@
                     <label for="from">Listed since</label>
                     <input type="date" id="from" name="from" value="{{ $from }}" min="2026-05-15" class="form-control" style="margin:0 8px;">
                     <button type="submit" class="btn btn-primary">Apply</button>
-                    <span class="text-muted" style="margin-left:8px;font-size:12px;">May 15 (program start) matches the Leaderboard &amp; My Earnings; a later date is a sub-window. Earned = Paid + Owed.</span>
+                    <span class="text-muted" style="margin-left:8px;font-size:12px;">Earned &amp; Owed are for items listed since this date; Paid is the total you've actually paid them. At May 15 (program start), Earned = Paid + Owed and matches the Leaderboard &amp; My Earnings.</span>
                     <span class="pull-right" style="font-size:16px;">
                         Earned <strong>${{ number_format($total_earned, 2) }}</strong> &nbsp;·&nbsp; Paid <strong>${{ number_format($total_paid_window, 2) }}</strong> &nbsp;·&nbsp; Owed <strong>${{ number_format($total_owed, 2) }}</strong>
                     </span>

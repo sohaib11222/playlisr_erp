@@ -61,8 +61,18 @@ class ListingCommissionController extends Controller
         $paidLineIds = $this->paidLineIds($paid);
         $paidSet = array_flip($paidLineIds);
 
-        // ALL qualifying sold lines (paid + unpaid) so each person's row adds
-        // up: Earned = Paid + Owed, and Paid/Owed both move with the date.
+        // Actual dollars paid to each person (from the payout ledger) — this is
+        // the real money paid, NOT scoped to the listing date, so it always
+        // reflects what you actually handed them.
+        $paidByUser = [];
+        foreach ($paid as $pp) {
+            $uid = (int) ($pp['user_id'] ?? 0);
+            if ($uid > 0) { $paidByUser[$uid] = ($paidByUser[$uid] ?? 0) + (float) ($pp['amount'] ?? 0); }
+        }
+
+        // ALL qualifying sold lines (paid + unpaid) for the window so Earned
+        // and Owed both move with the date. At the default May-15 window,
+        // Earned = Paid + Owed reconciles with the Leaderboard / My Earnings.
         $lines = $this->ownedSoldLines($businessId, $from, []);
         $listedTotals = $this->listedTotalsByUser($businessId, $from);
 
@@ -79,7 +89,7 @@ class ListingCommissionController extends Controller
                     'sold_count'   => 0,
                     'sale_total'   => 0.0,
                     'earned'       => 0.0,
-                    'paid'         => 0.0,
+                    'paid'         => round($paidByUser[$uid] ?? 0, 2),
                     'owed'         => 0.0,
                     'count'        => 0, // unpaid sold lines (what Mark paid covers)
                 ];
@@ -89,9 +99,7 @@ class ListingCommissionController extends Controller
             $people[$uid]->sold_count++;
             $people[$uid]->sale_total += $amt;
             $people[$uid]->earned += $comm;
-            if (isset($paidSet[(int) $row->line_id])) {
-                $people[$uid]->paid += $comm;
-            } else {
+            if (!isset($paidSet[(int) $row->line_id])) {
                 $people[$uid]->owed += $comm;
                 $people[$uid]->count++;
             }
