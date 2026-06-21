@@ -40,8 +40,12 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
 </style>
 
 <section class="content-header">
-    <h1>My Earnings</h1>
-    <p>Hi {{ $name }} — here's your listing commission since {{ \Carbon::parse($from)->format('M j, Y') }}. You earn {{ rtrim(rtrim(number_format($rate_pct,2),'0'),'.') }}% of the sale value of every item you listed that has since sold.</p>
+    <h1>{{ $viewing_other ? $name . "'s Earnings" : 'My Earnings' }}</h1>
+    @if($viewing_other)
+        <p style="background:#FBF6E6;border:1px solid #EADFBE;border-radius:10px;padding:10px 14px;color:#6B5E2E;font-weight:600;">Admin preview — this is exactly what {{ $name }} sees on their own My Earnings page.</p>
+    @else
+        <p>Hi {{ $name }} — here's your listing commission since {{ \Carbon::parse($from)->format('M j, Y') }}. You earn {{ rtrim(rtrim(number_format($rate_pct,2),'0'),'.') }}% of the sale value of every item you listed that has since sold.</p>
+    @endif
 </section>
 
 <section class="content">
@@ -107,7 +111,7 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
         <div class="me-card">
             <h3>See your items</h3>
             <p class="me-muted" style="margin:-4px 0 12px;">Every item you listed, with which ones sold and what each earned.</p>
-            <a class="li-link" href="{{ url('/my-earnings/items') }}" style="display:inline-flex;align-items:center;min-height:42px;padding:9px 18px;border:0;border-radius:8px;font-weight:700;font-size:14px;text-decoration:none;background:#1F1B16;color:#FAF6EE;">View all {{ number_format($listed_count) }} items I listed &rarr;</a>
+            <a class="li-link" href="{{ url('/my-earnings/items') }}{{ $viewing_other ? '?user_id='.$user->id : '' }}" style="display:inline-flex;align-items:center;min-height:42px;padding:9px 18px;border:0;border-radius:8px;font-weight:700;font-size:14px;text-decoration:none;background:#1F1B16;color:#FAF6EE;">View all {{ number_format($listed_count) }} items {{ $viewing_other ? 'they' : 'I' }} listed &rarr;</a>
         </div>
 
         <div class="me-card">

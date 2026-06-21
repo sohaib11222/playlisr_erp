@@ -61,7 +61,7 @@
                     <tbody>
                         @foreach ($people as $p)
                             <tr>
-                                <td><a href="{{ url('/my-earnings/items') }}?user_id={{ $p->user_id }}" title="See every item {{ $p->name }} listed">{{ $p->name }}</a></td>
+                                <td><a href="{{ url('/my-earnings') }}?user_id={{ $p->user_id }}" title="See {{ $p->name }}'s full earnings page (what they see)">{{ $p->name }}</a></td>
                                 <td style="text-align:right;"><a href="{{ url('/my-earnings/items') }}?user_id={{ $p->user_id }}">{{ number_format($p->listed_count) }}</a></td>
                                 <td style="text-align:right;">${{ number_format($p->listed_value, 2) }}</td>
                                 <td style="text-align:right;">{{ number_format($p->count) }}</td>

@@ -34,9 +34,19 @@ class EmployeeEarningsController extends Controller
 
     public function index(Request $request)
     {
-        $user = auth()->user();
-        $userId = (int) $user->id;
+        $me = auth()->user();
         $businessId = $request->session()->get('user.business_id');
+
+        // Admins can view any employee's earnings via ?user_id (to preview what
+        // a given person sees); everyone else only ever sees themselves.
+        $isAdmin = app(\App\Utils\BusinessUtil::class)->is_admin($me);
+        $userId = (int) $request->input('user_id', $me->id);
+        if ($userId !== (int) $me->id && !$isAdmin) {
+            $userId = (int) $me->id;
+        }
+        $user = ($userId === (int) $me->id) ? $me : (DB::table('users')->where('id', $userId)->first() ?: $me);
+        $viewingOther = $isAdmin && $userId !== (int) $me->id;
+
         $from = self::DEFAULT_FROM;
         $start = $from . ' 00:00:00';
         $end = now()->toDateTimeString();
@@ -105,6 +115,7 @@ class EmployeeEarningsController extends Controller
             'payouts'      => $myPayouts,
             'sales_bonus'  => $salesBonus,
             'bonus_from'   => $bonusFrom,
+            'viewing_other'=> $viewingOther,
         ]);
     }
 
