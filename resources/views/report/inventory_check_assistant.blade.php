@@ -194,8 +194,8 @@ HTML;
              weekly spend. Mass-add warehouse back-dating etc. is excluded. --}}
         @if(!empty($pb['excluded_count']))
         <div class="ica-bd-excluded-note">
-            <strong>{{ $pb['excluded_count'] }} {{ \Illuminate\Support\Str::plural('entry', $pb['excluded_count']) }} (${{ number_format($pb['excluded_total'], 0) }}) not counted as weekly spend</strong>
-            — warehouse stock being date-stamped through the mass-add "send to add purchase" flow, not money spent this week. Every real order entered on the Purchases screen counts.
+            <strong>{{ $pb['excluded_count'] }} warehouse "add purchase" {{ \Illuminate\Support\Str::plural('record', $pb['excluded_count']) }} (${{ number_format($pb['excluded_total'], 0) }}) not counted as weekly spend</strong>
+            — stock being date-stamped via mass-add, not money spent this week. The budget counts only Purchase Orders (New) + buy-from-customer collections (Used).
         </div>
         @endif
 
@@ -244,7 +244,7 @@ HTML;
                         @foreach($g['txns'] as $tx)
                         <tr class="{{ !empty($tx['maybe_dupe']) ? 'ica-txn-dupe' : '' }}">
                             <td class="ica-bd-via">{{ $tx['date'] ? \Carbon\Carbon::parse($tx['date'])->format('M j') : '—' }}</td>
-                            <td class="ica-bd-via"><a href="{{ url('/purchases/' . $tx['id']) }}" target="_blank" rel="noopener" class="ica-po-link" title="Open this purchase">{{ $tx['ref_no'] ?: ('#' . $tx['id']) }}</a>@if(!empty($tx['maybe_dupe'])) <span class="ica-dupe-tag">DUP?</span>@endif</td>
+                            <td class="ica-bd-via"><a href="{{ $tx['view_url'] ?? url('/purchases/' . $tx['id']) }}" target="_blank" rel="noopener" class="ica-po-link" title="Open this order">{{ $tx['ref_no'] ?: ('#' . $tx['id']) }}</a>@if(!empty($tx['maybe_dupe'])) <span class="ica-dupe-tag">DUP?</span>@endif</td>
                             <td class="ica-bd-via">{{ !empty($tx['entered']) ? \Carbon\Carbon::parse($tx['entered'])->format('M j') : '—' }}@if(($tx['late_days'] ?? 0) >= 3) <span class="ica-late-tag" title="Keyed in {{ $tx['late_days'] }} days after the order date">+{{ $tx['late_days'] }}d</span>@endif @if(!empty($tx['entered_by']))<span class="ica-by">by {{ $tx['entered_by'] }}</span>@endif</td>
                             <td class="ica-bd-amt">${{ number_format($tx['total'], 0) }}</td>
                         </tr>

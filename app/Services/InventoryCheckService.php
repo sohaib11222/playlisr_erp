@@ -165,154 +165,111 @@ class InventoryCheckService
         // already relies on (config/inventory_check.php).
         $usedCatIds = $this->usedCategoryIds($business_id);
 
-        // Per-transaction used-share: sum line totals for the period
-        // grouped by classification, then prorate t.final_total by that
-        // share. This keeps the top-line 'spent' identical to before
-        // (sum of final_total) while still letting us split it.
-        $lineAgg = DB::table('purchase_lines as pl')
-            ->join('transactions as t', 't.id', '=', 'pl.transaction_id')
-            ->leftJoin('products as p', 'p.id', '=', 'pl.product_id')
+        // ── What counts as weekly spend (Sarah 2026-06-21, settled) ──────
+        // Two distinct transaction types, matching how the store actually works:
+        //  • NEW  = PURCHASE ORDERS (type 'purchase_order') — the orders we place
+        //           with distributors/sources (AMS, CMURDA, jonmurda, …). This is
+        //           the "Purchase Orders" screen Sarah trusts as ground truth.
+        //  • USED = BUY-FROM-CUSTOMER collections (type 'purchase' built from
+        //           added_via='buy_from_customer' products) — in-store used buys.
+        // Plain 'purchase' records that are NOT buy-from-customer are warehouse
+        // stock being date-stamped (mass-add "send to add purchase") and are NOT
+        // counted. No supplier allow-list, no proration — just the two real
+        // sources, each summed by final_total.
+        $userNameSql = "TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.surname,''))) as entered_by_name";
+
+        // NEW — purchase orders placed this week.
+        $poQ = DB::table('transactions as t')
             ->leftJoin('contacts as ct', 'ct.id', '=', 't.contact_id')
             ->leftJoin('users as u', 'u.id', '=', 't.created_by')
             ->where('t.business_id', $business_id)
-            ->where('t.type', 'purchase')
-            ->whereIn('t.status', $countableStatuses)
+            ->where('t.type', 'purchase_order')
             ->whereBetween(DB::raw('date(t.transaction_date)'), [$week['start'], $week['end']]);
         if ($permittedLocations !== 'all') {
-            $lineAgg->whereIn('t.location_id', $permittedLocations);
+            $poQ->whereIn('t.location_id', $permittedLocations);
         }
-        $lineAgg = $lineAgg
-            ->selectRaw("t.id as txn_id, t.location_id as location_id, t.final_total as final_total, t.ref_no as ref_no, t.transaction_date as txn_date, t.created_at as created_at, ct.name as supplier, ct.type as contact_type, TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.surname,''))) as entered_by_name, u.username as entered_by_username, p.category_id as category_id, p.added_via as added_via, SUM(pl.quantity * pl.purchase_price_inc_tax) as line_total")
-            ->groupBy('t.id', 't.location_id', 't.final_total', 't.ref_no', 't.transaction_date', 't.created_at', 'ct.name', 'ct.type', 'u.first_name', 'u.surname', 'u.username', 'p.category_id', 'p.added_via')
-            ->get();
+        $newRows = $poQ->selectRaw("t.id, t.location_id, t.final_total, t.ref_no, t.transaction_date, t.created_at, ct.name as supplier, {$userNameSql}, u.username as entered_by_username")->get();
 
-        // Group by txn -> total line value + used line value.
-        $perTxn = [];
-        foreach ($lineAgg as $row) {
-            $tid = (int) $row->txn_id;
-            if (!isset($perTxn[$tid])) {
-                $perTxn[$tid] = [
-                    'location_id' => (int) $row->location_id,
-                    'final_total' => (float) $row->final_total,
-                    'ref_no' => $row->ref_no,
-                    'txn_date' => $row->txn_date,
-                    'created_at' => $row->created_at,
-                    'supplier' => $row->supplier,
-                    'contact_type' => $row->contact_type,
-                    'entered_by' => trim((string) ($row->entered_by_name ?? '')) ?: ($row->entered_by_username ?? ''),
-                    'lines_total' => 0.0,
-                    'used_lines' => 0.0,
-                    'massadd_lines' => 0.0,
-                    'is_bfc' => false,
-                ];
-            }
-            $val = (float) $row->line_total;
-            $perTxn[$tid]['lines_total'] += $val;
-            if ($row->added_via === 'buy_from_customer') {
-                $perTxn[$tid]['is_bfc'] = true;
-            }
-            // Products from the mass-add tool ("Save & send to add purchase") —
-            // the warehouse-stock re-dating flow, not money spent this week.
-            if ($row->added_via === 'mass_add') {
-                $perTxn[$tid]['massadd_lines'] += $val;
-            }
-            // A line counts as Used if its product sits in a "used"-named category
-            // OR it came in through the buy-from-customer flow (customer collections
-            // are created with no category, but are always used inventory). 2026-06-19 Sarah.
-            $isUsed = ($row->category_id !== null && in_array((int) $row->category_id, $usedCatIds, true))
-                || ($row->added_via === 'buy_from_customer');
-            if ($isUsed) {
-                $perTxn[$tid]['used_lines'] += $val;
-            }
+        // USED — buy-from-customer collection purchases this week. First find the
+        // transaction ids (a purchase is a collection if it has any
+        // buy_from_customer line), then pull each once so final_total isn't
+        // multiplied by its line count.
+        $bfcIdsQ = DB::table('transactions as t')
+            ->join('purchase_lines as pl', 'pl.transaction_id', '=', 't.id')
+            ->join('products as p', 'p.id', '=', 'pl.product_id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'purchase')
+            ->where('p.added_via', 'buy_from_customer')
+            ->whereBetween(DB::raw('date(t.transaction_date)'), [$week['start'], $week['end']]);
+        if ($permittedLocations !== 'all') {
+            $bfcIdsQ->whereIn('t.location_id', $permittedLocations);
         }
+        $bfcIds = $bfcIdsQ->distinct()->pluck('t.id')->all();
+        $usedRows = collect();
+        if (!empty($bfcIds)) {
+            $usedRows = DB::table('transactions as t')
+                ->leftJoin('contacts as ct', 'ct.id', '=', 't.contact_id')
+                ->leftJoin('users as u', 'u.id', '=', 't.created_by')
+                ->whereIn('t.id', $bfcIds)
+                ->selectRaw("t.id, t.location_id, t.final_total, t.ref_no, t.transaction_date, t.created_at, ct.name as supplier, {$userNameSql}, u.username as entered_by_username")
+                ->get();
+        }
+
         $spentTxnUsed = 0.0;
         $spentTxnNew = 0.0;
-        // Per-location Used/New actual spend, for the per-store sub-budgets.
         $perLocUsedNew = [];
-        // Per-transaction list so the split is auditable — every COUNTED purchase.
         $txnList = [];
-        // Excluded entries (mass-add warehouse back-dating, non-distributor buys
-        // that aren't collections) — tracked so we can show what was left out.
-        $excludedCount = 0;
-        $excludedTotal = 0.0;
-        foreach ($perTxn as $tid => $t) {
-            $ft = $t['final_total'];
-            // What counts as real weekly spend (Sarah 2026-06-21):
-            //  • USED  — a buy-from-customer collection (in-store used purchase):
-            //            BFC-origin lines, a customer-type contact, or a walk-in.
-            //  • NEW   — an order from a major distributor (AMS, SHein, DeeJay,
-            //            Vinylfuture, Alliance, …) by supplier name.
-            // Everything else — especially clerks back-dating warehouse stock via
-            // the mass-add → add-purchase flow — is NOT money spent this week and
-            // is EXCLUDED from the budget entirely.
-            $contactName = (string) ($t['supplier'] ?? '');
-            $isCollectionBuy = !empty($t['is_bfc'])
-                || strtolower((string) ($t['contact_type'] ?? '')) === 'customer'
-                || strpos(strtolower($contactName), 'walk') !== false;
-            // The ONLY thing that isn't real weekly spend is mass-add warehouse
-            // re-dating (clerks date-stamping existing stock via "Save & send to
-            // add purchase"). Those purchases are built from mass-added products
-            // (added_via='mass_add'; the Purchases screen leaves it null). Real
-            // orders — whatever their supplier/reference (AMS, CMURDA, jonmurda…)
-            // — are entered fresh on the Purchases screen and all count. There is
-            // NO distributor allow-list: it wrongly dropped every non-AMS order.
-            // (Sarah 2026-06-21, confirmed against the Hollywood PO list.)
-            $massAddShare = $t['lines_total'] > 0 ? ($t['massadd_lines'] / $t['lines_total']) : 0;
-            if ($massAddShare > 0.5) {
-                $excludedCount++;
-                $excludedTotal += $ft;
-                continue;
-            }
-            // Collection buys (in-store, from a person/walk-in) are Used; every
-            // other real order is New.
-            $usedShare = $isCollectionBuy ? 1.0 : 0.0;
-
-            $txnUsed = $ft * $usedShare;
-            $txnNew = $ft * (1 - $usedShare);
-            $spentTxnUsed += $txnUsed;
-            $spentTxnNew += $txnNew;
-            $lid = $t['location_id'];
+        $addRow = function ($r, $kind) use (&$spentTxnUsed, &$spentTxnNew, &$perLocUsedNew, &$txnList) {
+            $ft = (float) $r->final_total;
+            $lid = (int) $r->location_id;
             if (!isset($perLocUsedNew[$lid])) {
                 $perLocUsedNew[$lid] = ['used' => 0.0, 'new' => 0.0];
             }
-            $perLocUsedNew[$lid]['used'] += $txnUsed;
-            $perLocUsedNew[$lid]['new'] += $txnNew;
+            if ($kind === 'used') { $spentTxnUsed += $ft; $perLocUsedNew[$lid]['used'] += $ft; }
+            else { $spentTxnNew += $ft; $perLocUsedNew[$lid]['new'] += $ft; }
+            $enteredBy = trim((string) ($r->entered_by_name ?? '')) ?: ($r->entered_by_username ?? '');
             $txnList[] = [
-                'id' => $tid,
-                'ref_no' => $t['ref_no'],
-                'date' => $t['txn_date'] ? substr((string) $t['txn_date'], 0, 10) : null,
-                'entered' => $t['created_at'] ? substr((string) $t['created_at'], 0, 10) : null,
-                'entered_by' => $t['entered_by'] ?? '',
-                // Days between the order date on the PO and when it was keyed in.
-                // A big gap = entered late, which can pile old orders into this
-                // week if the order date was set to "today" by mistake.
-                'late_days' => ($t['txn_date'] && $t['created_at'])
-                    ? (int) round((strtotime(substr((string) $t['created_at'], 0, 10)) - strtotime(substr((string) $t['txn_date'], 0, 10))) / 86400)
+                'id' => (int) $r->id,
+                'ref_no' => $r->ref_no,
+                'date' => $r->transaction_date ? substr((string) $r->transaction_date, 0, 10) : null,
+                'entered' => $r->created_at ? substr((string) $r->created_at, 0, 10) : null,
+                'entered_by' => $enteredBy,
+                'late_days' => ($r->transaction_date && $r->created_at)
+                    ? (int) round((strtotime(substr((string) $r->created_at, 0, 10)) - strtotime(substr((string) $r->transaction_date, 0, 10))) / 86400)
                     : 0,
                 'location_id' => $lid,
-                'supplier' => $t['supplier'],
+                'supplier' => $r->supplier,
                 'total' => round($ft, 2),
-                'new_amount' => round($txnNew, 2),
-                'used_amount' => round($txnUsed, 2),
-                'used_share' => round($usedShare * 100, 0),
-                // Bucket each purchase by which side it mostly is, so the audit
-                // can group New (distributor) buys vs Used collection buys.
-                'kind' => $txnUsed >= $txnNew ? 'used' : 'new',
+                'new_amount' => $kind === 'new' ? round($ft, 2) : 0,
+                'used_amount' => $kind === 'used' ? round($ft, 2) : 0,
+                'kind' => $kind,
+                // Link target differs: POs live on the purchase-order screen.
+                'view_url' => $kind === 'new' ? url('/purchase-order/' . $r->id) : url('/purchases/' . $r->id),
             ];
-        }
-        // Group by kind first — Used collection buys vs New distributor buys —
-        // then newest first within each group, so same-day entries sit together
-        // and duplicates are easy to spot.
+        };
+        foreach ($newRows as $r) { $addRow($r, 'new'); }
+        foreach ($usedRows as $r) { $addRow($r, 'used'); }
+        // Used group first, then newest first within each group.
         usort($txnList, function ($a, $b) {
-            // 'used' group (0) before 'new' group (1).
             $ka = $a['kind'] === 'used' ? 0 : 1;
             $kb = $b['kind'] === 'used' ? 0 : 1;
             if ($ka !== $kb) return $ka <=> $kb;
             return ($b['date'] ?? '') <=> ($a['date'] ?? '');
         });
-        // Top-line transaction spend = only the counted buys (distributor New +
-        // collection Used). Excluded entries never contribute.
         $spentFromTransactions = $spentTxnUsed + $spentTxnNew;
+
+        // Warehouse 'add purchase' records that are NOT collections — shown as
+        // "not counted" for transparency.
+        $allPurchAgg = DB::table('transactions as t')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'purchase')
+            ->whereBetween(DB::raw('date(t.transaction_date)'), [$week['start'], $week['end']]);
+        if ($permittedLocations !== 'all') {
+            $allPurchAgg->whereIn('t.location_id', $permittedLocations);
+        }
+        $allPurchAgg = $allPurchAgg->selectRaw('COUNT(*) as c, COALESCE(SUM(t.final_total),0) as s')->first();
+        $excludedCount = max(0, (int) $allPurchAgg->c - count($bfcIds));
+        $excludedTotal = max(0, round((float) $allPurchAgg->s - $spentTxnUsed, 2));
 
         // Add manual budget entries logged from the ICA "+ Log a buy"
         // form (e.g. Jon's $2000 collection on Sunday that hasn't been
