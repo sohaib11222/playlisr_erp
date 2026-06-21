@@ -187,6 +187,10 @@ class EmployeeEarningsController extends Controller
             . " WHERE t.type = 'sell' AND t.status = 'final' AND t.import_source IS NULL AND t.business_id = {$bizId}"
             . " AND t.transaction_date >= '{$start}' AND t.transaction_date <= '{$end}' GROUP BY tsl.product_id) s";
 
+        // Filter: 'sold' shows only items that have sold (units > 0); 'all'
+        // (default) shows everything they listed.
+        $filter = $request->input('filter') === 'sold' ? 'sold' : 'all';
+
         $base = DB::table('products as p')
             ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
             ->leftJoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')
@@ -196,8 +200,23 @@ class EmployeeEarningsController extends Controller
 
         $totalListed = (clone $base)->count();
 
-        $products = (clone $base)
-            ->leftJoin(DB::raw($soldSub), 's.product_id', '=', 'p.id')
+        // Everything past here joins the per-product sold aggregate.
+        $withSold = (clone $base)->leftJoin(DB::raw($soldSub), 's.product_id', '=', 'p.id');
+        if ($filter === 'sold') {
+            $withSold->whereRaw("{$unitsExpr} > 0");
+        }
+
+        // Totals across the WHOLE filtered set (not just the visible page), so
+        // the commission/sale totals are real, not page sums.
+        $tot = (clone $withSold)->selectRaw(
+            "COUNT(*) as cnt,"
+            . " COALESCE(SUM({$saleExpr}), 0) as tot_sale,"
+            . " COALESCE(SUM({$commExpr}), 0) as tot_comm,"
+            . " SUM(CASE WHEN {$unitsExpr} > 0 THEN 1 ELSE 0 END) as sold_cnt"
+        )->first();
+        $filteredCount = (int) ($tot->cnt ?? 0);
+
+        $products = (clone $withSold)
             ->selectRaw("p.name, p.sku, p.created_at, c.name as cat, sc.name as subcat,"
                 . " (SELECT MAX(v.sell_price_inc_tax) FROM variations v WHERE v.product_id = p.id AND v.deleted_at IS NULL) as list_price,"
                 . " {$unitsExpr} as units_val, {$saleExpr} as sale_val, {$commExpr} as comm_val,"
@@ -231,9 +250,14 @@ class EmployeeEarningsController extends Controller
             'total'       => $totalListed,
             'page'        => $page,
             'per_page'    => $perPage,
-            'has_more'    => ($offset + $products->count()) < $totalListed,
+            'has_more'    => ($offset + $products->count()) < $filteredCount,
             'sort'        => $sort,
             'dir'         => $dir,
+            'filter'      => $filter,
+            'shown_count' => $filteredCount,
+            'tot_sale'    => (float) ($tot->tot_sale ?? 0),
+            'tot_comm'    => round((float) ($tot->tot_comm ?? 0), 2),
+            'sold_count'  => (int) ($tot->sold_cnt ?? 0),
         ]);
     }
 

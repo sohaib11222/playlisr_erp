@@ -27,6 +27,15 @@ body.role-picker .li-inelig { color:#8A3A2E; font-size:12px; }
 body.role-picker .li-pager { display:flex; gap:10px; align-items:center; margin:8px 2px 0; }
 body.role-picker .li-btn { display:inline-flex; align-items:center; min-height:38px; padding:8px 16px; border:1px solid #D7CDB6; border-radius:8px; font-family:inherit; font-weight:700; font-size:13px; text-decoration:none; color:#1F1B16; background:#FFFCF5; }
 body.role-picker a.li-back { color:#5A5045; font-size:13px; text-decoration:none; }
+body.role-picker .li-bar { display:flex; gap:14px; flex-wrap:wrap; align-items:center; justify-content:space-between; margin-bottom:12px; }
+body.role-picker .li-filters { display:flex; gap:8px; }
+body.role-picker .li-tab { display:inline-flex; align-items:center; min-height:38px; padding:8px 16px; border:1px solid #D7CDB6; border-radius:999px; font-weight:700; font-size:13px; text-decoration:none; color:#5A5045; background:#FFFCF5; }
+body.role-picker .li-tab.active { background:#1F1B16; color:#FAF6EE; border-color:#1F1B16; }
+body.role-picker .li-totals { display:flex; gap:18px; }
+body.role-picker .li-tot { text-align:right; }
+body.role-picker .li-tot .n { font-size:22px; font-weight:800; color:#1F1B16; }
+body.role-picker .li-tot .l { font-size:11px; color:#8E8273; text-transform:uppercase; letter-spacing:.4px; }
+body.role-picker .li-tot.comm .n { color:#2F6B3E; }
 </style>
 
 <section class="content-header">
@@ -39,12 +48,24 @@ body.role-picker a.li-back { color:#5A5045; font-size:13px; text-decoration:none
 
 <section class="content">
     <div class="li-wrap">
+        @php $filterBase = url('/my-earnings/items').'?user_id='.$user_id.'&sort='.$sort.'&dir='.$dir; @endphp
+        <div class="li-bar">
+            <div class="li-filters">
+                <a class="li-tab {{ $filter === 'all' ? 'active' : '' }}" href="{{ $filterBase.'&filter=all' }}">All listed</a>
+                <a class="li-tab {{ $filter === 'sold' ? 'active' : '' }}" href="{{ $filterBase.'&filter=sold' }}">Sold only</a>
+            </div>
+            <div class="li-totals">
+                <div class="li-tot"><div class="n">{{ number_format($shown_count) }}</div><div class="l">{{ $filter === 'sold' ? 'Sold' : 'Items' }}</div></div>
+                <div class="li-tot"><div class="n">${{ number_format($tot_sale, 2) }}</div><div class="l">Sale total</div></div>
+                <div class="li-tot comm"><div class="n">${{ number_format($tot_comm, 2) }}</div><div class="l">Commission</div></div>
+            </div>
+        </div>
         <div class="li-card">
             <table class="li-table">
                 <thead>
                     @php
                         $cols = ['listed'=>'Listed','item'=>'Item','sku'=>'SKU','category'=>'Category','list'=>'List price','sold'=>'Sold','sale'=>'Sale value','commission'=>'Commission'];
-                        $sortBase = url('/my-earnings/items').'?user_id='.$user_id;
+                        $sortBase = url('/my-earnings/items').'?user_id='.$user_id.'&filter='.$filter;
                     @endphp
                     <tr>
                         @foreach($cols as $key => $label)
@@ -79,11 +100,11 @@ body.role-picker a.li-back { color:#5A5045; font-size:13px; text-decoration:none
         @if($page > 1 || $has_more)
             <div class="li-pager">
                 @if($page > 1)
-                    <a class="li-btn" href="{{ url('/my-earnings/items') }}?user_id={{ $user_id }}&sort={{ $sort }}&dir={{ $dir }}&page={{ $page - 1 }}">&larr; Prev</a>
+                    <a class="li-btn" href="{{ url('/my-earnings/items') }}?user_id={{ $user_id }}&filter={{ $filter }}&sort={{ $sort }}&dir={{ $dir }}&page={{ $page - 1 }}">&larr; Prev</a>
                 @endif
                 <span class="li-muted">Page {{ $page }}</span>
                 @if($has_more)
-                    <a class="li-btn" href="{{ url('/my-earnings/items') }}?user_id={{ $user_id }}&sort={{ $sort }}&dir={{ $dir }}&page={{ $page + 1 }}">Next &rarr;</a>
+                    <a class="li-btn" href="{{ url('/my-earnings/items') }}?user_id={{ $user_id }}&filter={{ $filter }}&sort={{ $sort }}&dir={{ $dir }}&page={{ $page + 1 }}">Next &rarr;</a>
                 @endif
             </div>
         @endif
