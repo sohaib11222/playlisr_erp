@@ -170,7 +170,7 @@ class EmployeeEarningsController extends Controller
         $unitsExpr = 'COALESCE(s.units, 0)';
         $commExpr  = "CASE WHEN NOT {$ineligible} AND {$saleExpr} > 0 THEN {$saleExpr} * " . self::RATE . " ELSE 0 END";
 
-        $soldSub = "(SELECT tsl.product_id, SUM(tsl.quantity) units, SUM(tsl.quantity * tsl.unit_price_inc_tax) sale_value"
+        $soldSub = "(SELECT tsl.product_id, SUM(tsl.quantity - COALESCE(tsl.quantity_returned, 0)) units, SUM((tsl.quantity - COALESCE(tsl.quantity_returned, 0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax, 0))) sale_value"
             . " FROM transaction_sell_lines tsl JOIN transactions t ON t.id = tsl.transaction_id"
             . " WHERE t.type = 'sell' AND t.status = 'final' AND t.import_source IS NULL AND t.business_id = {$bizId}"
             . " AND t.transaction_date >= '{$start}' AND t.transaction_date <= '{$end}' GROUP BY tsl.product_id) s";
@@ -266,7 +266,10 @@ class EmployeeEarningsController extends Controller
             })
             ->select(
                 'tsl.id as line_id',
-                DB::raw('(tsl.quantity * tsl.unit_price_inc_tax) as sale_amount')
+                // PRE-TAX, net of returns — identical to the leaderboard's
+                // barcodingCommissionByUser, so /my-earnings matches the board
+                // and /admin/listing-commissions to the penny.
+                DB::raw('((tsl.quantity - COALESCE(tsl.quantity_returned, 0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax, 0))) as sale_amount')
             )
             ->get();
     }

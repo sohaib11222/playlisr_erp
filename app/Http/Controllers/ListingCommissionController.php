@@ -204,7 +204,11 @@ class ListingCommissionController extends Controller
                 'u.first_name',
                 'u.last_name',
                 'u.surname',
-                DB::raw('(tsl.quantity * tsl.unit_price_inc_tax) as sale_amount')
+                // PRE-TAX, net of returns — the exact expression
+                // barcodingCommissionByUser uses, so this page's owed matches
+                // the Employee Leaderboard's listing pay to the penny. (Earlier
+                // this used the tax-INCLUDED price, which over-stated the owed.)
+                DB::raw('((tsl.quantity - COALESCE(tsl.quantity_returned, 0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax, 0))) as sale_amount')
             )
             ->get();
 
