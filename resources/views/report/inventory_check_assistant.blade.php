@@ -211,7 +211,7 @@ HTML;
                     @foreach($pb['transactions'] as $tx)
                     <tr class="{{ !empty($tx['maybe_dupe']) ? 'ica-txn-dupe' : '' }}">
                         <td class="ica-bd-via">{{ $tx['date'] ? \Carbon\Carbon::parse($tx['date'])->format('M j') : '—' }}</td>
-                        <td class="ica-bd-via">{{ $tx['ref_no'] ?: ('#' . $tx['id']) }}@if(!empty($tx['maybe_dupe'])) <span class="ica-dupe-tag">DUP?</span>@endif</td>
+                        <td class="ica-bd-via"><a href="{{ url('/purchases/' . $tx['id']) }}" target="_blank" rel="noopener" class="ica-po-link" title="Open this purchase">{{ $tx['ref_no'] ?: ('#' . $tx['id']) }}</a>@if(!empty($tx['maybe_dupe'])) <span class="ica-dupe-tag">DUP?</span>@endif</td>
                         <td>{{ $tx['location'] }}</td>
                         <td>{{ $tx['supplier'] ?: '—' }}</td>
                         <td class="ica-bd-amt">${{ number_format($tx['total'], 0) }}</td>
@@ -1364,6 +1364,8 @@ body.ica-wizard-active { padding-bottom: 64px; }
 .ica-bd-tag-used { background: #e8f5e9; color: #2e7d32; }
 .ica-bd-new td:first-child { box-shadow: inset 3px 0 0 #f0ad4e; }
 .ica-bd-note { font-size: 12px; color: #777; padding: 6px 0 12px; line-height: 1.45; }
+.ica-po-link { color: #2c699a; font-weight: 600; text-decoration: underline; }
+.ica-po-link:hover { color: #1d4a70; }
 .ica-txn-table .ica-txn-new { color: #1565c0; font-weight: 700; }
 .ica-txn-table .ica-txn-used { color: #2e7d32; font-weight: 700; }
 .ica-txn-table tr.ica-txn-dupe td { background: #fff8e1; }
