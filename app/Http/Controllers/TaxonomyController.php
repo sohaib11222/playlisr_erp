@@ -157,6 +157,17 @@ class TaxonomyController extends Controller
             return !in_array($c->parent_id, $parentIds);
         })->values();
 
+        // Flat list (id + readable label) for the merge-target dropdown.
+        $nameById = $all->pluck('name', 'id');
+        $catOptions = $all->map(function ($c) use ($nameById) {
+            $label = $c->name;
+            if ((int) $c->parent_id !== 0) {
+                $p = $nameById->get($c->parent_id);
+                $label = ($p ? $p . ' / ' : '') . $c->name;
+            }
+            return ['id' => $c->id, 'label' => $label];
+        })->sortBy('label', SORT_FLAG_CASE | SORT_STRING)->values();
+
         return view('taxonomy.index')->with(compact(
             'module_category_data',
             'category_type',
@@ -165,9 +176,111 @@ class TaxonomyController extends Controller
             'ungrouped',
             'parentCounts',
             'subCounts',
+            'catOptions',
             'can_edit',
             'can_delete'
         ));
+    }
+
+    /**
+     * Merge one category into another: move every product that references the
+     * source (in category_id or sub_category_id) to the target, reparent the
+     * source's sub-categories to the target, then soft-delete the source.
+     * Snapshots BEFORE state to admin-snapshots so it can be undone at
+     * /admin/admin-action-history.
+     */
+    public function merge(Request $request, $id)
+    {
+        @set_time_limit(0);
+        @ini_set('memory_limit', '512M');
+
+        if (!auth()->user()->can('category.update') || !auth()->user()->can('category.delete')) {
+            return response()->json(['success' => false, 'msg' => 'You are not allowed to merge categories.'], 403);
+        }
+
+        $business_id = $request->session()->get('user.business_id');
+        $sourceId = (int) $id;
+        $targetId = (int) $request->input('target_id');
+
+        if ($targetId <= 0 || $sourceId === $targetId) {
+            return response()->json(['success' => false, 'msg' => 'Pick a different category to merge into.']);
+        }
+
+        $source = Category::where('business_id', $business_id)->find($sourceId);
+        $target = Category::where('business_id', $business_id)->find($targetId);
+
+        if (!$source || !$target) {
+            return response()->json(['success' => false, 'msg' => 'Category not found (already merged?).']);
+        }
+        if ($source->category_type !== $target->category_type) {
+            return response()->json(['success' => false, 'msg' => 'Those categories are different types.']);
+        }
+        // Don't let a parent merge into one of its own sub-categories.
+        if ((int) $target->parent_id === $sourceId) {
+            return response()->json(['success' => false, 'msg' => 'Cannot merge a category into its own sub-category.']);
+        }
+
+        $affected = \DB::table('products')
+            ->where('business_id', $business_id)
+            ->where(function ($q) use ($sourceId) {
+                $q->where('category_id', $sourceId)->orWhere('sub_category_id', $sourceId);
+            })
+            ->select('id', 'category_id', 'sub_category_id')
+            ->get();
+
+        $childRows = Category::where('business_id', $business_id)
+            ->where('parent_id', $sourceId)
+            ->select('id', 'parent_id')
+            ->get();
+
+        $timestamp = now()->format('Y-m-d_His');
+        $snapshotKey = "merge-categories-{$timestamp}";
+        \Storage::disk('local')->put(
+            "admin-snapshots/{$snapshotKey}.json",
+            json_encode([
+                'timestamp'   => $timestamp,
+                'action'      => 'merge-categories',
+                'user_id'     => auth()->id(),
+                'business_id' => $business_id,
+                'source_id'   => $sourceId,
+                'target_id'   => $targetId,
+                'source_name' => $source->name,
+                'target_name' => $target->name,
+                'rows'        => $affected->map(function ($r) {
+                    return ['id' => $r->id, 'category_id' => $r->category_id, 'sub_category_id' => $r->sub_category_id];
+                })->all(),
+                'children'    => $childRows->map(function ($r) {
+                    return ['id' => $r->id, 'parent_id' => $r->parent_id];
+                })->all(),
+            ], JSON_PRETTY_PRINT)
+        );
+
+        \DB::beginTransaction();
+        try {
+            // Move product references. We deliberately don't touch products.updated_at
+            // here — bumping it on a large category (e.g. tens of thousands of rows)
+            // would kick off an unnecessary storefront/Clover re-sync wave.
+            \DB::table('products')->where('business_id', $business_id)
+                ->where('category_id', $sourceId)->update(['category_id' => $targetId]);
+            \DB::table('products')->where('business_id', $business_id)
+                ->where('sub_category_id', $sourceId)->update(['sub_category_id' => $targetId]);
+
+            // Reparent the source's sub-categories under the target.
+            Category::where('business_id', $business_id)
+                ->where('parent_id', $sourceId)->update(['parent_id' => $targetId]);
+
+            $source->delete(); // soft delete
+            \DB::commit();
+        } catch (\Exception $e) {
+            \DB::rollBack();
+            \Log::emergency("merge-categories failed: File:" . $e->getFile() . " Line:" . $e->getLine() . " Message:" . $e->getMessage());
+            return response()->json(['success' => false, 'msg' => 'Merge failed — nothing was changed.']);
+        }
+
+        return response()->json([
+            'success' => true,
+            'msg' => 'Merged "' . $source->name . '" into "' . $target->name . '" — moved ' . count($affected) . ' product(s). Undo at /admin/admin-action-history.',
+        ]);
     }
 
     /**

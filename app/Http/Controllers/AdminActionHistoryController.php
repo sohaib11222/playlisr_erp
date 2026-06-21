@@ -60,12 +60,23 @@ class AdminActionHistoryController extends Controller
         }
 
         $data = json_decode(Storage::disk('local')->get($path), true);
-        if (!$data || empty($data['rows'])) {
+        if (!$data) {
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 0, 'msg' => 'Snapshot empty / unreadable.']);
         }
 
         $action = $data['action'] ?? '';
+
+        // merge-categories can legitimately have zero product rows (merging an
+        // empty category), so it's dispatched before the empty-rows guard.
+        if ($action === 'merge-categories') {
+            return $this->undoMergeCategories($data, $key);
+        }
+
+        if (empty($data['rows'])) {
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 0, 'msg' => 'Snapshot empty / unreadable.']);
+        }
 
         // Variation-cost actions: snapshot rows hold variation id + the two
         // cost columns to restore. Both purchase-price-mismatch and
@@ -84,7 +95,13 @@ class AdminActionHistoryController extends Controller
         // (so a later manual change isn't clobbered).
         // remove-label-duplicates: rows hold the FULL deleted activity_log rows;
         // undo re-inserts them verbatim (skips any id that already exists).
-        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill'];
+        // merge-categories: rows hold {id, category_id, sub_category_id} (the
+        // product's BEFORE category refs); children hold {id, parent_id} for
+        // sub-categories that were reparented; source_id/target_id name the two
+        // categories. Undo un-soft-deletes the source, reverts each product's
+        // refs (only where they still point at the target), and reparents the
+        // children back.
+        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories'];
         if (!in_array($action, $supportedActions, true)) {
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 0, 'msg' => "Don't know how to undo action: " . $action]);
@@ -364,6 +381,68 @@ class AdminActionHistoryController extends Controller
         $msg .= $skipped > 0
             ? "; skipped {$skipped} that were spent or edited since (left as-is)."
             : '.';
+        return redirect('/admin/admin-action-history')
+            ->with('status', ['success' => 1, 'msg' => $msg]);
+    }
+
+    // Undo a category merge. Un-soft-deletes the source category, reparents
+    // its sub-categories back, and reverts each product's category refs — but
+    // only where they still point at the merge target, so products moved
+    // elsewhere since the merge are left alone.
+    protected function undoMergeCategories(array $data, $key)
+    {
+        $sourceId = (int) ($data['source_id'] ?? 0);
+        $targetId = (int) ($data['target_id'] ?? 0);
+        if ($sourceId <= 0 || $targetId <= 0) {
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 0, 'msg' => 'Snapshot missing source/target category.']);
+        }
+
+        // Restore the source category itself.
+        $restoredCat = DB::table('categories')->where('id', $sourceId)->whereNotNull('deleted_at')->exists();
+        DB::table('categories')->where('id', $sourceId)->update(['deleted_at' => null]);
+
+        // Revert product refs.
+        $restored = 0;
+        foreach (array_chunk($data['rows'] ?? [], 500) as $chunk) {
+            foreach ($chunk as $row) {
+                $pid = $row['id'] ?? null;
+                if (!$pid) { continue; }
+                $current = DB::table('products')->where('id', $pid)->first();
+                if (!$current) { continue; }
+                $upd = [];
+                if ((int) $current->category_id === $targetId && (int) $row['category_id'] !== $targetId) {
+                    $upd['category_id'] = $row['category_id'];
+                }
+                if ((int) $current->sub_category_id === $targetId && (int) $row['sub_category_id'] !== $targetId) {
+                    $upd['sub_category_id'] = $row['sub_category_id'];
+                }
+                if (!empty($upd)) {
+                    DB::table('products')->where('id', $pid)->update($upd);
+                    $restored++;
+                }
+            }
+        }
+
+        // Reparent the source's sub-categories back (only if still under target).
+        $reparented = 0;
+        foreach ($data['children'] ?? [] as $c) {
+            $cid = $c['id'] ?? null;
+            if (!$cid) { continue; }
+            $cur = DB::table('categories')->where('id', $cid)->first();
+            if ($cur && (int) $cur->parent_id === $targetId) {
+                DB::table('categories')->where('id', $cid)->update(['parent_id' => $c['parent_id']]);
+                $reparented++;
+            }
+        }
+
+        $src = $data['source_name'] ?? ('#' . $sourceId);
+        $tgt = $data['target_name'] ?? ('#' . $targetId);
+        $msg = "Un-merged \"{$src}\" from \"{$tgt}\": ";
+        $msg .= ($restoredCat ? 'restored the category, ' : 'category already present, ');
+        $msg .= "moved {$restored} product(s) back";
+        $msg .= $reparented > 0 ? ", reparented {$reparented} sub-categor(y/ies)." : '.';
+
         return redirect('/admin/admin-action-history')
             ->with('status', ['success' => 1, 'msg' => $msg]);
     }

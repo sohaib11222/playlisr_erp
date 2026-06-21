@@ -72,6 +72,24 @@ body.taxonomy-v2 .edit_category_button { background:#1F1B16; border-color:#1F1B1
 body.taxonomy-v2 .edit_category_button:hover { background:#000; }
 body.taxonomy-v2 .delete_category_button { background:#FFFFFF; border-color:#E0B4AC; color:#8A3A2E; }
 body.taxonomy-v2 .delete_category_button:hover { background:#F8D7DA; }
+body.taxonomy-v2 .merge_category_button { background:#FFFFFF; border-color:#C9BE9E; color:#5A5045; }
+body.taxonomy-v2 .merge_category_button:hover { background:#F7F1E3; color:#1F1B16; }
+
+/* merge modal */
+body.taxonomy-v2 .tax-merge-overlay { position:fixed; inset:0; background:rgba(31,27,22,.45); z-index:1060; display:flex; align-items:center; justify-content:center; padding:20px; }
+body.taxonomy-v2 .tax-merge-overlay[hidden] { display:none; }
+body.taxonomy-v2 .tax-merge-box { background:#FFFFFF; border:1px solid #ECE3CF; border-radius:14px; padding:24px 26px; width:480px; max-width:100%; box-shadow:0 12px 40px rgba(31,27,22,.25); font-family:inherit; }
+body.taxonomy-v2 .tax-merge-box h3 { margin:0 0 14px; font-size:19px; font-weight:700; color:#1F1B16; }
+body.taxonomy-v2 .tax-merge-box p { color:#3A332A; font-size:14px; margin:0 0 14px; line-height:1.5; }
+body.taxonomy-v2 .tax-merge-box select { width:100%; padding:11px 13px; border:1px solid #D7CDB6; border-radius:8px; background:#FFFCF5; font-family:inherit; font-size:15px; color:#1F1B16; }
+body.taxonomy-v2 .tax-merge-warn { background:#FBF3D6; border:1px solid #EADBA0; border-radius:8px; padding:10px 12px; font-size:13px; color:#6B5A1E; margin-top:14px; }
+body.taxonomy-v2 .tax-merge-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:20px; }
+body.taxonomy-v2 .tax-merge-btn { min-height:42px; padding:9px 20px; border-radius:8px; font-family:inherit; font-weight:700; font-size:14px; cursor:pointer; border:1px solid transparent; }
+body.taxonomy-v2 .tax-merge-btn.cancel { background:#FFFFFF; border-color:#D7CDB6; color:#5A5045; }
+body.taxonomy-v2 .tax-merge-btn.cancel:hover { background:#F7F1E3; }
+body.taxonomy-v2 .tax-merge-btn.confirm { background:#1F1B16; color:#FAF6EE; }
+body.taxonomy-v2 .tax-merge-btn.confirm:hover { background:#000; }
+body.taxonomy-v2 .tax-merge-btn[disabled] { opacity:.6; cursor:default; }
 body.taxonomy-v2 .tax-actions { white-space:nowrap; text-align:right; }
 body.taxonomy-v2 .tax-empty { padding:26px 16px; text-align:center; color:#8E8273; }
 
@@ -91,7 +109,10 @@ body.taxonomy-v2 th.tax-sortable.active .tax-sort-ind { color:#2F6B3E; }
             $h .= '<button data-href="'.action('TaxonomyController@edit', [$cat->id]).'?type='.$category_type.'" class="edit_category_button"><i class="glyphicon glyphicon-edit"></i> '.__('messages.edit').'</button> ';
         }
         if ($can_delete) {
-            $h .= '<button data-href="'.action('TaxonomyController@destroy', [$cat->id]).'" class="delete_category_button"><i class="glyphicon glyphicon-trash"></i> '.__('messages.delete').'</button>';
+            $h .= '<button data-href="'.action('TaxonomyController@destroy', [$cat->id]).'" class="delete_category_button"><i class="glyphicon glyphicon-trash"></i> '.__('messages.delete').'</button> ';
+        }
+        if ($can_edit && $can_delete) {
+            $h .= '<button type="button" class="merge_category_button" data-id="'.$cat->id.'" data-name="'.e($cat->name).'"><i class="glyphicon glyphicon-random"></i> Merge</button>';
         }
         return $h;
     };
@@ -198,7 +219,23 @@ body.taxonomy-v2 th.tax-sortable.active .tax-sort-ind { color:#2F6B3E; }
     </div>
 
     <div class="modal fade category_modal" tabindex="-1" role="dialog" aria-labelledby="gridSystemModalLabel"></div>
+
+    <div id="merge_overlay" class="tax-merge-overlay" hidden>
+        <div class="tax-merge-box">
+            <h3>Merge category</h3>
+            <p>Move all products from <strong id="merge_source_name"></strong>
+               (<span id="merge_source_count">0</span> products) into:</p>
+            <select id="merge_target_select"></select>
+            <p class="tax-merge-warn">The source category will be deleted and its sub-categories moved under the target. This is undoable at <strong>/admin/admin-action-history</strong>.</p>
+            <div class="tax-merge-actions">
+                <button type="button" id="merge_cancel" class="tax-merge-btn cancel">Cancel</button>
+                <button type="button" id="merge_confirm" class="tax-merge-btn confirm">Merge</button>
+            </div>
+        </div>
+    </div>
 </section>
+
+<script>window.TAX_CATS = {!! json_encode($catOptions) !!};</script>
 
 <script>
 (function () {
@@ -293,6 +330,75 @@ body.taxonomy-v2 th.tax-sortable.active .tax-sort-ind { color:#2F6B3E; }
             p.hidden = !show;
             var caret = p.querySelector('.tax-caret');
             if (caret && !caret.classList.contains('leaf')) caret.classList.toggle('open', show);
+        });
+    });
+
+    // --- Merge ---
+    var overlay = document.getElementById('merge_overlay');
+    var srcName = document.getElementById('merge_source_name');
+    var srcCount = document.getElementById('merge_source_count');
+    var targetSel = document.getElementById('merge_target_select');
+    var confirmBtn = document.getElementById('merge_confirm');
+    var cancelBtn = document.getElementById('merge_cancel');
+    var currentSource = null;
+
+    function openMerge(id, name, count) {
+        currentSource = id;
+        srcName.textContent = name;
+        srcCount.textContent = count;
+        targetSel.innerHTML = '';
+        var ph = document.createElement('option');
+        ph.value = ''; ph.textContent = '— choose target category —';
+        targetSel.appendChild(ph);
+        (window.TAX_CATS || []).forEach(function (c) {
+            if (String(c.id) === String(id)) return;
+            var o = document.createElement('option');
+            o.value = c.id; o.textContent = c.label;
+            targetSel.appendChild(o);
+        });
+        confirmBtn.disabled = false; confirmBtn.textContent = 'Merge';
+        if (overlay) overlay.hidden = false;
+    }
+    function closeMerge() { if (overlay) overlay.hidden = true; currentSource = null; }
+
+    document.querySelectorAll('.merge_category_button').forEach(function (b) {
+        b.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var row = b.closest('tr');
+            var count = row ? (row.dataset.count || '0') : '0';
+            openMerge(b.dataset.id, b.dataset.name, count);
+        });
+    });
+    if (cancelBtn) cancelBtn.addEventListener('click', closeMerge);
+    if (overlay) overlay.addEventListener('click', function (e) { if (e.target === overlay) closeMerge(); });
+
+    if (confirmBtn) confirmBtn.addEventListener('click', function () {
+        var target = targetSel.value;
+        if (!target) { targetSel.focus(); return; }
+        if (!currentSource) return;
+        confirmBtn.disabled = true; confirmBtn.textContent = 'Merging…';
+        var token = document.querySelector('meta[name="csrf-token"]');
+        fetch('{{ url('/taxonomies') }}/' + currentSource + '/merge', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRF-TOKEN': token ? token.getAttribute('content') : '',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: 'target_id=' + encodeURIComponent(target)
+        }).then(function (r) { return r.json(); }).then(function (d) {
+            if (d && d.success) {
+                if (window.toastr) toastr.success(d.msg);
+                window.location.reload();
+            } else {
+                var m = (d && d.msg) ? d.msg : 'Merge failed.';
+                if (window.toastr) toastr.error(m); else alert(m);
+                confirmBtn.disabled = false; confirmBtn.textContent = 'Merge';
+            }
+        }).catch(function () {
+            if (window.toastr) toastr.error('Merge failed.'); else alert('Merge failed.');
+            confirmBtn.disabled = false; confirmBtn.textContent = 'Merge';
         });
     });
 })();

@@ -172,6 +172,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::resource('loyalty-tiers', 'LoyaltyTierController');
 
     Route::get('taxonomies-ajax-index-page', 'TaxonomyController@getTaxonomyIndexPage');
+    Route::post('taxonomies/{id}/merge', 'TaxonomyController@merge')->name('taxonomy.merge');
     Route::resource('taxonomies', 'TaxonomyController');
 
     Route::resource('variation-templates', 'VariationTemplateController');
