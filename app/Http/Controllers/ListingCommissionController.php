@@ -341,7 +341,12 @@ class ListingCommissionController extends Controller
     private function normalizeFrom($input)
     {
         $input = is_string($input) ? trim($input) : '';
-        return preg_match('/^\d{4}-\d{2}-\d{2}$/', $input) ? $input : self::DEFAULT_FROM;
+        $from = preg_match('/^\d{4}-\d{2}-\d{2}$/', $input) ? $input : self::DEFAULT_FROM;
+        // Commission doesn't exist before the 2026-05-15 rollout, and the
+        // Leaderboard / My Earnings pages are fixed to it. Clamp so a date
+        // earlier than the rollout can't pull in pre-rollout listings and make
+        // this page disagree with the others (Sarah 2026-06-21).
+        return strcmp($from, self::DEFAULT_FROM) < 0 ? self::DEFAULT_FROM : $from;
     }
 
     private function backUrl($from)
