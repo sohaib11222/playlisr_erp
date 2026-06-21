@@ -84,7 +84,7 @@ class AdminActionHistoryController extends Controller
         // (so a later manual change isn't clobbered).
         // remove-label-duplicates: rows hold the FULL deleted activity_log rows;
         // undo re-inserts them verbatim (skips any id that already exists).
-        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates'];
+        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill'];
         if (!in_array($action, $supportedActions, true)) {
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 0, 'msg' => "Don't know how to undo action: " . $action]);
@@ -96,6 +96,37 @@ class AdminActionHistoryController extends Controller
 
         if ($action === 'apply-legacy-store-credit') {
             return $this->undoApplyLegacyStoreCredit($data, $key);
+        }
+
+        // ring-backfill: a single re-rung sale. Undo voids it via the normal
+        // deleteSale path, which restores stock and removes the transaction
+        // (re-arming the back-fill tool's idempotency guard).
+        if ($action === 'ring-backfill') {
+            $txId = $data['transaction_id'] ?? null;
+            $businessId = $data['business_id'] ?? null;
+            if (!$txId || !$businessId) {
+                return redirect('/admin/admin-action-history')
+                    ->with('status', ['success' => 0, 'msg' => 'Snapshot missing transaction/business id.']);
+            }
+            if (!DB::table('transactions')->where('id', $txId)->exists()) {
+                return redirect('/admin/admin-action-history')
+                    ->with('status', ['success' => 0, 'msg' => "Sale #{$txId} already gone — nothing to undo."]);
+            }
+            DB::beginTransaction();
+            try {
+                $res = app(\App\Utils\TransactionUtil::class)->deleteSale($businessId, $txId);
+                DB::commit();
+            } catch (\Throwable $e) {
+                DB::rollBack();
+                \Log::emergency('ring-backfill undo failed: ' . $e->getMessage());
+                return redirect('/admin/admin-action-history')
+                    ->with('status', ['success' => 0, 'msg' => 'Undo failed, nothing changed: ' . $e->getMessage()]);
+            }
+            $ok = is_array($res) ? !empty($res['success']) : true;
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => $ok ? 1 : 0, 'msg' => $ok
+                    ? "Voided sale #{$txId} and restored stock (snapshot {$key})."
+                    : ($res['msg'] ?? 'Could not void the sale.')]);
         }
 
         if ($action === 'remove-label-duplicates') {

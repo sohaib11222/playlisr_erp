@@ -921,6 +921,14 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/admin-action-history', 'AdminActionHistoryController@index');
     Route::post('/admin/admin-action-history/undo', 'AdminActionHistoryController@undo');
 
+    // Re-ring Alec's 103-item Pico cash sale (6/20/26 7:23pm) that 500'd on the
+    // old max_input_vars limit before the fix — no transaction was saved and no
+    // stock moved. Preview resolves each barcode + shows stock; Apply snapshots
+    // + creates the sale via the normal POS logic. Undoable via
+    // admin-action-history (action 'ring-backfill' -> TransactionUtil::deleteSale).
+    Route::get('/admin/ring-backfill', 'RingBackfillController@index');
+    Route::post('/admin/ring-backfill/apply', 'RingBackfillController@apply');
+
     // Guarded bulk-apply of the legacy Nivessa store credit. Preview shows the
     // safe-to-credit contacts (zero balance, never credited); Apply snapshots
     // balances first and is undoable via admin-action-history
