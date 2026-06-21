@@ -211,67 +211,49 @@ HTML;
                 $store = $tx['location'] ?? '—';
                 $key = ($isUsed ? '0' : '1') . '|' . $label . '|' . $store;
                 if (!isset($groups[$key])) {
-                    $groups[$key] = ['label' => $label, 'store' => $store, 'count' => 0, 'total' => 0.0, 'kind' => $isUsed ? 'used' : 'new'];
+                    $groups[$key] = ['label' => $label, 'store' => $store, 'count' => 0, 'total' => 0.0, 'kind' => $isUsed ? 'used' : 'new', 'txns' => []];
                 }
                 $groups[$key]['count']++;
                 $groups[$key]['total'] += $tx['total'];
+                $groups[$key]['txns'][] = $tx;
             }
             uasort($groups, fn ($a, $b) => $b['total'] <=> $a['total']);
         @endphp
-        <div class="ica-digest-title">This week's spend — {{ count($groups) }} supplier/store groups, {{ count($pb['transactions']) }} orders total</div>
-        <table class="ica-breakdown-table ica-digest-table">
-            <thead>
-                <tr><th>Supplier / type</th><th>Store</th><th class="ica-bd-amt">Orders</th><th class="ica-bd-amt">Total</th></tr>
-            </thead>
-            <tbody>
-                @foreach($groups as $g)
-                <tr>
-                    <td><span class="ica-bd-tag ica-bd-tag-{{ $g['kind'] }}">{{ $g['kind'] === 'used' ? 'USED' : 'NEW' }}</span> {{ $g['label'] }}</td>
-                    <td>{{ $g['store'] }}</td>
-                    <td class="ica-bd-amt">{{ $g['count'] }}</td>
-                    <td class="ica-bd-amt">${{ number_format($g['total'], 0) }}</td>
-                </tr>
-                @endforeach
-            </tbody>
-        </table>
-
-        {{-- Transaction-level audit of the split (Sarah 2026-06-19) — every
-             purchase this week and how much of it landed in New vs Used. --}}
         @if(!empty($pb['dupe_groups']))
         <div class="ica-dupe-warn">
             <strong>{{ $pb['dupe_groups'] }} possible duplicate {{ \Illuminate\Support\Str::plural('purchase', $pb['dupe_groups']) }} this week</strong>
-            — same store, total, and day entered more than once (about ${{ number_format($pb['dupe_redundant_amount'], 0) }} of redundant spend if they're real dupes). Flagged in yellow below — open each and void the extra copy if it's the same shipment twice.
+            — same store, total, and day entered more than once (about ${{ number_format($pb['dupe_redundant_amount'], 0) }} of redundant spend if they're real dupes). Expand the group below; rows tagged DUP? are the suspects — open the PO and void the extra copy.
         </div>
         @endif
-        <details class="ica-spend-breakdown">
-            <summary>Show every individual order ({{ count($pb['transactions']) }}) — full detail</summary>
-            <table class="ica-breakdown-table ica-txn-table">
-                <thead>
-                    <tr>
-                        <th>Type</th><th>Order date</th><th>Entered</th><th>Ref</th><th>Store</th><th>Supplier</th>
-                        <th class="ica-bd-amt">Total</th><th class="ica-bd-amt">New</th><th class="ica-bd-amt">Used</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach($pb['transactions'] as $tx)
-                    <tr class="{{ !empty($tx['maybe_dupe']) ? 'ica-txn-dupe' : '' }}">
-                        <td><span class="ica-bd-tag ica-bd-tag-{{ $tx['kind'] }}">{{ $tx['kind'] === 'used' ? 'USED' : 'NEW' }}</span></td>
-                        <td class="ica-bd-via">{{ $tx['date'] ? \Carbon\Carbon::parse($tx['date'])->format('M j') : '—' }}</td>
-                        <td class="ica-bd-via">{{ !empty($tx['entered']) ? \Carbon\Carbon::parse($tx['entered'])->format('M j') : '—' }}@if(($tx['late_days'] ?? 0) >= 3) <span class="ica-late-tag" title="Keyed in {{ $tx['late_days'] }} days after the order date">+{{ $tx['late_days'] }}d</span>@endif @if(!empty($tx['entered_by']))<span class="ica-by">by {{ $tx['entered_by'] }}</span>@endif</td>
-                        <td class="ica-bd-via"><a href="{{ url('/purchases/' . $tx['id']) }}" target="_blank" rel="noopener" class="ica-po-link" title="Open this purchase">{{ $tx['ref_no'] ?: ('#' . $tx['id']) }}</a>@if(!empty($tx['maybe_dupe'])) <span class="ica-dupe-tag">DUP?</span>@endif</td>
-                        <td>{{ $tx['location'] }}</td>
-                        <td>{{ $tx['supplier'] ?: '—' }}</td>
-                        <td class="ica-bd-amt">${{ number_format($tx['total'], 0) }}</td>
-                        <td class="ica-bd-amt ica-txn-new">{{ $tx['new_amount'] > 0 ? '$' . number_format($tx['new_amount'], 0) : '—' }}</td>
-                        <td class="ica-bd-amt ica-txn-used">{{ $tx['used_amount'] > 0 ? '$' . number_format($tx['used_amount'], 0) : '—' }}</td>
-                    </tr>
-                    @endforeach
-                </tbody>
-            </table>
-            <div class="ica-bd-note">
-                Each purchase's total is split by the share of its line items tagged used. A row landing fully in <strong>New</strong> with a used supplier or collection is a miscategorised buy — those are what inflate New.
-            </div>
-        </details>
+        <div class="ica-digest-title">This week's spend — click a row to see its POs</div>
+        <div class="ica-digest">
+            @foreach($groups as $g)
+            <details class="ica-digest-group">
+                <summary>
+                    <span class="ica-bd-tag ica-bd-tag-{{ $g['kind'] }}">{{ $g['kind'] === 'used' ? 'USED' : 'NEW' }}</span>
+                    <span class="dg-label">{{ $g['label'] }}</span>
+                    <span class="dg-store">{{ $g['store'] }}</span>
+                    <span class="dg-count">{{ $g['count'] }} {{ \Illuminate\Support\Str::plural('order', $g['count']) }}</span>
+                    <span class="dg-total">${{ number_format($g['total'], 0) }}</span>
+                </summary>
+                <table class="ica-breakdown-table ica-txn-table">
+                    <thead>
+                        <tr><th>Order date</th><th>Ref</th><th>Entered</th><th class="ica-bd-amt">Total</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach($g['txns'] as $tx)
+                        <tr class="{{ !empty($tx['maybe_dupe']) ? 'ica-txn-dupe' : '' }}">
+                            <td class="ica-bd-via">{{ $tx['date'] ? \Carbon\Carbon::parse($tx['date'])->format('M j') : '—' }}</td>
+                            <td class="ica-bd-via"><a href="{{ url('/purchases/' . $tx['id']) }}" target="_blank" rel="noopener" class="ica-po-link" title="Open this purchase">{{ $tx['ref_no'] ?: ('#' . $tx['id']) }}</a>@if(!empty($tx['maybe_dupe'])) <span class="ica-dupe-tag">DUP?</span>@endif</td>
+                            <td class="ica-bd-via">{{ !empty($tx['entered']) ? \Carbon\Carbon::parse($tx['entered'])->format('M j') : '—' }}@if(($tx['late_days'] ?? 0) >= 3) <span class="ica-late-tag" title="Keyed in {{ $tx['late_days'] }} days after the order date">+{{ $tx['late_days'] }}d</span>@endif @if(!empty($tx['entered_by']))<span class="ica-by">by {{ $tx['entered_by'] }}</span>@endif</td>
+                            <td class="ica-bd-amt">${{ number_format($tx['total'], 0) }}</td>
+                        </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </details>
+            @endforeach
+        </div>
         @endif
 
         @if(!empty($pb['manual_entries_this_week']))
@@ -1417,6 +1399,19 @@ body.ica-wizard-active { padding-bottom: 64px; }
 .ica-digest-table td { padding: 8px 10px; border-bottom: 1px solid #f3f3f3; color: #333; }
 .ica-digest-table .ica-bd-amt { text-align: right; font-weight: 700; white-space: nowrap; }
 .ica-digest-table tr:last-child td { border-bottom: none; }
+.ica-digest { border: 1px solid #e3e3e3; border-radius: 6px; overflow: hidden; }
+.ica-digest-group { border-bottom: 1px solid #eee; }
+.ica-digest-group:last-child { border-bottom: none; }
+.ica-digest-group > summary { display: flex; align-items: center; gap: 12px; padding: 10px 12px; cursor: pointer; font-size: 14px; list-style: none; }
+.ica-digest-group > summary::-webkit-details-marker { display: none; }
+.ica-digest-group > summary::before { content: '▸'; color: #aaa; font-size: 11px; }
+.ica-digest-group[open] > summary::before { content: '▾'; }
+.ica-digest-group[open] > summary { background: #fafafa; border-bottom: 1px solid #eee; }
+.ica-digest-group .dg-label { font-weight: 700; color: #333; }
+.ica-digest-group .dg-store { color: #777; }
+.ica-digest-group .dg-count { color: #999; margin-left: auto; font-size: 12px; }
+.ica-digest-group .dg-total { font-weight: 800; font-size: 16px; color: #222; min-width: 80px; text-align: right; }
+.ica-digest-group .ica-breakdown-table { margin: 0; padding: 0 12px 10px; }
 /* Category breakdown — what's in New vs Used this week (Sarah 2026-06-19) */
 .ica-spend-breakdown { margin-top: 14px; border: 1px solid #e3e3e3; border-radius: 6px; background: #fff; padding: 0 12px; }
 .ica-spend-breakdown summary { cursor: pointer; padding: 10px 0; font-size: 13px; font-weight: 600; color: #444; }
