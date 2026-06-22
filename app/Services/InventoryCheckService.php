@@ -178,54 +178,37 @@ class InventoryCheckService
         // sources, each summed by final_total.
         $userNameSql = "TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.surname,''))) as entered_by_name";
 
-        // USED — buy-from-customer collection purchases this week. A purchase is
-        // a collection if it has any buy_from_customer line. Find the ids first,
-        // then pull each once so final_total isn't multiplied by its line count.
-        $bfcIdsQ = DB::table('transactions as t')
-            ->join('purchase_lines as pl', 'pl.transaction_id', '=', 't.id')
-            ->join('products as p', 'p.id', '=', 'pl.product_id')
-            ->where('t.business_id', $business_id)
-            ->where('t.type', 'purchase')
-            ->where('p.added_via', 'buy_from_customer')
-            ->whereBetween(DB::raw('date(t.transaction_date)'), [$week['start'], $week['end']]);
-        if ($permittedLocations !== 'all') {
-            $bfcIdsQ->whereIn('t.location_id', $permittedLocations);
-        }
-        $bfcIds = $bfcIdsQ->distinct()->pluck('t.id')->all();
-        $usedRows = collect();
-        if (!empty($bfcIds)) {
-            $usedRows = DB::table('transactions as t')
-                ->leftJoin('contacts as ct', 'ct.id', '=', 't.contact_id')
-                ->leftJoin('users as u', 'u.id', '=', 't.created_by')
-                ->whereIn('t.id', $bfcIds)
-                ->selectRaw("t.id, t.location_id, t.final_total, t.ref_no, t.transaction_date, t.created_at, ct.name as supplier, {$userNameSql}, u.username as entered_by_username")
-                ->get();
-        }
-
-        // NEW — purchases that have a real SUPPLIER on them (AMS, etc.). This is
-        // exactly Sarah's "AMS history": the Purchases screen filtered by a
-        // supplier contact. Warehouse re-dating ("send to add purchase") carries
-        // no supplier, so it's left out. Distributor buys are supplier/both type
-        // contacts. Exclude the buy-from-customer ids (those are Used).
-        $newQ = DB::table('transactions as t')
+        // Pull every purchase this week that has a CONTACT on it (inner join —
+        // contactless rows are warehouse re-dating with no buy, excluded). Then
+        // classify by the contact name, the only real signal in the data:
+        //   • NEW  — a distributor (AMS, SHein, DeeJay/Vinylfuture, Alliance,
+        //            Posters Wholesale, …) via distributorSuppliers().
+        //   • USED — everyone else: walk-ins and individuals selling us records
+        //            in store (these are collection buys, NOT new orders).
+        // Confirmed 2026-06-21 against the real supplier list: AMS/Shein/etc were
+        // the only distributors; walk-ins & people were being mislabeled New.
+        $purQ = DB::table('transactions as t')
             ->join('contacts as ct', 'ct.id', '=', 't.contact_id')
             ->leftJoin('users as u', 'u.id', '=', 't.created_by')
             ->where('t.business_id', $business_id)
             ->where('t.type', 'purchase')
-            ->whereIn('ct.type', ['supplier', 'both'])
             ->whereBetween(DB::raw('date(t.transaction_date)'), [$week['start'], $week['end']]);
         if ($permittedLocations !== 'all') {
-            $newQ->whereIn('t.location_id', $permittedLocations);
+            $purQ->whereIn('t.location_id', $permittedLocations);
         }
-        if (!empty($bfcIds)) {
-            $newQ->whereNotIn('t.id', $bfcIds);
-        }
-        $newRows = $newQ->selectRaw("t.id, t.location_id, t.final_total, t.ref_no, t.transaction_date, t.created_at, ct.name as supplier, {$userNameSql}, u.username as entered_by_username")->get();
+        $purRows = $purQ->selectRaw("t.id, t.location_id, t.final_total, t.ref_no, t.transaction_date, t.created_at, ct.name as supplier, {$userNameSql}, u.username as entered_by_username")->get();
 
         $spentTxnUsed = 0.0;
         $spentTxnNew = 0.0;
         $perLocUsedNew = [];
         $txnList = [];
+        $newRows = collect();
+        $usedRows = collect();
+        foreach ($purRows as $r) {
+            if ((float) $r->final_total <= 0) { continue; } // skip $0 noise rows
+            if ($this->isDistributorSupplier($r->supplier)) { $newRows->push($r); }
+            else { $usedRows->push($r); }
+        }
         $addRow = function ($r, $kind) use (&$spentTxnUsed, &$spentTxnNew, &$perLocUsedNew, &$txnList) {
             $ft = (float) $r->final_total;
             $lid = (int) $r->location_id;
@@ -275,8 +258,9 @@ class InventoryCheckService
         }
         $allPurchAgg = $allPurchAgg->selectRaw('COUNT(*) as c, COALESCE(SUM(t.final_total),0) as s')->first();
         // Excluded = all purchases this week minus the ones we counted (New
-        // supplier purchases + Used collection buys) = warehouse re-dating.
-        $excludedCount = max(0, (int) $allPurchAgg->c - count($bfcIds) - $newRows->count());
+        // distributor orders + Used collection buys) = warehouse re-dating and
+        // contactless / $0 rows.
+        $excludedCount = max(0, (int) $allPurchAgg->c - $newRows->count() - $usedRows->count());
         $excludedTotal = max(0, round((float) $allPurchAgg->s - $spentTxnUsed - $spentTxnNew, 2));
 
         // Add manual budget entries logged from the ICA "+ Log a buy"
@@ -592,7 +576,7 @@ class InventoryCheckService
      */
     protected function distributorSuppliers(): array
     {
-        return ['ams', 'shein', 'dee jay', 'deejay', 'dee-jay', 'vinyl future', 'vinylfuture', 'alliance'];
+        return ['ams', 'shein', 'dee jay', 'deejay', 'dee-jay', 'vinyl future', 'vinylfuture', 'alliance', 'posters wholesale', 'poster wholesale'];
     }
 
     protected function isDistributorSupplier(?string $name): bool
