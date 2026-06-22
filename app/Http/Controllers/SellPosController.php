@@ -4056,6 +4056,15 @@ class SellPosController extends Controller
 
                     $this->transactionUtil->mapPurchaseSell($business, $transaction->sell_lines, 'purchase');
 
+                    // Consignment: if any sold line is a consigned record,
+                    // accrue the artist's % cut into the payable ledger.
+                    // Guarded so a consignment hiccup can never break a sale.
+                    try {
+                        \App\Http\Controllers\ConsignmentController::settleSale($business_id, $transaction);
+                    } catch (\Throwable $e) {
+                        \Log::error('Consignment settle hook failed: ' . $e->getMessage());
+                    }
+
                     //Auto send notification
                     $whatsapp_link = $this->notificationUtil->autoSendNotification($business_id, 'new_sale', $transaction, $transaction->contact);
                 }

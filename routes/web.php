@@ -337,6 +337,13 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // ring at the same store. Powers the sticky orphan panel on /pos.
     Route::get('/sells/pos/clover-orphans-recent', 'SellPosController@cloverOrphansRecent')->name('pos.cloverOrphansRecent');
 
+    // Consignment inventory: take in records on consignment, sell through
+    // POS, track the artist's % split owed. Payable ledger is a JSON
+    // sidecar in storage/ — no migration (cloverManualMatch pattern).
+    Route::get('/consignment', 'ConsignmentController@index')->name('consignment.index');
+    Route::post('/consignment', 'ConsignmentController@store')->name('consignment.store');
+    Route::post('/consignment/mark-paid', 'ConsignmentController@markPaid')->name('consignment.markPaid');
+
     Route::resource('roles', 'RoleController');
 
     Route::resource('users', 'ManageUserController');

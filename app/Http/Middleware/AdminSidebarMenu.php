@@ -164,6 +164,13 @@ class AdminSidebarMenu
 //                                ['icon' => 'fa fas fa-download', 'active' => request()->segment(1) == 'import-products']
 //                            );
                         }
+                        if (auth()->user()->can('product.create')) {
+                            $sub->url(
+                                route('consignment.index'),
+                                'Consignment',
+                                ['icon' => 'fa fas fa-handshake', 'active' => request()->segment(1) == 'consignment']
+                            );
+                        }
                         if (auth()->user()->can('product.opening_stock')) {
 //                            $sub->url(
 //                                action('ImportOpeningStockController@index'),
