@@ -27,15 +27,12 @@
     <div class="col-md-12">
         <div class="box box-solid">
             <div class="box-body">
-                <form method="GET" action="{{ url('/admin/listing-commissions') }}" class="form-inline">
-                    <label for="from">Listed since</label>
-                    <input type="date" id="from" name="from" value="{{ $from }}" min="2026-05-15" class="form-control" style="margin:0 8px;">
-                    <button type="submit" class="btn btn-primary">Apply</button>
-                    <span class="text-muted" style="margin-left:8px;font-size:12px;">Earned &amp; Owed are for items listed since this date; Paid is the total you've actually paid them. At May 15 (program start), Earned = Paid + Owed and matches the Leaderboard &amp; My Earnings.</span>
+                <div class="form-inline">
+                    <span>Since <strong>{{ \Carbon::parse($from)->format('M j, Y') }}</strong> (program start). <strong>Owed</strong> = everything unpaid — the exact number each employee sees on My Earnings. <strong>Paid</strong> = total you've actually paid them. Earned = Paid + Owed.</span>
                     <span class="pull-right" style="font-size:16px;">
                         Earned <strong>${{ number_format($total_earned, 2) }}</strong> &nbsp;·&nbsp; Paid <strong>${{ number_format($total_paid_window, 2) }}</strong> &nbsp;·&nbsp; Owed <strong>${{ number_format($total_owed, 2) }}</strong>
                     </span>
-                </form>
+                </div>
             </div>
         </div>
     </div>

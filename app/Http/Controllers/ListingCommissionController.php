@@ -50,11 +50,12 @@ class ListingCommissionController extends Controller
 
     public function index(Request $request)
     {
-        // Window since the program start (clamped to it — earlier dates would
-        // pull in pre-rollout listings and disagree with the Leaderboard /
-        // My Earnings). At the default 2026-05-15 this matches those pages; a
-        // later date is a sub-window.
-        $from = $this->normalizeFrom($request->input('from'));
+        // Fixed to the program start. "Owed" = everything unpaid since 2026-05-15,
+        // which is exactly what each employee sees on My Earnings (paid items
+        // already drop off, so there's no need to filter by "since last
+        // payment" — the unpaid list IS what's left). An adjustable date only
+        // made this page disagree with the employee view (Sarah 2026-06-21).
+        $from = self::DEFAULT_FROM;
         $businessId = $request->session()->get('user.business_id');
 
         $paid = $this->loadPayouts();
