@@ -513,6 +513,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // Self by default; admins may pass ?user_id= to view a specific employee.
     Route::get('/my-earnings/items', 'EmployeeEarningsController@items');
     Route::get('/reports/shift-targets', 'ReportController@shiftTargets');
+    // Per-person "why is my goal this?" breakdown — each worked hour valued at
+    // the store's historical take for that slot. Linked from a name on the
+    // Shift Targets list.
+    Route::get('/reports/shift-targets/breakdown', 'ReportController@shiftTargetBreakdown');
 
     // Reports hub — organized index of all reports with per-user favorites
     Route::get('/reports', 'ReportsHubController@index')->name('reports.hub');

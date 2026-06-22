@@ -12227,6 +12227,147 @@ class ReportController extends Controller
     }
 
     /**
+     * Why one person's goal is what it is: for each hour they were clocked in,
+     * show what the store HISTORICALLY rings in that weekday+hour slot (the same
+     * 12-week rate that drives the target), their fair share of it, and how the
+     * day's target + bonus fall out. Answers "what do cashiers usually do at that
+     * time?" with the actual per-slot numbers. Admin-only. Reuses the exact
+     * profile + slot math from attachHourTargets so it reconciles with the
+     * Shift Targets list.
+     */
+    public function shiftTargetBreakdown(Request $request)
+    {
+        $this->ensureAdminOnlyReportAccess();
+        $business_id = $request->session()->get('user.business_id');
+        $userId = (int) $request->input('user_id');
+        $locationId = (int) $request->input('location_id');
+        $period = $request->input('period', 'this_month');
+
+        $now = \Carbon::now();
+        switch ($period) {
+            case 'today':      $start = $now->copy()->startOfDay();              $end = $now->copy()->endOfDay(); break;
+            case 'yesterday':  $start = $now->copy()->subDay()->startOfDay();    $end = $now->copy()->subDay()->endOfDay(); break;
+            case 'this_week':  $start = $now->copy()->startOfWeek();             $end = $now->copy()->endOfDay(); break;
+            case 'last_week':  $start = $now->copy()->subWeek()->startOfWeek();  $end = $now->copy()->subWeek()->endOfWeek(); break;
+            case 'last_7':     $start = $now->copy()->subDays(6)->startOfDay();  $end = $now->copy()->endOfDay(); break;
+            case 'last_30':    $start = $now->copy()->subDays(29)->startOfDay(); $end = $now->copy()->endOfDay(); break;
+            default:           $start = $now->copy()->startOfMonth();            $end = $now->copy()->endOfDay(); $period = 'this_month'; break;
+        }
+        $startC = $start; $endC = $end;
+        $start_str = $start->toDateTimeString();
+        $end_str   = $end->toDateTimeString();
+
+        $user = \DB::table('users')->where('id', $userId)->first();
+        $userName = $user ? (trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? '')) ?: ($user->username ?? "User #{$userId}")) : "User #{$userId}";
+        $locName = \DB::table('business_locations')->where('id', $locationId)->value('name') ?: ('Location #' . $locationId);
+
+        $profile = $this->storeHourlyProfile($business_id, $locationId, 12);
+        $rate = $profile['rate'];
+        $stretch = 0.10;
+
+        // All sessions at this location (every user) so we can fair-share each
+        // hour by how many staff were on the floor — same as attachHourTargets.
+        $sessions = \DB::table('cash_registers')
+            ->where('business_id', $business_id)
+            ->where('location_id', $locationId)
+            ->whereNotNull('user_id')
+            ->where('created_at', '<=', $end_str)
+            ->where(function ($q) use ($start_str) {
+                $q->where('closed_at', '>=', $start_str)->orWhereNull('closed_at');
+            })
+            ->select('user_id', 'created_at', 'closed_at')
+            ->get();
+
+        $slotStaff = [];   // 'Y-m-d H' => [user_id => true]
+        $myCov = [];
+        foreach ($sessions as $s) {
+            $ss = \Carbon::parse($s->created_at);
+            if ($ss->lt($startC)) { $ss = $startC->copy(); }
+            $se = $s->closed_at ? \Carbon::parse($s->closed_at) : $now->copy();
+            if ($se->gt($endC)) { $se = $endC->copy(); }
+            $cap = $ss->copy()->addSeconds(21600);
+            if ($se->gt($cap)) { $se = $cap; }
+            if ($se->lte($ss)) { continue; }
+            $cursor = $ss->copy();
+            while ($cursor->lt($se)) {
+                $slotEnd = $cursor->copy()->startOfHour()->addHour();
+                $chunkEnd = $slotEnd->lt($se) ? $slotEnd : $se;
+                $frac = $cursor->diffInSeconds($chunkEnd) / 3600.0;
+                $key = ($cursor->dayOfWeek + 1) . '-' . $cursor->hour;
+                $inst = $cursor->format('Y-m-d H');
+                $slotStaff[$inst][$s->user_id] = true;
+                if ((int) $s->user_id === $userId) {
+                    $myCov[] = ['key' => $key, 'frac' => $frac, 'inst' => $inst, 'date' => substr($inst, 0, 10), 'hour' => $cursor->hour];
+                }
+                $cursor = $chunkEnd;
+            }
+        }
+
+        // Per-day, per-slot breakdown for this person.
+        $days = [];
+        foreach ($myCov as $c) {
+            $head = max(1, count($slotStaff[$c['inst']] ?? []));
+            $storeRate = (float) ($rate[$c['key']] ?? 0);
+            $share = $storeRate / $head;
+            $expected = $share * $c['frac'];
+            $d = $c['date'];
+            if (!isset($days[$d])) { $days[$d] = ['date' => $d, 'slots' => [], 'expected' => 0.0]; }
+            $days[$d]['slots'][] = [
+                'hour' => $c['hour'], 'frac' => $c['frac'], 'head' => $head,
+                'store_rate' => $storeRate, 'share' => $share, 'expected' => $expected,
+            ];
+            $days[$d]['expected'] += $expected;
+        }
+
+        // Actual non-whatnot sales per day for this person at this location.
+        $net_pretax = '(tsl.quantity - COALESCE(tsl.quantity_returned, 0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax, 0))';
+        $daySales = [];
+        foreach (\DB::table('transactions as t')
+            ->join('transaction_sell_lines as tsl', 'tsl.transaction_id', '=', 't.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.location_id', $locationId)
+            ->where('t.created_by', $userId)
+            ->where('t.type', 'sell')->where('t.status', 'final')->whereNull('t.import_source')
+            ->where(function ($q) { $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); })
+            ->whereBetween('t.transaction_date', [$start_str, $end_str])
+            ->selectRaw("DATE(t.transaction_date) as d, COALESCE(SUM($net_pretax), 0) as rev")
+            ->groupBy(\DB::raw('DATE(t.transaction_date)'))
+            ->get() as $row) {
+            $daySales[$row->d] = (float) $row->rev;
+        }
+
+        ksort($days);
+        $rows = [];
+        foreach ($days as $d => $day) {
+            $target = $day['expected'] * (1 + $stretch);
+            $sold = (float) ($daySales[$d] ?? 0);
+            $bonus = $sold > $target ? ($sold - $target) * 0.02 : 0.0;
+            $rows[] = (object) [
+                'date'     => $d,
+                'slots'    => $day['slots'],
+                'expected' => round($day['expected'], 2),
+                'target'   => round($target, 2),
+                'sold'     => round($sold, 2),
+                'bonus'    => round($bonus, 2),
+            ];
+        }
+
+        return view('report.shift_target_breakdown', [
+            'user_name' => $userName,
+            'loc_name'  => $locName,
+            'period'    => $period,
+            'start'     => $start,
+            'end'       => $end,
+            'stretch_pct' => $stretch * 100,
+            'rows'      => $rows,
+            'total_expected' => round(array_sum(array_map(function ($r) { return $r->expected; }, $rows)), 2),
+            'total_target'   => round(array_sum(array_map(function ($r) { return $r->target; }, $rows)), 2),
+            'total_sold'     => round(array_sum(array_map(function ($r) { return $r->sold; }, $rows)), 2),
+            'total_bonus'    => round(array_sum(array_map(function ($r) { return $r->bonus; }, $rows)), 2),
+        ]);
+    }
+
+    /**
      * Drill-down for the leaderboard: the individual products a person listed
      * (products.created_by) that sold in the window, optionally at one store,
      * best-sellers first. Powers the "items listed / sales from listed"

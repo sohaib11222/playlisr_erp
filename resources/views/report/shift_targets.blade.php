@@ -107,7 +107,7 @@
                     <tbody>
                         @forelse($store['rows'] as $r)
                             <tr>
-                                <td style="text-align:left;"><strong>{{ $r->employee }}</strong></td>
+                                <td style="text-align:left;"><strong><a href="{{ url('/reports/shift-targets/breakdown') }}?user_id={{ $r->user_id }}&location_id={{ $store['id'] }}&period={{ $period }}" style="color:#1F1B16;" title="See why {{ $r->employee }}'s goal is what it is">{{ $r->employee }}</a></strong></td>
                                 <td class="text-right">
                                     {{ number_format($r->hours_worked, 1) }}h
                                     @if(($r->hour_peak ?? 0) > 0 || ($r->hour_offpeak ?? 0) > 0)<div class="st-sub">{{ number_format($r->hour_peak, 1) }}h peak · {{ number_format($r->hour_offpeak, 1) }}h off</div>@endif
