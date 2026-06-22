@@ -12346,11 +12346,11 @@ class ReportController extends Controller
             $sold = (float) ($daySales[$d] ?? 0);
             $bonus = 0.0;
             if ($sold > $target && $day['expected'] > 0) {
-                // 3% on the peak share of over-target dollars, 2% off-peak —
+                // 4% on the peak share of over-target dollars, 2% off-peak —
                 // matches attachHourTargets so the leaderboard and this drill-down agree.
                 $over = $sold - $target;
                 $peakShare = min(1.0, max(0.0, $day['peak_expected'] / $day['expected']));
-                $bonus = $over * $peakShare * 0.03 + $over * (1 - $peakShare) * 0.02;
+                $bonus = $over * $peakShare * 0.04 + $over * (1 - $peakShare) * 0.02;
             }
             $rows[] = (object) [
                 'date'     => $d,
@@ -12885,13 +12885,13 @@ class ReportController extends Controller
                 $dayTarget = $exp * (1 + $stretch);
                 $sold = (float) ($daySales[$r->user_id][$date] ?? 0);
                 if ($sold > $dayTarget) {
-                    // Over-target dollars pay 3% on the peak share of the day and
+                    // Over-target dollars pay 4% on the peak share of the day and
                     // 2% off-peak, to pull staff onto the register when it's busy
                     // (Sarah 2026-06-22). Peak share = how much of that day's
                     // target came from peak slots.
                     $over = $sold - $dayTarget;
                     $peakShare = min(1.0, max(0.0, ($dayPeakExpected[$date] ?? 0) / $exp));
-                    $bonus += $over * $peakShare * 0.03 + $over * (1 - $peakShare) * 0.02;
+                    $bonus += $over * $peakShare * 0.04 + $over * (1 - $peakShare) * 0.02;
                 }
             }
             $r->goal = $r->hour_target;
