@@ -417,38 +417,31 @@ class AdminActionHistoryController extends Controller
         $restoredCat = DB::table('categories')->where('id', $sourceId)->whereNotNull('deleted_at')->exists();
         DB::table('categories')->where('id', $sourceId)->update(['deleted_at' => null]);
 
-        // Revert product refs.
+        // Revert product refs to exactly what they were before the merge. We
+        // restore unconditionally by product id (rather than guarding on "still
+        // points at the target") so undo reliably reverses even after the
+        // products' refs were rewritten — which is what tripped up the earlier
+        // guarded version.
         $restored = 0;
         foreach (array_chunk($data['rows'] ?? [], 500) as $chunk) {
             foreach ($chunk as $row) {
                 $pid = $row['id'] ?? null;
                 if (!$pid) { continue; }
-                $current = DB::table('products')->where('id', $pid)->first();
-                if (!$current) { continue; }
-                $upd = [];
-                if ((int) $current->category_id === $targetId && (int) $row['category_id'] !== $targetId) {
-                    $upd['category_id'] = $row['category_id'];
-                }
-                if ((int) $current->sub_category_id === $targetId && (int) $row['sub_category_id'] !== $targetId) {
-                    $upd['sub_category_id'] = $row['sub_category_id'];
-                }
-                if (!empty($upd)) {
-                    DB::table('products')->where('id', $pid)->update($upd);
-                    $restored++;
-                }
+                DB::table('products')->where('id', $pid)->update([
+                    'category_id'     => $row['category_id'],
+                    'sub_category_id' => $row['sub_category_id'],
+                ]);
+                $restored++;
             }
         }
 
-        // Reparent the source's sub-categories back (only if still under target).
+        // Reparent the source's sub-categories back to where they were.
         $reparented = 0;
         foreach ($data['children'] ?? [] as $c) {
             $cid = $c['id'] ?? null;
             if (!$cid) { continue; }
-            $cur = DB::table('categories')->where('id', $cid)->first();
-            if ($cur && (int) $cur->parent_id === $targetId) {
-                DB::table('categories')->where('id', $cid)->update(['parent_id' => $c['parent_id']]);
-                $reparented++;
-            }
+            DB::table('categories')->where('id', $cid)->update(['parent_id' => $c['parent_id']]);
+            $reparented++;
         }
 
         $src = $data['source_name'] ?? ('#' . $sourceId);

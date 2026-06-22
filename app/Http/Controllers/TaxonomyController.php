@@ -260,19 +260,39 @@ class TaxonomyController extends Controller
             ], JSON_PRETTY_PRINT)
         );
 
+        // Where the products should land. If the target is top-level, products
+        // become category_id = target with no sub-category. If the target is
+        // itself a sub-category, products become category_id = target's parent,
+        // sub_category_id = target. This keeps the parent/child shape valid
+        // instead of leaving products half-attached across levels.
+        $targetIsTop = ((int) $target->parent_id === 0);
+        $topLevelId  = $targetIsTop ? $targetId : (int) $target->parent_id;
+
         \DB::beginTransaction();
         try {
-            // Move product references. We deliberately don't touch products.updated_at
-            // here — bumping it on a large category (e.g. tens of thousands of rows)
-            // would kick off an unnecessary storefront/Clover re-sync wave.
-            \DB::table('products')->where('business_id', $business_id)
-                ->where('category_id', $sourceId)->update(['category_id' => $targetId]);
-            \DB::table('products')->where('business_id', $business_id)
-                ->where('sub_category_id', $sourceId)->update(['sub_category_id' => $targetId]);
+            // We deliberately don't touch products.updated_at here — bumping it on
+            // a large category (tens of thousands of rows) would kick off an
+            // unnecessary storefront/Clover re-sync wave.
 
-            // Reparent the source's sub-categories under the target.
+            // Products that had the source as their SUB-category: move fully into
+            // the target.
+            \DB::table('products')->where('business_id', $business_id)
+                ->where('sub_category_id', $sourceId)
+                ->update([
+                    'category_id'     => $topLevelId,
+                    'sub_category_id' => $targetIsTop ? null : $targetId,
+                ]);
+
+            // Products that had the source as their top-level category: repoint to
+            // the target's top level, keeping their existing sub-category (its
+            // parent is reparented just below).
+            \DB::table('products')->where('business_id', $business_id)
+                ->where('category_id', $sourceId)
+                ->update(['category_id' => $topLevelId]);
+
+            // Reparent the source's sub-categories under the target's level.
             Category::where('business_id', $business_id)
-                ->where('parent_id', $sourceId)->update(['parent_id' => $targetId]);
+                ->where('parent_id', $sourceId)->update(['parent_id' => $topLevelId]);
 
             $source->delete(); // soft delete
             \DB::commit();
