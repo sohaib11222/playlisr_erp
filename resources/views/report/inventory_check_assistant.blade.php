@@ -217,7 +217,14 @@ HTML;
                 $groups[$key]['total'] += $tx['total'];
                 $groups[$key]['txns'][] = $tx;
             }
-            uasort($groups, fn ($a, $b) => $b['total'] <=> $a['total']);
+            // New groups first, then by store, then biggest total first.
+            uasort($groups, function ($a, $b) {
+                $ka = $a['kind'] === 'new' ? 0 : 1;
+                $kb = $b['kind'] === 'new' ? 0 : 1;
+                if ($ka !== $kb) return $ka <=> $kb;
+                if (strcasecmp($a['store'], $b['store']) !== 0) return strcasecmp($a['store'], $b['store']);
+                return $b['total'] <=> $a['total'];
+            });
         @endphp
         @if(!empty($pb['dupe_groups']))
         <div class="ica-dupe-warn">
