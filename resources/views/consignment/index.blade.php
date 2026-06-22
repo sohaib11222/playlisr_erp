@@ -75,13 +75,9 @@ body.pos-v2 .inline-pay input[type=text] { border: 1px solid var(--pos-line-2); 
     <h2>New consignment intake</h2>
 
     <div class="consign-row">
-      <div class="consign-field" style="flex:2 1 240px;">
+      <div class="consign-field" style="flex:2 1 220px;">
         <label>Artist / consignor *</label>
         <input type="text" name="consignor" required placeholder="e.g. Maya Cole">
-      </div>
-      <div class="consign-field" style="flex:2 1 240px;">
-        <label>Contact (phone / email / Venmo)</label>
-        <input type="text" name="consignor_contact" placeholder="how you pay them">
       </div>
       <div class="consign-field" style="flex:1 1 120px;">
         <label>Artist split % *</label>
@@ -90,7 +86,22 @@ body.pos-v2 .inline-pay input[type=text] { border: 1px solid var(--pos-line-2); 
     </div>
 
     <div class="consign-row">
-      <div class="consign-field" style="flex:1 1 160px;">
+      <div class="consign-field" style="flex:1 1 180px;">
+        <label>Phone *</label>
+        <input type="text" name="phone" required placeholder="(555) 123-4567">
+      </div>
+      <div class="consign-field" style="flex:1 1 200px;">
+        <label>Email *</label>
+        <input type="email" name="email" required placeholder="artist@email.com">
+      </div>
+      <div class="consign-field" style="flex:1 1 200px;">
+        <label>How to pay them *</label>
+        <input type="text" name="payment_method" required placeholder="Venmo @handle / Zelle / cash">
+      </div>
+    </div>
+
+    <div class="consign-row">
+      <div class="consign-field" style="flex:1 1 200px;">
         <label>Location *</label>
         <select name="location_id" required>
           @foreach($locations as $id => $name)
@@ -98,7 +109,7 @@ body.pos-v2 .inline-pay input[type=text] { border: 1px solid var(--pos-line-2); 
           @endforeach
         </select>
       </div>
-      <div class="consign-field" style="flex:1 1 160px;">
+      <div class="consign-field" style="flex:1 1 200px;">
         <label>Category</label>
         <select name="category_id">
           <option value="">— none —</option>
@@ -106,28 +117,6 @@ body.pos-v2 .inline-pay input[type=text] { border: 1px solid var(--pos-line-2); 
             <option value="{{ $id }}">{{ $name }}</option>
           @endforeach
         </select>
-      </div>
-      <div class="consign-field" style="flex:1 1 160px;">
-        <label>Sales tax rate</label>
-        <select name="tax_id">
-          <option value="">— none —</option>
-          @foreach($tax_rates as $id => $name)
-            <option value="{{ $id }}">{{ $name }}</option>
-          @endforeach
-        </select>
-      </div>
-      <div class="consign-field" style="flex:1 1 140px;">
-        <label>Tax type</label>
-        <select name="tax_type">
-          <option value="exclusive" selected>Added at register</option>
-          <option value="inclusive">Included in sticker</option>
-        </select>
-      </div>
-      <div class="consign-field" style="flex:0 0 auto; justify-content:flex-end;">
-        <label>&nbsp;</label>
-        <label style="font-weight:500;font-size:13px;display:flex;gap:6px;align-items:center;">
-          <input type="checkbox" name="tax_exempt" value="1" style="min-width:auto;width:auto;"> Tax exempt
-        </label>
       </div>
     </div>
 
@@ -174,7 +163,9 @@ body.pos-v2 .inline-pay input[type=text] { border: 1px solid var(--pos-line-2); 
         <summary>
           <span>
             <span class="cz-name">{{ $cz['name'] }}</span>
-            @if($cz['contact'])<span class="cz-meta"> &middot; {{ $cz['contact'] }}</span>@endif
+            @if($cz['phone'])<span class="cz-meta"> &middot; {{ $cz['phone'] }}</span>@endif
+            @if($cz['email'])<span class="cz-meta"> &middot; {{ $cz['email'] }}</span>@endif
+            @if($cz['payment_method'])<span class="cz-meta"> &middot; pay: {{ $cz['payment_method'] }}</span>@endif
             <span class="cz-meta"> &middot; {{ $cz['in_stock'] }} in stock, {{ $cz['sold'] }} sold</span>
           </span>
           <span class="owed {{ $cz['owed'] > 0 ? 'has' : '' }}">${{ number_format($cz['owed'], 2) }} owed</span>

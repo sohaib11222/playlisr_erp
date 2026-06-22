@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Product;
 use App\Contact;
-use App\TaxRate;
 use App\BusinessLocation;
 use App\Utils\ProductUtil;
 use Illuminate\Http\Request;
@@ -103,7 +102,9 @@ class ConsignmentController extends Controller
             if (!isset($consignors[$key])) {
                 $consignors[$key] = [
                     'name'    => $key,
-                    'contact' => $it['consignor_contact'] ?? '',
+                    'phone'   => $it['phone'] ?? '',
+                    'email'   => $it['email'] ?? '',
+                    'payment_method' => $it['payment_method'] ?? '',
                     'owed'    => 0.0,
                     'paid'    => 0.0,
                     'in_stock' => 0,
@@ -129,11 +130,9 @@ class ConsignmentController extends Controller
         // Intake-form dropdowns.
         $categories = \App\Category::forDropdown($business_id, 'product');
         $locations  = BusinessLocation::forDropdown($business_id);
-        $tax_rates  = TaxRate::where('business_id', $business_id)
-            ->pluck('name', 'id');
 
         return view('consignment.index', compact(
-            'consignors', 'total_owed', 'categories', 'locations', 'tax_rates'
+            'consignors', 'total_owed', 'categories', 'locations'
         ));
     }
 
@@ -149,27 +148,33 @@ class ConsignmentController extends Controller
         }
 
         $request->validate([
-            'consignor'   => 'required|string|max:191',
-            'pct'         => 'required|numeric|min:0|max:100',
-            'location_id' => 'required|integer',
+            'consignor'      => 'required|string|max:191',
+            'phone'          => 'required|string|max:191',
+            'email'          => 'required|email|max:191',
+            'payment_method' => 'required|string|max:191',
+            'pct'            => 'required|numeric|min:0|max:100',
+            'location_id'    => 'required|integer',
             'items'                 => 'required|array|min:1',
             'items.*.title'         => 'nullable|string|max:191',
             'items.*.sticker'       => 'nullable|numeric|min:0',
         ], [
-            'consignor.required' => 'Who consigned these? Enter the artist / seller name.',
-            'pct.required'       => 'Enter the artist split % (their share of each sale).',
+            'consignor.required'      => 'Who consigned these? Enter the artist / seller name.',
+            'phone.required'          => 'Enter the artist\'s phone number.',
+            'email.required'          => 'Enter the artist\'s email.',
+            'email.email'             => 'Enter a valid email.',
+            'payment_method.required' => 'Enter how you pay this artist (e.g. Venmo @handle, Zelle, cash).',
+            'pct.required'            => 'Enter the artist split % (their share of each sale).',
         ]);
 
-        $business_id = (int) $request->session()->get('user.business_id');
-        $consignor   = trim($request->input('consignor'));
-        $contact     = trim((string) $request->input('consignor_contact', ''));
-        $pct         = (float) $request->input('pct');
-        $location_id = (int) $request->input('location_id');
-        $category_id = $request->filled('category_id') ? (int) $request->input('category_id') : null;
-        $tax_id      = $request->filled('tax_id') ? (int) $request->input('tax_id') : null;
-        $tax_type    = $request->input('tax_type') === 'inclusive' ? 'inclusive' : 'exclusive';
-        $tax_exempt  = filter_var($request->input('tax_exempt'), FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
-        $intake_date = date('Y-m-d');
+        $business_id    = (int) $request->session()->get('user.business_id');
+        $consignor      = trim($request->input('consignor'));
+        $phone          = trim((string) $request->input('phone'));
+        $email          = trim((string) $request->input('email'));
+        $payment_method = trim((string) $request->input('payment_method'));
+        $pct            = (float) $request->input('pct');
+        $location_id    = (int) $request->input('location_id');
+        $category_id    = $request->filled('category_id') ? (int) $request->input('category_id') : null;
+        $intake_date    = date('Y-m-d');
 
         $unit_id = \App\Unit::where('business_id', $business_id)->value('id');
 
@@ -192,9 +197,9 @@ class ConsignmentController extends Controller
                 'type'           => 'single',
                 'unit_id'        => $unit_id,
                 'category_id'    => $category_id,
-                'tax'            => $tax_exempt ? null : $tax_id,
-                'tax_type'       => $tax_type,
-                'tax_exempt'     => $tax_exempt,
+                'tax'            => null,
+                'tax_type'       => 'exclusive',
+                'tax_exempt'     => 0,
                 'enable_stock'   => 1,
                 'alert_quantity' => 0,
                 'sku'            => ' ',
@@ -224,7 +229,9 @@ class ConsignmentController extends Controller
 
             $data['items'][(string) $product->id] = [
                 'consignor'         => $consignor,
-                'consignor_contact' => $contact,
+                'phone'             => $phone,
+                'email'             => $email,
+                'payment_method'    => $payment_method,
                 'pct'               => $pct,
                 'title'             => $title,
                 'artist'            => $artist,
