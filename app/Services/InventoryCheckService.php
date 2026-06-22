@@ -196,7 +196,7 @@ class InventoryCheckService
         if ($permittedLocations !== 'all') {
             $purQ->whereIn('t.location_id', $permittedLocations);
         }
-        $purRows = $purQ->selectRaw("t.id, t.location_id, t.final_total, t.ref_no, t.transaction_date, t.created_at, ct.name as supplier, {$userNameSql}, u.username as entered_by_username")->get();
+        $purRows = $purQ->selectRaw("t.id, t.location_id, t.final_total, t.ref_no, t.status, t.transaction_date, t.created_at, ct.name as supplier, {$userNameSql}, u.username as entered_by_username")->get();
 
         $spentTxnUsed = 0.0;
         $spentTxnNew = 0.0;
@@ -229,6 +229,7 @@ class InventoryCheckService
                     : 0,
                 'location_id' => $lid,
                 'supplier' => $r->supplier,
+                'status' => $r->status ?? '',
                 'total' => round($ft, 2),
                 'new_amount' => $kind === 'new' ? round($ft, 2) : 0,
                 'used_amount' => $kind === 'used' ? round($ft, 2) : 0,

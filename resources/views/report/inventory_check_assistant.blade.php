@@ -238,13 +238,14 @@ HTML;
                 </summary>
                 <table class="ica-breakdown-table ica-txn-table">
                     <thead>
-                        <tr><th>Order date</th><th>Ref</th><th>Entered</th><th class="ica-bd-amt">Total</th></tr>
+                        <tr><th>Order date</th><th>Ref</th><th>Status</th><th>Entered</th><th class="ica-bd-amt">Total</th></tr>
                     </thead>
                     <tbody>
                         @foreach($g['txns'] as $tx)
                         <tr class="{{ !empty($tx['maybe_dupe']) ? 'ica-txn-dupe' : '' }}">
                             <td class="ica-bd-via">{{ $tx['date'] ? \Carbon\Carbon::parse($tx['date'])->format('M j') : '—' }}</td>
                             <td class="ica-bd-via"><a href="{{ $tx['view_url'] ?? url('/purchases/' . $tx['id']) }}" target="_blank" rel="noopener" class="ica-po-link" title="Open this order">{{ $tx['ref_no'] ?: ('#' . $tx['id']) }}</a>@if(!empty($tx['maybe_dupe'])) <span class="ica-dupe-tag">DUP?</span>@endif</td>
+                            <td class="ica-bd-via">{{ $tx['status'] ?? '—' }}</td>
                             <td class="ica-bd-via">{{ !empty($tx['entered']) ? \Carbon\Carbon::parse($tx['entered'])->format('M j') : '—' }}@if(($tx['late_days'] ?? 0) >= 3) <span class="ica-late-tag" title="Keyed in {{ $tx['late_days'] }} days after the order date">+{{ $tx['late_days'] }}d</span>@endif @if(!empty($tx['entered_by']))<span class="ica-by">by {{ $tx['entered_by'] }}</span>@endif</td>
                             <td class="ica-bd-amt">${{ number_format($tx['total'], 0) }}</td>
                         </tr>
