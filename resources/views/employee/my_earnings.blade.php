@@ -61,12 +61,12 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
         </div>
 
         <div class="me-card" style="margin-bottom:14px;">
-            <h3 style="margin-bottom:10px;">Listing commission</h3>
+            <h3 style="margin-bottom:10px;">Listing commission — items you listed that sold</h3>
         <div class="me-stats" style="margin-bottom:0;">
             <div class="me-stat">
-                <div class="lbl">Earned to date</div>
+                <div class="lbl">Earned all-time</div>
                 <div class="val">${{ number_format($earned, 2) }}</div>
-                <div class="sub">{{ $sold_count }} of your listed items have sold</div>
+                <div class="sub">2% of {{ $sold_count }} of your listed items that have sold</div>
             </div>
             <div class="me-stat paid">
                 <div class="lbl">Paid out to you</div>
@@ -74,9 +74,9 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
                 <div class="sub">{{ $payouts->count() }} payout(s)</div>
             </div>
             <div class="me-stat owed">
-                <div class="lbl">Still owed</div>
+                <div class="lbl">This commission payment</div>
                 <div class="val">${{ number_format($owed, 2) }}</div>
-                <div class="sub">{{ $owed_count }} sold item(s) not yet paid</div>
+                <div class="sub">owed now · {{ $owed_count }} sold item(s) not yet paid</div>
             </div>
         </div>
         </div>
