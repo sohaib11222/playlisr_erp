@@ -178,22 +178,9 @@ class InventoryCheckService
         // sources, each summed by final_total.
         $userNameSql = "TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.surname,''))) as entered_by_name";
 
-        // NEW — purchase orders placed this week.
-        $poQ = DB::table('transactions as t')
-            ->leftJoin('contacts as ct', 'ct.id', '=', 't.contact_id')
-            ->leftJoin('users as u', 'u.id', '=', 't.created_by')
-            ->where('t.business_id', $business_id)
-            ->where('t.type', 'purchase_order')
-            ->whereBetween(DB::raw('date(t.transaction_date)'), [$week['start'], $week['end']]);
-        if ($permittedLocations !== 'all') {
-            $poQ->whereIn('t.location_id', $permittedLocations);
-        }
-        $newRows = $poQ->selectRaw("t.id, t.location_id, t.final_total, t.ref_no, t.transaction_date, t.created_at, ct.name as supplier, {$userNameSql}, u.username as entered_by_username")->get();
-
-        // USED — buy-from-customer collection purchases this week. First find the
-        // transaction ids (a purchase is a collection if it has any
-        // buy_from_customer line), then pull each once so final_total isn't
-        // multiplied by its line count.
+        // USED — buy-from-customer collection purchases this week. A purchase is
+        // a collection if it has any buy_from_customer line. Find the ids first,
+        // then pull each once so final_total isn't multiplied by its line count.
         $bfcIdsQ = DB::table('transactions as t')
             ->join('purchase_lines as pl', 'pl.transaction_id', '=', 't.id')
             ->join('products as p', 'p.id', '=', 'pl.product_id')
@@ -214,6 +201,26 @@ class InventoryCheckService
                 ->selectRaw("t.id, t.location_id, t.final_total, t.ref_no, t.transaction_date, t.created_at, ct.name as supplier, {$userNameSql}, u.username as entered_by_username")
                 ->get();
         }
+
+        // NEW — purchases that have a real SUPPLIER on them (AMS, etc.). This is
+        // exactly Sarah's "AMS history": the Purchases screen filtered by a
+        // supplier contact. Warehouse re-dating ("send to add purchase") carries
+        // no supplier, so it's left out. Distributor buys are supplier/both type
+        // contacts. Exclude the buy-from-customer ids (those are Used).
+        $newQ = DB::table('transactions as t')
+            ->join('contacts as ct', 'ct.id', '=', 't.contact_id')
+            ->leftJoin('users as u', 'u.id', '=', 't.created_by')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'purchase')
+            ->whereIn('ct.type', ['supplier', 'both'])
+            ->whereBetween(DB::raw('date(t.transaction_date)'), [$week['start'], $week['end']]);
+        if ($permittedLocations !== 'all') {
+            $newQ->whereIn('t.location_id', $permittedLocations);
+        }
+        if (!empty($bfcIds)) {
+            $newQ->whereNotIn('t.id', $bfcIds);
+        }
+        $newRows = $newQ->selectRaw("t.id, t.location_id, t.final_total, t.ref_no, t.transaction_date, t.created_at, ct.name as supplier, {$userNameSql}, u.username as entered_by_username")->get();
 
         $spentTxnUsed = 0.0;
         $spentTxnNew = 0.0;
@@ -243,8 +250,7 @@ class InventoryCheckService
                 'new_amount' => $kind === 'new' ? round($ft, 2) : 0,
                 'used_amount' => $kind === 'used' ? round($ft, 2) : 0,
                 'kind' => $kind,
-                // Link target differs: POs live on the purchase-order screen.
-                'view_url' => $kind === 'new' ? url('/purchase-order/' . $r->id) : url('/purchases/' . $r->id),
+                'view_url' => url('/purchases/' . $r->id),
             ];
         };
         foreach ($newRows as $r) { $addRow($r, 'new'); }
@@ -268,8 +274,10 @@ class InventoryCheckService
             $allPurchAgg->whereIn('t.location_id', $permittedLocations);
         }
         $allPurchAgg = $allPurchAgg->selectRaw('COUNT(*) as c, COALESCE(SUM(t.final_total),0) as s')->first();
-        $excludedCount = max(0, (int) $allPurchAgg->c - count($bfcIds));
-        $excludedTotal = max(0, round((float) $allPurchAgg->s - $spentTxnUsed, 2));
+        // Excluded = all purchases this week minus the ones we counted (New
+        // supplier purchases + Used collection buys) = warehouse re-dating.
+        $excludedCount = max(0, (int) $allPurchAgg->c - count($bfcIds) - $newRows->count());
+        $excludedTotal = max(0, round((float) $allPurchAgg->s - $spentTxnUsed - $spentTxnNew, 2));
 
         // Add manual budget entries logged from the ICA "+ Log a buy"
         // form (e.g. Jon's $2000 collection on Sunday that hasn't been
