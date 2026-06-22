@@ -12263,6 +12263,7 @@ class ReportController extends Controller
 
         $profile = $this->storeHourlyProfile($business_id, $locationId, 12);
         $rate = $profile['rate'];
+        $peak = $profile['peak'];
         $stretch = 0.10;
 
         // All sessions at this location (every user) so we can fair-share each
@@ -12310,13 +12311,15 @@ class ReportController extends Controller
             $storeRate = (float) ($rate[$c['key']] ?? 0);
             $share = $storeRate / $head;
             $expected = $share * $c['frac'];
+            $isPeak = isset($peak[$c['key']]);
             $d = $c['date'];
-            if (!isset($days[$d])) { $days[$d] = ['date' => $d, 'slots' => [], 'expected' => 0.0]; }
+            if (!isset($days[$d])) { $days[$d] = ['date' => $d, 'slots' => [], 'expected' => 0.0, 'peak_expected' => 0.0]; }
             $days[$d]['slots'][] = [
                 'hour' => $c['hour'], 'frac' => $c['frac'], 'head' => $head,
-                'store_rate' => $storeRate, 'share' => $share, 'expected' => $expected,
+                'store_rate' => $storeRate, 'share' => $share, 'expected' => $expected, 'peak' => $isPeak,
             ];
             $days[$d]['expected'] += $expected;
+            if ($isPeak) { $days[$d]['peak_expected'] += $expected; }
         }
 
         // Actual non-whatnot sales per day for this person at this location.
@@ -12341,7 +12344,14 @@ class ReportController extends Controller
         foreach ($days as $d => $day) {
             $target = $day['expected'] * (1 + $stretch);
             $sold = (float) ($daySales[$d] ?? 0);
-            $bonus = $sold > $target ? ($sold - $target) * 0.02 : 0.0;
+            $bonus = 0.0;
+            if ($sold > $target && $day['expected'] > 0) {
+                // 3% on the peak share of over-target dollars, 2% off-peak —
+                // matches attachHourTargets so the leaderboard and this drill-down agree.
+                $over = $sold - $target;
+                $peakShare = min(1.0, max(0.0, $day['peak_expected'] / $day['expected']));
+                $bonus = $over * $peakShare * 0.03 + $over * (1 - $peakShare) * 0.02;
+            }
             $rows[] = (object) [
                 'date'     => $d,
                 'slots'    => $day['slots'],
@@ -12841,13 +12851,15 @@ class ReportController extends Controller
         return $rows->map(function ($r) use ($userCov, $slotStaff, $rate, $stretch, $sales_bonus_live, $daySales) {
             $cov = $userCov[$r->user_id] ?? [];
             $peakH = 0.0; $offH = 0.0;
-            $dayExpected = []; // Y-m-d => expected store-rate $ for hours worked that day
+            $dayExpected = [];     // Y-m-d => expected store-rate $ for hours worked that day
+            $dayPeakExpected = []; // Y-m-d => the peak-hour share of that expected
             foreach ($cov as $c) {
                 $head = max(1, count($slotStaff[$c['inst']] ?? []));
                 $exp = ($rate[$c['key']] ?? 0) * $c['frac'] / $head;
                 $date = substr($c['inst'], 0, 10);
                 $dayExpected[$date] = ($dayExpected[$date] ?? 0) + $exp;
-                if ($c['peak']) { $peakH += $c['frac']; } else { $offH += $c['frac']; }
+                if ($c['peak']) { $dayPeakExpected[$date] = ($dayPeakExpected[$date] ?? 0) + $exp; $peakH += $c['frac']; }
+                else { $offH += $c['frac']; }
             }
             $expected = array_sum($dayExpected);
             $r->hour_expected = round($expected, 2);
@@ -12872,7 +12884,15 @@ class ReportController extends Controller
                 $anyTarget = true;
                 $dayTarget = $exp * (1 + $stretch);
                 $sold = (float) ($daySales[$r->user_id][$date] ?? 0);
-                if ($sold > $dayTarget) { $bonus += ($sold - $dayTarget) * 0.02; }
+                if ($sold > $dayTarget) {
+                    // Over-target dollars pay 3% on the peak share of the day and
+                    // 2% off-peak, to pull staff onto the register when it's busy
+                    // (Sarah 2026-06-22). Peak share = how much of that day's
+                    // target came from peak slots.
+                    $over = $sold - $dayTarget;
+                    $peakShare = min(1.0, max(0.0, ($dayPeakExpected[$date] ?? 0) / $exp));
+                    $bonus += $over * $peakShare * 0.03 + $over * (1 - $peakShare) * 0.02;
+                }
             }
             $r->goal = $r->hour_target;
             $r->goal_stretch_pct = $r->hour_target_stretch_pct;
