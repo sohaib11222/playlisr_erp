@@ -95,6 +95,33 @@ class ConsignmentController extends Controller
         $data = self::load($business_id);
         $items = $data['items'];
 
+        // Self-heal: consignment products created before the location link
+        // was added aren't joined to product_locations, so they won't scan
+        // in POS. Link any that are missing to the location(s) where they
+        // hold stock (falling back to all locations). Idempotent + cheap.
+        try {
+            $all_location_ids = BusinessLocation::where('business_id', $business_id)->pluck('id')->all();
+            foreach (array_keys($items) as $pid) {
+                $product = Product::find((int) $pid);
+                if (!$product) {
+                    continue;
+                }
+                if ($product->product_locations()->count() > 0) {
+                    continue;
+                }
+                $loc_ids = \App\VariationLocationDetails::where('product_id', $product->id)
+                    ->pluck('location_id')->unique()->filter()->values()->all();
+                if (empty($loc_ids)) {
+                    $loc_ids = $all_location_ids;
+                }
+                if (!empty($loc_ids)) {
+                    $product->product_locations()->syncWithoutDetaching($loc_ids);
+                }
+            }
+        } catch (\Throwable $e) {
+            \Log::error('Consignment location self-heal failed: ' . $e->getMessage());
+        }
+
         // Group by consignor for the payables view.
         $consignors = [];
         foreach ($items as $product_id => $it) {
@@ -218,6 +245,12 @@ class ConsignmentController extends Controller
             $this->productUtil->createSingleProductVariation(
                 $product->id, $product->sku, 0, 0, 0, $sticker, $sticker
             );
+
+            // Make the product available (and scannable) at the intake
+            // location. POS product search inner-joins product_locations and
+            // filters by location, so without this row the barcode won't
+            // resolve ("no matching record found").
+            $product->product_locations()->sync([$location_id]);
 
             // Opening stock at the intake location.
             $variation = \App\Variation::where('product_id', $product->id)->first();
