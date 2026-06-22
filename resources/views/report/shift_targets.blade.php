@@ -98,6 +98,7 @@
                         <tr>
                             <th style="text-align:left;">Employee</th>
                             <th class="text-right">Hours</th>
+                            <th class="text-right">Store usual<div class="st-sub" style="text-transform:none; letter-spacing:0;">what the floor rings these hours</div></th>
                             <th class="text-right">Sales so far</th>
                             <th class="text-right">Target</th>
                             <th class="text-right">Pace</th>
@@ -111,6 +112,13 @@
                                 <td class="text-right">
                                     {{ number_format($r->hours_worked, 1) }}h
                                     @if(($r->hour_peak ?? 0) > 0 || ($r->hour_offpeak ?? 0) > 0)<div class="st-sub">{{ number_format($r->hour_peak, 1) }}h peak · {{ number_format($r->hour_offpeak, 1) }}h off</div>@endif
+                                </td>
+                                <td class="text-right">
+                                    @if(isset($r->hour_expected) && $r->hour_expected > 0)
+                                        ${{ number_format($r->hour_expected, 0) }}
+                                    @else
+                                        <span class="text-muted">—</span>
+                                    @endif
                                 </td>
                                 <td class="text-right">${{ number_format($r->non_whatnot_revenue, 0) }}</td>
                                 <td class="text-right">
@@ -138,7 +146,7 @@
                                 </td>
                             </tr>
                         @empty
-                            <tr><td colspan="6" class="text-center text-muted">No one clocked in at this store for the selected period.</td></tr>
+                            <tr><td colspan="7" class="text-center text-muted">No one clocked in at this store for the selected period.</td></tr>
                         @endforelse
                     </tbody>
                 </table>
