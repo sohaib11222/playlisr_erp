@@ -195,7 +195,7 @@ HTML;
         @if(!empty($pb['excluded_count']))
         <div class="ica-bd-excluded-note">
             <strong>{{ $pb['excluded_count'] }} warehouse "add purchase" {{ \Illuminate\Support\Str::plural('record', $pb['excluded_count']) }} (${{ number_format($pb['excluded_total'], 0) }}) not counted as weekly spend</strong>
-            — stock being date-stamped via mass-add, not money spent this week. The budget counts only Purchase Orders (New) + buy-from-customer collections (Used).
+            — warehouse staff adding mass-add products and "sending to purchase" to assign a price, not money spent this week. The budget counts only distributor orders (New) + buy-from-customer collections (Used).
         </div>
         @endif
 

@@ -178,15 +178,14 @@ class InventoryCheckService
         // sources, each summed by final_total.
         $userNameSql = "TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.surname,''))) as entered_by_name";
 
-        // Pull every purchase this week that has a CONTACT on it (inner join —
-        // contactless rows are warehouse re-dating with no buy, excluded). Then
-        // classify by the contact name, the only real signal in the data:
+        // Pull every purchase this week that has a CONTACT on it, then classify:
         //   • NEW  — a distributor (AMS, SHein, DeeJay/Vinylfuture, Alliance,
         //            Posters Wholesale, …) via distributorSuppliers().
-        //   • USED — everyone else: walk-ins and individuals selling us records
-        //            in store (these are collection buys, NOT new orders).
-        // Confirmed 2026-06-21 against the real supplier list: AMS/Shein/etc were
-        // the only distributors; walk-ins & people were being mislabeled New.
+        //   • USED — a buy-from-customer collection ONLY (a line whose product is
+        //            added_via='buy_from_customer'). Real in-store used buys.
+        // Everything else is EXCLUDED — in particular warehouse staff (Manolo,
+        // etc.) adding mass-add products and "sending to purchase" just to assign
+        // a purchase price. Those are NOT money spent this week. (Sarah 2026-06-22)
         $purQ = DB::table('transactions as t')
             ->join('contacts as ct', 'ct.id', '=', 't.contact_id')
             ->leftJoin('users as u', 'u.id', '=', 't.created_by')
@@ -198,6 +197,19 @@ class InventoryCheckService
         }
         $purRows = $purQ->selectRaw("t.id, t.location_id, t.final_total, t.ref_no, t.status, t.transaction_date, t.created_at, ct.name as supplier, {$userNameSql}, u.username as entered_by_username")->get();
 
+        // Buy-from-customer transaction ids this week — the ONLY real Used source.
+        $bfcIdsQ = DB::table('transactions as t')
+            ->join('purchase_lines as pl', 'pl.transaction_id', '=', 't.id')
+            ->join('products as p', 'p.id', '=', 'pl.product_id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'purchase')
+            ->where('p.added_via', 'buy_from_customer')
+            ->whereBetween(DB::raw('date(t.transaction_date)'), [$week['start'], $week['end']]);
+        if ($permittedLocations !== 'all') {
+            $bfcIdsQ->whereIn('t.location_id', $permittedLocations);
+        }
+        $bfcIds = array_flip(array_map('intval', $bfcIdsQ->distinct()->pluck('t.id')->all()));
+
         $spentTxnUsed = 0.0;
         $spentTxnNew = 0.0;
         $perLocUsedNew = [];
@@ -206,8 +218,12 @@ class InventoryCheckService
         $usedRows = collect();
         foreach ($purRows as $r) {
             if ((float) $r->final_total <= 0) { continue; } // skip $0 noise rows
-            if ($this->isDistributorSupplier($r->supplier)) { $newRows->push($r); }
-            else { $usedRows->push($r); }
+            if ($this->isDistributorSupplier($r->supplier)) {
+                $newRows->push($r);                       // distributor order = New
+            } elseif (isset($bfcIds[(int) $r->id])) {
+                $usedRows->push($r);                       // buy-from-customer = Used
+            }
+            // else: warehouse add / non-collection purchase → excluded.
         }
         $addRow = function ($r, $kind) use (&$spentTxnUsed, &$spentTxnNew, &$perLocUsedNew, &$txnList) {
             $ft = (float) $r->final_total;
