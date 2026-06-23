@@ -862,21 +862,7 @@ class HomeController extends Controller
         // Jon 2026-05-07: bumped priced-today from 10 → 75 to match the new
         // shift-panel floor (20/hr × ~4hr shift = 80). The shift panel is the
         // primary signal; this card stays as a day-level reinforcement.
-        //
-        // Jon 2026-06-22: scale the barcode goal down by POS workload. Time spent
-        // ringing up sales is time not spent barcoding, so a static 75 is
-        // unreachable for cashiers stuck on the register. The more transactions
-        // ($my_pos_tx_today) you've rung today, the lower — and more reasonable —
-        // your barcode quota. Under 10 tx keeps the full 75.
-        if ($my_pos_tx_today >= 20) {
-            $goal_priced_today = 40;
-        } elseif ($my_pos_tx_today >= 15) {
-            $goal_priced_today = 50;
-        } elseif ($my_pos_tx_today >= 10) {
-            $goal_priced_today = 60;
-        } else {
-            $goal_priced_today = 75;
-        }
+        $goal_priced_today = 75;
         $goal_rewards_today = 3;
         $rewards_me_today = (int) \DB::table('contacts')
             ->where('business_id', $business_id)

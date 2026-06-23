@@ -43,6 +43,28 @@ class GamificationService
     ];
 
     /**
+     * Relax the products_added goal by POS workload this shift. Every sale a
+     * cashier rings is time off the barcode gun, so the flat peer/floor
+     * target (~80 for a 4hr shift) is unreachable for someone stuck on the
+     * register. Caps the goal by the number of final sales rung this shift,
+     * in descending order so the busiest threshold wins:
+     *
+     *   20+ transactions → 40 items    15+ → 50    10+ → 60
+     *
+     * Below 10 transactions there's no cap and the normal peer/floor target
+     * stands. The cap only ever LOWERS the goal (min), never raises it, so a
+     * short or quiet shift keeps its already-smaller computed target.
+     *
+     * Jon 2026-06-22: makes quotas reachable instead of a static goal a
+     * cashier can't hit while running the till.
+     */
+    public const PRODUCTS_ADDED_TX_GOAL_CAPS = [
+        ['min_tx' => 20, 'goal' => 40],
+        ['min_tx' => 15, 'goal' => 50],
+        ['min_tx' => 10, 'goal' => 60],
+    ];
+
+    /**
      * Informational tier markers for the retail $ value of items listed
      * during the shift (sum of variations.sell_price_inc_tax for products
      * created by the user). NOT a goal — surfaced so employees can see
@@ -149,6 +171,9 @@ class GamificationService
         // close), not just hours elapsed so far. Avoids the "0/15 then
         // creeping up" UX where the target slid up over the day.
         $shift['expected_hours'] = $this->expectedShiftHours($shift);
+        // Final sales this user has rung this shift — used to relax the
+        // products_added goal by POS workload (see PRODUCTS_ADDED_TX_GOAL_CAPS).
+        $shift['pos_tx_count'] = $this->shiftSalesAggregate($user->id, $businessId, $shift)['count'];
 
         foreach ($defs as $def) {
             $current = $this->measureCurrent($def['key'], $user->id, $businessId, $shift);
@@ -905,13 +930,38 @@ class GamificationService
                     : 1.0;
                 $peerComponent = $peerPerHour * $hours * $multiplier;
             }
-            return max($peerComponent, self::PRODUCTS_ADDED_FLOOR_PER_HOUR * $hours);
+            $target = max($peerComponent, self::PRODUCTS_ADDED_FLOOR_PER_HOUR * $hours);
+
+            // Relax the goal by how many sales this cashier rang this shift —
+            // register time is barcode time they didn't have. Only lowers it.
+            $txCap = $this->productsTxGoalCap((int) ($shift['pos_tx_count'] ?? 0));
+            if ($txCap !== null) {
+                $target = min($target, (float) $txCap);
+            }
+            return $target;
         }
 
         if ($peerPerHour === null) {
             return 0.0;
         }
         return $peerPerHour * $hours;
+    }
+
+    /**
+     * Goal cap for products_added based on final sales rung this shift, or
+     * null when below the lowest threshold (no cap). Tiers are checked in
+     * descending order so the busiest matching threshold wins.
+     *
+     * @see self::PRODUCTS_ADDED_TX_GOAL_CAPS
+     */
+    protected function productsTxGoalCap(int $txCount): ?int
+    {
+        foreach (self::PRODUCTS_ADDED_TX_GOAL_CAPS as $tier) {
+            if ($txCount >= $tier['min_tx']) {
+                return (int) $tier['goal'];
+            }
+        }
+        return null;
     }
 
     public function locationName(?int $locationId): ?string
