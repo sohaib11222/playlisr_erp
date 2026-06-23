@@ -23,7 +23,9 @@
     <a class="btn-accent" href="{{ $preorderUrl }}" target="_blank" rel="noopener">Open preorders</a>
   </div>
   @if(($bridge['error'] ?? null) === 'not_configured')
-    <p class="sub" style="margin:-8px 4px 22px;">These open the existing tools on nivessa.com. To run them inside the ERP instead, set <code>ERP_API_KEY</code> (same value) on both the website and the ERP.</p>
+    <p class="sub" style="margin:-8px 4px 22px;">These open the existing tools on nivessa.com. To run them inside the ERP instead, <code>ERP_API_KEY</code> must be in <strong>this ERP server's <code>.env</code></strong> (same value as the website's). It isn't there now — I check the cached config, the live env, and the <code>.env</code> file directly, so this is not a caching issue.</p>
+  @elseif(($bridge['error'] ?? null) === 'unreachable')
+    <p class="sub" style="margin:-8px 4px 22px;">The ERP has an <code>ERP_API_KEY</code> set, but the website rejected it or was unreachable. Make sure the value matches the website's <code>ERP_API_KEY</code> exactly.</p>
   @endif
 @else
   @php

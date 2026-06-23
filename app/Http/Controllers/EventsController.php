@@ -261,7 +261,7 @@ class EventsController extends Controller
     protected function bridgeCounts(): array
     {
         $out = ['rsvps' => [], 'vinyl' => [], 'cd' => []];
-        if (trim((string) config('constants.erp_api_key')) === '') {
+        if ($this->erpApiKey() === '') {
             return $out;
         }
 
@@ -280,6 +280,63 @@ class EventsController extends Controller
         return $out;
     }
 
+    /**
+     * Resolve the shared bridge key. Tries the cached config first, then the
+     * live env, then reads .env from disk directly. The last step is what makes
+     * this robust to a STALE CONFIG CACHE on the box: if someone added
+     * ERP_API_KEY to .env but a `config:cache` build is still in place, both
+     * config() and env() return empty — reading the file defeats that without
+     * needing any shell command on the server. Cached for the request.
+     */
+    protected function erpApiKey(): string
+    {
+        static $cached = null;
+        if ($cached !== null) {
+            return $cached;
+        }
+        $key = trim((string) config('constants.erp_api_key'));
+        if ($key === '') {
+            $key = trim((string) env('ERP_API_KEY', ''));
+        }
+        if ($key === '') {
+            $key = $this->envFromDisk('ERP_API_KEY');
+        }
+        return $cached = $key;
+    }
+
+    /** Resolve the website API base URL the same robust way as the key. */
+    protected function bridgeBaseUrl(): string
+    {
+        $base = trim((string) config('constants.nivessa_api'));
+        if ($base === '') {
+            $base = trim((string) env('NIVESSA_API', ''));
+        }
+        if ($base === '') {
+            $base = $this->envFromDisk('NIVESSA_API');
+        }
+        return rtrim($base !== '' ? $base : 'https://nivessa.com/api/v1', '/');
+    }
+
+    /** Read a single var straight out of the .env file (cache-proof fallback). */
+    protected function envFromDisk(string $name): string
+    {
+        try {
+            $path = base_path('.env');
+            if (!is_readable($path)) {
+                return '';
+            }
+            foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+                if (strpos(ltrim($line), $name . '=') === 0) {
+                    $val = trim(substr(ltrim($line), strlen($name) + 1));
+                    return trim($val, "\"'");
+                }
+            }
+        } catch (\Throwable $e) {
+            // fall through
+        }
+        return '';
+    }
+
     /** Fetch RSVPs (+stats) and preorders for one event from the website. */
     protected function bridgeData(string $eventName): array
     {
@@ -287,7 +344,7 @@ class EventsController extends Controller
         if ($eventName === '') {
             return $out;
         }
-        if (trim((string) config('constants.erp_api_key')) === '') {
+        if ($this->erpApiKey() === '') {
             $out['error'] = 'not_configured';
             return $out;
         }
@@ -356,8 +413,8 @@ class EventsController extends Controller
      */
     protected function websiteApi(string $method, string $path, array $body = null): ?array
     {
-        $base = rtrim((string) config('constants.nivessa_api'), '/');
-        $key  = trim((string) config('constants.erp_api_key'));
+        $base = $this->bridgeBaseUrl();
+        $key  = $this->erpApiKey();
         if ($key === '') {
             return null;
         }
