@@ -136,6 +136,7 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
                         <tr>
                             <th>Day</th>
                             <th style="text-align:right;">You rang</th>
+                            <th style="text-align:right;">Daily goal</th>
                             <th style="text-align:right;">Your listed sold</th>
                             <th style="text-align:right;">Listing pay</th>
                             <th style="text-align:right;">Sales bonus{{ $sales_bonus_live ? '' : '*' }}</th>
@@ -144,16 +145,18 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
                     </thead>
                     <tbody>
                         @php
-                            $t_rang = 0; $t_listed = 0; $t_lpay = 0; $t_bonus = 0; $t_total = 0;
+                            $t_rang = 0; $t_goal = 0; $t_listed = 0; $t_lpay = 0; $t_bonus = 0; $t_total = 0;
                         @endphp
                         @foreach($daily as $d)
                             @php
-                                $t_rang += $d['register_sales']; $t_listed += $d['listed_sales'];
+                                $t_rang += $d['register_sales']; $t_goal += $d['sales_target']; $t_listed += $d['listed_sales'];
                                 $t_lpay += $d['listing_comm']; $t_bonus += $d['sales_bonus']; $t_total += $d['total_comm'];
+                                $met_goal = $d['sales_target'] > 0 && $d['register_sales'] >= $d['sales_target'];
                             @endphp
                             <tr>
                                 <td>{{ \Carbon::parse($d['date'])->format('D, M j') }}</td>
-                                <td style="text-align:right;">${{ number_format($d['register_sales'], 2) }}</td>
+                                <td style="text-align:right;{{ $met_goal ? 'color:#2F6B3E;font-weight:700;' : '' }}">${{ number_format($d['register_sales'], 2) }}</td>
+                                <td style="text-align:right;color:#5A5045;">{{ $d['sales_target'] > 0 ? '$'.number_format($d['sales_target'], 2) : '—' }}</td>
                                 <td style="text-align:right;">${{ number_format($d['listed_sales'], 2) }}</td>
                                 <td style="text-align:right;">${{ number_format($d['listing_comm'], 2) }}</td>
                                 <td style="text-align:right;{{ $d['sales_bonus'] > 0 ? 'color:#2F6B3E;font-weight:600;' : 'color:#8E8273;' }}">${{ number_format($d['sales_bonus'], 2) }}</td>
@@ -165,6 +168,7 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
                         <tr style="border-top:2px solid #ECE3CF;font-weight:700;">
                             <td>Total</td>
                             <td style="text-align:right;">${{ number_format($t_rang, 2) }}</td>
+                            <td style="text-align:right;color:#5A5045;">${{ number_format($t_goal, 2) }}</td>
                             <td style="text-align:right;">${{ number_format($t_listed, 2) }}</td>
                             <td style="text-align:right;">${{ number_format($t_lpay, 2) }}</td>
                             <td style="text-align:right;">${{ number_format($t_bonus, 2) }}</td>
