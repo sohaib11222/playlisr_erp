@@ -2,15 +2,16 @@
 <table class="ev-tbl">
   <thead>
     <tr>
-      <th style="width:21%;">Event</th>
-      <th style="width:9%;">Date</th>
-      <th style="width:9%;">Street date</th>
+      <th style="width:19%;">Event</th>
+      <th style="width:8%;">Date</th>
+      <th style="width:8%;">Street date</th>
       <th style="width:10%;">Location</th>
-      <th style="width:7%;">RSVPs</th>
-      <th style="width:8%;">Vinyl requests</th>
-      <th style="width:7%;">CD requests</th>
-      <th style="width:9%;">Taking preorders?</th>
-      <th style="width:9%;">Prep</th>
+      <th style="width:6%;">RSVPs</th>
+      <th style="width:7%;">Vinyl requests</th>
+      <th style="width:6%;">CD requests</th>
+      <th style="width:8%;">Taking preorders?</th>
+      <th style="width:8%;">On website</th>
+      <th style="width:8%;">Prep</th>
       <th style="width:11%;"></th>
     </tr>
   </thead>
@@ -26,10 +27,13 @@
         $evStreetDate = !empty($ev['streetDate']) ? date('m/d/y', strtotime($ev['streetDate'])) : '—';
         $evTime = !empty($ev['time']) ? date('g:i A', strtotime($ev['time'])) : '';
         $evName = $ev['name'] ?? '';
-        $rsvpCount = ($rsvpCounts ?? [])[$evName] ?? null;
-        $vinylCount = ($vinylCounts ?? [])[$evName] ?? null;
-        $cdCount = ($cdCounts ?? [])[$evName] ?? null;
+        $nk = mb_strtolower(trim($evName));
+        $rsvpCount = ($rsvpCounts ?? [])[$nk] ?? null;
+        $vinylCount = ($vinylCounts ?? [])[$nk] ?? null;
+        $cdCount = ($cdCounts ?? [])[$nk] ?? null;
         $takingPreorders = !empty($ev['preorderEnabled']);
+        $pubMap = $publishedMap ?? [];
+        $isLive = array_key_exists($ev['id'] ?? '', $pubMap) ? $pubMap[$ev['id']] : null;
       @endphp
       <tr>
         <td>
@@ -47,6 +51,15 @@
         <td>{{ $cdCount === null ? '—' : $cdCount }}</td>
         <td>{{ $takingPreorders ? 'Yes' : 'No' }}</td>
         <td>
+          @if($isLive === null)
+            <span class="prep-badge na">—</span>
+          @elseif($isLive)
+            <span class="prep-badge done">Live</span>
+          @else
+            <span class="prep-badge todo">Hidden</span>
+          @endif
+        </td>
+        <td>
           @if($isLP)
             <span class="prep-badge {{ $doneCount >= $totalPrep ? 'done' : 'todo' }}">{{ $doneCount }}/{{ $totalPrep }} done</span>
           @else
@@ -55,11 +68,6 @@
         </td>
         <td style="text-align:right;white-space:nowrap;">
           <a class="btn-accent" href="{{ route('events.edit', ['id' => $ev['id']]) }}" style="display:inline-block;padding:7px 14px;font-size:13px;text-decoration:none;">View dashboard</a>
-          <form method="POST" action="{{ route('events.destroy', ['id' => $ev['id']]) }}" style="display:inline;margin-left:10px;"
-                onsubmit="return confirm('Delete \'{{ addslashes($ev['name'] ?? '') }}\'? This can be undone from Admin Action History.');">
-            {{ csrf_field() }}
-            <button type="submit" class="btn-link">delete</button>
-          </form>
         </td>
       </tr>
     @endforeach

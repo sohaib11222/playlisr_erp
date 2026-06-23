@@ -221,6 +221,7 @@ class EventsController extends Controller
             'rsvpCounts'     => $counts['rsvps'],
             'vinylCounts'    => $counts['vinyl'],
             'cdCounts'       => $counts['cd'],
+            'publishedMap'   => $this->publishedMap(),
             'bridgeProbe'    => $this->bridgeProbe(),
             'bridgeKeySet'   => $this->erpApiKey() !== '',
         ]);
@@ -270,16 +271,56 @@ class EventsController extends Controller
         $statsResp = $this->websiteApi('GET', '/erp/rsvps/stats');
         $statsRows = $statsResp['data'] ?? $statsResp['stats'] ?? [];
         if (is_array($statsRows)) {
+            // Key by a normalized (trim + lowercase) event name and SUM, so
+            // RSVPs collected under casing variants of the same party
+            // ("Madonna Listening Party" + "MADONNA listening party") count
+            // together — matching what the event detail page shows.
             foreach ($statsRows as $row) {
                 $name = $row['eventName'] ?? null;
                 if ($name === null || $name === '') { continue; }
-                $out['rsvps'][$name] = (int) ($row['totalRSVPs'] ?? $row['totalAttendees'] ?? 0);
-                $out['vinyl'][$name] = (int) ($row['vinylRequests'] ?? 0);
-                $out['cd'][$name]    = (int) ($row['cdRequests'] ?? 0);
+                $k = self::normName($name);
+                $out['rsvps'][$k] = ($out['rsvps'][$k] ?? 0) + (int) ($row['totalRSVPs'] ?? $row['totalAttendees'] ?? 0);
+                $out['vinyl'][$k] = ($out['vinyl'][$k] ?? 0) + (int) ($row['vinylRequests'] ?? 0);
+                $out['cd'][$k]    = ($out['cd'][$k] ?? 0) + (int) ($row['cdRequests'] ?? 0);
             }
         }
 
         return $out;
+    }
+
+    /** Normalize an event name for case-insensitive count matching. */
+    protected static function normName(?string $s): string
+    {
+        return mb_strtolower(trim((string) $s));
+    }
+
+    /**
+     * Map of event id => is-published (live on the website). The published
+     * flag lives in the website's Mongo; its public /events/allEvents?all=1
+     * feed returns every event (incl. unpublished) with a `published` bool.
+     * Empty map on failure (column then shows "—").
+     */
+    protected function publishedMap(): array
+    {
+        $map = [];
+        $raw = $this->httpGet($this->bridgeBaseUrl() . '/events/allEvents?all=1');
+        if ($raw === null) {
+            return $map;
+        }
+        try {
+            $j = json_decode($raw, true);
+            $list = $j['data'] ?? $j['events'] ?? (is_array($j) ? $j : []);
+            if (is_array($list)) {
+                foreach ($list as $e) {
+                    $id = (string) ($e['id'] ?? $e['_id'] ?? '');
+                    if ($id === '') { continue; }
+                    $map[$id] = ($e['published'] ?? true) !== false;
+                }
+            }
+        } catch (\Throwable $e) {
+            // leave empty
+        }
+        return $map;
     }
 
     /**
