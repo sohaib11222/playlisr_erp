@@ -95,5 +95,8 @@
       </div>
     </form>
   </div>
+
+  {{-- RSVPs, giveaway spin, preorders (live from nivessa.com via the bridge) --}}
+  @include('events.partials._bridge')
 </div>
 @endsection

@@ -35,6 +35,15 @@ class AdminSidebarMenu
             //Zella/Nick end their shift here; posts to #shift-notes).
             $menu->url(url('/shift-notes/end'), 'End Shift', ['icon' => 'fa fas fa-clock', 'active' => request()->segment(1) == 'shift-notes'])->order(6);
 
+            //Events / Listening Parties (top-level — its own thing, not under Products)
+            if (auth()->user()->can('product.create')) {
+                $menu->url(
+                    route('events.index'),
+                    'Events',
+                    ['icon' => 'fa fas fa-music', 'active' => request()->segment(1) == 'events']
+                )->order(7);
+            }
+
             //Discounts (top-level for quick access)
             if (auth()->user()->can('discount.access')) {
                 $menu->url(
@@ -169,13 +178,6 @@ class AdminSidebarMenu
                                 route('consignment.index'),
                                 'Consignment',
                                 ['icon' => 'fa fas fa-handshake', 'active' => request()->segment(1) == 'consignment']
-                            );
-                        }
-                        if (auth()->user()->can('product.create')) {
-                            $sub->url(
-                                route('events.index'),
-                                'Events / Listening Parties',
-                                ['icon' => 'fa fas fa-music', 'active' => request()->segment(1) == 'events']
                             );
                         }
                         if (auth()->user()->can('product.opening_stock')) {

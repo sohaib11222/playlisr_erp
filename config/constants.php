@@ -35,6 +35,13 @@ return [
 
     'asset_version' => 643,
 
+    // nivessa.com bridge — the website still captures RSVPs + preorders; the
+    // ERP reads/manages them through /api/v1/erp/* using this shared key.
+    // Key is read ONLY from .env (set the SAME value as ERP_API_KEY on the
+    // website box); blank => the ERP shows "bridge not configured".
+    'nivessa_api'  => env('NIVESSA_API', 'https://nivessa.com/api/v1'),
+    'erp_api_key'  => env('ERP_API_KEY', ''),
+
     'disable_purchase_in_other_currency' => true,
     
     'iraqi_selling_price_adjustment' => false,

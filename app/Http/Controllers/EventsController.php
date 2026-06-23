@@ -215,12 +215,127 @@ class EventsController extends Controller
             return redirect()->route('events.index')->with('error', 'Event not found.');
         }
 
+        $event = $items[$id];
+
+        // Live RSVP + preorder data from the website bridge (source of those
+        // records). Degrades gracefully: $bridge['ready'] is false when the
+        // key isn't configured or the website is unreachable.
+        $bridge = $this->bridgeData($event['name'] ?? '');
+
         return view('events.edit', [
-            'event'      => $items[$id],
+            'event'      => $event,
             'eventTypes' => self::eventTypes(),
             'genres'     => self::genres(),
             'prepItems'  => self::prepItems(),
+            'bridge'     => $bridge,
         ]);
+    }
+
+    /** Fetch RSVPs (+stats) and preorders for one event from the website. */
+    protected function bridgeData(string $eventName): array
+    {
+        $out = ['ready' => false, 'error' => null, 'rsvps' => [], 'stats' => null, 'preorders' => []];
+        if ($eventName === '') {
+            return $out;
+        }
+        if (trim((string) config('constants.erp_api_key')) === '') {
+            $out['error'] = 'not_configured';
+            return $out;
+        }
+
+        $q = '?eventName=' . rawurlencode($eventName) . '&limit=500';
+        $rsvpResp  = $this->websiteApi('GET', '/erp/rsvps' . $q);
+        $statsResp = $this->websiteApi('GET', '/erp/rsvps/stats');
+        $preResp   = $this->websiteApi('GET', '/erp/preorders' . $q);
+
+        if ($rsvpResp === null && $preResp === null) {
+            $out['error'] = 'unreachable';
+            return $out;
+        }
+
+        $out['ready'] = true;
+        $out['rsvps'] = $rsvpResp['data'] ?? $rsvpResp['rsvps'] ?? [];
+        $out['preorders'] = $preResp['data'] ?? $preResp['preorders'] ?? [];
+
+        // Stats endpoint returns per-event rows; pick this event's row.
+        $statsRows = $statsResp['data'] ?? $statsResp['stats'] ?? [];
+        if (is_array($statsRows)) {
+            foreach ($statsRows as $row) {
+                if (($row['eventName'] ?? null) === $eventName) {
+                    $out['stats'] = $row;
+                    break;
+                }
+            }
+        }
+        return $out;
+    }
+
+    /** Toggle an RSVP's check-in state via the website bridge. */
+    public function rsvpCheckIn(Request $request, string $id, string $rsvpId)
+    {
+        if (!auth()->user()->can('product.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $checkedIn = filter_var($request->input('checkedIn'), FILTER_VALIDATE_BOOLEAN);
+        $resp = $this->websiteApi('PATCH', '/erp/rsvps/' . rawurlencode($rsvpId) . '/check-in', ['checkedIn' => $checkedIn]);
+        $msg = $resp === null ? 'Could not reach the website to update check-in.'
+            : ('Check-in ' . ($checkedIn ? 'marked' : 'cleared') . '.');
+        return redirect()->route('events.edit', ['id' => $id])
+            ->with($resp === null ? 'error' : 'status', $msg);
+    }
+
+    /** Change a preorder's status via the website bridge (fires pickup email/SMS). */
+    public function preorderStatus(Request $request, string $id, string $preorderId)
+    {
+        if (!auth()->user()->can('product.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $status = (string) $request->input('status');
+        if (!in_array($status, ['pending', 'ready', 'picked_up', 'canceled'], true)) {
+            return redirect()->route('events.edit', ['id' => $id])->with('error', 'Invalid preorder status.');
+        }
+        $resp = $this->websiteApi('PATCH', '/erp/preorders/' . rawurlencode($preorderId) . '/status', ['status' => $status]);
+        $msg = $resp === null ? 'Could not reach the website to update the preorder.'
+            : ('Preorder marked ' . str_replace('_', ' ', $status) . '.');
+        return redirect()->route('events.edit', ['id' => $id])
+            ->with($resp === null ? 'error' : 'status', $msg);
+    }
+
+    /**
+     * Call the website bridge (/api/v1/erp/*) with the shared key. Returns the
+     * decoded JSON array on success, or null on failure (unreachable / non-2xx).
+     */
+    protected function websiteApi(string $method, string $path, array $body = null): ?array
+    {
+        $base = rtrim((string) config('constants.nivessa_api'), '/');
+        $key  = trim((string) config('constants.erp_api_key'));
+        if ($key === '') {
+            return null;
+        }
+        try {
+            $ch = curl_init($base . $path);
+            $headers = ['Accept: application/json', 'x-erp-key: ' . $key];
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => 8,
+                CURLOPT_CUSTOMREQUEST  => $method,
+            ]);
+            if ($body !== null) {
+                $headers[] = 'Content-Type: application/json';
+                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));
+            }
+            curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+            $raw  = curl_exec($ch);
+            $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            if ($raw === false || $code < 200 || $code >= 300) {
+                return null;
+            }
+            $decoded = json_decode((string) $raw, true);
+            return is_array($decoded) ? $decoded : null;
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 
     // --------------------------------------------------------------------
