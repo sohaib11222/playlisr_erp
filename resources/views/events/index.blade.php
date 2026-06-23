@@ -46,7 +46,7 @@
     @if(empty($upcoming))
       <div class="empty">No upcoming events. Add one above or import from the website.</div>
     @else
-      @include('events.partials._list', ['rows' => $upcoming, 'prepItems' => $prepItems, 'eventTypes' => $eventTypes])
+      @include('events.partials._list', ['rows' => $upcoming, 'prepItems' => $prepItems, 'eventTypes' => $eventTypes, 'rsvpCounts' => $rsvpCounts, 'preorderCounts' => $preorderCounts])
     @endif
   </div>
 
@@ -57,7 +57,7 @@
       @if(empty($past))
         <div class="empty">No past events.</div>
       @else
-        @include('events.partials._list', ['rows' => $past, 'prepItems' => $prepItems, 'eventTypes' => $eventTypes])
+        @include('events.partials._list', ['rows' => $past, 'prepItems' => $prepItems, 'eventTypes' => $eventTypes, 'rsvpCounts' => $rsvpCounts, 'preorderCounts' => $preorderCounts])
       @endif
     </div>
   </details>

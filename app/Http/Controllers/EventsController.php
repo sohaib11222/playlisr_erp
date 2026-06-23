@@ -250,6 +250,44 @@ class EventsController extends Controller
         ]);
     }
 
+    /**
+     * Per-event RSVP and preorder (vinyl request) counts for the index list,
+     * keyed by exact event name. One stats call + one preorders call total
+     * (not per-event). Returns empty maps when the bridge is off/unreachable.
+     */
+    protected function bridgeCounts(): array
+    {
+        $out = ['rsvps' => [], 'preorders' => []];
+        if (trim((string) config('constants.erp_api_key')) === '') {
+            return $out;
+        }
+
+        // RSVP counts: the stats endpoint already returns one row per event.
+        $statsResp = $this->websiteApi('GET', '/erp/rsvps/stats');
+        $statsRows = $statsResp['data'] ?? $statsResp['stats'] ?? [];
+        if (is_array($statsRows)) {
+            foreach ($statsRows as $row) {
+                $name = $row['eventName'] ?? null;
+                if ($name === null || $name === '') { continue; }
+                $out['rsvps'][$name] = (int) ($row['totalRSVPs'] ?? $row['totalAttendees'] ?? 0);
+            }
+        }
+
+        // Vinyl requests: no stats endpoint, so pull all preorders once and
+        // tally by event name.
+        $preResp = $this->websiteApi('GET', '/erp/preorders?limit=2000');
+        $preorders = $preResp['data'] ?? $preResp['preorders'] ?? [];
+        if (is_array($preorders)) {
+            foreach ($preorders as $p) {
+                $name = $p['eventName'] ?? null;
+                if ($name === null || $name === '') { continue; }
+                $out['preorders'][$name] = ($out['preorders'][$name] ?? 0) + 1;
+            }
+        }
+
+        return $out;
+    }
+
     /** Fetch RSVPs (+stats) and preorders for one event from the website. */
     protected function bridgeData(string $eventName): array
     {
