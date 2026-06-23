@@ -27,7 +27,7 @@ class BuyOfferCalculatorService
                 'Mint' => 1.00,
             ],
             'item_types' => [
-                'individual_vinyl' => ['label' => 'Vinyl (Individual Discogs)', 'mode' => 'individual_discogs', 'default_grade' => 'VG+'],
+                'individual_vinyl' => ['label' => '1-9 items: Vinyl (Individual Discogs)', 'mode' => 'individual_discogs', 'default_grade' => 'VG+'],
 
                 'bulk_vinyl_punk_metal_hiphop' => ['label' => '10+ Bulk Vinyl: Punk/Metal/Hip-Hop LP', 'mode' => 'bulk_fixed', 'unit_rate' => 2.00, 'default_grade' => 'VG+'],
                 'bulk_vinyl_rock_alt_reggae_electronic' => ['label' => '10+ Bulk Vinyl: Rock/Alt/Reggae/Electronic', 'mode' => 'bulk_fixed', 'unit_rate' => 1.00, 'default_grade' => 'VG+'],
