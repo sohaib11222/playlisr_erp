@@ -93,12 +93,19 @@
 }
 
 .open-shell .item {
-    display: flex; align-items: flex-start; gap: 12px;
+    display: flex; align-items: center; gap: 10px;
     padding: 11px 12px; border: 1px solid var(--d-line); border-radius: var(--d-radius-sm);
-    margin-bottom: 7px; cursor: pointer; transition: background .12s, border-color .12s;
-    user-select: none;
+    margin-bottom: 7px; transition: background .12s, border-color .12s;
 }
 .open-shell .item:hover { background: var(--d-surface-2); }
+.open-shell .item-main { display: flex; align-items: flex-start; gap: 12px; flex: 1; cursor: pointer; user-select: none; }
+.open-shell .item-link {
+    flex: 0 0 auto; font-size: 12.5px; font-weight: 700; white-space: nowrap;
+    color: var(--d-accent-text); background: var(--d-accent-soft);
+    border: 1px solid var(--d-accent-deep); border-radius: 999px; padding: 5px 12px;
+    text-decoration: none;
+}
+.open-shell .item-link:hover { background: var(--d-accent); }
 .open-shell .item input[type=checkbox] {
     appearance: none; -webkit-appearance: none; flex: 0 0 auto;
     width: 22px; height: 22px; margin-top: 1px; border: 2px solid var(--d-line-2);
@@ -168,10 +175,15 @@
                 <div class="grp">
                     <h3>{{ $groupName }}</h3>
                     @foreach ($items as $key => $label)
-                        <label class="item">
-                            <input type="checkbox" name="items[]" value="{{ $key }}" onchange="openTick()">
-                            <span class="txt">{{ $label }}</span>
-                        </label>
+                        <div class="item">
+                            <label class="item-main">
+                                <input type="checkbox" name="items[]" value="{{ $key }}" onchange="openTick()">
+                                <span class="txt">{{ $label }}</span>
+                            </label>
+                            @if(!empty($links[$key]))
+                                <a class="item-link" href="{{ url($links[$key]['url']) }}">{{ $links[$key]['text'] }}</a>
+                            @endif
+                        </div>
                     @endforeach
                 </div>
             @endforeach

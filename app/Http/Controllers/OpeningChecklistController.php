@@ -38,16 +38,23 @@ class OpeningChecklistController extends Controller
             'sign_disco'   => '"Disco es la cultura" on stage — plug into the wall',
         ],
         'Records & bins' => [
-            'bins_stocked'   => 'Walls and bins fully stocked with records',
+            'walls_full'     => 'No white space on the walls — they should be full of records',
+            'bins_not_empty' => 'No bin looks empty — fill in any that are looking thin',
             'bins_organized' => 'Every bin looks organized — fix anything out of place',
-            'endcaps'        => 'End caps filled in so featured albums are highlighted',
+            'trading_cards'  => 'Trading card bin is organized',
+            'endcaps'        => 'End caps feature A-products and new releases',
         ],
         'Tidiness — nothing left out of place' => [
-            'tidy_tshirts'   => 'No T-shirts on the floor underneath the T-shirt racks',
+            'stray_items'    => 'All stray records and products put back on the proper shelves',
             'tidy_cassettes' => 'No cassettes sitting on top of the tables',
-            'tidy_notebook'  => 'No notebook left loose near the stage',
             'tidy_dvds'      => 'No DVDs sitting on top of the DVD bins',
             'tidy_drinks'    => 'No drinks on top of the bins',
+            'clothes_hung'   => 'All clothes hung up — nothing on the floor (including under the T-shirt racks)',
+            'stage_neat'     => 'Stage is neat — no trash, no stray items, set up like a cozy living-room set',
+        ],
+        'Fridge & snacks' => [
+            'drink_fridge' => 'Drink fridge is full — if it needs restocking, put in a supply request',
+            'snack_rack'   => 'Snack rack is full — if it needs restocking, put in a supply request',
         ],
         'Front desk & floor' => [
             'front_desk_clear' => 'Front desk clear and clutter-free for customers',
@@ -61,6 +68,15 @@ class OpeningChecklistController extends Controller
         'Open up' => [
             'doors' => 'Open the doors to welcome customers',
         ],
+    ];
+
+    /**
+     * Optional action link shown next to specific items (keyed by item key).
+     * e.g. jump straight to the supply-request form for fridge/snack restocks.
+     */
+    const LINKS = [
+        'drink_fridge' => ['url' => '/supply-requests', 'text' => 'Request a supply'],
+        'snack_rack'   => ['url' => '/supply-requests', 'text' => 'Request a supply'],
     ];
 
     /* ---------- storage helpers ---------- */
@@ -156,6 +172,7 @@ class OpeningChecklistController extends Controller
 
         return view('opening_checklist.index', [
             'groups'     => self::GROUPS,
+            'links'      => self::LINKS,
             'totalItems' => count(self::allItems()),
             'locations'  => $this->locations(),
             'recent'     => $recent,
