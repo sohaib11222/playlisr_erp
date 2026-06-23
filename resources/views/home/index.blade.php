@@ -87,14 +87,16 @@
 @if(auth()->user()->can('dashboard.data'))
 <section class="content no-print" style="padding-bottom: 0;">
 
-    {{-- Morning opening prompt: shows for Hollywood staff until today's opening
-         checklist is logged. Clears for everyone once someone completes it. --}}
-    @if(\App\Http\Controllers\OpeningChecklistController::shouldPrompt())
-        <a href="{{ url('/opening-checklist') }}" style="text-decoration:none;display:block;">
+    {{-- Morning opening prompt: shows for store staff until today's opening
+         checklist is logged for their store. Clears once someone completes it. --}}
+    @php $promptStore = \App\Http\Controllers\OpeningChecklistController::promptStore(); @endphp
+    @if($promptStore)
+        @php $promptStoreLabel = \App\Http\Controllers\OpeningChecklistController::STORE_LABELS[$promptStore] ?? 'The store'; @endphp
+        <a href="{{ url('/opening-checklist') }}?store={{ $promptStore }}" style="text-decoration:none;display:block;">
             <div style="background:#FFF9DB;border:1px solid #E8CF68;border-left:6px solid #E8CF68;border-radius:12px;padding:16px 20px;margin-bottom:18px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;font-family:'Inter Tight',system-ui,sans-serif;">
                 <i class="fa fas fa-clipboard-check" style="font-size:26px;color:#B26A00;"></i>
                 <div style="flex:1 1 280px;min-width:220px;">
-                    <div style="font-size:16px;font-weight:800;color:#5A4410;">Hollywood hasn't been opened yet today</div>
+                    <div style="font-size:16px;font-weight:800;color:#5A4410;">{{ $promptStoreLabel }} hasn't been opened yet today</div>
                     <div style="font-size:13.5px;color:#7a6a3a;margin-top:2px;">Run the morning opening checklist to set the floor up: lights, music, signs, full bins, and a tidy floor.</div>
                 </div>
                 <span style="background:#FFF2B3;border:1px solid #E8CF68;color:#5A4410;font-weight:800;font-size:14px;padding:10px 20px;border-radius:10px;white-space:nowrap;">Start checklist</span>

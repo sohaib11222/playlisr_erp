@@ -13,6 +13,9 @@
     $submitLabel = $submitLabel ?? 'Complete';
     $recentLabel = $recentLabel ?? 'Recent';
     $doneMsg     = $doneMsg     ?? 'All done. Thank you!';
+    $store        = $store        ?? 'hollywood';
+    $storeOptions = $storeOptions ?? [];
+    $baseUrl      = $baseUrl      ?? '';
 @endphp
 {{-- Cream / pastel-yellow look to match /pos/create. Scoped under .open-shell. --}}
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -93,6 +96,12 @@
     border-radius: 999px; padding: 8px 16px; font-weight: 700; font-size: 14px;
     white-space: nowrap;
 }
+.open-shell .store-toggle { display: inline-flex; gap: 6px; background: var(--d-surface-2); border: 1px solid var(--d-line); border-radius: 999px; padding: 4px; }
+.open-shell .store-pill {
+    display: inline-block; padding: 7px 18px; border-radius: 999px; font-weight: 700; font-size: 14px;
+    color: var(--d-ink-2); text-decoration: none;
+}
+.open-shell .store-pill.active { background: var(--d-accent); color: var(--d-accent-text); box-shadow: 0 1px 2px rgba(31,27,22,.08); }
 
 .open-shell .grp { margin-top: 18px; }
 .open-shell .grp:first-child { margin-top: 4px; }
@@ -168,17 +177,20 @@
 
     <form method="POST" action="{{ action($formAction) }}">
         @csrf
+        <input type="hidden" name="store" value="{{ $store }}">
         <div class="card">
             <div class="topbar">
-                <div class="fld">
-                    <label class="lbl">Store</label>
-                    <select name="location_id" class="input">
-                        @foreach ($locations as $lid => $lname)
-                            <option value="{{ $lid }}" @if(stripos($lname, 'holly') !== false) selected @endif>{{ $lname }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="progress-pill"><span id="progCount">0</span> / {{ $totalItems }} done</div>
+                @if (!empty($storeOptions))
+                    <div class="fld" style="flex:0 0 auto;">
+                        <label class="lbl">Store</label>
+                        <div class="store-toggle">
+                            @foreach ($storeOptions as $skey => $slabel)
+                                <a href="{{ $baseUrl }}?store={{ $skey }}" class="store-pill {{ $store === $skey ? 'active' : '' }}">{{ $slabel }}</a>
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
+                <div class="progress-pill" style="margin-left:auto;"><span id="progCount">0</span> / {{ $totalItems }} done</div>
             </div>
 
             @foreach ($groups as $groupName => $items)
