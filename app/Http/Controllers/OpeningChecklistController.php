@@ -31,8 +31,10 @@ class OpeningChecklistController extends Controller
             'lights'   => 'Turn on all the lights in the main room.',
             'music'    => 'Put on upbeat shopping music and turn it up loud enough to hear outside.',
             'computer' => 'Turn on the computer.',
+            'scent'    => 'Turn on the store scent purifier.',
         ],
-        '2. Windows' => [
+        '2. Windows & entrance' => [
+            'entrance'        => 'Keep the front entrance totally clear, with no boxes, trash, or obstacles in sight, so it feels welcoming to customers.',
             'windows_clean'   => 'Wipe down all the windows with glass cleaner until they are clean.',
             'windows_clear'   => 'Clear the windows of any random signs so nothing blocks the view inside.',
             'window_displays' => 'Update both window displays with A products.',
