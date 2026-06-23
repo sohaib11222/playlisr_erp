@@ -332,7 +332,7 @@ class EventsController extends Controller
                     if ($wantV > $ordV) { $needs[] = ($wantV - $ordV) . ' vinyl'; }
                     if ($wantC > $ordC) { $needs[] = ($wantC - $ordC) . ' CD'; }
                 } else {
-                    if ($ordV < $BASELINE_VINYL) { $needs[] = ($BASELINE_VINYL - $ordV) . ' standard vinyl (baseline)'; }
+                    if ($ordV < $BASELINE_VINYL) { $needs[] = ($BASELINE_VINYL - $ordV) . ' indie/deluxe (baseline)'; }
                 }
                 if ($needs) {
                     $lines[] = [
