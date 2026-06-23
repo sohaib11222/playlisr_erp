@@ -126,6 +126,15 @@
                     @includeIf('components.document_help_text')</p>
                 </div>
             </div>
+
+            @php $ams_order_number = \App\Services\AmsPurchaseOrders::get(session('user.business_id'), $purchase->id); @endphp
+            <div class="col-sm-3">
+                <div class="form-group">
+                    {!! Form::label('ams_order_number', 'AMS Order #:') !!}
+                    @show_tooltip('For a customer special order from AMS, enter the AMS order number. When you mark this purchase received, any customer waiting on this order is texted/emailed automatically.')
+                    {!! Form::text('ams_order_number', $ams_order_number, ['class' => 'form-control', 'placeholder' => 'AMS order / invoice #', 'maxlength' => 64]); !!}
+                </div>
+            </div>
         </div>
         <div class="row">
           @php

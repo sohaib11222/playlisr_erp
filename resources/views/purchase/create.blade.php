@@ -136,6 +136,13 @@
                     </p>
                 </div>
             </div>
+			<div class="col-sm-3">
+				<div class="form-group">
+					{!! Form::label('ams_order_number', 'AMS Order #:') !!}
+					@show_tooltip('For a customer special order from AMS, enter the AMS order number. When you mark this purchase received, any customer waiting on this order is texted/emailed automatically.')
+					{!! Form::text('ams_order_number', null, ['class' => 'form-control', 'placeholder' => 'AMS order / invoice #', 'maxlength' => 64]); !!}
+				</div>
+			</div>
 		</div>
 		<div class="row">
 			@php

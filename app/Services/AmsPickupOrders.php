@@ -96,4 +96,28 @@ class AmsPickupOrders
         }
         return $ids;
     }
+
+    /**
+     * Still-inbound pickup ids whose AMS order number matches $amsNumber
+     * (trimmed, case-insensitive). Used to fan a received purchase out to
+     * every customer waiting on that order.
+     */
+    public static function onOrderIdsByAmsNumber(int $business_id, string $amsNumber): array
+    {
+        $needle = strtolower(trim($amsNumber));
+        if ($needle === '') {
+            return [];
+        }
+        $ids = [];
+        foreach (self::load($business_id) as $id => $row) {
+            if (empty($row['on_order'])) {
+                continue;
+            }
+            $have = strtolower(trim((string) ($row['ams_order_number'] ?? '')));
+            if ($have !== '' && $have === $needle) {
+                $ids[] = (int) $id;
+            }
+        }
+        return $ids;
+    }
 }

@@ -517,8 +517,20 @@ class PurchaseController extends Controller
                 $this->updateProductPurchaseDates($transaction);
             }
 
+            // AMS special orders: remember the AMS order # on this purchase, and
+            // if it landed as received, auto-notify any customers waiting on it.
+            // Fully isolated — never let it break the purchase save.
+            try {
+                \App\Services\AmsPurchaseOrders::put($business_id, $transaction->id, $request->input('ams_order_number'));
+                if ($transaction->status == 'received') {
+                    \App\Services\AmsArrivalNotifier::handlePurchaseReceived($business_id, $transaction);
+                }
+            } catch (\Throwable $e) {
+                \Log::warning('AMS purchase hook (store) failed: ' . $e->getMessage());
+            }
+
             $this->transactionUtil->activityLog($transaction, 'added');
-            
+
             DB::commit();
             
             $output = ['success' => 1,
@@ -924,6 +936,18 @@ class PurchaseController extends Controller
             // Update product purchase dates if status changed to received
             if ($transaction->status == 'received' && $before_status != 'received') {
                 $this->updateProductPurchaseDates($transaction);
+            }
+
+            // AMS special orders: keep the AMS order # in sync, and the moment
+            // this purchase transitions into 'received', auto-notify any
+            // customers waiting on that order #. Isolated from the save.
+            try {
+                \App\Services\AmsPurchaseOrders::put($business_id, $transaction->id, $request->input('ams_order_number'));
+                if ($transaction->status == 'received' && $before_status != 'received') {
+                    \App\Services\AmsArrivalNotifier::handlePurchaseReceived($business_id, $transaction);
+                }
+            } catch (\Throwable $e) {
+                \Log::warning('AMS purchase hook (update) failed: ' . $e->getMessage());
             }
 
             $new_purchase_order_ids = $transaction->purchase_order_ids ?? [];

@@ -525,10 +525,7 @@ class CustomerPickupController extends Controller
             if (in_array($notifyMethod, ['email', 'both'])) $channels[] = 'email';
             if (in_array($notifyMethod, ['sms', 'both']))   $channels[] = 'sms';
 
-            $notifyResults = [];
-            foreach ($channels as $ch) {
-                $notifyResults[$ch] = $this->sendArrivalNotification($ch, $pickup);
-            }
+            $notifyResults = \App\Services\AmsArrivalNotifier::notifyCustomer($pickup, $channels);
             if (!empty($channels)) {
                 AmsPickupOrders::put($business_id, $pickup->id, ['notified' => true]);
             }
@@ -545,68 +542,5 @@ class CustomerPickupController extends Controller
                 'msg' => __('messages.something_went_wrong'),
             ];
         }
-    }
-
-    /** Human label for a pickup's item, e.g. "Artist — Title". */
-    private function pickupLabel(CustomerPickup $pickup): string
-    {
-        $artist = trim((string) optional($pickup->product)->artist);
-        $name = trim((string) optional($pickup->product)->name);
-        $label = trim(implode(' — ', array_filter([$artist, $name])));
-        if ($label === '') {
-            $label = trim((string) optional($pickup->variation)->sub_sku);
-        }
-        return $label;
-    }
-
-    /**
-     * Dispatch one notification channel for an arrived pickup.
-     * Returns ['ok' => bool, 'msg' => string]. Mirrors the customer-wants
-     * notifier so the POS gets the same per-channel feedback.
-     */
-    private function sendArrivalNotification(string $channel, CustomerPickup $pickup): array
-    {
-        $contact = $pickup->contact;
-        if (!$contact) {
-            return ['ok' => false, 'msg' => 'No contact linked to this pickup.'];
-        }
-
-        $label = $this->pickupLabel($pickup);
-        $storeName = optional($pickup->location)->name ?: 'Nivessa';
-
-        if ($channel === 'email') {
-            if (empty($contact->email)) {
-                return ['ok' => false, 'msg' => 'Customer has no email on file.'];
-            }
-            try {
-                \Mail::to($contact->email)->send(new \App\Mail\CustomerPickupArrived($pickup, $contact, $label, $storeName));
-                return ['ok' => true, 'msg' => 'Emailed ' . $contact->email];
-            } catch (\Throwable $e) {
-                \Log::warning('CustomerPickup email failed: ' . $e->getMessage());
-                return ['ok' => false, 'msg' => 'Email failed: ' . $e->getMessage()];
-            }
-        }
-
-        if ($channel === 'sms') {
-            $phone = $contact->mobile ?: ($contact->alternate_number ?: null);
-            if (empty($phone)) {
-                return ['ok' => false, 'msg' => 'Customer has no phone on file.'];
-            }
-            $first = trim((string) ($contact->first_name ?? ''));
-            $hey = $first !== '' ? ('Hey ' . $first . ', ') : 'Hey, ';
-            $what = $label !== '' ? ('your ' . $label) : 'your order';
-            $msg = $hey . "Nivessa here — {$what} just came in at {$storeName}. "
-                 . "It's ready for pickup, we'll hold it behind the counter.";
-            try {
-                $sms = app(\App\Services\OpenPhoneService::class);
-                $result = $sms->send($phone, $msg);
-                return ['ok' => (bool) ($result['success'] ?? false), 'msg' => $result['msg'] ?? ''];
-            } catch (\Throwable $e) {
-                \Log::warning('CustomerPickup sms failed: ' . $e->getMessage());
-                return ['ok' => false, 'msg' => 'Text failed: ' . $e->getMessage()];
-            }
-        }
-
-        return ['ok' => false, 'msg' => 'Unknown notify channel: ' . $channel];
     }
 }

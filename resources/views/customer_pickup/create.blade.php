@@ -82,6 +82,30 @@ body.pos-v2 .pickup-actions { display: flex; justify-content: flex-end; gap: 10p
         </div>
     </div>
 
+    {{-- AMS special order --}}
+    <div class="pickup-card">
+        <h2><i class="fa fa-truck"></i> Special Order (AMS)</h2>
+        <div class="pickup-row">
+            <div class="pickup-field" style="flex: 1 1 100%;">
+                <div class="pickup-check">
+                    {!! Form::checkbox('is_on_order', 1, false, ['id' => 'is_on_order']) !!}
+                    <label for="is_on_order"><strong>On order — not in yet</strong> — ordered from AMS; shows as "On Order" on their account until it arrives</label>
+                </div>
+            </div>
+        </div>
+        <div class="pickup-row" style="margin-top: 12px;">
+            <div class="pickup-field">
+                {!! Form::label('ams_order_number', 'AMS Order #') !!}
+                {!! Form::text('ams_order_number', null, ['class' => 'form-control', 'placeholder' => 'AMS order / invoice number', 'maxlength' => 64]); !!}
+            </div>
+            <div class="pickup-field">
+                {!! Form::label('ams_expected_date', 'Expected Arrival') !!}
+                {!! Form::text('ams_expected_date', null, ['class' => 'form-control date-picker', 'placeholder' => 'Optional']); !!}
+            </div>
+        </div>
+        <small class="help-block" style="margin-top: 10px;">Put this same AMS Order # on the purchase when you order it. The moment that purchase is marked <strong>received</strong>, the customer is texted/emailed automatically — no need to come back here. (You can still mark it Arrived by hand if needed.)</small>
+    </div>
+
     {{-- Pickup schedule + paid --}}
     <div class="pickup-card">
         <h2><i class="fa fa-calendar-check"></i> Pickup Schedule</h2>
@@ -109,30 +133,6 @@ body.pos-v2 .pickup-actions { display: flex; justify-content: flex-end; gap: 10p
                 </div>
             </div>
         </div>
-    </div>
-
-    {{-- AMS special order --}}
-    <div class="pickup-card">
-        <h2><i class="fa fa-truck"></i> Special Order (AMS)</h2>
-        <div class="pickup-row">
-            <div class="pickup-field" style="flex: 1 1 100%;">
-                <div class="pickup-check">
-                    {!! Form::checkbox('is_on_order', 1, false, ['id' => 'is_on_order']) !!}
-                    <label for="is_on_order"><strong>On order — not in yet</strong> — ordered from AMS; shows as "On Order" on their account until it arrives</label>
-                </div>
-            </div>
-        </div>
-        <div class="pickup-row" style="margin-top: 12px;">
-            <div class="pickup-field">
-                {!! Form::label('ams_order_number', 'AMS Order #') !!}
-                {!! Form::text('ams_order_number', null, ['class' => 'form-control', 'placeholder' => 'AMS order / invoice number', 'maxlength' => 64]); !!}
-            </div>
-            <div class="pickup-field">
-                {!! Form::label('ams_expected_date', 'Expected Arrival') !!}
-                {!! Form::text('ams_expected_date', null, ['class' => 'form-control date-picker', 'placeholder' => 'Optional']); !!}
-            </div>
-        </div>
-        <small class="help-block" style="margin-top: 10px;">When it lands, open this pickup and hit <strong>Arrived</strong> to alert the customer.</small>
     </div>
 
     {{-- Notes --}}
