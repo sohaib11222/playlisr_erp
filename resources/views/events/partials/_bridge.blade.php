@@ -40,6 +40,21 @@
       $pool[$key] = ['name' => $nm, 'checkedIn' => !empty($r['checkedIn'])];
     }
     $pool = array_values($pool);
+
+    // Vinyl/CD purchase interest. Listening-party RSVPs carry
+    // `interestedInPurchase` (vinyl|cd|both|not_sure|no). Mirror the
+    // website's /admin/rsvps tally + suggested-order math so the numbers
+    // match exactly: units to order = anyone who said vinyl/cd/both, with
+    // the "not sure" crowd as an upper-bound buffer.
+    $interestLabels = ['vinyl' => 'Vinyl', 'cd' => 'CD', 'both' => 'Both', 'not_sure' => 'Not sure', 'no' => 'No'];
+    $interestCounts = ['vinyl' => 0, 'cd' => 0, 'both' => 0, 'not_sure' => 0, 'no' => 0];
+    $interestAnswered = 0;
+    foreach ($rsvps as $r) {
+      $v = $r['interestedInPurchase'] ?? null;
+      if ($v !== null && isset($interestCounts[$v])) { $interestCounts[$v]++; $interestAnswered++; }
+    }
+    $vinylUnits = $interestCounts['vinyl'] + $interestCounts['both'];
+    $cdUnits = $interestCounts['cd'] + $interestCounts['both'];
   @endphp
 
   {{-- ---------- RSVPs ---------- --}}
@@ -52,6 +67,29 @@
       </div>
     @endif
 
+    {{-- Vinyl/CD order estimate — listening parties only (shown once
+         anyone has answered the "buying vinyl or CD?" RSVP question). --}}
+    @if($interestAnswered > 0)
+      <div style="border:1px solid var(--pos-line,#ECE3CF);border-radius:10px;padding:12px 14px;margin-bottom:14px;background:var(--pos-accent-soft,#FFF9DB);">
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px;">
+          Vinyl / CD interest
+          <span class="ev-meta" style="font-weight:500;">&middot; {{ $interestAnswered }} answered</span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+          @foreach($interestLabels as $k => $label)
+            <span class="pill">{{ $label }}: {{ $interestCounts[$k] }}</span>
+          @endforeach
+        </div>
+        <div style="font-size:13px;">
+          Suggested order:
+          <strong>{{ $vinylUnits }} vinyl</strong> &middot; <strong>{{ $cdUnits }} CD</strong>
+          @if($interestCounts['not_sure'] > 0)
+            <span class="ev-meta">(+{{ $interestCounts['not_sure'] }} more if the "not sure" guests commit)</span>
+          @endif
+        </div>
+      </div>
+    @endif
+
     @if(empty($rsvps))
       <div class="empty">No RSVPs yet.</div>
     @else
@@ -59,7 +97,7 @@
         <button type="button" class="btn-ghost" id="copy-emails">Copy all emails</button>
       </div>
       <table class="ev-tbl">
-        <thead><tr><th>Name</th><th>Email</th><th>Going</th><th>Guests</th><th>Checked in</th></tr></thead>
+        <thead><tr><th>Name</th><th>Email</th><th>Going</th><th>Guests</th><th>Vinyl/CD</th><th>Checked in</th></tr></thead>
         <tbody>
           @foreach($rsvps as $r)
             @php $rid = $r['_id'] ?? $r['id'] ?? ''; $ci = !empty($r['checkedIn']); @endphp
@@ -68,6 +106,14 @@
               <td class="ev-meta">{{ $r['email'] ?? '' }}</td>
               <td>{{ ucfirst($r['attendance'] ?? '') }}</td>
               <td>{{ (int) ($r['guests'] ?? 0) }}</td>
+              <td>
+                @php $vi = $r['interestedInPurchase'] ?? null; @endphp
+                @if($vi && isset($interestLabels[$vi]))
+                  <span class="pill">{{ $interestLabels[$vi] }}</span>
+                @else
+                  <span class="ev-meta">—</span>
+                @endif
+              </td>
               <td>
                 @if($rid)
                 <form method="POST" action="{{ route('events.rsvpCheckIn', ['id' => $event['id'], 'rsvpId' => $rid]) }}" style="display:inline;">
