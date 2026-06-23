@@ -193,6 +193,10 @@
                 <textarea name="note" class="input" rows="2" placeholder="e.g. rock bins low on stock, neon sign behind the listening station is flickering"></textarea>
             </div>
 
+            <div id="allDoneMsg" style="display:none;margin:4px 0 16px;background:#FFF9DB;border:1px solid #E8CF68;border-radius:10px;padding:13px 16px;font-weight:800;color:#5A4410;font-size:15px;">
+                You rock! Thank you, and have a great day! Hit "Complete opening" to log it.
+            </div>
+
             <div class="actions">
                 <button type="submit" class="btn">Complete opening</button>
                 <button type="button" class="btn-link" onclick="openCheckAll()">Check all</button>
@@ -241,6 +245,8 @@ function openTick() {
     var n = 0;
     boxes.forEach(function (b) { if (b.checked) n++; });
     document.getElementById('progCount').textContent = n;
+    var msg = document.getElementById('allDoneMsg');
+    if (msg) { msg.style.display = (boxes.length > 0 && n === boxes.length) ? 'block' : 'none'; }
 }
 function openCheckAll() {
     var boxes = document.querySelectorAll('.open-shell input[name="items[]"]');

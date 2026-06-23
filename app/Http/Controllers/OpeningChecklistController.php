@@ -52,10 +52,6 @@ class OpeningChecklistController extends Controller
             'clothes_hung'   => 'All clothes hung up — nothing on the floor (including under the T-shirt racks)',
             'stage_neat'     => 'Stage is neat — no trash, no stray items, set up like a cozy living-room set',
         ],
-        'Fridge & snacks' => [
-            'drink_fridge' => 'Drink fridge is full — if it needs restocking, put in a supply request',
-            'snack_rack'   => 'Snack rack is full — if it needs restocking, put in a supply request',
-        ],
         'Front desk & floor' => [
             'front_desk_clear' => 'Front desk clear and clutter-free for customers',
             'no_trash_front'   => 'No trash or boxes at the front desk / front area',
@@ -65,8 +61,9 @@ class OpeningChecklistController extends Controller
             'bathroom'  => 'Bathroom tidy, trash taken out',
             'trash_all' => 'Empty all trash bins and clear any trash around the store',
         ],
-        'Open up' => [
-            'doors' => 'Open the doors to welcome customers',
+        'Fridge & snacks' => [
+            'drink_fridge' => 'Drink fridge is full — if it needs restocking, put in a supply request',
+            'snack_rack'   => 'Snack rack is full — if it needs restocking, put in a supply request',
         ],
     ];
 
@@ -216,7 +213,7 @@ class OpeningChecklistController extends Controller
         self::writeAll($all);
 
         $msg = count($missed) === 0
-            ? 'Opening checklist complete — thank you for setting the floor up right.'
+            ? 'You rock! Thank you, and have a great day!'
             : 'Opening logged. ' . count($missed) . ' item(s) still need doing — please finish them.';
 
         return redirect()->action('OpeningChecklistController@index')
