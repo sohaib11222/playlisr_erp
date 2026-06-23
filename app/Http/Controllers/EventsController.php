@@ -819,22 +819,22 @@ class EventsController extends Controller
      * events by name keyword. Snapshotted + undoable. Idempotent (re-running
      * sets the same values).
      */
-    public function seedOrders(Request $request)
+    /** What we ordered from the 6/23 sheets: keyword => [ store => [ sku => qty ] ]. */
+    public static function orderSeedMap(): array
     {
-        if (!auth()->user()->can('product.create')) {
-            abort(403, 'Unauthorized action.');
-        }
-        $business_id = $this->businessId($request);
-        $data = self::load($business_id);
-
-        // keyword => [ store => [ sku => qty ] ]
-        $seed = [
+        return [
             'madonna'    => ['hollywood' => ['indieVinyl' => 20, 'stdVinyl' => 11, 'stdCd' => 3, 'deluxeCd' => 3]],
             'gracie'     => ['hollywood' => ['indieVinyl' => 25, 'stdVinyl' => 5, 'stdCd' => 1], 'pico' => ['stdVinyl' => 2]],
             'heated'     => ['hollywood' => ['stdVinyl' => 22, 'stdCd' => 1]],
             'jack white' => ['hollywood' => ['indieVinyl' => 10, 'cassette' => 2, 'stdCd' => 1], 'pico' => ['indieVinyl' => 10, 'cassette' => 2, 'stdCd' => 1]],
         ];
+    }
 
+    /** Apply the order seed to one business's store; returns events updated. */
+    public static function applyOrderSeed(int $business_id): int
+    {
+        $data = self::load($business_id);
+        $seed = self::orderSeedMap();
         $matched = 0;
         $snapshotted = false;
         foreach ($data['items'] as $id => $ev) {
@@ -856,6 +856,15 @@ class EventsController extends Controller
         if ($matched) {
             self::save($business_id, $data);
         }
+        return $matched;
+    }
+
+    public function seedOrders(Request $request)
+    {
+        if (!auth()->user()->can('product.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $matched = self::applyOrderSeed($this->businessId($request));
         return redirect()->route('events.index')
             ->with('status', "Loaded distributor orders into {$matched} event(s). Undo from Admin Action History.");
     }

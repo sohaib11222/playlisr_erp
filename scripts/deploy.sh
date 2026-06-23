@@ -85,6 +85,15 @@ fi
 echo "deploy: post-git maintenance v2 — ONLY optimize:clear (no config:cache / route:cache)"
 php artisan optimize:clear --no-interaction
 
+# One-time: load the 6/23 distributor order quantities into events. Guarded by
+# a flag file so it runs exactly once, then never again. Idempotent even if it
+# did re-run (it sets the same values).
+if [ ! -f "$DEPLOY_DIR/storage/app/.seeded-orders-0623" ]; then
+  echo "deploy: seeding 6/23 event orders (one-time)"
+  php artisan events:seed-orders --no-interaction \
+    && touch "$DEPLOY_DIR/storage/app/.seeded-orders-0623"
+fi
+
 php artisan queue:restart 2>/dev/null || true
 
 # Reset FPM OPcache via an in-FPM endpoint. `artisan optimize:clear`
