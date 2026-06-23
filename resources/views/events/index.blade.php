@@ -20,6 +20,11 @@
       </div>
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <form method="POST" action="{{ route('events.seedOrders') }}"
+            onsubmit="return confirm('Load what we ordered (from the 6/23 Hollywood + Pico sheets) into Madonna, Gracie, Heated Rivalry and Jack White? Overwrites their ordered fields. Undoable from Admin Action History.');">
+        {{ csrf_field() }}
+        <button type="submit" class="btn-ghost">Load 6/23 orders</button>
+      </form>
       <form method="POST" action="{{ route('events.import') }}"
             onsubmit="return confirm('Pull the latest events from nivessa.com into the ERP? Existing prep-checklist progress entered here is preserved.');">
         {{ csrf_field() }}

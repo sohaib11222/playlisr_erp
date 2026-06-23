@@ -813,6 +813,53 @@ class EventsController extends Controller
             ->with('error', 'Key saved, but the website was unreachable' . ($probe['code'] ? ' (HTTP ' . $probe['code'] . ')' : '') . '. Check the NIVESSA_API URL.');
     }
 
+    /**
+     * One-time load of what we ordered, parsed from the 6/23 Hollywood + Pico
+     * distributor sheets, into each event's per-store ordered matrix. Matches
+     * events by name keyword. Snapshotted + undoable. Idempotent (re-running
+     * sets the same values).
+     */
+    public function seedOrders(Request $request)
+    {
+        if (!auth()->user()->can('product.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $business_id = $this->businessId($request);
+        $data = self::load($business_id);
+
+        // keyword => [ store => [ sku => qty ] ]
+        $seed = [
+            'madonna'    => ['hollywood' => ['indieVinyl' => 20, 'stdVinyl' => 11, 'stdCd' => 3, 'deluxeCd' => 3]],
+            'gracie'     => ['hollywood' => ['indieVinyl' => 25, 'stdVinyl' => 5, 'stdCd' => 1], 'pico' => ['stdVinyl' => 2]],
+            'heated'     => ['hollywood' => ['stdVinyl' => 22, 'stdCd' => 1]],
+            'jack white' => ['hollywood' => ['indieVinyl' => 10, 'cassette' => 2, 'stdCd' => 1], 'pico' => ['indieVinyl' => 10, 'cassette' => 2, 'stdCd' => 1]],
+        ];
+
+        $matched = 0;
+        $snapshotted = false;
+        foreach ($data['items'] as $id => $ev) {
+            $name = mb_strtolower((string) ($ev['name'] ?? ''));
+            foreach ($seed as $kw => $stores) {
+                if (mb_strpos($name, $kw) === false) {
+                    continue;
+                }
+                if (!$snapshotted) {
+                    self::snapshot($business_id, $data, 'events-seed-orders');
+                    $snapshotted = true;
+                }
+                $data['items'][$id]['ordered'] = self::cleanOrdered($stores);
+                $data['items'][$id]['updatedAt'] = date('c');
+                $matched++;
+                break;
+            }
+        }
+        if ($matched) {
+            self::save($business_id, $data);
+        }
+        return redirect()->route('events.index')
+            ->with('status', "Loaded distributor orders into {$matched} event(s). Undo from Admin Action History.");
+    }
+
     public function destroy(Request $request, string $id)
     {
         if (!auth()->user()->can('product.create')) {

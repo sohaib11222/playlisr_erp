@@ -362,6 +362,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/events-bridge-key', 'EventsController@bridgeKeySave')->name('events.bridgeKey');
     // One-time: strip sub-location (e.g. "Stage") from listening parties
     Route::post('/events-tidy-locations', 'EventsController@tidyLocations')->name('events.tidyLocations');
+    // One-time: load 6/23 distributor orders into the per-store ordered matrix
+    Route::post('/events-seed-orders', 'EventsController@seedOrders')->name('events.seedOrders');
     // RSVP + preorder management (records live on nivessa.com, reached via bridge)
     Route::post('/events/{id}/rsvps', 'EventsController@rsvpAdd')->name('events.rsvpAdd');
     Route::post('/events/{id}/rsvps/{rsvpId}/check-in', 'EventsController@rsvpCheckIn')->name('events.rsvpCheckIn');
@@ -845,6 +847,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/supply-requests', 'SupplyRequestController@submit')->name('supply-requests.submit');
     Route::get('/admin/supply-requests', 'SupplyRequestController@admin')->name('supply-requests.admin');
     Route::post('/admin/supply-requests/update', 'SupplyRequestController@update')->name('supply-requests.update');
+
+    // Morning opening checklist. Staff-facing: the opening person checks each
+    // item off and submits; we log who opened, when, and what was left undone.
+    // JSON-backed (storage/app/opening_checklist.json).
+    Route::get('/opening-checklist', 'OpeningChecklistController@index')->name('opening-checklist.index');
+    Route::post('/opening-checklist', 'OpeningChecklistController@complete')->name('opening-checklist.complete');
 
     // Listing commissions owed to staff for items they listed. Derived live
     // from products.created_by + users.cmmsn_percent × sell price; "paid" is
