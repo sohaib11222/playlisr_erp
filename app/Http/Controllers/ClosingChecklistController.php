@@ -116,11 +116,12 @@ class ClosingChecklistController extends Controller
 
     private function resolveStore($requested)
     {
+        $available = OpeningChecklistController::storesForUser();
         $requested = strtolower(trim((string) $requested));
-        if (isset(self::STORES[$requested])) {
+        if (isset($available[$requested])) {
             return $requested;
         }
-        return OpeningChecklistController::defaultStoreForUser();
+        return array_key_first($available);
     }
 
     /* ---------- page ---------- */
@@ -151,7 +152,7 @@ class ClosingChecklistController extends Controller
             'recent'       => $recent,
             'doneToday'    => $doneToday,
             'store'        => $store,
-            'storeOptions' => self::STORE_LABELS,
+            'storeOptions' => OpeningChecklistController::storesForUser(),
             'baseUrl'      => url('/closing-checklist'),
             'pageTitle'    => 'Closing Checklist',
             'heading'      => 'Closing Up Checklist',

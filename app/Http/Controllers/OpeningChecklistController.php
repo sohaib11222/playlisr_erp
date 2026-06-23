@@ -144,14 +144,44 @@ class OpeningChecklistController extends Controller
         return $flat;
     }
 
-    /** Normalize a requested store, falling back to the user's own store. */
+    /**
+     * The stores the logged-in user actually works at (subset of Hollywood /
+     * Pico, in canonical order). A Hollywood-only opener never sees Pico. Falls
+     * back to all stores if we can't tell, so the page is never blank.
+     */
+    public static function storesForUser()
+    {
+        $has = [];
+        try {
+            foreach (BusinessLocation::forDropdown(session('user.business_id')) as $name) {
+                if (stripos($name, 'holly') !== false) {
+                    $has['hollywood'] = true;
+                }
+                if (stripos($name, 'pico') !== false) {
+                    $has['pico'] = true;
+                }
+            }
+        } catch (\Exception $e) {
+            // fall through to "all"
+        }
+        $ordered = [];
+        foreach (self::STORE_LABELS as $key => $label) {
+            if (empty($has) || isset($has[$key])) {
+                $ordered[$key] = $label;
+            }
+        }
+        return $ordered;
+    }
+
+    /** Normalize a requested store, clamped to the stores this user can see. */
     private function resolveStore($requested)
     {
+        $available = self::storesForUser();
         $requested = strtolower(trim((string) $requested));
-        if (isset(self::STORES[$requested])) {
+        if (isset($available[$requested])) {
             return $requested;
         }
-        return self::defaultStoreForUser();
+        return array_key_first($available);
     }
 
     /** Best guess of the logged-in user's store from their permitted locations. */
@@ -251,7 +281,7 @@ class OpeningChecklistController extends Controller
             'recent'       => $recent,
             'doneToday'    => $doneToday,
             'store'        => $store,
-            'storeOptions' => self::STORE_LABELS,
+            'storeOptions' => self::storesForUser(),
             'baseUrl'      => url('/opening-checklist'),
             'pageTitle'    => 'Opening Checklist',
             'heading'      => 'Morning Opening Checklist',

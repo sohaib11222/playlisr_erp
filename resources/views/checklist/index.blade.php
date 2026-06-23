@@ -185,7 +185,11 @@
                         <label class="lbl">Store</label>
                         <div class="store-toggle">
                             @foreach ($storeOptions as $skey => $slabel)
-                                <a href="{{ $baseUrl }}?store={{ $skey }}" class="store-pill {{ $store === $skey ? 'active' : '' }}">{{ $slabel }}</a>
+                                @if (count($storeOptions) > 1)
+                                    <a href="{{ $baseUrl }}?store={{ $skey }}" class="store-pill {{ $store === $skey ? 'active' : '' }}">{{ $slabel }}</a>
+                                @else
+                                    <span class="store-pill active">{{ $slabel }}</span>
+                                @endif
                             @endforeach
                         </div>
                     </div>
