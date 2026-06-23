@@ -172,6 +172,11 @@ body.abc-v2 .dataTables_wrapper .dataTables_paginate .paginate_button.current {
 @if($has_rows)
 <script type="text/javascript">
 $(document).ready(function () {
+    // Deep-link: /reports/abc-full-report?class=A pre-selects the ABC class
+    // (the opening-checklist endcaps link uses ?class=A to show A-products).
+    var qsClass = (new URLSearchParams(window.location.search)).get('class');
+    if (qsClass) { $('#full_class').val(qsClass.toUpperCase()); }
+
     var table = $('#abc_full_table').DataTable({
         processing: true,
         serverSide: true,

@@ -75,6 +75,7 @@ class OpeningChecklistController extends Controller
      * e.g. jump straight to the supply-request form for fridge/snack restocks.
      */
     const LINKS = [
+        'endcaps'      => ['url' => '/reports/abc-full-report?class=A', 'text' => 'View A-products'],
         'drink_fridge' => ['url' => '/supply-requests', 'text' => 'Request a supply'],
         'snack_rack'   => ['url' => '/supply-requests', 'text' => 'Request a supply'],
     ];
