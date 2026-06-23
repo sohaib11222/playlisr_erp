@@ -55,16 +55,20 @@ class AmsArrivalNotifier
             return ['ok' => false, 'msg' => 'No contact linked to this pickup.'];
         }
 
+        // Fall back to the email/phone captured on the pickup form when the
+        // contact record itself doesn't have one.
+        $meta = AmsPickupOrders::get((int) $pickup->business_id, (int) $pickup->id) ?: [];
         $label = self::pickupLabel($pickup);
         $storeName = optional($pickup->location)->name ?: 'Nivessa';
 
         if ($channel === 'email') {
-            if (empty($contact->email)) {
+            $email = $contact->email ?: ($meta['ams_email'] ?? null);
+            if (empty($email)) {
                 return ['ok' => false, 'msg' => 'Customer has no email on file.'];
             }
             try {
-                \Mail::to($contact->email)->send(new \App\Mail\CustomerPickupArrived($pickup, $contact, $label, $storeName));
-                return ['ok' => true, 'msg' => 'Emailed ' . $contact->email];
+                \Mail::to($email)->send(new \App\Mail\CustomerPickupArrived($pickup, $contact, $label, $storeName));
+                return ['ok' => true, 'msg' => 'Emailed ' . $email];
             } catch (\Throwable $e) {
                 \Log::warning('CustomerPickup email failed: ' . $e->getMessage());
                 return ['ok' => false, 'msg' => 'Email failed: ' . $e->getMessage()];
@@ -72,7 +76,7 @@ class AmsArrivalNotifier
         }
 
         if ($channel === 'sms') {
-            $phone = $contact->mobile ?: ($contact->alternate_number ?: null);
+            $phone = $contact->mobile ?: ($contact->alternate_number ?: ($meta['ams_phone'] ?? null));
             if (empty($phone)) {
                 return ['ok' => false, 'msg' => 'Customer has no phone on file.'];
             }
@@ -133,11 +137,13 @@ class AmsArrivalNotifier
                     'received_purchase_id' => (int) $transaction->id,
                 ]);
 
-                // Notify on every channel the customer actually has.
+                // Notify on every channel the customer actually has — from the
+                // contact record, or the email/phone captured on the pickup form.
+                $meta = AmsPickupOrders::get($business_id, (int) $pickup->id) ?: [];
                 $channels = [];
                 $contact = $pickup->contact;
-                if ($contact && !empty($contact->email)) $channels[] = 'email';
-                if ($contact && ($contact->mobile || $contact->alternate_number)) $channels[] = 'sms';
+                if (($contact && !empty($contact->email)) || !empty($meta['ams_email'])) $channels[] = 'email';
+                if (($contact && ($contact->mobile || $contact->alternate_number)) || !empty($meta['ams_phone'])) $channels[] = 'sms';
                 if (!empty($channels)) {
                     self::notifyCustomer($pickup, $channels);
                     AmsPickupOrders::put($business_id, $pickup->id, ['notified' => true]);

@@ -194,6 +194,8 @@ class CustomerPickupController extends Controller
                 'ams_order_number' => 'nullable|string|max:64',
                 'is_on_order' => 'nullable',
                 'ams_expected_date' => 'nullable|date',
+                'notify_email' => 'nullable|email|max:255',
+                'notify_phone' => 'nullable|string|max:40',
             ]);
 
             $pickup = new CustomerPickup();
@@ -212,16 +214,38 @@ class CustomerPickupController extends Controller
             $pickup->created_by = auth()->user()->id;
             $pickup->save();
 
+            // Contact details for the arrival alert. Backfill the customer's
+            // contact record where it's blank (so it works everywhere going
+            // forward) and also stash on the pickup as a fallback.
+            $notifyEmail = trim((string) $request->input('notify_email'));
+            $notifyPhone = trim((string) $request->input('notify_phone'));
+            if ($notifyEmail !== '' || $notifyPhone !== '') {
+                $contact = Contact::find($request->contact_id);
+                if ($contact) {
+                    if ($notifyEmail !== '' && empty($contact->email)) {
+                        $contact->email = $notifyEmail;
+                    }
+                    if ($notifyPhone !== '' && empty($contact->mobile)) {
+                        $contact->mobile = $notifyPhone;
+                    }
+                    if ($contact->isDirty()) {
+                        $contact->save();
+                    }
+                }
+            }
+
             // AMS special order: record the order number / ETA and (if it
             // isn't in hand yet) flag it "on order" so it shows as inbound
             // and doesn't surface as ready-for-pickup until it arrives.
             $isOnOrder = $request->has('is_on_order');
             $amsNumber = trim((string) $request->input('ams_order_number'));
-            if ($isOnOrder || $amsNumber !== '') {
+            if ($isOnOrder || $amsNumber !== '' || $notifyEmail !== '' || $notifyPhone !== '') {
                 AmsPickupOrders::put($business_id, $pickup->id, [
                     'ams_order_number' => $amsNumber !== '' ? $amsNumber : null,
                     'expected_date'    => $request->input('ams_expected_date') ?: null,
                     'on_order'         => $isOnOrder,
+                    'ams_email'        => $notifyEmail !== '' ? $notifyEmail : null,
+                    'ams_phone'        => $notifyPhone !== '' ? $notifyPhone : null,
                 ]);
             }
 

@@ -61,6 +61,17 @@ body.pos-v2 .pickup-actions { display: flex; justify-content: flex-end; gap: 10p
                 {!! Form::select('location_id', $locations, null, ['class' => 'form-control select2', 'placeholder' => 'Select store', 'required', 'style' => 'width: 100%']); !!}
             </div>
         </div>
+        <div class="pickup-row" style="margin-top: 4px;">
+            <div class="pickup-field">
+                {!! Form::label('notify_email', 'Email') !!}
+                {!! Form::email('notify_email', null, ['class' => 'form-control', 'placeholder' => 'name@email.com']); !!}
+            </div>
+            <div class="pickup-field">
+                {!! Form::label('notify_phone', 'Phone') !!}
+                {!! Form::text('notify_phone', null, ['class' => 'form-control', 'placeholder' => '(555) 123-4567', 'maxlength' => 40]); !!}
+            </div>
+        </div>
+        <small class="help-block">Only needed if the customer doesn't already have an email/phone on file — we use these to text/email them when the order arrives. Saved to their profile if it's blank.</small>
     </div>
 
     {{-- Product --}}
