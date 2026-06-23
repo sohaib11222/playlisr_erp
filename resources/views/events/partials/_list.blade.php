@@ -2,15 +2,16 @@
 <table class="ev-tbl">
   <thead>
     <tr>
-      <th style="width:23%;">Event</th>
-      <th style="width:10%;">Date</th>
-      <th style="width:11%;">Location</th>
+      <th style="width:21%;">Event</th>
+      <th style="width:9%;">Date</th>
+      <th style="width:9%;">Street date</th>
+      <th style="width:10%;">Location</th>
       <th style="width:7%;">RSVPs</th>
       <th style="width:8%;">Vinyl requests</th>
       <th style="width:7%;">CD requests</th>
-      <th style="width:10%;">Taking preorders?</th>
-      <th style="width:11%;">Prep</th>
-      <th style="width:13%;"></th>
+      <th style="width:9%;">Taking preorders?</th>
+      <th style="width:9%;">Prep</th>
+      <th style="width:11%;"></th>
     </tr>
   </thead>
   <tbody>
@@ -22,6 +23,7 @@
         foreach ($prepItems as $pi) { if (!empty($checklist[$pi['id']]['done'])) { $doneCount++; } }
         $locLabels = array_map(fn($l) => ucfirst($l), (array) ($ev['location'] ?? []));
         $evDate = !empty($ev['date']) ? date('m/d/y', strtotime($ev['date'])) : '—';
+        $evStreetDate = !empty($ev['streetDate']) ? date('m/d/y', strtotime($ev['streetDate'])) : '—';
         $evTime = !empty($ev['time']) ? date('g:i A', strtotime($ev['time'])) : '';
         $evName = $ev['name'] ?? '';
         $rsvpCount = ($rsvpCounts ?? [])[$evName] ?? null;
@@ -38,6 +40,7 @@
           </div>
         </td>
         <td>{{ $evDate }}</td>
+        <td>{{ $evStreetDate }}</td>
         <td class="ev-meta">{{ $locLabels ? implode(' + ', $locLabels) : '—' }}@if(!empty($ev['locationDetail'])) <br>({{ ucfirst($ev['locationDetail']) }})@endif</td>
         <td>{{ $rsvpCount === null ? '—' : $rsvpCount }}</td>
         <td>{{ $vinylCount === null ? '—' : $vinylCount }}</td>

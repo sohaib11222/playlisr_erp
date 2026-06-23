@@ -404,6 +404,7 @@ class EventsController extends Controller
             'image'       => 'nullable|string|max:1000',
             'artistSoundsLike' => 'nullable|string|max:191',
             'locationDetail'   => 'nullable|string|max:20',
+            'streetDate'       => 'nullable|date',
         ], [
             'name.required' => 'Event name is required.',
             'date.required' => 'Pick an event date.',
@@ -431,6 +432,7 @@ class EventsController extends Controller
             'date'             => $request->input('date'),
             'time'             => trim($request->input('time')),
             'endTime'          => $endTime !== '' ? $endTime : null,
+            'streetDate'       => $request->input('streetDate') ?: null,
             'description'      => trim((string) $request->input('description', '')),
             'image'            => trim((string) $request->input('image', '')) ?: null,
             'location'         => $location,
@@ -634,6 +636,9 @@ class EventsController extends Controller
                 'date'             => (string) ($e['date'] ?? ''),
                 'time'             => (string) ($e['time'] ?? ''),
                 'endTime'          => $e['endTime'] ?? null,
+                // ERP-only field; the website feed doesn't carry it, so keep any
+                // street date entered here rather than wiping it on import.
+                'streetDate'       => $existing['streetDate'] ?? ($e['streetDate'] ?? null),
                 'description'      => (string) ($e['description'] ?? ''),
                 'image'            => $e['image'] ?? null,
                 'location'         => array_values(array_intersect((array) ($e['location'] ?? []), ['hollywood', 'pico'])),
