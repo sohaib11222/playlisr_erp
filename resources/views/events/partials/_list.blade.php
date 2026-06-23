@@ -9,10 +9,11 @@
       <th style="width:6%;">RSVPs</th>
       <th style="width:7%;">Vinyl requests</th>
       <th style="width:6%;">CD requests</th>
-      <th style="width:8%;">Taking preorders?</th>
-      <th style="width:8%;">On website</th>
-      <th style="width:8%;">Prep</th>
-      <th style="width:11%;"></th>
+      <th style="width:7%;">Ordered</th>
+      <th style="width:7%;">Taking preorders?</th>
+      <th style="width:7%;">On website</th>
+      <th style="width:7%;">Prep</th>
+      <th style="width:10%;"></th>
     </tr>
   </thead>
   <tbody>
@@ -32,6 +33,9 @@
         $vinylCount = ($vinylCounts ?? [])[$nk] ?? null;
         $cdCount = ($cdCounts ?? [])[$nk] ?? null;
         $takingPreorders = !empty($ev['preorderEnabled']);
+        $ordV = $ev['orderedVinyl'] ?? null;
+        $ordC = $ev['orderedCd'] ?? null;
+        $hasOrdered = ($ordV !== null && $ordV !== '') || ($ordC !== null && $ordC !== '');
         $pubMap = $publishedMap ?? [];
         $isLive = array_key_exists($ev['id'] ?? '', $pubMap) ? $pubMap[$ev['id']] : null;
       @endphp
@@ -49,6 +53,7 @@
         <td>{{ $rsvpCount === null ? '—' : $rsvpCount }}</td>
         <td>{{ $vinylCount === null ? '—' : $vinylCount }}</td>
         <td>{{ $cdCount === null ? '—' : $cdCount }}</td>
+        <td>@if($hasOrdered){{ (int) $ordV }}V · {{ (int) $ordC }}CD @else<span class="ev-meta">—</span>@endif</td>
         <td>{{ $takingPreorders ? 'Yes' : 'No' }}</td>
         <td>
           @if($isLive === null)

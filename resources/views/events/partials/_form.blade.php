@@ -40,6 +40,14 @@
     <label>Street date</label>
     <input type="date" name="streetDate" value="{{ $e['streetDate'] ?? '' }}">
   </div>
+  <div class="ev-field" style="flex:0 1 110px;">
+    <label>Vinyl ordered</label>
+    <input type="number" min="0" name="orderedVinyl" value="{{ $e['orderedVinyl'] ?? '' }}" placeholder="—">
+  </div>
+  <div class="ev-field" style="flex:0 1 110px;">
+    <label>CD ordered</label>
+    <input type="number" min="0" name="orderedCd" value="{{ $e['orderedCd'] ?? '' }}" placeholder="—">
+  </div>
 </div>
 
 <div class="ev-row">

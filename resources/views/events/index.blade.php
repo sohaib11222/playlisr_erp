@@ -18,11 +18,18 @@
         <p class="sub">The ERP is the source of truth for all event detail and listening-party prep. nivessa.com reads from here.</p>
       @endif
     </div>
-    <form method="POST" action="{{ route('events.import') }}"
-          onsubmit="return confirm('Pull the latest events from nivessa.com into the ERP? Existing prep-checklist progress entered here is preserved.');">
-      {{ csrf_field() }}
-      <button type="submit" class="btn-ghost">Import from nivessa.com</button>
-    </form>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <form method="POST" action="{{ route('events.tidyLocations') }}"
+            onsubmit="return confirm('Remove the sub-location (e.g. Stage) from every listening party so they read just Hollywood / Pico? Undoable from Admin Action History.');">
+        {{ csrf_field() }}
+        <button type="submit" class="btn-ghost">Tidy listening-party locations</button>
+      </form>
+      <form method="POST" action="{{ route('events.import') }}"
+            onsubmit="return confirm('Pull the latest events from nivessa.com into the ERP? Existing prep-checklist progress entered here is preserved.');">
+        {{ csrf_field() }}
+        <button type="submit" class="btn-ghost">Import from nivessa.com</button>
+      </form>
+    </div>
   </div>
 
   @if(session('status'))<div class="alert-ok">{{ session('status') }}</div>@endif

@@ -614,6 +614,8 @@ class EventsController extends Controller
             'artistSoundsLike' => 'nullable|string|max:191',
             'locationDetail'   => 'nullable|string|max:20',
             'streetDate'       => 'nullable|date',
+            'orderedVinyl'     => 'nullable|integer|min:0|max:100000',
+            'orderedCd'        => 'nullable|integer|min:0|max:100000',
         ], [
             'name.required' => 'Event name is required.',
             'date.required' => 'Pick an event date.',
@@ -642,6 +644,8 @@ class EventsController extends Controller
             'time'             => trim($request->input('time')),
             'endTime'          => $endTime !== '' ? $endTime : null,
             'streetDate'       => $request->input('streetDate') ?: null,
+            'orderedVinyl'     => $request->filled('orderedVinyl') ? max(0, (int) $request->input('orderedVinyl')) : null,
+            'orderedCd'        => $request->filled('orderedCd') ? max(0, (int) $request->input('orderedCd')) : null,
             'description'      => trim((string) $request->input('description', '')),
             'image'            => trim((string) $request->input('image', '')) ?: null,
             'location'         => $location,
@@ -777,6 +781,42 @@ class EventsController extends Controller
     }
 
     /**
+     * One-time tidy: drop the sub-location detail (e.g. "Stage") from every
+     * listening-party event so they read just "Hollywood" / "Pico". Snapshots
+     * first so it's undoable from Admin Action History.
+     */
+    public function tidyLocations(Request $request)
+    {
+        if (!auth()->user()->can('product.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $business_id = $this->businessId($request);
+        $data = self::load($business_id);
+
+        $targets = [];
+        foreach ($data['items'] as $id => $ev) {
+            if (($ev['eventType'] ?? '') === 'listening_party' && !empty($ev['locationDetail'])) {
+                $targets[] = $id;
+            }
+        }
+        if (empty($targets)) {
+            return redirect()->route('events.index')->with('status', 'No listening parties had a sub-location to clear.');
+        }
+
+        self::snapshot($business_id, $data, 'events-tidy-locations');
+        $now = date('c');
+        foreach ($targets as $id) {
+            $data['items'][$id]['locationDetail'] = null;
+            $data['items'][$id]['updatedAt'] = $now;
+        }
+        self::save($business_id, $data);
+
+        $n = count($targets);
+        return redirect()->route('events.index')
+            ->with('status', "Cleared the sub-location on {$n} listening part" . ($n === 1 ? 'y' : 'ies') . '. Undo from Admin Action History.');
+    }
+
+    /**
      * Update the prep checklist item state and/or prep details for one event.
      * Merges so a partial update never clobbers other items. Used both by the
      * inline checklist toggles and the host/link/box detail form.
@@ -895,9 +935,11 @@ class EventsController extends Controller
                 'date'             => (string) ($e['date'] ?? ''),
                 'time'             => (string) ($e['time'] ?? ''),
                 'endTime'          => $e['endTime'] ?? null,
-                // ERP-only field; the website feed doesn't carry it, so keep any
-                // street date entered here rather than wiping it on import.
+                // ERP-only fields; the website feed doesn't carry them, so keep
+                // anything entered here rather than wiping it on import.
                 'streetDate'       => $existing['streetDate'] ?? ($e['streetDate'] ?? null),
+                'orderedVinyl'     => $existing['orderedVinyl'] ?? ($e['orderedVinyl'] ?? null),
+                'orderedCd'        => $existing['orderedCd'] ?? ($e['orderedCd'] ?? null),
                 'description'      => (string) ($e['description'] ?? ''),
                 'image'            => $e['image'] ?? null,
                 'location'         => array_values(array_intersect((array) ($e['location'] ?? []), ['hollywood', 'pico'])),

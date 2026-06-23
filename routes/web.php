@@ -360,6 +360,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/events-import', 'EventsController@import')->name('events.import');
     // Set the website bridge key from the UI (stored in storage/app, not .env)
     Route::post('/events-bridge-key', 'EventsController@bridgeKeySave')->name('events.bridgeKey');
+    // One-time: strip sub-location (e.g. "Stage") from listening parties
+    Route::post('/events-tidy-locations', 'EventsController@tidyLocations')->name('events.tidyLocations');
     // RSVP + preorder management (records live on nivessa.com, reached via bridge)
     Route::post('/events/{id}/rsvps', 'EventsController@rsvpAdd')->name('events.rsvpAdd');
     Route::post('/events/{id}/rsvps/{rsvpId}/check-in', 'EventsController@rsvpCheckIn')->name('events.rsvpCheckIn');
