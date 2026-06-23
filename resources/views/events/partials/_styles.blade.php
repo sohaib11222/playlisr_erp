@@ -41,11 +41,15 @@ body.pos-v2 .alert-ok { background: #e7f3e8; border: 1px solid #bfe0c2; color: #
 body.pos-v2 .alert-err { background: #fbe9e9; border: 1px solid #efc4c4; color: #9a2c2c; border-radius: 10px; padding: 11px 15px; margin-bottom: 18px; }
 body.pos-v2 .empty { color: #8a8070; padding: 14px 4px; font-size: 14px; }
 body.pos-v2 .prep-list { list-style:none; padding:0; margin:0; }
-body.pos-v2 .prep-list li { display:flex; gap:10px; align-items:flex-start; padding:10px 0; border-bottom:1px solid var(--pos-line); }
-body.pos-v2 .prep-list li:last-child { border-bottom:none; }
-body.pos-v2 .prep-list .due { font-size:11px; color:#8a8070; white-space:nowrap; }
-body.pos-v2 .prep-list .lbl { font-size:14px; }
-body.pos-v2 .prep-note { width:100%; margin-top:6px; border:1px solid var(--pos-line-2); border-radius:8px; padding:7px 9px; font-size:13px; font-family:inherit; }
+body.pos-v2 .prep-list li { display:flex; gap:12px; align-items:center; flex-wrap:wrap; padding:12px 10px; border-radius:10px; }
+body.pos-v2 .prep-list li:nth-child(odd) { background:rgba(0,0,0,0.02); }
+body.pos-v2 .prep-list li > input[type=checkbox] { width:18px; height:18px; flex:0 0 auto; cursor:pointer; accent-color:var(--pos-accent-text,#8a5a14); }
+body.pos-v2 .prep-list .prep-main { flex:1 1 220px; min-width:0; }
+body.pos-v2 .prep-list .due { font-size:11px; color:#8a8070; white-space:nowrap; flex:0 0 auto; text-align:right; min-width:78px; }
+body.pos-v2 .prep-list .lbl { font-size:14px; line-height:1.35; }
+body.pos-v2 .prep-list .prep-by { margin-top:3px; font-size:11px; }
+body.pos-v2 .prep-list li.is-done .lbl { color:#9a948a; text-decoration:line-through; }
+body.pos-v2 .prep-note { flex:1 1 240px; max-width:320px; border:1px solid var(--pos-line-2); border-radius:8px; padding:7px 10px; font-size:13px; font-family:inherit; }
 body.pos-v2 a.ev-edit { color: var(--pos-accent-text); font-weight:700; text-decoration:none; }
 body.pos-v2 a.ev-edit:hover { text-decoration:underline; }
 </style>

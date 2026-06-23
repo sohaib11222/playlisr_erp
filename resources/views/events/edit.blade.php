@@ -74,17 +74,17 @@
               $label = str_replace(['the person hosting', 'the designated employee'], $host, $label);
             }
           @endphp
-          <li>
+          <li class="{{ $done ? 'is-done' : '' }}">
             <input type="hidden" name="checklist[{{ $pi['id'] }}][done]" value="0">
-            <input type="checkbox" name="checklist[{{ $pi['id'] }}][done]" value="1" {{ $done ? 'checked' : '' }} style="margin-top:3px;">
-            <div style="flex:1;">
+            <input type="checkbox" name="checklist[{{ $pi['id'] }}][done]" value="1" {{ $done ? 'checked' : '' }}>
+            <div class="prep-main">
               <div class="lbl">{{ $label }}</div>
-              <input class="prep-note" type="text" name="checklist[{{ $pi['id'] }}][note]"
-                     value="{{ $state['note'] ?? '' }}" placeholder="note (optional)">
               @if(!empty($state['updatedBy']))
-                <div class="ev-meta" style="margin-top:4px;">last by {{ $state['updatedBy'] }}@if(!empty($state['updatedAt'])) &middot; {{ \Carbon\Carbon::parse($state['updatedAt'])->format('M j, g:ia') }}@endif</div>
+                <div class="ev-meta prep-by">last by {{ $state['updatedBy'] }}@if(!empty($state['updatedAt'])) &middot; {{ \Carbon\Carbon::parse($state['updatedAt'])->format('M j, g:ia') }}@endif</div>
               @endif
             </div>
+            <input class="prep-note" type="text" name="checklist[{{ $pi['id'] }}][note]"
+                   value="{{ $state['note'] ?? '' }}" placeholder="Add a note">
             <span class="due">due {{ $pi['due'] == 0 ? 'day of' : $pi['due'] . 'd before' }}</span>
           </li>
         @endforeach
