@@ -679,11 +679,14 @@ class EventsController extends Controller
         // from. preorderTitle/preorderPrice are kept = the first product for
         // back-compat with the single-product customer flow.
         $preorderProducts = [];
+        $validFormats = array_keys(self::orderSkus());
         foreach ((array) $request->input('preorderProducts', []) as $row) {
             $title = trim((string) ($row['title'] ?? ''));
             if ($title === '') { continue; }
             $price = (isset($row['price']) && $row['price'] !== '') ? round((float) $row['price'], 2) : null;
-            $preorderProducts[] = ['title' => $title, 'price' => $price];
+            $fmt = (string) ($row['format'] ?? '');
+            $fmt = in_array($fmt, $validFormats, true) ? $fmt : null;
+            $preorderProducts[] = ['title' => $title, 'price' => $price, 'format' => $fmt];
         }
 
         return [

@@ -123,12 +123,19 @@
         // Back-compat: seed from the old single title/price if no list yet.
         if (empty($pp) && !empty($e['preorderTitle'])) { $pp = [['title' => $e['preorderTitle'], 'price' => $e['preorderPrice'] ?? null]]; }
         $rows = max(6, count($pp) + 1);
+        $fmtOpts = \App\Http\Controllers\EventsController::orderSkus(); // version => label
       @endphp
-      <div style="display:flex;flex-direction:column;gap:8px;max-width:480px;">
+      <div style="display:flex;flex-direction:column;gap:8px;max-width:620px;">
         @for($i = 0; $i < $rows; $i++)
           <div style="display:flex;gap:10px;flex-wrap:wrap;">
-            <input type="text" name="preorderProducts[{{ $i }}][title]" value="{{ $pp[$i]['title'] ?? '' }}" placeholder="Product, e.g. Indie LP" style="flex:2 1 240px;padding:7px 9px;border:1px solid var(--pos-line-2);border-radius:8px;font-size:13px;">
-            <input type="number" step="0.01" min="0" name="preorderProducts[{{ $i }}][price]" value="{{ $pp[$i]['price'] ?? '' }}" placeholder="Price $" style="flex:0 1 110px;padding:7px 9px;border:1px solid var(--pos-line-2);border-radius:8px;font-size:13px;">
+            <input type="text" name="preorderProducts[{{ $i }}][title]" value="{{ $pp[$i]['title'] ?? '' }}" placeholder="Product, e.g. Daughter From Hell" style="flex:2 1 220px;padding:7px 9px;border:1px solid var(--pos-line-2);border-radius:8px;font-size:13px;">
+            <select name="preorderProducts[{{ $i }}][format]" style="flex:1 1 130px;padding:7px 9px;border:1px solid var(--pos-line-2);border-radius:8px;font-size:13px;">
+              <option value="">Format…</option>
+              @foreach($fmtOpts as $fk => $flabel)
+                <option value="{{ $fk }}" {{ ($pp[$i]['format'] ?? '') === $fk ? 'selected' : '' }}>{{ $flabel }}</option>
+              @endforeach
+            </select>
+            <input type="number" step="0.01" min="0" name="preorderProducts[{{ $i }}][price]" value="{{ $pp[$i]['price'] ?? '' }}" placeholder="Price $" style="flex:0 1 100px;padding:7px 9px;border:1px solid var(--pos-line-2);border-radius:8px;font-size:13px;">
           </div>
         @endfor
       </div>
