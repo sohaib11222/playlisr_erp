@@ -192,10 +192,13 @@ class EventsController extends Controller
             return strcmp(($a['date'] ?? '') . ($a['time'] ?? ''), ($b['date'] ?? '') . ($b['time'] ?? ''));
         });
 
-        // Optional type filter (e.g. the "Listening Parties" sidebar shortcut
-        // passes ?type=listening_party). Empty / unknown type = show everything.
+        // Default the list to listening parties (the common case); ?type=all
+        // shows every event, and ?type=<other> filters to that type.
         $eventTypes = self::eventTypes();
-        $filterType = $request->input('type');
+        $filterType = $request->input('type', 'listening_party');
+        if ($filterType === 'all') {
+            $filterType = null;
+        }
         if (!empty($filterType) && isset($eventTypes[$filterType])) {
             $rows = array_values(array_filter($rows, fn($e) => ($e['eventType'] ?? 'listening_party') === $filterType));
         } else {
@@ -613,6 +616,7 @@ class EventsController extends Controller
             'indieVinyl'  => 'Indie vinyl',
             'stdVinyl'    => 'Standard vinyl',
             'deluxeVinyl' => 'Deluxe vinyl',
+            'cassette'    => 'Cassette',
             'stdCd'       => 'Standard CD',
             'deluxeCd'    => 'Deluxe CD',
         ];

@@ -33,14 +33,17 @@
         $vinylCount = ($vinylCounts ?? [])[$nk] ?? null;
         $cdCount = ($cdCounts ?? [])[$nk] ?? null;
         $takingPreorders = !empty($ev['preorderEnabled']);
-        // Ordered totals across stores: vinyl = indie+std+deluxe, cd = std+deluxe.
+        // Ordered totals across stores: vinyl = indie+std+deluxe, plus cassette
+        // and cd = std+deluxe.
         $ordered = (array) ($ev['ordered'] ?? []);
-        $ordV = 0; $ordC = 0; $hasOrdered = false;
+        $ordV = 0; $ordCass = 0; $ordC = 0; $hasOrdered = false;
         foreach ($ordered as $storeRow) {
           foreach (['indieVinyl','stdVinyl','deluxeVinyl'] as $vk) {
             $n = $storeRow[$vk] ?? null;
             if ($n !== null && $n !== '') { $ordV += (int) $n; $hasOrdered = true; }
           }
+          $nc = $storeRow['cassette'] ?? null;
+          if ($nc !== null && $nc !== '') { $ordCass += (int) $nc; $hasOrdered = true; }
           foreach (['stdCd','deluxeCd'] as $ck) {
             $n = $storeRow[$ck] ?? null;
             if ($n !== null && $n !== '') { $ordC += (int) $n; $hasOrdered = true; }
@@ -63,7 +66,7 @@
         <td>{{ $rsvpCount === null ? '—' : $rsvpCount }}</td>
         <td>{{ $vinylCount === null ? '—' : $vinylCount }}</td>
         <td>{{ $cdCount === null ? '—' : $cdCount }}</td>
-        <td>@if($hasOrdered){{ (int) $ordV }}V · {{ (int) $ordC }}CD @else<span class="ev-meta">—</span>@endif</td>
+        <td>@if($hasOrdered){{ (int) $ordV }}V@if($ordCass > 0) · {{ (int) $ordCass }}cass@endif · {{ (int) $ordC }}CD @else<span class="ev-meta">—</span>@endif</td>
         <td>{{ $takingPreorders ? 'Yes' : 'No' }}</td>
         <td>
           @if($isLive === null)

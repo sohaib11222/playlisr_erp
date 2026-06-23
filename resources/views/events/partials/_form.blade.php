@@ -47,7 +47,7 @@
 @php
   $ordered = (array) ($e['ordered'] ?? []);
   $orderStores = ['hollywood' => 'Hollywood', 'pico' => 'Pico'];
-  $orderSkus = ['indieVinyl' => 'Indie vinyl', 'stdVinyl' => 'Standard vinyl', 'deluxeVinyl' => 'Deluxe vinyl', 'stdCd' => 'Standard CD', 'deluxeCd' => 'Deluxe CD'];
+  $orderSkus = ['indieVinyl' => 'Indie vinyl', 'stdVinyl' => 'Standard vinyl', 'deluxeVinyl' => 'Deluxe vinyl', 'cassette' => 'Cassette', 'stdCd' => 'Standard CD', 'deluxeCd' => 'Deluxe CD'];
   $orderLocs = (array) ($e['location'] ?? []);
   $shownStores = $orderLocs ?: array_keys($orderStores);
 @endphp

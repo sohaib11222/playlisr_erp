@@ -11,19 +11,15 @@
 <div class="ev-wrap">
   <div class="ev-head">
     <div>
-      <h1>{{ ($filterType ?? null) ? $filterLabel . 's' : 'Events / Listening Parties' }}</h1>
-      @if($filterType ?? null)
-        <p class="sub">Showing {{ strtolower($filterLabel) }} events only. &middot; <a href="{{ route('events.index') }}">Show all events</a></p>
-      @else
-        <p class="sub">The ERP is the source of truth for all event detail and listening-party prep. nivessa.com reads from here.</p>
-      @endif
+      <h1>{{ $filterType === 'listening_party' ? 'Listening Parties' : (($filterType ?? null) ? $filterLabel . 's' : 'All events') }}</h1>
+      <p class="sub">The ERP is the source of truth for all event detail and listening-party prep. nivessa.com reads from here.</p>
+      @php $tabBase = 'display:inline-block;padding:7px 14px;border-radius:999px;font-size:13px;text-decoration:none;border:1px solid var(--pos-line,#ECE3CF);'; $tabOn = 'background:var(--pos-accent,#FFE08A);color:#3a2f0c;font-weight:700;'; $tabOff = 'color:#6b6253;'; @endphp
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
+        <a href="{{ route('events.index') }}" style="{{ $tabBase }}{{ $filterType === 'listening_party' ? $tabOn : $tabOff }}">Listening parties</a>
+        <a href="{{ route('events.index', ['type' => 'all']) }}" style="{{ $tabBase }}{{ $filterType === null ? $tabOn : $tabOff }}">All events</a>
+      </div>
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;">
-      <form method="POST" action="{{ route('events.tidyLocations') }}"
-            onsubmit="return confirm('Remove the sub-location (e.g. Stage) from every listening party so they read just Hollywood / Pico? Undoable from Admin Action History.');">
-        {{ csrf_field() }}
-        <button type="submit" class="btn-ghost">Tidy listening-party locations</button>
-      </form>
       <form method="POST" action="{{ route('events.import') }}"
             onsubmit="return confirm('Pull the latest events from nivessa.com into the ERP? Existing prep-checklist progress entered here is preserved.');">
         {{ csrf_field() }}
@@ -35,8 +31,9 @@
   @if(session('status'))<div class="alert-ok">{{ session('status') }}</div>@endif
   @if(session('error'))<div class="alert-err">{{ session('error') }}</div>@endif
 
-  {{-- ---------- Website bridge ---------- --}}
+  {{-- ---------- Website bridge (only shown when NOT connected) ---------- --}}
   @php $bstate = ($bridgeProbe['state'] ?? 'no_key'); $bcode = $bridgeProbe['code'] ?? null; @endphp
+  @if($bstate !== 'connected')
   <div class="ev-card">
     <h2 style="margin-top:0;">Website bridge
       @if($bstate === 'connected')
@@ -67,6 +64,7 @@
       <p class="sub" style="margin:8px 4px 0;">Stored on the ERP server only (not in git). Save with the field blank to clear it.</p>
     </details>
   </div>
+  @endif
 
   {{-- ---------- Create ---------- --}}
   <details class="ev-card" id="create-block">
