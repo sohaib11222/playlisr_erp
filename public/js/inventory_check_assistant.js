@@ -383,6 +383,15 @@
         if (jumpLink) {
             jumpLink.addEventListener('click', function (e) {
                 e.preventDefault();
+                // In step-by-step mode the frozen disclosure is a wizard slide
+                // and carries .ica-wizard-hidden (display:none) unless it's the
+                // current step — so opening the <details> + scrollIntoView is a
+                // no-op. Route through the wizard so it navigates to (and
+                // un-hides) the frozen step before scrolling.
+                if (wizardIsCurrentMode()) {
+                    wizardGoToKey('frozen_review');
+                    return;
+                }
                 const frozen = $root.querySelector('.ica-bucket[data-bucket="frozen_inventory"]');
                 if (frozen) {
                     // If the secondary disclosure is closed, open it first.
