@@ -626,6 +626,12 @@ class EventsController extends Controller
         }
         $request->validate(['erp_api_key' => 'nullable|string|max:255']);
         $key = trim((string) $request->input('erp_api_key', ''));
+        // Tolerate pasting the whole .env line ("ERP_API_KEY=...") or surrounding
+        // quotes — store just the value so it matches the website's key.
+        if (stripos($key, 'ERP_API_KEY=') === 0) {
+            $key = substr($key, strlen('ERP_API_KEY='));
+        }
+        $key = trim($key, " \t\"'");
         $path = $this->bridgeKeyStorePath();
         $dir = dirname($path);
         if (!is_dir($dir)) {
