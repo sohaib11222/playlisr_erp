@@ -36,6 +36,26 @@
   @if(session('status'))<div class="alert-ok">{{ session('status') }}</div>@endif
   @if(session('error'))<div class="alert-err">{{ session('error') }}</div>@endif
 
+  {{-- ---------- What to order (shortfalls across upcoming events) ---------- --}}
+  @if(!empty($toOrder))
+    <div class="ev-card" style="border:1px solid var(--pos-accent,#FFE08A);">
+      <h2 style="margin-top:0;">What to order</h2>
+      <p class="sub" style="margin:0 0 10px;">Gaps between customer demand (RSVP buy-interest) and what you've ordered, per store. Non-hosting stores show a stock-a-couple baseline.</p>
+      <table class="ev-tbl">
+        <thead><tr><th style="width:45%;">Event</th><th style="width:20%;">Store</th><th style="width:35%;">Order</th></tr></thead>
+        <tbody>
+          @foreach($toOrder as $t)
+            <tr>
+              <td class="ev-name">{{ $t['event'] }}</td>
+              <td>{{ $t['store'] }}</td>
+              <td style="color:#a23;font-weight:700;">{{ $t['need'] }}</td>
+            </tr>
+          @endforeach
+        </tbody>
+      </table>
+    </div>
+  @endif
+
   {{-- ---------- Website bridge (only shown when NOT connected) ---------- --}}
   @php $bstate = ($bridgeProbe['state'] ?? 'no_key'); $bcode = $bridgeProbe['code'] ?? null; @endphp
   @if($bstate !== 'connected')

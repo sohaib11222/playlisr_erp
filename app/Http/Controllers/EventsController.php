@@ -224,6 +224,7 @@ class EventsController extends Controller
             'rsvpCounts'     => $counts['rsvps'],
             'vinylCounts'    => $counts['vinyl'],
             'cdCounts'       => $counts['cd'],
+            'toOrder'        => $this->toOrderList($upcoming, $counts['store'] ?? []),
             'publishedMap'   => $this->publishedMap(),
             'bridgeProbe'    => $this->bridgeProbe(),
             'bridgeKeySet'   => $this->erpApiKey() !== '',
@@ -266,7 +267,7 @@ class EventsController extends Controller
      */
     protected function bridgeCounts(): array
     {
-        $out = ['rsvps' => [], 'vinyl' => [], 'cd' => []];
+        $out = ['rsvps' => [], 'vinyl' => [], 'cd' => [], 'store' => []];
         if ($this->erpApiKey() === '') {
             return $out;
         }
@@ -287,10 +288,61 @@ class EventsController extends Controller
                 $out['rsvps'][$k] = ($out['rsvps'][$k] ?? 0) + (int) ($row['attendingCount'] ?? $row['totalAttendees'] ?? $row['totalRSVPs'] ?? 0);
                 $out['vinyl'][$k] = ($out['vinyl'][$k] ?? 0) + (int) ($row['vinylRequests'] ?? 0);
                 $out['cd'][$k]    = ($out['cd'][$k] ?? 0) + (int) ($row['cdRequests'] ?? 0);
+                if (!isset($out['store'][$k])) {
+                    $out['store'][$k] = ['hollywood' => ['vinyl' => 0, 'cd' => 0], 'pico' => ['vinyl' => 0, 'cd' => 0]];
+                }
+                $out['store'][$k]['hollywood']['vinyl'] += (int) ($row['hwVinyl'] ?? 0);
+                $out['store'][$k]['hollywood']['cd']    += (int) ($row['hwCd'] ?? 0);
+                $out['store'][$k]['pico']['vinyl']      += (int) ($row['picoVinyl'] ?? 0);
+                $out['store'][$k]['pico']['cd']         += (int) ($row['picoCd'] ?? 0);
             }
         }
 
         return $out;
+    }
+
+    /**
+     * Build the "what to order" shortfall list across upcoming events: per
+     * store, demand (RSVP buy-interest) minus what's ordered. Non-hosting
+     * stores get a baseline (stock a couple standard vinyl). Only returns
+     * lines that need action.
+     */
+    protected function toOrderList(array $upcoming, array $storeDemand): array
+    {
+        $BASELINE_VINYL = 2;
+        $storeLabels = ['hollywood' => 'Hollywood', 'pico' => 'Pico'];
+        $lines = [];
+        foreach ($upcoming as $ev) {
+            if (($ev['eventType'] ?? '') !== 'listening_party') { continue; }
+            $k = self::normName($ev['name'] ?? '');
+            $dem = $storeDemand[$k] ?? [];
+            $ord = (array) ($ev['ordered'] ?? []);
+            $locs = (array) ($ev['location'] ?? []);
+            foreach ($storeLabels as $sk => $slabel) {
+                $row = (array) ($ord[$sk] ?? []);
+                $ordV = (int) ($row['indieVinyl'] ?? 0) + (int) ($row['stdVinyl'] ?? 0) + (int) ($row['deluxeVinyl'] ?? 0);
+                $ordC = (int) ($row['stdCd'] ?? 0) + (int) ($row['deluxeCd'] ?? 0);
+                $wantV = (int) ($dem[$sk]['vinyl'] ?? 0);
+                $wantC = (int) ($dem[$sk]['cd'] ?? 0);
+                $hosting = in_array($sk, $locs, true);
+
+                $needs = [];
+                if ($hosting) {
+                    if ($wantV > $ordV) { $needs[] = ($wantV - $ordV) . ' vinyl'; }
+                    if ($wantC > $ordC) { $needs[] = ($wantC - $ordC) . ' CD'; }
+                } else {
+                    if ($ordV < $BASELINE_VINYL) { $needs[] = ($BASELINE_VINYL - $ordV) . ' standard vinyl (baseline)'; }
+                }
+                if ($needs) {
+                    $lines[] = [
+                        'event' => $ev['name'] ?? '(untitled)',
+                        'store' => $slabel,
+                        'need'  => implode(', ', $needs),
+                    ];
+                }
+            }
+        }
+        return $lines;
     }
 
     /** Normalize an event name for case-insensitive count matching. */
