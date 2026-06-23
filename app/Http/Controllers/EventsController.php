@@ -224,6 +224,7 @@ class EventsController extends Controller
             'rsvpCounts'     => $counts['rsvps'],
             'vinylCounts'    => $counts['vinyl'],
             'cdCounts'       => $counts['cd'],
+            'storeCounts'    => $counts['store'] ?? [],
             'toOrder'        => $this->toOrderList($upcoming, $counts['store'] ?? []),
             'publishedMap'   => $this->publishedMap(),
             'bridgeProbe'    => $this->bridgeProbe(),

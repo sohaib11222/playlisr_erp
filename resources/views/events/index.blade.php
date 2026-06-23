@@ -109,7 +109,7 @@
     @if(empty($upcoming))
       <div class="empty">No upcoming events. Add one above or import from the website.</div>
     @else
-      @include('events.partials._list', ['rows' => $upcoming, 'prepItems' => $prepItems, 'eventTypes' => $eventTypes, 'rsvpCounts' => $rsvpCounts, 'vinylCounts' => $vinylCounts, 'cdCounts' => $cdCounts, 'publishedMap' => $publishedMap])
+      @include('events.partials._list', ['rows' => $upcoming, 'prepItems' => $prepItems, 'eventTypes' => $eventTypes, 'rsvpCounts' => $rsvpCounts, 'vinylCounts' => $vinylCounts, 'cdCounts' => $cdCounts, 'storeCounts' => $storeCounts, 'publishedMap' => $publishedMap])
     @endif
   </div>
 
@@ -120,7 +120,7 @@
       @if(empty($past))
         <div class="empty">No past events.</div>
       @else
-        @include('events.partials._list', ['rows' => $past, 'prepItems' => $prepItems, 'eventTypes' => $eventTypes, 'rsvpCounts' => $rsvpCounts, 'vinylCounts' => $vinylCounts, 'cdCounts' => $cdCounts, 'publishedMap' => $publishedMap])
+        @include('events.partials._list', ['rows' => $past, 'prepItems' => $prepItems, 'eventTypes' => $eventTypes, 'rsvpCounts' => $rsvpCounts, 'vinylCounts' => $vinylCounts, 'cdCounts' => $cdCounts, 'storeCounts' => $storeCounts, 'publishedMap' => $publishedMap])
       @endif
     </div>
   </details>
