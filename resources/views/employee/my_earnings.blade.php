@@ -109,6 +109,66 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
         </div>
 
         <div class="me-card">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+                <h3 style="margin-bottom:2px;">Daily breakdown — last {{ $daily_days }} days</h3>
+                @if(!empty($is_admin))
+                    <a href="{{ url('/my-earnings/daily') }}" style="font-size:13px;font-weight:700;text-decoration:none;color:#6B5E2E;">All employees, day by day &rarr;</a>
+                @endif
+            </div>
+            <p class="me-muted" style="margin:2px 0 12px;">Each day's sales and what you earned. Sales bonus is 2%/4% of what you rang over that day's target@unless($sales_bonus_live) (projected — not live yet)@endunless; listing pay is 2% of items you listed that sold that day.</p>
+            @if(empty($daily))
+                <p class="me-muted">No sales or listed-item sales in this window yet.</p>
+            @else
+                <div style="overflow-x:auto;">
+                <table class="me-table">
+                    <thead>
+                        <tr>
+                            <th>Day</th>
+                            <th style="text-align:right;">You rang</th>
+                            <th style="text-align:right;">Your listed sold</th>
+                            <th style="text-align:right;">Listing pay</th>
+                            <th style="text-align:right;">Sales bonus{{ $sales_bonus_live ? '' : '*' }}</th>
+                            <th style="text-align:right;">Total earned</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @php
+                            $t_rang = 0; $t_listed = 0; $t_lpay = 0; $t_bonus = 0; $t_total = 0;
+                        @endphp
+                        @foreach($daily as $d)
+                            @php
+                                $t_rang += $d['register_sales']; $t_listed += $d['listed_sales'];
+                                $t_lpay += $d['listing_comm']; $t_bonus += $d['sales_bonus']; $t_total += $d['total_comm'];
+                            @endphp
+                            <tr>
+                                <td>{{ \Carbon::parse($d['date'])->format('D, M j') }}</td>
+                                <td style="text-align:right;">${{ number_format($d['register_sales'], 2) }}</td>
+                                <td style="text-align:right;">${{ number_format($d['listed_sales'], 2) }}</td>
+                                <td style="text-align:right;">${{ number_format($d['listing_comm'], 2) }}</td>
+                                <td style="text-align:right;{{ $d['sales_bonus'] > 0 ? 'color:#2F6B3E;font-weight:600;' : 'color:#8E8273;' }}">${{ number_format($d['sales_bonus'], 2) }}</td>
+                                <td style="text-align:right;font-weight:700;">${{ number_format($d['total_comm'], 2) }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                    <tfoot>
+                        <tr style="border-top:2px solid #ECE3CF;font-weight:700;">
+                            <td>Total</td>
+                            <td style="text-align:right;">${{ number_format($t_rang, 2) }}</td>
+                            <td style="text-align:right;">${{ number_format($t_listed, 2) }}</td>
+                            <td style="text-align:right;">${{ number_format($t_lpay, 2) }}</td>
+                            <td style="text-align:right;">${{ number_format($t_bonus, 2) }}</td>
+                            <td style="text-align:right;">${{ number_format($t_total, 2) }}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+                </div>
+                @unless($sales_bonus_live)
+                    <p class="me-muted" style="margin-top:10px;">*Sales bonus isn't live yet — those figures are projections and aren't in "Total earned" until it goes live.</p>
+                @endunless
+            @endif
+        </div>
+
+        <div class="me-card">
             <h3>See your items</h3>
             <p class="me-muted" style="margin:-4px 0 12px;">Every item you listed, with which ones sold and what each earned.</p>
             <a class="li-link" href="{{ url('/my-earnings/items') }}{{ $viewing_other ? '?user_id='.$target_id : '' }}" style="display:inline-flex;align-items:center;min-height:42px;padding:9px 18px;border:0;border-radius:8px;font-weight:700;font-size:14px;text-decoration:none;background:#1F1B16;color:#FAF6EE;">View all {{ number_format($listed_count) }} items {{ $viewing_other ? 'they' : 'I' }} listed &rarr;</a>

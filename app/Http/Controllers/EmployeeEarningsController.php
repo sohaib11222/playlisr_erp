@@ -101,6 +101,26 @@ class EmployeeEarningsController extends Controller
         $listedCount = $this->listedCount($businessId, $userId, $start);
         $labeledCount = $this->labeledCount($businessId, $userId, $start, $end);
 
+        // Day-by-day breakdown (recent window) — register sales + listed-sold
+        // sales, with listing pay and the sales bonus broken out per day. Reuses
+        // the leaderboard engine so each day reconciles with the totals above.
+        $dailyDays = 30;
+        $dailyStart = \Carbon::parse($end)->subDays($dailyDays - 1)->startOfDay()->toDateTimeString();
+        $daily = [];
+        try {
+            $de = app(\App\Http\Controllers\ReportController::class)
+                ->buildDailyEarnings($businessId, $dailyStart, $end, $userId);
+            foreach ($de['days'] as $date => $list) {
+                foreach ($list as $r) {
+                    if ((int) $r['user_id'] === (int) $userId) {
+                        $daily[] = ['date' => $date] + $r;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('my-earnings daily breakdown failed: ' . $e->getMessage());
+        }
+
         return view('employee.my_earnings', [
             'name'         => trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? '')) ?: ($user->username ?? 'You'),
             'from'         => $from,
@@ -117,6 +137,38 @@ class EmployeeEarningsController extends Controller
             'bonus_from'   => $bonusFrom,
             'viewing_other'=> $viewingOther,
             'target_id'    => $userId,
+            'is_admin'     => $isAdmin,
+            'daily'        => $daily,
+            'daily_days'   => $dailyDays,
+            'sales_bonus_live' => $salesBonus['live'] ?? false,
+        ]);
+    }
+
+    // Admin overview: a row per employee per day showing that day's sales and
+    // the commission earned (listing pay + sales bonus). Sales-floor only, gated
+    // to admins since it surfaces aggregated sales for everyone.
+    public function daily(Request $request)
+    {
+        $me = auth()->user();
+        if (!app(\App\Utils\BusinessUtil::class)->is_admin($me)) {
+            abort(403, 'This page is admin-only.');
+        }
+        $businessId = $request->session()->get('user.business_id');
+
+        $days = (int) $request->input('days', 14);
+        if ($days < 1) { $days = 14; }
+        if ($days > 92) { $days = 92; }
+        $end = now()->toDateTimeString();
+        $start = \Carbon::parse($end)->subDays($days - 1)->startOfDay()->toDateTimeString();
+
+        $data = app(\App\Http\Controllers\ReportController::class)
+            ->buildDailyEarnings($businessId, $start, $end, null, true);
+
+        return view('employee.daily_earnings', [
+            'data'       => $data,
+            'days'       => $days,
+            'range_from' => \Carbon::parse($start)->format('M j'),
+            'range_to'   => \Carbon::parse($end)->format('M j, Y'),
         ]);
     }
 

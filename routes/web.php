@@ -534,6 +534,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // listing commission (earned / paid out / still owed) + productivity stats.
     // Same 2% formula + payout ledger as /admin/listing-commissions.
     Route::get('/my-earnings', 'EmployeeEarningsController@index');
+    // Admin overview: every employee's day-by-day sales + commission earned.
+    Route::get('/my-earnings/daily', 'EmployeeEarningsController@daily');
     // Itemized list of everything a person listed (sold status + commission).
     // Self by default; admins may pass ?user_id= to view a specific employee.
     Route::get('/my-earnings/items', 'EmployeeEarningsController@items');

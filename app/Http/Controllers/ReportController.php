@@ -12879,11 +12879,13 @@ class ReportController extends Controller
             // amount (always computed so targets can be solidified before
             // launch); sales_bonus_live says whether it's actually paid yet.
             $bonus = 0.0; $anyTarget = false;
+            $daily = []; // Y-m-d => ['target','sold','bonus'] for this location
             foreach ($dayExpected as $date => $exp) {
                 if ($exp <= 0) { continue; }
                 $anyTarget = true;
                 $dayTarget = $exp * (1 + $stretch);
                 $sold = (float) ($daySales[$r->user_id][$date] ?? 0);
+                $dayBonus = 0.0;
                 if ($sold > $dayTarget) {
                     // Over-target dollars pay 4% on the peak share of the day and
                     // 2% off-peak, to pull staff onto the register when it's busy
@@ -12891,9 +12893,18 @@ class ReportController extends Controller
                     // target came from peak slots.
                     $over = $sold - $dayTarget;
                     $peakShare = min(1.0, max(0.0, ($dayPeakExpected[$date] ?? 0) / $exp));
-                    $bonus += $over * $peakShare * 0.04 + $over * (1 - $peakShare) * 0.02;
+                    $dayBonus = $over * $peakShare * 0.04 + $over * (1 - $peakShare) * 0.02;
                 }
+                $bonus += $dayBonus;
+                $daily[$date] = [
+                    'target' => round($dayTarget, 2),
+                    'sold'   => round($sold, 2),
+                    'bonus'  => round($dayBonus, 2),
+                ];
             }
+            // Per-day series (worked days only) so callers can render a daily
+            // breakdown that reconciles with goal_bonus = sum of the daily bonuses.
+            $r->daily = $daily;
             $r->goal = $r->hour_target;
             $r->goal_stretch_pct = $r->hour_target_stretch_pct;
             $r->goal_bonus = round($bonus, 2);
@@ -12956,6 +12967,142 @@ class ReportController extends Controller
             'live'         => $live,
             'per_location' => $perLoc,
         ];
+    }
+
+    /**
+     * Per-day earnings series for one OR all current employees over a window.
+     *
+     * Reuses the leaderboard engine (buildLeaderboardRows + attachHourTargets)
+     * for the sales target / bonus so the daily figures reconcile with the board
+     * and /my-earnings to the penny, and layers in two direct, cheap aggregates:
+     *   - register_sales: non-whatnot $ the person RANG that day (pre-tax, net
+     *                     of returns — same basis the bonus pays on).
+     *   - listed_sales / listing_comm: the $ value, and 2% of it, of items the
+     *                     person LISTED (products.created_by) that SOLD that day
+     *                     (used-item rule + May-15 rollout, same as the board).
+     *
+     * Pass $only_user_id to scope to one person (self-service /my-earnings);
+     * omit it for the admin overview. $exclude_owners drops Jon/Sarah/Sohaib/
+     * Fatteen (sales floor only) — ignored when a single user is requested.
+     *
+     * Returns:
+     *   ['days' => ['Y-m-d' => [ row, ... ]], 'employees' => [uid => name],
+     *    'live' => bool]  where each row has user_id, employee, register_sales,
+     *   listed_sales, listing_comm, sales_target, sales_bonus, total_comm.
+     */
+    public function buildDailyEarnings($business_id, $start, $end, $only_user_id = null, $exclude_owners = false)
+    {
+        $live = \Carbon::now()->gte(\Carbon::parse(self::SALES_BONUS_LIVE_DATE));
+        $net_pretax = '(tsl.quantity - COALESCE(tsl.quantity_returned, 0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax, 0))';
+
+        // --- Sales target + bonus per (user, day), summed across the active
+        // locations each person worked (identical to how userSalesBonus sums) ---
+        $byUserDay = []; // [uid][Y-m-d] => ['target'=>, 'bonus'=>]
+        $names = [];     // uid => display name (current sales-floor staff only)
+        $locations = \DB::table('business_locations')
+            ->where('business_id', $business_id)
+            ->where('is_active', 1)
+            ->orderBy('id')
+            ->pluck('name', 'id');
+        foreach ($locations as $lid => $lname) {
+            $rows = $this->buildLeaderboardRows($business_id, $start, $end, null, $lid, [
+                'with_commission' => false,
+                // When pinned to one user we never want them filtered out (you
+                // can always see yourself); otherwise honour the floor filter.
+                'exclude_owners'  => ($only_user_id === null) ? $exclude_owners : false,
+            ]);
+            $rows = $this->attachHourTargets($rows, $business_id, $lid, $start, $end);
+            foreach ($rows as $r) {
+                if ($only_user_id !== null && (int) $r->user_id !== (int) $only_user_id) { continue; }
+                $names[$r->user_id] = $r->employee;
+                foreach (($r->daily ?? []) as $date => $d) {
+                    if (!isset($byUserDay[$r->user_id][$date])) {
+                        $byUserDay[$r->user_id][$date] = ['target' => 0.0, 'bonus' => 0.0];
+                    }
+                    $byUserDay[$r->user_id][$date]['target'] += $d['target'];
+                    $byUserDay[$r->user_id][$date]['bonus']  += $d['bonus'];
+                }
+            }
+        }
+
+        $userIds = array_keys($names);
+        $register = []; $listed = []; $listingComm = [];
+        if (!empty($userIds)) {
+            // Register sales: non-whatnot $ each person rang, per day.
+            foreach (\DB::table('transactions as t')
+                ->join('transaction_sell_lines as tsl', 'tsl.transaction_id', '=', 't.id')
+                ->where('t.business_id', $business_id)
+                ->where('t.type', 'sell')->where('t.status', 'final')
+                ->whereNull('t.import_source')
+                ->where(function ($q) { $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); })
+                ->whereBetween('t.transaction_date', [$start, $end])
+                ->whereIn('t.created_by', $userIds)
+                ->selectRaw("t.created_by as uid, DATE(t.transaction_date) as d, COALESCE(SUM($net_pretax), 0) as rev")
+                ->groupBy('t.created_by', \DB::raw('DATE(t.transaction_date)'))
+                ->get() as $row) {
+                $register[$row->uid][$row->d] = (float) $row->rev;
+            }
+
+            // Listed-and-sold value + 2% commission, per lister, per sale-day.
+            $lq = \DB::table('transaction_sell_lines as tsl')
+                ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+                ->join('products as p', 'tsl.product_id', '=', 'p.id')
+                ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
+                ->leftJoin('categories as sc', 'p.sub_category_id', '=', 'sc.id')
+                ->where('t.business_id', $business_id)
+                ->where('t.type', 'sell')->where('t.status', 'final')
+                ->whereNull('t.import_source')
+                ->whereBetween('t.transaction_date', [$start, $end])
+                ->whereNotNull('p.created_by')
+                ->whereIn('p.created_by', $userIds)
+                ->where('p.created_at', '>=', '2026-05-15 00:00:00');
+            $this->applyUsedItemCategoryFilter($lq);
+            foreach ($lq
+                ->selectRaw("p.created_by as uid, DATE(t.transaction_date) as d, COALESCE(SUM($net_pretax), 0) as sales")
+                ->groupBy('p.created_by', \DB::raw('DATE(t.transaction_date)'))
+                ->get() as $row) {
+                $listed[$row->uid][$row->d] = (float) $row->sales;
+                $listingComm[$row->uid][$row->d] = round((float) $row->sales * 0.02, 2);
+            }
+        }
+
+        // Assemble one row per (employee, day) that had ANY of: register sales,
+        // a listed item that sold, or a worked-day target.
+        $days = [];
+        foreach ($names as $uid => $nm) {
+            $dates = array_unique(array_merge(
+                array_keys($register[$uid] ?? []),
+                array_keys($listed[$uid] ?? []),
+                array_keys($byUserDay[$uid] ?? [])
+            ));
+            foreach ($dates as $date) {
+                $reg   = round($register[$uid][$date] ?? 0, 2);
+                $lsal  = round($listed[$uid][$date] ?? 0, 2);
+                $lcomm = round($listingComm[$uid][$date] ?? 0, 2);
+                $tgt   = round($byUserDay[$uid][$date]['target'] ?? 0, 2);
+                $bon   = round($byUserDay[$uid][$date]['bonus'] ?? 0, 2);
+                // Owed for the day = listing pay always + sales bonus only once
+                // it's live (matches the board / my-earnings total-commission rule).
+                $tot = round($lcomm + ($live ? $bon : 0), 2);
+                $days[$date][] = [
+                    'user_id'        => (int) $uid,
+                    'employee'       => $nm,
+                    'register_sales' => $reg,
+                    'listed_sales'   => $lsal,
+                    'listing_comm'   => $lcomm,
+                    'sales_target'   => $tgt,
+                    'sales_bonus'    => $bon,
+                    'total_comm'     => $tot,
+                ];
+            }
+        }
+        krsort($days); // most recent day first
+        foreach ($days as $date => &$list) {
+            usort($list, function ($a, $b) { return $b['total_comm'] <=> $a['total_comm']; });
+        }
+        unset($list);
+
+        return ['days' => $days, 'employees' => $names, 'live' => $live];
     }
 
     /**
