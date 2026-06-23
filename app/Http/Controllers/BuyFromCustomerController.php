@@ -69,7 +69,9 @@ class BuyFromCustomerController extends Controller
         $business_id = request()->session()->get('user.business_id');
 
         $locations = BusinessLocation::forDropdown($business_id, false, true);
-        $contacts = Contact::suppliersDropdown($business_id, true, true);
+        // Sellers can be customers as well as suppliers (a customer can sell us
+        // their collection), so load all contacts (excludes leads), not just suppliers.
+        $contacts = Contact::contactDropdown($business_id, false, true, true);
         $itemTypes = $this->calculator->getItemTypesForDropdown();
         $grades = $this->calculator->getGradesForDropdown();
         $purchaseBudget = $this->usedBudgetBar();
@@ -105,7 +107,9 @@ class BuyFromCustomerController extends Controller
 
         $business_id = request()->session()->get('user.business_id');
         $locations = BusinessLocation::forDropdown($business_id, false, true);
-        $contacts = Contact::suppliersDropdown($business_id, true, true);
+        // Sellers can be customers as well as suppliers (a customer can sell us
+        // their collection), so load all contacts (excludes leads), not just suppliers.
+        $contacts = Contact::contactDropdown($business_id, false, true, true);
         $itemTypes = $this->calculator->getItemTypesForDropdown();
         $grades = $this->calculator->getGradesForDropdown();
         $purchaseBudget = $this->usedBudgetBar();
@@ -147,6 +151,16 @@ class BuyFromCustomerController extends Controller
             $created = $this->createPurchaseFromOffer($offer, $offer->payout_type);
             $offer->accepted_purchase_id = $created['purchase']->id;
             $offer->save();
+            // A store-credit payout actually owes the seller money — add it to
+            // their contacts.balance (the store-credit pool the profile shows
+            // and checkout spends from). Without this the purchase recorded the
+            // payout but the credit was invisible and unusable. Mirror
+            // ContactController::updateStoreCredit (balance + audit + storefront
+            // sync). Inside the same transaction so a failure rolls back the
+            // whole acceptance rather than leaving credit without a purchase.
+            if ($offer->payout_type === 'store_credit') {
+                $this->creditStoreCreditPayout($offer, $created['purchase']);
+            }
             return $created;
         });
 
@@ -699,6 +713,55 @@ class BuyFromCustomerController extends Controller
             'materialized' => count($snapshotLines),
             'skipped_no_title' => $skippedNoTitle,
         ];
+    }
+
+    // Credits the seller's store-credit balance for an accepted store-credit
+    // payout. Mirrors ContactController::updateStoreCredit so the credit shows
+    // up in the profile's "Store Credit" row + "Credit history", and syncs to
+    // the Nivessa storefront so the customer can spend it online too.
+    protected function creditStoreCreditPayout(BuyCustomerOffer $offer, Transaction $purchase)
+    {
+        $amount = (float) $offer->final_offer_credit;
+        if ($amount <= 0) {
+            return;
+        }
+
+        // Seller is resolved/created in saveOffer, so contact_id is normally
+        // set; fall back to the purchase's contact just in case.
+        $contactId = $offer->contact_id ?: $purchase->contact_id;
+        if (empty($contactId)) {
+            return;
+        }
+        $contact = Contact::where('business_id', $offer->business_id)->find($contactId);
+        if (empty($contact)) {
+            return;
+        }
+
+        $newBalance = (float) $contact->balance + $amount;
+        $contact->balance = $newBalance;
+
+        if (Schema::hasColumn('contacts', 'balance_notes')) {
+            $stamp = now()->format('Y-m-d H:i');
+            $who = auth()->user()->first_name ?? 'unknown';
+            $line = sprintf(
+                '[%s] store-credit +$%s by %s → new balance $%s. Reason: buy-from-customer payout (offer %s, record %s).',
+                $stamp, number_format($amount, 2),
+                $who, number_format($newBalance, 2),
+                $offer->id, $offer->buy_record_number
+            );
+            $contact->balance_notes = trim(($contact->balance_notes ?? '') . "\n" . $line);
+        }
+        $contact->save();
+
+        // Push the delta to the storefront so the online balance matches the ERP.
+        if (in_array($contact->type, ['customer', 'both']) && !empty($contact->email)) {
+            app(\App\Services\NivessaBackendCreditSyncService::class)->syncDeltaByEmail(
+                (string) $contact->email,
+                $amount,
+                'buy_from_customer_payout',
+                ['contact_id' => (int) $contact->id, 'action' => 'add', 'offer_id' => (int) $offer->id]
+            );
+        }
     }
 
     // Adds product_id / variation_id / purchase_line_id to
