@@ -165,6 +165,17 @@
 	body .sidebar-menu > li > a {
 		color: #E8DBC7 !important;
 		border-left-color: transparent !important;
+		/* Long labels (User Management, Help & Handbook, Listening
+		   Parties, Administer Backup) are wider than the sidebar in
+		   Poppins. Let them wrap and clear the dropdown caret instead
+		   of being cropped at the cream content edge. */
+		white-space: normal !important;
+		overflow: visible !important;
+		padding-right: 30px !important;
+		line-height: 1.25;
+	}
+	body .sidebar-menu > li > a > .pull-right-container {
+		right: 8px;
 	}
 	body .sidebar-menu > li:hover > a,
 	body .sidebar-menu > li.active > a,
@@ -179,6 +190,7 @@
 	}
 	body .sidebar-menu .treeview-menu > li > a {
 		color: #C9BEA7 !important;
+		white-space: normal !important;
 	}
 	body .sidebar-menu .treeview-menu > li > a:hover,
 	body .sidebar-menu .treeview-menu > li.active > a {
