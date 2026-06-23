@@ -439,8 +439,21 @@ class InventoryCheckService
                 if (!$allowed) { continue; }
             }
             $storeBudget = round($budget * $split['pct'], 2);
-            $storeUsedBudget = round($storeBudget * 0.35, 2);
-            $storeNewBudget = round($storeBudget - $storeUsedBudget, 2);
+            // Per-week override (Sarah 2026-06-23): a single week can pin a
+            // store's New (or Used) dollar amount, with the other side taking
+            // the remainder of that store's pot. Falls back to the standing
+            // 35% Used / 65% New default when no override is set.
+            $override = $this->storeBudgetOverrides()[$week['week_no']][$split['match']] ?? null;
+            if ($override && isset($override['new'])) {
+                $storeNewBudget = round((float) $override['new'], 2);
+                $storeUsedBudget = round(max(0.0, $storeBudget - $storeNewBudget), 2);
+            } elseif ($override && isset($override['used'])) {
+                $storeUsedBudget = round((float) $override['used'], 2);
+                $storeNewBudget = round(max(0.0, $storeBudget - $storeUsedBudget), 2);
+            } else {
+                $storeUsedBudget = round($storeBudget * 0.35, 2);
+                $storeNewBudget = round($storeBudget - $storeUsedBudget, 2);
+            }
             $uSpent = 0.0;
             $nSpent = 0.0;
             foreach ($perLocation as $loc) {
@@ -573,6 +586,26 @@ class InventoryCheckService
         return [
             ['match' => 'hollywood', 'label' => 'Hollywood', 'pct' => 0.75],
             ['match' => 'pico', 'label' => 'Pico', 'pct' => 0.25],
+        ];
+    }
+
+    /**
+     * Per-week, per-store budget overrides. Keyed by week_no (from
+     * purchaseBudgetSchedule), then by the store's `match`. Pin an explicit
+     * 'new' (or 'used') dollar amount for that store/week; the other side takes
+     * the remainder of the store's pot. Weeks/stores not listed keep the
+     * standing 35% Used / 65% New default. This is the place to retune a single
+     * week without touching the default split.
+     *
+     * Week 6 (2026-06-22..06-28): Jon needs $6,800 of Hollywood's $8,428.50 pot
+     * in New; Used takes the remaining $1,628.50. This week only.
+     */
+    private function storeBudgetOverrides(): array
+    {
+        return [
+            6 => [
+                'hollywood' => ['new' => 6800.0],
+            ],
         ];
     }
 
