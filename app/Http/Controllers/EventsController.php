@@ -192,15 +192,34 @@ class EventsController extends Controller
             return strcmp(($a['date'] ?? '') . ($a['time'] ?? ''), ($b['date'] ?? '') . ($b['time'] ?? ''));
         });
 
+        // Optional type filter (e.g. the "Listening Parties" sidebar shortcut
+        // passes ?type=listening_party). Empty / unknown type = show everything.
+        $eventTypes = self::eventTypes();
+        $filterType = $request->input('type');
+        if (!empty($filterType) && isset($eventTypes[$filterType])) {
+            $rows = array_values(array_filter($rows, fn($e) => ($e['eventType'] ?? 'listening_party') === $filterType));
+        } else {
+            $filterType = null;
+        }
+
         $upcoming = array_values(array_filter($rows, fn($e) => ($e['date'] ?? '') >= $today));
         $past = array_reverse(array_values(array_filter($rows, fn($e) => ($e['date'] ?? '') < $today)));
 
+        // Per-event RSVP + vinyl-request (preorder) counts from the website
+        // bridge, keyed by event name. Empty maps when the bridge is off or
+        // unreachable — the list degrades to "—" in those columns.
+        $counts = $this->bridgeCounts();
+
         return view('events.index', [
-            'upcoming'   => $upcoming,
-            'past'       => $past,
-            'eventTypes' => self::eventTypes(),
-            'genres'     => self::genres(),
-            'prepItems'  => self::prepItems(),
+            'upcoming'       => $upcoming,
+            'past'           => $past,
+            'eventTypes'     => $eventTypes,
+            'genres'         => self::genres(),
+            'prepItems'      => self::prepItems(),
+            'filterType'     => $filterType,
+            'filterLabel'    => $filterType ? $eventTypes[$filterType] : null,
+            'rsvpCounts'     => $counts['rsvps'],
+            'preorderCounts' => $counts['preorders'],
         ]);
     }
 

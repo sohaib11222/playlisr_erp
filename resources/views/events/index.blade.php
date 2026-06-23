@@ -11,8 +11,12 @@
 <div class="ev-wrap">
   <div class="ev-head">
     <div>
-      <h1>Events / Listening Parties</h1>
-      <p class="sub">The ERP is the source of truth for all event detail and listening-party prep. nivessa.com reads from here.</p>
+      <h1>{{ ($filterType ?? null) ? $filterLabel . 's' : 'Events / Listening Parties' }}</h1>
+      @if($filterType ?? null)
+        <p class="sub">Showing {{ strtolower($filterLabel) }} events only. &middot; <a href="{{ route('events.index') }}">Show all events</a></p>
+      @else
+        <p class="sub">The ERP is the source of truth for all event detail and listening-party prep. nivessa.com reads from here.</p>
+      @endif
     </div>
     <form method="POST" action="{{ route('events.import') }}"
           onsubmit="return confirm('Pull the latest events from nivessa.com into the ERP? Existing prep-checklist progress entered here is preserved.');">

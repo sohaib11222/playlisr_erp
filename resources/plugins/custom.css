@@ -81,7 +81,13 @@ h1, h2, h3, h4, h5, h6, .h1, .h2, .h3, .h4, .h5, .h6 {
   font-weight: 800 !important; }
 .sidebar-menu > li > a {
   font-weight: 400 !important;
-  padding: 10px 16px 10px 24px; }
+  padding: 10px 28px 10px 24px;
+  /* Let long labels (e.g. "User Management", "Listening Parties") wrap and
+     keep clear of the absolutely-positioned dropdown caret instead of being
+     cropped at the sidebar edge. */
+  white-space: normal;
+  overflow: visible;
+  line-height: 1.25; }
 
 .sidebar-menu > li > a > .fa, .sidebar-menu > li > a > .glyphicon, .sidebar-menu > li > a > .ion, .treeview-menu > li > a > .fa, .treeview-menu > li > a > .glyphicon, .treeview-menu > li > a > .ion {
   width: 25px;

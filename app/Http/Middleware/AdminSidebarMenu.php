@@ -40,8 +40,16 @@ class AdminSidebarMenu
                 $menu->url(
                     route('events.index'),
                     'Events',
-                    ['icon' => 'fa fas fa-music', 'active' => request()->segment(1) == 'events']
+                    ['icon' => 'fa fas fa-music', 'active' => request()->segment(1) == 'events' && request()->input('type') == null]
                 )->order(7);
+
+                //Listening Parties — same events screen, filtered to the
+                //listening_party type via ?type. Its own quick-access entry.
+                $menu->url(
+                    route('events.index', ['type' => 'listening_party']),
+                    'Listening Parties',
+                    ['icon' => 'fa fas fa-headphones', 'active' => request()->segment(1) == 'events' && request()->input('type') == 'listening_party']
+                )->order(8);
             }
 
             //Discounts (top-level for quick access)
@@ -50,7 +58,7 @@ class AdminSidebarMenu
                     action('DiscountController@index'),
                     __('lang_v1.discounts'),
                     ['icon' => 'fa fas fa-percent', 'active' => request()->segment(1) == 'discounts']
-                )->order(8);
+                )->order(9);
             }
 
             //User management dropdown
