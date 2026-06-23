@@ -197,7 +197,29 @@ class InventoryCheckService
         }
         $purRows = $purQ->selectRaw("t.id, t.location_id, t.final_total, t.ref_no, t.status, t.transaction_date, t.created_at, ct.name as supplier, {$userNameSql}, u.username as entered_by_username")->get();
 
-        // Buy-from-customer transaction ids this week — the ONLY real Used source.
+        // ── Used = ACCEPTED buy-from-customer offers (Jon 2026-06-23) ────────
+        // "The accepted ones in the history ARE what we spent." Source the Used
+        // number straight from the offer's negotiated payout, NOT the
+        // materialized draft purchase: a quick buy where the lines were never
+        // priced leaves the purchase at $0, but the offer always carries the
+        // agreed cash/credit. Dated by accepted_at (falling back to
+        // updated/created for legacy rows). payout_type 'store_credit' → credit
+        // payout, otherwise cash.
+        $offerQ = DB::table('buy_customer_offers as o')
+            ->leftJoin('contacts as ct', 'ct.id', '=', 'o.contact_id')
+            ->leftJoin('users as u', 'u.id', '=', 'o.created_by')
+            ->where('o.business_id', $business_id)
+            ->where('o.status', 'accepted')
+            ->whereBetween(DB::raw('date(COALESCE(o.accepted_at, o.updated_at, o.created_at))'), [$week['start'], $week['end']]);
+        if ($permittedLocations !== 'all') {
+            $offerQ->whereIn('o.location_id', $permittedLocations);
+        }
+        $offerRows = $offerQ->selectRaw("o.id, o.location_id, o.payout_type, o.final_offer_cash, o.final_offer_credit, o.accepted_at, o.created_at, o.accepted_purchase_id, COALESCE(ct.name, o.seller_name) as supplier, {$userNameSql}, u.username as entered_by_username")->get();
+
+        // BFC-materialized purchases this week — represented by their offers
+        // above, so keep them OUT of the "not counted" tally (they aren't
+        // warehouse re-dating). Counted/summed distinctly to avoid the
+        // purchase_lines join multiplying final_total.
         $bfcIdsQ = DB::table('transactions as t')
             ->join('purchase_lines as pl', 'pl.transaction_id', '=', 't.id')
             ->join('products as p', 'p.id', '=', 'pl.product_id')
@@ -208,33 +230,56 @@ class InventoryCheckService
         if ($permittedLocations !== 'all') {
             $bfcIdsQ->whereIn('t.location_id', $permittedLocations);
         }
-        $bfcIds = array_flip(array_map('intval', $bfcIdsQ->distinct()->pluck('t.id')->all()));
+        $bfcIdsList = array_values(array_unique(array_map('intval', $bfcIdsQ->distinct()->pluck('t.id')->all())));
+        $bfcCount = count($bfcIdsList);
+        $bfcSum = $bfcCount ? (float) DB::table('transactions')->whereIn('id', $bfcIdsList)->sum('final_total') : 0.0;
 
         $spentTxnUsed = 0.0;
         $spentTxnNew = 0.0;
         $perLocUsedNew = [];
         $txnList = [];
         $newRows = collect();
-        $usedRows = collect();
         foreach ($purRows as $r) {
             if ((float) $r->final_total <= 0) { continue; } // skip $0 noise rows
             if ($this->isDistributorSupplier($r->supplier)) {
                 $newRows->push($r);                       // distributor order = New
-            } elseif (isset($bfcIds[(int) $r->id])) {
-                $usedRows->push($r);                       // buy-from-customer = Used
             }
-            // else: warehouse add / non-collection purchase → excluded.
+            // else: BFC purchase (counted via its offer) or warehouse add → not here.
         }
-        $addRow = function ($r, $kind) use (&$spentTxnUsed, &$spentTxnNew, &$perLocUsedNew, &$txnList) {
-            $ft = (float) $r->final_total;
-            $lid = (int) $r->location_id;
-            if (!isset($perLocUsedNew[$lid])) {
-                $perLocUsedNew[$lid] = ['used' => 0.0, 'new' => 0.0];
+        $usedRows = $offerRows->filter(function ($o) {
+            $amt = ($o->payout_type === 'store_credit') ? (float) $o->final_offer_credit : (float) $o->final_offer_cash;
+            return $amt > 0;
+        })->values();
+
+        // amount/date/meta vary by source, so addRow takes them explicitly.
+        $addRow = function ($amount, $lid, $kind, array $meta) use (&$spentTxnUsed, &$spentTxnNew, &$perLocUsedNew, &$txnList) {
+            $ft = (float) $amount;
+            $lid = (int) $lid;
+            if ($kind === 'used') { $spentTxnUsed += $ft; } else { $spentTxnNew += $ft; }
+            if ($lid) {
+                if (!isset($perLocUsedNew[$lid])) { $perLocUsedNew[$lid] = ['used' => 0.0, 'new' => 0.0]; }
+                $perLocUsedNew[$lid][$kind] += $ft;
             }
-            if ($kind === 'used') { $spentTxnUsed += $ft; $perLocUsedNew[$lid]['used'] += $ft; }
-            else { $spentTxnNew += $ft; $perLocUsedNew[$lid]['new'] += $ft; }
+            $txnList[] = array_merge([
+                'id' => 0,
+                'ref_no' => null,
+                'date' => null,
+                'entered' => null,
+                'entered_by' => '',
+                'late_days' => 0,
+                'location_id' => $lid,
+                'supplier' => null,
+                'status' => '',
+                'total' => round($ft, 2),
+                'new_amount' => $kind === 'new' ? round($ft, 2) : 0,
+                'used_amount' => $kind === 'used' ? round($ft, 2) : 0,
+                'kind' => $kind,
+                'view_url' => null,
+            ], $meta);
+        };
+        foreach ($newRows as $r) {
             $enteredBy = trim((string) ($r->entered_by_name ?? '')) ?: ($r->entered_by_username ?? '');
-            $txnList[] = [
+            $addRow((float) $r->final_total, (int) $r->location_id, 'new', [
                 'id' => (int) $r->id,
                 'ref_no' => $r->ref_no,
                 'date' => $r->transaction_date ? substr((string) $r->transaction_date, 0, 10) : null,
@@ -243,18 +288,31 @@ class InventoryCheckService
                 'late_days' => ($r->transaction_date && $r->created_at)
                     ? (int) round((strtotime(substr((string) $r->created_at, 0, 10)) - strtotime(substr((string) $r->transaction_date, 0, 10))) / 86400)
                     : 0,
-                'location_id' => $lid,
                 'supplier' => $r->supplier,
                 'status' => $r->status ?? '',
-                'total' => round($ft, 2),
-                'new_amount' => $kind === 'new' ? round($ft, 2) : 0,
-                'used_amount' => $kind === 'used' ? round($ft, 2) : 0,
-                'kind' => $kind,
                 'view_url' => url('/purchases/' . $r->id),
-            ];
-        };
-        foreach ($newRows as $r) { $addRow($r, 'new'); }
-        foreach ($usedRows as $r) { $addRow($r, 'used'); }
+            ]);
+        }
+        foreach ($usedRows as $o) {
+            $amt = ($o->payout_type === 'store_credit') ? (float) $o->final_offer_credit : (float) $o->final_offer_cash;
+            $enteredBy = trim((string) ($o->entered_by_name ?? '')) ?: ($o->entered_by_username ?? '');
+            $accDate = $o->accepted_at ? substr((string) $o->accepted_at, 0, 10)
+                : ($o->created_at ? substr((string) $o->created_at, 0, 10) : null);
+            $addRow($amt, (int) $o->location_id, 'used', [
+                'id' => (int) ($o->accepted_purchase_id ?: $o->id),
+                'ref_no' => 'BFC-' . str_pad((string) $o->id, 6, '0', STR_PAD_LEFT), // mirrors BuyCustomerOffer accessor
+
+                'date' => $accDate,
+                'entered' => $accDate,
+                'entered_by' => $enteredBy,
+                'late_days' => 0,
+                'supplier' => $o->supplier,
+                'status' => 'accepted',
+                'view_url' => $o->accepted_purchase_id
+                    ? url('/purchases/' . $o->accepted_purchase_id)
+                    : url('/buy-from-customer/history'),
+            ]);
+        }
         // Used group first, then newest first within each group.
         usort($txnList, function ($a, $b) {
             $ka = $a['kind'] === 'used' ? 0 : 1;
@@ -274,11 +332,11 @@ class InventoryCheckService
             $allPurchAgg->whereIn('t.location_id', $permittedLocations);
         }
         $allPurchAgg = $allPurchAgg->selectRaw('COUNT(*) as c, COALESCE(SUM(t.final_total),0) as s')->first();
-        // Excluded = all purchases this week minus the ones we counted (New
-        // distributor orders + Used collection buys) = warehouse re-dating and
-        // contactless / $0 rows.
-        $excludedCount = max(0, (int) $allPurchAgg->c - $newRows->count() - $usedRows->count());
-        $excludedTotal = max(0, round((float) $allPurchAgg->s - $spentTxnUsed - $spentTxnNew, 2));
+        // Excluded = all purchases this week minus New distributor orders and BFC
+        // collection purchases (counted via their accepted offers) = warehouse
+        // re-dating and contactless / $0 rows.
+        $excludedCount = max(0, (int) $allPurchAgg->c - $newRows->count() - $bfcCount);
+        $excludedTotal = max(0, round((float) $allPurchAgg->s - $spentTxnNew - $bfcSum, 2));
 
         // Add manual budget entries logged from the ICA "+ Log a buy"
         // form (e.g. Jon's $2000 collection on Sunday that hasn't been
