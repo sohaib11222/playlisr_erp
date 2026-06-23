@@ -410,7 +410,7 @@ HTML;
                                     <th>Genre</th>
                                     <th>Grade</th>
                                     <th>Qty</th>
-                                    <th>Discogs Median (if individual)</th>
+                                    <th>Discogs Median Price (if individual)</th>
                                     <th>Standard Multiplier</th>
                                     <th></th>
                                 </tr>
