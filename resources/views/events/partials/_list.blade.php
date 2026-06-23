@@ -81,8 +81,8 @@
         <td>{{ $evStreetDate }}</td>
         <td class="ev-meta">{{ $locLabels ? implode(' + ', $locLabels) : '—' }}@if(!empty($ev['locationDetail'])) <br>({{ ucfirst($ev['locationDetail']) }})@endif</td>
         <td>{{ $rsvpCount === null ? '—' : $rsvpCount }}</td>
-        <td>@if($vinylCount === null)—@else{{ $vinylCount }}@if($vinylByStore)<div class="ev-meta">{{ $vinylByStore }}</div>@endif@endif</td>
-        <td>@if($cdCount === null)—@else{{ $cdCount }}@if($cdByStore)<div class="ev-meta">{{ $cdByStore }}</div>@endif@endif</td>
+        <td>{{ $vinylCount === null ? '—' : $vinylCount }}@if($vinylByStore)<div class="ev-meta">{{ $vinylByStore }}</div>@endif</td>
+        <td>{{ $cdCount === null ? '—' : $cdCount }}@if($cdByStore)<div class="ev-meta">{{ $cdByStore }}</div>@endif</td>
         <td>
           @if(count($orderedLines))
             @foreach($orderedLines as $store => $line)
