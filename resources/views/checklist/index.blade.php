@@ -1,10 +1,20 @@
 @extends('layouts.app')
-@section('title', 'Opening Checklist')
+@section('title', $pageTitle ?? 'Checklist')
 
 @section('content')
-{{-- Morning opening checklist, Hollywood. Reskinned to match /pos/create
-     (cream surface, pastel yellow accent, Inter Tight). Scoped under
-     .open-shell so it doesn't bleed into the rest of the app. --}}
+@php
+    // Shared by the opening and closing checklists. Controllers pass the copy;
+    // sensible defaults keep it rendering if a var is ever missing.
+    $heading     = $heading     ?? 'Checklist';
+    $intro       = $intro       ?? '';
+    $formAction  = $formAction  ?? 'OpeningChecklistController@complete';
+    $noun        = $noun        ?? 'opening';
+    $byLabel     = $byLabel     ?? 'Done by';
+    $submitLabel = $submitLabel ?? 'Complete';
+    $recentLabel = $recentLabel ?? 'Recent';
+    $doneMsg     = $doneMsg     ?? 'All done. Thank you!';
+@endphp
+{{-- Cream / pastel-yellow look to match /pos/create. Scoped under .open-shell. --}}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&display=swap" media="print" onload="this.media='all'">
@@ -139,8 +149,8 @@
 
 <div class="open-shell">
     <div class="open-header">
-        <h1>Morning Opening Checklist</h1>
-        <p>Hollywood. This follows the store front to back, so just walk it in order and check each box as you go. Whatever you can't get to, leave it unchecked and let a manager know. Thank you!</p>
+        <h1>{{ $heading }}</h1>
+        <p>{{ $intro }}</p>
     </div>
 
     @if(session('status') && !empty(session('status')['msg']))
@@ -150,13 +160,13 @@
     @if(!empty($doneToday))
         @php $d = $doneToday[0]; @endphp
         <div class="done-banner">
-            Today's opening was already logged by <strong>{{ $d['user_name'] }}</strong> at {{ \Carbon\Carbon::parse($d['completed_at'])->format('g:i A') }}
+            Today's {{ $noun }} was already logged by <strong>{{ $d['user_name'] }}</strong> at {{ \Carbon\Carbon::parse($d['completed_at'])->format('g:i A') }}
             ({{ $d['checked_count'] }}/{{ $d['total'] }} done).
-            You can still submit again if you're re-checking the floor.
+            You can still submit again if you need to.
         </div>
     @endif
 
-    <form method="POST" action="{{ action('OpeningChecklistController@complete') }}">
+    <form method="POST" action="{{ action($formAction) }}">
         @csrf
         <div class="card">
             <div class="topbar">
@@ -194,11 +204,11 @@
             </div>
 
             <div id="allDoneMsg" style="display:none;margin:4px 0 16px;background:#FFF9DB;border:1px solid #E8CF68;border-radius:10px;padding:13px 16px;font-weight:800;color:#5A4410;font-size:15px;">
-                You rock! Thank you, and have a great day! Hit "Complete opening" to log it.
+                {{ $doneMsg }} Hit "{{ $submitLabel }}" to log it.
             </div>
 
             <div class="actions">
-                <button type="submit" class="btn">Complete opening</button>
+                <button type="submit" class="btn">{{ $submitLabel }}</button>
                 <button type="button" class="btn-link" onclick="openCheckAll()">Check all</button>
             </div>
         </div>
@@ -207,18 +217,18 @@
     @if(!empty($recent))
         <div class="card">
             <div class="grp" style="margin-top:0">
-                <h3>Recent openings</h3>
+                <h3>{{ $recentLabel }}</h3>
                 <table class="hist">
                     <thead>
-                        <tr><th>When</th><th>Store</th><th>Opened by</th><th>Done</th><th>Left undone</th></tr>
+                        <tr><th>When</th><th>Store</th><th>{{ $byLabel }}</th><th>Done</th><th>Left undone</th></tr>
                     </thead>
                     <tbody>
                         @foreach ($recent as $r)
                             @php $full = ($r['checked_count'] ?? 0) >= ($r['total'] ?? 0); @endphp
                             <tr>
                                 <td>{{ \Carbon\Carbon::parse($r['completed_at'])->format('M j, g:i A') }}</td>
-                                <td>{{ $r['location_name'] ?: '—' }}</td>
-                                <td>{{ $r['user_name'] ?? '—' }}</td>
+                                <td>{{ $r['location_name'] ?: 'n/a' }}</td>
+                                <td>{{ $r['user_name'] ?? 'n/a' }}</td>
                                 <td>
                                     <span class="tag {{ $full ? 'full' : 'part' }}">{{ $r['checked_count'] ?? 0 }}/{{ $r['total'] ?? 0 }}</span>
                                 </td>

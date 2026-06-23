@@ -173,13 +173,22 @@ class OpeningChecklistController extends Controller
             return ($r['date'] ?? '') === $today;
         }));
 
-        return view('opening_checklist.index', [
-            'groups'     => self::GROUPS,
-            'links'      => self::LINKS,
-            'totalItems' => count(self::allItems()),
-            'locations'  => $this->locations(),
-            'recent'     => $recent,
-            'doneToday'  => $doneToday,
+        return view('checklist.index', [
+            'groups'      => self::GROUPS,
+            'links'       => self::LINKS,
+            'totalItems'  => count(self::allItems()),
+            'locations'   => $this->locations(),
+            'recent'      => $recent,
+            'doneToday'   => $doneToday,
+            'pageTitle'   => 'Opening Checklist',
+            'heading'     => 'Morning Opening Checklist',
+            'intro'       => "Hollywood. This follows the store front to back, so just walk it in order and check each box as you go. Whatever you can't get to, leave it unchecked and let a manager know. Thank you!",
+            'formAction'  => 'OpeningChecklistController@complete',
+            'noun'        => 'opening',
+            'byLabel'     => 'Opened by',
+            'submitLabel' => 'Complete opening',
+            'recentLabel' => 'Recent openings',
+            'doneMsg'     => 'You rock! Thank you, and have a great day!',
         ]);
     }
 

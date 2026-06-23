@@ -854,6 +854,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/opening-checklist', 'OpeningChecklistController@index')->name('opening-checklist.index');
     Route::post('/opening-checklist', 'OpeningChecklistController@complete')->name('opening-checklist.complete');
 
+    // Evening closing checklist (mirror of the opening one).
+    Route::get('/closing-checklist', 'ClosingChecklistController@index')->name('closing-checklist.index');
+    Route::post('/closing-checklist', 'ClosingChecklistController@complete')->name('closing-checklist.complete');
+
     // Listing commissions owed to staff for items they listed. Derived live
     // from products.created_by + users.cmmsn_percent × sell price; "paid" is
     // tracked in storage/app/listing-commission-payouts.json (no migration).

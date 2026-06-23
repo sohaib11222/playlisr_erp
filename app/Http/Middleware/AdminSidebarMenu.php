@@ -41,6 +41,9 @@ class AdminSidebarMenu
                 ? ' <span class="label label-danger">TO DO</span>' : '';
             $menu->url(url('/opening-checklist'), 'Opening Checklist' . $openBadge, ['icon' => 'fa fas fa-clipboard-check', 'active' => request()->segment(1) == 'opening-checklist'])->order(6);
 
+            //Evening closing checklist — staff-facing, visible to everyone.
+            $menu->url(url('/closing-checklist'), 'Closing Checklist', ['icon' => 'fa fas fa-moon', 'active' => request()->segment(1) == 'closing-checklist'])->order(6);
+
             //Events / Listening Parties (top-level — its own thing, not under Products)
             if (auth()->user()->can('product.create')) {
                 $menu->url(
