@@ -588,6 +588,26 @@ class BuyFromCustomerController extends Controller
         $finalTotal = (float) ($isCredit ? $offer->final_offer_credit : $offer->final_offer_cash);
         $payoutRatio = $calculatedTotal > 0 ? ($finalTotal / $calculatedTotal) : 1.0;
 
+        // Flat-rate fallback (Sarah 2026-06-23): on a quick buy the cashier may
+        // enter items + a negotiated final cash WITHOUT per-line Discogs/unit
+        // prices, so every line_cash_total is 0 and calculated_total is 0. The
+        // payoutRatio then falls back to 1.0 and each unitPaid comes out $0 —
+        // which left the materialized purchase with final_total = 0, so the buy
+        // never showed cost basis OR pulled into the weekly purchase budget
+        // (the budget skips $0 purchases). When the calculator didn't price the
+        // lines, split the negotiated payout evenly across the units we are
+        // actually inventorying so the purchase total = what was paid.
+        $totalTitledQty = 0.0;
+        if ($calculatedTotal <= 0 && $finalTotal > 0) {
+            foreach ($offer->lines as $l) {
+                $lq = (float) ($l->quantity ?: 0);
+                if ($lq > 0 && trim((string) ($l->title ?: '')) !== '') {
+                    $totalTitledQty += $lq;
+                }
+            }
+        }
+        $flatUnitPaid = ($totalTitledQty > 0) ? round($finalTotal / $totalTitledQty, 4) : 0.0;
+
         foreach ($offer->lines as $line) {
             $qty = (float) ($line->quantity ?: 0);
             if ($qty <= 0) {
@@ -603,8 +623,15 @@ class BuyFromCustomerController extends Controller
             }
 
             // Per-unit paid: line's calculated value × payout ratio ÷ qty.
+            // When the calculator never priced the lines (calculatedTotal 0),
+            // fall back to an even split of the negotiated payout so the buy
+            // still carries a real cost basis and lands in the budget.
             $lineCalculated = (float) ($isCredit ? $line->line_credit_total : $line->line_cash_total);
-            $unitPaid = $qty > 0 ? round(($lineCalculated * $payoutRatio) / $qty, 4) : 0;
+            if ($calculatedTotal > 0) {
+                $unitPaid = $qty > 0 ? round(($lineCalculated * $payoutRatio) / $qty, 4) : 0;
+            } else {
+                $unitPaid = $flatUnitPaid;
+            }
 
             $description = sprintf(
                 'Bought from customer | offer %s | type: %s | grade: %s',
