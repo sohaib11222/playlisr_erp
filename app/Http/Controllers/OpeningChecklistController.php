@@ -33,8 +33,9 @@ class OpeningChecklistController extends Controller
             'computer' => 'Turn on the computer.',
         ],
         '2. Windows' => [
-            'windows_clean' => 'Wipe down all the windows with glass cleaner until they are clean.',
-            'windows_clear' => 'Clear the windows of any random signs so nothing blocks the view inside.',
+            'windows_clean'   => 'Wipe down all the windows with glass cleaner until they are clean.',
+            'windows_clear'   => 'Clear the windows of any random signs so nothing blocks the view inside.',
+            'window_displays' => 'Update both window displays with A products.',
         ],
         '3. Neon signs' => [
             'sign_diggers' => 'Plug in the "Welcome to Digger\'s Paradise" sign behind the listening station.',
@@ -46,7 +47,7 @@ class OpeningChecklistController extends Controller
             'bins_full'     => 'Fill in any bin that looks thin so none of them look empty.',
             'bins_neat'     => 'Straighten the bins so everything is neat and nothing is out of place.',
             'trading_cards' => 'Organize the trading card bin.',
-            'endcaps'       => 'Set the end caps with A products and new releases.',
+            'endcaps'       => 'Fill the end caps with A products and new releases, leaving no blank space.',
         ],
         '5. Tidy the floor' => [
             'stray'          => 'Put any stray records or products back where they belong.',
@@ -73,7 +74,8 @@ class OpeningChecklistController extends Controller
      * e.g. jump straight to the supply-request form for fridge/snack restocks.
      */
     const LINKS = [
-        'endcaps'      => ['url' => '/reports/abc-full-report?class=A', 'text' => 'View A products'],
+        'endcaps'         => ['url' => '/reports/abc-full-report?class=A', 'text' => 'View A products'],
+        'window_displays' => ['url' => '/reports/abc-full-report?class=A', 'text' => 'View A products'],
         'drink_fridge' => ['url' => '/supply-requests', 'text' => 'Request a supply'],
         'snack_rack'   => ['url' => '/supply-requests', 'text' => 'Request a supply'],
     ];
