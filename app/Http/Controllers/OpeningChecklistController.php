@@ -28,43 +28,43 @@ class OpeningChecklistController extends Controller
      */
     const GROUPS = [
         '1. Turn the store on' => [
-            'lights'   => 'Lights on in the main room',
-            'music'    => 'Music on — upbeat, loud enough to hear outside',
-            'computer' => 'Computer on',
+            'lights'   => 'Turn on all the lights in the main room.',
+            'music'    => 'Put on upbeat shopping music and turn it up loud enough to hear outside.',
+            'computer' => 'Turn on the computer.',
         ],
         '2. Windows' => [
-            'windows_clean' => 'Wipe the windows clean with glass cleaner',
-            'windows_clear' => 'Windows clear — no random signs blocking the view inside',
+            'windows_clean' => 'Wipe down all the windows with glass cleaner until they are clean.',
+            'windows_clear' => 'Clear the windows of any random signs so nothing blocks the view inside.',
         ],
         '3. Neon signs' => [
-            'sign_diggers' => 'Plug in "Welcome to Digger\'s Paradise" — behind the listening station',
-            'sign_vinyl'   => 'Plug in "Have you heard it on vinyl" — outlet behind the rock bins',
-            'sign_disco'   => 'Plug in "Disco es la cultura" — on the stage',
+            'sign_diggers' => 'Plug in the "Welcome to Digger\'s Paradise" sign behind the listening station.',
+            'sign_vinyl'   => 'Plug in the "Have you heard it on vinyl" sign at the outlet behind the rock bins.',
+            'sign_disco'   => 'Plug in the "Disco es la cultura" sign on the stage.',
         ],
         '4. Records — walls & bins' => [
-            'walls_full'    => 'Walls full of records — no blank space showing',
-            'bins_full'     => 'No bin looks empty — fill in any that are thin',
-            'bins_neat'     => 'Bins neat and in order — nothing out of place',
-            'trading_cards' => 'Trading card bin organized',
-            'endcaps'       => 'End caps show A-products and new releases',
+            'walls_full'    => 'Fill the walls with records so there is no blank space showing.',
+            'bins_full'     => 'Fill in any bin that looks thin so none of them look empty.',
+            'bins_neat'     => 'Straighten the bins so everything is neat and nothing is out of place.',
+            'trading_cards' => 'Organize the trading card bin.',
+            'endcaps'       => 'Set the end caps with A-products and new releases.',
         ],
         '5. Tidy the floor' => [
-            'stray'          => 'Any stray records or products back where they belong',
-            'surfaces_clear' => 'Nothing left on top of the bins or tables — no cassettes, DVDs, or drinks',
-            'clothes_hung'   => 'All clothes hung up — nothing on the floor',
-            'stage_neat'     => 'Stage neat — no trash or stray items, set up like a cozy living room',
+            'stray'          => 'Put any stray records or products back where they belong.',
+            'surfaces_clear' => 'Clear the tops of the bins and tables so no cassettes, DVDs, or drinks are left out.',
+            'clothes_hung'   => 'Hang up all the clothes so nothing is left on the floor.',
+            'stage_neat'     => 'Tidy the stage so it has no trash or stray items and looks like a cozy living room.',
         ],
         '6. Fridge & snacks' => [
-            'drink_fridge' => 'Drink fridge full — if it\'s low, send a supply request',
-            'snack_rack'   => 'Snack rack full — if it\'s low, send a supply request',
+            'drink_fridge' => 'Make sure the drink fridge is full, and send a supply request if it is running low.',
+            'snack_rack'   => 'Make sure the snack rack is full, and send a supply request if it is running low.',
         ],
         '7. Front desk & bathroom' => [
-            'front_desk' => 'Front desk clear and clutter-free — no trash or boxes',
-            'bathroom'   => 'Bathroom tidy and clean',
+            'front_desk' => 'Clear the front desk so it is tidy and free of any trash or boxes.',
+            'bathroom'   => 'Make sure the bathroom is tidy and clean.',
         ],
         '8. Last — floor & trash' => [
-            'floor'     => 'Sweep / mop the floor',
-            'trash_all' => 'Empty all trash bins and take the trash out to the back',
+            'floor'     => 'Sweep and mop the floor.',
+            'trash_all' => 'Empty all the trash bins and take the trash out to the back.',
         ],
     ];
 
