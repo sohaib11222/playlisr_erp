@@ -218,6 +218,57 @@
     @endif
   </div>
 
+  {{-- ---------- Order plan: want vs ordered, per store ---------- --}}
+  @php
+    $ord = (array) ($event['ordered'] ?? []);
+    $eventLocs = (array) ($event['location'] ?? []);
+    $BASELINE_VINYL = 2; // stock a couple standards even where there's no party
+    $planRows = [];
+    foreach (['hollywood' => 'Hollywood', 'pico' => 'Pico'] as $sk => $slabel) {
+      $wantV = (int) ($byStore[$sk]['vinyl'] ?? 0);
+      $wantC = (int) ($byStore[$sk]['cd'] ?? 0);
+      $row = (array) ($ord[$sk] ?? []);
+      $ordV = (int) ($row['indieVinyl'] ?? 0) + (int) ($row['stdVinyl'] ?? 0) + (int) ($row['deluxeVinyl'] ?? 0);
+      $ordC = (int) ($row['stdCd'] ?? 0) + (int) ($row['deluxeCd'] ?? 0);
+      $hosting = in_array($sk, $eventLocs, true);
+
+      // Vinyl directive
+      if ($hosting) {
+        if ($ordV < $wantV)      { $vMsg = 'order ' . ($wantV - $ordV) . ' more'; $vTone = 'need'; }
+        elseif ($ordV > $wantV)  { $vMsg = ($ordV - $wantV) . ' over'; $vTone = 'over'; }
+        else                     { $vMsg = $wantV > 0 ? 'covered' : 'no requests yet'; $vTone = 'ok'; }
+      } else {
+        if ($ordV < $BASELINE_VINYL) { $vMsg = 'stock ' . ($BASELINE_VINYL - $ordV) . ' standard'; $vTone = 'need'; }
+        else                         { $vMsg = 'covered'; $vTone = 'ok'; }
+      }
+      // CD directive (baseline 0 when not hosting)
+      if ($ordC < $wantC)      { $cMsg = 'order ' . ($wantC - $ordC) . ' more'; $cTone = 'need'; }
+      elseif ($ordC > $wantC)  { $cMsg = ($ordC - $wantC) . ' over'; $cTone = 'over'; }
+      else                     { $cMsg = $wantC > 0 ? 'covered' : ($hosting ? 'no requests yet' : '—'); $cTone = 'ok'; }
+
+      $planRows[] = compact('slabel', 'hosting', 'wantV', 'ordV', 'vMsg', 'vTone', 'wantC', 'ordC', 'cMsg', 'cTone');
+    }
+    $tone = ['need' => 'color:#a23;font-weight:700;', 'over' => 'color:#8a5a14;', 'ok' => 'color:#2e7d32;'];
+  @endphp
+  <div class="ev-card">
+    <h2>Order plan</h2>
+    <p class="sub" style="margin:0 0 10px;">What customers want vs. what you ordered, per store. "Want" = RSVP buy-interest (a floor — add buffer for walk-ins).</p>
+    <table class="ev-tbl">
+      <thead><tr><th>Store</th><th>Vinyl (want / ordered)</th><th>Vinyl action</th><th>CD (want / ordered)</th><th>CD action</th></tr></thead>
+      <tbody>
+        @foreach($planRows as $r)
+          <tr>
+            <td class="ev-name">{{ $r['slabel'] }}@if(!$r['hosting'])<div class="ev-meta">not hosting</div>@endif</td>
+            <td>{{ $r['wantV'] }} / {{ $r['ordV'] }}</td>
+            <td style="{{ $tone[$r['vTone']] }}">{{ $r['vMsg'] }}</td>
+            <td>{{ $r['wantC'] }} / {{ $r['ordC'] }}</td>
+            <td style="{{ $tone[$r['cTone']] }}">{{ $r['cMsg'] }}</td>
+          </tr>
+        @endforeach
+      </tbody>
+    </table>
+  </div>
+
   {{-- ---------- Giveaway spin ---------- --}}
   <div class="ev-card">
     <h2>Giveaway spin</h2>
