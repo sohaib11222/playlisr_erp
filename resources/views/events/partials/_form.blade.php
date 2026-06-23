@@ -40,13 +40,39 @@
     <label>Street date</label>
     <input type="date" name="streetDate" value="{{ $e['streetDate'] ?? '' }}">
   </div>
-  <div class="ev-field" style="flex:0 1 110px;">
-    <label>Vinyl ordered</label>
-    <input type="number" min="0" name="orderedVinyl" value="{{ $e['orderedVinyl'] ?? '' }}" placeholder="—">
-  </div>
-  <div class="ev-field" style="flex:0 1 110px;">
-    <label>CD ordered</label>
-    <input type="number" min="0" name="orderedCd" value="{{ $e['orderedCd'] ?? '' }}" placeholder="—">
+</div>
+
+{{-- What we ordered, per store and per SKU. Only the store(s) this event is
+     at are shown (both, for a brand-new event). --}}
+@php
+  $ordered = (array) ($e['ordered'] ?? []);
+  $orderStores = ['hollywood' => 'Hollywood', 'pico' => 'Pico'];
+  $orderSkus = ['indieVinyl' => 'Indie vinyl', 'stdVinyl' => 'Standard vinyl', 'deluxeVinyl' => 'Deluxe vinyl', 'stdCd' => 'Standard CD', 'deluxeCd' => 'Deluxe CD'];
+  $orderLocs = (array) ($e['location'] ?? []);
+  $shownStores = $orderLocs ?: array_keys($orderStores);
+@endphp
+<div class="ev-row">
+  <div class="ev-field" style="flex:1 1 100%;">
+    <label>What we ordered</label>
+    <div style="display:flex;flex-wrap:wrap;gap:18px;">
+      @foreach($orderStores as $sk => $slabel)
+        @if(in_array($sk, $shownStores, true))
+          <div style="border:1px solid var(--pos-line,#ECE3CF);border-radius:10px;padding:10px 12px;">
+            <div style="font-weight:700;font-size:12px;margin-bottom:8px;">{{ $slabel }}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:10px;">
+              @foreach($orderSkus as $sku => $skuLabel)
+                <div style="display:flex;flex-direction:column;width:84px;">
+                  <label style="font-size:11px;color:#6b6253;margin-bottom:3px;">{{ $skuLabel }}</label>
+                  <input type="number" min="0" name="ordered[{{ $sk }}][{{ $sku }}]"
+                         value="{{ $ordered[$sk][$sku] ?? '' }}" placeholder="—"
+                         style="padding:6px 8px;border:1px solid var(--pos-line-2);border-radius:8px;font-size:13px;width:100%;">
+                </div>
+              @endforeach
+            </div>
+          </div>
+        @endif
+      @endforeach
+    </div>
   </div>
 </div>
 

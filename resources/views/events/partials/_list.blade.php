@@ -6,7 +6,7 @@
       <th style="width:8%;">Date</th>
       <th style="width:8%;">Street date</th>
       <th style="width:10%;">Location</th>
-      <th style="width:6%;">RSVPs</th>
+      <th style="width:6%;">Attending</th>
       <th style="width:7%;">Vinyl requests</th>
       <th style="width:6%;">CD requests</th>
       <th style="width:7%;">Ordered</th>
@@ -33,9 +33,19 @@
         $vinylCount = ($vinylCounts ?? [])[$nk] ?? null;
         $cdCount = ($cdCounts ?? [])[$nk] ?? null;
         $takingPreorders = !empty($ev['preorderEnabled']);
-        $ordV = $ev['orderedVinyl'] ?? null;
-        $ordC = $ev['orderedCd'] ?? null;
-        $hasOrdered = ($ordV !== null && $ordV !== '') || ($ordC !== null && $ordC !== '');
+        // Ordered totals across stores: vinyl = indie+std+deluxe, cd = std+deluxe.
+        $ordered = (array) ($ev['ordered'] ?? []);
+        $ordV = 0; $ordC = 0; $hasOrdered = false;
+        foreach ($ordered as $storeRow) {
+          foreach (['indieVinyl','stdVinyl','deluxeVinyl'] as $vk) {
+            $n = $storeRow[$vk] ?? null;
+            if ($n !== null && $n !== '') { $ordV += (int) $n; $hasOrdered = true; }
+          }
+          foreach (['stdCd','deluxeCd'] as $ck) {
+            $n = $storeRow[$ck] ?? null;
+            if ($n !== null && $n !== '') { $ordC += (int) $n; $hasOrdered = true; }
+          }
+        }
         $pubMap = $publishedMap ?? [];
         $isLive = array_key_exists($ev['id'] ?? '', $pubMap) ? $pubMap[$ev['id']] : null;
       @endphp

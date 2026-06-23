@@ -279,7 +279,9 @@ class EventsController extends Controller
                 $name = $row['eventName'] ?? null;
                 if ($name === null || $name === '') { continue; }
                 $k = self::normName($name);
-                $out['rsvps'][$k] = ($out['rsvps'][$k] ?? 0) + (int) ($row['totalRSVPs'] ?? $row['totalAttendees'] ?? 0);
+                // People attending (yes + their guests), summed across casing
+                // variants of the same party.
+                $out['rsvps'][$k] = ($out['rsvps'][$k] ?? 0) + (int) ($row['attendingCount'] ?? $row['totalAttendees'] ?? $row['totalRSVPs'] ?? 0);
                 $out['vinyl'][$k] = ($out['vinyl'][$k] ?? 0) + (int) ($row['vinylRequests'] ?? 0);
                 $out['cd'][$k]    = ($out['cd'][$k] ?? 0) + (int) ($row['cdRequests'] ?? 0);
             }
@@ -600,6 +602,38 @@ class EventsController extends Controller
     // Mutations
     // --------------------------------------------------------------------
 
+    /** Stores we can order to, and the SKU lines tracked per store. */
+    public static function orderStores(): array
+    {
+        return ['hollywood' => 'Hollywood', 'pico' => 'Pico'];
+    }
+    public static function orderSkus(): array
+    {
+        return [
+            'indieVinyl'  => 'Indie vinyl',
+            'stdVinyl'    => 'Standard vinyl',
+            'deluxeVinyl' => 'Deluxe vinyl',
+            'stdCd'       => 'Standard CD',
+            'deluxeCd'    => 'Deluxe CD',
+        ];
+    }
+
+    /** Normalize the per-store ordered matrix from request/stored input. */
+    public static function cleanOrdered(array $in): array
+    {
+        $out = [];
+        foreach (array_keys(self::orderStores()) as $store) {
+            $row = (array) ($in[$store] ?? []);
+            $clean = [];
+            foreach (array_keys(self::orderSkus()) as $sku) {
+                $v = $row[$sku] ?? null;
+                $clean[$sku] = ($v === '' || $v === null) ? null : max(0, (int) $v);
+            }
+            $out[$store] = $clean;
+        }
+        return $out;
+    }
+
     protected function validatedFields(Request $request): array
     {
         $request->validate([
@@ -614,8 +648,6 @@ class EventsController extends Controller
             'artistSoundsLike' => 'nullable|string|max:191',
             'locationDetail'   => 'nullable|string|max:20',
             'streetDate'       => 'nullable|date',
-            'orderedVinyl'     => 'nullable|integer|min:0|max:100000',
-            'orderedCd'        => 'nullable|integer|min:0|max:100000',
         ], [
             'name.required' => 'Event name is required.',
             'date.required' => 'Pick an event date.',
@@ -635,6 +667,10 @@ class EventsController extends Controller
 
         $preorderEnabled = filter_var($request->input('preorderEnabled'), FILTER_VALIDATE_BOOLEAN);
 
+        // Per-store "what we ordered": { hollywood|pico => { indieVinyl, stdVinyl,
+        // deluxeVinyl, stdCd, deluxeCd } }. Blank -> null so empty stays empty.
+        $ordered = self::cleanOrdered((array) $request->input('ordered', []));
+
         return [
             'name'             => trim($request->input('name')),
             'eventType'        => $request->input('eventType'),
@@ -644,8 +680,7 @@ class EventsController extends Controller
             'time'             => trim($request->input('time')),
             'endTime'          => $endTime !== '' ? $endTime : null,
             'streetDate'       => $request->input('streetDate') ?: null,
-            'orderedVinyl'     => $request->filled('orderedVinyl') ? max(0, (int) $request->input('orderedVinyl')) : null,
-            'orderedCd'        => $request->filled('orderedCd') ? max(0, (int) $request->input('orderedCd')) : null,
+            'ordered'          => $ordered,
             'description'      => trim((string) $request->input('description', '')),
             'image'            => trim((string) $request->input('image', '')) ?: null,
             'location'         => $location,
@@ -938,8 +973,7 @@ class EventsController extends Controller
                 // ERP-only fields; the website feed doesn't carry them, so keep
                 // anything entered here rather than wiping it on import.
                 'streetDate'       => $existing['streetDate'] ?? ($e['streetDate'] ?? null),
-                'orderedVinyl'     => $existing['orderedVinyl'] ?? ($e['orderedVinyl'] ?? null),
-                'orderedCd'        => $existing['orderedCd'] ?? ($e['orderedCd'] ?? null),
+                'ordered'          => self::cleanOrdered((array) ($existing['ordered'] ?? $e['ordered'] ?? [])),
                 'description'      => (string) ($e['description'] ?? ''),
                 'image'            => $e['image'] ?? null,
                 'location'         => array_values(array_intersect((array) ($e['location'] ?? []), ['hollywood', 'pico'])),
