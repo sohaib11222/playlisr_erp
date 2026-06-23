@@ -27,44 +27,44 @@ class OpeningChecklistController extends Controller
      * stable key and the exact instruction the opener follows.
      */
     const GROUPS = [
-        'Lights, music, vibe' => [
-            'lights_main' => 'Turn on all the lights in the main room',
-            'computer'    => 'Turn on the computer',
-            'music'       => 'Put on good, upbeat shopping music — loud enough to hear outside',
+        '1. Turn the store on' => [
+            'lights'   => 'Lights on in the main room',
+            'music'    => 'Music on — upbeat, loud enough to hear outside',
+            'computer' => 'Computer on',
         ],
-        'Neon signs' => [
-            'sign_diggers' => '"Welcome to Digger\'s Paradise" — plug in behind the listening station',
-            'sign_vinyl'   => '"Have you heard it on vinyl" — plug into the outlet behind the rock bins',
-            'sign_disco'   => '"Disco es la cultura" on stage — plug into the wall',
+        '2. Windows' => [
+            'windows_clean' => 'Wipe the windows clean with glass cleaner',
+            'windows_clear' => 'Windows clear — no random signs blocking the view inside',
         ],
-        'Records & bins' => [
-            'walls_full'     => 'No white space on the walls — they should be full of records',
-            'bins_not_empty' => 'No bin looks empty — fill in any that are looking thin',
-            'bins_organized' => 'Every bin looks organized — fix anything out of place',
-            'trading_cards'  => 'Trading card bin is organized',
-            'endcaps'        => 'End caps feature A-products and new releases',
+        '3. Neon signs' => [
+            'sign_diggers' => 'Plug in "Welcome to Digger\'s Paradise" — behind the listening station',
+            'sign_vinyl'   => 'Plug in "Have you heard it on vinyl" — outlet behind the rock bins',
+            'sign_disco'   => 'Plug in "Disco es la cultura" — on the stage',
         ],
-        'Tidiness — nothing left out of place' => [
-            'stray_items'    => 'All stray records and products put back on the proper shelves',
-            'tidy_cassettes' => 'No cassettes sitting on top of the tables',
-            'tidy_dvds'      => 'No DVDs sitting on top of the DVD bins',
-            'tidy_drinks'    => 'No drinks on top of the bins',
-            'clothes_hung'   => 'All clothes hung up — nothing on the floor (including under the T-shirt racks)',
-            'stage_neat'     => 'Stage is neat — no trash, no stray items, set up like a cozy living-room set',
+        '4. Records — walls & bins' => [
+            'walls_full'    => 'Walls full of records — no blank space showing',
+            'bins_full'     => 'No bin looks empty — fill in any that are thin',
+            'bins_neat'     => 'Bins neat and in order — nothing out of place',
+            'trading_cards' => 'Trading card bin organized',
+            'endcaps'       => 'End caps show A-products and new releases',
         ],
-        'Front desk & floor' => [
-            'windows'          => 'Windows wiped with glass cleaner and clear — no random or obstructive signs blocking the view inside',
-            'front_desk_clear' => 'Front desk clear and clutter-free for customers',
-            'no_trash_front'   => 'No trash or boxes at the front desk / front area',
-            'floor'            => 'Sweep or mop the floor',
+        '5. Tidy the floor' => [
+            'stray'          => 'Any stray records or products back where they belong',
+            'surfaces_clear' => 'Nothing left on top of the bins or tables — no cassettes, DVDs, or drinks',
+            'clothes_hung'   => 'All clothes hung up — nothing on the floor',
+            'stage_neat'     => 'Stage neat — no trash or stray items, set up like a cozy living room',
         ],
-        'Bathroom & trash' => [
-            'bathroom'  => 'Bathroom tidy, trash taken out',
-            'trash_all' => 'Empty all trash bins and clear any trash around the store',
+        '6. Fridge & snacks' => [
+            'drink_fridge' => 'Drink fridge full — if it\'s low, send a supply request',
+            'snack_rack'   => 'Snack rack full — if it\'s low, send a supply request',
         ],
-        'Fridge & snacks' => [
-            'drink_fridge' => 'Drink fridge is full — if it needs restocking, put in a supply request',
-            'snack_rack'   => 'Snack rack is full — if it needs restocking, put in a supply request',
+        '7. Front desk & bathroom' => [
+            'front_desk' => 'Front desk clear and clutter-free — no trash or boxes',
+            'bathroom'   => 'Bathroom tidy and clean',
+        ],
+        '8. Last — floor & trash' => [
+            'floor'     => 'Sweep / mop the floor',
+            'trash_all' => 'Empty all trash bins and take the trash out',
         ],
     ];
 

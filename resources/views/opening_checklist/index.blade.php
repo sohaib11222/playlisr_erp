@@ -140,7 +140,7 @@
 <div class="open-shell">
     <div class="open-header">
         <h1>Morning Opening Checklist</h1>
-        <p>Hollywood. Work top to bottom, check each item as you do it, then hit <strong>Complete opening</strong>. Whatever you can't finish, leave unchecked and let a manager know.</p>
+        <p>Hollywood. This follows the store front to back — just walk it in order and check each box as you go. Whatever you can't get to, leave it unchecked and let a manager know. Thank you!</p>
     </div>
 
     @if(session('status') && !empty(session('status')['msg']))
