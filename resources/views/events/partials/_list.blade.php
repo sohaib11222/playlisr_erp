@@ -2,13 +2,15 @@
 <table class="ev-tbl">
   <thead>
     <tr>
-      <th style="width:28%;">Event</th>
-      <th style="width:12%;">Date</th>
-      <th style="width:12%;">Location</th>
-      <th style="width:9%;">RSVPs</th>
-      <th style="width:11%;">Vinyl requests</th>
-      <th style="width:14%;">Prep</th>
-      <th style="width:14%;"></th>
+      <th style="width:23%;">Event</th>
+      <th style="width:10%;">Date</th>
+      <th style="width:11%;">Location</th>
+      <th style="width:7%;">RSVPs</th>
+      <th style="width:8%;">Vinyl requests</th>
+      <th style="width:7%;">CD requests</th>
+      <th style="width:10%;">Taking preorders?</th>
+      <th style="width:11%;">Prep</th>
+      <th style="width:13%;"></th>
     </tr>
   </thead>
   <tbody>
@@ -23,7 +25,9 @@
         $evTime = !empty($ev['time']) ? date('g:i A', strtotime($ev['time'])) : '';
         $evName = $ev['name'] ?? '';
         $rsvpCount = ($rsvpCounts ?? [])[$evName] ?? null;
-        $preorderCount = ($preorderCounts ?? [])[$evName] ?? null;
+        $vinylCount = ($vinylCounts ?? [])[$evName] ?? null;
+        $cdCount = ($cdCounts ?? [])[$evName] ?? null;
+        $takingPreorders = !empty($ev['preorderEnabled']);
       @endphp
       <tr>
         <td>
@@ -36,7 +40,9 @@
         <td>{{ $evDate }}</td>
         <td class="ev-meta">{{ $locLabels ? implode(' + ', $locLabels) : '—' }}@if(!empty($ev['locationDetail'])) <br>({{ ucfirst($ev['locationDetail']) }})@endif</td>
         <td>{{ $rsvpCount === null ? '—' : $rsvpCount }}</td>
-        <td>{{ $preorderCount === null ? '—' : $preorderCount }}</td>
+        <td>{{ $vinylCount === null ? '—' : $vinylCount }}</td>
+        <td>{{ $cdCount === null ? '—' : $cdCount }}</td>
+        <td>{{ $takingPreorders ? 'Yes' : 'No' }}</td>
         <td>
           @if($isLP)
             <span class="prep-badge {{ $doneCount >= $totalPrep ? 'done' : 'todo' }}">{{ $doneCount }}/{{ $totalPrep }} done</span>
@@ -45,7 +51,7 @@
           @endif
         </td>
         <td style="text-align:right;">
-          <a class="ev-edit" href="{{ route('events.edit', ['id' => $ev['id']]) }}">Edit{{ $isLP ? ' / prep' : '' }}</a>
+          <a class="ev-edit" href="{{ route('events.edit', ['id' => $ev['id']]) }}">View dashboard</a>
           <form method="POST" action="{{ route('events.destroy', ['id' => $ev['id']]) }}" style="display:inline;margin-left:10px;"
                 onsubmit="return confirm('Delete \'{{ addslashes($ev['name'] ?? '') }}\'? This can be undone from Admin Action History.');">
             {{ csrf_field() }}

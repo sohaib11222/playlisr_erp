@@ -219,7 +219,8 @@ class EventsController extends Controller
             'filterType'     => $filterType,
             'filterLabel'    => $filterType ? $eventTypes[$filterType] : null,
             'rsvpCounts'     => $counts['rsvps'],
-            'preorderCounts' => $counts['preorders'],
+            'vinylCounts'    => $counts['vinyl'],
+            'cdCounts'       => $counts['cd'],
         ]);
     }
 
@@ -251,18 +252,19 @@ class EventsController extends Controller
     }
 
     /**
-     * Per-event RSVP and preorder (vinyl request) counts for the index list,
-     * keyed by exact event name. One stats call + one preorders call total
-     * (not per-event). Returns empty maps when the bridge is off/unreachable.
+     * Per-event RSVP count plus vinyl/CD request counts for the index list,
+     * keyed by exact event name. One stats call total (not per-event). The
+     * vinyl/CD numbers come from the listening-party RSVP "buying vinyl or
+     * CD?" question — "both" counts toward each, mirroring the per-event
+     * estimate on the edit page. Empty maps when the bridge is off/unreachable.
      */
     protected function bridgeCounts(): array
     {
-        $out = ['rsvps' => [], 'preorders' => []];
+        $out = ['rsvps' => [], 'vinyl' => [], 'cd' => []];
         if (trim((string) config('constants.erp_api_key')) === '') {
             return $out;
         }
 
-        // RSVP counts: the stats endpoint already returns one row per event.
         $statsResp = $this->websiteApi('GET', '/erp/rsvps/stats');
         $statsRows = $statsResp['data'] ?? $statsResp['stats'] ?? [];
         if (is_array($statsRows)) {
@@ -270,18 +272,8 @@ class EventsController extends Controller
                 $name = $row['eventName'] ?? null;
                 if ($name === null || $name === '') { continue; }
                 $out['rsvps'][$name] = (int) ($row['totalRSVPs'] ?? $row['totalAttendees'] ?? 0);
-            }
-        }
-
-        // Vinyl requests: no stats endpoint, so pull all preorders once and
-        // tally by event name.
-        $preResp = $this->websiteApi('GET', '/erp/preorders?limit=2000');
-        $preorders = $preResp['data'] ?? $preResp['preorders'] ?? [];
-        if (is_array($preorders)) {
-            foreach ($preorders as $p) {
-                $name = $p['eventName'] ?? null;
-                if ($name === null || $name === '') { continue; }
-                $out['preorders'][$name] = ($out['preorders'][$name] ?? 0) + 1;
+                $out['vinyl'][$name] = (int) ($row['vinylRequests'] ?? 0);
+                $out['cd'][$name]    = (int) ($row['cdRequests'] ?? 0);
             }
         }
 
