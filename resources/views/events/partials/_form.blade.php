@@ -85,14 +85,6 @@
       <label><input type="checkbox" name="location[]" value="pico" {{ in_array('pico', $locs) ? 'checked' : '' }}> Pico</label>
     </div>
   </div>
-  <div class="ev-field" style="flex:1 1 180px;">
-    <label>Hollywood area</label>
-    <select name="locationDetail">
-      <option value="">— n/a —</option>
-      <option value="stage" {{ ($e['locationDetail'] ?? null) === 'stage' ? 'selected' : '' }}>Stage</option>
-      <option value="basement" {{ ($e['locationDetail'] ?? null) === 'basement' ? 'selected' : '' }}>Basement</option>
-    </select>
-  </div>
   <div class="ev-field" style="flex:3 1 280px;">
     <label>Image URL</label>
     <input type="text" name="image" value="{{ $e['image'] ?? '' }}" placeholder="https://nivessa.com/imageNiv/...">
@@ -117,13 +109,10 @@
 </div>
 <div id="pre-fields" style="{{ $pre ? '' : 'display:none;' }}">
   <div class="ev-row">
-    <div class="ev-field" style="flex:1 1 150px;">
-      <label>Pickup date</label>
-      <input type="date" name="preorderPickupDate" value="{{ $e['preorderPickupDate'] ?? '' }}">
-    </div>
     <div class="ev-field" style="flex:2 1 240px;">
       <label>Preorder note</label>
       <input type="text" name="preorderNote" value="{{ $e['preorderNote'] ?? '' }}">
+      <div class="ev-meta" style="margin-top:4px;">Pickup date = the event's Street date (set above).</div>
     </div>
   </div>
   <div class="ev-row">

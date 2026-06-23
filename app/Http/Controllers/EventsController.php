@@ -704,7 +704,8 @@ class EventsController extends Controller
             'preorderProducts' => $preorderEnabled ? $preorderProducts : [],
             'preorderTitle'    => $preorderEnabled ? (string) ($preorderProducts[0]['title'] ?? '') : '',
             'preorderPrice'    => $preorderEnabled ? ($preorderProducts[0]['price'] ?? null) : null,
-            'preorderPickupDate' => $preorderEnabled ? ($request->input('preorderPickupDate') ?: null) : null,
+            // Pickup date is always the event's street date.
+            'preorderPickupDate' => $preorderEnabled ? ($request->input('streetDate') ?: null) : null,
             'preorderNote'     => $preorderEnabled ? trim((string) $request->input('preorderNote', '')) : '',
         ];
     }

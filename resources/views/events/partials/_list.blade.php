@@ -49,6 +49,10 @@
             if ($n !== null && $n !== '') { $ordC += (int) $n; $hasOrdered = true; }
           }
         }
+        $orderedParts = [$ordV . 'V'];
+        if ($ordCass > 0) { $orderedParts[] = $ordCass . 'cass'; }
+        $orderedParts[] = $ordC . 'CD';
+        $orderedLabel = $hasOrdered ? implode(' · ', $orderedParts) : null;
         $pubMap = $publishedMap ?? [];
         $isLive = array_key_exists($ev['id'] ?? '', $pubMap) ? $pubMap[$ev['id']] : null;
       @endphp
@@ -66,7 +70,7 @@
         <td>{{ $rsvpCount === null ? '—' : $rsvpCount }}</td>
         <td>{{ $vinylCount === null ? '—' : $vinylCount }}</td>
         <td>{{ $cdCount === null ? '—' : $cdCount }}</td>
-        <td>@if($hasOrdered){{ (int) $ordV }}V@if($ordCass > 0) · {{ (int) $ordCass }}cass@endif · {{ (int) $ordC }}CD @else<span class="ev-meta">—</span>@endif</td>
+        <td>@if($orderedLabel){{ $orderedLabel }}@else<span class="ev-meta">—</span>@endif</td>
         <td>{{ $takingPreorders ? 'Yes' : 'No' }}</td>
         <td>
           @if($isLive === null)

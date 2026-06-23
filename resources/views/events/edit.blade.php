@@ -18,6 +18,13 @@
   <div class="ev-head">
     <div>
       <h1>{{ $event['name'] ?: 'Edit event' }}</h1>
+      @php
+        $evWhen = !empty($event['date']) ? date('l, M j, Y', strtotime($event['date'])) : '';
+        if (!empty($event['time'])) { $evWhen .= ($evWhen ? ' · ' : '') . date('g:i A', strtotime($event['time'])); }
+      @endphp
+      @if($evWhen)
+        <p style="font-size:16px;font-weight:700;margin:2px 0 4px;color:var(--pos-ink);">{{ $evWhen }}</p>
+      @endif
       <p class="sub"><a class="ev-edit" href="{{ route('events.index') }}">&larr; All events</a></p>
     </div>
   </div>
