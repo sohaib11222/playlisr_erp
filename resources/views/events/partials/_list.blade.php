@@ -2,18 +2,18 @@
 <table class="ev-tbl">
   <thead>
     <tr>
-      <th style="width:19%;">Event</th>
-      <th style="width:8%;">Date</th>
-      <th style="width:8%;">Street date</th>
-      <th style="width:10%;">Location</th>
+      <th style="width:15%;">Event</th>
+      <th style="width:7%;">Date</th>
+      <th style="width:7%;">Street date</th>
+      <th style="width:9%;">Location</th>
       <th style="width:6%;">Attending</th>
-      <th style="width:7%;">Vinyl requests</th>
+      <th style="width:6%;">Vinyl requests</th>
       <th style="width:6%;">CD requests</th>
-      <th style="width:7%;">Ordered</th>
-      <th style="width:7%;">Taking preorders?</th>
-      <th style="width:7%;">On website</th>
-      <th style="width:7%;">Prep</th>
-      <th style="width:10%;"></th>
+      <th style="width:16%;">Ordered (versions)</th>
+      <th style="width:6%;">Taking preorders?</th>
+      <th style="width:6%;">On website</th>
+      <th style="width:6%;">Prep</th>
+      <th style="width:9%;"></th>
     </tr>
   </thead>
   <tbody>
@@ -49,10 +49,20 @@
             if ($n !== null && $n !== '') { $ordC += (int) $n; $hasOrdered = true; }
           }
         }
-        $orderedParts = [$ordV . 'V'];
-        if ($ordCass > 0) { $orderedParts[] = $ordCass . 'cass'; }
-        $orderedParts[] = $ordC . 'CD';
-        $orderedLabel = $hasOrdered ? implode(' · ', $orderedParts) : null;
+        // Per-store version breakdown (non-zero only) so the column shows
+        // exactly which editions were ordered, not just totals.
+        $skuShort = ['indieVinyl' => 'indie LP', 'stdVinyl' => 'std LP', 'deluxeVinyl' => 'dlx LP', 'cassette' => 'cassette', 'stdCd' => 'std CD', 'deluxeCd' => 'dlx CD'];
+        $storeShort = ['hollywood' => 'HW', 'pico' => 'Pico'];
+        $orderedLines = [];
+        foreach ($storeShort as $s => $slabel) {
+          $row = (array) ($ordered[$s] ?? []);
+          $bits = [];
+          foreach ($skuShort as $k => $lbl) {
+            $n = $row[$k] ?? null;
+            if ($n !== null && $n !== '' && (int) $n > 0) { $bits[] = (int) $n . ' ' . $lbl; }
+          }
+          if ($bits) { $orderedLines[$slabel] = implode(', ', $bits); }
+        }
         $pubMap = $publishedMap ?? [];
         $isLive = array_key_exists($ev['id'] ?? '', $pubMap) ? $pubMap[$ev['id']] : null;
       @endphp
@@ -70,7 +80,15 @@
         <td>{{ $rsvpCount === null ? '—' : $rsvpCount }}</td>
         <td>{{ $vinylCount === null ? '—' : $vinylCount }}</td>
         <td>{{ $cdCount === null ? '—' : $cdCount }}</td>
-        <td>@if($orderedLabel){{ $orderedLabel }}@else<span class="ev-meta">—</span>@endif</td>
+        <td>
+          @if(count($orderedLines))
+            @foreach($orderedLines as $store => $line)
+              <div style="font-size:11px;line-height:1.4;"><strong>{{ $store }}:</strong> {{ $line }}</div>
+            @endforeach
+          @else
+            <span class="ev-meta">—</span>
+          @endif
+        </td>
         <td>{{ $takingPreorders ? 'Yes' : 'No' }}</td>
         <td>
           @if($isLive === null)
