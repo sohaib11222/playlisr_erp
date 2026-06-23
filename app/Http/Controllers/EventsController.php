@@ -221,6 +221,8 @@ class EventsController extends Controller
             'rsvpCounts'     => $counts['rsvps'],
             'vinylCounts'    => $counts['vinyl'],
             'cdCounts'       => $counts['cd'],
+            'bridgeProbe'    => $this->bridgeProbe(),
+            'bridgeKeySet'   => $this->erpApiKey() !== '',
         ]);
     }
 
@@ -290,10 +292,6 @@ class EventsController extends Controller
      */
     protected function erpApiKey(): string
     {
-        static $cached = null;
-        if ($cached !== null) {
-            return $cached;
-        }
         $key = trim((string) config('constants.erp_api_key'));
         if ($key === '') {
             $key = trim((string) env('ERP_API_KEY', ''));
@@ -301,7 +299,66 @@ class EventsController extends Controller
         if ($key === '') {
             $key = $this->envFromDisk('ERP_API_KEY');
         }
-        return $cached = $key;
+        // Last resort: a key set from the ERP admin UI (events page). Lets the
+        // bridge be turned on without server access, since the box .env is
+        // hand-managed and we never sync it from secrets.
+        if ($key === '') {
+            $key = $this->bridgeKeyFromStore();
+        }
+        return $key;
+    }
+
+    protected function bridgeKeyStorePath(): string
+    {
+        return storage_path('app/events-bridge.json');
+    }
+
+    /** Read the UI-set bridge key from storage (empty if unset/corrupt). */
+    protected function bridgeKeyFromStore(): string
+    {
+        $path = $this->bridgeKeyStorePath();
+        if (!is_file($path)) {
+            return '';
+        }
+        try {
+            $j = json_decode((string) file_get_contents($path), true);
+            return is_array($j) ? trim((string) ($j['erpApiKey'] ?? '')) : '';
+        } catch (\Throwable $e) {
+            return '';
+        }
+    }
+
+    /**
+     * Probe the website bridge with the resolved key. Returns the HTTP code and
+     * a coarse state so the UI can say exactly what's wrong:
+     *   no_key | connected | rejected (bad/mismatched key) | unreachable.
+     */
+    protected function bridgeProbe(): array
+    {
+        $key = $this->erpApiKey();
+        if ($key === '') {
+            return ['state' => 'no_key', 'code' => null];
+        }
+        try {
+            $ch = curl_init($this->bridgeBaseUrl() . '/erp/rsvps/stats');
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => 8,
+                CURLOPT_HTTPHEADER     => ['Accept: application/json', 'x-erp-key: ' . $key],
+            ]);
+            curl_exec($ch);
+            $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            if ($code >= 200 && $code < 300) {
+                return ['state' => 'connected', 'code' => $code];
+            }
+            if ($code === 401 || $code === 403) {
+                return ['state' => 'rejected', 'code' => $code];
+            }
+            return ['state' => 'unreachable', 'code' => $code ?: null];
+        } catch (\Throwable $e) {
+            return ['state' => 'unreachable', 'code' => null];
+        }
     }
 
     /** Resolve the website API base URL the same robust way as the key. */
@@ -554,6 +611,50 @@ class EventsController extends Controller
 
         return redirect()->route('events.edit', ['id' => $id])
             ->with('status', 'Saved.');
+    }
+
+    /**
+     * Save (or clear) the bridge key from the events admin UI, then probe the
+     * website so the user gets an immediate connected/rejected verdict. Stored
+     * in storage/app (writable, survives deploys) since the box .env is
+     * hand-managed and we never sync it from secrets.
+     */
+    public function bridgeKeySave(Request $request)
+    {
+        if (!auth()->user()->can('product.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $request->validate(['erp_api_key' => 'nullable|string|max:255']);
+        $key = trim((string) $request->input('erp_api_key', ''));
+        $path = $this->bridgeKeyStorePath();
+        $dir = dirname($path);
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+
+        if ($key === '') {
+            @unlink($path);
+            return redirect()->route('events.index')->with('status', 'Bridge key cleared.');
+        }
+
+        $tmp = $path . '.tmp';
+        file_put_contents($tmp, json_encode(
+            ['erpApiKey' => $key, 'updatedBy' => $this->actorName(), 'updatedAt' => date('c')],
+            JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
+        ));
+        @rename($tmp, $path);
+
+        $probe = $this->bridgeProbe();
+        if ($probe['state'] === 'connected') {
+            return redirect()->route('events.index')
+                ->with('status', 'Bridge connected — RSVPs and preorders now load inside the ERP.');
+        }
+        if ($probe['state'] === 'rejected') {
+            return redirect()->route('events.index')
+                ->with('error', 'Key saved, but the website rejected it (HTTP ' . ($probe['code'] ?? '?') . '). It must match the website\'s ERP_API_KEY exactly.');
+        }
+        return redirect()->route('events.index')
+            ->with('error', 'Key saved, but the website was unreachable' . ($probe['code'] ? ' (HTTP ' . $probe['code'] . ')' : '') . '. Check the NIVESSA_API URL.');
     }
 
     public function destroy(Request $request, string $id)

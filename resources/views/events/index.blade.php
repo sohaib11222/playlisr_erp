@@ -28,6 +28,39 @@
   @if(session('status'))<div class="alert-ok">{{ session('status') }}</div>@endif
   @if(session('error'))<div class="alert-err">{{ session('error') }}</div>@endif
 
+  {{-- ---------- Website bridge ---------- --}}
+  @php $bstate = ($bridgeProbe['state'] ?? 'no_key'); $bcode = $bridgeProbe['code'] ?? null; @endphp
+  <div class="ev-card">
+    <h2 style="margin-top:0;">Website bridge
+      @if($bstate === 'connected')
+        <span class="prep-badge done" style="vertical-align:middle;">Connected</span>
+      @else
+        <span class="prep-badge todo" style="vertical-align:middle;">Not connected</span>
+      @endif
+    </h2>
+    @if($bstate === 'connected')
+      <p class="sub" style="margin:0 0 4px;">RSVPs, check-in, the giveaway spin, and preorders load inside the ERP.</p>
+    @elseif($bstate === 'rejected')
+      <p class="sub" style="margin:0 0 4px;color:#a23;">A key is set, but the website rejected it (HTTP {{ $bcode }}). It must match the website's <code>ERP_API_KEY</code> exactly.</p>
+    @elseif($bstate === 'unreachable')
+      <p class="sub" style="margin:0 0 4px;color:#a23;">A key is set, but the website was unreachable{{ $bcode ? ' (HTTP '.$bcode.')' : '' }}. Check the <code>NIVESSA_API</code> URL.</p>
+    @else
+      <p class="sub" style="margin:0 0 4px;">Paste the same <code>ERP_API_KEY</code> used on nivessa.com to load RSVPs and preorders here. (Adding it to the box <code>.env</code> works too, but this doesn't need server access.)</p>
+    @endif
+    <details {{ $bstate === 'connected' ? '' : 'open' }} style="margin-top:8px;">
+      <summary class="ev-create-summary">{{ $bstate === 'connected' ? 'Replace key' : 'Set bridge key' }}</summary>
+      <form method="POST" action="{{ route('events.bridgeKey') }}" style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+        {{ csrf_field() }}
+        <div class="ev-field" style="flex:2 1 320px;">
+          <label>ERP_API_KEY (same value as the website)</label>
+          <input type="password" name="erp_api_key" autocomplete="off" placeholder="paste key">
+        </div>
+        <button type="submit" class="btn-accent">Save &amp; test</button>
+      </form>
+      <p class="sub" style="margin:8px 4px 0;">Stored on the ERP server only (not in git). Save with the field blank to clear it.</p>
+    </details>
+  </div>
+
   {{-- ---------- Create ---------- --}}
   <details class="ev-card" id="create-block">
     <summary class="ev-create-summary">+ New event</summary>
