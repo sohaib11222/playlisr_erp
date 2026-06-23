@@ -68,7 +68,7 @@ class OpeningChecklistController extends Controller
             ],
             '8. Last: floor & trash' => [
                 'floor'     => 'Sweep and mop the floor.',
-                'trash_all' => 'Empty all the trash bins and take the trash out to the back.',
+                'trash_all' => 'Empty all the trash bins and take the trash out to the back dumpster.',
             ],
         ],
         'pico' => [

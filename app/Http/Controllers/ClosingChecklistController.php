@@ -30,7 +30,7 @@ class ClosingChecklistController extends Controller
     const STORES = [
         'hollywood' => [
             'Before you leave (required)' => [
-                'trash_all'    => 'Empty all the trash bins and take the trash out to the back.',
+                'trash_all'    => 'Empty all the trash bins and take the trash out to the back dumpster.',
                 'aframe'       => 'Bring in the A-frame if it is outside.',
                 'computer'     => 'Shut down the computer at the front desk.',
                 'receiver'     => 'Put the receiver on its lowest volume and click "Mute."',
