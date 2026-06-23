@@ -53,6 +53,7 @@ class OpeningChecklistController extends Controller
             'stage_neat'     => 'Stage is neat — no trash, no stray items, set up like a cozy living-room set',
         ],
         'Front desk & floor' => [
+            'windows'          => 'Windows wiped with glass cleaner and clear — no random or obstructive signs blocking the view inside',
             'front_desk_clear' => 'Front desk clear and clutter-free for customers',
             'no_trash_front'   => 'No trash or boxes at the front desk / front area',
             'floor'            => 'Sweep or mop the floor',
