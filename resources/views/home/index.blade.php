@@ -95,7 +95,7 @@
                 <i class="fa fas fa-clipboard-check" style="font-size:26px;color:#B26A00;"></i>
                 <div style="flex:1 1 280px;min-width:220px;">
                     <div style="font-size:16px;font-weight:800;color:#5A4410;">Hollywood hasn't been opened yet today</div>
-                    <div style="font-size:13.5px;color:#7a6a3a;margin-top:2px;">Run the morning opening checklist to set the floor up — lights, signs, bins, tidy-up, doors.</div>
+                    <div style="font-size:13.5px;color:#7a6a3a;margin-top:2px;">Run the morning opening checklist to set the floor up: lights, music, signs, full bins, and a tidy floor.</div>
                 </div>
                 <span style="background:#FFF2B3;border:1px solid #E8CF68;color:#5A4410;font-weight:800;font-size:14px;padding:10px 20px;border-radius:10px;white-space:nowrap;">Start checklist</span>
             </div>

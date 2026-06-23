@@ -41,12 +41,12 @@ class OpeningChecklistController extends Controller
             'sign_vinyl'   => 'Plug in the "Have you heard it on vinyl" sign at the outlet behind the rock bins.',
             'sign_disco'   => 'Plug in the "Disco es la cultura" sign on the stage.',
         ],
-        '4. Records — walls & bins' => [
+        '4. Records: walls & bins' => [
             'walls_full'    => 'Fill the walls with records so there is no blank space showing.',
             'bins_full'     => 'Fill in any bin that looks thin so none of them look empty.',
             'bins_neat'     => 'Straighten the bins so everything is neat and nothing is out of place.',
             'trading_cards' => 'Organize the trading card bin.',
-            'endcaps'       => 'Set the end caps with A-products and new releases.',
+            'endcaps'       => 'Set the end caps with A products and new releases.',
         ],
         '5. Tidy the floor' => [
             'stray'          => 'Put any stray records or products back where they belong.',
@@ -62,7 +62,7 @@ class OpeningChecklistController extends Controller
             'front_desk' => 'Clear the front desk so it is tidy and free of any trash or boxes.',
             'bathroom'   => 'Make sure the bathroom is tidy and clean.',
         ],
-        '8. Last — floor & trash' => [
+        '8. Last: floor & trash' => [
             'floor'     => 'Sweep and mop the floor.',
             'trash_all' => 'Empty all the trash bins and take the trash out to the back.',
         ],
@@ -73,7 +73,7 @@ class OpeningChecklistController extends Controller
      * e.g. jump straight to the supply-request form for fridge/snack restocks.
      */
     const LINKS = [
-        'endcaps'      => ['url' => '/reports/abc-full-report?class=A', 'text' => 'View A-products'],
+        'endcaps'      => ['url' => '/reports/abc-full-report?class=A', 'text' => 'View A products'],
         'drink_fridge' => ['url' => '/supply-requests', 'text' => 'Request a supply'],
         'snack_rack'   => ['url' => '/supply-requests', 'text' => 'Request a supply'],
     ];
@@ -215,7 +215,7 @@ class OpeningChecklistController extends Controller
 
         $msg = count($missed) === 0
             ? 'You rock! Thank you, and have a great day!'
-            : 'Opening logged. ' . count($missed) . ' item(s) still need doing — please finish them.';
+            : 'Opening logged. ' . count($missed) . ' item(s) still need doing. Please finish them.';
 
         return redirect()->action('OpeningChecklistController@index')
             ->with('status', ['success' => 1, 'msg' => $msg]);
