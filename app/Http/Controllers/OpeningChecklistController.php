@@ -52,7 +52,7 @@ class OpeningChecklistController extends Controller
         '5. Tidy the floor' => [
             'stray'          => 'Put any stray records or products back where they belong.',
             'surfaces_clear' => 'Clear the tops of the bins and tables so no cassettes, DVDs, or drinks are left out.',
-            'clothes_hung'   => 'Hang up all the clothes so nothing is left on the floor.',
+            'clothes_hung'   => 'Hang up all clothing by the clothing rack so there is nothing on the floor.',
             'stage_neat'     => 'Tidy the stage so it has no trash or stray items and looks like a cozy living room.',
         ],
         '6. Fridge & snacks' => [
