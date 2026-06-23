@@ -108,14 +108,52 @@
       </div>
     @endif
 
+    {{-- Add a walk-in RSVP (someone who didn't RSVP in advance). Always
+         available, even before anyone has RSVP'd. --}}
+    <details style="margin-bottom:14px;border:1px dashed var(--pos-line,#ECE3CF);border-radius:10px;padding:10px 14px;">
+      <summary class="ev-create-summary">+ Add RSVP (walk-in)</summary>
+      <form method="POST" action="{{ route('events.rsvpAdd', ['id' => $event['id']]) }}" style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+        {{ csrf_field() }}
+        <div class="ev-field" style="flex:1 1 130px;"><label>First name *</label><input type="text" name="firstName" required></div>
+        <div class="ev-field" style="flex:1 1 130px;"><label>Last name *</label><input type="text" name="lastName" required></div>
+        <div class="ev-field" style="flex:2 1 220px;"><label>Email *</label><input type="email" name="email" required></div>
+        <div class="ev-field" style="flex:1 1 130px;"><label>Phone</label><input type="text" name="phone"></div>
+        <div class="ev-field" style="flex:0 1 80px;"><label>Guests</label><input type="number" name="guests" min="0" value="0"></div>
+        <div class="ev-field" style="flex:1 1 140px;"><label>Vinyl / CD</label>
+          <select name="interestedInPurchase">
+            <option value="">—</option>
+            <option value="vinyl">Vinyl</option>
+            <option value="cd">CD</option>
+            <option value="both">Both</option>
+            <option value="not_sure">Not sure</option>
+            <option value="no">No</option>
+          </select>
+        </div>
+        <label class="ev-meta" style="display:flex;align-items:center;gap:6px;padding-bottom:9px;">
+          <input type="hidden" name="checkedIn" value="0">
+          <input type="checkbox" name="checkedIn" value="1" checked> Check in now
+        </label>
+        <button type="submit" class="btn-accent">Add RSVP</button>
+      </form>
+    </details>
+
     @if(empty($rsvps))
       <div class="empty">No RSVPs yet.</div>
     @else
-      <div style="margin-bottom:12px;">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
         <button type="button" class="btn-ghost" id="copy-emails">Copy all emails</button>
+        <input type="search" id="rsvp-search" placeholder="Search name or email" autocomplete="off"
+               style="flex:1 1 220px;max-width:320px;padding:8px 10px;border:1px solid var(--pos-line,#ECE3CF);border-radius:8px;">
       </div>
-      <table class="ev-tbl">
-        <thead><tr><th>Name</th><th>Email</th><th>Going</th><th>Guests</th><th>Vinyl/CD</th><th>Checked in</th></tr></thead>
+      <table class="ev-tbl" id="rsvp-table">
+        <thead><tr>
+          <th data-sort-type="text">Name</th>
+          <th data-sort-type="text">Email</th>
+          <th data-sort-type="text">Going</th>
+          <th data-sort-type="num">Guests</th>
+          <th data-sort-type="text">Vinyl/CD</th>
+          <th data-sort-type="text">Checked in</th>
+        </tr></thead>
         <tbody>
           @foreach($rsvps as $r)
             @php $rid = $r['_id'] ?? $r['id'] ?? ''; $ci = !empty($r['checkedIn']); @endphp
@@ -250,6 +288,46 @@
             btn.disabled = false;
           }
         }, 80);
+      });
+    }
+
+    // RSVP table: search by name/email + click-to-sort any column.
+    var rt = document.getElementById('rsvp-table');
+    if (rt) {
+      var tbody = rt.querySelector('tbody');
+      var getRows = function () { return Array.prototype.slice.call(tbody.querySelectorAll('tr')); };
+
+      var search = document.getElementById('rsvp-search');
+      if (search) {
+        search.addEventListener('input', function () {
+          var q = search.value.trim().toLowerCase();
+          getRows().forEach(function (tr) {
+            var hay = ((tr.cells[0] ? tr.cells[0].textContent : '') + ' ' +
+                       (tr.cells[1] ? tr.cells[1].textContent : '')).toLowerCase();
+            tr.style.display = (!q || hay.indexOf(q) !== -1) ? '' : 'none';
+          });
+        });
+      }
+
+      var ths = Array.prototype.slice.call(rt.querySelectorAll('thead th'));
+      var stripArrow = function (s) { return s.replace(/[\s▲▼]+$/, ''); };
+      ths.forEach(function (th, idx) {
+        if (!th.dataset.sortType) return;
+        th.style.cursor = 'pointer';
+        th.title = 'Sort';
+        th.addEventListener('click', function () {
+          var asc = th.dataset.sortDir !== 'asc';
+          ths.forEach(function (o) { o.removeAttribute('data-sort-dir'); o.textContent = stripArrow(o.textContent); });
+          th.dataset.sortDir = asc ? 'asc' : 'desc';
+          var numeric = th.dataset.sortType === 'num';
+          getRows().sort(function (a, b) {
+            var x = (a.cells[idx] ? a.cells[idx].textContent : '').trim();
+            var y = (b.cells[idx] ? b.cells[idx].textContent : '').trim();
+            if (numeric) { x = parseFloat(x) || 0; y = parseFloat(y) || 0; return asc ? x - y : y - x; }
+            return asc ? x.localeCompare(y) : y.localeCompare(x);
+          }).forEach(function (tr) { tbody.appendChild(tr); });
+          th.textContent = stripArrow(th.textContent) + (asc ? ' ▲' : ' ▼');
+        });
       });
     }
   })();

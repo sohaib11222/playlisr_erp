@@ -433,6 +433,60 @@ class EventsController extends Controller
         return $out;
     }
 
+    /** Add a walk-in RSVP at the event (someone who didn't RSVP in advance). */
+    public function rsvpAdd(Request $request, string $id)
+    {
+        if (!auth()->user()->can('product.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $business_id = $this->businessId($request);
+        $items = self::load($business_id)['items'];
+        if (!isset($items[$id])) {
+            return redirect()->route('events.index')->with('error', 'Event not found.');
+        }
+        $event = $items[$id];
+
+        $request->validate([
+            'firstName' => 'required|string|max:100',
+            'lastName'  => 'required|string|max:100',
+            'email'     => 'required|email|max:191',
+            'phone'     => 'nullable|string|max:40',
+            'guests'    => 'nullable|integer|min:0|max:50',
+            'interestedInPurchase' => 'nullable|in:vinyl,cd,both,not_sure,no',
+        ], [
+            'firstName.required' => 'First name is required.',
+            'lastName.required'  => 'Last name is required.',
+            'email.required'     => 'Email is required.',
+        ]);
+
+        $locations = (array) ($event['location'] ?? []);
+        $payload = [
+            'firstName' => trim($request->input('firstName')),
+            'lastName'  => trim($request->input('lastName')),
+            'email'     => trim($request->input('email')),
+            'phone'     => $request->input('phone') ?: null,
+            'guests'    => (int) $request->input('guests', 0),
+            'attendance' => 'yes',
+            'interestedInPurchase' => $request->input('interestedInPurchase') ?: null,
+            'eventId'   => $event['id'] ?? null,
+            'eventName' => $event['name'] ?? null,
+            'eventType' => $event['eventType'] ?? null,
+            'eventDate' => $event['date'] ?? null,
+            'eventTime' => $event['time'] ?? null,
+            'eventLocationKey' => $locations[0] ?? null,
+            // The form sends this explicitly (hidden 0 + checkbox 1), default on.
+            'checkedIn' => filter_var($request->input('checkedIn'), FILTER_VALIDATE_BOOLEAN),
+        ];
+
+        $resp = $this->websiteApi('POST', '/erp/rsvps', $payload);
+        if ($resp === null) {
+            return redirect()->route('events.edit', ['id' => $id])
+                ->with('error', 'Could not reach the website to add the RSVP.');
+        }
+        return redirect()->route('events.edit', ['id' => $id])
+            ->with('status', 'RSVP added for ' . $payload['firstName'] . ' ' . $payload['lastName'] . '.');
+    }
+
     /** Toggle an RSVP's check-in state via the website bridge. */
     public function rsvpCheckIn(Request $request, string $id, string $rsvpId)
     {
