@@ -834,11 +834,23 @@ class EventsController extends Controller
         ];
     }
 
-    /** Apply the order seed to one business's store; returns events updated. */
+    /** Street dates per event (from the distributor sheets), keyword => Y-m-d. */
+    public static function streetDateSeedMap(): array
+    {
+        return [
+            'madonna'    => '2026-07-03',
+            'heated'     => '2026-07-10',
+            'jack white' => '2026-07-10',
+            'gracie'     => '2026-07-17',
+        ];
+    }
+
+    /** Apply the order + street-date seed to one business's store; returns events updated. */
     public static function applyOrderSeed(int $business_id): int
     {
         $data = self::load($business_id);
         $seed = self::orderSeedMap();
+        $streets = self::streetDateSeedMap();
         $matched = 0;
         $snapshotted = false;
         foreach ($data['items'] as $id => $ev) {
@@ -852,6 +864,13 @@ class EventsController extends Controller
                     $snapshotted = true;
                 }
                 $data['items'][$id]['ordered'] = self::cleanOrdered($stores);
+                if (!empty($streets[$kw])) {
+                    $data['items'][$id]['streetDate'] = $streets[$kw];
+                    // Pickup date always tracks the street date.
+                    if (!empty($data['items'][$id]['preorderEnabled'])) {
+                        $data['items'][$id]['preorderPickupDate'] = $streets[$kw];
+                    }
+                }
                 $data['items'][$id]['updatedAt'] = date('c');
                 $matched++;
                 break;
