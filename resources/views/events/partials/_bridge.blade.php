@@ -1,19 +1,30 @@
 {{-- RSVPs, giveaway spin wheel, and preorders. Records live on nivessa.com;
      reached read/write through the key-gated bridge. --}}
 
-@if(($bridge['error'] ?? null) === 'not_configured')
+@php
+  $evName = $event['name'] ?? '';
+  $rsvpUrl = 'https://nivessa.com/admin/rsvps?eventName=' . rawurlencode($evName);
+  $preorderUrl = 'https://nivessa.com/admin/preorders?eventName=' . rawurlencode($evName);
+@endphp
+
+@if(!($bridge['ready'] ?? false))
+  {{-- Bridge not connected (or website unreachable): give direct links to the
+       live tools on nivessa.com so RSVPs, the spin, check-in and preorders are
+       usable right now. These panels fill in here automatically once the key
+       is set. --}}
   <div class="ev-card">
-    <h2>RSVPs &amp; preorders</h2>
-    <div class="empty">
-      The website bridge isn't connected yet. Set <code>ERP_API_KEY</code> (the same value)
-      on both the website and the ERP, then RSVPs, the giveaway spin, and preorders show up here.
-    </div>
+    <h2>RSVPs &amp; giveaway spin</h2>
+    <p class="sub" style="margin-top:0;">View RSVPs, check guests in, and run the giveaway spin on the website.</p>
+    <a class="btn-accent" href="{{ $rsvpUrl }}" target="_blank" rel="noopener">Open RSVPs &amp; spin</a>
   </div>
-@elseif(!($bridge['ready'] ?? false))
   <div class="ev-card">
-    <h2>RSVPs &amp; preorders</h2>
-    <div class="alert-err">Couldn't reach nivessa.com to load RSVPs/preorders. Try again in a moment.</div>
+    <h2>Preorders</h2>
+    <p class="sub" style="margin-top:0;">See and manage preorders for this event (mark ready / picked up).</p>
+    <a class="btn-accent" href="{{ $preorderUrl }}" target="_blank" rel="noopener">Open preorders</a>
   </div>
+  @if(($bridge['error'] ?? null) === 'not_configured')
+    <p class="sub" style="margin:-8px 4px 22px;">These open the existing tools on nivessa.com. To run them inside the ERP instead, set <code>ERP_API_KEY</code> (same value) on both the website and the ERP.</p>
+  @endif
 @else
   @php
     $rsvps = $bridge['rsvps'] ?? [];
