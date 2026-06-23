@@ -8,10 +8,26 @@
 @endphp
 
 @if(!($bridge['ready'] ?? false))
-  {{-- Bridge not connected (or website unreachable): give direct links to the
-       live tools on nivessa.com so RSVPs, the spin, check-in and preorders are
-       usable right now. These panels fill in here automatically once the key
-       is set. --}}
+  {{-- Bridge not connected (or website unreachable): let the user turn it on
+       right here by pasting the key, then give direct links to the live tools
+       on nivessa.com so RSVPs, the spin, check-in and preorders are usable
+       right now. These panels fill in here automatically once the key is set. --}}
+  <div class="ev-card" style="border:1px solid var(--pos-accent,#FFE08A);">
+    <h2 style="margin-top:0;">Connect the bridge to load data here</h2>
+    @if(($bridge['error'] ?? null) === 'unreachable')
+      <p class="sub" style="margin:0 0 10px;color:#a23;">A key is set, but the website rejected it or was unreachable. Paste the key again — it must match the website's <code>ERP_API_KEY</code> exactly.</p>
+    @else
+      <p class="sub" style="margin:0 0 10px;">Paste the same <code>ERP_API_KEY</code> used on nivessa.com to pull RSVPs, check-in, the giveaway spin, and preorders into the ERP. Stored on the ERP server only (not in git); no server access needed.</p>
+    @endif
+    <form method="POST" action="{{ route('events.bridgeKey') }}" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+      {{ csrf_field() }}
+      <div class="ev-field" style="flex:2 1 320px;">
+        <label>ERP_API_KEY (same value as the website)</label>
+        <input type="password" name="erp_api_key" autocomplete="off" placeholder="paste key">
+      </div>
+      <button type="submit" class="btn-accent">Save &amp; test</button>
+    </form>
+  </div>
   <div class="ev-card">
     <h2>RSVPs &amp; giveaway spin</h2>
     <p class="sub" style="margin-top:0;">View RSVPs, check guests in, and run the giveaway spin on the website.</p>

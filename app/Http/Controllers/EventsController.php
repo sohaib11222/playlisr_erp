@@ -634,7 +634,7 @@ class EventsController extends Controller
 
         if ($key === '') {
             @unlink($path);
-            return redirect()->route('events.index')->with('status', 'Bridge key cleared.');
+            return redirect()->back()->with('status', 'Bridge key cleared.');
         }
 
         $tmp = $path . '.tmp';
@@ -646,14 +646,14 @@ class EventsController extends Controller
 
         $probe = $this->bridgeProbe();
         if ($probe['state'] === 'connected') {
-            return redirect()->route('events.index')
+            return redirect()->back()
                 ->with('status', 'Bridge connected — RSVPs and preorders now load inside the ERP.');
         }
         if ($probe['state'] === 'rejected') {
-            return redirect()->route('events.index')
+            return redirect()->back()
                 ->with('error', 'Key saved, but the website rejected it (HTTP ' . ($probe['code'] ?? '?') . '). It must match the website\'s ERP_API_KEY exactly.');
         }
-        return redirect()->route('events.index')
+        return redirect()->back()
             ->with('error', 'Key saved, but the website was unreachable' . ($probe['code'] ? ' (HTTP ' . $probe['code'] . ')' : '') . '. Check the NIVESSA_API URL.');
     }
 
