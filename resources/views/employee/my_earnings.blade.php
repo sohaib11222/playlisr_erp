@@ -115,7 +115,7 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
                     <a href="{{ url('/my-earnings/daily') }}" style="font-size:13px;font-weight:700;text-decoration:none;color:#6B5E2E;">All employees, day by day &rarr;</a>
                 @endif
             </div>
-            <p class="me-muted" style="margin:2px 0 12px;">Each day's sales and what you earned. Sales bonus is 2%/4% of what you rang over that day's target@unless($sales_bonus_live) (projected — not live yet)@endunless; listing pay is 2% of items you listed that sold that day.</p>
+            <p class="me-muted" style="margin:2px 0 12px;">Each day's sales and what you earned. Sales bonus is 2%/4% of what you rang over that day's target; listing pay is 2% of items you listed that sold that day.</p>
             @if(empty($daily))
                 <p class="me-muted">No sales or listed-item sales in this window yet.</p>
             @else
