@@ -221,6 +221,15 @@
   {{-- ---------- Giveaway spin ---------- --}}
   <div class="ev-card">
     <h2>Giveaway spin</h2>
+    <div style="border:1px solid var(--pos-line,#ECE3CF);border-radius:10px;padding:10px 14px;margin-bottom:12px;background:var(--pos-accent-soft,#FFF9DB);font-size:13px;line-height:1.5;">
+      <strong>How it works:</strong>
+      <ol style="margin:6px 0 0;padding-left:18px;">
+        <li>Pick the pool: <strong>Checked-in only</strong> (fair — just the people in the room) or <strong>All RSVPs</strong>.</li>
+        <li>Hit <strong>Spin the wheel</strong>. It shuffles, then lands on one random name.</li>
+        <li>The <strong>Winner</strong> shows below the button. Spin again for another draw.</li>
+      </ol>
+      <div class="ev-meta" style="margin-top:6px;">Tip: check guests in (RSVP table above) before spinning so only people present can win.</div>
+    </div>
     @if(empty($pool))
       <div class="empty">No one to spin yet — RSVPs (or check-ins) will appear here.</div>
     @else

@@ -25,22 +25,22 @@
   @if(session('status'))<div class="alert-ok">{{ session('status') }}</div>@endif
   @if(session('error'))<div class="alert-err">{{ session('error') }}</div>@endif
 
-  {{-- ---------- Event details ---------- --}}
-  <div class="ev-card">
-    <h2>Event details</h2>
-    <form method="POST" action="{{ route('events.update', ['id' => $event['id']]) }}">
+  {{-- ---------- Event details (collapsed by default) ---------- --}}
+  <details class="ev-card">
+    <summary class="ev-create-summary">Event details</summary>
+    <form method="POST" action="{{ route('events.update', ['id' => $event['id']]) }}" style="margin-top:14px;">
       {{ csrf_field() }}
       @include('events.partials._form', ['event' => $event, 'eventTypes' => $eventTypes, 'genres' => $genres])
       <div style="margin-top:14px;">
         <button type="submit" class="btn-accent">Save details</button>
       </div>
     </form>
-  </div>
+  </details>
 
-  {{-- ---------- Listening-party prep / task list ---------- --}}
-  <div class="ev-card">
-    <h2>Listening-party prep</h2>
-    <form method="POST" action="{{ route('events.prep', ['id' => $event['id']]) }}">
+  {{-- ---------- Listening-party prep / task list (collapsed by default) ---------- --}}
+  <details class="ev-card">
+    <summary class="ev-create-summary">Listening-party prep</summary>
+    <form method="POST" action="{{ route('events.prep', ['id' => $event['id']]) }}" style="margin-top:14px;">
       {{ csrf_field() }}
 
       <div class="ev-row">
@@ -94,7 +94,7 @@
         <button type="submit" class="btn-accent">Save prep</button>
       </div>
     </form>
-  </div>
+  </details>
 
   {{-- RSVPs, giveaway spin, preorders (live from nivessa.com via the bridge) --}}
   @include('events.partials._bridge')

@@ -675,6 +675,17 @@ class EventsController extends Controller
         // deluxeVinyl, stdCd, deluxeCd } }. Blank -> null so empty stays empty.
         $ordered = self::cleanOrdered((array) $request->input('ordered', []));
 
+        // Preorder products: a list of { title, price } the customer chooses
+        // from. preorderTitle/preorderPrice are kept = the first product for
+        // back-compat with the single-product customer flow.
+        $preorderProducts = [];
+        foreach ((array) $request->input('preorderProducts', []) as $row) {
+            $title = trim((string) ($row['title'] ?? ''));
+            if ($title === '') { continue; }
+            $price = (isset($row['price']) && $row['price'] !== '') ? round((float) $row['price'], 2) : null;
+            $preorderProducts[] = ['title' => $title, 'price' => $price];
+        }
+
         return [
             'name'             => trim($request->input('name')),
             'eventType'        => $request->input('eventType'),
@@ -690,8 +701,9 @@ class EventsController extends Controller
             'location'         => $location,
             'locationDetail'   => $locationDetail,
             'preorderEnabled'  => $preorderEnabled,
-            'preorderTitle'    => $preorderEnabled ? trim((string) $request->input('preorderTitle', '')) : '',
-            'preorderPrice'    => $preorderEnabled && $request->filled('preorderPrice') ? round((float) $request->input('preorderPrice'), 2) : null,
+            'preorderProducts' => $preorderEnabled ? $preorderProducts : [],
+            'preorderTitle'    => $preorderEnabled ? (string) ($preorderProducts[0]['title'] ?? '') : '',
+            'preorderPrice'    => $preorderEnabled ? ($preorderProducts[0]['price'] ?? null) : null,
             'preorderPickupDate' => $preorderEnabled ? ($request->input('preorderPickupDate') ?: null) : null,
             'preorderNote'     => $preorderEnabled ? trim((string) $request->input('preorderNote', '')) : '',
         ];
@@ -983,6 +995,8 @@ class EventsController extends Controller
                 'location'         => array_values(array_intersect((array) ($e['location'] ?? []), ['hollywood', 'pico'])),
                 'locationDetail'   => $e['locationDetail'] ?? null,
                 'preorderEnabled'  => filter_var($e['preorderEnabled'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                // ERP-managed; the website feed doesn't carry the products list.
+                'preorderProducts' => array_values((array) ($existing['preorderProducts'] ?? $e['preorderProducts'] ?? [])),
                 'preorderTitle'    => (string) ($e['preorderTitle'] ?? ''),
                 'preorderPrice'    => isset($e['preorderPrice']) && $e['preorderPrice'] !== null ? round((float) $e['preorderPrice'], 2) : null,
                 'preorderPickupDate' => $e['preorderPickupDate'] ?? null,

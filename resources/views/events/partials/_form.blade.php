@@ -115,22 +115,36 @@
     </label>
   </div>
 </div>
-<div class="ev-row" id="pre-fields" style="{{ $pre ? '' : 'display:none;' }}">
-  <div class="ev-field" style="flex:2 1 220px;">
-    <label>Preorder title</label>
-    <input type="text" name="preorderTitle" value="{{ $e['preorderTitle'] ?? '' }}">
+<div id="pre-fields" style="{{ $pre ? '' : 'display:none;' }}">
+  <div class="ev-row">
+    <div class="ev-field" style="flex:1 1 150px;">
+      <label>Pickup date</label>
+      <input type="date" name="preorderPickupDate" value="{{ $e['preorderPickupDate'] ?? '' }}">
+    </div>
+    <div class="ev-field" style="flex:2 1 240px;">
+      <label>Preorder note</label>
+      <input type="text" name="preorderNote" value="{{ $e['preorderNote'] ?? '' }}">
+    </div>
   </div>
-  <div class="ev-field" style="flex:1 1 120px;">
-    <label>Price $</label>
-    <input type="number" step="0.01" min="0" name="preorderPrice" value="{{ $e['preorderPrice'] ?? '' }}">
-  </div>
-  <div class="ev-field" style="flex:1 1 150px;">
-    <label>Pickup date</label>
-    <input type="date" name="preorderPickupDate" value="{{ $e['preorderPickupDate'] ?? '' }}">
-  </div>
-  <div class="ev-field" style="flex:2 1 220px;">
-    <label>Preorder note</label>
-    <input type="text" name="preorderNote" value="{{ $e['preorderNote'] ?? '' }}">
+  <div class="ev-row">
+    <div class="ev-field" style="flex:1 1 100%;">
+      <label>Preorder products (customers choose one)</label>
+      @php
+        $pp = array_values((array) ($e['preorderProducts'] ?? []));
+        // Back-compat: seed from the old single title/price if no list yet.
+        if (empty($pp) && !empty($e['preorderTitle'])) { $pp = [['title' => $e['preorderTitle'], 'price' => $e['preorderPrice'] ?? null]]; }
+        $rows = max(6, count($pp) + 1);
+      @endphp
+      <div style="display:flex;flex-direction:column;gap:8px;max-width:480px;">
+        @for($i = 0; $i < $rows; $i++)
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <input type="text" name="preorderProducts[{{ $i }}][title]" value="{{ $pp[$i]['title'] ?? '' }}" placeholder="Product, e.g. Indie LP" style="flex:2 1 240px;padding:7px 9px;border:1px solid var(--pos-line-2);border-radius:8px;font-size:13px;">
+            <input type="number" step="0.01" min="0" name="preorderProducts[{{ $i }}][price]" value="{{ $pp[$i]['price'] ?? '' }}" placeholder="Price $" style="flex:0 1 110px;padding:7px 9px;border:1px solid var(--pos-line-2);border-radius:8px;font-size:13px;">
+          </div>
+        @endfor
+      </div>
+      <div class="ev-meta" style="margin-top:6px;">Leave a row blank to skip it. Customers pick one of these on the preorder page.</div>
+    </div>
   </div>
 </div>
 
