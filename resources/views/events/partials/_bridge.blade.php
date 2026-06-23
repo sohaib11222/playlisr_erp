@@ -73,6 +73,21 @@
     }
     $vinylUnits = $interestCounts['vinyl'] + $interestCounts['both'];
     $cdUnits = $interestCounts['cd'] + $interestCounts['both'];
+
+    // Per-store order split: bucket each RSVP's vinyl/CD interest by the
+    // store they're attending (eventLocationKey). "Both" counts toward each
+    // format. So Sarah knows how many to pull to Hollywood vs Pico.
+    $storeLabels = ['hollywood' => 'Hollywood', 'pico' => 'Pico', 'unspecified' => 'Store not specified'];
+    $byStore = [];
+    foreach ($rsvps as $r) {
+      $v = $r['interestedInPurchase'] ?? null;
+      if (!in_array($v, ['vinyl', 'cd', 'both'], true)) { continue; }
+      $sk = $r['eventLocationKey'] ?? '';
+      $sk = ($sk === 'hollywood' || $sk === 'pico') ? $sk : 'unspecified';
+      if (!isset($byStore[$sk])) { $byStore[$sk] = ['vinyl' => 0, 'cd' => 0]; }
+      if ($v === 'vinyl' || $v === 'both') { $byStore[$sk]['vinyl']++; }
+      if ($v === 'cd' || $v === 'both') { $byStore[$sk]['cd']++; }
+    }
   @endphp
 
   {{-- ---------- RSVPs ---------- --}}
@@ -99,12 +114,24 @@
           @endforeach
         </div>
         <div style="font-size:13px;">
-          Suggested order:
+          Suggested order (total):
           <strong>{{ $vinylUnits }} vinyl</strong> &middot; <strong>{{ $cdUnits }} CD</strong>
           @if($interestCounts['not_sure'] > 0)
             <span class="ev-meta">(+{{ $interestCounts['not_sure'] }} more if the "not sure" guests commit)</span>
           @endif
         </div>
+        @if(count($byStore) > 0)
+          <div style="margin-top:10px;border-top:1px solid var(--pos-line,#ECE3CF);padding-top:10px;">
+            <div style="font-weight:700;font-size:12px;margin-bottom:6px;">Order to each store</div>
+            @foreach($storeLabels as $sk => $slabel)
+              @if(isset($byStore[$sk]))
+                <div style="font-size:13px;margin-bottom:3px;">
+                  {{ $slabel }}: <strong>{{ $byStore[$sk]['vinyl'] }} vinyl</strong> &middot; <strong>{{ $byStore[$sk]['cd'] }} CD</strong>
+                </div>
+              @endif
+            @endforeach
+          </div>
+        @endif
       </div>
     @endif
 

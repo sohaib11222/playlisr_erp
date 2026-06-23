@@ -40,10 +40,6 @@
     <label>Street date</label>
     <input type="date" name="streetDate" value="{{ $e['streetDate'] ?? '' }}">
   </div>
-  <div class="ev-field" style="flex:2 1 200px;">
-    <label>Sounds like (optional)</label>
-    <input type="text" name="artistSoundsLike" value="{{ $e['artistSoundsLike'] ?? '' }}" placeholder="e.g. Joy Division, The Cure">
-  </div>
 </div>
 
 <div class="ev-row">
