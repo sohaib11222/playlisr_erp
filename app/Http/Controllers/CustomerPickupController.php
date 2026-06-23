@@ -7,6 +7,7 @@ use App\Product;
 use App\Variation;
 use App\Contact;
 use App\BusinessLocation;
+use App\Services\AmsPickupOrders;
 use Illuminate\Http\Request;
 use Yajra\DataTables\Facades\DataTables;
 use DB;
@@ -19,9 +20,13 @@ class CustomerPickupController extends Controller
     public function index()
     {
         $business_id = request()->session()->get('user.business_id');
-        $statuses = ['ready' => 'Ready for Pickup', 'picked_up' => 'Picked Up', 'cancelled' => 'Cancelled'];
+        $statuses = ['on_order' => 'On Order (AMS)', 'ready' => 'Ready for Pickup', 'picked_up' => 'Picked Up', 'cancelled' => 'Cancelled'];
 
         if (request()->ajax()) {
+            // AMS overlay: ids still inbound show as "On Order" instead of Ready.
+            $ams = AmsPickupOrders::load($business_id);
+            $onOrderIds = AmsPickupOrders::onOrderIds($business_id);
+
             $pickups = CustomerPickup::where('customer_pickups.business_id', $business_id)
                 ->leftJoin('contacts', 'customer_pickups.contact_id', '=', 'contacts.id')
                 ->leftJoin('products', 'customer_pickups.product_id', '=', 'products.id')
@@ -41,7 +46,20 @@ class CustomerPickupController extends Controller
                 );
 
             if (request()->has('status') && request()->status != '') {
-                $pickups->where('customer_pickups.status', request()->status);
+                $reqStatus = request()->status;
+                if ($reqStatus === 'on_order') {
+                    // On-order is an overlay flag, not a DB status. Empty list
+                    // -> match nothing rather than every row.
+                    $pickups->whereIn('customer_pickups.id', $onOrderIds ?: [0]);
+                } elseif ($reqStatus === 'ready') {
+                    // "Ready" means actually-in-hand: hide still-inbound AMS orders.
+                    $pickups->where('customer_pickups.status', 'ready');
+                    if (!empty($onOrderIds)) {
+                        $pickups->whereNotIn('customer_pickups.id', $onOrderIds);
+                    }
+                } else {
+                    $pickups->where('customer_pickups.status', $reqStatus);
+                }
             }
 
             if (request()->has('contact_id') && request()->contact_id != '') {
@@ -49,11 +67,16 @@ class CustomerPickupController extends Controller
             }
 
             return DataTables::of($pickups)
-                ->addColumn('action', function ($row) {
+                ->addColumn('action', function ($row) use ($onOrderIds) {
+                    $isOnOrder = in_array($row->id, $onOrderIds);
                     $html = '<div class="btn-group">';
                     $html .= '<a href="' . action('CustomerPickupController@show', [$row->id]) . '" class="btn btn-info btn-xs"><i class="fa fa-eye"></i></a>';
 
-                    if ($row->status == 'ready') {
+                    if ($isOnOrder) {
+                        // Still inbound from AMS — the only action is to mark it arrived.
+                        $html .= '<button type="button" class="btn btn-success btn-xs mark_arrived" data-href="' . action('CustomerPickupController@markArrived', [$row->id]) . '" data-id="' . $row->id . '"><i class="fa fa-truck"></i> Arrived</button>';
+                        $html .= '<button type="button" class="btn btn-danger btn-xs delete_pickup" data-href="' . action('CustomerPickupController@destroy', [$row->id]) . '"><i class="fa fa-trash"></i></button>';
+                    } elseif ($row->status == 'ready') {
                         $html .= '<button type="button" class="btn btn-success btn-xs mark_picked_up" data-href="' . action('CustomerPickupController@markPickedUp', [$row->id]) . '"><i class="fa fa-check"></i> Picked Up</button>';
                         $html .= '<a href="' . action('CustomerPickupController@edit', [$row->id]) . '" class="btn btn-warning btn-xs"><i class="fa fa-edit"></i></a>';
                         $html .= '<button type="button" class="btn btn-danger btn-xs delete_pickup" data-href="' . action('CustomerPickupController@destroy', [$row->id]) . '"><i class="fa fa-trash"></i></button>';
@@ -62,7 +85,18 @@ class CustomerPickupController extends Controller
                     $html .= '</div>';
                     return $html;
                 })
-                ->editColumn('status', function ($row) {
+                ->editColumn('status', function ($row) use ($onOrderIds, $ams) {
+                    if (in_array($row->id, $onOrderIds)) {
+                        $meta = $ams[(string) $row->id] ?? [];
+                        $out = '<span class="label" style="background:#2C5F8A;">On Order</span>';
+                        if (!empty($meta['ams_order_number'])) {
+                            $out .= '<br><small>AMS #' . e($meta['ams_order_number']) . '</small>';
+                        }
+                        if (!empty($meta['expected_date'])) {
+                            $out .= '<br><small>ETA ' . \Carbon::parse($meta['expected_date'])->format('n/j/y') . '</small>';
+                        }
+                        return $out;
+                    }
                     $labels = [
                         'ready' => '<span class="label label-warning">Ready for Pickup</span>',
                         'picked_up' => '<span class="label label-success">Picked Up</span>',
@@ -157,6 +191,9 @@ class CustomerPickupController extends Controller
                 'expected_pickup_time' => 'nullable|string|max:50',
                 'is_paid' => 'nullable',
                 'notes' => 'nullable|string',
+                'ams_order_number' => 'nullable|string|max:64',
+                'is_on_order' => 'nullable',
+                'ams_expected_date' => 'nullable|date',
             ]);
 
             $pickup = new CustomerPickup();
@@ -174,6 +211,19 @@ class CustomerPickupController extends Controller
             $pickup->notes = $request->notes;
             $pickup->created_by = auth()->user()->id;
             $pickup->save();
+
+            // AMS special order: record the order number / ETA and (if it
+            // isn't in hand yet) flag it "on order" so it shows as inbound
+            // and doesn't surface as ready-for-pickup until it arrives.
+            $isOnOrder = $request->has('is_on_order');
+            $amsNumber = trim((string) $request->input('ams_order_number'));
+            if ($isOnOrder || $amsNumber !== '') {
+                AmsPickupOrders::put($business_id, $pickup->id, [
+                    'ams_order_number' => $amsNumber !== '' ? $amsNumber : null,
+                    'expected_date'    => $request->input('ams_expected_date') ?: null,
+                    'on_order'         => $isOnOrder,
+                ]);
+            }
 
             $output = [
                 'success' => true,
@@ -297,6 +347,8 @@ class CustomerPickupController extends Controller
             $business_id = request()->session()->get('user.business_id');
             $pickup = CustomerPickup::where('business_id', $business_id)->findOrFail($id);
 
+            // On-order AMS rows carry DB status 'ready', so they delete via the
+            // same path; we just also drop their sidecar entry below.
             if ($pickup->status != 'ready') {
                 $output = [
                     'success' => false,
@@ -304,6 +356,7 @@ class CustomerPickupController extends Controller
                 ];
             } else {
                 $pickup->delete();
+                AmsPickupOrders::forget($business_id, $pickup->id);
                 $output = [
                     'success' => true,
                     'msg' => __('lang_v1.success'),
@@ -362,10 +415,14 @@ class CustomerPickupController extends Controller
     public function getCustomerPickups($contact_id)
     {
         $business_id = request()->session()->get('user.business_id');
+        $onOrderIds = AmsPickupOrders::onOrderIds($business_id);
 
         $pickups = CustomerPickup::where('customer_pickups.business_id', $business_id)
             ->where('customer_pickups.contact_id', $contact_id)
             ->where('customer_pickups.status', 'ready')
+            ->when(!empty($onOrderIds), function ($q) use ($onOrderIds) {
+                $q->whereNotIn('customer_pickups.id', $onOrderIds);
+            })
             ->leftJoin('products', 'customer_pickups.product_id', '=', 'products.id')
             ->leftJoin('variations', 'customer_pickups.variation_id', '=', 'variations.id')
             ->select(
@@ -381,5 +438,175 @@ class CustomerPickupController extends Controller
             'success' => true,
             'pickups' => $pickups,
         ]);
+    }
+
+    /**
+     * POS sidebar feed: a customer's ready pickups + still-inbound AMS
+     * orders. Used to flag "you've got an order waiting" when the cashier
+     * pulls up the customer. Defensive — never throws at the POS.
+     */
+    public function forContact($contact_id)
+    {
+        try {
+            $business_id = request()->session()->get('user.business_id');
+            $ams = AmsPickupOrders::load($business_id);
+            $onOrderIds = AmsPickupOrders::onOrderIds($business_id);
+
+            $rows = CustomerPickup::where('customer_pickups.business_id', $business_id)
+                ->where('customer_pickups.contact_id', $contact_id)
+                ->where('customer_pickups.status', 'ready')
+                ->leftJoin('products', 'customer_pickups.product_id', '=', 'products.id')
+                ->leftJoin('variations', 'customer_pickups.variation_id', '=', 'variations.id')
+                ->select(
+                    'customer_pickups.*',
+                    'products.name as product_name',
+                    'products.artist',
+                    'variations.sub_sku'
+                )
+                ->orderBy('customer_pickups.hold_date', 'desc')
+                ->get();
+
+            $ready = [];
+            $onOrder = [];
+            foreach ($rows as $r) {
+                $label = trim(implode(' — ', array_filter([trim((string) $r->artist), trim((string) $r->product_name)])));
+                $meta = $ams[(string) $r->id] ?? [];
+                $item = [
+                    'id' => $r->id,
+                    'label' => $label !== '' ? $label : ($r->sub_sku ?: ('Pickup #' . $r->id)),
+                    'qty' => (int) $r->quantity,
+                    'is_paid' => (bool) $r->is_paid,
+                    'ams_order_number' => $meta['ams_order_number'] ?? null,
+                    'expected_date' => $meta['expected_date'] ?? null,
+                ];
+                if (in_array($r->id, $onOrderIds)) {
+                    $onOrder[] = $item;
+                } else {
+                    $ready[] = $item;
+                }
+            }
+
+            return response()->json(['success' => true, 'ready' => $ready, 'on_order' => $onOrder]);
+        } catch (\Throwable $e) {
+            \Log::warning('CustomerPickup forContact failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'ready' => [], 'on_order' => []]);
+        }
+    }
+
+    /**
+     * Mark an inbound AMS special order as arrived. Clears the on-order flag
+     * (so the row becomes a normal Ready pickup) and optionally notifies the
+     * customer by email / SMS that it's ready for pickup.
+     */
+    public function markArrived(Request $request, $id)
+    {
+        try {
+            $business_id = request()->session()->get('user.business_id');
+            $pickup = CustomerPickup::where('business_id', $business_id)
+                ->with(['contact', 'product', 'variation', 'location'])
+                ->findOrFail($id);
+
+            $meta = AmsPickupOrders::get($business_id, $pickup->id);
+            if (!$meta || empty($meta['on_order'])) {
+                return [
+                    'success' => false,
+                    'msg' => 'This order is not marked on-order.',
+                ];
+            }
+
+            // Flip it to in-hand. The pickup row already carries status 'ready'.
+            AmsPickupOrders::put($business_id, $pickup->id, [
+                'on_order' => false,
+                'arrived_at' => now()->toDateTimeString(),
+            ]);
+
+            $notifyMethod = strtolower((string) $request->input('notify_method', 'none'));
+            $channels = [];
+            if (in_array($notifyMethod, ['email', 'both'])) $channels[] = 'email';
+            if (in_array($notifyMethod, ['sms', 'both']))   $channels[] = 'sms';
+
+            $notifyResults = [];
+            foreach ($channels as $ch) {
+                $notifyResults[$ch] = $this->sendArrivalNotification($ch, $pickup);
+            }
+            if (!empty($channels)) {
+                AmsPickupOrders::put($business_id, $pickup->id, ['notified' => true]);
+            }
+
+            return [
+                'success' => true,
+                'msg' => 'Marked arrived — now ready for pickup.',
+                'notifications' => $notifyResults,
+            ];
+        } catch (\Exception $e) {
+            \Log::emergency("File:" . $e->getFile() . "Line:" . $e->getLine() . "Message:" . $e->getMessage());
+            return [
+                'success' => false,
+                'msg' => __('messages.something_went_wrong'),
+            ];
+        }
+    }
+
+    /** Human label for a pickup's item, e.g. "Artist — Title". */
+    private function pickupLabel(CustomerPickup $pickup): string
+    {
+        $artist = trim((string) optional($pickup->product)->artist);
+        $name = trim((string) optional($pickup->product)->name);
+        $label = trim(implode(' — ', array_filter([$artist, $name])));
+        if ($label === '') {
+            $label = trim((string) optional($pickup->variation)->sub_sku);
+        }
+        return $label;
+    }
+
+    /**
+     * Dispatch one notification channel for an arrived pickup.
+     * Returns ['ok' => bool, 'msg' => string]. Mirrors the customer-wants
+     * notifier so the POS gets the same per-channel feedback.
+     */
+    private function sendArrivalNotification(string $channel, CustomerPickup $pickup): array
+    {
+        $contact = $pickup->contact;
+        if (!$contact) {
+            return ['ok' => false, 'msg' => 'No contact linked to this pickup.'];
+        }
+
+        $label = $this->pickupLabel($pickup);
+        $storeName = optional($pickup->location)->name ?: 'Nivessa';
+
+        if ($channel === 'email') {
+            if (empty($contact->email)) {
+                return ['ok' => false, 'msg' => 'Customer has no email on file.'];
+            }
+            try {
+                \Mail::to($contact->email)->send(new \App\Mail\CustomerPickupArrived($pickup, $contact, $label, $storeName));
+                return ['ok' => true, 'msg' => 'Emailed ' . $contact->email];
+            } catch (\Throwable $e) {
+                \Log::warning('CustomerPickup email failed: ' . $e->getMessage());
+                return ['ok' => false, 'msg' => 'Email failed: ' . $e->getMessage()];
+            }
+        }
+
+        if ($channel === 'sms') {
+            $phone = $contact->mobile ?: ($contact->alternate_number ?: null);
+            if (empty($phone)) {
+                return ['ok' => false, 'msg' => 'Customer has no phone on file.'];
+            }
+            $first = trim((string) ($contact->first_name ?? ''));
+            $hey = $first !== '' ? ('Hey ' . $first . ', ') : 'Hey, ';
+            $what = $label !== '' ? ('your ' . $label) : 'your order';
+            $msg = $hey . "Nivessa here — {$what} just came in at {$storeName}. "
+                 . "It's ready for pickup, we'll hold it behind the counter.";
+            try {
+                $sms = app(\App\Services\OpenPhoneService::class);
+                $result = $sms->send($phone, $msg);
+                return ['ok' => (bool) ($result['success'] ?? false), 'msg' => $result['msg'] ?? ''];
+            } catch (\Throwable $e) {
+                \Log::warning('CustomerPickup sms failed: ' . $e->getMessage());
+                return ['ok' => false, 'msg' => 'Text failed: ' . $e->getMessage()];
+            }
+        }
+
+        return ['ok' => false, 'msg' => 'Unknown notify channel: ' . $channel];
     }
 }

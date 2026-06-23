@@ -68,6 +68,10 @@
      the cashier can say "oh hey, we got the Green Day LP in yesterday." --}}
 @include('sale_pos.partials.customer_wants_widget')
 
+{{-- Pickup flag — surfaces "this customer has an order waiting / on the way"
+     (incl. AMS special orders) the moment their account is pulled up. --}}
+@include('sale_pos.partials.customer_pickups_flag')
+
 {{-- "You may also like" — in-stock titles by the same artist(s) already in the
      cart, so cashiers can suggest an add-on at checkout. --}}
 @include('sale_pos.partials.recommendations_widget')

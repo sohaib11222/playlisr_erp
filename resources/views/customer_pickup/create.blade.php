@@ -118,6 +118,46 @@
         </div>
     </div>
 
+    {{-- AMS special order --}}
+    <div class="row">
+        <div class="col-md-12">
+            <div class="box box-primary">
+                <div class="box-header with-border">
+                    <h3 class="box-title"><i class="fa fa-truck"></i> &nbsp;Special Order (AMS)</h3>
+                </div>
+                <div class="box-body">
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <div class="checkbox">
+                                    <label>
+                                        {!! Form::checkbox('is_on_order', 1, false, ['id' => 'is_on_order']) !!}
+                                        <strong>On order — not in yet</strong> &nbsp;<small class="text-muted">— ordered from AMS; shows as "On Order" until it arrives</small>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                {!! Form::label('ams_order_number', 'AMS Order #:') !!}
+                                {!! Form::text('ams_order_number', null, ['class' => 'form-control', 'placeholder' => 'AMS order / invoice number', 'maxlength' => 64]); !!}
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                {!! Form::label('ams_expected_date', 'Expected Arrival:') !!}
+                                {!! Form::text('ams_expected_date', null, ['class' => 'form-control date-picker', 'placeholder' => 'Optional']); !!}
+                            </div>
+                        </div>
+                    </div>
+                    <small class="help-block">When it lands, open this pickup and hit <strong>Arrived</strong> to alert the customer.</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- Notes --}}
     <div class="row">
         <div class="col-md-12">

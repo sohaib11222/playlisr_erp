@@ -171,7 +171,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // Customer Pickups
     Route::resource('customer-pickups', 'CustomerPickupController');
     Route::get('/customer-pickups/customer/{contact_id}', 'CustomerPickupController@getCustomerPickups');
+    Route::get('/customer-pickups/for-contact/{contact_id}', 'CustomerPickupController@forContact');
     Route::post('/customer-pickups/{id}/mark-picked-up', 'CustomerPickupController@markPickedUp');
+    Route::post('/customer-pickups/{id}/mark-arrived', 'CustomerPickupController@markArrived');
 
     // Loyalty Tiers
     Route::resource('loyalty-tiers', 'LoyaltyTierController');

@@ -76,6 +76,30 @@
     </div>
 </div>
 
+<div class="modal fade" id="pickup_arrived_modal" tabindex="-1" role="dialog">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <form id="pickup_arrived_form">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                    <h4 class="modal-title">Mark Arrived</h4>
+                </div>
+                <div class="modal-body">
+                    <p>This special order just came in. Notify the customer it's ready for pickup?</p>
+                    <div class="radio"><label><input type="radio" name="notify_method" value="none" checked> Don't notify — I'll let them know</label></div>
+                    <div class="radio"><label><input type="radio" name="notify_method" value="email"> Email</label></div>
+                    <div class="radio"><label><input type="radio" name="notify_method" value="sms"> Text (OpenPhone)</label></div>
+                    <div class="radio"><label><input type="radio" name="notify_method" value="both"> Both</label></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success">Mark Arrived</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 @stop
 @section('javascript')
 <script type="text/javascript">
@@ -161,6 +185,45 @@
                     } else {
                         toastr.error(result.msg);
                     }
+                }
+            });
+        });
+
+        // AMS special order arrived → optional customer alert.
+        var pickup_url_to_arrive = null;
+        $(document).on('click', '.mark_arrived', function(e) {
+            e.preventDefault();
+            pickup_url_to_arrive = $(this).attr('data-href');
+            $('#pickup_arrived_form')[0].reset();
+            $('#pickup_arrived_modal').modal('show');
+        });
+
+        $('#pickup_arrived_form').on('submit', function(e) {
+            e.preventDefault();
+            if (!pickup_url_to_arrive) return;
+            var $btn = $(this).find('button[type="submit"]').prop('disabled', true);
+            $.ajax({
+                method: 'POST',
+                url: pickup_url_to_arrive,
+                data: $(this).serialize() + '&_token=' + encodeURIComponent($('meta[name="csrf-token"]').attr('content') || ''),
+                dataType: 'json',
+                success: function(result) {
+                    $('#pickup_arrived_modal').modal('hide');
+                    $btn.prop('disabled', false);
+                    if (result.success) {
+                        toastr.success(result.msg);
+                        var n = result.notifications || {};
+                        Object.keys(n).forEach(function(k) {
+                            (n[k].ok ? toastr.success : toastr.warning)(k + ': ' + n[k].msg);
+                        });
+                        pickup_table.ajax.reload();
+                    } else {
+                        toastr.error(result.msg);
+                    }
+                },
+                error: function() {
+                    $btn.prop('disabled', false);
+                    toastr.error('Something went wrong.');
                 }
             });
         });
