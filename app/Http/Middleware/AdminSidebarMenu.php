@@ -40,16 +40,8 @@ class AdminSidebarMenu
                 $menu->url(
                     route('events.index'),
                     'Events',
-                    ['icon' => 'fa fas fa-music', 'active' => request()->segment(1) == 'events' && request()->input('type') == null]
+                    ['icon' => 'fa fas fa-music', 'active' => request()->segment(1) == 'events']
                 )->order(7);
-
-                //Listening Parties — same events screen, filtered to the
-                //listening_party type via ?type. Its own quick-access entry.
-                $menu->url(
-                    route('events.index', ['type' => 'listening_party']),
-                    'Listening Parties',
-                    ['icon' => 'fa fas fa-headphones', 'active' => request()->segment(1) == 'events' && request()->input('type') == 'listening_party']
-                )->order(8);
             }
 
             //Discounts (top-level for quick access)
