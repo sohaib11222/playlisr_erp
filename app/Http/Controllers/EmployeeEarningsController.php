@@ -121,6 +121,24 @@ class EmployeeEarningsController extends Controller
             \Log::warning('my-earnings daily breakdown failed: ' . $e->getMessage());
         }
 
+        // Admin convenience: a roster of current staff so an admin can jump to
+        // any employee's view (?user_id=) without hunting for an id.
+        $staff = collect();
+        if ($isAdmin) {
+            $staff = DB::table('users')
+                ->where('business_id', $businessId)
+                ->where('status', 'active')
+                ->where('allow_login', 1)
+                ->orderBy('first_name')->orderBy('last_name')
+                ->get(['id', 'first_name', 'last_name', 'username'])
+                ->map(function ($u) {
+                    return (object) [
+                        'id'   => (int) $u->id,
+                        'name' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->username ?? ('User #' . $u->id)),
+                    ];
+                });
+        }
+
         return view('employee.my_earnings', [
             'name'         => trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? '')) ?: ($user->username ?? 'You'),
             'from'         => $from,
@@ -138,6 +156,7 @@ class EmployeeEarningsController extends Controller
             'viewing_other'=> $viewingOther,
             'target_id'    => $userId,
             'is_admin'     => $isAdmin,
+            'staff'        => $staff,
             'daily'        => $daily,
             'daily_days'   => $dailyDays,
             'sales_bonus_live' => $salesBonus['live'] ?? false,

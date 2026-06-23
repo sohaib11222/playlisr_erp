@@ -50,6 +50,17 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
 
 <section class="content">
     <div class="me-wrap">
+        @if(!empty($is_admin) && $staff->isNotEmpty())
+            <div class="me-card" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+                <label for="emp-pick" style="font-weight:700;font-size:14px;">View employee</label>
+                <select id="emp-pick" onchange="if(this.value){window.location.href='{{ url('/my-earnings') }}?user_id='+this.value;}" style="min-height:40px;padding:8px 12px;border:1px solid #ECE3CF;border-radius:8px;background:#FFFFFF;font:inherit;min-width:220px;">
+                    @foreach($staff as $s)
+                        <option value="{{ $s->id }}" {{ (int) $target_id === (int) $s->id ? 'selected' : '' }}>{{ $s->name }}</option>
+                    @endforeach
+                </select>
+                <a href="{{ url('/my-earnings/daily') }}" style="margin-left:auto;font-size:13px;font-weight:700;color:#6B5E2E;text-decoration:none;">All employees, day by day &rarr;</a>
+            </div>
+        @endif
         @php
             $total_earned = round($earned + (float) $sales_bonus['bonus'], 2);
             $total_owed = round($owed + (float) $sales_bonus['bonus'], 2);
