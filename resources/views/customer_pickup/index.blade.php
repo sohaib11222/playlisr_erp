@@ -3,34 +3,71 @@
 @section('title', 'Customer Pickups')
 
 @section('content')
+@include('sale_pos.partials._redesign_v2')
+<script>document.body.classList.add('pos-v2');</script>
 
-<section class="content-header">
-    <h1>Customer Pickups</h1>
-</section>
+<style>
+body.pos-v2 .pickup-wrap { max-width: 1280px; margin: 0 auto; padding: 18px 16px 60px; font-family: "Inter Tight", system-ui, sans-serif; color: var(--pos-ink); }
+body.pos-v2 .pickup-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
+body.pos-v2 .pickup-head h1 { font-size: 24px; font-weight: 700; margin: 0 0 4px; }
+body.pos-v2 .pickup-head .sub { color: #6b6253; margin: 0; font-size: 14px; }
+body.pos-v2 .pickup-card { background: var(--pos-surface); border: 1px solid var(--pos-line); border-radius: 14px; padding: 18px 20px; margin-bottom: 20px; }
+body.pos-v2 .pickup-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+body.pos-v2 .pickup-toolbar .filter-label { font-size: 12px; font-weight: 600; color: #5a5145; }
+body.pos-v2 .pickup-toolbar select {
+  border: 1px solid var(--pos-line-2); border-radius: 9px; padding: 8px 11px; font-size: 14px;
+  font-family: inherit; background: #fff; box-shadow: none; height: auto; color: var(--pos-ink); min-width: 200px; }
+body.pos-v2 .pickup-toolbar select:focus { outline: none; border-color: var(--pos-accent-deep); box-shadow: 0 0 0 3px var(--pos-accent-soft); }
+body.pos-v2 .btn-accent { background: var(--pos-accent); color: var(--pos-accent-text); border: 1px solid var(--pos-accent-deep);
+  border-radius: 10px; padding: 10px 18px; font-weight: 700; font-size: 14px; cursor: pointer; font-family: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 7px; }
+body.pos-v2 .btn-accent:hover { background: var(--pos-accent-deep); color: var(--pos-accent-text); }
 
-<section class="content">
-    @component('components.widget', ['class' => 'box-primary', 'title' => 'All Customer Pickups'])
-        @slot('tool')
-            <div class="box-tools">
-                <a href="{{ action('CustomerPickupController@create') }}" class="btn btn-block btn-primary">
-                    <i class="fa fa-plus"></i> Add Pickup
-                </a>
-            </div>
-        @endslot
+/* DataTable, pos-v2 skin */
+body.pos-v2 #pickup_table { width: 100% !important; border-collapse: collapse; }
+body.pos-v2 #pickup_table thead th {
+  text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+  color: #8a8070; font-weight: 700; padding: 9px 10px; border-bottom: 1px solid var(--pos-line); background: transparent; }
+body.pos-v2 #pickup_table tbody td { padding: 11px 10px; border-bottom: 1px solid var(--pos-line); font-size: 13.5px; vertical-align: middle; color: var(--pos-ink); }
+body.pos-v2 #pickup_table tbody tr:hover { background: var(--pos-accent-soft); }
+body.pos-v2 #pickup_table .label { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; }
+body.pos-v2 #pickup_table .btn-group { display: inline-flex; gap: 5px; }
+body.pos-v2 #pickup_table .btn-xs { border-radius: 8px; font-family: inherit; font-weight: 600; }
+body.pos-v2 .dataTables_wrapper .dataTables_filter input,
+body.pos-v2 .dataTables_wrapper .dataTables_length select {
+  border: 1px solid var(--pos-line-2); border-radius: 8px; padding: 6px 9px; font-family: inherit; background: #fff; }
+body.pos-v2 .dataTables_wrapper .dataTables_filter input:focus { outline: none; border-color: var(--pos-accent-deep); box-shadow: 0 0 0 3px var(--pos-accent-soft); }
+body.pos-v2 .dataTables_wrapper .dataTables_info,
+body.pos-v2 .dataTables_wrapper .dataTables_length,
+body.pos-v2 .dataTables_wrapper .dataTables_filter { color: #8a8070; font-size: 13px; }
+body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button.current {
+  background: var(--pos-accent) !important; border: 1px solid var(--pos-accent-deep) !important; color: var(--pos-accent-text) !important; border-radius: 8px; }
+body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-radius: 8px; }
+</style>
 
-        <div class="row" style="margin-bottom: 10px;">
-            <div class="col-md-3">
-                <select class="form-control" id="status_filter">
-                    <option value="">All Statuses</option>
-                    @foreach($statuses as $key => $label)
-                        <option value="{{ $key }}" {{ $key == 'ready' ? 'selected' : '' }}>{{ $label }}</option>
-                    @endforeach
-                </select>
-            </div>
+<div class="pickup-wrap">
+    <div class="pickup-head">
+        <div>
+            <h1>Customer Pickups</h1>
+            <p class="sub">Items held for customers and AMS special orders on their way in. Hit <strong>Arrived</strong> on an on-order item when it lands to alert the customer.</p>
+        </div>
+        <a href="{{ action('CustomerPickupController@create') }}" class="btn-accent">
+            <i class="fa fa-plus"></i> Add Pickup
+        </a>
+    </div>
+
+    <div class="pickup-card">
+        <div class="pickup-toolbar">
+            <span class="filter-label">Show:</span>
+            <select id="status_filter">
+                <option value="">All Statuses</option>
+                @foreach($statuses as $key => $label)
+                    <option value="{{ $key }}" {{ $key == 'ready' ? 'selected' : '' }}>{{ $label }}</option>
+                @endforeach
+            </select>
         </div>
 
         <div class="table-responsive">
-            <table class="table table-bordered table-striped table-hover" id="pickup_table">
+            <table class="table table-hover" id="pickup_table" style="width:100%">
                 <thead>
                     <tr>
                         <th>Store</th>
@@ -49,8 +86,8 @@
                 </thead>
             </table>
         </div>
-    @endcomponent
-</section>
+    </div>
+</div>
 
 <div class="modal fade" id="pickup_completion_modal" tabindex="-1" role="dialog">
     <div class="modal-dialog" role="document">

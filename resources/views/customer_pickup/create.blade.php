@@ -3,182 +3,150 @@
 @section('title', 'Add Customer Pickup')
 
 @section('content')
+@include('sale_pos.partials._redesign_v2')
+<script>document.body.classList.add('pos-v2');</script>
 
-<section class="content-header">
+<style>
+body.pos-v2 .pickup-wrap { max-width: 1000px; margin: 0 auto; padding: 18px 16px 60px; font-family: "Inter Tight", system-ui, sans-serif; color: var(--pos-ink); }
+body.pos-v2 .pickup-wrap h1 { font-size: 24px; font-weight: 700; margin: 0 0 4px; }
+body.pos-v2 .pickup-wrap .sub { color: #6b6253; margin: 0 0 20px; font-size: 14px; }
+body.pos-v2 .pickup-card { background: var(--pos-surface); border: 1px solid var(--pos-line); border-radius: 14px; padding: 18px 20px; margin-bottom: 20px; }
+body.pos-v2 .pickup-card h2 { font-size: 16px; font-weight: 700; margin: 0 0 14px; display: flex; align-items: center; gap: 8px; }
+body.pos-v2 .pickup-card h2 .fa { color: var(--pos-accent-deep); }
+body.pos-v2 .pickup-row { display: flex; flex-wrap: wrap; gap: 16px; }
+body.pos-v2 .pickup-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 4px; flex: 1 1 220px; min-width: 0; }
+body.pos-v2 .pickup-field.narrow { flex: 0 1 130px; }
+body.pos-v2 .pickup-field label { font-size: 12px; font-weight: 600; color: #5a5145; }
+body.pos-v2 .pickup-field .help-block { font-size: 11.5px; color: #8a8070; margin: 2px 0 0; }
+body.pos-v2 .pickup-wrap .form-control,
+body.pos-v2 .pickup-field input,
+body.pos-v2 .pickup-field textarea {
+  border: 1px solid var(--pos-line-2); border-radius: 9px; padding: 9px 11px; font-size: 14px;
+  font-family: inherit; background: #fff; box-shadow: none; height: auto; min-width: 0; color: var(--pos-ink); }
+body.pos-v2 .pickup-wrap .form-control:focus,
+body.pos-v2 .pickup-field input:focus,
+body.pos-v2 .pickup-field textarea:focus {
+  outline: none; border-color: var(--pos-accent-deep); box-shadow: 0 0 0 3px var(--pos-accent-soft); }
+body.pos-v2 .pickup-wrap .select2-container--default .select2-selection--single {
+  border: 1px solid var(--pos-line-2); border-radius: 9px; height: 40px; font-family: inherit; }
+body.pos-v2 .pickup-wrap .select2-container--default .select2-selection--single .select2-selection__rendered { line-height: 38px; padding-left: 11px; }
+body.pos-v2 .pickup-wrap .select2-container--default .select2-selection--single .select2-selection__arrow { height: 38px; }
+body.pos-v2 .pickup-check { display: flex; align-items: flex-start; gap: 9px; padding: 11px 13px; border: 1px solid var(--pos-line); border-radius: 10px; background: var(--pos-accent-soft); }
+body.pos-v2 .pickup-check input { margin-top: 2px; }
+body.pos-v2 .pickup-check label { font-size: 13.5px; color: var(--pos-ink); font-weight: 500; margin: 0; cursor: pointer; }
+body.pos-v2 .btn-accent { background: var(--pos-accent); color: var(--pos-accent-text); border: 1px solid var(--pos-accent-deep);
+  border-radius: 10px; padding: 10px 22px; font-weight: 700; font-size: 14px; cursor: pointer; font-family: inherit; }
+body.pos-v2 .btn-accent:hover { background: var(--pos-accent-deep); }
+body.pos-v2 .btn-ghost { background: transparent; border: 1px solid var(--pos-line-2); border-radius: 10px;
+  padding: 10px 18px; font-weight: 600; font-size: 14px; cursor: pointer; color: #5a5145; font-family: inherit; text-decoration: none; display: inline-block; }
+body.pos-v2 .btn-ghost:hover { background: var(--pos-surface-2); color: #5a5145; }
+body.pos-v2 .pickup-actions { display: flex; justify-content: flex-end; gap: 10px; }
+</style>
+
+{!! Form::open(['action' => 'CustomerPickupController@store', 'method' => 'post', 'id' => 'pickup_form']) !!}
+<div class="pickup-wrap">
     <h1>Add Customer Pickup</h1>
-</section>
-
-<section class="content">
-    {!! Form::open(['action' => 'CustomerPickupController@store', 'method' => 'post', 'id' => 'pickup_form']) !!}
+    <p class="sub">Hold an item for a customer — or log a special order you're bringing in from AMS so it shows on their account until it arrives.</p>
 
     {{-- Customer + Store --}}
-    <div class="row">
-        <div class="col-md-12">
-            <div class="box box-primary">
-                <div class="box-header with-border">
-                    <h3 class="box-title"><i class="fa fa-user"></i> &nbsp;Customer &amp; Store</h3>
-                </div>
-                <div class="box-body">
-                    <div class="row">
-                        <div class="col-md-8">
-                            <div class="form-group">
-                                {!! Form::label('contact_id', 'Customer: *') !!}
-                                {!! Form::select('contact_id', $customers, null, ['class' => 'form-control select2', 'required', 'style' => 'width: 100%']); !!}
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="form-group">
-                                {!! Form::label('location_id', 'Store: *') !!}
-                                {!! Form::select('location_id', $locations, null, ['class' => 'form-control select2', 'placeholder' => 'Select store', 'required', 'style' => 'width: 100%']); !!}
-                            </div>
-                        </div>
-                    </div>
-                </div>
+    <div class="pickup-card">
+        <h2><i class="fa fa-user"></i> Customer &amp; Store</h2>
+        <div class="pickup-row">
+            <div class="pickup-field" style="flex: 2 1 360px;">
+                {!! Form::label('contact_id', 'Customer *') !!}
+                {!! Form::select('contact_id', $customers, null, ['class' => 'form-control select2', 'required', 'style' => 'width: 100%']); !!}
+            </div>
+            <div class="pickup-field">
+                {!! Form::label('location_id', 'Store *') !!}
+                {!! Form::select('location_id', $locations, null, ['class' => 'form-control select2', 'placeholder' => 'Select store', 'required', 'style' => 'width: 100%']); !!}
             </div>
         </div>
     </div>
 
     {{-- Product --}}
-    <div class="row">
-        <div class="col-md-12">
-            <div class="box box-primary">
-                <div class="box-header with-border">
-                    <h3 class="box-title"><i class="fa fa-compact-disc"></i> &nbsp;Item on Hold</h3>
-                </div>
-                <div class="box-body">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="form-group">
-                                {!! Form::label('product_id', 'Product:') !!}
-                                {!! Form::select('product_id', [], null, ['class' => 'form-control select2', 'id' => 'product_id', 'style' => 'width: 100%']); !!}
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="form-group">
-                                {!! Form::label('variation_id', 'Variation/SKU:') !!}
-                                {!! Form::select('variation_id', [], null, ['class' => 'form-control select2', 'id' => 'variation_id', 'style' => 'width: 100%']); !!}
-                            </div>
-                        </div>
-                        <div class="col-md-2">
-                            <div class="form-group">
-                                {!! Form::label('quantity', 'Qty: *') !!}
-                                {!! Form::number('quantity', 1, ['class' => 'form-control', 'required', 'min' => 1, 'step' => 1]); !!}
-                            </div>
-                        </div>
-                    </div>
-                </div>
+    <div class="pickup-card">
+        <h2><i class="fa fa-compact-disc"></i> Item on Hold</h2>
+        <div class="pickup-row">
+            <div class="pickup-field" style="flex: 2 1 320px;">
+                {!! Form::label('product_id', 'Product') !!}
+                {!! Form::select('product_id', [], null, ['class' => 'form-control select2', 'id' => 'product_id', 'style' => 'width: 100%']); !!}
+            </div>
+            <div class="pickup-field">
+                {!! Form::label('variation_id', 'Variation/SKU') !!}
+                {!! Form::select('variation_id', [], null, ['class' => 'form-control select2', 'id' => 'variation_id', 'style' => 'width: 100%']); !!}
+            </div>
+            <div class="pickup-field narrow">
+                {!! Form::label('quantity', 'Qty *') !!}
+                {!! Form::number('quantity', 1, ['class' => 'form-control', 'required', 'min' => 1, 'step' => 1]); !!}
             </div>
         </div>
     </div>
 
     {{-- Pickup schedule + paid --}}
-    <div class="row">
-        <div class="col-md-12">
-            <div class="box box-primary">
-                <div class="box-header with-border">
-                    <h3 class="box-title"><i class="fa fa-calendar-check"></i> &nbsp;Pickup Schedule</h3>
-                </div>
-                <div class="box-body">
-                    <div class="row">
-                        <div class="col-md-4">
-                            <div class="form-group">
-                                {!! Form::label('hold_date', 'Hold Date: *') !!}
-                                {!! Form::text('hold_date', \Carbon\Carbon::now()->format('Y-m-d'), ['class' => 'form-control date-picker', 'required']); !!}
-                                <small class="help-block">When item was set aside</small>
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="form-group">
-                                {!! Form::label('expected_pickup_date', 'Expected Pickup Date:') !!}
-                                {!! Form::text('expected_pickup_date', null, ['class' => 'form-control date-picker', 'placeholder' => 'Optional']); !!}
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="form-group">
-                                {!! Form::label('expected_pickup_time', 'Pickup Time:') !!}
-                                {!! Form::text('expected_pickup_time', null, ['class' => 'form-control', 'placeholder' => 'e.g. 5-6pm, after 3pm', 'maxlength' => 50]); !!}
-                                <small class="help-block">Free-text window</small>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="row">
-                        <div class="col-md-12">
-                            <div class="form-group">
-                                <div class="checkbox">
-                                    <label>
-                                        {!! Form::checkbox('is_paid', 1, true) !!}
-                                        <strong>Paid?</strong> &nbsp;<small class="text-muted">— uncheck if customer still owes</small>
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+    <div class="pickup-card">
+        <h2><i class="fa fa-calendar-check"></i> Pickup Schedule</h2>
+        <div class="pickup-row">
+            <div class="pickup-field">
+                {!! Form::label('hold_date', 'Hold Date *') !!}
+                {!! Form::text('hold_date', \Carbon\Carbon::now()->format('Y-m-d'), ['class' => 'form-control date-picker', 'required']); !!}
+                <small class="help-block">When item was set aside</small>
+            </div>
+            <div class="pickup-field">
+                {!! Form::label('expected_pickup_date', 'Expected Pickup Date') !!}
+                {!! Form::text('expected_pickup_date', null, ['class' => 'form-control date-picker', 'placeholder' => 'Optional']); !!}
+            </div>
+            <div class="pickup-field">
+                {!! Form::label('expected_pickup_time', 'Pickup Time') !!}
+                {!! Form::text('expected_pickup_time', null, ['class' => 'form-control', 'placeholder' => 'e.g. 5-6pm, after 3pm', 'maxlength' => 50]); !!}
+                <small class="help-block">Free-text window</small>
+            </div>
+        </div>
+        <div class="pickup-row" style="margin-top: 12px;">
+            <div class="pickup-field" style="flex: 1 1 100%;">
+                <div class="pickup-check">
+                    {!! Form::checkbox('is_paid', 1, true, ['id' => 'is_paid']) !!}
+                    <label for="is_paid"><strong>Paid?</strong> — uncheck if the customer still owes</label>
                 </div>
             </div>
         </div>
     </div>
 
     {{-- AMS special order --}}
-    <div class="row">
-        <div class="col-md-12">
-            <div class="box box-primary">
-                <div class="box-header with-border">
-                    <h3 class="box-title"><i class="fa fa-truck"></i> &nbsp;Special Order (AMS)</h3>
-                </div>
-                <div class="box-body">
-                    <div class="row">
-                        <div class="col-md-12">
-                            <div class="form-group">
-                                <div class="checkbox">
-                                    <label>
-                                        {!! Form::checkbox('is_on_order', 1, false, ['id' => 'is_on_order']) !!}
-                                        <strong>On order — not in yet</strong> &nbsp;<small class="text-muted">— ordered from AMS; shows as "On Order" until it arrives</small>
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="form-group">
-                                {!! Form::label('ams_order_number', 'AMS Order #:') !!}
-                                {!! Form::text('ams_order_number', null, ['class' => 'form-control', 'placeholder' => 'AMS order / invoice number', 'maxlength' => 64]); !!}
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="form-group">
-                                {!! Form::label('ams_expected_date', 'Expected Arrival:') !!}
-                                {!! Form::text('ams_expected_date', null, ['class' => 'form-control date-picker', 'placeholder' => 'Optional']); !!}
-                            </div>
-                        </div>
-                    </div>
-                    <small class="help-block">When it lands, open this pickup and hit <strong>Arrived</strong> to alert the customer.</small>
+    <div class="pickup-card">
+        <h2><i class="fa fa-truck"></i> Special Order (AMS)</h2>
+        <div class="pickup-row">
+            <div class="pickup-field" style="flex: 1 1 100%;">
+                <div class="pickup-check">
+                    {!! Form::checkbox('is_on_order', 1, false, ['id' => 'is_on_order']) !!}
+                    <label for="is_on_order"><strong>On order — not in yet</strong> — ordered from AMS; shows as "On Order" on their account until it arrives</label>
                 </div>
             </div>
         </div>
+        <div class="pickup-row" style="margin-top: 12px;">
+            <div class="pickup-field">
+                {!! Form::label('ams_order_number', 'AMS Order #') !!}
+                {!! Form::text('ams_order_number', null, ['class' => 'form-control', 'placeholder' => 'AMS order / invoice number', 'maxlength' => 64]); !!}
+            </div>
+            <div class="pickup-field">
+                {!! Form::label('ams_expected_date', 'Expected Arrival') !!}
+                {!! Form::text('ams_expected_date', null, ['class' => 'form-control date-picker', 'placeholder' => 'Optional']); !!}
+            </div>
+        </div>
+        <small class="help-block" style="margin-top: 10px;">When it lands, open this pickup and hit <strong>Arrived</strong> to alert the customer.</small>
     </div>
 
     {{-- Notes --}}
-    <div class="row">
-        <div class="col-md-12">
-            <div class="box box-primary">
-                <div class="box-header with-border">
-                    <h3 class="box-title"><i class="fa fa-sticky-note"></i> &nbsp;Notes</h3>
-                </div>
-                <div class="box-body">
-                    {!! Form::textarea('notes', null, ['class' => 'form-control', 'rows' => 3, 'placeholder' => 'e.g. called customer, put in hold bin, deposit taken, etc.']); !!}
-                </div>
-            </div>
-        </div>
+    <div class="pickup-card">
+        <h2><i class="fa fa-sticky-note"></i> Notes</h2>
+        {!! Form::textarea('notes', null, ['class' => 'form-control', 'rows' => 3, 'placeholder' => 'e.g. called customer, put in hold bin, deposit taken, etc.']); !!}
     </div>
-    <div class="row">
-        <div class="col-md-12">
-            <button type="submit" class="btn btn-primary pull-right">Save</button>
-            <a href="{{ action('CustomerPickupController@index') }}" class="btn btn-default pull-right" style="margin-right: 10px;">Cancel</a>
-        </div>
+
+    <div class="pickup-actions">
+        <a href="{{ action('CustomerPickupController@index') }}" class="btn-ghost">Cancel</a>
+        <button type="submit" class="btn-accent">Save Pickup</button>
     </div>
-    {!! Form::close() !!}
-</section>
+</div>
+{!! Form::close() !!}
 
 @stop
 @section('javascript')
