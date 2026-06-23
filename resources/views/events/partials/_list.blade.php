@@ -53,8 +53,8 @@
             <span class="prep-badge na">—</span>
           @endif
         </td>
-        <td style="text-align:right;">
-          <a class="ev-edit" href="{{ route('events.edit', ['id' => $ev['id']]) }}">View dashboard</a>
+        <td style="text-align:right;white-space:nowrap;">
+          <a class="btn-accent" href="{{ route('events.edit', ['id' => $ev['id']]) }}" style="display:inline-block;padding:7px 14px;font-size:13px;text-decoration:none;">View dashboard</a>
           <form method="POST" action="{{ route('events.destroy', ['id' => $ev['id']]) }}" style="display:inline;margin-left:10px;"
                 onsubmit="return confirm('Delete \'{{ addslashes($ev['name'] ?? '') }}\'? This can be undone from Admin Action History.');">
             {{ csrf_field() }}
