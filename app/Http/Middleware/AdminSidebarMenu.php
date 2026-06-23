@@ -171,6 +171,13 @@ class AdminSidebarMenu
                                 ['icon' => 'fa fas fa-handshake', 'active' => request()->segment(1) == 'consignment']
                             );
                         }
+                        if (auth()->user()->can('product.create')) {
+                            $sub->url(
+                                route('events.index'),
+                                'Events / Listening Parties',
+                                ['icon' => 'fa fas fa-music', 'active' => request()->segment(1) == 'events']
+                            );
+                        }
                         if (auth()->user()->can('product.opening_stock')) {
 //                            $sub->url(
 //                                action('ImportOpeningStockController@index'),

@@ -23,6 +23,11 @@ Route::get('/ebay/search-product-price', [ProductController::class, 'searchEbayP
 Route::get('/discogs/search-product-price', [ProductController::class, 'searchDiscogsProductPrice']);
 Route::get('/discogs/search-product-price-2', [ProductController::class, 'searchDiscogsProductPrice2']);
 
+// Public events feed for nivessa.com (no auth). Off the /api/ path because
+// nginx hijacks /api/*. The website reads listening-party / event detail
+// from here — the ERP is the source of truth.
+Route::get('/events-feed.json', 'EventsController@publicFeed');
+
 
 Route::middleware(['setData'])->group(function () {
     Route::get('/', function () {
@@ -343,6 +348,16 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/consignment', 'ConsignmentController@index')->name('consignment.index');
     Route::post('/consignment', 'ConsignmentController@store')->name('consignment.store');
     Route::post('/consignment/mark-paid', 'ConsignmentController@markPaid')->name('consignment.markPaid');
+
+    // Events / Listening Parties — ERP is the source of truth; data lives in
+    // a JSON sidecar (storage/app/events-{business_id}.json), website reads it.
+    Route::get('/events', 'EventsController@index')->name('events.index');
+    Route::post('/events', 'EventsController@store')->name('events.store');
+    Route::get('/events/{id}/edit', 'EventsController@edit')->name('events.edit');
+    Route::post('/events/{id}', 'EventsController@update')->name('events.update');
+    Route::post('/events/{id}/prep', 'EventsController@updatePrep')->name('events.prep');
+    Route::post('/events/{id}/delete', 'EventsController@destroy')->name('events.destroy');
+    Route::post('/events-import', 'EventsController@import')->name('events.import');
 
     Route::resource('roles', 'RoleController');
 

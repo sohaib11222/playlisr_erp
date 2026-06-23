@@ -116,10 +116,23 @@ class AdminActionHistoryController extends Controller
         // categories. Undo un-soft-deletes the source, reverts each product's
         // refs (only where they still point at the target), and reparents the
         // children back.
-        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories'];
+        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'events-update', 'events-delete', 'events-import'];
         if (!in_array($action, $supportedActions, true)) {
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 0, 'msg' => "Don't know how to undo action: " . $action]);
+        }
+
+        // events-*: rows hold the FULL events JSON store as it was BEFORE the
+        // edit/delete/import. Undo writes it back over the sidecar verbatim.
+        if (in_array($action, ['events-update', 'events-delete', 'events-import'], true)) {
+            $businessId = $data['business_id'] ?? null;
+            if (!$businessId) {
+                return redirect('/admin/admin-action-history')
+                    ->with('status', ['success' => 0, 'msg' => 'Snapshot missing business id.']);
+            }
+            \App\Http\Controllers\EventsController::save((int) $businessId, $data['rows']);
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 1, 'msg' => "Restored events from snapshot {$key}."]);
         }
 
         if ($action === 'bfc-receive') {
