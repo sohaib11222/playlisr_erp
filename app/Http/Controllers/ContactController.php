@@ -811,12 +811,15 @@ class ContactController extends Controller
             // Notes table may not exist
         }
 
+        // Needed by the purchases tab's purchase_table partial (bulk status update dropdown)
+        $orderStatuses = $this->commonUtil->orderStatuses();
+
         return view('contact.show')
              ->with(compact(
                  'contact', 'reward_enabled', 'contact_dropdown', 'business_locations',
                  'view_type', 'contact_view_tabs', 'activities', 'gift_cards', 'total_gift_card_balance',
                  'recent_purchases', 'purchase_history', 'sell_count', 'avg_order', 'visits_90d',
-                 'current_tier', 'next_tier', 'tier_progress', 'customer_notes'
+                 'current_tier', 'next_tier', 'tier_progress', 'customer_notes', 'orderStatuses'
              ));
     }
 
