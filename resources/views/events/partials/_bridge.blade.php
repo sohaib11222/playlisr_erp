@@ -172,9 +172,15 @@
   </div>
 
   {{-- ---------- Preorders ---------- --}}
+  {{-- Only advance listening parties take preorders. For events without it
+       enabled, show a muted note instead of an ordering link (which would
+       wrongly imply customers can preorder). --}}
+  @php $preordersOn = !empty($event['preorderEnabled']); @endphp
   <div class="ev-card">
     <h2>Preorders</h2>
-    @if(empty($preorders))
+    @if(!$preordersOn)
+      <div class="empty">Preorders aren't enabled for this event. Check "Enable preorder for this event" in the details above if this is an advance listening party.</div>
+    @elseif(empty($preorders))
       <div class="empty">No preorders yet. Customers order at nivessa.com/preorder?eventId={{ $event['id'] }}.</div>
     @else
       <table class="ev-tbl">
