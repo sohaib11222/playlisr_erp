@@ -993,6 +993,34 @@ class CashRegisterController extends Controller
      * the feature can be validated before going live. Never throws into
      * the caller (caller wraps in try/catch as well).
      */
+    /**
+     * Combine the cashier's structured close-out fields — what we're running
+     * low on, weird occurrences, and free-text comments — into the single
+     * closing_note string. Each non-empty part is labeled so it reads the same
+     * in register_details and the #shift-notes Slack post; the comments box is
+     * left unlabeled to preserve the legacy plain-note look. Returns null when
+     * every part is blank.
+     */
+    private function composeClosingNote($runningLow, $weird, $comments): ?string
+    {
+        $runningLow = trim((string) $runningLow);
+        $weird = trim((string) $weird);
+        $comments = trim((string) $comments);
+
+        $parts = [];
+        if ($runningLow !== '') {
+            $parts[] = 'Running low on: ' . $runningLow;
+        }
+        if ($weird !== '') {
+            $parts[] = 'Weird occurrences: ' . $weird;
+        }
+        if ($comments !== '') {
+            $parts[] = $comments;
+        }
+
+        return empty($parts) ? null : implode("\n", $parts);
+    }
+
     private function persistShiftNote(Request $request, $register, $user_id, $note): void
     {
         $business_id = $request->session()->get('user.business_id');
@@ -1266,6 +1294,16 @@ class CashRegisterController extends Controller
             }
             
             $input = $request->only(['closing_amount', 'total_card_slips', 'total_cheques', 'closing_note']);
+            // The close screen now splits the cashier's note into "what are we
+            // running out of", "weird occurrences", and free-text comments.
+            // Fold the three labeled parts back into the single closing_note
+            // column so register_details + the #shift-notes Slack post read
+            // them as one note. No-op when only the legacy comments box is sent.
+            $input['closing_note'] = $this->composeClosingNote(
+                $request->input('note_running_low'),
+                $request->input('note_weird'),
+                $input['closing_note'] ?? null
+            );
             $input['closing_amount'] = $this->cashRegisterUtil->num_uf($input['closing_amount']);
             $user_id = $request->input('user_id');
             $input['closed_at'] = \Carbon::now()->format('Y-m-d H:i:s');

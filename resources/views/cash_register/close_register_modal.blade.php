@@ -550,8 +550,14 @@
 					<div style="display:flex; align-items:center; gap:6px; font-size:12px; color:#8E8273; margin-bottom:6px;">
 						<i class="fa fa-magic"></i> Your shift summary fills in automatically above.
 					</div>
-					{!! Form::label('closing_note', 'Highlights, lowlights, or anything important for the staff (optional)') !!}
-					{!! Form::textarea('closing_note', null, ['class' => '', 'placeholder' => 'e.g. ran low on reggae, fixed the label printer, big collection came in…', 'rows' => 3 ]); !!}
+					{!! Form::label('note_running_low', 'What are we running out of? (optional)') !!}
+					{!! Form::textarea('note_running_low', null, ['class' => '', 'placeholder' => 'e.g. low on reggae, out of poly sleeves…', 'rows' => 2 ]); !!}
+
+					{!! Form::label('note_weird', 'Weird occurrences (optional)') !!}
+					{!! Form::textarea('note_weird', null, ['class' => '', 'placeholder' => 'e.g. label printer jammed, customer dispute…', 'rows' => 2 ]); !!}
+
+					{!! Form::label('closing_note', 'Shift note details / Other comments (optional)') !!}
+					{!! Form::textarea('closing_note', null, ['class' => '', 'placeholder' => 'e.g. big collection came in, anything else for the staff…', 'rows' => 3 ]); !!}
 				</div>
 			@else
 				{{-- Optional closing note (legacy, when shift summary is off) --}}
