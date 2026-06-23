@@ -35,6 +35,9 @@ class AdminSidebarMenu
             //Zella/Nick end their shift here; posts to #shift-notes).
             $menu->url(url('/shift-notes/end'), 'End Shift', ['icon' => 'fa fas fa-clock', 'active' => request()->segment(1) == 'shift-notes'])->order(6);
 
+            //Morning opening checklist — staff-facing, visible to everyone.
+            $menu->url(url('/opening-checklist'), 'Opening Checklist', ['icon' => 'fa fas fa-clipboard-check', 'active' => request()->segment(1) == 'opening-checklist'])->order(6);
+
             //Events / Listening Parties (top-level — its own thing, not under Products)
             if (auth()->user()->can('product.create')) {
                 $menu->url(
