@@ -74,6 +74,7 @@
     font-weight: 600; font-size: 14px;
 }
 .open-shell .flash.ok { background: var(--d-accent-soft); border: 1px solid var(--d-accent-deep); color: var(--d-accent-text); }
+.open-shell .flash.warn { background: #FBEAE5; border: 1px solid #E0A99B; color: #8A2C12; }
 
 .open-shell .done-banner {
     background: var(--d-accent-soft); border: 1px solid var(--d-accent-deep);
@@ -163,7 +164,7 @@
     </div>
 
     @if(session('status') && !empty(session('status')['msg']))
-        <div class="flash ok">{{ session('status')['msg'] }}</div>
+        <div class="flash {{ (session('status')['success'] ?? 1) ? 'ok' : 'warn' }}">{{ session('status')['msg'] }}</div>
     @endif
 
     @if(!empty($doneToday))

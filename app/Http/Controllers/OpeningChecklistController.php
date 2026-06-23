@@ -300,10 +300,18 @@ class OpeningChecklistController extends Controller
         $store = $this->resolveStore($request->input('store'));
         $allKeys = array_keys(self::allItems($store));
 
-        $checked = (array) $request->input('items', []);
-        $checked = array_values(array_filter($allKeys, function ($k) use ($checked) {
-            return in_array($k, $checked, true);
+        $submitted = (array) $request->input('items', []);
+        $checked = array_values(array_filter($allKeys, function ($k) use ($submitted) {
+            return in_array($k, $submitted, true);
         }));
+
+        // Guard against a stale page: if nothing valid came through, don't log a
+        // bogus 0/total. Ask for a reload instead.
+        if (empty($checked)) {
+            return redirect()->action('OpeningChecklistController@index', ['store' => $store])
+                ->with('status', ['success' => 0, 'msg' => 'Nothing was recorded. The page may have been open too long, or no items were checked. Please reload, check what you finished, and submit again.']);
+        }
+
         $missed = array_values(array_diff($allKeys, $checked));
 
         $all = self::readAll();
