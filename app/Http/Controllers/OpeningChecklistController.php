@@ -97,6 +97,44 @@ class OpeningChecklistController extends Controller
         return BusinessLocation::forDropdown($business_id);
     }
 
+    /* ---------- "has the store been opened today?" helpers ---------- */
+
+    /** Has anyone logged today's opening yet? */
+    public static function openedToday()
+    {
+        $today = date('Y-m-d');
+        foreach (self::readAll() as $r) {
+            if (($r['date'] ?? '') === $today) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Should we nag the current user to run the opening checklist? Yes when it
+     * hasn't been logged today and they have access to the Hollywood store
+     * (this is the Hollywood opening list — don't pester Pico/Wilcox staff).
+     * Drives the dashboard banner and the red sidebar badge.
+     */
+    public static function shouldPrompt()
+    {
+        if (!auth()->check() || self::openedToday()) {
+            return false;
+        }
+        try {
+            $business_id = session('user.business_id');
+            foreach (BusinessLocation::forDropdown($business_id) as $name) {
+                if (stripos($name, 'holly') !== false) {
+                    return true;
+                }
+            }
+        } catch (\Exception $e) {
+            return false;
+        }
+        return false;
+    }
+
     /* ---------- page ---------- */
 
     public function index()

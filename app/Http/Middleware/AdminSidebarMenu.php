@@ -36,7 +36,10 @@ class AdminSidebarMenu
             $menu->url(url('/shift-notes/end'), 'End Shift', ['icon' => 'fa fas fa-clock', 'active' => request()->segment(1) == 'shift-notes'])->order(6);
 
             //Morning opening checklist — staff-facing, visible to everyone.
-            $menu->url(url('/opening-checklist'), 'Opening Checklist', ['icon' => 'fa fas fa-clipboard-check', 'active' => request()->segment(1) == 'opening-checklist'])->order(6);
+            //Red "TO DO" badge for Hollywood staff until today's opening is logged.
+            $openBadge = \App\Http\Controllers\OpeningChecklistController::shouldPrompt()
+                ? ' <span class="label label-danger">TO DO</span>' : '';
+            $menu->url(url('/opening-checklist'), 'Opening Checklist' . $openBadge, ['icon' => 'fa fas fa-clipboard-check', 'active' => request()->segment(1) == 'opening-checklist'])->order(6);
 
             //Events / Listening Parties (top-level — its own thing, not under Products)
             if (auth()->user()->can('product.create')) {
