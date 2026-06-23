@@ -189,46 +189,61 @@
     <div class="pp-card">
         <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px;">
             <div style="font-size:14px; font-weight:600;">Your earnings</div>
-            <div class="pp-muted">2% of used items sold from products you barcoded</div>
+            <div class="pp-muted">listing pay + sales bonus</div>
         </div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
             <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:14px 18px;">
                 <div class="pp-muted" style="margin-bottom:8px;">Today</div>
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
                     <div>
-                        <div style="font-size:28px; font-weight:600; color:#15803d; line-height:1;">
+                        <div style="font-size:24px; font-weight:600; color:#15803d; line-height:1;">
                             ${{ number_format($my_earnings_today, 2) }}
                         </div>
-                        <div class="pp-micro" style="margin-top:6px;">earnings</div>
+                        <div class="pp-micro" style="margin-top:6px;">listing pay</div>
                     </div>
                     <div>
-                        <div style="font-size:28px; font-weight:600; color:#15803d; line-height:1;">
+                        <div style="font-size:24px; font-weight:600; color:#15803d; line-height:1;">
+                            ${{ number_format($my_sales_bonus_today, 2) }}
+                        </div>
+                        <div class="pp-micro" style="margin-top:6px;">sales bonus{{ $sales_bonus_live ? '' : '*' }}</div>
+                    </div>
+                    <div>
+                        <div style="font-size:24px; font-weight:600; color:#15803d; line-height:1;">
                             {{ number_format($my_used_barcoded_today) }}
                         </div>
-                        <div class="pp-micro" style="margin-top:6px;">used item{{ $my_used_barcoded_today == 1 ? '' : 's' }} barcoded</div>
+                        <div class="pp-micro" style="margin-top:6px;">item{{ $my_used_barcoded_today == 1 ? '' : 's' }} barcoded</div>
                     </div>
                 </div>
             </div>
             <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:14px 18px;">
                 <div class="pp-muted" style="margin-bottom:8px;">Last 2 weeks</div>
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
                     <div>
-                        <div style="font-size:28px; font-weight:600; color:#15803d; line-height:1;">
+                        <div style="font-size:24px; font-weight:600; color:#15803d; line-height:1;">
                             ${{ number_format($my_earnings_2wk, 2) }}
                         </div>
-                        <div class="pp-micro" style="margin-top:6px;">earnings</div>
+                        <div class="pp-micro" style="margin-top:6px;">listing pay</div>
                     </div>
                     <div>
-                        <div style="font-size:28px; font-weight:600; color:#15803d; line-height:1;">
+                        <div style="font-size:24px; font-weight:600; color:#15803d; line-height:1;">
+                            ${{ number_format($my_sales_bonus_2wk, 2) }}
+                        </div>
+                        <div class="pp-micro" style="margin-top:6px;">sales bonus{{ $sales_bonus_live ? '' : '*' }}</div>
+                    </div>
+                    <div>
+                        <div style="font-size:24px; font-weight:600; color:#15803d; line-height:1;">
                             {{ number_format($my_used_barcoded_2wk) }}
                         </div>
-                        <div class="pp-micro" style="margin-top:6px;">used item{{ $my_used_barcoded_2wk == 1 ? '' : 's' }} barcoded</div>
+                        <div class="pp-micro" style="margin-top:6px;">item{{ $my_used_barcoded_2wk == 1 ? '' : 's' }} barcoded</div>
                     </div>
                 </div>
             </div>
         </div>
         <div class="pp-micro" style="margin-top:10px;">
-            Excludes sealed vinyl/CDs/cassettes and new equipment. Tracking started 2026-05-15.
+            <strong>Listing pay</strong> = 2% of used items sold from products you barcoded (excludes sealed/new stock; since 2026-05-15).
+            <strong>Sales bonus</strong> = 2% of what you ring over your daily sales target, 4% on the peak-hour share.
+            @unless($sales_bonus_live) *Sales bonus isn't live yet — that figure is a projection. @endunless
+            See <a href="{{ url('/my-earnings') }}">My Earnings</a> for the day-by-day breakdown.
         </div>
     </div>
 

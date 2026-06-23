@@ -395,6 +395,35 @@ class HomeController extends Controller
         $my_earnings_today = round($earningsQueryFor($today_start, $today_end), 2);
         $my_earnings_2wk = round($earningsQueryFor($earnings_two_weeks_start, $today_end), 2);
 
+        // ---- Sales portion of commission: the sales-goal bonus ----
+        // 2% (4% on the peak-hour share) of what each person rings over their
+        // day's hour-based target, live since 2026-06-15. Pulled from the same
+        // engine as /my-earnings so the home widget reconciles with it. One
+        // per-day pass covers both "today" and the 2-week total; the window is
+        // clamped to the live date since no bonus accrues before it.
+        $sales_bonus_live_date = '2026-06-15 00:00:00';
+        $bonus_window_start = max($earnings_two_weeks_start, $sales_bonus_live_date);
+        $today_key = \Carbon::today()->format('Y-m-d');
+        $my_sales_bonus_today = 0.0;
+        $my_sales_bonus_2wk = 0.0;
+        $sales_bonus_live = \Carbon::now()->gte(\Carbon::parse($sales_bonus_live_date));
+        try {
+            $de = app(\App\Http\Controllers\ReportController::class)
+                ->buildDailyEarnings($business_id, $bonus_window_start, $today_end, $me_id);
+            $sales_bonus_live = (bool) ($de['live'] ?? $sales_bonus_live);
+            foreach ($de['days'] as $date => $list) {
+                foreach ($list as $r) {
+                    if ((int) $r['user_id'] !== (int) $me_id) { continue; }
+                    $my_sales_bonus_2wk += $r['sales_bonus'];
+                    if ($date === $today_key) { $my_sales_bonus_today += $r['sales_bonus']; }
+                }
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('home earnings sales bonus failed: ' . $e->getMessage());
+        }
+        $my_sales_bonus_today = round($my_sales_bonus_today, 2);
+        $my_sales_bonus_2wk = round($my_sales_bonus_2wk, 2);
+
         // Count of USED products this user barcoded in the same window. Same
         // category exclusions as the earnings query — so the count is the
         // actual eligible workload that's driving the dollar number.
@@ -1105,6 +1134,7 @@ class HomeController extends Controller
             'rewards_today', 'rewards_today_total',
             'my_priced_today', 'my_pos_items_today', 'my_pos_tx_today',
             'my_earnings_today', 'my_earnings_2wk',
+            'my_sales_bonus_today', 'my_sales_bonus_2wk', 'sales_bonus_live',
             'my_used_barcoded_today', 'my_used_barcoded_2wk',
             'used_barcoded_last_month', 'last_month_label',
             'sales_scope', 'sales_scope_keys',
