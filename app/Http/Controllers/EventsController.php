@@ -907,27 +907,27 @@ class EventsController extends Controller
     {
         return [
             'madonna' => [
-                ['title' => 'Confessions II — White Vinyl / Alt Cover (Indie)', 'format' => 'indieVinyl', 'price' => null],
-                ['title' => 'Confessions II — Translucent Pink 2LP (Deluxe)', 'format' => 'deluxeVinyl', 'price' => null],
-                ['title' => 'Confessions II — Translucent Red 2LP', 'format' => 'stdVinyl', 'price' => null],
-                ['title' => 'Confessions II — CD', 'format' => 'stdCd', 'price' => null],
-                ['title' => 'Confessions II — Premium 2CD / Photobook', 'format' => 'deluxeCd', 'price' => null],
+                ['title' => 'Confessions II — White Vinyl / Alt Cover (Indie)', 'format' => 'indieVinyl', 'price' => 30],
+                ['title' => 'Confessions II — Translucent Pink 2LP (Deluxe)', 'format' => 'deluxeVinyl', 'price' => 45],
+                ['title' => 'Confessions II — Translucent Red 2LP', 'format' => 'stdVinyl', 'price' => 30],
+                ['title' => 'Confessions II — CD', 'format' => 'stdCd', 'price' => 15],
+                ['title' => 'Confessions II — Premium 2CD / Photobook', 'format' => 'deluxeCd', 'price' => 35],
             ],
             'heated' => [
-                ['title' => 'Heated Rivalry (OST) — 2LP', 'format' => 'stdVinyl', 'price' => null],
-                ['title' => 'Heated Rivalry (OST) — 2CD', 'format' => 'stdCd', 'price' => null],
+                ['title' => 'Heated Rivalry (OST) — 2LP', 'format' => 'stdVinyl', 'price' => 57],
+                ['title' => 'Heated Rivalry (OST) — 2CD', 'format' => 'stdCd', 'price' => 27],
             ],
             'jack white' => [
-                ['title' => 'Frozen Charlotte — Solid Blue Vinyl (Indie)', 'format' => 'indieVinyl', 'price' => null],
-                ['title' => 'Frozen Charlotte — Standard LP', 'format' => 'stdVinyl', 'price' => null],
-                ['title' => 'Frozen Charlotte — Cassette', 'format' => 'cassette', 'price' => null],
-                ['title' => 'Frozen Charlotte — CD', 'format' => 'stdCd', 'price' => null],
+                ['title' => 'Frozen Charlotte — Solid Blue Vinyl (Indie)', 'format' => 'indieVinyl', 'price' => 27],
+                ['title' => 'Frozen Charlotte — Standard LP', 'format' => 'stdVinyl', 'price' => 26],
+                ['title' => 'Frozen Charlotte — Cassette', 'format' => 'cassette', 'price' => 13],
+                ['title' => 'Frozen Charlotte — CD', 'format' => 'stdCd', 'price' => 15],
             ],
             'gracie' => [
-                ['title' => 'Daughter From Hell — Cobalt 2LP (Indie)', 'format' => 'indieVinyl', 'price' => null],
-                ['title' => 'Daughter From Hell — Foggy Horizon Gray 2LP', 'format' => 'deluxeVinyl', 'price' => null],
-                ['title' => 'Daughter From Hell — Standard 2LP', 'format' => 'stdVinyl', 'price' => null],
-                ['title' => 'Daughter From Hell — CD', 'format' => 'stdCd', 'price' => null],
+                ['title' => 'Daughter From Hell — Cobalt 2LP (Indie)', 'format' => 'indieVinyl', 'price' => 49],
+                ['title' => 'Daughter From Hell — Foggy Horizon Gray 2LP', 'format' => 'deluxeVinyl', 'price' => 49],
+                ['title' => 'Daughter From Hell — Standard 2LP', 'format' => 'stdVinyl', 'price' => 49],
+                ['title' => 'Daughter From Hell — CD', 'format' => 'stdCd', 'price' => 19],
             ],
         ];
     }
