@@ -4638,9 +4638,11 @@ class ReportController extends Controller
 
         // Selected week — default to the current week. `week` may be any date
         // inside the wanted week; we snap to that week's Sunday (Sun–Sat grid).
+        // `week` is an ISO Y-m-d we emit ourselves (nav links) — parse directly;
+        // don't route it through uf_date(), which expects the m/d/Y display format.
         $week_param = $request->input('week');
         $base = !empty($week_param)
-            ? \Carbon::parse($this->transactionUtil->uf_date($week_param))->startOfDay()
+            ? \Carbon::parse($week_param)->startOfDay()
             : $today->copy();
         $sunday = $base->copy()->subDays($base->dayOfWeek); // Carbon: Sun=0..Sat=6
 
