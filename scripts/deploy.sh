@@ -88,10 +88,10 @@ php artisan optimize:clear --no-interaction
 # One-time: load the 6/23 distributor order quantities into events. Guarded by
 # a flag file so it runs exactly once, then never again. Idempotent even if it
 # did re-run (it sets the same values).
-if [ ! -f "$DEPLOY_DIR/storage/app/.seeded-orders-0623g" ]; then
+if [ ! -f "$DEPLOY_DIR/storage/app/.seeded-orders-0623h" ]; then
   echo "deploy: seeding event orders + street dates (one-time, revised plan)"
   php artisan events:seed-orders --no-interaction \
-    && touch "$DEPLOY_DIR/storage/app/.seeded-orders-0623g"
+    && touch "$DEPLOY_DIR/storage/app/.seeded-orders-0623h"
 fi
 
 php artisan queue:restart 2>/dev/null || true
