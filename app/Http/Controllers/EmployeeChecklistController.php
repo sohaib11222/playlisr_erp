@@ -50,7 +50,6 @@ class EmployeeChecklistController extends Controller
             ],
             'Sling' => [
                 'sling_add'    => 'Add the employee in Sling (name, email, phone).',
-                'sling_assign' => 'Assign them to the right location (Nivessa / Pico / Hollywood) and position.',
             ],
             'Other' => [
                 'keys'         => 'Confirm Jon gave them the store keys / alarm code.',
