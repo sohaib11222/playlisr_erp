@@ -2,18 +2,18 @@
 <table class="ev-tbl">
   <thead>
     <tr>
-      <th style="width:15%;">Event</th>
-      <th style="width:7%;">Date</th>
-      <th style="width:7%;">Street date</th>
-      <th style="width:9%;">Location</th>
+      <th style="width:13%;">Event</th>
+      <th style="width:6%;">Date</th>
+      <th style="width:6%;">Street date</th>
+      <th style="width:8%;">Location</th>
       <th style="width:6%;">Attending</th>
       <th style="width:6%;">Vinyl requests</th>
       <th style="width:6%;">CD requests</th>
-      <th style="width:16%;">Ordered (versions)</th>
-      <th style="width:6%;">Taking preorders?</th>
-      <th style="width:6%;">On website</th>
-      <th style="width:6%;">Prep</th>
-      <th style="width:9%;"></th>
+      <th style="width:24%;">Ordered (versions)</th>
+      <th style="width:5%;">Taking preorders?</th>
+      <th style="width:5%;">On website</th>
+      <th style="width:5%;">Prep</th>
+      <th style="width:8%;"></th>
     </tr>
   </thead>
   <tbody>
