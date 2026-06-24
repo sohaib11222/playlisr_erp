@@ -52,24 +52,36 @@
             return '<span class="' . $cls . '">' . $sign . number_format($p, 1) . '%</span>';
         };
 
+        // Header for the Week total column — week-to-date for the live week.
+        $wkHead = $nav['week_to_date']
+            ? 'Wk-to-date' . ($nav['through_label'] ? '<span class="d">thru ' . $nav['through_label'] . '</span>' : '<span class="d">no full days yet</span>')
+            : 'Week';
+
         // Render one table for a store (or all-stores).
-        $renderTable = function ($t) use ($days, $ty, $ly, $amt, $pctCell) {
+        $renderTable = function ($t) use ($days, $ty, $ly, $amt, $pctCell, $wkHead) {
             $h = '<table class="table table-bordered lfl-grid"><colgroup><col><col>';
             foreach ($days as $d) { $h .= '<col class="' . ($d['is_today'] ? 'today-col' : '') . '">'; }
             $h .= '<col></colgroup><thead><tr><th class="yr"></th>';
             foreach ($days as $d) {
-                $h .= '<th class="' . ($d['is_today'] ? 'today' : '') . '">' . $d['wd'] . '<span class="d">' . $d['date'] . '</span></th>';
+                $lbl = $d['wd'] . '<span class="d">' . $d['date'] . ($d['is_today'] ? ' • today' : '') . '</span>';
+                $h .= '<th class="' . ($d['is_today'] ? 'today' : '') . '">' . $lbl . '</th>';
             }
-            $h .= '<th class="wk-h">Week</th></tr></thead><tbody>';
+            $h .= '<th class="wk-h">' . $wkHead . '</th></tr></thead><tbody>';
             // Last year row (top, matching the sketch), then this year, then Δ%.
             $h .= '<tr><th class="yr">' . $ly . '</th>';
             foreach ($t['ly'] as $i => $v) { $h .= '<td class="amt ' . ($days[$i]['is_today'] ? 'today' : '') . '">' . $amt($v) . '</td>'; }
             $h .= '<td class="wk amt">' . $amt($t['ly_total']) . '</td></tr>';
             $h .= '<tr><th class="yr">' . $ty . '</th>';
-            foreach ($t['this'] as $i => $v) { $h .= '<td class="amt ' . ($days[$i]['is_today'] ? 'today' : '') . '">' . $amt($v) . '</td>'; }
+            foreach ($t['this'] as $i => $v) {
+                $mark = ($days[$i]['is_today'] && $v !== null) ? '<span class="d">so far</span>' : '';
+                $h .= '<td class="amt ' . ($days[$i]['is_today'] ? 'today' : '') . '">' . $amt($v) . $mark . '</td>';
+            }
             $h .= '<td class="wk amt">' . $amt($t['this_total']) . '</td></tr>';
             $h .= '<tr class="row-pct"><th class="yr">Δ vs ' . $ly . '</th>';
-            foreach ($t['pct'] as $i => $p) { $h .= '<td class="' . ($days[$i]['is_today'] ? 'today' : '') . '">' . $pctCell($p) . '</td>'; }
+            foreach ($t['pct'] as $i => $p) {
+                $cellTitle = $days[$i]['is_today'] ? ' title="Today is partial vs a full day last year — not comparable"' : '';
+                $h .= '<td class="' . ($days[$i]['is_today'] ? 'today' : '') . '"' . $cellTitle . '>' . $pctCell($p) . '</td>';
+            }
             $h .= '<td class="wk">' . $pctCell($t['total_pct']) . '</td></tr>';
             $h .= '</tbody></table>';
             return $h;
@@ -106,8 +118,11 @@
         @component('components.widget', ['class' => 'box-primary', 'title' => 'All stores — ' . $ty . ' vs ' . $ly])
             <div class="table-responsive">{!! $renderTable($all_table) !!}</div>
             <p class="text-muted" style="margin-top:6px;">
-                Each weekday this week vs the same weekday last year (52 weeks back). The current day is in
-                progress — clipped to {{ $nav['as_of'] }} on both years. Finalized in-store sells, including bulk-imported history (last year's sales live there); Whatnot excluded.
+                Each weekday this week vs the same weekday last year (52 weeks back). Today is in progress
+                (sales so far, as of {{ $nav['as_of'] }}); last year's imported history has no usable time-of-day,
+                so today can't be compared hour-for-hour — its % shows n/a and it's left out of the
+                {{ $nav['week_to_date'] ? 'week-to-date total (completed days only' . ($nav['through_label'] ? ', through ' . $nav['through_label'] : '') . ')' : 'week total' }}.
+                Finalized in-store sells, including bulk-imported history; Whatnot excluded.
             </p>
         @endcomponent
 

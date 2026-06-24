@@ -4657,35 +4657,6 @@ class ReportController extends Controller
             ->orderBy('id')
             ->pluck('name', 'id');
 
-        // --- Temp diag: does imported 2025 data carry a real time-of-day? (?diag=2)
-        // If imports are stamped midnight, clipping "today" to now clips this year
-        // but not last year — making the in-progress day look artificially down.
-        if ($request->input('diag') == 2) {
-            $now = \Carbon::now();
-            $ly_today = $now->copy()->subWeeks(52);                 // same weekday last year
-            $ly_day_s = $ly_today->copy()->startOfDay();
-            $ly_day_e = $ly_today->copy()->endOfDay();
-            $ids = $locations->keys()->all();
-            $base = DB::table('transactions')
-                ->where('business_id', $business_id)->whereIn('location_id', $ids)
-                ->where('type', 'sell')->where('status', 'final')
-                ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); });
-            $row = (clone $base)->whereBetween('transaction_date', [$ly_day_s, $ly_day_e])
-                ->selectRaw("
-                    COUNT(*) all_cnt, SUM(final_total) full_day_rev,
-                    SUM(CASE WHEN transaction_date <= ? THEN final_total ELSE 0 END) clipped_to_now_rev,
-                    COUNT(CASE WHEN TIME(transaction_date) = '00:00:00' THEN 1 END) midnight_cnt,
-                    SUM(CASE WHEN TIME(transaction_date) = '00:00:00' THEN final_total ELSE 0 END) midnight_rev",
-                    [$ly_today])
-                ->first();
-            return response()->json([
-                'last_year_day'    => $ly_today->toDateString(),
-                'clip_time'        => $ly_today->format('H:i'),
-                'breakdown'        => $row,
-                'reading'          => 'If clipped_to_now_rev ≈ full_day_rev and midnight_rev is most of it, imports have no real time-of-day → today/week-total compares are unfair.',
-            ], 200, [], JSON_PRETTY_PRINT);
-        }
-
         // Weekday columns Sun..Sat for the selected week.
         $days = [];
         for ($i = 0; $i < 7; $i++) {
@@ -4699,41 +4670,56 @@ class ReportController extends Controller
             ];
         }
 
-        // Per-store tables + an all-stores accumulator. Each table row pair:
-        // this year (52w forward) above/below last year, both clipped to "now"
-        // on the in-progress day so today compares apples-to-apples.
+        // Per-store tables + an all-stores accumulator.
+        //
+        // Day types and how each is handled:
+        //   completed (past full day) — full day both years, counts toward the
+        //       week total, gets a fair %.
+        //   today (in progress)       — this year is sales-so-far (partial), but
+        //       last year CAN'T be clipped to match: the bulk import stamps most
+        //       rows at midnight, so a time clip is meaningless. We therefore show
+        //       this year's partial vs last year's FULL day, mark the % n/a, and
+        //       EXCLUDE today from the week total so it stays a fair compare.
+        //   future                    — no sales yet this year; show last year's
+        //       full day for context only, excluded from the total.
         $store_tables = [];
         $all_this = array_fill(0, 7, 0.0);
         $all_ly   = array_fill(0, 7, 0.0);
-        $all_has  = array_fill(0, 7, false);
+        $all_done = array_fill(0, 7, false); // completed day → eligible for % and total
         $all_this_total = $all_ly_total = 0.0;
 
         foreach ($locations as $loc_id => $loc_name) {
             $tv = $lv = $pc = [];
             $tt = $lt = 0.0;
             foreach ($days as $i => $day) {
-                $d   = $day['carbon'];
-                $lyS = $d->copy()->subWeeks(52)->startOfDay();
+                $d        = $day['carbon'];
+                $lyS      = $d->copy()->subWeeks(52)->startOfDay();
+                $lyE_full = $d->copy()->subWeeks(52)->endOfDay();
 
                 if ($day['is_future']) {
-                    // No sales yet this year; show last year's full day for context.
-                    $lyE = $d->copy()->subWeeks(52)->endOfDay();
-                    $lr  = (float) $this->lflRevAndCount($business_id, $loc_id, $lyS, $lyE)->revenue;
+                    $lr = (float) $this->lflRevAndCount($business_id, $loc_id, $lyS, $lyE_full)->revenue;
                     $tv[$i] = null; $lv[$i] = $lr; $pc[$i] = null;
-                    $lt += $lr; $all_ly[$i] += $lr; $all_ly_total += $lr;
+                    $all_ly[$i] += $lr; // context only, not totalled
                     continue;
                 }
 
-                $ts = $d->copy()->startOfDay();
-                $te = $day['is_today'] ? $now->copy() : $d->copy()->endOfDay();
-                $tr = (float) $this->lflRevAndCount($business_id, $loc_id, $ts, $te)->revenue;
-                $lyE = $te->copy()->subWeeks(52);
-                $lr  = (float) $this->lflRevAndCount($business_id, $loc_id, $lyS, $lyE)->revenue;
+                if ($day['is_today']) {
+                    // This year: from midnight to now. Last year: full day (no
+                    // usable time-of-day to clip against). Not comparable, not totalled.
+                    $tr = (float) $this->lflRevAndCount($business_id, $loc_id, $d->copy()->startOfDay(), $now)->revenue;
+                    $lr = (float) $this->lflRevAndCount($business_id, $loc_id, $lyS, $lyE_full)->revenue;
+                    $tv[$i] = $tr; $lv[$i] = $lr; $pc[$i] = null;
+                    $all_this[$i] += $tr; $all_ly[$i] += $lr;
+                    continue;
+                }
 
+                // Completed day — full vs full, fair %.
+                $tr = (float) $this->lflRevAndCount($business_id, $loc_id, $d->copy()->startOfDay(), $d->copy()->endOfDay())->revenue;
+                $lr = (float) $this->lflRevAndCount($business_id, $loc_id, $lyS, $lyE_full)->revenue;
                 $tv[$i] = $tr; $lv[$i] = $lr;
                 $pc[$i] = $lr > 0 ? (($tr - $lr) / $lr) * 100 : null;
                 $tt += $tr; $lt += $lr;
-                $all_this[$i] += $tr; $all_ly[$i] += $lr; $all_has[$i] = true;
+                $all_this[$i] += $tr; $all_ly[$i] += $lr; $all_done[$i] = true;
                 $all_this_total += $tr; $all_ly_total += $lr;
             }
 
@@ -4749,7 +4735,7 @@ class ReportController extends Controller
         $a_this = $a_pct = [];
         for ($i = 0; $i < 7; $i++) {
             $a_this[$i] = $days[$i]['is_future'] ? null : $all_this[$i];
-            $a_pct[$i]  = ($all_has[$i] && $all_ly[$i] > 0)
+            $a_pct[$i]  = ($all_done[$i] && $all_ly[$i] > 0)
                 ? (($all_this[$i] - $all_ly[$i]) / $all_ly[$i]) * 100 : null;
         }
         $all_table = [
@@ -4760,16 +4746,23 @@ class ReportController extends Controller
         ];
 
         // Week navigation (never past the current week).
-        $cur_sunday = $today->copy()->subDays($today->dayOfWeek);
+        $cur_sunday  = $today->copy()->subDays($today->dayOfWeek);
         $next_sunday = $sunday->copy()->addWeek();
+        $is_current  = $sunday->isSameDay($cur_sunday);
+        // For the in-progress week, the Week column is week-to-date: completed
+        // days only (Sun .. yesterday). Sunday has none yet.
+        $through = ($is_current && $today->dayOfWeek >= 1)
+            ? $sunday->copy()->addDays($today->dayOfWeek - 1) : null;
         $nav = [
-            'prev'        => $sunday->copy()->subWeek()->toDateString(),
-            'next'        => $next_sunday->lte($cur_sunday) ? $next_sunday->toDateString() : null,
-            'is_current'  => $sunday->isSameDay($cur_sunday),
-            'week_label'  => $sunday->format('M j') . ' – ' . $sunday->copy()->addDays(6)->format('M j, Y'),
-            'ly_label'    => $sunday->copy()->subWeeks(52)->format('M j') . ' – '
+            'prev'          => $sunday->copy()->subWeek()->toDateString(),
+            'next'          => $next_sunday->lte($cur_sunday) ? $next_sunday->toDateString() : null,
+            'is_current'    => $is_current,
+            'week_to_date'  => $is_current,
+            'through_label' => $through ? $through->format('D, M j') : null,
+            'week_label'    => $sunday->format('M j') . ' – ' . $sunday->copy()->addDays(6)->format('M j, Y'),
+            'ly_label'      => $sunday->copy()->subWeeks(52)->format('M j') . ' – '
                 . $sunday->copy()->subWeeks(52)->addDays(6)->format('M j, Y'),
-            'as_of'       => $now->format('D g:i A'),
+            'as_of'         => $now->format('D g:i A'),
         ];
 
         if ($request->input('export') === 'csv') {
