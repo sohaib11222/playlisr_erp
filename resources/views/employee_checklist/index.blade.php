@@ -8,8 +8,12 @@
     $baseUrl     = $baseUrl     ?? '';
     $intro       = $intro       ?? '';
     $isOff       = $type === 'offboarding';
+    $editing     = $editing ?? null;
+    $editChecked = $editing ? ($editing['checked'] ?? []) : [];
     $heading     = $isOff ? 'Offboarding Checklist' : 'Onboarding Checklist';
-    $submitLabel = $isOff ? 'Log offboarding' : 'Log onboarding';
+    $submitLabel = $editing
+        ? 'Save changes'
+        : ($isOff ? 'Log offboarding' : 'Log onboarding');
 @endphp
 {{-- Cream / pastel-yellow look to match /pos/create. Scoped under .open-shell. --}}
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -156,14 +160,22 @@
         </div>
     </div>
 
+    @if($editing)
+        <div class="flash ok" style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+            <span>Editing <strong>{{ $editing['employee_name'] ?? '' }}</strong>'s {{ $type }} (logged {{ \Carbon\Carbon::parse($editing['completed_at'])->format('M j, g:i A') }}). Check off what's now done and save.</span>
+            <a href="{{ $baseUrl }}?type={{ $type }}" class="store-pill">Cancel</a>
+        </div>
+    @endif
+
     <form method="POST" action="{{ action('EmployeeChecklistController@complete') }}">
         @csrf
         <input type="hidden" name="type" value="{{ $type }}">
+        @if($editing)<input type="hidden" name="edit_id" value="{{ $editing['id'] }}">@endif
         <div class="card">
             <div class="topbar">
                 <div class="fld" style="flex:1 1 260px;">
                     <label class="lbl">Employee name</label>
-                    <input type="text" name="employee_name" class="input" placeholder="Who is this {{ $type }} for?" required>
+                    <input type="text" name="employee_name" class="input" placeholder="Who is this {{ $type }} for?" value="{{ $editing['employee_name'] ?? '' }}" required>
                 </div>
                 <div class="progress-pill" style="margin-left:auto;"><span id="progCount">0</span> / {{ $totalItems }} done</div>
             </div>
@@ -174,7 +186,7 @@
                     @foreach ($items as $key => $label)
                         <div class="item">
                             <label class="item-main">
-                                <input type="checkbox" name="items[]" value="{{ $key }}" onchange="openTick()">
+                                <input type="checkbox" name="items[]" value="{{ $key }}" onchange="openTick()" {{ in_array($key, $editChecked, true) ? 'checked' : '' }}>
                                 <span class="txt">{{ $label }}</span>
                             </label>
                         </div>
@@ -184,7 +196,7 @@
 
             <div class="grp">
                 <label class="lbl">Notes <span style="font-weight:500;text-transform:none;letter-spacing:0">(optional)</span></label>
-                <textarea name="note" class="input" rows="2" placeholder="e.g. waiting on signed handbook, ERP account pending role assignment"></textarea>
+                <textarea name="note" class="input" rows="2" placeholder="e.g. waiting on signed handbook, ERP account pending role assignment">{{ $editing['note'] ?? '' }}</textarea>
             </div>
 
             <div id="allDoneMsg" style="display:none;margin:4px 0 16px;background:#FFF9DB;border:1px solid #E8CF68;border-radius:10px;padding:13px 16px;font-weight:800;color:#5A4410;font-size:15px;">
@@ -204,13 +216,16 @@
                 <h3>Recent {{ strtolower($type) }}</h3>
                 <table class="hist">
                     <thead>
-                        <tr><th>When</th><th>Employee</th><th>By</th><th>Done</th><th>Left undone</th></tr>
+                        <tr><th>When</th><th>Employee</th><th>By</th><th>Done</th><th>Skipped</th><th></th></tr>
                     </thead>
                     <tbody>
                         @foreach ($recent as $r)
                             @php $full = ($r['checked_count'] ?? 0) >= ($r['total'] ?? 0); @endphp
                             <tr>
-                                <td>{{ \Carbon\Carbon::parse($r['completed_at'])->format('M j, g:i A') }}</td>
+                                <td>
+                                    {{ \Carbon\Carbon::parse($r['completed_at'])->format('M j, g:i A') }}
+                                    @if(!empty($r['updated_at']))<div class="missed" style="color:var(--d-ink-3)">edited {{ \Carbon\Carbon::parse($r['updated_at'])->format('M j, g:i A') }}{{ !empty($r['updated_by']) ? ' by '.$r['updated_by'] : '' }}</div>@endif
+                                </td>
                                 <td>{{ $r['employee_name'] ?? 'n/a' }}</td>
                                 <td>{{ $r['user_name'] ?? 'n/a' }}</td>
                                 <td>
@@ -218,12 +233,17 @@
                                 </td>
                                 <td>
                                     @if($full)
-                                        <span class="missed" style="color:var(--d-good)">All done</span>
+                                        <span class="missed" style="color:var(--d-good)">Nothing skipped</span>
                                     @else
-                                        <span class="missed">{{ count($r['missed'] ?? []) }} skipped</span>
+                                        <ul style="margin:0;padding-left:16px;">
+                                            @foreach (($r['missed'] ?? []) as $mk)
+                                                <li class="missed">{{ $itemLabels[$mk] ?? $mk }}</li>
+                                            @endforeach
+                                        </ul>
                                     @endif
                                     @if(!empty($r['note']))<div class="missed" style="color:var(--d-ink-3)">Note: {{ $r['note'] }}</div>@endif
                                 </td>
+                                <td><a href="{{ $baseUrl }}?type={{ $type }}&edit={{ $r['id'] }}" class="store-pill" style="padding:5px 14px;font-size:13px;">Edit</a></td>
                             </tr>
                         @endforeach
                     </tbody>

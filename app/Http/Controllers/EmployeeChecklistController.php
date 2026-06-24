@@ -172,10 +172,25 @@ class EmployeeChecklistController extends Controller
         });
         $recent = array_slice($forType, 0, 25);
 
+        // Editing a past run? Load it so the form pre-fills with that
+        // employee's name and whatever was already checked.
+        $editId = trim((string) $request->input('edit', ''));
+        $editing = null;
+        if ($editId !== '') {
+            foreach ($forType as $r) {
+                if ((string) ($r['id'] ?? '') === $editId) {
+                    $editing = $r;
+                    break;
+                }
+            }
+        }
+
         return view('employee_checklist.index', [
             'groups'      => self::groupsFor($type),
             'totalItems'  => count($allKeys),
             'recent'      => $recent,
+            'itemLabels'  => self::allItems($type),
+            'editing'     => $editing,
             'type'        => $type,
             'typeOptions' => self::TYPE_LABELS,
             'baseUrl'     => url('/employee-checklist'),
@@ -208,8 +223,38 @@ class EmployeeChecklistController extends Controller
         }
 
         $missed = array_values(array_diff($allKeys, $checked));
+        $userName = auth()->user()->first_name . ' ' . auth()->user()->last_name;
+        $note = mb_substr(trim((string) $request->input('note', '')), 0, 1000);
 
         $all = self::readAll();
+
+        // Editing an existing run? Update it in place so Fatteen can come back
+        // and tick off what was skipped instead of creating a duplicate entry.
+        $editId = trim((string) $request->input('edit_id', ''));
+        if ($editId !== '') {
+            foreach ($all as $i => $r) {
+                if ((string) ($r['id'] ?? '') === $editId && ($r['type'] ?? '') === $type) {
+                    $all[$i]['employee_name'] = $employee;
+                    $all[$i]['checked']       = $checked;
+                    $all[$i]['missed']        = $missed;
+                    $all[$i]['checked_count'] = count($checked);
+                    $all[$i]['total']         = count($allKeys);
+                    $all[$i]['note']          = $note;
+                    $all[$i]['updated_by']    = $userName;
+                    $all[$i]['updated_at']    = date('Y-m-d H:i');
+                    self::writeAll($all);
+
+                    $left = count($missed);
+                    $msg = $left === 0
+                        ? 'Updated ' . $employee . '\'s checklist — all steps done now. Nice work!'
+                        : 'Updated ' . $employee . '\'s checklist. ' . $left . ' item(s) still left undone.';
+                    return redirect()->action('EmployeeChecklistController@index', ['type' => $type])
+                        ->with('status', ['success' => 1, 'msg' => $msg]);
+                }
+            }
+            // edit_id no longer found — fall through and log as a new run.
+        }
+
         $all[] = [
             'id'            => round(microtime(true) * 1000),
             'date'          => date('Y-m-d'),
@@ -217,12 +262,12 @@ class EmployeeChecklistController extends Controller
             'type_label'    => self::TYPE_LABELS[$type] ?? '',
             'employee_name' => $employee,
             'user_id'       => auth()->id(),
-            'user_name'     => auth()->user()->first_name . ' ' . auth()->user()->last_name,
+            'user_name'     => $userName,
             'checked'       => $checked,
             'missed'        => $missed,
             'checked_count' => count($checked),
             'total'         => count($allKeys),
-            'note'          => mb_substr(trim((string) $request->input('note', '')), 0, 1000),
+            'note'          => $note,
             'completed_at'  => date('Y-m-d H:i'),
         ];
         self::writeAll($all);
