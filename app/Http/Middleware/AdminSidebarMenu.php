@@ -35,14 +35,8 @@ class AdminSidebarMenu
             //Zella/Nick end their shift here; posts to #shift-notes).
             $menu->url(url('/shift-notes/end'), 'End Shift', ['icon' => 'fa fas fa-clock', 'active' => request()->segment(1) == 'shift-notes'])->order(6);
 
-            //Morning opening checklist — staff-facing, visible to everyone.
-            //Red "TO DO" badge for Hollywood staff until today's opening is logged.
-            $openBadge = \App\Http\Controllers\OpeningChecklistController::shouldPrompt()
-                ? ' <span class="label label-danger">TO DO</span>' : '';
-            $menu->url(url('/opening-checklist'), 'Opening Checklist' . $openBadge, ['icon' => 'fa fas fa-clipboard-check', 'active' => request()->segment(1) == 'opening-checklist'])->order(6);
-
-            //Evening closing checklist — staff-facing, visible to everyone.
-            $menu->url(url('/closing-checklist'), 'Closing Checklist', ['icon' => 'fa fas fa-moon', 'active' => request()->segment(1) == 'closing-checklist'])->order(6);
+            // Opening/Closing checklists are intentionally not in the sidebar —
+            // they're reached via the dashboard prompt/links. Routes still live.
 
             //Events / Listening Parties (top-level — its own thing, not under Products)
             if (auth()->user()->can('product.create')) {
