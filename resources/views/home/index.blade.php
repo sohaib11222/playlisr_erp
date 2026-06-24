@@ -104,6 +104,23 @@
         </a>
     @endif
 
+    {{-- Evening closing prompt: shows for store staff from late afternoon until
+         today's closing checklist is logged for their store. --}}
+    @php $closePromptStore = \App\Http\Controllers\ClosingChecklistController::promptStore(); @endphp
+    @if($closePromptStore)
+        @php $closePromptStoreLabel = \App\Http\Controllers\ClosingChecklistController::STORE_LABELS[$closePromptStore] ?? 'The store'; @endphp
+        <a href="{{ url('/closing-checklist') }}?store={{ $closePromptStore }}" style="text-decoration:none;display:block;">
+            <div style="background:#EEF2FB;border:1px solid #B9C6E6;border-left:6px solid #B9C6E6;border-radius:12px;padding:16px 20px;margin-bottom:18px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;font-family:'Inter Tight',system-ui,sans-serif;">
+                <i class="fa fas fa-moon" style="font-size:26px;color:#3B5BA9;"></i>
+                <div style="flex:1 1 280px;min-width:220px;">
+                    <div style="font-size:16px;font-weight:800;color:#23335C;">{{ $closePromptStoreLabel }} hasn't been closed yet today</div>
+                    <div style="font-size:13.5px;color:#5a6a8a;margin-top:2px;">Run the closing checklist before you leave: lock up, shut things down, and take out the trash.</div>
+                </div>
+                <span style="background:#DCE5F7;border:1px solid #B9C6E6;color:#23335C;font-weight:800;font-size:14px;padding:10px 20px;border-radius:10px;white-space:nowrap;">Start checklist</span>
+            </div>
+        </a>
+    @endif
+
     <style>
         .niv-card { background:#fff; border:1px solid #e6e8ec; border-radius:10px; padding:14px 16px; margin-bottom:18px; box-shadow:0 1px 3px rgba(0,0,0,.03); }
         .niv-card h3 { margin:0 0 10px 0; font-size:15px; text-transform:uppercase; letter-spacing:.6px; color:#1b6ca8; font-weight:700; border-bottom:1px solid #eef0f3; padding-bottom:8px; }

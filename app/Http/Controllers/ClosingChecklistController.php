@@ -124,6 +124,63 @@ class ClosingChecklistController extends Controller
         return array_key_first($available);
     }
 
+    /* ---------- "has the store been closed today?" helpers ---------- */
+
+    /** Hour (local) from which the closing prompt starts showing. */
+    const PROMPT_FROM_HOUR = 17;
+
+    /** Has anyone logged today's closing for this store yet? */
+    public static function closedToday($store)
+    {
+        $today = date('Y-m-d');
+        foreach (self::readAll() as $r) {
+            if (($r['date'] ?? '') === $today && (($r['store'] ?? 'hollywood') === $store)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * If it's evening and the current user's store hasn't been closed today,
+     * return that store key; otherwise null. Drives the dashboard banner.
+     * Only fires for staff who actually work a recognized store, and only from
+     * the evening on — a closing prompt at 10am is just noise.
+     */
+    public static function promptStore()
+    {
+        if (!auth()->check()) {
+            return null;
+        }
+        if ((int) date('G') < self::PROMPT_FROM_HOUR) {
+            return null;
+        }
+        $store = null;
+        try {
+            foreach (BusinessLocation::forDropdown(session('user.business_id')) as $name) {
+                if (stripos($name, 'pico') !== false) {
+                    $store = 'pico';
+                    break;
+                }
+                if (stripos($name, 'holly') !== false) {
+                    $store = 'hollywood';
+                    break;
+                }
+            }
+        } catch (\Exception $e) {
+            return null;
+        }
+        if (!$store) {
+            return null;
+        }
+        return self::closedToday($store) ? null : $store;
+    }
+
+    public static function shouldPrompt()
+    {
+        return self::promptStore() !== null;
+    }
+
     /* ---------- page ---------- */
 
     public function index(Request $request)
