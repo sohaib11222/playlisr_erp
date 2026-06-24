@@ -1,5 +1,6 @@
 @php $totalPrep = count($prepItems); @endphp
-<table class="ev-tbl">
+<div style="overflow-x:auto;">
+<table class="ev-tbl" style="min-width:1180px;">
   <thead>
     <tr>
       <th style="width:13%;">Event</th>
@@ -82,12 +83,12 @@
         <td>{{ $evStreetDate }}</td>
         <td class="ev-meta">{{ $locLabels ? implode(' + ', $locLabels) : '—' }}@if(!empty($ev['locationDetail'])) <br>({{ ucfirst($ev['locationDetail']) }})@endif</td>
         <td>{{ $rsvpCount === null ? '—' : $rsvpCount }}</td>
-        <td>{{ $vinylCount === null ? '—' : $vinylCount }}@if($vinylByStore)<div class="ev-meta">{{ $vinylByStore }}</div>@endif</td>
-        <td>{{ $cdCount === null ? '—' : $cdCount }}@if($cdByStore)<div class="ev-meta">{{ $cdByStore }}</div>@endif</td>
+        <td style="white-space:nowrap;">{{ $vinylCount === null ? '—' : $vinylCount }}@if($vinylByStore)<div class="ev-meta">{{ $vinylByStore }}</div>@endif</td>
+        <td style="white-space:nowrap;">{{ $cdCount === null ? '—' : $cdCount }}@if($cdByStore)<div class="ev-meta">{{ $cdByStore }}</div>@endif</td>
         <td>
           @if(count($orderedLines))
             @foreach($orderedLines as $store => $line)
-              <div style="font-size:12px;line-height:1.5;"><strong>{{ $store }}:</strong> {{ $line }}</div>
+              <div style="font-size:12px;line-height:1.5;white-space:nowrap;"><strong>{{ $store }}:</strong> {{ $line }}</div>
             @endforeach
           @else
             <span class="ev-meta">—</span>
@@ -117,3 +118,4 @@
     @endforeach
   </tbody>
 </table>
+</div>
