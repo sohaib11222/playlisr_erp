@@ -4657,6 +4657,35 @@ class ReportController extends Controller
             ->orderBy('id')
             ->pluck('name', 'id');
 
+        // --- Temp diag: does imported 2025 data carry a real time-of-day? (?diag=2)
+        // If imports are stamped midnight, clipping "today" to now clips this year
+        // but not last year — making the in-progress day look artificially down.
+        if ($request->input('diag') == 2) {
+            $now = \Carbon::now();
+            $ly_today = $now->copy()->subWeeks(52);                 // same weekday last year
+            $ly_day_s = $ly_today->copy()->startOfDay();
+            $ly_day_e = $ly_today->copy()->endOfDay();
+            $ids = $locations->keys()->all();
+            $base = DB::table('transactions')
+                ->where('business_id', $business_id)->whereIn('location_id', $ids)
+                ->where('type', 'sell')->where('status', 'final')
+                ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); });
+            $row = (clone $base)->whereBetween('transaction_date', [$ly_day_s, $ly_day_e])
+                ->selectRaw("
+                    COUNT(*) all_cnt, SUM(final_total) full_day_rev,
+                    SUM(CASE WHEN transaction_date <= ? THEN final_total ELSE 0 END) clipped_to_now_rev,
+                    COUNT(CASE WHEN TIME(transaction_date) = '00:00:00' THEN 1 END) midnight_cnt,
+                    SUM(CASE WHEN TIME(transaction_date) = '00:00:00' THEN final_total ELSE 0 END) midnight_rev",
+                    [$ly_today])
+                ->first();
+            return response()->json([
+                'last_year_day'    => $ly_today->toDateString(),
+                'clip_time'        => $ly_today->format('H:i'),
+                'breakdown'        => $row,
+                'reading'          => 'If clipped_to_now_rev ≈ full_day_rev and midnight_rev is most of it, imports have no real time-of-day → today/week-total compares are unfair.',
+            ], 200, [], JSON_PRETTY_PRINT);
+        }
+
         // Weekday columns Sun..Sat for the selected week.
         $days = [];
         for ($i = 0; $i < 7; $i++) {
