@@ -103,6 +103,29 @@
     </form>
   </details>
 
+  {{-- Versions ordered — read-only reference (the products we ordered for this
+       release). Shown even when public preorders are off. --}}
+  @php $versions = array_values((array) ($event['preorderProducts'] ?? [])); @endphp
+  @if(!empty($versions))
+    @php $skuLabels = \App\Http\Controllers\EventsController::orderSkus(); @endphp
+    <div class="ev-card">
+      <h2 style="margin-top:0;">Versions ordered</h2>
+      <p class="sub" style="margin:0 0 10px;">What we ordered for this release, with retail (MSRP). Reference only — public preorders are off.</p>
+      <table class="ev-tbl">
+        <thead><tr><th style="width:60%;">Product</th><th style="width:25%;">Format</th><th style="width:15%;">MSRP</th></tr></thead>
+        <tbody>
+          @foreach($versions as $v)
+            <tr>
+              <td class="ev-name">{{ $v['title'] ?? '' }}</td>
+              <td>{{ $skuLabels[$v['format'] ?? ''] ?? ($v['format'] ?? '—') }}</td>
+              <td>{{ isset($v['price']) && $v['price'] !== null && $v['price'] !== '' ? '$' . $v['price'] : '—' }}</td>
+            </tr>
+          @endforeach
+        </tbody>
+      </table>
+    </div>
+  @endif
+
   {{-- RSVPs, giveaway spin, preorders (live from nivessa.com via the bridge) --}}
   @include('events.partials._bridge')
 </div>
