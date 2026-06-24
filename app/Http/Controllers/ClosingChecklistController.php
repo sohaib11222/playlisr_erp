@@ -126,11 +126,28 @@ class ClosingChecklistController extends Controller
 
     /* ---------- "has the store been closed today?" helpers ---------- */
 
-    /** Hour (local, 24h) from which the closing prompt starts showing. Stores
-     *  close at 11pm (1am on weekends), so 9pm is a nudge before close without
-     *  nagging all evening. Suppressed after midnight so the late/weekend closer
-     *  isn't re-nagged in the small hours. */
-    const PROMPT_FROM_HOUR = 21;
+    /**
+     * Are we in the "time to close up" window right now? The reminder pops ~15
+     * min before close, and close time depends on the night:
+     *   - Sun–Thu nights: close 11pm  -> remind from 10:45pm until midnight.
+     *   - Fri & Sat nights: close 1am -> remind from 12:45am, i.e. the early
+     *     hours of Sat and Sun (capped at 4am so it doesn't linger all day).
+     */
+    public static function inPromptWindow()
+    {
+        $dow  = (int) date('w');                          // 0=Sun .. 6=Sat
+        $mins = (int) date('G') * 60 + (int) date('i');   // minutes since midnight, local
+
+        // Sun–Thu: 10:45pm until midnight.
+        if (in_array($dow, [0, 1, 2, 3, 4], true) && $mins >= 22 * 60 + 45) {
+            return true;
+        }
+        // Sat & Sun small hours: 12:45am–4am (Fri-night and Sat-night closes).
+        if (in_array($dow, [6, 0], true) && $mins >= 45 && $mins < 4 * 60) {
+            return true;
+        }
+        return false;
+    }
 
     /** Has anyone logged today's closing for this store yet? */
     public static function closedToday($store)
@@ -145,17 +162,17 @@ class ClosingChecklistController extends Controller
     }
 
     /**
-     * If it's evening and the current user's store hasn't been closed today,
-     * return that store key; otherwise null. Drives the dashboard banner.
-     * Only fires for staff who actually work a recognized store, and only from
-     * the evening on — a closing prompt at 10am is just noise.
+     * If we're in the close-up window (see inPromptWindow) and the current
+     * user's store hasn't been closed today, return that store key; otherwise
+     * null. Drives the dashboard banner. Only fires for staff who actually work
+     * a recognized store.
      */
     public static function promptStore()
     {
         if (!auth()->check()) {
             return null;
         }
-        if ((int) date('G') < self::PROMPT_FROM_HOUR) {
+        if (!self::inPromptWindow()) {
             return null;
         }
         $store = null;
