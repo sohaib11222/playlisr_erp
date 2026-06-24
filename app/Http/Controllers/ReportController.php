@@ -4822,6 +4822,41 @@ class ReportController extends Controller
             ->get(['contact_id'])
             ->count();
 
+        // --- Per-store breakdown ----------------------------------------------
+        // Same levers, one row per active store, so locations can be compared.
+        $locations = DB::table('business_locations')
+            ->where('business_id', $business_id)
+            ->where('is_active', 1)
+            ->orderBy('id')
+            ->pluck('name', 'id');
+
+        $by_store = [];
+        foreach ($locations as $loc_id => $loc_name) {
+            $st = $base()->where('transactions.location_id', $loc_id)
+                ->selectRaw('COALESCE(SUM(final_total),0) as revenue, COUNT(*) as tx_count')
+                ->first();
+            $st_rev = (float) $st->revenue;
+            $st_tx  = (int) $st->tx_count;
+            $st_units = (float) $base()->where('transactions.location_id', $loc_id)
+                ->join('transaction_sell_lines as tsl', 'transactions.id', '=', 'tsl.transaction_id')
+                ->sum('tsl.quantity');
+            $st_customers = (int) $base()->where('transactions.location_id', $loc_id)
+                ->whereNotNull('contact_id')->distinct()->count('contact_id');
+            $st_repeat = $base()->where('transactions.location_id', $loc_id)
+                ->whereNotNull('contact_id')->groupBy('contact_id')
+                ->havingRaw('COUNT(*) > 1')->get(['contact_id'])->count();
+
+            $by_store[] = [
+                'location'        => $loc_name,
+                'revenue'         => $st_rev,
+                'tx_count'        => $st_tx,
+                'aov'             => $st_tx > 0 ? $st_rev / $st_tx : 0.0,
+                'items_per_order' => $st_tx > 0 ? $st_units / $st_tx : 0.0,
+                'customers'       => $st_customers,
+                'repeat'          => $st_repeat,
+            ];
+        }
+
         // --- Product Mix lever: top genres + best sellers ----------------------
         // Line-level revenue (qty x inc-tax price) approximates category share.
         $by_category = DB::table('transaction_sell_lines as tsl')
@@ -4877,7 +4912,7 @@ class ReportController extends Controller
         );
 
         return view('report.revenue_drivers')
-            ->with(compact('scorecard', 'by_category', 'best_sellers', 'meta'));
+            ->with(compact('scorecard', 'by_store', 'by_category', 'best_sellers', 'meta'));
     }
 
     private function streamLflSalesCsv($rows, $totals, $meta)

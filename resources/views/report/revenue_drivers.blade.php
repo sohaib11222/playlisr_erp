@@ -80,6 +80,44 @@
         </div>
     </div>
 
+    {{-- Per-store comparison --}}
+    <div class="row">
+        <div class="col-md-12">
+            @component('components.widget', ['class' => 'box-primary', 'title' => 'By store — the levers side by side'])
+                <div class="table-responsive">
+                    <table class="table table-bordered table-striped rd-mini" style="width:100%;">
+                        <thead>
+                            <tr>
+                                <th>Store</th>
+                                <th class="num">Revenue</th>
+                                <th class="num">Transactions</th>
+                                <th class="num">AOV</th>
+                                <th class="num">Items / order</th>
+                                <th class="num">Customers</th>
+                                <th class="num">Repeat</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($by_store as $r)
+                                <tr>
+                                    <td>{{ $r['location'] }}</td>
+                                    <td class="num">{{ $money($r['revenue']) }}</td>
+                                    <td class="num">{{ number_format($r['tx_count']) }}</td>
+                                    <td class="num">{{ $money($r['aov']) }}</td>
+                                    <td class="num">{{ number_format($r['items_per_order'], 2) }}</td>
+                                    <td class="num">{{ number_format($r['customers']) }}</td>
+                                    <td class="num">{{ number_format($r['repeat']) }}</td>
+                                </tr>
+                            @empty
+                                <tr><td colspan="7" class="text-center text-muted">No active stores.</td></tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            @endcomponent
+        </div>
+    </div>
+
     <div class="rd-cards">
 
         {{-- 1. TRAFFIC --}}
