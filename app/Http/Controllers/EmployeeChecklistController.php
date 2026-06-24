@@ -33,8 +33,7 @@ class EmployeeChecklistController extends Controller
         'onboarding' => [
             'Paperwork / HR (do these first)' => [
                 'id_i9'        => 'Collect ID for work eligibility — passport (or driver\'s license + Social Security card) for the I-9.',
-                'sign_agree'   => 'Have them sign the employment agreement / offer letter.',
-                'sign_handbook' => 'Have them sign the employee handbook acknowledgment.',
+                'sign_offer'   => 'Have them sign the offer letter and handbook acknowledgment.',
                 'payroll'      => 'Collect direct-deposit and tax (W-4) info for payroll.',
                 'quickbooks'   => 'Make sure they\'re set up in QuickBooks with direct deposit.',
                 'emergency'    => 'Get an emergency contact on file.',
