@@ -3311,8 +3311,14 @@ class ProductController extends Controller
         $transactionDate = \Carbon::createFromFormat('Y-m-d', $transactionDate)->toDateTimeString();
 
         $createdProducts = [];
+        $currentRow = null;
+        $currentName = null;
         try {
-            foreach ($products as $productData) {
+            foreach ($products as $index => $productData) {
+                // Track the row we're on so the catch block can tell staff
+                // exactly which product failed instead of a generic message.
+                $currentRow = $index;
+                $currentName = $productData['name'] ?? ('row ' . ($index + 1));
                 // reset product
                 $product = null;
                 $productId = $productData['id'] ?? '';
@@ -3370,11 +3376,14 @@ class ProductController extends Controller
                     $sku = $product->sku;  // Теперь SKU определё
 
                     // Создание вариации для одиночного продукта
+                    // single_dpp_inc_tax (purchase price) is not validated, so a
+                    // row without it would otherwise feed null into the variation.
+                    $purchasePrice = $productData['single_dpp_inc_tax'] ?? 0;
                     $this->productUtil->createSingleProductVariation(
                         $product->id,
                         $sku,
-                        $productData['single_dpp_inc_tax'],
-                        $productData['single_dpp_inc_tax'],
+                        $purchasePrice,
+                        $purchasePrice,
                         $productData['profit_percent'] ?? 0,
                         $productData['single_dsp_inc_tax'],
                         $productData['single_dsp_inc_tax']
@@ -3400,7 +3409,7 @@ class ProductController extends Controller
                         }
                         // No opening transaction exist, we create new one 
                         $openingStockInput[$loc->id] = [
-                            'purchase_price' => $productData['single_dpp_inc_tax'],
+                            'purchase_price' => $productData['single_dpp_inc_tax'] ?? 0,
                             'quantity' => $stock,
                             'exp_date' => '',
                             'lot_number' => ''
@@ -3437,8 +3446,13 @@ class ProductController extends Controller
             ];
         } catch (\Exception $e) {
             DB::rollBack();
-            \Log::error($e->getMessage());
-            $output = ['success' => 0, 'msg' => 'Something went wrong during creating the products', 'error' => $e->getMessage()." ".$e->getLine()];
+            $rowLabel = $currentRow !== null ? ('Row ' . ($currentRow + 1) . ' (' . $currentName . ')') : 'Unknown row';
+            \Log::error('Mass product create failed on ' . $rowLabel . ': ' . $e->getMessage() . ' [' . $e->getFile() . ':' . $e->getLine() . ']');
+            $output = [
+                'success' => 0,
+                'msg' => 'Something went wrong during creating the products',
+                'error' => $rowLabel . ': ' . $e->getMessage(),
+            ];
         }
 
         // Проверяем, если запрос AJAX, возвращаем JSON-ответ без редиректа

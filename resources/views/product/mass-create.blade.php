@@ -1422,7 +1422,7 @@
                             }
                         }, 300);
                     } else {
-                        toastr.error('Error: ' + response.msg);
+                        toastr.error('Error: ' + (response.error || response.msg));
                         document.getElementById('error-audio').play();
                     }
                 },
