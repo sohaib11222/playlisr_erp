@@ -104,9 +104,11 @@ class ForceCloseRegisterController extends Controller
             $rows[] = (object) [
                 'id'              => $r->id,
                 'status'          => $r->status,
+                'user_id'         => $r->user_id,
                 'name'            => $name,
                 'location_name'   => $r->location_name ?: 'Unknown location',
                 'opened_at'       => $opened->setTimezone('America/Los_Angeles')->format('M j, Y g:i A'),
+                'opened_day'      => $day,
                 'closed_at'       => $r->closed_at,
                 'age_hours'       => round($ageH, 1),
                 'is_stale'        => $r->status === 'open' && $ageH > self::STALE_HOURS,
@@ -116,11 +118,100 @@ class ForceCloseRegisterController extends Controller
             ];
         }
 
+        // Current-staff list for the "Reassign to" dropdown (active + can log
+        // in). Sorted by name. Used to move a register opened under the wrong
+        // login (e.g. Mica rang up on Manolo's account) to the right cashier.
+        $users = DB::table('users')
+            ->where('business_id', $business_id)
+            ->where('status', 'active')
+            ->where('allow_login', 1)
+            ->orderBy('first_name')
+            ->get(['id', 'surname', 'first_name', 'last_name'])
+            ->map(function ($u) {
+                $n = trim(($u->surname ?? '') . ' ' . ($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
+                $u->display_name = preg_replace('/\s+/', ' ', $n) ?: ('User #' . $u->id);
+                return $u;
+            });
+
         return view('admin.force_close_registers', [
             'rows'        => $rows,
+            'users'       => $users,
             'stale_hours' => self::STALE_HOURS,
             'stale_count' => count(array_filter($rows, function ($r) { return $r->is_stale; })),
         ]);
+    }
+
+    /** Reassign ONE register to a different user. Snapshots the BEFORE
+     *  user_id so it's undoable, then updates cash_registers.user_id. Use
+     *  when a shift was opened under the wrong login (e.g. Mica rang up on
+     *  Manolo's account because she didn't have one yet). This moves the
+     *  register SESSION only — to also move that shift's sales/listings/labels
+     *  use the prefilled link to /admin/reassign-user-activity shown after. */
+    public function reassignOne(Request $request)
+    {
+        $id          = (int) $request->input('register_id');
+        $newUserId   = (int) $request->input('new_user_id');
+        $business_id = (int) $request->session()->get('user.business_id');
+
+        $reg = DB::table('cash_registers')
+            ->where('id', $id)
+            ->where('business_id', $business_id)
+            ->first();
+        if (!$reg) {
+            return redirect('/admin/force-close-registers')
+                ->with('status', ['success' => 0, 'msg' => "Register #{$id} not found."]);
+        }
+
+        $newUser = DB::table('users')
+            ->where('id', $newUserId)
+            ->where('business_id', $business_id)
+            ->first();
+        if (!$newUser) {
+            return redirect('/admin/force-close-registers')
+                ->with('status', ['success' => 0, 'msg' => 'Pick a valid cashier to reassign to.']);
+        }
+        if ((int) $reg->user_id === $newUserId) {
+            return redirect('/admin/force-close-registers')
+                ->with('status', ['success' => 0, 'msg' => "Register #{$id} is already assigned to that cashier."]);
+        }
+
+        $fromUserId = (int) $reg->user_id;
+
+        // Snapshot BEFORE state for undo (action 'reassign-register-user').
+        $key = 'reassign_register_user_' . date('Ymd_His') . '_' . substr(bin2hex(random_bytes(3)), 0, 6);
+        $payload = [
+            'action'       => 'reassign-register-user',
+            'timestamp'    => now()->toIso8601String(),
+            'causer_id'    => auth()->check() ? auth()->id() : null,
+            'from_user_id' => $fromUserId,
+            'to_user_id'   => $newUserId,
+            'rows'         => [['id' => $reg->id, 'user_id' => $fromUserId]],
+        ];
+        Storage::disk('local')->put("admin-snapshots/{$key}.json", json_encode($payload));
+
+        DB::table('cash_registers')
+            ->where('id', $id)
+            ->update(['user_id' => $newUserId, 'updated_at' => now()]);
+
+        $newName = trim(($newUser->surname ?? '') . ' ' . ($newUser->first_name ?? '') . ' ' . ($newUser->last_name ?? ''));
+        $newName = preg_replace('/\s+/', ' ', $newName) ?: ('User #' . $newUserId);
+        $day = substr((string) $reg->created_at, 0, 10);
+
+        // Deep link to ALSO move this shift's sales/listings/labels (the
+        // columns the leaderboard + commission credit) to the new cashier.
+        $activityUrl = url('/admin/reassign-user-activity') . '?' . http_build_query([
+            'from_user_id' => $fromUserId,
+            'to_user_id'   => $newUserId,
+            'date'         => $day,
+        ]);
+
+        return redirect('/admin/force-close-registers')
+            ->with('status', [
+                'success'   => 1,
+                'msg'       => "Register #{$id} reassigned to {$newName}. Next: move that shift's sales/listings/labels too. Undo at /admin/admin-action-history (snapshot {$key}).",
+                'link_url'  => $activityUrl,
+                'link_text' => "Reassign {$day}'s sales / listings / labels →",
+            ]);
     }
 
     /** Close ONE register by id. Snapshot + close. */

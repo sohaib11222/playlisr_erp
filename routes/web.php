@@ -1073,6 +1073,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/admin/force-close-registers/close-one', 'ForceCloseRegisterController@closeOne');
     Route::post('/admin/force-close-registers/close-stale', 'ForceCloseRegisterController@closeStale');
     Route::post('/admin/force-close-registers/delete-one', 'ForceCloseRegisterController@deleteOne');
+    // Reassign an open register to a different cashier (wrong-login shift,
+    // e.g. Mica rang up on Manolo's account). Snapshots user_id first;
+    // undoable via admin-action-history (action 'reassign-register-user').
+    Route::post('/admin/force-close-registers/reassign-one', 'ForceCloseRegisterController@reassignOne');
 
     // Companion to /admin/cost-price-rules: lists every category that still
     // has $0-cost products, lets Sarah enter a cost per category inline,

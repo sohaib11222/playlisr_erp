@@ -9,7 +9,10 @@
         <strong>Close</strong> marks the register status as closed (closing
         amount defaults to the initial count). <strong>Delete</strong> removes
         the register row and its cash_register_transactions outright — use
-        this for duplicate same-day opens that are polluting totals. Both
+        this for duplicate same-day opens that are polluting totals.
+        <strong>Reassign to…</strong> moves the shift to a different cashier
+        when it was opened under the wrong login (then offers a link to move
+        that shift's sales/listings/labels too). All
         actions snapshot first; undo at
         <a href="{{ url('/admin/admin-action-history') }}">/admin/admin-action-history</a>.
     </p>
@@ -20,6 +23,9 @@
     @php $s = session('status'); @endphp
     <div class="alert alert-{{ ($s['success'] ?? 0) ? 'success' : 'danger' }}">
         {{ $s['msg'] ?? '' }}
+        @if(!empty($s['link_url']))
+            <a href="{{ $s['link_url'] }}" class="btn btn-xs btn-primary" style="margin-left:8px;">{{ $s['link_text'] ?? 'Continue' }}</a>
+        @endif
     </div>
 @endif
 
@@ -96,6 +102,22 @@
                                 <button type="submit" class="btn btn-xs btn-danger"
                                     onclick="return confirm('DELETE register #{{ $r->id }} ({{ addslashes($r->name) }})? This removes the row + all its cash_register_transactions. Snapshot will be saved for undo.');">
                                     Delete
+                                </button>
+                            </form>
+                            <form method="POST" action="{{ url('/admin/force-close-registers/reassign-one') }}" style="display:inline-block; margin-top:4px; white-space:nowrap;">
+                                {!! csrf_field() !!}
+                                <input type="hidden" name="register_id" value="{{ $r->id }}">
+                                <select name="new_user_id" class="form-control input-sm" style="display:inline-block; width:auto; max-width:140px;">
+                                    <option value="">Reassign to…</option>
+                                    @foreach($users as $u)
+                                        @if($u->id != $r->user_id)
+                                            <option value="{{ $u->id }}">{{ $u->display_name }}</option>
+                                        @endif
+                                    @endforeach
+                                </select>
+                                <button type="submit" class="btn btn-xs btn-info"
+                                    onclick="if(!this.form.new_user_id.value){alert('Pick a cashier first.');return false;} return confirm('Reassign register #{{ $r->id }} (currently {{ addslashes($r->name) }}) to the selected cashier? Snapshot saved for undo.');">
+                                    Go
                                 </button>
                             </form>
                         </td>
