@@ -36,6 +36,7 @@ class EmployeeChecklistController extends Controller
                 'sign_agree'   => 'Have them sign the employment agreement / offer letter.',
                 'sign_handbook' => 'Have them sign the employee handbook acknowledgment.',
                 'payroll'      => 'Collect direct-deposit and tax (W-4) info for payroll.',
+                'quickbooks'   => 'Make sure they\'re set up in QuickBooks with direct deposit.',
                 'emergency'    => 'Get an emergency contact on file.',
             ],
             'Clover (register access)' => [
