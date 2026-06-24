@@ -3186,8 +3186,13 @@ class ProductController extends Controller
         // Default purchase price per category (Sarah's cost-price-rules table),
         // keyed by parent category id, so the row auto-fills the cost from the
         // chosen category — used vinyl 0.35, sealed vinyl 17, etc. — instead of
-        // only handling Used Vinyl in the frontend.
+        // only handling Used Vinyl in the frontend. The id-map is the precise
+        // fast path; $category_cost_rules is the alias list the frontend falls
+        // back to when a category name doesn't exactly match the map (it then
+        // matches the category LABEL by substring, like the old used-vinyl-only
+        // code did).
         $category_cost_defaults = \App\Http\Controllers\CostPriceRulesController::defaultCostsByCategoryId($business_id);
+        $category_cost_rules = \App\Http\Controllers\CostPriceRulesController::RULES;
 
         return view('product.mass-create')->with(compact(
             'categories',
@@ -3198,7 +3203,8 @@ class ProductController extends Controller
             'units',
             'manual_item_price_rules',
             'current_pos_location_id',
-            'category_cost_defaults'
+            'category_cost_defaults',
+            'category_cost_rules'
         ));
     }
 

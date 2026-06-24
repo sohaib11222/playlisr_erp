@@ -688,20 +688,60 @@
     // every category (sealed vinyl 17, used vinyl 0.35, …), not just used LPs.
     window.categoryCostDefaults = @json($category_cost_defaults ?? (object) []);
 
+    // Same cost-price-rules table, as (alias-pattern -> cost) pairs, sorted
+    // longest-pattern-first so the most specific name wins (e.g. "cassettes -
+    // sealed" beats "cassettes"). This is the fallback the row uses when the
+    // chosen category's name doesn't exactly match the id-map above — it then
+    // matches the category LABEL by substring, the way the old used-vinyl-only
+    // code did, so a label like "Used Vinyl > Rock" still resolves.
+    window.categoryCostPatterns = (function (rules) {
+        var flat = [];
+        (rules || []).forEach(function (r) {
+            (r.match || []).forEach(function (p) {
+                if (p) flat.push({ p: String(p).toLowerCase(), c: Number(r.cost) });
+            });
+        });
+        flat.sort(function (a, b) { return b.p.length - a.p.length; });
+        return flat;
+    })(@json($category_cost_rules ?? []));
+
     // Pre-fill a row's Purchase Price from its category default, but only when
     // the field is still empty or zero — never clobber a cost the operator
-    // typed. Combo value is "<parentCategoryId>_<subId>"; the cost keys on the
-    // parent id. Returns true when a default was applied.
-    window.applyCategoryDefaultPurchasePrice = function (jqRow, comboVal) {
-        if (!comboVal) return false;
-        var parentId = String(comboVal).split('_')[0];
-        var defaults = window.categoryCostDefaults || {};
-        if (!Object.prototype.hasOwnProperty.call(defaults, parentId)) return false;
+    // typed. Reads the row's category combo directly. Returns true when a
+    // default was applied.
+    window.applyCategoryDefaultPurchasePrice = function (jqRow) {
+        var $combo = jqRow.find('.category-combo-select').first();
+        if (!$combo.length) return false;
         var $pp = jqRow.find('input[name*="[single_dpp_inc_tax]"]').first();
         if (!$pp.length) return false;
         var current = parseFloat(($pp.val() || '').toString().replace(/,/g, ''));
         if (!isNaN(current) && current > 0) return false; // keep operator's cost
-        $pp.val(Number(defaults[parentId]).toFixed(2));
+
+        var cost = null;
+
+        // 1) Precise: combo value is "<parentCategoryId>_<subId>"; cost keys on
+        //    the parent category id.
+        var parentId = String($combo.val() || '').split('_')[0];
+        var defaults = window.categoryCostDefaults || {};
+        if (parentId && Object.prototype.hasOwnProperty.call(defaults, parentId)) {
+            cost = Number(defaults[parentId]);
+        } else {
+            // 2) Fallback: match the parent name in the option label (the part
+            //    before " > ") against the alias patterns, longest first.
+            var label = ($combo.find('option:selected').text() || '').toLowerCase();
+            var parentName = label.split('>')[0].trim();
+            if (parentName) {
+                for (var i = 0; i < window.categoryCostPatterns.length; i++) {
+                    if (parentName.indexOf(window.categoryCostPatterns[i].p) !== -1) {
+                        cost = window.categoryCostPatterns[i].c;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (cost === null || isNaN(cost)) return false;
+        $pp.val(cost.toFixed(2));
         return true;
     };
 </script>
@@ -962,7 +1002,7 @@
             // Pre-fill the default purchase price for the chosen category
             // (only when the operator hasn't already typed a cost). Covers
             // manual category picks as well as the Discogs/artist auto-fills.
-            window.applyCategoryDefaultPurchasePrice($this.closest('.tr, .product-row'), $this.val());
+            window.applyCategoryDefaultPurchasePrice($this.closest('.tr, .product-row'));
         });
 
         // Auto-fill category from the store's curated Artist→Bin list when an
@@ -987,7 +1027,7 @@
                     const $opt = $combo.find('option[value="' + comboVal + '"]');
                     if ($opt.length) {
                         $combo.val(comboVal).trigger('change');
-                        window.applyCategoryDefaultPurchasePrice($row, comboVal);
+                        window.applyCategoryDefaultPurchasePrice($row);
                     }
                 });
         });
@@ -2628,7 +2668,7 @@
                         const $opt = $combo.find('option[value="' + comboVal + '"]');
                         if ($opt.length) {
                             $combo.val(comboVal).trigger('change');
-                            window.applyCategoryDefaultPurchasePrice($row, comboVal);
+                            window.applyCategoryDefaultPurchasePrice($row);
                         }
                     }
 
