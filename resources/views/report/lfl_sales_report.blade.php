@@ -28,6 +28,7 @@
     .lfl-grid tr.row-pct .lfl-up, .lfl-grid tr.row-pct .lfl-down { font-weight: 800; }
     .lfl-grid col.today-col, .lfl-grid td.today, .lfl-grid th.today { background: #FFFBEA; }
     .lfl-store-h { margin: 18px 0 6px; font-size: 15px; font-weight: 700; color: #1F1B16; }
+    .content .box-header .box-title { font-size: 26px; font-weight: 800; color: #1F1B16; }
     .lfl-grid .hrs { display: block; font-size: 10px; font-weight: 400; color: #9a8f7d; margin-top: 2px; }
     .lfl-hours-edit th, .lfl-hours-edit td { text-align: center; }
     .lfl-hours-edit input { text-align: center; min-width: 64px; }
