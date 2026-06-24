@@ -517,15 +517,6 @@ class AdminSidebarMenu
                 ['icon' => 'fa fas fa-life-ring', 'active' => request()->segment(1) == 'help']
             )->order(57);
 
-            //Onboarding / Offboarding checklists (HR). Admin + Fatteen only.
-            if ($is_admin || \App\Http\Controllers\EmployeeChecklistController::isFatteen()) {
-                $menu->url(
-                    action('EmployeeChecklistController@index'),
-                    'Onboarding / Offboarding',
-                    ['icon' => 'fa fas fa-user-check', 'active' => request()->segment(1) == 'employee-checklist']
-                )->order(11);
-            }
-
             //Supplies & requests. "Request a Supply" is open to every staff
             //member; the manage views are admin-only (business_settings.access).
             //Badge on "Request a Supply" = the user's requests a manager has
