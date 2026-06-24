@@ -862,6 +862,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/closing-checklist', 'ClosingChecklistController@index')->name('closing-checklist.index');
     Route::post('/closing-checklist', 'ClosingChecklistController@complete')->name('closing-checklist.complete');
 
+    // Onboarding / Offboarding checklists (HR). Admin + Fatteen only — gated in
+    // the controller. JSON-backed (storage/app/employee_checklist.json).
+    Route::get('/employee-checklist', 'EmployeeChecklistController@index')->name('employee-checklist.index');
+    Route::post('/employee-checklist', 'EmployeeChecklistController@complete')->name('employee-checklist.complete');
+
     // Listing commissions owed to staff for items they listed. Derived live
     // from products.created_by + users.cmmsn_percent × sell price; "paid" is
     // tracked in storage/app/listing-commission-payouts.json (no migration).
