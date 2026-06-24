@@ -4724,6 +4724,7 @@ class ReportController extends Controller
             }
 
             $store_tables[] = [
+                'id'         => $loc_id,
                 'name'       => $loc_name,
                 'this'       => $tv, 'ly' => $lv, 'pct' => $pc,
                 'this_total' => $tt, 'ly_total' => $lt,
@@ -4769,8 +4770,48 @@ class ReportController extends Controller
             return $this->streamLflDailyGridCsv($days, $all_table, $store_tables, $ty, $ly, $sunday);
         }
 
+        // Manually-entered store hours (2025 ≠ 2026), shown as context per day.
+        $store_hours = $this->lflLoadStoreHours();
+
         return view('report.lfl_sales_report')
-            ->with(compact('days', 'all_table', 'store_tables', 'ty', 'ly', 'nav'));
+            ->with(compact('days', 'all_table', 'store_tables', 'ty', 'ly', 'nav', 'store_hours'));
+    }
+
+    /** Load manually-entered store hours: [store_id][year][weekday 0=Sun..6=Sat] = "11–7". */
+    private function lflLoadStoreHours()
+    {
+        $path = 'lfl-store-hours.json';
+        if (!\Storage::disk('local')->exists($path)) {
+            return [];
+        }
+        $json = json_decode(\Storage::disk('local')->get($path), true);
+        return is_array($json) ? $json : [];
+    }
+
+    /**
+     * Save store open/close hours for the LFL report (admin-only). Hours are
+     * display-only context — last year's imported sales have no time-of-day, so
+     * they can't be trimmed to operating hours. Stored as a JSON sidecar (no
+     * migration). Posted shape: hours[storeId][year][weekday] = "11–7".
+     */
+    public function lflSaveStoreHours(Request $request)
+    {
+        $this->ensureAdminOnlyReportAccess();
+
+        $incoming = $request->input('hours', []);
+        $data = $this->lflLoadStoreHours();
+        foreach ((array) $incoming as $sid => $years) {
+            foreach ((array) $years as $yr => $weekdays) {
+                foreach ((array) $weekdays as $wd => $val) {
+                    $data[(int) $sid][(string) $yr][(int) $wd] = trim((string) $val);
+                }
+            }
+        }
+        \Storage::disk('local')->put('lfl-store-hours.json', json_encode($data, JSON_PRETTY_PRINT));
+
+        return redirect()
+            ->to($request->input('return_to') ?: route('reports.lfl-sales'))
+            ->with('status', 'Store hours saved.');
     }
 
     private function streamLflDailyGridCsv($days, $all_table, $store_tables, $ty, $ly, $sunday)

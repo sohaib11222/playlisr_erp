@@ -27,6 +27,9 @@
     .lfl-grid tr.row-pct td { font-size: 12px; border-bottom: 2px solid #ECE3CF; }
     .lfl-grid col.today-col, .lfl-grid td.today, .lfl-grid th.today { background: #FFFBEA; }
     .lfl-store-h { margin: 18px 0 6px; font-size: 15px; font-weight: 700; color: #1F1B16; }
+    .lfl-grid .hrs { display: block; font-size: 10px; font-weight: 400; color: #9a8f7d; margin-top: 2px; }
+    .lfl-hours-edit th, .lfl-hours-edit td { text-align: center; }
+    .lfl-hours-edit input { text-align: center; min-width: 64px; }
 </style>
 
 <section class="content-header">
@@ -57,8 +60,15 @@
             ? 'Wk-to-date' . ($nav['through_label'] ? '<span class="d">thru ' . $nav['through_label'] . '</span>' : '<span class="d">no full days yet</span>')
             : 'Week';
 
-        // Render one table for a store (or all-stores).
-        $renderTable = function ($t) use ($days, $ty, $ly, $amt, $pctCell, $wkHead) {
+        // Hours line for a day cell (display-only context). $hrs is a 7-elem array.
+        $hrsCell = function ($hrs, $i) {
+            $v = $hrs[$i] ?? '';
+            return $v === '' ? '' : '<span class="hrs">' . e($v) . '</span>';
+        };
+
+        // Render one table for a store (or all-stores). $hrsLy/$hrsTy: per-day
+        // hours arrays for last/this year (null for the all-stores table).
+        $renderTable = function ($t, $hrsLy = null, $hrsTy = null) use ($days, $ty, $ly, $amt, $pctCell, $wkHead, $hrsCell) {
             $h = '<table class="table table-bordered lfl-grid"><colgroup><col><col>';
             foreach ($days as $d) { $h .= '<col class="' . ($d['is_today'] ? 'today-col' : '') . '">'; }
             $h .= '<col></colgroup><thead><tr><th class="yr"></th>';
@@ -69,12 +79,16 @@
             $h .= '<th class="wk-h">' . $wkHead . '</th></tr></thead><tbody>';
             // Last year row (top, matching the sketch), then this year, then Δ%.
             $h .= '<tr><th class="yr">' . $ly . '</th>';
-            foreach ($t['ly'] as $i => $v) { $h .= '<td class="amt ' . ($days[$i]['is_today'] ? 'today' : '') . '">' . $amt($v) . '</td>'; }
+            foreach ($t['ly'] as $i => $v) {
+                $hr = $hrsLy ? $hrsCell($hrsLy, $i) : '';
+                $h .= '<td class="amt ' . ($days[$i]['is_today'] ? 'today' : '') . '">' . $amt($v) . $hr . '</td>';
+            }
             $h .= '<td class="wk amt">' . $amt($t['ly_total']) . '</td></tr>';
             $h .= '<tr><th class="yr">' . $ty . '</th>';
             foreach ($t['this'] as $i => $v) {
                 $mark = ($days[$i]['is_today'] && $v !== null) ? '<span class="d">so far</span>' : '';
-                $h .= '<td class="amt ' . ($days[$i]['is_today'] ? 'today' : '') . '">' . $amt($v) . $mark . '</td>';
+                $hr = $hrsTy ? $hrsCell($hrsTy, $i) : '';
+                $h .= '<td class="amt ' . ($days[$i]['is_today'] ? 'today' : '') . '">' . $amt($v) . $mark . $hr . '</td>';
             }
             $h .= '<td class="wk amt">' . $amt($t['this_total']) . '</td></tr>';
             $h .= '<tr class="row-pct"><th class="yr">Δ vs ' . $ly . '</th>';
@@ -127,10 +141,54 @@
         @endcomponent
 
         @foreach($store_tables as $t)
+            @php
+                $hrsTy = $store_hours[$t['id']][$ty] ?? null;
+                $hrsLy = $store_hours[$t['id']][$ly] ?? null;
+            @endphp
             @component('components.widget', ['class' => 'box-primary', 'title' => $t['name'] . ' — ' . $ty . ' vs ' . $ly])
-                <div class="table-responsive">{!! $renderTable($t) !!}</div>
+                <div class="table-responsive">{!! $renderTable($t, $hrsLy, $hrsTy) !!}</div>
             @endcomponent
         @endforeach
+    </div></div>
+
+    {{-- Store hours editor (context only — 2025 ≠ 2026 hours) --}}
+    <div class="row"><div class="col-md-12">
+        @if(session('status'))
+            <div class="alert alert-success" style="border-radius:10px;">{{ session('status') }}</div>
+        @endif
+        @component('components.widget', ['class' => 'box-default', 'title' => 'Store hours (context for ' . $ty . ' vs ' . $ly . ')'])
+            <p class="text-muted" style="margin-top:0;">
+                Enter open–close hours per day (e.g. <code>11–7</code>). Shown under each day's sales so you can
+                read the comparison knowing the hours differed. Display-only — it does not change the sales math.
+            </p>
+            <form method="POST" action="{{ route('reports.lfl-sales.hours') }}">
+                {{ csrf_field() }}
+                <input type="hidden" name="return_to" value="{{ request()->fullUrl() }}">
+                @foreach($store_tables as $t)
+                    <div class="lfl-store-h">{{ $t['name'] }}</div>
+                    <div class="table-responsive">
+                        <table class="table table-bordered lfl-grid lfl-hours-edit">
+                            <thead><tr><th class="yr"></th>
+                                @foreach($days as $d)<th>{{ $d['wd'] }}</th>@endforeach
+                            </tr></thead>
+                            <tbody>
+                                @foreach([$ly, $ty] as $yr)
+                                    <tr><th class="yr">{{ $yr }}</th>
+                                        @foreach($days as $i => $d)
+                                            <td><input type="text" class="form-control input-sm"
+                                                name="hours[{{ $t['id'] }}][{{ $yr }}][{{ $i }}]"
+                                                value="{{ $store_hours[$t['id']][$yr][$i] ?? '' }}"
+                                                placeholder="11–7"></td>
+                                        @endforeach
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endforeach
+                <button type="submit" class="btn btn-primary"><i class="fa fa-save"></i> Save hours</button>
+            </form>
+        @endcomponent
     </div></div>
 
 </section>
