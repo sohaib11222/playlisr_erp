@@ -955,16 +955,12 @@ class EventsController extends Controller
                 if (!empty($streets[$kw])) {
                     $data['items'][$id]['streetDate'] = $streets[$kw];
                 }
-                // Advance listening parties take preorders for every version we
-                // ordered. Pickup date tracks the street date.
+                // Store the version list for ERP reference, but keep public
+                // preorders OFF — we're not sure we're allowed to take them, so
+                // the customer-facing preorder page stays disabled until cleared.
                 if (isset($preorderSeed[$kw])) {
-                    $data['items'][$id]['preorderEnabled'] = true;
+                    $data['items'][$id]['preorderEnabled'] = false;
                     $data['items'][$id]['preorderProducts'] = $preorderSeed[$kw];
-                    $data['items'][$id]['preorderTitle'] = $preorderSeed[$kw][0]['title'] ?? '';
-                    $data['items'][$id]['preorderPrice'] = $preorderSeed[$kw][0]['price'] ?? null;
-                    if (!empty($streets[$kw])) {
-                        $data['items'][$id]['preorderPickupDate'] = $streets[$kw];
-                    }
                 }
                 $data['items'][$id]['updatedAt'] = date('c');
                 $matched++;
