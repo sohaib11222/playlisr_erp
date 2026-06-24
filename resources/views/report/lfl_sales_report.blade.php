@@ -109,6 +109,7 @@
         <div class="lfl-toggle" style="margin:0 0 14px;">
             <a href="{{ $linkDaily }}" class="btn btn-primary btn-sm">Daily</a>
             <a href="{{ $linkDaily . '?view=weekly' }}" class="btn btn-default btn-sm">Weekly</a>
+            <a href="{{ $linkDaily . '?view=monthly' }}" class="btn btn-default btn-sm">Monthly</a>
         </div>
     </div></div>
 

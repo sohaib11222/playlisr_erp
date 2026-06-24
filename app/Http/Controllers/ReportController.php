@@ -4630,6 +4630,11 @@ class ReportController extends Controller
         if ($request->input('view') === 'weekly') {
             return $this->lflSalesWeekly($request);
         }
+        // Monthly breakdown: one row per calendar month, a column per store,
+        // each month vs the same month last year.
+        if ($request->input('view') === 'monthly') {
+            return $this->lflSalesMonthly($request);
+        }
 
         $business_id = $request->session()->get('user.business_id');
 
@@ -5208,6 +5213,156 @@ class ReportController extends Controller
 
             foreach ($weeks as $wk) {
                 $rowFor($wk['label'], $wk['ly_label'], $wk['cells'], $wk['total']);
+            }
+            $rowFor('TOTAL (span)', '', $span['cells'], $span['total']);
+            fclose($out);
+        }, 200, $headers);
+    }
+
+    /**
+     * Monthly LFL breakdown — one row per calendar month, a column per store,
+     * each month vs the SAME month last year. The current (in-progress) month
+     * compares month-to-date through YESTERDAY on both years (full days only),
+     * so the % is fair — and that also sidesteps the imported-data midnight
+     * issue, since we clip by date, not time. Default span the last 12 months.
+     */
+    private function lflSalesMonthly(Request $request)
+    {
+        $business_id = $request->session()->get('user.business_id');
+
+        $now   = \Carbon::now();
+        $today = \Carbon::today();
+
+        $months_back = (int) $request->input('months', 12);
+        $months_back = max(1, min(36, $months_back));
+
+        $cur_month_start = $now->copy()->startOfMonth();
+
+        $locations = DB::table('business_locations')
+            ->where('business_id', $business_id)
+            ->where('is_active', 1)
+            ->where('name', 'not like', '%warehouse%')   // storefronts only — exclude Warehouse
+            ->orderBy('id')
+            ->pluck('name', 'id');
+
+        $store_ids = $locations->keys()->all();
+
+        $months = [];
+        $span_this = array_fill_keys($store_ids, 0.0);
+        $span_ly   = array_fill_keys($store_ids, 0.0);
+        $span_this_all = $span_ly_all = 0.0;
+
+        for ($m = 0; $m < $months_back; $m++) {
+            $ms        = $cur_month_start->copy()->subMonths($m)->startOfMonth();
+            $me_full   = $ms->copy()->endOfMonth();
+            $is_current = ($m === 0);
+
+            // Current month: month-to-date through end of yesterday (completed
+            // days), both years, so it's a fair compare. Past months: full month.
+            if ($is_current) {
+                $me    = $today->copy()->subDay()->endOfDay();
+                if ($me->lt($ms)) { $me = $ms->copy(); } // 1st of month — nothing yet
+                $ly_ms = $ms->copy()->subYear();
+                $ly_me = $me->copy()->subYear()->endOfDay();
+            } else {
+                $me    = $me_full;
+                $ly_ms = $ms->copy()->subYear()->startOfMonth();
+                $ly_me = $ly_ms->copy()->endOfMonth();
+            }
+
+            $cells = [];
+            $mo_this_all = $mo_ly_all = 0.0;
+
+            foreach ($store_ids as $loc_id) {
+                $this_rev = (float) $this->lflRevAndCount($business_id, $loc_id, $ms, $me)->revenue;
+                $ly_rev   = (float) $this->lflRevAndCount($business_id, $loc_id, $ly_ms, $ly_me)->revenue;
+
+                $cells[$loc_id] = [
+                    'this_rev' => $this_rev,
+                    'ly_rev'   => $ly_rev,
+                    'pct'      => $ly_rev > 0 ? (($this_rev - $ly_rev) / $ly_rev) * 100 : null,
+                ];
+
+                $mo_this_all += $this_rev;
+                $mo_ly_all   += $ly_rev;
+                $span_this[$loc_id] += $this_rev;
+                $span_ly[$loc_id]   += $ly_rev;
+            }
+
+            $span_this_all += $mo_this_all;
+            $span_ly_all   += $mo_ly_all;
+
+            $months[] = [
+                'is_current' => $is_current,
+                'label'      => $ms->format('M Y') . ($is_current ? ' (MTD thru ' . $me->format('M j') . ')' : ''),
+                'ly_label'   => $ly_ms->format('M Y') . ($is_current ? ' (thru ' . $ly_me->format('M j') . ')' : ''),
+                'cells'      => $cells,
+                'total'      => [
+                    'this_rev' => $mo_this_all,
+                    'ly_rev'   => $mo_ly_all,
+                    'pct'      => $mo_ly_all > 0 ? (($mo_this_all - $mo_ly_all) / $mo_ly_all) * 100 : null,
+                ],
+            ];
+        }
+
+        $span = ['cells' => [], 'total' => []];
+        foreach ($store_ids as $loc_id) {
+            $span['cells'][$loc_id] = [
+                'this_rev' => $span_this[$loc_id],
+                'ly_rev'   => $span_ly[$loc_id],
+                'pct'      => $span_ly[$loc_id] > 0 ? (($span_this[$loc_id] - $span_ly[$loc_id]) / $span_ly[$loc_id]) * 100 : null,
+            ];
+        }
+        $span['total'] = [
+            'this_rev' => $span_this_all,
+            'ly_rev'   => $span_ly_all,
+            'pct'      => $span_ly_all > 0 ? (($span_this_all - $span_ly_all) / $span_ly_all) * 100 : null,
+        ];
+
+        if ($request->input('export') === 'csv') {
+            return $this->streamLflMonthlyCsv($locations, $months, $span, $months_back);
+        }
+
+        return view('report.lfl_sales_monthly')
+            ->with(compact('locations', 'months', 'span', 'months_back'));
+    }
+
+    private function streamLflMonthlyCsv($locations, $months, $span, $months_back)
+    {
+        $filename = 'lfl-sales-monthly_last-' . $months_back . '-months.csv';
+        $headers = [
+            'Content-Type'        => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ];
+        return response()->stream(function () use ($locations, $months, $span) {
+            $out = fopen('php://output', 'w');
+            $head = ['Month', 'Last-year month'];
+            foreach ($locations as $name) {
+                $head[] = $name . ' (this)';
+                $head[] = $name . ' (LY)';
+                $head[] = $name . ' (%)';
+            }
+            $head[] = 'Total (this)';
+            $head[] = 'Total (LY)';
+            $head[] = 'Total (%)';
+            fputcsv($out, $head);
+
+            $rowFor = function ($label, $ly_label, $cells, $total) use ($out, $locations) {
+                $line = [$label, $ly_label];
+                foreach ($locations as $loc_id => $name) {
+                    $c = $cells[$loc_id] ?? ['this_rev' => 0, 'ly_rev' => 0, 'pct' => null];
+                    $line[] = number_format($c['this_rev'], 2, '.', '');
+                    $line[] = number_format($c['ly_rev'], 2, '.', '');
+                    $line[] = $c['pct'] === null ? 'n/a' : number_format($c['pct'], 1, '.', '');
+                }
+                $line[] = number_format($total['this_rev'], 2, '.', '');
+                $line[] = number_format($total['ly_rev'], 2, '.', '');
+                $line[] = $total['pct'] === null ? 'n/a' : number_format($total['pct'], 1, '.', '');
+                fputcsv($out, $line);
+            };
+
+            foreach ($months as $mo) {
+                $rowFor($mo['label'], $mo['ly_label'], $mo['cells'], $mo['total']);
             }
             $rowFor('TOTAL (span)', '', $span['cells'], $span['total']);
             fclose($out);
