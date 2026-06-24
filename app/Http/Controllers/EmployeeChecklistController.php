@@ -40,22 +40,17 @@ class EmployeeChecklistController extends Controller
             ],
             'Clover (register access)' => [
                 'clover_add'   => 'Add the employee in Clover and assign a unique 4-digit POS login code.',
-                'clover_role'  => 'Set their role (Cashier — no refund/discount rights unless they\'re a manager).',
-                'clover_test'  => 'Confirm they can clock in and ring a test sale.',
             ],
             'ERP (playlist.nivessa.com)' => [
                 'erp_create'   => 'Create their ERP user (status Active, login enabled) with the correct role.',
-                'erp_login'    => 'Confirm they can log in and reach their daily screens (POS, listing, etc.).',
             ],
             'Slack' => [
                 'slack_invite' => 'Invite them to the Nivessa workspace by email.',
                 'slack_chan'   => 'Add them to the core channels (#shift-notes and their team channels).',
-                'slack_confirm' => 'Confirm they accepted and can post.',
             ],
             'Sling' => [
                 'sling_add'    => 'Add the employee in Sling (name, email, phone).',
                 'sling_assign' => 'Assign them to the right location (Nivessa / Pico / Hollywood) and position.',
-                'sling_shifts' => 'Add them to upcoming shifts and confirm they got the invite.',
             ],
             'Other' => [
                 'keys'         => 'Give store keys / alarm code if they need them.',
