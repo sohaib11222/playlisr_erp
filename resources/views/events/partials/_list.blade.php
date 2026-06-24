@@ -1,5 +1,5 @@
 @php $totalPrep = count($prepItems); @endphp
-<table class="ev-tbl" style="table-layout:fixed;width:100%;word-break:break-word;">
+<table class="ev-tbl">
   <thead>
     <tr>
       <th style="width:13%;">Event</th>
@@ -9,7 +9,7 @@
       <th style="width:6%;">Attending</th>
       <th style="width:6%;">Vinyl requests</th>
       <th style="width:6%;">CD requests</th>
-      <th style="width:24%;">Ordered (versions)</th>
+      <th style="min-width:230px;white-space:nowrap;">Ordered (versions)</th>
       <th style="width:5%;">Taking preorders?</th>
       <th style="width:5%;">On website</th>
       <th style="width:5%;">Prep</th>
