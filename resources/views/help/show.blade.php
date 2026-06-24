@@ -36,7 +36,7 @@
                     <p class="help-article-footer">
                         <i class="fa fa-flag"></i>
                         See something wrong or out of date?
-                        <a href="mailto:sarah@nivessa.com?subject=Handbook%20fix:%20{{ urlencode($article['title']) }}">Email Sarah</a>
+                        <a href="https://slack.com/app_redirect?channel=U07D33PMQLA" target="_blank" rel="noopener">Slack Sarah</a>
                     </p>
                 </div>
             </div>

@@ -44,7 +44,7 @@
                     <div class="help-empty">
                         <i class="fa fa-info-circle"></i>
                         No matches. Try a simpler word, or
-                        <a href="mailto:sarah@nivessa.com?subject=Help%20request:%20{{ urlencode($q) }}">email Sarah</a>
+                        <a href="https://slack.com/app_redirect?channel=U07D33PMQLA" target="_blank" rel="noopener">Slack Sarah</a>
                         with what you were looking for.
                     </div>
                 @else
@@ -99,7 +99,7 @@
 
     <p class="help-footnote">
         <i class="fa fa-info-circle"></i>
-        Don't see what you need? Email <a href="mailto:sarah@nivessa.com">sarah@nivessa.com</a> and we'll add it.
+        Don't see what you need? <a href="https://slack.com/app_redirect?channel=U07D33PMQLA" target="_blank" rel="noopener">Slack Sarah</a> and we'll add it.
     </p>
 </section>
 

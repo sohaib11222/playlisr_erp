@@ -36,7 +36,7 @@ class Catalog
 </ul>
 
 <h3>Found something missing or wrong?</h3>
-<p>Email <a href="mailto:sarah@nivessa.com">sarah@nivessa.com</a> with what you were looking for and we'll add it.</p>
+<p><a href="https://slack.com/app_redirect?channel=U07D33PMQLA" target="_blank" rel="noopener">Slack Sarah</a> with what you were looking for and we'll add it.</p>
 HTML,
             ],
             [
