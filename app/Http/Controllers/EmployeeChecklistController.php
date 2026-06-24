@@ -58,30 +58,24 @@ class EmployeeChecklistController extends Controller
         ],
         'offboarding' => [
             'Paperwork / HR' => [
-                'last_day'     => 'Confirm last day and reason in writing.',
                 'final_pay'    => 'Process the final paycheck per CA law (due on the last day if you terminate; within 72 hours if they quit without notice).',
-                'exit_doc'     => 'Have them sign any exit / final acknowledgment doc.',
             ],
             'Clover (register access)' => [
                 'clover_deact' => 'Deactivate the employee in Clover (this revokes their POS code).',
-                'clover_check' => 'Confirm their code no longer logs into any register.',
             ],
             'ERP (playlist.nivessa.com)' => [
-                'erp_disable'  => 'Disable login (do NOT delete the user — that keeps their sales/listing history intact).',
-                'erp_reassign' => 'Reassign any open work.',
+                'erp_disable'  => 'Make their login inactive — do NOT delete the user (that keeps their sales/listing history intact).',
             ],
             'Slack' => [
                 'slack_deact'  => 'Deactivate their account in Workspace Admin > Members.',
-                'slack_remove' => 'Remove them from private channels.',
             ],
             'Sling' => [
-                'sling_remove' => 'Remove them from all future shifts.',
-                'sling_deact'  => 'Deactivate / delete the employee in Sling.',
+                'sling_off'    => 'Deactivate the employee in Sling and make all their future shifts available.',
             ],
             'Other' => [
-                'keys'         => 'Collect keys and change the alarm code.',
-                'revoke'       => 'Revoke their store email and any vendor logins.',
-                'property'     => 'Collect any company property (uniform, equipment).',
+                'keys'         => 'Confirm Jon collected the keys.',
+                'email_pw'     => 'Change the orders@ email password.',
+                'discogs_pw'   => 'Change the Discogs password.',
             ],
         ],
     ];
