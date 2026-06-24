@@ -4661,6 +4661,7 @@ class ReportController extends Controller
         $locations = DB::table('business_locations')
             ->where('business_id', $business_id)
             ->where('is_active', 1)
+            ->where('name', 'not like', '%warehouse%')   // storefronts only — exclude Warehouse
             ->orderBy('id')
             ->pluck('name', 'id');
 
@@ -4827,6 +4828,7 @@ class ReportController extends Controller
         $locations = DB::table('business_locations')
             ->where('business_id', $business_id)
             ->where('is_active', 1)
+            ->where('name', 'not like', '%warehouse%')   // storefronts only — exclude Warehouse
             ->orderBy('id')
             ->pluck('name', 'id');
 
@@ -4969,6 +4971,7 @@ class ReportController extends Controller
         $locations = DB::table('business_locations')
             ->where('business_id', $business_id)
             ->where('is_active', 1)
+            ->where('name', 'not like', '%warehouse%')   // storefronts only — exclude Warehouse
             ->orderBy('id')
             ->pluck('name', 'id');
 
