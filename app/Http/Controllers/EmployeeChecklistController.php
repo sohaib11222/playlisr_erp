@@ -53,9 +53,8 @@ class EmployeeChecklistController extends Controller
                 'sling_assign' => 'Assign them to the right location (Nivessa / Pico / Hollywood) and position.',
             ],
             'Other' => [
-                'keys'         => 'Give store keys / alarm code if they need them.',
-                'logins'       => 'Set up store email or any vendor logins they need.',
-                'walkthrough'  => 'Quick floor walkthrough and intro to the team.',
+                'keys'         => 'Confirm Jon gave them the store keys / alarm code.',
+                'training'     => 'Set them up with a 2-hour training.',
             ],
         ],
         'offboarding' => [
