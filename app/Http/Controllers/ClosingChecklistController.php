@@ -127,17 +127,31 @@ class ClosingChecklistController extends Controller
     /* ---------- "has the store been closed today?" helpers ---------- */
 
     /**
-     * Are we in the "time to close up" window right now? The reminder pops ~15
-     * min before close, and close time depends on the night:
-     *   - Sun–Thu nights: close 11pm  -> remind from 10:45pm until midnight.
-     *   - Fri & Sat nights: close 1am -> remind from 12:45am, i.e. the early
-     *     hours of Sat and Sun (capped at 4am so it doesn't linger all day).
+     * Are we in the "time to close up" window right now? Each store has its own
+     * close time, so the reminder window differs:
+     *   - Hollywood: close 11pm Sun–Thu  -> remind from 10:45pm until midnight;
+     *     close 1am Fri/Sat nights -> remind from 12:45am (the small hours of
+     *     Sat and Sun), capped at 4am so it doesn't linger all day.
+     *   - Pico: close 7pm Sun–Thu -> remind from 7pm; close 8pm Fri–Sat ->
+     *     remind from 8pm. Both well before midnight, so no rollover.
      */
-    public static function inPromptWindow()
+    public static function inPromptWindow($store = 'hollywood')
     {
         $dow  = (int) date('w');                          // 0=Sun .. 6=Sat
         $mins = (int) date('G') * 60 + (int) date('i');   // minutes since midnight, local
 
+        if ($store === 'pico') {
+            // Sun–Thu from 7pm; Fri–Sat from 8pm; both until midnight.
+            if (in_array($dow, [0, 1, 2, 3, 4], true) && $mins >= 19 * 60) {
+                return true;
+            }
+            if (in_array($dow, [5, 6], true) && $mins >= 20 * 60) {
+                return true;
+            }
+            return false;
+        }
+
+        // Hollywood (default).
         // Sun–Thu: 10:45pm until midnight.
         if (in_array($dow, [0, 1, 2, 3, 4], true) && $mins >= 22 * 60 + 45) {
             return true;
@@ -172,9 +186,6 @@ class ClosingChecklistController extends Controller
         if (!auth()->check()) {
             return null;
         }
-        if (!self::inPromptWindow()) {
-            return null;
-        }
         $store = null;
         try {
             foreach (BusinessLocation::forDropdown(session('user.business_id')) as $name) {
@@ -191,6 +202,9 @@ class ClosingChecklistController extends Controller
             return null;
         }
         if (!$store) {
+            return null;
+        }
+        if (!self::inPromptWindow($store)) {
             return null;
         }
         return self::closedToday($store) ? null : $store;
