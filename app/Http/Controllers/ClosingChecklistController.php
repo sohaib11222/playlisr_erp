@@ -126,8 +126,11 @@ class ClosingChecklistController extends Controller
 
     /* ---------- "has the store been closed today?" helpers ---------- */
 
-    /** Hour (local) from which the closing prompt starts showing. */
-    const PROMPT_FROM_HOUR = 17;
+    /** Hour (local, 24h) from which the closing prompt starts showing. Stores
+     *  close at 11pm (1am on weekends), so 9pm is a nudge before close without
+     *  nagging all evening. Suppressed after midnight so the late/weekend closer
+     *  isn't re-nagged in the small hours. */
+    const PROMPT_FROM_HOUR = 21;
 
     /** Has anyone logged today's closing for this store yet? */
     public static function closedToday($store)
