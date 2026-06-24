@@ -64,7 +64,7 @@
             $n = $row[$k] ?? null;
             if ($n !== null && $n !== '' && (int) $n > 0) { $bits[] = (int) $n . ' ' . $lbl; }
           }
-          if ($bits) { $orderedLines[$slabel] = implode(', ', $bits); }
+          if ($bits) { $orderedLines[$slabel] = $bits; }
         }
         $pubMap = $publishedMap ?? [];
         $isLive = array_key_exists($ev['id'] ?? '', $pubMap) ? $pubMap[$ev['id']] : null;
@@ -85,8 +85,13 @@
         <td>{{ $cdCount === null ? '—' : $cdCount }}@if($cdByStore)<div class="ev-meta">{{ $cdByStore }}</div>@endif</td>
         <td>
           @if(count($orderedLines))
-            @foreach($orderedLines as $store => $line)
-              <div style="font-size:11px;line-height:1.4;"><strong>{{ $store }}:</strong> {{ $line }}</div>
+            @foreach($orderedLines as $store => $items)
+              <div style="margin-bottom:5px;">
+                <div style="font-size:11px;font-weight:700;color:#6b6253;">{{ $store }}</div>
+                @foreach($items as $it)
+                  <div style="font-size:12px;line-height:1.45;">{{ $it }}</div>
+                @endforeach
+              </div>
             @endforeach
           @else
             <span class="ev-meta">—</span>
