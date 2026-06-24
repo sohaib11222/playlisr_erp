@@ -4636,99 +4636,148 @@ class ReportController extends Controller
         $today = \Carbon::today();
         $now   = \Carbon::now();
 
-        // Window: default to today; otherwise the picked date range.
-        $date_range = $request->input('date_range');
-        if (!empty($date_range)) {
-            $parts = explode('~', $date_range);
-            $start_date = $this->transactionUtil->uf_date(trim($parts[0]));
-            $end_date   = $this->transactionUtil->uf_date(trim($parts[1] ?? $parts[0]));
-        } else {
-            $start_date = $today->toDateString();
-            $end_date   = $today->toDateString();
-        }
+        // Selected week — default to the current week. `week` may be any date
+        // inside the wanted week; we snap to that week's Sunday (Sun–Sat grid).
+        $week_param = $request->input('week');
+        $base = !empty($week_param)
+            ? \Carbon::parse($this->transactionUtil->uf_date($week_param))->startOfDay()
+            : $today->copy();
+        $sunday = $base->copy()->subDays($base->dayOfWeek); // Carbon: Sun=0..Sat=6
 
-        $this_start  = \Carbon::parse($start_date)->startOfDay();
-        $end_is_today = ($end_date === $today->toDateString());
-        // In-progress today: stop at "now" so we don't compare a partial day
-        // against a full one. Past days run to end-of-day.
-        $this_end    = $end_is_today ? $now->copy() : \Carbon::parse($end_date)->endOfDay();
+        $ty = (int) $sunday->format('Y');
+        $ly = (int) $sunday->copy()->subWeeks(52)->format('Y');
 
-        // 52 weeks back keeps the same day-of-week and the same time-of-day.
-        $ly_start = $this_start->copy()->subWeeks(52);
-        $ly_end   = $this_end->copy()->subWeeks(52);
-
-        // Active stores (admins see all; report is admin-only).
+        // Storefronts only — exclude Warehouse.
         $locations = DB::table('business_locations')
             ->where('business_id', $business_id)
             ->where('is_active', 1)
-            ->where('name', 'not like', '%warehouse%')   // storefronts only — exclude Warehouse
+            ->where('name', 'not like', '%warehouse%')
             ->orderBy('id')
             ->pluck('name', 'id');
 
-        $rows = [];
-        $tot_this_rev = $tot_ly_rev = 0.0;
-        $tot_this_tx  = $tot_ly_tx  = 0;
-
-        foreach ($locations as $loc_id => $loc_name) {
-            $cur = $this->lflRevAndCount($business_id, $loc_id, $this_start, $this_end);
-            $ly  = $this->lflRevAndCount($business_id, $loc_id, $ly_start, $ly_end);
-
-            $this_rev = (float) $cur->revenue;
-            $ly_rev   = (float) $ly->revenue;
-            $delta    = $this_rev - $ly_rev;
-            $pct      = $ly_rev > 0 ? ($delta / $ly_rev) * 100 : null;
-
-            $rows[] = [
-                'location_id' => $loc_id,
-                'location'    => $loc_name,
-                'this_rev'    => $this_rev,
-                'ly_rev'      => $ly_rev,
-                'delta'       => $delta,
-                'pct'         => $pct,
-                'this_tx'     => (int) $cur->tx_count,
-                'ly_tx'       => (int) $ly->tx_count,
-                'this_avg'    => $cur->tx_count > 0 ? $this_rev / $cur->tx_count : 0.0,
-                'ly_avg'      => $ly->tx_count > 0 ? $ly_rev / $ly->tx_count : 0.0,
+        // Weekday columns Sun..Sat for the selected week.
+        $days = [];
+        for ($i = 0; $i < 7; $i++) {
+            $d = $sunday->copy()->addDays($i);
+            $days[] = [
+                'wd'        => $d->format('D'),
+                'date'      => $d->format('n/j'),
+                'is_today'  => $d->isSameDay($today),
+                'is_future' => $d->gt($today),
+                'carbon'    => $d,
             ];
-
-            $tot_this_rev += $this_rev;
-            $tot_ly_rev   += $ly_rev;
-            $tot_this_tx  += (int) $cur->tx_count;
-            $tot_ly_tx    += (int) $ly->tx_count;
         }
 
-        $tot_delta = $tot_this_rev - $tot_ly_rev;
-        $totals = [
-            'this_rev' => $tot_this_rev,
-            'ly_rev'   => $tot_ly_rev,
-            'delta'    => $tot_delta,
-            'pct'      => $tot_ly_rev > 0 ? ($tot_delta / $tot_ly_rev) * 100 : null,
-            'this_tx'  => $tot_this_tx,
-            'ly_tx'    => $tot_ly_tx,
-            'this_avg' => $tot_this_tx > 0 ? $tot_this_rev / $tot_this_tx : 0.0,
-            'ly_avg'   => $tot_ly_tx > 0 ? $tot_ly_rev / $tot_ly_tx : 0.0,
+        // Per-store tables + an all-stores accumulator. Each table row pair:
+        // this year (52w forward) above/below last year, both clipped to "now"
+        // on the in-progress day so today compares apples-to-apples.
+        $store_tables = [];
+        $all_this = array_fill(0, 7, 0.0);
+        $all_ly   = array_fill(0, 7, 0.0);
+        $all_has  = array_fill(0, 7, false);
+        $all_this_total = $all_ly_total = 0.0;
+
+        foreach ($locations as $loc_id => $loc_name) {
+            $tv = $lv = $pc = [];
+            $tt = $lt = 0.0;
+            foreach ($days as $i => $day) {
+                $d   = $day['carbon'];
+                $lyS = $d->copy()->subWeeks(52)->startOfDay();
+
+                if ($day['is_future']) {
+                    // No sales yet this year; show last year's full day for context.
+                    $lyE = $d->copy()->subWeeks(52)->endOfDay();
+                    $lr  = (float) $this->lflRevAndCount($business_id, $loc_id, $lyS, $lyE)->revenue;
+                    $tv[$i] = null; $lv[$i] = $lr; $pc[$i] = null;
+                    $lt += $lr; $all_ly[$i] += $lr; $all_ly_total += $lr;
+                    continue;
+                }
+
+                $ts = $d->copy()->startOfDay();
+                $te = $day['is_today'] ? $now->copy() : $d->copy()->endOfDay();
+                $tr = (float) $this->lflRevAndCount($business_id, $loc_id, $ts, $te)->revenue;
+                $lyE = $te->copy()->subWeeks(52);
+                $lr  = (float) $this->lflRevAndCount($business_id, $loc_id, $lyS, $lyE)->revenue;
+
+                $tv[$i] = $tr; $lv[$i] = $lr;
+                $pc[$i] = $lr > 0 ? (($tr - $lr) / $lr) * 100 : null;
+                $tt += $tr; $lt += $lr;
+                $all_this[$i] += $tr; $all_ly[$i] += $lr; $all_has[$i] = true;
+                $all_this_total += $tr; $all_ly_total += $lr;
+            }
+
+            $store_tables[] = [
+                'name'       => $loc_name,
+                'this'       => $tv, 'ly' => $lv, 'pct' => $pc,
+                'this_total' => $tt, 'ly_total' => $lt,
+                'total_pct'  => $lt > 0 ? (($tt - $lt) / $lt) * 100 : null,
+            ];
+        }
+
+        // All-stores table.
+        $a_this = $a_pct = [];
+        for ($i = 0; $i < 7; $i++) {
+            $a_this[$i] = $days[$i]['is_future'] ? null : $all_this[$i];
+            $a_pct[$i]  = ($all_has[$i] && $all_ly[$i] > 0)
+                ? (($all_this[$i] - $all_ly[$i]) / $all_ly[$i]) * 100 : null;
+        }
+        $all_table = [
+            'name'       => 'All stores',
+            'this'       => $a_this, 'ly' => $all_ly, 'pct' => $a_pct,
+            'this_total' => $all_this_total, 'ly_total' => $all_ly_total,
+            'total_pct'  => $all_ly_total > 0 ? (($all_this_total - $all_ly_total) / $all_ly_total) * 100 : null,
         ];
 
-        $meta = [
-            'start_date'   => $start_date,
-            'end_date'     => $end_date,
-            'single_day'   => $start_date === $end_date,
-            'end_is_today' => $end_is_today,
-            'this_label'   => \Carbon::parse($start_date)->format('D, M j, Y')
-                . ($start_date === $end_date ? '' : ' → ' . \Carbon::parse($end_date)->format('D, M j, Y')),
-            'ly_start'     => $ly_start->toDateString(),
-            'ly_end'       => $ly_end->toDateString(),
-            'ly_label'     => $ly_start->format('D, M j, Y')
-                . ($start_date === $end_date ? '' : ' → ' . $ly_end->format('D, M j, Y')),
-            'as_of'        => $end_is_today ? $now->format('g:i A') : null,
+        // Week navigation (never past the current week).
+        $cur_sunday = $today->copy()->subDays($today->dayOfWeek);
+        $next_sunday = $sunday->copy()->addWeek();
+        $nav = [
+            'prev'        => $sunday->copy()->subWeek()->toDateString(),
+            'next'        => $next_sunday->lte($cur_sunday) ? $next_sunday->toDateString() : null,
+            'is_current'  => $sunday->isSameDay($cur_sunday),
+            'week_label'  => $sunday->format('M j') . ' – ' . $sunday->copy()->addDays(6)->format('M j, Y'),
+            'ly_label'    => $sunday->copy()->subWeeks(52)->format('M j') . ' – '
+                . $sunday->copy()->subWeeks(52)->addDays(6)->format('M j, Y'),
+            'as_of'       => $now->format('D g:i A'),
         ];
 
         if ($request->input('export') === 'csv') {
-            return $this->streamLflSalesCsv($rows, $totals, $meta);
+            return $this->streamLflDailyGridCsv($days, $all_table, $store_tables, $ty, $ly, $sunday);
         }
 
         return view('report.lfl_sales_report')
-            ->with(compact('rows', 'totals', 'meta'));
+            ->with(compact('days', 'all_table', 'store_tables', 'ty', 'ly', 'nav'));
+    }
+
+    private function streamLflDailyGridCsv($days, $all_table, $store_tables, $ty, $ly, $sunday)
+    {
+        $filename = 'lfl-daily_week-of-' . $sunday->toDateString() . '.csv';
+        $headers = [
+            'Content-Type'        => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ];
+        return response()->stream(function () use ($days, $all_table, $store_tables, $ty, $ly) {
+            $out = fopen('php://output', 'w');
+            $head = ['Store', 'Year'];
+            foreach ($days as $d) { $head[] = $d['wd'] . ' ' . $d['date']; }
+            $head[] = 'Week';
+            fputcsv($out, $head);
+
+            $emit = function ($t) use ($out, $ty, $ly) {
+                $rowTy = [$t['name'], $ty];
+                $rowLy = ['', $ly];
+                foreach ($t['this'] as $v) { $rowTy[] = $v === null ? '' : number_format($v, 2, '.', ''); }
+                $rowTy[] = number_format($t['this_total'], 2, '.', '');
+                foreach ($t['ly'] as $v) { $rowLy[] = number_format($v, 2, '.', ''); }
+                $rowLy[] = number_format($t['ly_total'], 2, '.', '');
+                fputcsv($out, $rowTy);
+                fputcsv($out, $rowLy);
+            };
+
+            $emit($all_table);
+            foreach ($store_tables as $t) { $emit($t); }
+            fclose($out);
+        }, 200, $headers);
     }
 
     /** Revenue + finalized tx count for a window — store trading day only. */

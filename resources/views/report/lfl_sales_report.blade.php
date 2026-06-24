@@ -3,8 +3,7 @@
 
 @section('content')
 
-{{-- LFL Sales — POS-create-style reskin to match the Items Report.
-     Inter Tight font + items-report-layout.css + items-report-v2 body class. --}}
+{{-- LFL Sales (daily weekday grid) — POS-create-style reskin. --}}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&display=swap" media="print" onload="this.media='all'">
@@ -15,145 +14,109 @@
 <style>
     .lfl-up   { color: #1a7f37; font-weight: 600; }
     .lfl-down { color: #c0392b; font-weight: 600; }
-    .lfl-na   { color: #5A5045; }
-    .lfl-compare-note { color: #5A5045; font-size: 13px; margin: 0 0 14px; }
-    .lfl-compare-note strong { color: #1F1B16; }
-    #lfl_table td.num, #lfl_table th.num { text-align: right; white-space: nowrap; }
-    #lfl_table tfoot td { font-weight: 700; border-top: 2px solid #ECE3CF; }
+    .lfl-na   { color: #9a8f7d; }
+    .lfl-toggle .btn, .lfl-nav .btn { border-radius: 999px; }
+    .lfl-grid { width: 100%; margin: 0 0 6px; }
+    .lfl-grid th, .lfl-grid td { text-align: right; white-space: nowrap; vertical-align: middle; }
+    .lfl-grid thead th { background: #FBF7EC; color: #5A5045; font-weight: 600; }
+    .lfl-grid thead th .d { display: block; font-size: 11px; color: #9a8f7d; font-weight: 400; }
+    .lfl-grid th.yr { text-align: left; font-weight: 700; color: #1F1B16; width: 90px; }
+    .lfl-grid td.amt { font-weight: 600; color: #1F1B16; }
+    .lfl-grid td.wk  { border-left: 2px solid #ECE3CF; font-weight: 700; }
+    .lfl-grid th.wk-h { border-left: 2px solid #ECE3CF; }
+    .lfl-grid tr.row-pct td { font-size: 12px; border-bottom: 2px solid #ECE3CF; }
+    .lfl-grid col.today-col, .lfl-grid td.today, .lfl-grid th.today { background: #FFFBEA; }
+    .lfl-store-h { margin: 18px 0 6px; font-size: 15px; font-weight: 700; color: #1F1B16; }
 </style>
 
 <section class="content-header">
-    <h1>Like-for-Like Sales <small>Today (or any date) vs the same weekday last year — store trading-day sales.</small></h1>
+    <h1>Like-for-Like Sales <small>This week by weekday — each day vs the same day last year, per store.</small></h1>
 </section>
 
 <section class="content">
 
     @php
-        $exportUrl = action('ReportController@lflSalesReport') . '?' . http_build_query(array_merge(request()->all(), ['export' => 'csv']));
-        $fmtPct = function ($pct) {
-            if ($pct === null) return '<span class="lfl-na">n/a</span>';
-            $cls = $pct >= 0 ? 'lfl-up' : 'lfl-down';
-            $sign = $pct >= 0 ? '+' : '';
-            return '<span class="' . $cls . '">' . $sign . number_format($pct, 1) . '%</span>';
+        $linkDaily = action('ReportController@lflSalesReport');
+        $cur = function () { return action('ReportController@lflSalesReport'); };
+        $weekUrl = function ($w) { return action('ReportController@lflSalesReport') . '?' . http_build_query(['week' => $w]); };
+        $exportUrl = action('ReportController@lflSalesReport') . '?' . http_build_query(array_merge(request()->only('week'), ['export' => 'csv']));
+
+        $amt = function ($v) {
+            if ($v === null) return '<span class="lfl-na">—</span>';
+            return '$' . number_format($v, 0);
         };
-        $fmtDelta = function ($d) {
-            $cls = $d >= 0 ? 'lfl-up' : 'lfl-down';
-            $sign = $d >= 0 ? '+' : '−';
-            return '<span class="' . $cls . '">' . ($d >= 0 ? '+' : '−') . '$' . number_format(abs($d), 2) . '</span>';
+        $pctCell = function ($p) {
+            if ($p === null) return '<span class="lfl-na">n/a</span>';
+            $cls = $p >= 0 ? 'lfl-up' : 'lfl-down';
+            $sign = $p >= 0 ? '+' : '';
+            return '<span class="' . $cls . '">' . $sign . number_format($p, 1) . '%</span>';
+        };
+
+        // Render one table for a store (or all-stores).
+        $renderTable = function ($t) use ($days, $ty, $ly, $amt, $pctCell) {
+            $h = '<table class="table table-bordered lfl-grid"><colgroup><col><col>';
+            foreach ($days as $d) { $h .= '<col class="' . ($d['is_today'] ? 'today-col' : '') . '">'; }
+            $h .= '<col></colgroup><thead><tr><th class="yr"></th>';
+            foreach ($days as $d) {
+                $h .= '<th class="' . ($d['is_today'] ? 'today' : '') . '">' . $d['wd'] . '<span class="d">' . $d['date'] . '</span></th>';
+            }
+            $h .= '<th class="wk-h">Week</th></tr></thead><tbody>';
+            // Last year row (top, matching the sketch), then this year, then Δ%.
+            $h .= '<tr><th class="yr">' . $ly . '</th>';
+            foreach ($t['ly'] as $i => $v) { $h .= '<td class="amt ' . ($days[$i]['is_today'] ? 'today' : '') . '">' . $amt($v) . '</td>'; }
+            $h .= '<td class="wk amt">' . $amt($t['ly_total']) . '</td></tr>';
+            $h .= '<tr><th class="yr">' . $ty . '</th>';
+            foreach ($t['this'] as $i => $v) { $h .= '<td class="amt ' . ($days[$i]['is_today'] ? 'today' : '') . '">' . $amt($v) . '</td>'; }
+            $h .= '<td class="wk amt">' . $amt($t['this_total']) . '</td></tr>';
+            $h .= '<tr class="row-pct"><th class="yr">Δ vs ' . $ly . '</th>';
+            foreach ($t['pct'] as $i => $p) { $h .= '<td class="' . ($days[$i]['is_today'] ? 'today' : '') . '">' . $pctCell($p) . '</td>'; }
+            $h .= '<td class="wk">' . $pctCell($t['total_pct']) . '</td></tr>';
+            $h .= '</tbody></table>';
+            return $h;
         };
     @endphp
 
     {{-- Daily / Weekly toggle --}}
     <div class="row"><div class="col-md-12">
-        <div style="margin: 0 0 14px;">
-            <a href="{{ action('ReportController@lflSalesReport') }}" class="btn btn-primary btn-sm" style="border-radius:999px;">Daily</a>
-            <a href="{{ action('ReportController@lflSalesReport') . '?view=weekly' }}" class="btn btn-default btn-sm" style="border-radius:999px;">Weekly</a>
+        <div class="lfl-toggle" style="margin:0 0 14px;">
+            <a href="{{ $linkDaily }}" class="btn btn-primary btn-sm">Daily</a>
+            <a href="{{ $linkDaily . '?view=weekly' }}" class="btn btn-default btn-sm">Weekly</a>
         </div>
     </div></div>
 
-    <div class="row">
-        <div class="col-md-12">
-            @component('components.filters', ['title' => __('report.filters')])
-                {!! Form::open(['url' => action('ReportController@lflSalesReport'), 'method' => 'get']) !!}
-                    <div class="col-md-4">
-                        <div class="form-group">
-                            {!! Form::label('date_range', 'Trading day / range:') !!}
-                            {!! Form::text('date_range', request('date_range'), ['placeholder' => 'Today', 'class' => 'form-control', 'id' => 'lfl_date_range', 'readonly']); !!}
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <label style="display:block;">&nbsp;</label>
-                        <button type="submit" class="btn btn-primary">@lang('report.apply_filters')</button>
-                    </div>
-                {!! Form::close() !!}
-            @endcomponent
-
-            <p class="lfl-compare-note">
-                Comparing <strong>{{ $meta['this_label'] }}</strong>@if($meta['as_of']) <em>(as of {{ $meta['as_of'] }})</em>@endif
-                against <strong>{{ $meta['ly_label'] }}</strong> — same weekday, 52 weeks back.
-                @if($meta['end_is_today']) Today is in progress, so last year is clipped to the same time of day. @endif
-            </p>
-
-            <div style="margin: 0 0 14px; display: flex; justify-content: flex-end;">
-                <a href="{{ $exportUrl }}" class="btn">
-                    <i class="fa fa-file-excel"></i> Export (CSV)
-                </a>
+    {{-- Week nav --}}
+    <div class="row"><div class="col-md-12">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin:0 0 12px;">
+            <div class="lfl-nav">
+                <a href="{{ $weekUrl($nav['prev']) }}" class="btn btn-default btn-sm"><i class="fa fa-chevron-left"></i> Prev week</a>
+                @if(!$nav['is_current'])
+                    <a href="{{ $cur() }}" class="btn btn-default btn-sm">This week</a>
+                @endif
+                @if($nav['next'])
+                    <a href="{{ $weekUrl($nav['next']) }}" class="btn btn-default btn-sm">Next week <i class="fa fa-chevron-right"></i></a>
+                @endif
+                <span style="margin-left:10px; font-weight:700; color:#1F1B16;">{{ $nav['week_label'] }}</span>
+                <span style="color:#9a8f7d;"> vs {{ $nav['ly_label'] }}</span>
             </div>
+            <a href="{{ $exportUrl }}" class="btn"><i class="fa fa-file-excel"></i> Export (CSV)</a>
         </div>
-    </div>
+    </div></div>
 
-    <div class="row">
-        <div class="col-md-12">
-            @component('components.widget', ['class' => 'box-primary', 'title' => 'Sales by store — this period vs same weekday last year'])
-                <div class="table-responsive">
-                    <table class="table table-bordered table-striped" id="lfl_table" style="width:100%;">
-                        <thead>
-                            <tr>
-                                <th>Store</th>
-                                <th class="num">This period</th>
-                                <th class="num">Last year (LFL)</th>
-                                <th class="num">Change $</th>
-                                <th class="num">Change %</th>
-                                <th class="num">Txns (this / LY)</th>
-                                <th class="num">Avg ticket (this / LY)</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @forelse($rows as $r)
-                                <tr>
-                                    <td>{{ $r['location'] }}</td>
-                                    <td class="num"><span class="display_currency" data-currency_symbol="true">{{ number_format($r['this_rev'], 2, '.', '') }}</span></td>
-                                    <td class="num"><span class="display_currency" data-currency_symbol="true">{{ number_format($r['ly_rev'], 2, '.', '') }}</span></td>
-                                    <td class="num">{!! $fmtDelta($r['delta']) !!}</td>
-                                    <td class="num">{!! $fmtPct($r['pct']) !!}</td>
-                                    <td class="num">{{ number_format($r['this_tx']) }} / {{ number_format($r['ly_tx']) }}</td>
-                                    <td class="num">${{ number_format($r['this_avg'], 2) }} / ${{ number_format($r['ly_avg'], 2) }}</td>
-                                </tr>
-                            @empty
-                                <tr><td colspan="7" class="text-center text-muted">No active stores found.</td></tr>
-                            @endforelse
-                        </tbody>
-                        <tfoot>
-                            <tr>
-                                <td>TOTAL</td>
-                                <td class="num"><span class="display_currency" data-currency_symbol="true">{{ number_format($totals['this_rev'], 2, '.', '') }}</span></td>
-                                <td class="num"><span class="display_currency" data-currency_symbol="true">{{ number_format($totals['ly_rev'], 2, '.', '') }}</span></td>
-                                <td class="num">{!! $fmtDelta($totals['delta']) !!}</td>
-                                <td class="num">{!! $fmtPct($totals['pct']) !!}</td>
-                                <td class="num">{{ number_format($totals['this_tx']) }} / {{ number_format($totals['ly_tx']) }}</td>
-                                <td class="num">${{ number_format($totals['this_avg'], 2) }} / ${{ number_format($totals['ly_avg'], 2) }}</td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                </div>
-                <p class="text-muted" style="margin-top:8px;">
-                    Sales = finalized in-store sells (final_total). Whatnot livestream and bulk-imported historical sales are excluded, matching the live Store Performance dashboard.
-                </p>
+    <div class="row"><div class="col-md-12">
+        @component('components.widget', ['class' => 'box-primary', 'title' => 'All stores — ' . $ty . ' vs ' . $ly])
+            <div class="table-responsive">{!! $renderTable($all_table) !!}</div>
+            <p class="text-muted" style="margin-top:6px;">
+                Each weekday this week vs the same weekday last year (52 weeks back). The current day is in
+                progress — clipped to {{ $nav['as_of'] }} on both years. Finalized in-store sells only; Whatnot and bulk-imported history excluded.
+            </p>
+        @endcomponent
+
+        @foreach($store_tables as $t)
+            @component('components.widget', ['class' => 'box-primary', 'title' => $t['name'] . ' — ' . $ty . ' vs ' . $ly])
+                <div class="table-responsive">{!! $renderTable($t) !!}</div>
             @endcomponent
-        </div>
-    </div>
+        @endforeach
+    </div></div>
 
 </section>
-@endsection
-
-@section('javascript')
-    <script>
-        $(function () {
-            var fmt = (typeof moment_date_format !== 'undefined') ? moment_date_format : 'MM/DD/YYYY';
-            $('#lfl_date_range').daterangepicker({
-                autoUpdateInput: false,
-                locale: {
-                    format: fmt,
-                    cancelLabel: (typeof LANG !== 'undefined' ? LANG.clear : 'Clear'),
-                    applyLabel: (typeof LANG !== 'undefined' ? LANG.apply : 'Apply'),
-                },
-            });
-            $('#lfl_date_range').on('apply.daterangepicker', function (ev, picker) {
-                $(this).val(picker.startDate.format(fmt) + ' ~ ' + picker.endDate.format(fmt));
-            });
-            $('#lfl_date_range').on('cancel.daterangepicker', function () {
-                $(this).val('');
-            });
-        });
-    </script>
 @endsection
