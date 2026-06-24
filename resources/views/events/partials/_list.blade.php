@@ -9,7 +9,7 @@
       <th style="width:6%;">Attending</th>
       <th style="width:6%;">Vinyl requests</th>
       <th style="width:6%;">CD requests</th>
-      <th style="min-width:230px;white-space:nowrap;">Ordered (versions)</th>
+      <th style="width:13%;">Ordered</th>
       <th style="width:5%;">Taking preorders?</th>
       <th style="width:5%;">On website</th>
       <th style="width:5%;">Prep</th>
@@ -52,19 +52,20 @@
             if ($n !== null && $n !== '') { $ordC += (int) $n; $hasOrdered = true; }
           }
         }
-        // Per-store version breakdown (non-zero only) so the column shows
-        // exactly which editions were ordered, not just totals.
-        $skuShort = ['indieVinyl' => 'indie LP', 'stdVinyl' => 'std LP', 'deluxeVinyl' => 'dlx LP', 'cassette' => 'cassette', 'stdCd' => 'std CD', 'deluxeCd' => 'dlx CD'];
+        // Compact per-store totals for the list (one short line per store).
+        // The full version breakdown lives on each event's dashboard.
         $storeShort = ['hollywood' => 'HW', 'pico' => 'Pico'];
         $orderedLines = [];
         foreach ($storeShort as $s => $slabel) {
           $row = (array) ($ordered[$s] ?? []);
-          $bits = [];
-          foreach ($skuShort as $k => $lbl) {
-            $n = $row[$k] ?? null;
-            if ($n !== null && $n !== '' && (int) $n > 0) { $bits[] = (int) $n . ' ' . $lbl; }
-          }
-          if ($bits) { $orderedLines[$slabel] = $bits; }
+          $v = (int) ($row['indieVinyl'] ?? 0) + (int) ($row['stdVinyl'] ?? 0) + (int) ($row['deluxeVinyl'] ?? 0);
+          $cass = (int) ($row['cassette'] ?? 0);
+          $cd = (int) ($row['stdCd'] ?? 0) + (int) ($row['deluxeCd'] ?? 0);
+          $parts = [];
+          if ($v) { $parts[] = $v . ' vinyl'; }
+          if ($cass) { $parts[] = $cass . ' cassette'; }
+          if ($cd) { $parts[] = $cd . ' CD'; }
+          if ($parts) { $orderedLines[$slabel] = implode(' · ', $parts); }
         }
         $pubMap = $publishedMap ?? [];
         $isLive = array_key_exists($ev['id'] ?? '', $pubMap) ? $pubMap[$ev['id']] : null;
@@ -83,15 +84,10 @@
         <td>{{ $rsvpCount === null ? '—' : $rsvpCount }}</td>
         <td>{{ $vinylCount === null ? '—' : $vinylCount }}@if($vinylByStore)<div class="ev-meta">{{ $vinylByStore }}</div>@endif</td>
         <td>{{ $cdCount === null ? '—' : $cdCount }}@if($cdByStore)<div class="ev-meta">{{ $cdByStore }}</div>@endif</td>
-        <td style="min-width:230px;">
+        <td>
           @if(count($orderedLines))
-            @foreach($orderedLines as $store => $items)
-              <div style="margin-bottom:5px;">
-                <div style="font-size:11px;font-weight:700;color:#6b6253;">{{ $store }}</div>
-                @foreach($items as $it)
-                  <div style="font-size:12px;line-height:1.45;">{{ $it }}</div>
-                @endforeach
-              </div>
+            @foreach($orderedLines as $store => $line)
+              <div style="font-size:12px;line-height:1.5;"><strong>{{ $store }}:</strong> {{ $line }}</div>
             @endforeach
           @else
             <span class="ev-meta">—</span>
