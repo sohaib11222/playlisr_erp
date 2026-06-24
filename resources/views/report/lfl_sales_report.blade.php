@@ -24,7 +24,8 @@
     .lfl-grid td.amt { font-weight: 600; color: #1F1B16; }
     .lfl-grid td.wk  { border-left: 2px solid #ECE3CF; font-weight: 700; }
     .lfl-grid th.wk-h { border-left: 2px solid #ECE3CF; }
-    .lfl-grid tr.row-pct td { font-size: 12px; border-bottom: 2px solid #ECE3CF; }
+    .lfl-grid tr.row-pct td { font-size: 21px; font-weight: 700; border-bottom: 2px solid #ECE3CF; }
+    .lfl-grid tr.row-pct .lfl-up, .lfl-grid tr.row-pct .lfl-down { font-weight: 800; }
     .lfl-grid col.today-col, .lfl-grid td.today, .lfl-grid th.today { background: #FFFBEA; }
     .lfl-store-h { margin: 18px 0 6px; font-size: 15px; font-weight: 700; color: #1F1B16; }
     .lfl-grid .hrs { display: block; font-size: 10px; font-weight: 400; color: #9a8f7d; margin-top: 2px; }
