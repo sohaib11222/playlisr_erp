@@ -190,6 +190,69 @@ HTML,
 HTML,
             ],
             [
+                'slug' => 'sales-training',
+                'title' => 'Sales Training',
+                'section' => 'Customer Experience',
+                'sort' => 0,
+                'summary' => 'How we sell at Nivessa — be present, approachable, and genuinely helpful.',
+                'page_keys' => ['home', 'pos.create', 'contact.index'],
+                'body_html' => <<<'HTML'
+<p>Great customer service at Nivessa starts with being present, approachable, and genuinely interested in helping people discover music. This sheet is how we sell on the floor.</p>
+
+<h3>Approach Customers Naturally</h3>
+<p>When someone is digging through the bins, many are searching for something specific and simply don't know if we have it. A simple <em>"Looking for anything specific today?"</em> can start a great conversation and help us guide them to exactly what they want. If they'd rather be left alone, of course we respect that.</p>
+
+<h3>Stay Visible &amp; Approachable</h3>
+<ul>
+    <li>Stand near customers without hovering, so it's easy for them to ask a question when they need help.</li>
+    <li>Don't look distracted, buried in your phone, or too busy to assist. Customers should feel comfortable approaching you at any time.</li>
+</ul>
+
+<h3>Professional Appearance</h3>
+<p>How you present yourself matters.</p>
+<ul>
+    <li>Dress professionally.</li>
+    <li>Avoid hoodies or anything that blocks your face.</li>
+    <li>Make eye contact and acknowledge customers when they enter.</li>
+</ul>
+<p>People are more likely to engage with someone who looks friendly and approachable.</p>
+
+<h3>Build Connections</h3>
+<p>Some of our strongest salespeople connect with customers through conversation. Henry was excellent at complimenting customers on their shirts, jackets, or other music-related clothing — Clyde and Luis do this well too. A genuine compliment creates an instant connection and makes customers feel welcome.</p>
+<ul>
+    <li>If someone is wearing a band shirt, talk music with them.</li>
+    <li>If they're excited about an artist, share recommendations.</li>
+</ul>
+<p>These small interactions build relationships and create repeat customers.</p>
+
+<h3>Share What's New</h3>
+<p>Always look for opportunities to add value:</p>
+<ul>
+    <li>Tell customers about current sales and markdowns.</li>
+    <li>Mention new releases related to artists they're buying.</li>
+    <li>Recommend similar albums they may enjoy.</li>
+    <li>Suggest accessories that improve their collecting experience.</li>
+</ul>
+<div class="help-tip">
+    <strong>Example:</strong> Luis often recommends vinyl cleaning kits to customers buying records — a useful add-on that keeps their collection in great shape and improves their experience.
+</div>
+
+<h3>Who We Are</h3>
+<p>Nivessa is not a prestigious record store. We are not record snobs. We are not here to make customers feel like they need a certain level of knowledge to shop with us.</p>
+<p>We welcome everyone — from lifelong collectors to someone buying their first record. Our goal is to help people discover music they love: we may introduce someone to vinyl for the first time, or help them find their next favorite album.</p>
+<div class="help-tip">
+    <strong>Be knowledgeable. Be helpful. Be kind.</strong> Customers remember how you made them feel. When people feel welcomed, respected, and excited about music, they come back. That's the Nivessa experience.
+</div>
+
+<h3>What to Focus On</h3>
+<p>Jon sets the focus each week — specific categories, genres, or items to promote to customers. Watch Slack for that callout at the start of the week. If you're not sure what's prioritized, check in with Jon.</p>
+
+<div class="help-tip">
+    <strong>How you're paid to sell:</strong> you earn <strong>2% listing commission</strong> on items you listed that sell (online or in-store, net of returns), plus a <strong>sales goal bonus</strong> when you hit your goal for the period. See your own numbers anytime at <code>/my-earnings</code>. (See <em>Earning at Nivessa</em> for the full breakdown.)
+</div>
+HTML,
+            ],
+            [
                 'slug' => 'customer-service-basics',
                 'title' => 'Customer Service Basics',
                 'section' => 'Customer Experience',
