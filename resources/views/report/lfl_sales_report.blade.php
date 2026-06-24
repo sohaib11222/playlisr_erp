@@ -43,6 +43,14 @@
         };
     @endphp
 
+    {{-- Daily / Weekly toggle --}}
+    <div class="row"><div class="col-md-12">
+        <div style="margin: 0 0 14px;">
+            <a href="{{ action('ReportController@lflSalesReport') }}" class="btn btn-primary btn-sm" style="border-radius:999px;">Daily</a>
+            <a href="{{ action('ReportController@lflSalesReport') . '?view=weekly' }}" class="btn btn-default btn-sm" style="border-radius:999px;">Weekly</a>
+        </div>
+    </div></div>
+
     <div class="row">
         <div class="col-md-12">
             @component('components.filters', ['title' => __('report.filters')])

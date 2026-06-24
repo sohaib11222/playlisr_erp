@@ -4911,6 +4911,149 @@ class ReportController extends Controller
     }
 
     /**
+     * Weekly LFL breakdown — one row per week (with explicit Mon–Sun dates),
+     * a column per store, each week compared to the SAME week 52 weeks back.
+     * The current (in-progress) week is clipped to "now" on both sides so it
+     * compares like-for-like. Default span is the last 12 weeks (~3 months);
+     * `weeks` (8/12/26/52) widens it. Same trusted sales math as the daily view.
+     */
+    private function lflSalesWeekly(Request $request)
+    {
+        $business_id = $request->session()->get('user.business_id');
+
+        $now = \Carbon::now();
+
+        $weeks_back = (int) $request->input('weeks', 12);
+        $weeks_back = max(1, min(53, $weeks_back));
+
+        // Monday 00:00 of the current week (ISO weeks, Mon–Sun).
+        $cur_week_start = $now->copy()->startOfDay()->subDays($now->dayOfWeekIso - 1);
+
+        $locations = DB::table('business_locations')
+            ->where('business_id', $business_id)
+            ->where('is_active', 1)
+            ->orderBy('id')
+            ->pluck('name', 'id');
+
+        $store_ids = $locations->keys()->all();
+
+        $weeks = [];
+        // Grand totals across the whole span, per store + overall.
+        $span_this = array_fill_keys($store_ids, 0.0);
+        $span_ly   = array_fill_keys($store_ids, 0.0);
+        $span_this_all = $span_ly_all = 0.0;
+
+        for ($w = 0; $w < $weeks_back; $w++) {
+            $ws       = $cur_week_start->copy()->subWeeks($w);   // Monday 00:00
+            $we_full  = $ws->copy()->addDays(6)->endOfDay();      // Sunday 23:59:59
+            $is_current = ($w === 0);
+            $we       = $is_current ? $now->copy() : $we_full;    // clip current week
+            $ly_ws    = $ws->copy()->subWeeks(52);
+            $ly_we    = $we->copy()->subWeeks(52);
+
+            $cells = [];
+            $wk_this_all = $wk_ly_all = 0.0;
+
+            foreach ($store_ids as $loc_id) {
+                $cur = $this->lflRevAndCount($business_id, $loc_id, $ws, $we);
+                $ly  = $this->lflRevAndCount($business_id, $loc_id, $ly_ws, $ly_we);
+                $this_rev = (float) $cur->revenue;
+                $ly_rev   = (float) $ly->revenue;
+
+                $cells[$loc_id] = [
+                    'this_rev' => $this_rev,
+                    'ly_rev'   => $ly_rev,
+                    'pct'      => $ly_rev > 0 ? (($this_rev - $ly_rev) / $ly_rev) * 100 : null,
+                ];
+
+                $wk_this_all += $this_rev;
+                $wk_ly_all   += $ly_rev;
+                $span_this[$loc_id] += $this_rev;
+                $span_ly[$loc_id]   += $ly_rev;
+            }
+
+            $span_this_all += $wk_this_all;
+            $span_ly_all   += $wk_ly_all;
+
+            $weeks[] = [
+                'is_current' => $is_current,
+                'label'      => $ws->format('M j') . ' – ' . $we_full->format('M j, Y'),
+                'ly_label'   => $ly_ws->format('M j') . ' – ' . $ly_we->copy()->endOfDay()->format('M j, Y'),
+                'cells'      => $cells,
+                'total'      => [
+                    'this_rev' => $wk_this_all,
+                    'ly_rev'   => $wk_ly_all,
+                    'pct'      => $wk_ly_all > 0 ? (($wk_this_all - $wk_ly_all) / $wk_ly_all) * 100 : null,
+                ],
+            ];
+        }
+
+        // Footer span totals per store + overall.
+        $span = ['cells' => [], 'total' => []];
+        foreach ($store_ids as $loc_id) {
+            $span['cells'][$loc_id] = [
+                'this_rev' => $span_this[$loc_id],
+                'ly_rev'   => $span_ly[$loc_id],
+                'pct'      => $span_ly[$loc_id] > 0 ? (($span_this[$loc_id] - $span_ly[$loc_id]) / $span_ly[$loc_id]) * 100 : null,
+            ];
+        }
+        $span['total'] = [
+            'this_rev' => $span_this_all,
+            'ly_rev'   => $span_ly_all,
+            'pct'      => $span_ly_all > 0 ? (($span_this_all - $span_ly_all) / $span_ly_all) * 100 : null,
+        ];
+
+        if ($request->input('export') === 'csv') {
+            return $this->streamLflWeeklyCsv($locations, $weeks, $span, $weeks_back);
+        }
+
+        return view('report.lfl_sales_weekly')
+            ->with(compact('locations', 'weeks', 'span', 'weeks_back'));
+    }
+
+    private function streamLflWeeklyCsv($locations, $weeks, $span, $weeks_back)
+    {
+        $filename = 'lfl-sales-weekly_last-' . $weeks_back . '-weeks.csv';
+        $headers = [
+            'Content-Type'        => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ];
+        return response()->stream(function () use ($locations, $weeks, $span) {
+            $out = fopen('php://output', 'w');
+            $head = ['Week', 'Last-year week'];
+            foreach ($locations as $name) {
+                $head[] = $name . ' (this)';
+                $head[] = $name . ' (LY)';
+                $head[] = $name . ' (%)';
+            }
+            $head[] = 'Total (this)';
+            $head[] = 'Total (LY)';
+            $head[] = 'Total (%)';
+            fputcsv($out, $head);
+
+            $rowFor = function ($label, $ly_label, $cells, $total) use ($out, $locations) {
+                $line = [$label, $ly_label];
+                foreach ($locations as $loc_id => $name) {
+                    $c = $cells[$loc_id] ?? ['this_rev' => 0, 'ly_rev' => 0, 'pct' => null];
+                    $line[] = number_format($c['this_rev'], 2, '.', '');
+                    $line[] = number_format($c['ly_rev'], 2, '.', '');
+                    $line[] = $c['pct'] === null ? 'n/a' : number_format($c['pct'], 1, '.', '');
+                }
+                $line[] = number_format($total['this_rev'], 2, '.', '');
+                $line[] = number_format($total['ly_rev'], 2, '.', '');
+                $line[] = $total['pct'] === null ? 'n/a' : number_format($total['pct'], 1, '.', '');
+                fputcsv($out, $line);
+            };
+
+            foreach ($weeks as $wk) {
+                $rowFor($wk['label'], $wk['ly_label'], $wk['cells'], $wk['total']);
+            }
+            $rowFor('TOTAL (span)', '', $span['cells'], $span['total']);
+            fclose($out);
+        }, 200, $headers);
+    }
+
+    /**
      * Calculates stock values
      *
      * @return array
