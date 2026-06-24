@@ -4625,6 +4625,12 @@ class ReportController extends Controller
     {
         $this->ensureAdminOnlyReportAccess();
 
+        // Weekly breakdown: one row per week (with dates), a column per store,
+        // each week vs the same week last year.
+        if ($request->input('view') === 'weekly') {
+            return $this->lflSalesWeekly($request);
+        }
+
         $business_id = $request->session()->get('user.business_id');
 
         $today = \Carbon::today();
@@ -4739,6 +4745,137 @@ class ReportController extends Controller
             ->whereBetween('transaction_date', [$start, $end])
             ->selectRaw('COALESCE(SUM(final_total), 0) as revenue, COUNT(*) as tx_count')
             ->first();
+    }
+
+    /**
+     * Revenue Drivers — Revenue = Traffic x Conversion x AOV, plus Product Mix.
+     *
+     * Lays out the four-lever framework as a scorecard. Every metric the ERP can
+     * actually compute from finalized in-store sales is filled in; the levers that
+     * need data we don't capture yet (door count, web/social visits) are stamped
+     * "not tracked yet" so the gaps are visible rather than guessed.
+     */
+    public function revenueDrivers(Request $request)
+    {
+        $this->ensureAdminOnlyReportAccess();
+
+        $business_id = $request->session()->get('user.business_id');
+
+        // Window: default to the last 30 days.
+        $date_range = $request->input('date_range');
+        if (!empty($date_range)) {
+            $parts = explode('~', $date_range);
+            $start_date = $this->transactionUtil->uf_date(trim($parts[0]));
+            $end_date   = $this->transactionUtil->uf_date(trim($parts[1] ?? $parts[0]));
+        } else {
+            $end_date   = \Carbon::today()->toDateString();
+            $start_date = \Carbon::today()->subDays(29)->toDateString();
+        }
+        $start = \Carbon::parse($start_date)->startOfDay();
+        $end   = \Carbon::parse($end_date)->endOfDay();
+
+        // Same definition of a "sale" the live dashboards use: finalized in-store
+        // sells, no historical imports, no Whatnot livestream.
+        $base = function () use ($business_id, $start, $end) {
+            return DB::table('transactions')
+                ->where('business_id', $business_id)
+                ->where('type', 'sell')
+                ->where('status', 'final')
+                ->whereNull('import_source')
+                ->where(function ($q) {
+                    $q->where('is_whatnot', 0)->orWhereNull('is_whatnot');
+                })
+                ->whereBetween('transaction_date', [$start, $end]);
+        };
+
+        // --- AOV lever: revenue, transactions, average order value -------------
+        $totals = $base()
+            ->selectRaw('COALESCE(SUM(final_total),0) as revenue, COUNT(*) as tx_count')
+            ->first();
+        $revenue  = (float) $totals->revenue;
+        $tx_count = (int) $totals->tx_count;
+        $aov      = $tx_count > 0 ? $revenue / $tx_count : 0.0;
+
+        // Units sold + items-per-basket (the upsell / cross-sell proxy).
+        $units = (float) $base()
+            ->join('transaction_sell_lines as tsl', 'transactions.id', '=', 'tsl.transaction_id')
+            ->sum('tsl.quantity');
+        $items_per_order = $tx_count > 0 ? $units / $tx_count : 0.0;
+        $avg_item_price  = $units > 0 ? $revenue / $units : 0.0;
+
+        // --- Traffic lever: buyers, new vs repeat ------------------------------
+        // We only see people who bought, not who walked in. Transaction count is
+        // the closest in-ERP proxy for traffic; door count is not captured.
+        $distinct_customers = (int) $base()
+            ->whereNotNull('contact_id')
+            ->distinct()
+            ->count('contact_id');
+        $anon_tx = (int) $base()->whereNull('contact_id')->count();
+
+        // Repeat customers = contacts with more than one sale in the window.
+        $repeat_customers = $base()
+            ->whereNotNull('contact_id')
+            ->groupBy('contact_id')
+            ->havingRaw('COUNT(*) > 1')
+            ->get(['contact_id'])
+            ->count();
+
+        // --- Product Mix lever: top genres + best sellers ----------------------
+        // Line-level revenue (qty x inc-tax price) approximates category share.
+        $by_category = DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 't.id', '=', 'tsl.transaction_id')
+            ->join('products as p', 'p.id', '=', 'tsl.product_id')
+            ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereNull('t.import_source')
+            ->where(function ($q) {
+                $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot');
+            })
+            ->whereBetween('t.transaction_date', [$start, $end])
+            ->selectRaw("COALESCE(c.name, 'Uncategorized') as genre,
+                         SUM(tsl.quantity) as units,
+                         SUM(tsl.quantity * COALESCE(tsl.unit_price_inc_tax, 0)) as revenue")
+            ->groupBy('genre')
+            ->orderByDesc('revenue')
+            ->limit(12)
+            ->get();
+
+        $best_sellers = DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 't.id', '=', 'tsl.transaction_id')
+            ->join('products as p', 'p.id', '=', 'tsl.product_id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereNull('t.import_source')
+            ->where(function ($q) {
+                $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot');
+            })
+            ->whereBetween('t.transaction_date', [$start, $end])
+            ->selectRaw("p.name as product,
+                         SUM(tsl.quantity) as units,
+                         SUM(tsl.quantity * COALESCE(tsl.unit_price_inc_tax, 0)) as revenue")
+            ->groupBy('p.name')
+            ->orderByDesc('units')
+            ->limit(10)
+            ->get();
+
+        $meta = [
+            'start_date' => $start_date,
+            'end_date'   => $end_date,
+            'label'      => \Carbon::parse($start_date)->format('M j, Y')
+                . ' → ' . \Carbon::parse($end_date)->format('M j, Y'),
+            'days'       => \Carbon::parse($start_date)->diffInDays(\Carbon::parse($end_date)) + 1,
+        ];
+
+        $scorecard = compact(
+            'revenue', 'tx_count', 'aov', 'units', 'items_per_order', 'avg_item_price',
+            'distinct_customers', 'anon_tx', 'repeat_customers'
+        );
+
+        return view('report.revenue_drivers')
+            ->with(compact('scorecard', 'by_category', 'best_sellers', 'meta'));
     }
 
     private function streamLflSalesCsv($rows, $totals, $meta)
