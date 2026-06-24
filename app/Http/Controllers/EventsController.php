@@ -883,7 +883,7 @@ class EventsController extends Controller
             'madonna'    => ['hollywood' => ['indieVinyl' => 20, 'deluxeVinyl' => 8, 'stdVinyl' => 2, 'deluxeCd' => 2, 'stdCd' => 4], 'pico' => ['indieVinyl' => 2, 'deluxeVinyl' => 1, 'stdCd' => 2]],
             'gracie'     => ['hollywood' => ['indieVinyl' => 25, 'stdVinyl' => 5, 'stdCd' => 1], 'pico' => ['stdVinyl' => 2, 'stdCd' => 1]],
             'heated'     => ['hollywood' => ['stdVinyl' => 11, 'stdCd' => 5], 'pico' => ['stdVinyl' => 11, 'stdCd' => 6]],
-            'jack white' => ['hollywood' => ['indieVinyl' => 10, 'stdVinyl' => 2, 'cassette' => 2, 'stdCd' => 1], 'pico' => ['indieVinyl' => 5, 'stdVinyl' => 2, 'cassette' => 2, 'stdCd' => 1]],
+            'jack white' => ['hollywood' => ['indieVinyl' => 8, 'stdVinyl' => 2, 'cassette' => 1, 'stdCd' => 1], 'pico' => ['indieVinyl' => 4, 'stdVinyl' => 2, 'cassette' => 1, 'stdCd' => 1]],
         ];
     }
 
