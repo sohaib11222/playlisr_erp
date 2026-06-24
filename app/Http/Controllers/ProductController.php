@@ -3206,9 +3206,10 @@ class ProductController extends Controller
             'products.*.single_dsp_inc_tax' => 'nullable|numeric|min:0',
             'products.*.business_locations' => 'required|array|min:1',
             'products.*.stock_locations.*.stock' => 'nullable|integer|min:0',
-            'products.*.artist' => [
-                'required_if:products.*.category_id,11,15,55,104,111,174,175',
-            ],
+            // Artist is conditionally required for music-media categories only.
+            // The check lives in the ->after() closure below so it can match on
+            // the category NAME (sealed/used vinyl, CD, cassette, 45s) instead of
+            // hardcoded category ids, which are not stable across environments.
         ], [
             'products.required' => 'At least one product is required',
             'products.array' => 'Products must be an array',
@@ -3228,12 +3229,43 @@ class ProductController extends Controller
             
             'products.*.stock_locations.*.stock.integer' => 'Stock quantity must be an integer',
             'products.*.stock_locations.*.stock.min' => 'Stock quantity cannot be negative',
-
-            'products.*.artist.required_if' => 'Artist is required for this category',
         ]);
 
         $validator->after(function ($validator) use ($request) {
             $productsInput = $request->input('products', []);
+
+            // Resolve submitted category ids -> lowercased/trimmed names so the
+            // artist requirement can be matched by category name. Mirrors the
+            // name-based matching used in CostPriceRulesController.
+            $categoryIds = [];
+            foreach ($productsInput as $productInput) {
+                $catId = $productInput['category_id'] ?? null;
+                if ($catId !== null && $catId !== '') {
+                    $categoryIds[$catId] = true;
+                }
+            }
+            $categoryNames = [];
+            if (!empty($categoryIds)) {
+                $rows = DB::table('categories')
+                    ->whereIn('id', array_keys($categoryIds))
+                    ->pluck('name', 'id');
+                foreach ($rows as $id => $name) {
+                    $categoryNames[$id] = strtolower(trim((string) $name));
+                }
+            }
+
+            // Artist is required ONLY for these music-media categories:
+            // sealed/used vinyl, sealed/used CD, sealed/used cassette, and 45s.
+            // Aliases kept liberal so upstream renames don't silently break it.
+            $artistRequiredCategoryNames = [
+                'sealed vinyl', 'new vinyl',
+                'used vinyl',
+                'used cd', 'used cds', 'cds (used)',
+                'sealed cd', 'cd (sealed)', 'new cd', 'new cds',
+                'used cassette', 'used cassettes', 'cassettes', 'cassettes (used)',
+                'sealed cassette', 'sealed cassettes', 'cassettes - sealed', 'new cassette', 'new cassettes',
+                '7", 45 rpm', '7"', '45 rpm', '7 inch', 'used 45s', 'new 45s', '45s',
+            ];
 
             foreach ($productsInput as $index => $productInput) {
                 $isExistingProduct = !empty($productInput['id']);
@@ -3243,6 +3275,17 @@ class ProductController extends Controller
                     $validator->errors()->add(
                         "products.$index.single_dsp_inc_tax",
                         'Selling Price is required for new products'
+                    );
+                }
+
+                $catId = $productInput['category_id'] ?? null;
+                $catName = ($catId !== null && isset($categoryNames[$catId])) ? $categoryNames[$catId] : null;
+                $artist = isset($productInput['artist']) ? trim((string) $productInput['artist']) : '';
+
+                if ($catName !== null && in_array($catName, $artistRequiredCategoryNames, true) && $artist === '') {
+                    $validator->errors()->add(
+                        "products.$index.artist",
+                        'Artist is required for this category'
                     );
                 }
             }
