@@ -107,18 +107,48 @@
        release). Shown even when public preorders are off. --}}
   @php $versions = array_values((array) ($event['preorderProducts'] ?? [])); @endphp
   @if(!empty($versions))
-    @php $skuLabels = \App\Http\Controllers\EventsController::orderSkus(); @endphp
+    @php
+      $skuLabels = \App\Http\Controllers\EventsController::orderSkus();
+      // Ordered qty per format (summed across stores).
+      $orderedByFmt = [];
+      foreach ((array) ($event['ordered'] ?? []) as $storeRow) {
+        foreach ((array) $storeRow as $k => $val) {
+          if ($val !== null && $val !== '') { $orderedByFmt[$k] = ($orderedByFmt[$k] ?? 0) + (int) $val; }
+        }
+      }
+      // Preorders claimed per version (matched by the product title chosen).
+      $preByTitle = [];
+      foreach ((array) ($bridge['preorders'] ?? []) as $p) {
+        $t = trim((string) ($p['preorderTitle'] ?? ''));
+        if ($t !== '') { $preByTitle[$t] = ($preByTitle[$t] ?? 0) + 1; }
+      }
+    @endphp
     <div class="ev-card">
       <h2 style="margin-top:0;">Versions ordered</h2>
-      <p class="sub" style="margin:0 0 10px;">What we ordered for this release, with retail (MSRP). Reference only — public preorders are off.</p>
+      <p class="sub" style="margin:0 0 10px;">What we ordered for this release vs. preorders claimed. "Left" is what's still available to preorder.</p>
       <table class="ev-tbl">
-        <thead><tr><th style="width:60%;">Product</th><th style="width:25%;">Format</th><th style="width:15%;">MSRP</th></tr></thead>
+        <thead><tr>
+          <th style="width:42%;">Product</th>
+          <th style="width:16%;">Format</th>
+          <th style="width:12%;">MSRP</th>
+          <th style="width:10%;">Ordered</th>
+          <th style="width:10%;">Preordered</th>
+          <th style="width:10%;">Left</th>
+        </tr></thead>
         <tbody>
           @foreach($versions as $v)
+            @php
+              $qty = (int) ($orderedByFmt[$v['format'] ?? ''] ?? 0);
+              $pre = (int) ($preByTitle[trim((string) ($v['title'] ?? ''))] ?? 0);
+              $left = $qty - $pre;
+            @endphp
             <tr>
               <td class="ev-name">{{ $v['title'] ?? '' }}</td>
               <td>{{ $skuLabels[$v['format'] ?? ''] ?? ($v['format'] ?? '—') }}</td>
               <td>{{ isset($v['price']) && $v['price'] !== null && $v['price'] !== '' ? '$' . $v['price'] : '—' }}</td>
+              <td>{{ $qty }}</td>
+              <td>{{ $pre }}</td>
+              <td style="{{ $left <= 0 ? 'color:#a23;font-weight:700;' : '' }}">{{ $left }}@if($left <= 0) (sold out)@endif</td>
             </tr>
           @endforeach
         </tbody>
