@@ -898,12 +898,47 @@ class EventsController extends Controller
         ];
     }
 
+    /**
+     * Preorder products per event = the versions we ordered (name + format).
+     * Prices left null on purpose — those are retail and get set by hand, not
+     * guessed from the distributor cost sheet.
+     */
+    public static function preorderProductsSeed(): array
+    {
+        return [
+            'madonna' => [
+                ['title' => 'Confessions II — White Vinyl / Alt Cover (Indie)', 'format' => 'indieVinyl', 'price' => null],
+                ['title' => 'Confessions II — Translucent Pink 2LP (Deluxe)', 'format' => 'deluxeVinyl', 'price' => null],
+                ['title' => 'Confessions II — Translucent Red 2LP', 'format' => 'stdVinyl', 'price' => null],
+                ['title' => 'Confessions II — CD', 'format' => 'stdCd', 'price' => null],
+                ['title' => 'Confessions II — Premium 2CD / Photobook', 'format' => 'deluxeCd', 'price' => null],
+            ],
+            'heated' => [
+                ['title' => 'Heated Rivalry (OST) — 2LP', 'format' => 'stdVinyl', 'price' => null],
+                ['title' => 'Heated Rivalry (OST) — 2CD', 'format' => 'stdCd', 'price' => null],
+            ],
+            'jack white' => [
+                ['title' => 'Frozen Charlotte — Solid Blue Vinyl (Indie)', 'format' => 'indieVinyl', 'price' => null],
+                ['title' => 'Frozen Charlotte — Standard LP', 'format' => 'stdVinyl', 'price' => null],
+                ['title' => 'Frozen Charlotte — Cassette', 'format' => 'cassette', 'price' => null],
+                ['title' => 'Frozen Charlotte — CD', 'format' => 'stdCd', 'price' => null],
+            ],
+            'gracie' => [
+                ['title' => 'Daughter From Hell — Cobalt 2LP (Indie)', 'format' => 'indieVinyl', 'price' => null],
+                ['title' => 'Daughter From Hell — Foggy Horizon Gray 2LP', 'format' => 'deluxeVinyl', 'price' => null],
+                ['title' => 'Daughter From Hell — Standard 2LP', 'format' => 'stdVinyl', 'price' => null],
+                ['title' => 'Daughter From Hell — CD', 'format' => 'stdCd', 'price' => null],
+            ],
+        ];
+    }
+
     /** Apply the order + street-date seed to one business's store; returns events updated. */
     public static function applyOrderSeed(int $business_id): int
     {
         $data = self::load($business_id);
         $seed = self::orderSeedMap();
         $streets = self::streetDateSeedMap();
+        $preorderSeed = self::preorderProductsSeed();
         $matched = 0;
         $snapshotted = false;
         foreach ($data['items'] as $id => $ev) {
@@ -919,8 +954,15 @@ class EventsController extends Controller
                 $data['items'][$id]['ordered'] = self::cleanOrdered($stores);
                 if (!empty($streets[$kw])) {
                     $data['items'][$id]['streetDate'] = $streets[$kw];
-                    // Pickup date always tracks the street date.
-                    if (!empty($data['items'][$id]['preorderEnabled'])) {
+                }
+                // Advance listening parties take preorders for every version we
+                // ordered. Pickup date tracks the street date.
+                if (isset($preorderSeed[$kw])) {
+                    $data['items'][$id]['preorderEnabled'] = true;
+                    $data['items'][$id]['preorderProducts'] = $preorderSeed[$kw];
+                    $data['items'][$id]['preorderTitle'] = $preorderSeed[$kw][0]['title'] ?? '';
+                    $data['items'][$id]['preorderPrice'] = $preorderSeed[$kw][0]['price'] ?? null;
+                    if (!empty($streets[$kw])) {
                         $data['items'][$id]['preorderPickupDate'] = $streets[$kw];
                     }
                 }
