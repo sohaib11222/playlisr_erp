@@ -4775,17 +4775,19 @@ class ReportController extends Controller
         $end   = \Carbon::parse($end_date)->endOfDay();
 
         // Same definition of a "sale" the live dashboards use: finalized in-store
-        // sells, no historical imports, no Whatnot livestream.
+        // sells, no historical imports, no Whatnot livestream. Columns are
+        // table-qualified so the builder stays unambiguous once joined to
+        // transaction_sell_lines (which also has import_source / is_whatnot).
         $base = function () use ($business_id, $start, $end) {
             return DB::table('transactions')
-                ->where('business_id', $business_id)
-                ->where('type', 'sell')
-                ->where('status', 'final')
-                ->whereNull('import_source')
+                ->where('transactions.business_id', $business_id)
+                ->where('transactions.type', 'sell')
+                ->where('transactions.status', 'final')
+                ->whereNull('transactions.import_source')
                 ->where(function ($q) {
-                    $q->where('is_whatnot', 0)->orWhereNull('is_whatnot');
+                    $q->where('transactions.is_whatnot', 0)->orWhereNull('transactions.is_whatnot');
                 })
-                ->whereBetween('transaction_date', [$start, $end]);
+                ->whereBetween('transactions.transaction_date', [$start, $end]);
         };
 
         // --- AOV lever: revenue, transactions, average order value -------------
