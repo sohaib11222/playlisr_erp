@@ -1,5 +1,5 @@
 @php $totalPrep = count($prepItems); @endphp
-<table class="ev-tbl">
+<table class="ev-tbl" style="table-layout:fixed;width:100%;word-break:break-word;">
   <thead>
     <tr>
       <th style="width:13%;">Event</th>
