@@ -41,6 +41,41 @@ class CostPriceRulesController extends Controller
         ['label' => 'Clothing',              'match' => ['clothing'],                              'cost' => 3.00],
     ];
 
+    /**
+     * Map each matched top-level category id to its default cost for a
+     * business, using the same RULES the cost-price tool applies (exact
+     * lower/trim name match against each rule's aliases). Keyed by parent
+     * category id so callers — e.g. mass-create — can pre-fill a row's
+     * purchase price from the chosen category alone. Categories with no
+     * matching rule are omitted.
+     *
+     * @return array<int,float>  [parent_category_id => default cost]
+     */
+    public static function defaultCostsByCategoryId(int $businessId): array
+    {
+        $parents = DB::table('categories')
+            ->where('business_id', $businessId)
+            ->where('parent_id', 0)
+            ->whereNull('deleted_at')
+            ->get(['id', 'name']);
+
+        $map = [];
+        foreach ($parents as $cat) {
+            $name = mb_strtolower(trim((string) $cat->name));
+            if ($name === '') {
+                continue;
+            }
+            foreach (self::RULES as $rule) {
+                if (in_array($name, $rule['match'], true)) {
+                    $map[(int) $cat->id] = (float) $rule['cost'];
+                    break;
+                }
+            }
+        }
+
+        return $map;
+    }
+
     public function index()
     {
         return view('admin.cost_price_rules', [

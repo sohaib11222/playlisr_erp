@@ -498,8 +498,12 @@ class DiscogsReleaseImportMapper
             $sizeTokens = ['7"', '10"', '12"'];
             $releaseSizes = array_values(array_intersect($formatTokens, $sizeTokens));
 
+            // Start unset so the first candidate always wins, even when every
+            // candidate's score is negative (a sealed-only genre match, see
+            // the penalty below). A hardcoded -1 floor used to drop those to
+            // "no category" instead of selecting the lone sealed match.
             $best = null;
-            $bestScore = -1;
+            $bestScore = null;
             foreach ($matches as $m) {
                 $score = $m['sub_exact'] ? 1 : 0;
                 $pn = $m['parent_name'];
@@ -527,6 +531,23 @@ class DiscogsReleaseImportMapper
                 if ($pn !== '' && mb_strpos($pn, 'used cd') !== false) {
                     $score += 5;
                 }
+                // Sarah 2026-06-24: bulk-Discogs fetches are USED stock by
+                // store convention — the shop buys/lists used records and
+                // Discogs never flags an item as sealed. Actively disfavor any
+                // "Sealed …" / "New <medium>" parent so a used sibling that
+                // matches the same genre always wins (the +5 used bonuses
+                // alone weren't enough when only the sealed parent carried the
+                // matching genre subcategory, or when the used parent isn't
+                // literally named "Used Vinyl"/"Used CD"). The penalty is large
+                // but relative: a sealed parent stays selectable as a last
+                // resort when it's the ONLY genre match.
+                $isSealedParent = ($pn !== '') && (
+                    mb_strpos($pn, 'sealed') !== false
+                    || preg_match('/\bnew (vinyl|cd|cds|cassette|cassettes|lp|45s)\b/u', $pn) === 1
+                );
+                if ($isSealedParent) {
+                    $score -= 100;
+                }
                 if (!$sizeConflict) {
                     foreach ($formatTokens as $tok) {
                         if ($tok === '' || $pn === '') continue;
@@ -535,7 +556,7 @@ class DiscogsReleaseImportMapper
                         }
                     }
                 }
-                if ($score > $bestScore) {
+                if ($bestScore === null || $score > $bestScore) {
                     $bestScore = $score;
                     $best = $m;
                 }

@@ -3183,6 +3183,12 @@ class ProductController extends Controller
             ->first();
         $current_pos_location_id = $current_register->location_id ?? null;
 
+        // Default purchase price per category (Sarah's cost-price-rules table),
+        // keyed by parent category id, so the row auto-fills the cost from the
+        // chosen category — used vinyl 0.35, sealed vinyl 17, etc. — instead of
+        // only handling Used Vinyl in the frontend.
+        $category_cost_defaults = \App\Http\Controllers\CostPriceRulesController::defaultCostsByCategoryId($business_id);
+
         return view('product.mass-create')->with(compact(
             'categories',
             'category_combos',
@@ -3191,7 +3197,8 @@ class ProductController extends Controller
             'business_locations',
             'units',
             'manual_item_price_rules',
-            'current_pos_location_id'
+            'current_pos_location_id',
+            'category_cost_defaults'
         ));
     }
 

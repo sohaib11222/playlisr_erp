@@ -682,6 +682,28 @@
 <script>
     window.manualItemPriceRules = @json($manual_item_price_rules ?? []);
     window.currentPosLocationId = @json($current_pos_location_id ?? null);
+    // Default purchase price (cost) per parent category id, from Sarah's
+    // cost-price-rules table. Used to pre-fill a row's purchase price from the
+    // chosen category so "Save & send to add purchase" carries a cost for
+    // every category (sealed vinyl 17, used vinyl 0.35, …), not just used LPs.
+    window.categoryCostDefaults = @json($category_cost_defaults ?? (object) []);
+
+    // Pre-fill a row's Purchase Price from its category default, but only when
+    // the field is still empty or zero — never clobber a cost the operator
+    // typed. Combo value is "<parentCategoryId>_<subId>"; the cost keys on the
+    // parent id. Returns true when a default was applied.
+    window.applyCategoryDefaultPurchasePrice = function (jqRow, comboVal) {
+        if (!comboVal) return false;
+        var parentId = String(comboVal).split('_')[0];
+        var defaults = window.categoryCostDefaults || {};
+        if (!Object.prototype.hasOwnProperty.call(defaults, parentId)) return false;
+        var $pp = jqRow.find('input[name*="[single_dpp_inc_tax]"]').first();
+        if (!$pp.length) return false;
+        var current = parseFloat(($pp.val() || '').toString().replace(/,/g, ''));
+        if (!isNaN(current) && current > 0) return false; // keep operator's cost
+        $pp.val(Number(defaults[parentId]).toFixed(2));
+        return true;
+    };
 </script>
 <script src="{{ asset('js/product.js?v=' . $asset_v) }}"></script>
 
@@ -936,6 +958,11 @@
 
             $(`#products_${rowIndex}_category_id`).val(categoryId);
             $(`#products_${rowIndex}_sub_category_id`).val(subCategoryId);
+
+            // Pre-fill the default purchase price for the chosen category
+            // (only when the operator hasn't already typed a cost). Covers
+            // manual category picks as well as the Discogs/artist auto-fills.
+            window.applyCategoryDefaultPurchasePrice($this.closest('.tr, .product-row'), $this.val());
         });
 
         // Auto-fill category from the store's curated Artist→Bin list when an
@@ -960,9 +987,7 @@
                     const $opt = $combo.find('option[value="' + comboVal + '"]');
                     if ($opt.length) {
                         $combo.val(comboVal).trigger('change');
-                        if (/used vinyl/i.test($opt.text())) {
-                            $row.find('input[name*="[single_dpp_inc_tax]"]').val('0.35');
-                        }
+                        window.applyCategoryDefaultPurchasePrice($row, comboVal);
                     }
                 });
         });
@@ -2591,11 +2616,11 @@
                             $locations.val([locId]).trigger('change');
                         }
                     }
-                    // Pre-select category combo if Discogs gave us a match.
-                    // Side effect: when the matched category is "Used Vinyl"
-                    // (parent name contains that phrase, case-insensitive),
-                    // pre-fill Purchase Price with 0.35 — every used LP starts
-                    // at the same baseline cost and the operator can override.
+                    // Pre-select category combo if Discogs gave us a match, then
+                    // pre-fill Purchase Price with that category's default cost
+                    // (used vinyl 0.35, sealed vinyl 17, used CD 0.10, …) so the
+                    // operator can override but "Save & send to add purchase"
+                    // always carries a cost. Only fills when the field is blank.
                     if (discogsData.category_id) {
                         const sub = discogsData.sub_category_id || 0;
                         const comboVal = discogsData.category_id + '_' + sub;
@@ -2603,9 +2628,7 @@
                         const $opt = $combo.find('option[value="' + comboVal + '"]');
                         if ($opt.length) {
                             $combo.val(comboVal).trigger('change');
-                            if (/used vinyl/i.test($opt.text())) {
-                                $row.find('input[name*="[single_dpp_inc_tax]"]').val('0.35');
-                            }
+                            window.applyCategoryDefaultPurchasePrice($row, comboVal);
                         }
                     }
 
