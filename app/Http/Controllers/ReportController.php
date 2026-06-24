@@ -4657,48 +4657,6 @@ class ReportController extends Controller
             ->orderBy('id')
             ->pluck('name', 'id');
 
-        // --- Diagnostic: where does last-year's money sit? (admin-only, read-only)
-        // Splits the selected week's last-year span by import_source / whatnot so
-        // we can see if the import filter is hiding real 2025 sales. ?diag=1
-        if ($request->input('diag')) {
-            $lyS = $sunday->copy()->subWeeks(52)->startOfDay();
-            $lyE = $sunday->copy()->subWeeks(52)->addDays(6)->endOfDay();
-            $tyS = $sunday->copy()->startOfDay();
-            $tyE = $sunday->copy()->addDays(6)->endOfDay();
-            $probe = function ($s, $e) use ($business_id, $locations) {
-                return DB::table('transactions')
-                    ->where('business_id', $business_id)
-                    ->whereIn('location_id', $locations->keys()->all())
-                    ->where('type', 'sell')->where('status', 'final')
-                    ->whereBetween('transaction_date', [$s, $e])
-                    ->selectRaw("
-                        SUM(CASE WHEN import_source IS NULL AND (is_whatnot=0 OR is_whatnot IS NULL) THEN final_total ELSE 0 END) AS live_rev,
-                        COUNT(CASE WHEN import_source IS NULL AND (is_whatnot=0 OR is_whatnot IS NULL) THEN 1 END) AS live_cnt,
-                        SUM(CASE WHEN import_source IS NOT NULL THEN final_total ELSE 0 END) AS imported_rev,
-                        COUNT(CASE WHEN import_source IS NOT NULL THEN 1 END) AS imported_cnt,
-                        SUM(CASE WHEN is_whatnot=1 THEN final_total ELSE 0 END) AS whatnot_rev,
-                        COUNT(CASE WHEN is_whatnot=1 THEN 1 END) AS whatnot_cnt,
-                        SUM(final_total) AS all_rev, COUNT(*) AS all_cnt")
-                    ->first();
-            };
-            $sources = DB::table('transactions')
-                ->where('business_id', $business_id)
-                ->whereIn('location_id', $locations->keys()->all())
-                ->where('type', 'sell')->where('status', 'final')
-                ->whereBetween('transaction_date', [$lyS, $lyE])
-                ->groupBy('import_source')
-                ->selectRaw('import_source, COUNT(*) c, SUM(final_total) rev')
-                ->get();
-            return response()->json([
-                'stores'              => $locations,
-                'this_year_window'    => [$tyS->toDateString(), $tyE->toDateString()],
-                'last_year_window'    => [$lyS->toDateString(), $lyE->toDateString()],
-                'this_year_breakdown' => $probe($tyS, $tyE),
-                'last_year_breakdown' => $probe($lyS, $lyE),
-                'last_year_by_import_source' => $sources,
-            ], 200, [], JSON_PRETTY_PRINT);
-        }
-
         // Weekday columns Sun..Sat for the selected week.
         $days = [];
         for ($i = 0; $i < 7; $i++) {
@@ -4824,7 +4782,15 @@ class ReportController extends Controller
         }, 200, $headers);
     }
 
-    /** Revenue + finalized tx count for a window — store trading day only. */
+    /**
+     * Revenue + finalized tx count for a window — store trading day only.
+     *
+     * Counts BOTH live and bulk-imported finalized sells. Last year's sales
+     * (e.g. June 2025) live almost entirely in the historical xlsx import
+     * (import_source like nivessa_backend_sales_*), so excluding imports here
+     * undercounts the prior-year LFL baseline by ~80% and inflates every % to
+     * +1,000%. Whatnot livestream sales are still excluded (store-floor only).
+     */
     private function lflRevAndCount($business_id, $location_id, $start, $end)
     {
         return DB::table('transactions')
@@ -4832,7 +4798,6 @@ class ReportController extends Controller
             ->where('location_id', $location_id)
             ->where('type', 'sell')
             ->where('status', 'final')
-            ->whereNull('import_source')
             ->where(function ($q) {
                 $q->where('is_whatnot', 0)->orWhereNull('is_whatnot');
             })

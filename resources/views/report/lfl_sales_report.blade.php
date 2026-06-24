@@ -107,7 +107,7 @@
             <div class="table-responsive">{!! $renderTable($all_table) !!}</div>
             <p class="text-muted" style="margin-top:6px;">
                 Each weekday this week vs the same weekday last year (52 weeks back). The current day is in
-                progress — clipped to {{ $nav['as_of'] }} on both years. Finalized in-store sells only; Whatnot and bulk-imported history excluded.
+                progress — clipped to {{ $nav['as_of'] }} on both years. Finalized in-store sells, including bulk-imported history (last year's sales live there); Whatnot excluded.
             </p>
         @endcomponent
 

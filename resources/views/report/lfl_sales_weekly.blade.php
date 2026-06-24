@@ -115,7 +115,7 @@
                 <p class="text-muted" style="margin-top:8px;">
                     Each cell: this week's sales (bold) and the % change vs the same week last year — hover for exact figures.
                     Weeks are Monday–Sunday; the current week is in progress and clipped to the same point last year.
-                    Finalized in-store sells only; Whatnot and bulk-imported history excluded.
+                    Finalized in-store sells, including bulk-imported history (last year's sales live there); Whatnot excluded.
                 </p>
             @endcomponent
         </div>
