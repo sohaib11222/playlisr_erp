@@ -397,6 +397,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/purchase-report/export', 'ReportController@purchaseReportExport')->name('reports.purchase-report.export');
     Route::get('/reports/purchase-report/walkin-history', 'ReportController@purchaseReportWalkinHistory')->name('reports.purchase-report.walkin-history');
     Route::get('/reports/sale-report', 'ReportController@saleReport');
+    Route::get('/reports/lfl-sales', 'ReportController@lflSalesReport')->name('reports.lfl-sales');
     Route::get('/reports/service-staff-report', 'ReportController@getServiceStaffReport');
     Route::get('/reports/service-staff-line-orders', 'ReportController@serviceStaffLineOrders');
     Route::get('/reports/table-report', 'ReportController@getTableReport');

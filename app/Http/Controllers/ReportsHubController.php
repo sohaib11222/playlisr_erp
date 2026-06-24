@@ -31,6 +31,7 @@ class ReportsHubController extends Controller
                 'icon'  => 'fa-chart-line',
                 'reports' => [
                     ['key' => 'store-performance',     'name' => 'Store Performance (Live)', 'icon' => 'fa-tachometer-alt',  'action' => 'StorePerformanceController@index',           'desc' => 'Trading-day dashboard: revenue vs target, LFL vs last year, tx count, avg ticket.', 'admin_only' => true],
+                    ['key' => 'lfl-sales',             'name' => 'Like-for-Like Sales',   'icon' => 'fa-calendar-check',     'action' => 'ReportController@lflSalesReport',            'desc' => 'Pick any day or range — all stores vs the same weekday last year, $ and % change, CSV export.', 'admin_only' => true],
                     ['key' => 'profit-loss',           'name' => 'Profit / Loss Report',  'icon' => 'fa-balance-scale',      'action' => 'ReportController@getProfitLoss',              'desc' => 'Full P&L by date range.', 'admin_only' => true],
                     ['key' => 'sale-report',           'name' => 'Product Sell Report',   'icon' => 'fa-receipt',            'action' => 'ReportController@saleReport',                 'desc' => 'Revenue by product.', 'admin_only' => true],
                     ['key' => 'sales-by-item',         'name' => 'Sales by Item (Cost & Margin)', 'icon' => 'fa-tags',       'action' => 'ReportController@salesByItemCostMargin',      'desc' => 'Sell report with cost + margin.', 'admin_only' => true],

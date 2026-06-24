@@ -4608,6 +4608,172 @@ class ReportController extends Controller
     }
 
     /**
+     * Like-for-Like (LFL) sales report — admin-only.
+     *
+     * Compares a chosen trading day (or range) against the SAME WEEKDAY a year
+     * ago (52 weeks back, which lands on the same day-of-week — proper retail
+     * LFL), per store, side by side, with $ and % change. Default window is
+     * today. If the window ends today, last year is clipped to the same
+     * wall-clock time so an in-progress day is compared apples-to-apples
+     * (mirrors the live Store Performance dashboard).
+     *
+     * Sales math mirrors the trusted /home and Store Performance number:
+     * finalized sells only, bulk historical imports excluded (import_source
+     * NULL) and Whatnot livestream sales excluded (store trading day only).
+     */
+    public function lflSalesReport(Request $request)
+    {
+        $this->ensureAdminOnlyReportAccess();
+
+        $business_id = $request->session()->get('user.business_id');
+
+        $today = \Carbon::today();
+        $now   = \Carbon::now();
+
+        // Window: default to today; otherwise the picked date range.
+        $date_range = $request->input('date_range');
+        if (!empty($date_range)) {
+            $parts = explode('~', $date_range);
+            $start_date = $this->transactionUtil->uf_date(trim($parts[0]));
+            $end_date   = $this->transactionUtil->uf_date(trim($parts[1] ?? $parts[0]));
+        } else {
+            $start_date = $today->toDateString();
+            $end_date   = $today->toDateString();
+        }
+
+        $this_start  = \Carbon::parse($start_date)->startOfDay();
+        $end_is_today = ($end_date === $today->toDateString());
+        // In-progress today: stop at "now" so we don't compare a partial day
+        // against a full one. Past days run to end-of-day.
+        $this_end    = $end_is_today ? $now->copy() : \Carbon::parse($end_date)->endOfDay();
+
+        // 52 weeks back keeps the same day-of-week and the same time-of-day.
+        $ly_start = $this_start->copy()->subWeeks(52);
+        $ly_end   = $this_end->copy()->subWeeks(52);
+
+        // Active stores (admins see all; report is admin-only).
+        $locations = DB::table('business_locations')
+            ->where('business_id', $business_id)
+            ->where('is_active', 1)
+            ->orderBy('id')
+            ->pluck('name', 'id');
+
+        $rows = [];
+        $tot_this_rev = $tot_ly_rev = 0.0;
+        $tot_this_tx  = $tot_ly_tx  = 0;
+
+        foreach ($locations as $loc_id => $loc_name) {
+            $cur = $this->lflRevAndCount($business_id, $loc_id, $this_start, $this_end);
+            $ly  = $this->lflRevAndCount($business_id, $loc_id, $ly_start, $ly_end);
+
+            $this_rev = (float) $cur->revenue;
+            $ly_rev   = (float) $ly->revenue;
+            $delta    = $this_rev - $ly_rev;
+            $pct      = $ly_rev > 0 ? ($delta / $ly_rev) * 100 : null;
+
+            $rows[] = [
+                'location_id' => $loc_id,
+                'location'    => $loc_name,
+                'this_rev'    => $this_rev,
+                'ly_rev'      => $ly_rev,
+                'delta'       => $delta,
+                'pct'         => $pct,
+                'this_tx'     => (int) $cur->tx_count,
+                'ly_tx'       => (int) $ly->tx_count,
+                'this_avg'    => $cur->tx_count > 0 ? $this_rev / $cur->tx_count : 0.0,
+                'ly_avg'      => $ly->tx_count > 0 ? $ly_rev / $ly->tx_count : 0.0,
+            ];
+
+            $tot_this_rev += $this_rev;
+            $tot_ly_rev   += $ly_rev;
+            $tot_this_tx  += (int) $cur->tx_count;
+            $tot_ly_tx    += (int) $ly->tx_count;
+        }
+
+        $tot_delta = $tot_this_rev - $tot_ly_rev;
+        $totals = [
+            'this_rev' => $tot_this_rev,
+            'ly_rev'   => $tot_ly_rev,
+            'delta'    => $tot_delta,
+            'pct'      => $tot_ly_rev > 0 ? ($tot_delta / $tot_ly_rev) * 100 : null,
+            'this_tx'  => $tot_this_tx,
+            'ly_tx'    => $tot_ly_tx,
+            'this_avg' => $tot_this_tx > 0 ? $tot_this_rev / $tot_this_tx : 0.0,
+            'ly_avg'   => $tot_ly_tx > 0 ? $tot_ly_rev / $tot_ly_tx : 0.0,
+        ];
+
+        $meta = [
+            'start_date'   => $start_date,
+            'end_date'     => $end_date,
+            'single_day'   => $start_date === $end_date,
+            'end_is_today' => $end_is_today,
+            'this_label'   => \Carbon::parse($start_date)->format('D, M j, Y')
+                . ($start_date === $end_date ? '' : ' → ' . \Carbon::parse($end_date)->format('D, M j, Y')),
+            'ly_start'     => $ly_start->toDateString(),
+            'ly_end'       => $ly_end->toDateString(),
+            'ly_label'     => $ly_start->format('D, M j, Y')
+                . ($start_date === $end_date ? '' : ' → ' . $ly_end->format('D, M j, Y')),
+            'as_of'        => $end_is_today ? $now->format('g:i A') : null,
+        ];
+
+        if ($request->input('export') === 'csv') {
+            return $this->streamLflSalesCsv($rows, $totals, $meta);
+        }
+
+        return view('report.lfl_sales_report')
+            ->with(compact('rows', 'totals', 'meta'));
+    }
+
+    /** Revenue + finalized tx count for a window — store trading day only. */
+    private function lflRevAndCount($business_id, $location_id, $start, $end)
+    {
+        return DB::table('transactions')
+            ->where('business_id', $business_id)
+            ->where('location_id', $location_id)
+            ->where('type', 'sell')
+            ->where('status', 'final')
+            ->whereNull('import_source')
+            ->where(function ($q) {
+                $q->where('is_whatnot', 0)->orWhereNull('is_whatnot');
+            })
+            ->whereBetween('transaction_date', [$start, $end])
+            ->selectRaw('COALESCE(SUM(final_total), 0) as revenue, COUNT(*) as tx_count')
+            ->first();
+    }
+
+    private function streamLflSalesCsv($rows, $totals, $meta)
+    {
+        $filename = 'lfl-sales_' . $meta['start_date']
+            . ($meta['single_day'] ? '' : '_to_' . $meta['end_date']) . '.csv';
+        $headers = [
+            'Content-Type'        => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ];
+        return response()->stream(function () use ($rows, $totals) {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, ['Store', 'This period', 'Last year (LFL)', 'Change $', 'Change %', 'Txns (this)', 'Txns (LY)', 'Avg ticket (this)', 'Avg ticket (LY)']);
+            $write = function ($label, $r) use ($out) {
+                fputcsv($out, [
+                    $label,
+                    number_format($r['this_rev'], 2, '.', ''),
+                    number_format($r['ly_rev'], 2, '.', ''),
+                    number_format($r['delta'], 2, '.', ''),
+                    $r['pct'] === null ? 'n/a' : number_format($r['pct'], 1, '.', ''),
+                    $r['this_tx'],
+                    $r['ly_tx'],
+                    number_format($r['this_avg'], 2, '.', ''),
+                    number_format($r['ly_avg'], 2, '.', ''),
+                ]);
+            };
+            foreach ($rows as $r) {
+                $write($r['location'], $r);
+            }
+            $write('TOTAL', $totals);
+            fclose($out);
+        }, 200, $headers);
+    }
+
+    /**
      * Calculates stock values
      *
      * @return array
