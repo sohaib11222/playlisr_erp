@@ -83,7 +83,7 @@
         <td>{{ $rsvpCount === null ? '—' : $rsvpCount }}</td>
         <td>{{ $vinylCount === null ? '—' : $vinylCount }}@if($vinylByStore)<div class="ev-meta">{{ $vinylByStore }}</div>@endif</td>
         <td>{{ $cdCount === null ? '—' : $cdCount }}@if($cdByStore)<div class="ev-meta">{{ $cdByStore }}</div>@endif</td>
-        <td>
+        <td style="min-width:230px;">
           @if(count($orderedLines))
             @foreach($orderedLines as $store => $items)
               <div style="margin-bottom:5px;">
