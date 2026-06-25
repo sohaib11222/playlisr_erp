@@ -120,7 +120,7 @@ class AdminActionHistoryController extends Controller
         // row's original owner before a wrong-login reassignment. Undo restores
         // user_id, but only if it still points at the to-user (so a later manual
         // change isn't clobbered).
-        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'reassign-register-user', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'events-update', 'events-delete', 'events-import'];
+        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'reassign-register-user', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'events-update', 'events-delete', 'events-import', 'reassign-import-location'];
         if (!in_array($action, $supportedActions, true)) {
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 0, 'msg' => "Don't know how to undo action: " . $action]);
@@ -251,6 +251,33 @@ class AdminActionHistoryController extends Controller
             }
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 1, 'msg' => "Restored register #{$reg['id']} + {$restoredTxns} transaction row(s) from snapshot $key."]);
+        }
+
+        // reassign-import-location: snapshot rows hold {id, location_id} — the
+        // store a finalized in-store import sale sat on before it was moved
+        // (Hollywood). Undo restores location_id, but only if the row is still
+        // on the to-location (Pico), so a later manual change isn't clobbered.
+        if ($action === 'reassign-import-location') {
+            $toLocId = $data['to_location_id'] ?? null;
+            $restored = 0;
+            $skipped = 0;
+            foreach ($data['rows'] as $row) {
+                $id = $row['id'] ?? null;
+                if (!$id) { continue; }
+                $current = DB::table('transactions')->where('id', $id)->first();
+                if (!$current || ($toLocId !== null && (int) $current->location_id !== (int) $toLocId)) {
+                    $skipped++;
+                    continue;
+                }
+                DB::table('transactions')
+                    ->where('id', $id)
+                    ->update(['location_id' => $row['location_id'], 'updated_at' => now()]);
+                $restored++;
+            }
+            $msg = "Moved {$restored} sale(s) back to their original store from snapshot {$key}";
+            $msg .= $skipped > 0 ? "; skipped {$skipped} changed since." : '.';
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 1, 'msg' => $msg]);
         }
 
         // reassign-register-user: snapshot rows hold {id, user_id} — the

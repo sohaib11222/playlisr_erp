@@ -1022,6 +1022,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // import_source, to explain the LFL report's prior-year n/a cells.
     Route::get('/admin/lfl-data-coverage', 'LflDataCoverageController@index');
 
+    // Move the historical importer's misfiled store-agnostic in-store sells
+    // (defaulted to Hollywood pre-June-2024) to Pico, where they belong.
+    // Preview + snapshot/undo via admin-action-history ('reassign-import-location').
+    Route::get('/admin/move-import-location', 'MoveImportLocationController@index');
+    Route::post('/admin/move-import-location/run', 'MoveImportLocationController@run');
+
     // Store-wide scan for duplicate label print runs (double-logged
     // labels_printed activity_log rows) that inflate "labeled" totals and
     // commission. Review + remove checked dupes; snapshot/undo via
