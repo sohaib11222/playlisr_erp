@@ -8,7 +8,7 @@
 
 @include('events.partials._styles')
 
-<div class="ev-wrap">
+<div class="ev-wrap ev-wrap-wide">
   <div class="ev-head">
     <div>
       <h1>{{ $filterType === 'listening_party' ? 'Listening Parties' : (($filterType ?? null) ? $filterLabel . 's' : 'All events') }}</h1>

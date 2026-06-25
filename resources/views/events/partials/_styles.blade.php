@@ -1,5 +1,7 @@
 <style>
 body.pos-v2 .ev-wrap { max-width: 1100px; margin: 0 auto; padding: 18px 16px 60px; font-family: "Inter Tight", system-ui, sans-serif; color: var(--pos-ink); }
+/* List page is a wide table — give it more room than the form/detail pages. */
+body.pos-v2 .ev-wrap.ev-wrap-wide { max-width: 1500px; }
 body.pos-v2 .ev-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:18px; }
 body.pos-v2 .ev-wrap h1 { font-size: 24px; font-weight: 700; margin: 0 0 4px; }
 body.pos-v2 .ev-wrap .sub { color: #6b6253; margin: 0; font-size: 14px; }
