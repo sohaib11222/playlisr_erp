@@ -191,7 +191,8 @@ $(document).ready(function () {
                 d.abc_xyz = $('#full_combo').val();
             }
         },
-        dom: 'Brtip',
+        dom: 'Blrtip',
+        lengthMenu: [[25, 50, 100, 500, -1], [25, 50, 100, 500, 'All']],
         buttons: ['csv', 'excel', 'print'],
         ordering: false,
         columns: [
