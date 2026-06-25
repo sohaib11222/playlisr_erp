@@ -3,6 +3,24 @@
 
 @section('content')
 
+@include('purchase._posv2_skin')
+<style>
+/* Compact + theme the Add/Edit Payment modal so it isn't a sprawling wall of
+   oversized labels. Scoped to the payment modals only. */
+body.pos-v2 .payment_modal .modal-dialog, body.pos-v2 .edit_payment_modal .modal-dialog { width:700px; max-width:95%; }
+body.pos-v2 .payment_modal .modal-content, body.pos-v2 .edit_payment_modal .modal-content { border-radius:14px; font-family:"Inter Tight",system-ui,sans-serif; }
+body.pos-v2 .payment_modal .modal-title, body.pos-v2 .edit_payment_modal .modal-title { font-weight:700; font-size:18px; }
+body.pos-v2 .payment_modal label, body.pos-v2 .edit_payment_modal label { font-size:12px !important; font-weight:600 !important; color:#5a5145; margin-bottom:4px; line-height:1.3; }
+body.pos-v2 .payment_modal .well, body.pos-v2 .edit_payment_modal .well { padding:10px 12px; margin-bottom:12px; background:var(--pos-surface-2); border:1px solid var(--pos-line); border-radius:10px; box-shadow:none; font-size:13px; line-height:1.45; }
+body.pos-v2 .payment_modal .well strong, body.pos-v2 .edit_payment_modal .well strong { font-weight:700; font-size:13px; }
+body.pos-v2 .payment_modal .form-control, body.pos-v2 .edit_payment_modal .form-control { border:1px solid var(--pos-line-2); border-radius:9px; height:auto; padding:8px 10px; box-shadow:none; font-size:14px; }
+body.pos-v2 .payment_modal .form-control:focus, body.pos-v2 .edit_payment_modal .form-control:focus { border-color:var(--pos-accent-deep); box-shadow:0 0 0 3px var(--pos-accent-soft); }
+body.pos-v2 .payment_modal .input-group-addon, body.pos-v2 .edit_payment_modal .input-group-addon { background:var(--pos-surface-2); border:1px solid var(--pos-line-2); color:#8a8070; border-radius:9px 0 0 9px; }
+body.pos-v2 .payment_modal .input-group .form-control, body.pos-v2 .edit_payment_modal .input-group .form-control { border-radius:0 9px 9px 0; }
+body.pos-v2 .payment_modal .btn-primary, body.pos-v2 .edit_payment_modal .btn-primary { background:var(--pos-accent); border:1px solid var(--pos-accent-deep); color:var(--pos-accent-text); border-radius:10px; font-weight:700; }
+body.pos-v2 .payment_modal .help-block, body.pos-v2 .edit_payment_modal .help-block { font-size:11px; color:#8a8070; }
+</style>
+
 <!-- Content Header (Page header) -->
 <section class="content-header no-print">
     <h1>@lang('purchase.purchases')
