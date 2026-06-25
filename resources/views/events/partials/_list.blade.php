@@ -1,12 +1,13 @@
 @php $totalPrep = count($prepItems); @endphp
 <div style="overflow-x:auto;">
-<table class="ev-tbl" style="min-width:1180px;">
+<table class="ev-tbl" style="min-width:1280px;">
   <thead>
     <tr>
       <th style="width:13%;">Event</th>
       <th style="width:6%;">Date</th>
       <th style="width:6%;">Street date</th>
       <th style="width:8%;">Location</th>
+      <th style="width:8%;">Event lead</th>
       <th style="width:6%;">Attending</th>
       <th style="width:6%;">Vinyl requests</th>
       <th style="width:6%;">CD requests</th>
@@ -70,6 +71,8 @@
         }
         $pubMap = $publishedMap ?? [];
         $isLive = array_key_exists($ev['id'] ?? '', $pubMap) ? $pubMap[$ev['id']] : null;
+        // Event lead = the prep "Event host" for the party (set on the dashboard).
+        $eventLead = trim((string) (((array) ($ev['prepDetails'] ?? []))['eventHost'] ?? ''));
       @endphp
       <tr>
         <td>
@@ -82,6 +85,7 @@
         <td>{{ $evDate }}</td>
         <td>{{ $evStreetDate }}</td>
         <td class="ev-meta">{{ $locLabels ? implode(' + ', $locLabels) : '—' }}@if(!empty($ev['locationDetail'])) <br>({{ ucfirst($ev['locationDetail']) }})@endif</td>
+        <td class="ev-meta">{{ $eventLead !== '' ? $eventLead : '—' }}</td>
         <td>{{ $rsvpCount === null ? '—' : $rsvpCount }}</td>
         <td style="white-space:nowrap;">{{ $vinylCount === null ? '—' : $vinylCount }}@if($vinylByStore)<div class="ev-meta">{{ $vinylByStore }}</div>@endif</td>
         <td style="white-space:nowrap;">{{ $cdCount === null ? '—' : $cdCount }}@if($cdByStore)<div class="ev-meta">{{ $cdByStore }}</div>@endif</td>

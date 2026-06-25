@@ -88,6 +88,24 @@
       if ($v === 'vinyl' || $v === 'both') { $byStore[$sk]['vinyl']++; }
       if ($v === 'cd' || $v === 'both') { $byStore[$sk]['cd']++; }
     }
+
+    // Attending split by store (eventLocationKey) so the Hollywood vs Pico
+    // breakdown is visible without counting RSVP-row badges. Mirrors the
+    // "attending" headline: anyone who didn't decline. Only meaningful when
+    // the event spans more than one store.
+    $attendByStore = ['hollywood' => 0, 'pico' => 0, 'unspecified' => 0];
+    foreach ($rsvps as $r) {
+      if (($r['attendance'] ?? 'yes') === 'no') { continue; }
+      $sk = $r['eventLocationKey'] ?? '';
+      $sk = ($sk === 'hollywood' || $sk === 'pico') ? $sk : 'unspecified';
+      $attendByStore[$sk]++;
+    }
+    $eventLocsForSplit = array_filter((array) ($event['location'] ?? []));
+    $showStoreSplit = count($eventLocsForSplit) > 1;
+    $attendSplitParts = [];
+    foreach ($storeLabels as $sk => $slabel) {
+      if (($attendByStore[$sk] ?? 0) > 0) { $attendSplitParts[] = $slabel . ': ' . $attendByStore[$sk]; }
+    }
   @endphp
 
   {{-- ---------- RSVPs ---------- --}}
@@ -97,6 +115,9 @@
       <div class="total-owed" style="margin-bottom:12px;">
         {{ $stats['attendingCount'] ?? $stats['totalAttendees'] ?? count($rsvps) }} attending
         <span class="ev-meta">&middot; {{ $stats['yesCount'] ?? 0 }} yes, {{ $stats['maybeCount'] ?? 0 }} maybe &middot; {{ $stats['totalGuests'] ?? 0 }} guests</span>
+        @if($showStoreSplit && count($attendSplitParts))
+          <div class="ev-meta" style="margin-top:3px;font-weight:600;">By store: {{ implode(' · ', $attendSplitParts) }}</div>
+        @endif
       </div>
     @endif
 
