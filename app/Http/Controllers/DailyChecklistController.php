@@ -40,7 +40,7 @@ class DailyChecklistController extends Controller
         ],
         'Sales & accounting' => [
             'sales_feed'  => 'Daily sales feed: make sure every transaction is in both the ERP and Clover. If it\'s not, DM the cashier to fix it.',
-            'accounting'  => 'Do the day\'s accounting transactions.',
+            'accounting'  => 'Review recent accounting transactions on all accounts and categorize them.',
         ],
         'Events & social' => [
             'events_cal'    => 'Update the events calendar.',
