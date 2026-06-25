@@ -71,8 +71,9 @@
     .lb-down { background: #8A3A2E !important; }
     .lb-neutral { background: #5A5045 !important; }
 </style>
-<section class="content-header">
+<section class="content-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;">
     <h1><i class="fa fa-trophy"></i> Employee Leaderboard <small>sales floor performance &amp; commission</small></h1>
+    @include('partials.pin_button', ['pinUrl' => url('/reports/employee-leaderboard'), 'pinLabel' => 'Employee Leaderboard'])
 </section>
 
 <section class="content">

@@ -40,9 +40,12 @@ body.role-picker .de-zero { color:#8E8273; }
 </style>
 
 <section class="content">
-    <div class="content-header">
-        <h1>Daily Earnings — All Employees</h1>
-        <p>Every employee's sales and the commission they earned, broken out day by day. {{ $range_from }} – {{ $range_to }}. Sales floor only; Whatnot excluded from sales totals.</p>
+    <div class="content-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;">
+        <div>
+            <h1>Daily Earnings — All Employees</h1>
+            <p>Every employee's sales and the commission they earned, broken out day by day. {{ $range_from }} – {{ $range_to }}. Sales floor only; Whatnot excluded from sales totals.</p>
+        </div>
+        @include('partials.pin_button', ['pinUrl' => url('/my-earnings/daily'), 'pinLabel' => 'Daily Earnings (All Staff)'])
     </div>
 
     <div class="de-wrap">
