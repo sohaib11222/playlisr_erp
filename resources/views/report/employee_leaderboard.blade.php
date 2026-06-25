@@ -161,7 +161,7 @@
 
     <div class="row">
         @forelse($stores as $store)
-            <div class="col-md-12">
+            <div class="col-md-12" style="float:none;width:100%;clear:both;display:block;">
                 <div class="box box-solid">
                     <div class="box-body table-responsive">
                         <p class="lb-store-head">{{ $store['name'] }}</p>
