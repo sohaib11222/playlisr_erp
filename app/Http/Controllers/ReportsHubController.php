@@ -136,15 +136,14 @@ class ReportsHubController extends Controller
         $business_id = $request->session()->get('user.business_id');
         $user_id = auth()->user()->id;
 
-        $favorite_keys = [];
-        if (\Schema::hasTable('user_report_favorites')) {
-            $favorite_keys = DB::table('user_report_favorites')
-                ->where('user_id', $user_id)
-                ->where('business_id', $business_id)
-                ->orderBy('sort_order')
-                ->orderBy('created_at')
-                ->pluck('report_key')
-                ->toArray();
+        // Favorites are the per-user sidebar pins (JSON sidecar, no migration) so
+        // starring a report here also drops it into the left-menu FAVORITES group.
+        // We match a report's resolved URL against the pinned URLs.
+        $pinnedUrls = [];
+        foreach (SidebarFavoriteController::forUser($business_id, $user_id) as $f) {
+            if (!empty($f['url'])) {
+                $pinnedUrls[$f['url']] = true;
+            }
         }
 
         // Filter out admin_only entries for non-admins. Aggregated-sales /
@@ -167,11 +166,29 @@ class ReportsHubController extends Controller
         }
         $flat = self::catalogFlat();
 
-        // Build favorites list (preserving user's order); skip unknown OR
+        // Resolve each report's URL once so we can both mark stars (favorite_keys)
+        // and build the Favorites section from the pinned-URL set.
+        $keyByUrl = [];
+        $favorite_keys = [];
+        foreach ($flat as $k => $r) {
+            try {
+                $u = action($r['action']);
+            } catch (\Throwable $e) {
+                continue;
+            }
+            $keyByUrl[$u] = $k;
+            if (!empty($pinnedUrls[$u])) {
+                $favorite_keys[] = $k;
+            }
+        }
+
+        // Build favorites list preserving the user's pin order; skip unknown OR
         // admin_only keys for non-admins so a previously-pinned admin report
         // doesn't render an unauthorized card.
         $favorites = [];
-        foreach ($favorite_keys as $k) {
+        foreach (array_keys($pinnedUrls) as $u) {
+            if (!isset($keyByUrl[$u])) continue; // a pinned link that isn't a report
+            $k = $keyByUrl[$u];
             if (!isset($flat[$k])) continue;
             if (!$is_admin && !empty($flat[$k]['admin_only'])) continue;
             $favorites[] = $flat[$k];

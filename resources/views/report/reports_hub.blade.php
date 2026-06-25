@@ -65,19 +65,23 @@
 @parent
 <script>
 $(function () {
+    // Star = pin the report to the personal left-menu FAVORITES group. Stored in
+    // the same per-user JSON sidecar the sidebar stars use (no migration), so a
+    // report starred here shows up in the left menu on every page.
     $(document).on('click', '.rh-fav-btn', function (e) {
         e.preventDefault(); e.stopPropagation();
         var $btn = $(this);
-        var key = $btn.data('key');
+        var url = $btn.data('url');
+        var label = $btn.data('label');
+        if (!url || url === '#') { return; }
         $.ajax({
-            url: "{{ action('ReportsHubController@toggleFavorite') }}",
+            url: "{{ url('/sidebar-favorites/toggle') }}",
             method: 'POST',
-            data: { report_key: key, _token: "{{ csrf_token() }}" },
+            data: { url: url, label: label, _token: "{{ csrf_token() }}" },
             success: function (resp) {
                 if (resp && resp.ok) {
-                    $btn.toggleClass('is-fav', !!resp.favorited);
-                    $btn.find('i').toggleClass('fa-star', !!resp.favorited).toggleClass('fa-star-o', !resp.favorited);
-                    // Reload so the Favorites section reorders itself cleanly
+                    $btn.toggleClass('is-fav', !!resp.starred);
+                    // Reload so the Favorites section + left sidebar reflect it.
                     setTimeout(function () { window.location.reload(); }, 200);
                 }
             }

@@ -17,7 +17,7 @@
          this app's FA build — Sarah kept asking "where's the star?" because
          unfavorited cards were drawing a glyph that doesn't exist. Color on
          .rh-fav-btn already differentiates state (gray #cbd5e1 vs gold #f59e0b). --}}
-    <button type="button" class="rh-fav-btn {{ $is_fav ? 'is-fav' : '' }}" data-key="{{ $r['key'] }}" title="{{ $is_fav ? 'Remove from favorites' : 'Add to favorites' }}">
+    <button type="button" class="rh-fav-btn {{ $is_fav ? 'is-fav' : '' }}" data-key="{{ $r['key'] }}" data-url="{{ $url }}" data-label="{{ $r['name'] }}" title="{{ $is_fav ? 'Unpin from left menu' : 'Pin to left menu' }}">
         <i class="fa fa-star"></i>
     </button>
 </a>

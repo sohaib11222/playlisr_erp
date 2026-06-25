@@ -193,7 +193,27 @@ $(document).ready(function () {
         },
         dom: 'Blrtip',
         lengthMenu: [[25, 50, 100, 500, -1], [25, 50, 100, 500, 'All']],
-        buttons: ['csv', 'excel', 'print'],
+        buttons: [
+            {
+                // Full export: hits the server so it returns EVERY filtered row,
+                // not just the page the table currently shows. Carries the live
+                // scope/class/xyz/combo filters + search box.
+                text: '<i class="fa fa-download"></i> Export all (CSV)',
+                className: 'btn',
+                action: function () {
+                    var params = new URLSearchParams({
+                        export: 'csv',
+                        scope: $('#full_scope').val() || '',
+                        'class': $('#full_class').val() || '',
+                        xyz: $('#full_xyz').val() || '',
+                        abc_xyz: $('#full_combo').val() || '',
+                        search_term: $('#full_search').val() || ''
+                    });
+                    window.location = '{{ action("ReportController@abcFullReport") }}?' + params.toString();
+                }
+            },
+            'print'
+        ],
         ordering: false,
         columns: [
             { data: 'abc_xyz', name: 'abc_xyz', render: function (data) { return data ? '<span class="combo-tag">' + data + '</span>' : '<span class="muted">—</span>'; } },

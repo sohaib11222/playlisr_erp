@@ -6377,76 +6377,136 @@ class ReportController extends Controller
 
         $abcSvc = new \App\Services\AbcImportService();
 
+        // Full CSV export — every filtered row, not just the page DataTables has
+        // loaded (serverSide buttons only see the current 50). Honors the same
+        // scope/class/xyz/combo filters plus the search box.
+        if ($request->input('export') === 'csv') {
+            $rows = $this->abcFullReportRows($request, true);
+            $columns = ['ABC-XYZ', 'Class', 'XYZ', 'Product', 'Artist', 'SKU', 'Format', 'In ERP', 'Manual'];
+            $filename = 'abc-full-report-' . date('Y-m-d') . '.csv';
+
+            return response()->stream(function () use ($rows, $columns) {
+                $out = fopen('php://output', 'w');
+                fputcsv($out, $columns);
+                foreach ($rows as $r) {
+                    fputcsv($out, [
+                        $r['abc_xyz'] ?? '',
+                        $r['class'] ?? '',
+                        $r['xyz'] ?? '',
+                        $r['product'] ?? '',
+                        $r['artist'] ?? '',
+                        $r['sku'] ?? '',
+                        $r['format'] ?? '',
+                        !empty($r['in_erp']) ? 'Yes' : 'No',
+                        !empty($r['manual']) ? 'Yes' : 'No',
+                    ]);
+                }
+                fclose($out);
+            }, 200, [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+                'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            ]);
+        }
+
         if ($request->ajax()) {
-            $class = strtoupper(trim((string) $request->input('class', '')));
-            $xyz = strtoupper(trim((string) $request->input('xyz', '')));
-            $combo = strtoupper(preg_replace('/\s+/', '', (string) $request->input('abc_xyz', '')));
-            $scope = (string) $request->input('scope', '');
-
-            $rows = collect($abcSvc->loadReportRows())->filter(function ($r) use ($class, $xyz, $combo, $scope) {
-                if ($class !== '' && strtoupper((string) ($r['class'] ?? '')) !== $class) {
-                    return false;
-                }
-                if ($xyz !== '' && strtoupper((string) ($r['xyz'] ?? '')) !== $xyz) {
-                    return false;
-                }
-                if ($combo !== '' && strtoupper((string) ($r['abc_xyz'] ?? '')) !== $combo) {
-                    return false;
-                }
-                if ($scope === 'manual' && empty($r['manual'])) {
-                    return false;
-                }
-                if ($scope === 'matched' && empty($r['in_erp'])) {
-                    return false;
-                }
-                if ($scope === 'unmatched' && !empty($r['in_erp'])) {
-                    return false;
-                }
-                // Manual reorder picks: no-SKU items that are steady sellers.
-                if ($scope === 'reorder_manual') {
-                    if (empty($r['manual'])) {
-                        return false;
-                    }
-                    if (!in_array(strtoupper((string) ($r['class'] ?? '')), ['A', 'B'], true)) {
-                        return false;
-                    }
-                    if (strtoupper((string) ($r['xyz'] ?? '')) !== 'X') {
-                        return false;
-                    }
-                }
-                return true;
-            })->values();
-
-            // Enrich each row with an artist. Prefer the matched ERP product's
-            // `artist` column (Discogs imports fill it); for legacy/unmatched
-            // rows fall back to parsing the analyzer name, which legacy records
-            // store as "Title / Artist".
-            $ids = $rows->pluck('matched_id')->filter()->unique()->values()->all();
-            $artistById = !empty($ids)
-                ? DB::table('products')->whereIn('id', $ids)->pluck('artist', 'id')->toArray()
-                : [];
-
-            $rows = $rows->map(function ($r) use ($artistById) {
-                $pid = $r['matched_id'] ?? null;
-                $artist = ($pid && !empty($artistById[$pid])) ? trim((string) $artistById[$pid]) : '';
-                if ($artist === '') {
-                    // Legacy "Title / Artist": take the segment after the last " / ".
-                    $name = (string) ($r['product'] ?? '');
-                    if (strpos($name, ' / ') !== false) {
-                        $artist = trim((string) substr($name, strrpos($name, ' / ') + 3));
-                    }
-                }
-                $r['artist'] = $artist;
-                return $r;
-            })->values();
-
-            return Datatables::of($rows)->make(true);
+            return Datatables::of($this->abcFullReportRows($request, false))->make(true);
         }
 
         return view('report.abc_full_report', [
             'imported_meta' => $abcSvc->load(),
             'has_rows' => count($abcSvc->loadReportRows()) > 0,
         ]);
+    }
+
+    /**
+     * Shared row builder for the Full ABC Report: applies the scope/class/xyz/
+     * combo filters, enriches each row with an artist, and (for export) the
+     * search term. Used by both the DataTables ajax feed and the CSV export so
+     * they stay perfectly in sync.
+     */
+    private function abcFullReportRows(Request $request, bool $applySearch = false)
+    {
+        $abcSvc = new \App\Services\AbcImportService();
+
+        $class = strtoupper(trim((string) $request->input('class', '')));
+        $xyz = strtoupper(trim((string) $request->input('xyz', '')));
+        $combo = strtoupper(preg_replace('/\s+/', '', (string) $request->input('abc_xyz', '')));
+        $scope = (string) $request->input('scope', '');
+
+        $rows = collect($abcSvc->loadReportRows())->filter(function ($r) use ($class, $xyz, $combo, $scope) {
+            if ($class !== '' && strtoupper((string) ($r['class'] ?? '')) !== $class) {
+                return false;
+            }
+            if ($xyz !== '' && strtoupper((string) ($r['xyz'] ?? '')) !== $xyz) {
+                return false;
+            }
+            if ($combo !== '' && strtoupper((string) ($r['abc_xyz'] ?? '')) !== $combo) {
+                return false;
+            }
+            if ($scope === 'manual' && empty($r['manual'])) {
+                return false;
+            }
+            if ($scope === 'matched' && empty($r['in_erp'])) {
+                return false;
+            }
+            if ($scope === 'unmatched' && !empty($r['in_erp'])) {
+                return false;
+            }
+            // Manual reorder picks: no-SKU items that are steady sellers.
+            if ($scope === 'reorder_manual') {
+                if (empty($r['manual'])) {
+                    return false;
+                }
+                if (!in_array(strtoupper((string) ($r['class'] ?? '')), ['A', 'B'], true)) {
+                    return false;
+                }
+                if (strtoupper((string) ($r['xyz'] ?? '')) !== 'X') {
+                    return false;
+                }
+            }
+            return true;
+        })->values();
+
+        // Enrich each row with an artist. Prefer the matched ERP product's
+        // `artist` column (Discogs imports fill it); for legacy/unmatched rows
+        // fall back to parsing the analyzer name, which legacy records store as
+        // "Title / Artist".
+        $ids = $rows->pluck('matched_id')->filter()->unique()->values()->all();
+        $artistById = !empty($ids)
+            ? DB::table('products')->whereIn('id', $ids)->pluck('artist', 'id')->toArray()
+            : [];
+
+        $rows = $rows->map(function ($r) use ($artistById) {
+            $pid = $r['matched_id'] ?? null;
+            $artist = ($pid && !empty($artistById[$pid])) ? trim((string) $artistById[$pid]) : '';
+            if ($artist === '') {
+                // Legacy "Title / Artist": take the segment after the last " / ".
+                $name = (string) ($r['product'] ?? '');
+                if (strpos($name, ' / ') !== false) {
+                    $artist = trim((string) substr($name, strrpos($name, ' / ') + 3));
+                }
+            }
+            $r['artist'] = $artist;
+            return $r;
+        })->values();
+
+        // The export carries the search box term (DataTables handles search
+        // itself for the ajax feed). Match across the visible text columns.
+        if ($applySearch) {
+            $term = strtolower(trim((string) $request->input('search_term', '')));
+            if ($term !== '') {
+                $rows = $rows->filter(function ($r) use ($term) {
+                    foreach (['product', 'artist', 'sku', 'format', 'class', 'xyz', 'abc_xyz'] as $f) {
+                        if (strpos(strtolower((string) ($r[$f] ?? '')), $term) !== false) {
+                            return true;
+                        }
+                    }
+                    return false;
+                })->values();
+            }
+        }
+
+        return $rows;
     }
 
     /**
