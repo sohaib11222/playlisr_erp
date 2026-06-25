@@ -35,7 +35,48 @@ class ImportParkedSheetsController extends Controller
                 'done' => $already >= (int) $m['rows'] && (int) $m['rows'] > 0,
             ]);
         }
-        return view('admin.import_parked_sheets', ['batches' => $batches]);
+
+        // Method validation: for sheets the bulk importer ALREADY loaded, compare
+        // the offline parser's total against the live DB total for that exact
+        // import_source. If they match, the same parser is trustworthy for the
+        // parked sheets. This is ground-truth proof, not my say-so.
+        $validation = [];
+        foreach ($this->validationData() as $v) {
+            $db = DB::table('transactions')
+                ->where('business_id', $businessId)
+                ->where('import_source', $v['import_source'])
+                ->where('type', 'sell')->where('status', 'final')
+                ->selectRaw('COALESCE(SUM(final_total),0) as total, COUNT(*) as cnt')
+                ->first();
+            $dbTotal = (float) ($db->total ?? 0);
+            $dbCnt   = (int) ($db->cnt ?? 0);
+            $mine    = (float) $v['my_final'];
+            $delta   = $dbTotal > 0 ? abs($mine - $dbTotal) / $dbTotal * 100 : ($mine > 0 ? 100 : 0);
+            $validation[] = [
+                'label' => $v['label'], 'import_source' => $v['import_source'],
+                'my_final' => $mine, 'my_rows' => (int) $v['my_rows'],
+                'db_total' => $dbTotal, 'db_cnt' => $dbCnt, 'delta' => $delta,
+                'match' => $dbTotal > 0 && $delta <= 0.5,
+                'present' => $dbCnt > 0,
+            ];
+        }
+        $matched = count(array_filter($validation, fn($r) => $r['match']));
+        $checkable = count(array_filter($validation, fn($r) => $r['present']));
+
+        return view('admin.import_parked_sheets', [
+            'batches' => $batches,
+            'validation' => $validation,
+            'matched' => $matched,
+            'checkable' => $checkable,
+        ]);
+    }
+
+    protected function validationData(): array
+    {
+        $path = app_path(self::DATA_DIR . '/validation.json');
+        if (!is_file($path)) { return []; }
+        $data = json_decode((string) file_get_contents($path), true);
+        return is_array($data) ? $data : [];
     }
 
     public function run(Request $request)

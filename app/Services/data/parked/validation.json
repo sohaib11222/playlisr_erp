@@ -1,0 +1,230 @@
+[
+  {
+    "label": "AUGUST PICO 25",
+    "import_source": "nivessa_backend_sales_august_pico_25",
+    "my_rows": 1221,
+    "my_final": 19084.23
+  },
+  {
+    "label": "HOLLYWOOD SALES OCT 24",
+    "import_source": "nivessa_backend_sales_hollywood_sales_oct_24",
+    "my_rows": 3166,
+    "my_final": 54683.83
+  },
+  {
+    "label": "HW APRIL 25",
+    "import_source": "nivessa_backend_sales_hw_april_25",
+    "my_rows": 3656,
+    "my_final": 66388.82
+  },
+  {
+    "label": "HW AUG 25",
+    "import_source": "nivessa_backend_sales_hw_aug_25",
+    "my_rows": 4771,
+    "my_final": 68298.07
+  },
+  {
+    "label": "HW December 24 Sales",
+    "import_source": "nivessa_backend_sales_hw_december_24_sales",
+    "my_rows": 3190,
+    "my_final": 59937.73
+  },
+  {
+    "label": "HW JUL 25",
+    "import_source": "nivessa_backend_sales_hw_jul_25",
+    "my_rows": 4283,
+    "my_final": 61677.27
+  },
+  {
+    "label": "HW JUN 25",
+    "import_source": "nivessa_backend_sales_hw_jun_25",
+    "my_rows": 3277,
+    "my_final": 51492.52
+  },
+  {
+    "label": "HW MAY 25",
+    "import_source": "nivessa_backend_sales_hw_may_25",
+    "my_rows": 3729,
+    "my_final": 56667.13
+  },
+  {
+    "label": "HW SALES FEB 25",
+    "import_source": "nivessa_backend_sales_hw_sales_feb_25",
+    "my_rows": 2805,
+    "my_final": 49350.29
+  },
+  {
+    "label": "HW SALES MAR 25",
+    "import_source": "nivessa_backend_sales_hw_sales_mar_25",
+    "my_rows": 3624,
+    "my_final": 60636.69
+  },
+  {
+    "label": "HW SEP 25",
+    "import_source": "nivessa_backend_sales_hw_sep_25",
+    "my_rows": 3701,
+    "my_final": 58123.65
+  },
+  {
+    "label": "HW Sales Sept24",
+    "import_source": "nivessa_backend_sales_hw_sales_sept24",
+    "my_rows": 3214,
+    "my_final": 53766.45
+  },
+  {
+    "label": "Hollywood In Store Stock",
+    "import_source": "nivessa_backend_sales_hollywood_in_store_stock",
+    "my_rows": 229,
+    "my_final": 8163.14
+  },
+  {
+    "label": "Hollywood Sales July 2024",
+    "import_source": "nivessa_backend_sales_hollywood_sales_july_2024",
+    "my_rows": 2861,
+    "my_final": 52239.35
+  },
+  {
+    "label": "Hollywood Sales June 2024",
+    "import_source": "nivessa_backend_sales_hollywood_sales_june_2024",
+    "my_rows": 1916,
+    "my_final": 37399.97
+  },
+  {
+    "label": "Hollywood Sales May 2024",
+    "import_source": "nivessa_backend_sales_hollywood_sales_may_2024",
+    "my_rows": 197,
+    "my_final": 2232.64
+  },
+  {
+    "label": "In Store New & Used Sales",
+    "import_source": "nivessa_backend_sales_in_store_new_used_sales",
+    "my_rows": 8234,
+    "my_final": 133017.19
+  },
+  {
+    "label": "In Store Sales April 2024",
+    "import_source": "nivessa_backend_sales_in_store_sales_april_2024",
+    "my_rows": 2064,
+    "my_final": 39432.88
+  },
+  {
+    "label": "In Store Sales Feb 2024",
+    "import_source": "nivessa_backend_sales_in_store_sales_feb_2024",
+    "my_rows": 1375,
+    "my_final": 18702.26
+  },
+  {
+    "label": "In Store Sales Mar 2024",
+    "import_source": "nivessa_backend_sales_in_store_sales_mar_2024",
+    "my_rows": 1719,
+    "my_final": 28580.88
+  },
+  {
+    "label": "In Store Sales-Nov2023",
+    "import_source": "nivessa_backend_sales_in_store_sales_nov2023",
+    "my_rows": 1488,
+    "my_final": 27431.78
+  },
+  {
+    "label": "InstoreSALES.JAN2024",
+    "import_source": "nivessa_backend_sales_instoresales_jan2024",
+    "my_rows": 1690,
+    "my_final": 29852.25
+  },
+  {
+    "label": "MAY-JUL HW",
+    "import_source": "nivessa_backend_sales_may_jul_hw",
+    "my_rows": 4970,
+    "my_final": 89717.57
+  },
+  {
+    "label": "PICO JULY 25",
+    "import_source": "nivessa_backend_sales_pico_july_25",
+    "my_rows": 1077,
+    "my_final": 18066.89
+  },
+  {
+    "label": "PICO JUNE 25",
+    "import_source": "nivessa_backend_sales_pico_june_25",
+    "my_rows": 1056,
+    "my_final": 15588.9
+  },
+  {
+    "label": "PICO OCT 25",
+    "import_source": "nivessa_backend_sales_pico_oct_25",
+    "my_rows": 84,
+    "my_final": 1294.86
+  },
+  {
+    "label": "PICO SALES DECEMBER 24",
+    "import_source": "nivessa_backend_sales_pico_sales_december_24",
+    "my_rows": 1610,
+    "my_final": 27823.45
+  },
+  {
+    "label": "PICO SALES FEB 25",
+    "import_source": "nivessa_backend_sales_pico_sales_feb_25",
+    "my_rows": 1359,
+    "my_final": 20501.74
+  },
+  {
+    "label": "PICO SALES JAN 25",
+    "import_source": "nivessa_backend_sales_pico_sales_jan_25",
+    "my_rows": 1544,
+    "my_final": 22080.02
+  },
+  {
+    "label": "PICO SALES NOV 24",
+    "import_source": "nivessa_backend_sales_pico_sales_nov_24",
+    "my_rows": 1213,
+    "my_final": 19361.41
+  },
+  {
+    "label": "PICO SALES OCT 24",
+    "import_source": "nivessa_backend_sales_pico_sales_oct_24",
+    "my_rows": 1409,
+    "my_final": 19360.61
+  },
+  {
+    "label": "PICO SEP 25",
+    "import_source": "nivessa_backend_sales_pico_sep_25",
+    "my_rows": 978,
+    "my_final": 14950.27
+  },
+  {
+    "label": "Pico June sales 2024",
+    "import_source": "nivessa_backend_sales_pico_june_sales_2024",
+    "my_rows": 1401,
+    "my_final": 19082.5
+  },
+  {
+    "label": "Pico Sales August 2024",
+    "import_source": "nivessa_backend_sales_pico_sales_august_2024",
+    "my_rows": 1148,
+    "my_final": 16299.21
+  },
+  {
+    "label": "Pico Sales July 2024",
+    "import_source": "nivessa_backend_sales_pico_sales_july_2024",
+    "my_rows": 1052,
+    "my_final": 14696.89
+  },
+  {
+    "label": "Pico Sales Mar 25",
+    "import_source": "nivessa_backend_sales_pico_sales_mar_25",
+    "my_rows": 1423,
+    "my_final": 20161.1
+  },
+  {
+    "label": "Pico Sales Sept24",
+    "import_source": "nivessa_backend_sales_pico_sales_sept24",
+    "my_rows": 1038,
+    "my_final": 14352.31
+  },
+  {
+    "label": "pico Sales May 2024",
+    "import_source": "nivessa_backend_sales_pico_sales_may_2024",
+    "my_rows": 1385,
+    "my_final": 22626.19
+  }
+]

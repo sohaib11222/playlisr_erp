@@ -23,6 +23,29 @@
     </div>
 @endif
 
+<div class="box box-solid" style="border-top:3px solid #1a7f37;">
+    <div class="box-header">
+        <h3 class="box-title">Method check — my parser vs the live database ({{ $matched }}/{{ $checkable }} match exactly)</h3>
+    </div>
+    <div class="box-body table-responsive">
+        <p class="text-muted">For sheets the importer ALREADY loaded, this compares my offline total to what's actually in the database for that exact source. Green = my parser reproduces the real number (so it's trustworthy for the parked sheets). Red = investigate before trusting that layout.</p>
+        <table class="table table-condensed table-bordered">
+            <thead><tr><th>Sheet</th><th style="text-align:right;">My total</th><th style="text-align:right;">Live DB total</th><th style="text-align:right;">Diff</th><th></th></tr></thead>
+            <tbody>
+            @foreach ($validation as $v)
+                <tr style="{{ $v['match'] ? '' : ($v['present'] ? 'background:#fdecea;' : 'background:#f5f5f5;') }}">
+                    <td>{{ $v['label'] }}</td>
+                    <td style="text-align:right;">${{ number_format($v['my_final']) }}</td>
+                    <td style="text-align:right;">{{ $v['present'] ? '$' . number_format($v['db_total']) : 'not in DB' }}</td>
+                    <td style="text-align:right;">{{ $v['present'] ? number_format($v['delta'],2) . '%' : '—' }}</td>
+                    <td>{!! $v['match'] ? '<span style=\'color:#1a7f37;\'>match</span>' : ($v['present'] ? '<span style=\'color:#c0392b;\'>differs</span>' : '<span class=\'text-muted\'>n/a</span>') !!}</td>
+                </tr>
+            @endforeach
+            </tbody>
+        </table>
+    </div>
+</div>
+
 <div class="box box-solid">
     <div class="box-header"><h3 class="box-title">Parked sheets</h3></div>
     <div class="box-body table-responsive">
