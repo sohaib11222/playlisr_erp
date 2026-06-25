@@ -39,8 +39,9 @@ class DailyChecklistController extends Controller
             'hello_email' => 'Reply to the hello@nivessa.com emails.',
         ],
         'Sales & accounting' => [
-            'sales_feed'  => 'Daily sales feed: make sure every transaction is in both the ERP and Clover. If it\'s not, DM the cashier to fix it.',
-            'accounting'  => 'Review recent accounting transactions on all accounts and categorize them.',
+            'sales_feed'    => 'Daily sales feed: make sure every transaction is in both the ERP and Clover. If it\'s not, DM the cashier to fix it.',
+            'register_recon' => 'Do the daily reconciliation on the registers.',
+            'accounting'    => 'Review recent accounting transactions on all accounts and categorize them.',
         ],
         'Events & social' => [
             'events_cal'    => 'Update the events calendar with any new events.',
@@ -56,9 +57,10 @@ class DailyChecklistController extends Controller
 
     /** Optional helper links shown next to a task (an "Open ->" jump to the ERP screen). */
     const LINKS = [
-        'sales_feed' => '/pos/recent-feed',
-        'purchasing' => '/reports/inventory-check-assistant',
-        'onboarding' => '/employee-checklist',
+        'sales_feed'     => '/pos/recent-feed',
+        'register_recon' => '/reports/clover-eod-reconciliation',
+        'purchasing'     => '/reports/inventory-check-assistant',
+        'onboarding'     => '/employee-checklist',
     ];
 
     /* ---------- access ---------- */
