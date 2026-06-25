@@ -4883,23 +4883,26 @@ class ReportController extends Controller
             ->first();
     }
 
-    // Store/months where the imported spreadsheet is the complete record and the
-    // (then brand-new) register rows are redundant duplicates to skip in LFL.
-    // Keyed by location_id -> [Y-m, ...], resolved by store name. Editing/clearing
-    // this reverses the adjustment — no data is touched.
+    // Store/months where an imported spreadsheet (the staff's complete sales log)
+    // exists. During those months the ERP register ran in parallel and only
+    // re-recorded a subset of the same sales, so counting both double-counts. For
+    // every such cell the LFL counts the complete spreadsheet (import_source =
+    // 'nivessa_backend_sales_*') and skips the redundant live-POS register rows.
+    // Data-driven straight from the rows — months after the sheets stop are
+    // register-only and unaffected. Non-destructive: nothing is deleted; this is
+    // purely which rows the report sums.
     private function lflSheetAuthoritativeCells($business_id)
     {
-        $byName = [
-            'hollywood' => ['2024-11', '2025-01'],
-            'pico'      => ['2025-04', '2025-05'],
-        ];
+        $rows = DB::table('transactions')
+            ->where('business_id', $business_id)
+            ->where('type', 'sell')->where('status', 'final')
+            ->where('import_source', 'like', 'nivessa_backend_sales_%')
+            ->select('location_id', DB::raw("DATE_FORMAT(transaction_date, '%Y-%m') as ym"))
+            ->groupBy('location_id', 'ym')
+            ->get();
         $out = [];
-        foreach ($byName as $needle => $months) {
-            $loc = DB::table('business_locations')
-                ->where('business_id', $business_id)
-                ->where('name', 'like', '%' . $needle . '%')
-                ->orderBy('id')->first(['id']);
-            if ($loc) { $out[(int) $loc->id] = $months; }
+        foreach ($rows as $r) {
+            $out[(int) $r->location_id][] = $r->ym;
         }
         return $out;
     }
