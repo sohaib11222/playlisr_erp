@@ -145,8 +145,16 @@ class ListingCommissionController extends Controller
             // Plain-English payroll memo so whoever pays them knows what the
             // money is for (and the person can see it on their pay stub).
             $memo = [];
-            if ($p->owed > 0)       { $memo[] = 'Listing commission $' . number_format($p->owed, 2) . ' (' . number_format($p->count) . ' sold item' . ($p->count == 1 ? '' : 's') . ')'; }
-            if ($p->sales_owed > 0) { $memo[] = 'Sales bonus $' . number_format($p->sales_owed, 2); }
+            if ($p->owed > 0) {
+                $memo[] = 'Listing commission $' . number_format($p->owed, 2)
+                    . ' — 2% of the sale price of ' . number_format($p->count) . ' item' . ($p->count == 1 ? '' : 's')
+                    . ' you listed that sold';
+            }
+            if ($p->sales_owed > 0) {
+                $memo[] = 'Sales bonus $' . number_format($p->sales_owed, 2)
+                    . ' — 2% of register sales above your daily goal (4% during peak hours), added up day by day since '
+                    . \Carbon::parse(self::SALES_BONUS_FROM)->format('M j');
+            }
             $p->payroll_memo = implode('  +  ', $memo);
         }
 
