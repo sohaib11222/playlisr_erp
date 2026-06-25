@@ -369,8 +369,8 @@
             </div>
         </div>
     @endcomponent
-    @component('components.widget', ['class' => 'box-primary hide'])
-    <div class="row">
+    @component('components.widget', ['class' => 'box-primary'])
+    <div class="row hide">
       <div class="col-md-4">
         <div class="form-group">
         {!! Form::label('shipping_details', __( 'purchase.shipping_details' ) . ':') !!}
