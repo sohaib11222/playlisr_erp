@@ -202,10 +202,6 @@
     })();
     </script>
 
-    <div class="callout">
-        <i class="fa fa-phone"></i> Answer phone calls while you work — keep the phone with you all day.
-    </div>
-
     <div class="card">
         <div class="topbar">
             <div class="progress-pill"><span id="progCount">0</span> / {{ $totalItems }} done</div>
