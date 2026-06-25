@@ -24,7 +24,7 @@ class CloverReconLflController extends Controller
         // Clover approved card sales (exclude voided/refunded), by store-month.
         $clover = DB::table('clover_payments')
             ->where('business_id', $businessId)
-            ->where(function ($q) { $q->whereNull('result')->orWhere('result', 'APPROVED'); })
+            ->where(function ($q) { $q->whereNull('result')->orWhereIn('result', ['SUCCESS', 'APPROVED']); })
             ->select(
                 DB::raw("DATE_FORMAT(paid_on, '%Y-%m') as ym"),
                 'location_id',
