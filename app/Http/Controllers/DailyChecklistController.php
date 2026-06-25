@@ -41,7 +41,7 @@ class DailyChecklistController extends Controller
         'Sales & accounting' => [
             'sales_feed'    => 'Daily sales feed: make sure every transaction is in both the ERP and Clover. If it\'s not, DM the cashier to fix it.',
             'register_recon' => 'Do the daily reconciliation on the registers.',
-            'accounting'    => 'Review recent accounting transactions on all accounts and categorize them.',
+            'accounting'    => 'Review recent accounting transactions in QuickBooks and categorize them.',
         ],
         'Events & social' => [
             'events_cal'    => 'Update the events calendar with any new events.',
@@ -59,6 +59,8 @@ class DailyChecklistController extends Controller
     const LINKS = [
         'sales_feed'     => '/pos/recent-feed',
         'register_recon' => '/reports/clover-eod-reconciliation',
+        'events_cal'     => '/events',
+        'events_ready'   => '/events',
         'purchasing'     => '/reports/inventory-check-assistant',
         'onboarding'     => '/employee-checklist',
     ];
