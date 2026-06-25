@@ -33,8 +33,8 @@ class DailyChecklistController extends Controller
             'sling_week' => 'Check Sling first — make sure we\'re covered and good for the whole week.',
             'discogs'    => 'Check Discogs orders and messages.',
         ],
-        'Phones, messages & email — keep these going while you work (answer calls as they come in)' => [
-            'phone_texts' => 'Check Quo texts and calls — start at 9:30 AM, not before (watch for the overcharges).',
+        'Phones, messages & email' => [
+            'phone_texts' => 'Check Quo texts and calls — start at 9:30 AM.',
             'whatsapp'    => 'Check WhatsApp and reply — start at 9:30 AM.',
             'hello_email' => 'Reply to the hello@nivessa.com emails.',
         ],
