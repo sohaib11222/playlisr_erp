@@ -39,7 +39,7 @@ class DailyChecklistController extends Controller
             'hello_email' => 'Reply to the hello@nivessa.com emails.',
         ],
         'Sales & accounting' => [
-            'sales_feed'  => 'Daily sales feed: make sure every transaction is in BOTH the ERP and Clover, and DM anyone whose sale is missing.',
+            'sales_feed'  => 'Daily sales feed: make sure every transaction is in both the ERP and Clover. If it\'s not, DM the cashier to fix it.',
             'accounting'  => 'Do the day\'s accounting transactions.',
         ],
         'Events & social' => [
