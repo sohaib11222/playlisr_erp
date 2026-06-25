@@ -1034,6 +1034,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/import-aug2024-hollywood', 'ImportAug2024HollywoodController@index');
     Route::post('/admin/import-aug2024-hollywood/run', 'ImportAug2024HollywoodController@run');
 
+    // Import all the historical sheets the bulk importer parked due to broken
+    // price headers (Pico Apr/May 25, HW Jan 25, HW Nov 24, in-store Dec 23).
+    // Snapshot/undo via admin-action-history ('nivessa-sheet-import').
+    Route::get('/admin/import-parked-sheets', 'ImportParkedSheetsController@index');
+    Route::post('/admin/import-parked-sheets/run', 'ImportParkedSheetsController@run');
+
     // Store-wide scan for duplicate label print runs (double-logged
     // labels_printed activity_log rows) that inflate "labeled" totals and
     // commission. Review + remove checked dupes; snapshot/undo via

@@ -1,0 +1,57 @@
+[
+  {
+    "file": "parked_nivessa_backend_sales_pico_april_25.json",
+    "import_source": "nivessa_backend_sales_pico_april_25",
+    "location": "pico",
+    "label": "Pico \u2014 Apr 2025",
+    "rows": 1397,
+    "pretax": 24198.2,
+    "final": 26557.52,
+    "date": "2025-04-15",
+    "month": "2025-04"
+  },
+  {
+    "file": "parked_nivessa_backend_sales_pico_may_2025.json",
+    "import_source": "nivessa_backend_sales_pico_may_2025",
+    "location": "pico",
+    "label": "Pico \u2014 May 2025",
+    "rows": 1295,
+    "pretax": 16415.02,
+    "final": 18015.48,
+    "date": "2025-05-15",
+    "month": "2025-05"
+  },
+  {
+    "file": "parked_nivessa_backend_sales_hw_sales_jan_25.json",
+    "import_source": "nivessa_backend_sales_hw_sales_jan_25",
+    "location": "hollywood",
+    "label": "Hollywood \u2014 Jan 2025",
+    "rows": 2863,
+    "pretax": 45192.38,
+    "final": 49598.64,
+    "date": "2025-01-15",
+    "month": "2025-01"
+  },
+  {
+    "file": "parked_nivessa_backend_sales_hw_november_24_sales.json",
+    "import_source": "nivessa_backend_sales_hw_november_24_sales",
+    "location": "hollywood",
+    "label": "Hollywood \u2014 Nov 2024",
+    "rows": 3058,
+    "pretax": 46557.99,
+    "final": 51097.39,
+    "date": "2024-11-15",
+    "month": "2024-11"
+  },
+  {
+    "file": "parked_nivessa_backend_sales_in_store_sales_dec2023.json",
+    "import_source": "nivessa_backend_sales_in_store_sales_dec2023",
+    "location": "pico",
+    "label": "Pico (in-store) \u2014 Dec 2023",
+    "rows": 1541,
+    "pretax": 26083.06,
+    "final": 28626.16,
+    "date": "2023-12-15",
+    "month": "2023-12"
+  }
+]
