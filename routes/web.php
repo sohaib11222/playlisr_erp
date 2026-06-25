@@ -1038,6 +1038,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // price headers (Pico Apr/May 25, HW Jan 25, HW Nov 24, in-store Dec 23).
     // Snapshot/undo via admin-action-history ('nivessa-sheet-import').
     Route::get('/admin/import-parked-sheets', 'ImportParkedSheetsController@index');
+    Route::get('/admin/baseline-breakdown', 'BaselineBreakdownController@index');
     Route::post('/admin/import-parked-sheets/run', 'ImportParkedSheetsController@run');
 
     // Store-wide scan for duplicate label print runs (double-logged
