@@ -35,14 +35,19 @@
         $vinylCount = ($vinylCounts ?? [])[$nk] ?? null;
         $cdCount = ($cdCounts ?? [])[$nk] ?? null;
         $sc = ($storeCounts ?? [])[$nk] ?? null;
-        // Per-store sub-splits (HW · Pico) only make sense when the event runs
-        // at both stores. Single-store events (e.g. Hollywood-only Madonna)
-        // show plain totals — no pointless "· Pico 0".
+        // Break a metric out by store (HW · Pico) when the event runs at both
+        // stores OR when Pico actually has a value for that metric — e.g. a
+        // Hollywood-listed party (Madonna) that still has Pico RSVPs. This
+        // shows real Pico attendance while hiding pointless "· Pico 0" on
+        // metrics where Pico is empty.
         $isMultiStore = count(array_filter((array) ($ev['location'] ?? []))) > 1;
-        $vinylByStore = ($sc && $isMultiStore) ? trim('HW ' . (int) $sc['hollywood']['vinyl'] . ' · Pico ' . (int) $sc['pico']['vinyl']) : null;
-        $cdByStore = ($sc && $isMultiStore) ? trim('HW ' . (int) $sc['hollywood']['cd'] . ' · Pico ' . (int) $sc['pico']['cd']) : null;
-        $attendByStore = ($sc && $isMultiStore)
-          ? trim('HW ' . (int) ($sc['hollywood']['attending'] ?? 0) . ' · Pico ' . (int) ($sc['pico']['attending'] ?? 0))
+        $picoV = $sc ? (int) ($sc['pico']['vinyl'] ?? 0) : 0;
+        $picoC = $sc ? (int) ($sc['pico']['cd'] ?? 0) : 0;
+        $picoA = $sc ? (int) ($sc['pico']['attending'] ?? 0) : 0;
+        $vinylByStore = ($sc && ($isMultiStore || $picoV > 0)) ? trim('HW ' . (int) $sc['hollywood']['vinyl'] . ' · Pico ' . $picoV) : null;
+        $cdByStore = ($sc && ($isMultiStore || $picoC > 0)) ? trim('HW ' . (int) $sc['hollywood']['cd'] . ' · Pico ' . $picoC) : null;
+        $attendByStore = ($sc && ($isMultiStore || $picoA > 0))
+          ? trim('HW ' . (int) ($sc['hollywood']['attending'] ?? 0) . ' · Pico ' . $picoA)
           : null;
         $takingPreorders = !empty($ev['preorderEnabled']);
         // Ordered totals across stores: vinyl = indie+std+deluxe, plus cassette
