@@ -13101,11 +13101,12 @@ class ReportController extends Controller
                 $out[$uid]['achieved'] += $achieved;
             }
         }
-        // Keep only people who actually earned a bonus (same set as before), now
-        // carrying goal + achieved alongside the bonus.
+        // Keep anyone who had a goal, rang sales, OR earned a bonus — so the Pay
+        // Commissions page can show Sales goal + Sales achieved even for people
+        // who came in UNDER goal (bonus $0). Only drop rows with no activity at all.
         $res = [];
         foreach ($out as $uid => $v) {
-            if ($v['bonus'] <= 0) { continue; }
+            if ($v['bonus'] <= 0 && $v['goal'] <= 0 && $v['achieved'] <= 0) { continue; }
             $res[$uid] = (object) [
                 'bonus'    => round($v['bonus'], 2),
                 'goal'     => round($v['goal'], 2),
