@@ -51,11 +51,20 @@ class MoveImportLocationController extends Controller
                 ->get();
         }
 
+        // Totals for the pre-checked (pre-cutoff) rows, computed here so the
+        // view stays a flat template.
+        $totalPre = 0; $revPre = 0;
+        foreach ($groups as $g) {
+            if ($g->pre_cutoff) { $totalPre += (int) $g->cnt; $revPre += (float) $g->revenue; }
+        }
+
         return view('admin.move_import_location', [
-            'fromId' => $fromId,
-            'toId'   => $toId,
-            'cutoff' => $cutoff,
-            'groups' => $groups,
+            'fromId'   => $fromId,
+            'toId'     => $toId,
+            'cutoff'   => $cutoff,
+            'groups'   => $groups,
+            'totalPre' => $totalPre,
+            'revPre'   => $revPre,
         ]);
     }
 
