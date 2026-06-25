@@ -1041,6 +1041,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/baseline-breakdown', 'BaselineBreakdownController@index');
     Route::get('/admin/live-pos-timeline', 'LivePosTimelineController@index');
     Route::get('/admin/overlap-proof', 'OverlapProofController@index');
+    Route::get('/admin/clover-recon-lfl', 'CloverReconLflController@index');
+    Route::get('/admin/cleanup-register-overlap', 'CleanupRegisterOverlapController@index');
+    Route::post('/admin/cleanup-register-overlap/run', 'CleanupRegisterOverlapController@run');
     Route::post('/admin/import-parked-sheets/run', 'ImportParkedSheetsController@run');
 
     // Store-wide scan for duplicate label print runs (double-logged
