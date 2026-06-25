@@ -71,8 +71,12 @@ class DailyChecklistController extends Controller
         // External tools
         'sling_week'     => 'https://app.getsling.com',
         'discogs'        => 'https://www.discogs.com/sell/orders',
+        'phone_texts'    => 'https://my.quo.com/login',
         'whatsapp'       => 'https://web.whatsapp.com',
+        'hello_email'    => 'https://mail.google.com',
         'accounting'     => 'https://qbo.intuit.com',
+        'events_social'  => 'https://www.instagram.com',
+        'payroll'        => 'https://qbo.intuit.com',
     ];
 
     /* ---------- access ---------- */
