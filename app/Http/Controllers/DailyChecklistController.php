@@ -43,8 +43,8 @@ class DailyChecklistController extends Controller
             'accounting'  => 'Review recent accounting transactions on all accounts and categorize them.',
         ],
         'Events & social' => [
-            'events_cal'    => 'Update the events calendar.',
-            'events_ready'  => 'Make sure we\'re ready for the upcoming events.',
+            'events_cal'    => 'Update the events calendar with any new events.',
+            'events_ready'  => 'Make sure we\'re ready for upcoming events — go through the checklists in advance, for both stores.',
             'events_social' => 'Post the events on social media.',
         ],
         'People & operations' => [
