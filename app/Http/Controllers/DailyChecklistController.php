@@ -51,6 +51,7 @@ class DailyChecklistController extends Controller
         'People & operations' => [
             'onboarding'  => 'Handle any onboarding / offboarding for new or departing employees.',
             'purchasing'  => 'Help with purchasing — ask Jon what the priority is to purchase.',
+            'ams_orders'  => 'Check and place AMS orders for customer special orders.',
             'cameras'     => 'Check the cameras — staff are working, not on their phones.',
         ],
     ];
@@ -61,6 +62,7 @@ class DailyChecklistController extends Controller
         'register_recon' => '/reports/clover-eod-reconciliation',
         'events_cal'     => '/events',
         'events_ready'   => '/events',
+        'ams_orders'     => '/customer-pickups',
         'onboarding'     => '/employee-checklist',
     ];
 
