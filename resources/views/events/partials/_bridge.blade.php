@@ -285,13 +285,35 @@
       <thead><tr><th>Store</th><th>Vinyl (want / ordered)</th><th>Vinyl action</th><th>CD (want / ordered)</th><th>CD action</th></tr></thead>
       <tbody>
         @foreach($planRows as $r)
-          <tr>
-            <td class="ev-name">{{ $r['slabel'] }}@if(!$r['hosting'])<div class="ev-meta">not hosting</div>@endif</td>
-            <td>{{ $r['wantV'] }} / {{ $r['ordV'] }}</td>
-            <td style="{{ $tone[$r['vTone']] }}">{{ $r['vMsg'] }}</td>
-            <td>{{ $r['wantC'] }} / {{ $r['ordC'] }}</td>
-            <td style="{{ $tone[$r['cTone']] }}">{{ $r['cMsg'] }}</td>
-          </tr>
+          @if($r['hosting'])
+            <tr>
+              <td class="ev-name">{{ $r['slabel'] }}</td>
+              <td>{{ $r['wantV'] }} / {{ $r['ordV'] }}</td>
+              <td style="{{ $tone[$r['vTone']] }}">{{ $r['vMsg'] }}</td>
+              <td>{{ $r['wantC'] }} / {{ $r['ordC'] }}</td>
+              <td style="{{ $tone[$r['cTone']] }}">{{ $r['cMsg'] }}</td>
+            </tr>
+          @else
+            {{-- Non-hosting store carries none of the title, so every piece
+                 ordered is over. Show the combined total (vinyl + CD) as one
+                 "N over" rather than splitting it across the format columns. --}}
+            @php
+              $overUnits = (int) $r['ordV'] + (int) $r['ordC'];
+              $bd = [];
+              if ((int) $r['ordV'] > 0) { $bd[] = (int) $r['ordV'] . ' vinyl'; }
+              if ((int) $r['ordC'] > 0) { $bd[] = (int) $r['ordC'] . ' CD'; }
+            @endphp
+            <tr>
+              <td class="ev-name">{{ $r['slabel'] }}<div class="ev-meta">not hosting</div></td>
+              <td colspan="4" style="{{ $overUnits > 0 ? $tone['over'] : $tone['ok'] }}">
+                @if($overUnits > 0)
+                  {{ $overUnits }} over@if($bd) ({{ implode(' · ', $bd) }})@endif
+                @else
+                  —
+                @endif
+              </td>
+            </tr>
+          @endif
         @endforeach
       </tbody>
     </table>
