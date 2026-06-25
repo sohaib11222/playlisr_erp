@@ -290,12 +290,14 @@ class EventsController extends Controller
                 $out['vinyl'][$k] = ($out['vinyl'][$k] ?? 0) + (int) ($row['vinylRequests'] ?? 0);
                 $out['cd'][$k]    = ($out['cd'][$k] ?? 0) + (int) ($row['cdRequests'] ?? 0);
                 if (!isset($out['store'][$k])) {
-                    $out['store'][$k] = ['hollywood' => ['vinyl' => 0, 'cd' => 0], 'pico' => ['vinyl' => 0, 'cd' => 0]];
+                    $out['store'][$k] = ['hollywood' => ['vinyl' => 0, 'cd' => 0, 'attending' => 0], 'pico' => ['vinyl' => 0, 'cd' => 0, 'attending' => 0]];
                 }
                 $out['store'][$k]['hollywood']['vinyl'] += (int) ($row['hwVinyl'] ?? 0);
                 $out['store'][$k]['hollywood']['cd']    += (int) ($row['hwCd'] ?? 0);
+                $out['store'][$k]['hollywood']['attending'] += (int) ($row['hwAttending'] ?? 0);
                 $out['store'][$k]['pico']['vinyl']      += (int) ($row['picoVinyl'] ?? 0);
                 $out['store'][$k]['pico']['cd']         += (int) ($row['picoCd'] ?? 0);
+                $out['store'][$k]['pico']['attending']  += (int) ($row['picoAttending'] ?? 0);
             }
         }
 

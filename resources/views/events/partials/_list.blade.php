@@ -37,6 +37,11 @@
         $sc = ($storeCounts ?? [])[$nk] ?? null;
         $vinylByStore = $sc ? trim('HW ' . (int) $sc['hollywood']['vinyl'] . ' · Pico ' . (int) $sc['pico']['vinyl']) : null;
         $cdByStore = $sc ? trim('HW ' . (int) $sc['hollywood']['cd'] . ' · Pico ' . (int) $sc['pico']['cd']) : null;
+        // Attending split by store — only meaningful when the event spans both.
+        $isMultiStore = count(array_filter((array) ($ev['location'] ?? []))) > 1;
+        $attendByStore = ($sc && $isMultiStore)
+          ? trim('HW ' . (int) ($sc['hollywood']['attending'] ?? 0) . ' · Pico ' . (int) ($sc['pico']['attending'] ?? 0))
+          : null;
         $takingPreorders = !empty($ev['preorderEnabled']);
         // Ordered totals across stores: vinyl = indie+std+deluxe, plus cassette
         // and cd = std+deluxe.
@@ -86,7 +91,7 @@
         <td>{{ $evStreetDate }}</td>
         <td class="ev-meta">{{ $locLabels ? implode(' + ', $locLabels) : '—' }}@if(!empty($ev['locationDetail'])) <br>({{ ucfirst($ev['locationDetail']) }})@endif</td>
         <td class="ev-meta">{{ $eventLead !== '' ? $eventLead : '—' }}</td>
-        <td>{{ $rsvpCount === null ? '—' : $rsvpCount }}</td>
+        <td style="white-space:nowrap;">{{ $rsvpCount === null ? '—' : $rsvpCount }}@if($attendByStore)<div class="ev-meta">{{ $attendByStore }}</div>@endif</td>
         <td style="white-space:nowrap;">{{ $vinylCount === null ? '—' : $vinylCount }}@if($vinylByStore)<div class="ev-meta">{{ $vinylByStore }}</div>@endif</td>
         <td style="white-space:nowrap;">{{ $cdCount === null ? '—' : $cdCount }}@if($cdByStore)<div class="ev-meta">{{ $cdByStore }}</div>@endif</td>
         <td>
