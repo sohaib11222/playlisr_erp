@@ -61,15 +61,20 @@
     .lb-rank-1, .lb-rank-2, .lb-rank-3 { border-radius: 6px; }
     .lb-me { background: #FFF9DB !important; }
     .lb-hit { color: #2F6B3E !important; }
-    .lb-comm { background: #EFF6F0 !important; color: #2F6B3E !important; }
-    .lb-soon { background: #FBF7EC !important; }
     .lb-soon-badge { background: #FFF9DB !important; color: #5A4410 !important; }
 
-    /* ---- live KPI strip: keep green=ahead / red=behind, warm the tones ---- */
+    /* ---- grouped commission columns: one tint per group, divider on first ---- */
+    .lb-table .g-list  { background: #F3EFE3 !important; }   /* listing group  */
+    .lb-table .g-sales { background: #EAF1F4 !important; }   /* sales group    */
+    .lb-table .g-total { background: #FFF6CF !important; font-weight: 700 !important; } /* total */
+    .lb-table th.g-list, .lb-table th.g-sales, .lb-table th.g-total { color: #5A4410 !important; }
+    .lb-table .g-first { border-left: 2px solid #E2D9C2 !important; }
+
+    /* ---- live KPI strip: muted, neutral tones (ahead/behind still readable) ---- */
     .lb-live-card { border-radius: 10px !important; }
-    .lb-up { background: #2F6B3E !important; }
-    .lb-down { background: #8A3A2E !important; }
-    .lb-neutral { background: #5A5045 !important; }
+    .lb-up { background: #6E8A78 !important; }       /* ahead  — muted sage   */
+    .lb-down { background: #A88B7E !important; }      /* behind — muted taupe  */
+    .lb-neutral { background: #8C8275 !important; }   /* neutral — warm gray   */
 </style>
 <section class="content-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;">
     <h1><i class="fa fa-trophy"></i> Employee Leaderboard <small>sales floor performance &amp; commission</small></h1>
@@ -201,15 +206,13 @@
                                     <th class="text-right">Sales / hr</th>
                                     <th class="text-right">Hours</th>
                                     <th class="text-right">Sales</th>
-                                    <th class="text-right">Hour target</th>
                                     <th class="text-right">Pace</th>
-                                    <th class="text-right">Items listed</th>
-                                    <th class="text-right">Sales from listed</th>
-                                    <th class="text-right lb-comm" title="Total listing commission earned since May 15 — matches the Listing Commissions page">Listing earned</th>
-                                    <th class="text-right" title="Already paid out (from Listing Commissions)">Paid</th>
-                                    <th class="text-right" title="Earned minus paid — what you still owe for listings">Still owed</th>
-                                    <th class="text-right lb-soon">Sales bonus</th>
-                                    <th class="text-right" title="Still-owed listing pay plus sales bonus">Total owed now</th>
+                                    <th class="text-right g-list g-first">Items listed</th>
+                                    <th class="text-right g-list">Sales from listed</th>
+                                    <th class="text-right g-list" title="Listing commission earned since May 15 — matches the Pay Commissions page">Listing earned</th>
+                                    <th class="text-right g-sales g-first">Sales target</th>
+                                    <th class="text-right g-sales" title="Sales-goal bonus earned (from Jun 15)">Sales commission</th>
+                                    <th class="text-right g-total" title="Listing earned + sales commission">Total commission</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -234,14 +237,6 @@
                                         </td>
                                         <td class="text-right">${{ number_format($r->non_whatnot_revenue, 0) }}</td>
                                         <td class="text-right">
-                                            @if(!is_null($r->hour_target))
-                                                ${{ number_format($r->hour_target, 0) }}
-                                                <div class="lb-sub">+{{ rtrim(rtrim(number_format($r->hour_target_stretch_pct, 1), '0'), '.') }}% vs store rate</div>
-                                            @else
-                                                <span class="text-muted">—</span>
-                                            @endif
-                                        </td>
-                                        <td class="text-right">
                                             @if(!is_null($r->hour_pace_pct))
                                                 @if($r->hour_pace_pct >= 100)<span class="lb-hit">{{ number_format($r->hour_pace_pct, 0) }}%</span>@else<span class="lb-miss">{{ number_format($r->hour_pace_pct, 0) }}%</span>@endif
                                             @else
@@ -250,13 +245,21 @@
                                         </td>
                                         @php
                                             $listedAttrs = 'data-listed="1" data-user="'.$r->user_id.'" data-name="'.e($r->employee).'" data-loc="'.$store['id'].'" data-store="'.e($store['name']).'"';
+                                            $sales_comm = ($r->sales_bonus_live ? (float) $r->goal_bonus : 0.0);
+                                            $total_comm = round((float) $r->listing_earned + $sales_comm, 2);
                                         @endphp
-                                        <td class="text-right">@if($r->priced_count > 0)<a href="#" class="lb-listed-link" {!! $listedAttrs !!}>{{ number_format($r->priced_count, 0) }}</a>@else <span class="text-muted">—</span>@endif</td>
-                                        <td class="text-right">@if($r->priced_revenue > 0)<a href="#" class="lb-listed-link" {!! $listedAttrs !!}>${{ number_format($r->priced_revenue, 0) }}</a>@else ${{ number_format($r->priced_revenue, 0) }}@endif</td>
-                                        <td class="text-right lb-comm">@if($r->listing_earned > 0)${{ number_format($r->listing_earned, 2) }}@else <span class="text-muted">—</span>@endif</td>
-                                        <td class="text-right">@if($r->listing_paid > 0)<span class="text-muted">${{ number_format($r->listing_paid, 2) }}</span>@else <span class="text-muted">—</span>@endif</td>
-                                        <td class="text-right">@if($r->listing_owed > 0)<strong>${{ number_format($r->listing_owed, 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>
-                                        <td class="text-right lb-soon">
+                                        <td class="text-right g-list g-first">@if($r->priced_count > 0)<a href="#" class="lb-listed-link" {!! $listedAttrs !!}>{{ number_format($r->priced_count, 0) }}</a>@else <span class="text-muted">—</span>@endif</td>
+                                        <td class="text-right g-list">@if($r->priced_revenue > 0)<a href="#" class="lb-listed-link" {!! $listedAttrs !!}>${{ number_format($r->priced_revenue, 0) }}</a>@else ${{ number_format($r->priced_revenue, 0) }}@endif</td>
+                                        <td class="text-right g-list">@if($r->listing_earned > 0)${{ number_format($r->listing_earned, 2) }}@else <span class="text-muted">—</span>@endif</td>
+                                        <td class="text-right g-sales g-first">
+                                            @if(!is_null($r->hour_target))
+                                                ${{ number_format($r->hour_target, 0) }}
+                                                <div class="lb-sub">+{{ rtrim(rtrim(number_format($r->hour_target_stretch_pct, 1), '0'), '.') }}% vs store rate</div>
+                                            @else
+                                                <span class="text-muted">—</span>
+                                            @endif
+                                        </td>
+                                        <td class="text-right g-sales">
                                             @if($r->sales_bonus_live)
                                                 @if($r->goal_bonus > 0)${{ number_format($r->goal_bonus, 2) }}@else <span class="text-muted">—</span>@endif
                                             @else
@@ -268,11 +271,10 @@
                                                 @endif
                                             @endif
                                         </td>
-                                        @php $total_owed_now = round($r->listing_owed + $r->goal_bonus, 2); @endphp
-                                        <td class="text-right">@if($total_owed_now > 0)<strong>${{ number_format($total_owed_now, 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>
+                                        <td class="text-right g-total">@if($total_comm > 0)<strong>${{ number_format($total_comm, 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>
                                     </tr>
                                 @empty
-                                    <tr><td colspan="14" class="text-center text-muted">No activity in this window.</td></tr>
+                                    <tr><td colspan="12" class="text-center text-muted">No activity in this window.</td></tr>
                                 @endforelse
                             </tbody>
                         </table>
