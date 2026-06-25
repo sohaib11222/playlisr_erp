@@ -45,7 +45,7 @@ class DailyChecklistController extends Controller
         'Events & social' => [
             'events_cal'    => 'Update the events calendar with any new events.',
             'events_ready'  => 'Make sure we\'re ready for upcoming events — go through the checklists in advance, for both stores.',
-            'events_social' => 'Post the events on social media.',
+            'events_social' => 'Post any upcoming events on social media at the time Carrie specifies.',
         ],
         'People & operations' => [
             'scheduling'  => 'Set up the employee scheduling.',
