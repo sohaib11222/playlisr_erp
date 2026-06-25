@@ -213,6 +213,8 @@
                                     <th class="text-right g-sales g-first">Sales target</th>
                                     <th class="text-right g-sales" title="Sales-goal bonus earned (from Jun 15)">Sales commission</th>
                                     <th class="text-right g-total" title="Listing earned + sales commission">Total commission</th>
+                                    <th class="text-right" title="Commission already paid out (listing; sales bonus is paid manually)">Commission paid</th>
+                                    <th class="text-right" title="Still owed — unpaid listing commission + sales bonus">Commission owed</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -247,6 +249,8 @@
                                             $listedAttrs = 'data-listed="1" data-user="'.$r->user_id.'" data-name="'.e($r->employee).'" data-loc="'.$store['id'].'" data-store="'.e($store['name']).'"';
                                             $sales_comm = ($r->sales_bonus_live ? (float) $r->goal_bonus : 0.0);
                                             $total_comm = round((float) $r->listing_earned + $sales_comm, 2);
+                                            $comm_paid  = round((float) $r->listing_paid, 2);
+                                            $comm_owed  = round((float) $r->listing_owed + $sales_comm, 2);
                                         @endphp
                                         <td class="text-right g-list g-first">@if($r->priced_count > 0)<a href="#" class="lb-listed-link" {!! $listedAttrs !!}>{{ number_format($r->priced_count, 0) }}</a>@else <span class="text-muted">—</span>@endif</td>
                                         <td class="text-right g-list">@if($r->priced_revenue > 0)<a href="#" class="lb-listed-link" {!! $listedAttrs !!}>${{ number_format($r->priced_revenue, 0) }}</a>@else ${{ number_format($r->priced_revenue, 0) }}@endif</td>
@@ -272,9 +276,11 @@
                                             @endif
                                         </td>
                                         <td class="text-right g-total">@if($total_comm > 0)<strong>${{ number_format($total_comm, 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>
+                                        <td class="text-right">@if($comm_paid > 0)<span class="text-muted">${{ number_format($comm_paid, 2) }}</span>@else <span class="text-muted">—</span>@endif</td>
+                                        <td class="text-right">@if($comm_owed > 0)<strong>${{ number_format($comm_owed, 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>
                                     </tr>
                                 @empty
-                                    <tr><td colspan="12" class="text-center text-muted">No activity in this window.</td></tr>
+                                    <tr><td colspan="14" class="text-center text-muted">No activity in this window.</td></tr>
                                 @endforelse
                             </tbody>
                         </table>
