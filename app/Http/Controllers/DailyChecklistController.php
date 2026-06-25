@@ -48,7 +48,6 @@ class DailyChecklistController extends Controller
             'events_social' => 'Post any upcoming events on social media at the time Carrie specifies.',
         ],
         'People & operations' => [
-            'scheduling'  => 'Set up the employee scheduling.',
             'onboarding'  => 'Handle any onboarding / offboarding for new or departing employees.',
             'purchasing'  => 'Help with purchasing.',
             'cameras'     => 'Check the cameras — staff are working, not on their phones.',
