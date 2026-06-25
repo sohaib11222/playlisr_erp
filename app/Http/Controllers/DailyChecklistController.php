@@ -32,6 +32,7 @@ class DailyChecklistController extends Controller
         'Start of day' => [
             'sling_week' => 'Check Sling first — make sure we\'re covered and good for the whole week.',
             'discogs'    => 'Check Discogs orders and messages.',
+            'ams_orders' => 'Add purchases from AMS orders.',
         ],
         'Phones, messages & email' => [
             'phone_texts' => 'Check Quo texts and calls — start at 9:30 AM.',
@@ -51,7 +52,6 @@ class DailyChecklistController extends Controller
         'People & operations' => [
             'onboarding'  => 'Handle any onboarding / offboarding for new or departing employees.',
             'purchasing'  => 'Help with purchasing — ask Jon what the priority is to purchase.',
-            'ams_orders'  => 'Add purchases from AMS orders.',
             'cameras'     => 'Check the cameras — staff are working, not on their phones.',
         ],
         'Other' => [
