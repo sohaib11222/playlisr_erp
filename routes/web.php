@@ -1012,6 +1012,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/reassign-user-activity', 'ReassignUserActivityController@index');
     Route::post('/admin/reassign-user-activity/run', 'ReassignUserActivityController@run');
 
+    // Read-only diagnostic: finalized sell revenue by store x month x
+    // import_source, to explain the LFL report's prior-year n/a cells.
+    Route::get('/admin/lfl-data-coverage', 'LflDataCoverageController@index');
+
     // Store-wide scan for duplicate label print runs (double-logged
     // labels_printed activity_log rows) that inflate "labeled" totals and
     // commission. Review + remove checked dupes; snapshot/undo via
