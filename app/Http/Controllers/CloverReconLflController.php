@@ -25,10 +25,12 @@ class CloverReconLflController extends Controller
         $clover = DB::table('clover_payments')
             ->where('business_id', $businessId)
             ->where(function ($q) { $q->whereNull('result')->orWhereIn('result', ['SUCCESS', 'APPROVED']); })
+            ->whereNotIn('result', ['REFUNDED', 'VOIDED', 'FAILED'])
             ->select(
                 DB::raw("DATE_FORMAT(paid_on, '%Y-%m') as ym"),
                 'location_id',
-                DB::raw('COALESCE(SUM(amount),0) as total')
+                // net card SALE amount only: strip tips so it compares to ERP sale totals
+                DB::raw('COALESCE(SUM(GREATEST(amount_cents - tip_cents, 0)),0)/100 as total')
             )
             ->groupBy('ym', 'location_id')->get();
 
