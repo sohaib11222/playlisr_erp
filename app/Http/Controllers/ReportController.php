@@ -13831,7 +13831,11 @@ class ReportController extends Controller
             $daySales[$row->created_by][$row->d] = (float) $row->rev;
         }
 
-        return $rows->map(function ($r) use ($userCov, $slotStaff, $rate, $stretch, $sales_bonus_live, $daySales) {
+        // Sales bonus only exists on/after go-live — days before earn $0 even if
+        // the person beat goal (Sarah: "we started sales bonuses on June 15").
+        $bonus_start_date = substr(self::SALES_BONUS_LIVE_DATE, 0, 10);
+
+        return $rows->map(function ($r) use ($userCov, $slotStaff, $rate, $stretch, $sales_bonus_live, $daySales, $bonus_start_date) {
             $cov = $userCov[$r->user_id] ?? [];
             $peakH = 0.0; $offH = 0.0;
             $dayExpected = [];     // Y-m-d => expected store-rate $ for hours worked that day
@@ -13878,6 +13882,8 @@ class ReportController extends Controller
                     $peakShare = min(1.0, max(0.0, ($dayPeakExpected[$date] ?? 0) / $exp));
                     $dayBonus = $over * $peakShare * 0.04 + $over * (1 - $peakShare) * 0.02;
                 }
+                // No sales bonus before go-live, regardless of performance.
+                if (strcmp($date, $bonus_start_date) < 0) { $dayBonus = 0.0; }
                 $bonus += $dayBonus;
                 $daily[$date] = [
                     'target' => round($dayTarget, 2),
