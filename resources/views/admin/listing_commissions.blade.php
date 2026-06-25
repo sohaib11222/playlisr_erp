@@ -126,7 +126,7 @@
             @if ($people->isEmpty())
                 <p class="text-muted">No commission to show yet.</p>
             @else
-                <table class="table table-striped">
+                <table class="table table-striped" id="lc-people">
                     <thead>
                         <tr>
                             <th>Person</th>
@@ -270,6 +270,50 @@
         @endcomponent
     </div>
 </div>
+
+<script>
+(function () {
+    var table = document.getElementById('lc-people');
+    if (!table || !table.tHead) { return; }
+    var ths = table.tHead.rows[0].cells;
+
+    function val(cell) {
+        var t = (cell.textContent || '').trim();
+        if (t === '' || t === '—') { return { n: null, s: '' }; }
+        var num = parseFloat(t.replace(/[^0-9.\-]/g, ''));
+        return { n: isNaN(num) ? null : num, s: t.toLowerCase() };
+    }
+    function clearArrows() {
+        for (var k = 0; k < ths.length; k++) {
+            ths[k].textContent = ths[k].textContent.replace(/[ ▲▼]+$/, '');
+        }
+    }
+    for (var i = 0; i < ths.length; i++) {
+        (function (idx) {
+            var th = ths[idx];
+            if ((th.textContent || '').trim() === '') { return; } // skip the actions column
+            th.style.cursor = 'pointer';
+            th.title = (th.title ? th.title + ' — ' : '') + 'click to sort';
+            var dir = 0;
+            th.addEventListener('click', function () {
+                dir = dir === 1 ? -1 : 1;
+                var tb = table.tBodies[0];
+                var rows = Array.prototype.slice.call(tb.rows);
+                rows.sort(function (a, b) {
+                    var va = val(a.cells[idx]), vb = val(b.cells[idx]);
+                    if (va.n !== null && vb.n !== null) { return (va.n - vb.n) * dir; }
+                    if (va.n !== null) { return -1; }   // numbers ahead of blanks
+                    if (vb.n !== null) { return 1; }
+                    return va.s.localeCompare(vb.s) * dir;
+                });
+                rows.forEach(function (r) { tb.appendChild(r); });
+                clearArrows();
+                th.textContent = th.textContent.replace(/[ ▲▼]+$/, '') + (dir === 1 ? ' ▲' : ' ▼');
+            });
+        })(i);
+    }
+})();
+</script>
 
 </section>
 @endsection
