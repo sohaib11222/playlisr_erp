@@ -47,8 +47,29 @@ class BaselineBreakdownController extends Controller
                 ->orderByRaw('total DESC')
                 ->get();
 
+            // Forensics on the pre-existing (live POS / no import_source) rows:
+            // when were they CREATED? Contemporaneous (back then) = real register
+            // sales, separate from the sheet. All created recently = entered later,
+            // possible overlap. Pure facts from the DB.
+            $liveBase = DB::table('transactions')
+                ->where('business_id', $businessId)
+                ->where('location_id', $loc->id)
+                ->where('type', 'sell')->where('status', 'final')
+                ->whereNull('import_source')
+                ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
+                ->whereRaw("DATE_FORMAT(transaction_date, '%Y-%m') = ?", [$month]);
+            $liveStats = (clone $liveBase)
+                ->selectRaw('MIN(created_at) as min_c, MAX(created_at) as max_c, COUNT(*) as cnt, COALESCE(SUM(final_total),0) as total')
+                ->first();
+            $liveSamples = (clone $liveBase)
+                ->orderBy('transaction_date')
+                ->limit(6)
+                ->get(['id', 'invoice_no', 'transaction_date', 'created_at', 'final_total']);
+
             $total = $rows->sum('total');
             $cells[] = [
+                'liveStats' => $liveStats,
+                'liveSamples' => $liveSamples,
                 'label' => $label,
                 'store' => $loc->name,
                 'month' => $month,

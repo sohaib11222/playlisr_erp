@@ -34,6 +34,23 @@
             @endforeach
             </tbody>
         </table>
+        @if (!empty($c['liveStats']) && $c['liveStats']->cnt > 0)
+        <div style="margin-top:10px; padding:10px; background:#f8f9fa; border:1px solid #ddd; max-width:760px;">
+            <strong>(live POS) forensics</strong> — {{ number_format($c['liveStats']->cnt) }} txns, ${{ number_format($c['liveStats']->total) }}.
+            Created between <code>{{ $c['liveStats']->min_c }}</code> and <code>{{ $c['liveStats']->max_c }}</code>.
+            <div class="text-muted" style="font-size:12px; margin-top:4px;">
+                If created back in {{ $c['month'] }} → real register sales (separate, keep). If created recently (2026) → entered later (check for overlap).
+            </div>
+            <table class="table table-condensed" style="margin-top:6px; max-width:720px;">
+                <thead><tr><th>id</th><th>invoice</th><th>sale date</th><th>created_at</th><th style="text-align:right;">$</th></tr></thead>
+                <tbody>
+                @foreach ($c['liveSamples'] as $s)
+                    <tr><td>{{ $s->id }}</td><td>{{ $s->invoice_no }}</td><td>{{ $s->transaction_date }}</td><td>{{ $s->created_at }}</td><td style="text-align:right;">${{ number_format($s->final_total,2) }}</td></tr>
+                @endforeach
+                </tbody>
+            </table>
+        </div>
+        @endif
     </div>
 </div>
 @endforeach
