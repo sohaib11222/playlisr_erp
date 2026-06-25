@@ -100,6 +100,7 @@ class PurchaseOrderController extends Controller
                         'transactions.id',
                         'transactions.document',
                         'transactions.transaction_date',
+                        'transactions.delivery_date',
                         'transactions.ref_no',
                         'transactions.status',
                         'contacts.name',
@@ -128,6 +129,11 @@ class PurchaseOrderController extends Controller
 
             if (!empty(request()->status)) {
                 $purchase_orders->where('transactions.status', request()->status);
+            }
+
+            // "Incoming only" — orders still on the way (not fully received).
+            if (!empty(request()->incoming_only)) {
+                $purchase_orders->whereIn('transactions.status', ['ordered', 'partial']);
             }
 
             if (!empty(request()->from_dashboard)) {
@@ -198,6 +204,15 @@ class PurchaseOrderController extends Controller
                     '<span class="final_total" data-orig-value="{{$final_total}}">@format_currency($final_total)</span>'
                 )
                 ->editColumn('transaction_date', '{{@format_datetime($transaction_date)}}')
+                ->editColumn('delivery_date', function ($row) {
+                    // Expected arrival. Guard null / zero-dates (old rows can hold
+                    // 0000-00-00 / -0001, which Carbon would render as a junk year).
+                    $raw = $row->delivery_date;
+                    if (!$raw || in_array(substr((string) $raw, 0, 4), ['0000', '-000'], true)) {
+                        return '-';
+                    }
+                    return \Carbon::parse($raw)->format('n/j/y');
+                })
                 ->editColumn('po_qty_remaining', '{{@format_quantity($po_qty_remaining)}}')
                 ->editColumn('name', '@if(!empty($supplier_business_name)) {{$supplier_business_name}}, <br> @endif {{$name}}')
                 ->editColumn('status', function($row)use($is_admin){

@@ -111,12 +111,6 @@ class AdminSidebarMenu
                                 'Customer Pickups',
                                 ['icon' => 'fa fas fa-box', 'active' => request()->segment(1) == 'customer-pickups']
                             );
-
-                            $sub->url(
-                                action('AmsOrderController@index'),
-                                'AMS Orders',
-                                ['icon' => 'fa fas fa-truck', 'active' => request()->segment(1) == 'ams-orders']
-                            );
                         }
 
 

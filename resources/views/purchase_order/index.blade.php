@@ -44,6 +44,13 @@
                 {!! Form::text('po_list_filter_date_range', null, ['placeholder' => __('lang_v1.select_a_date_range'), 'class' => 'form-control', 'readonly']); !!}
             </div>
         </div>
+        <div class="col-md-3">
+            <div class="form-group" style="margin-top: 28px;">
+                <label class="checkbox-inline">
+                    <input type="checkbox" id="po_incoming_only" checked> Incoming only (still on the way)
+                </label>
+            </div>
+        </div>
     @endcomponent
     @component('components.widget', ['class' => 'box-primary', 'title' => __('lang_v1.all_purchase_orders')])
         @can('purchase_order.create')
@@ -60,6 +67,7 @@
                 <tr>
                     <th>@lang('messages.action')</th>
                     <th>@lang('messages.date')</th>
+                    <th>Expected Arrival</th>
                     <th>@lang('purchase.ref_no')</th>
                     <th>@lang('purchase.location')</th>
                     <th>@lang('purchase.supplier')</th>
@@ -102,6 +110,9 @@
                     if ($('#shipping_status').length) {
                         d.shipping_status = $('#shipping_status').val();
                     }
+                    if ($('#po_incoming_only').length) {
+                        d.incoming_only = $('#po_incoming_only').is(':checked') ? 1 : 0;
+                    }
 
                     var start = '';
                     var end = '';
@@ -122,6 +133,7 @@
             columns: [
                 { data: 'action', name: 'action', orderable: false, searchable: false },
                 { data: 'transaction_date', name: 'transaction_date' },
+                { data: 'delivery_date', name: 'transactions.delivery_date' },
                 { data: 'ref_no', name: 'ref_no' },
                 { data: 'location_name', name: 'BS.name' },
                 { data: 'name', name: 'contacts.name' },
@@ -134,7 +146,7 @@
 
         $(document).on(
             'change',
-            '#po_list_filter_location_id, #po_list_filter_supplier_id, #po_list_filter_status, #shipping_status',
+            '#po_list_filter_location_id, #po_list_filter_supplier_id, #po_list_filter_status, #shipping_status, #po_incoming_only',
             function() {
                 purchase_order_table.ajax.reload();
             }
