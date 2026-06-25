@@ -15,7 +15,6 @@
       <th style="width:5%;">Taking preorders?</th>
       <th style="width:5%;">On website</th>
       <th style="width:5%;">Prep</th>
-      <th style="width:8%;"></th>
     </tr>
   </thead>
   <tbody>
@@ -106,6 +105,7 @@
             <span class="pill {{ $isLP ? 'lp' : '' }}">{{ $eventTypes[$ev['eventType'] ?? ''] ?? ($ev['eventType'] ?? '') }}</span>
             @if($evTime) &middot; {{ $evTime }}@endif
           </div>
+          <a class="btn-accent" href="{{ route('events.edit', ['id' => $ev['id']]) }}" style="display:inline-block;margin-top:7px;padding:6px 12px;font-size:13px;text-decoration:none;">View dashboard</a>
         </td>
         <td>{{ $evDate }}</td>
         <td>{{ $evStreetDate }}</td>
@@ -139,9 +139,6 @@
           @else
             <span class="prep-badge na">—</span>
           @endif
-        </td>
-        <td style="text-align:left;white-space:nowrap;">
-          <a class="btn-accent" href="{{ route('events.edit', ['id' => $ev['id']]) }}" style="display:inline-block;padding:7px 14px;font-size:13px;text-decoration:none;">View dashboard</a>
         </td>
       </tr>
     @endforeach
