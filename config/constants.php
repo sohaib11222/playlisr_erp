@@ -33,7 +33,7 @@ return [
     'document_size_limit' => '5000000', //in Bytes,
     'image_size_limit' => '5000000', //in Bytes
 
-    'asset_version' => 658,
+    'asset_version' => 659,
 
     // nivessa.com bridge — the website still captures RSVPs + preorders; the
     // ERP reads/manages them through /api/v1/erp/* using this shared key.
@@ -68,6 +68,8 @@ return [
         'application/zip' => '.zip',
         'application/msword' => '.doc',
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => '.docx',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' => '.xlsx',
+        'application/vnd.ms-excel' => '.xls',
         'image/jpeg' => '.jpeg',
         'image/jpg' => '.jpg',
         'image/png' => '.png'
