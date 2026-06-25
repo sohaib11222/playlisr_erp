@@ -35,10 +35,12 @@
         $vinylCount = ($vinylCounts ?? [])[$nk] ?? null;
         $cdCount = ($cdCounts ?? [])[$nk] ?? null;
         $sc = ($storeCounts ?? [])[$nk] ?? null;
-        $vinylByStore = $sc ? trim('HW ' . (int) $sc['hollywood']['vinyl'] . ' · Pico ' . (int) $sc['pico']['vinyl']) : null;
-        $cdByStore = $sc ? trim('HW ' . (int) $sc['hollywood']['cd'] . ' · Pico ' . (int) $sc['pico']['cd']) : null;
-        // Attending split by store — only meaningful when the event spans both.
+        // Per-store sub-splits (HW · Pico) only make sense when the event runs
+        // at both stores. Single-store events (e.g. Hollywood-only Madonna)
+        // show plain totals — no pointless "· Pico 0".
         $isMultiStore = count(array_filter((array) ($ev['location'] ?? []))) > 1;
+        $vinylByStore = ($sc && $isMultiStore) ? trim('HW ' . (int) $sc['hollywood']['vinyl'] . ' · Pico ' . (int) $sc['pico']['vinyl']) : null;
+        $cdByStore = ($sc && $isMultiStore) ? trim('HW ' . (int) $sc['hollywood']['cd'] . ' · Pico ' . (int) $sc['pico']['cd']) : null;
         $attendByStore = ($sc && $isMultiStore)
           ? trim('HW ' . (int) ($sc['hollywood']['attending'] ?? 0) . ' · Pico ' . (int) ($sc['pico']['attending'] ?? 0))
           : null;
