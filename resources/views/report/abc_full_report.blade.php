@@ -155,6 +155,7 @@ body.abc-v2 .dataTables_wrapper .dataTables_paginate .paginate_button.current {
                         <th>Class</th>
                         <th>XYZ</th>
                         <th>Product</th>
+                        <th>Artist</th>
                         <th>SKU</th>
                         <th>Format</th>
                         <th>In ERP</th>
@@ -198,6 +199,7 @@ $(document).ready(function () {
             { data: 'class', name: 'class', render: function (data) { return data ? '<span class="class-tag class-' + data + '">' + data + '</span>' : '<span class="muted">—</span>'; } },
             { data: 'xyz', name: 'xyz', render: function (data) { return data || '<span class="muted">—</span>'; } },
             { data: 'product', name: 'product' },
+            { data: 'artist', name: 'artist', render: function (data) { return data ? data : '<span class="muted">—</span>'; } },
             { data: 'sku', name: 'sku', render: function (data) { return data ? data : '<span class="muted">—</span>'; } },
             { data: 'format', name: 'format', render: function (data) { return data || '<span class="muted">—</span>'; } },
             { data: 'in_erp', name: 'in_erp', render: function (data) { return parseInt(data || 0, 10) ? '<span class="yn-yes">Yes</span>' : '<span class="yn-no">No</span>'; } },

@@ -6417,6 +6417,29 @@ class ReportController extends Controller
                 return true;
             })->values();
 
+            // Enrich each row with an artist. Prefer the matched ERP product's
+            // `artist` column (Discogs imports fill it); for legacy/unmatched
+            // rows fall back to parsing the analyzer name, which legacy records
+            // store as "Title / Artist".
+            $ids = $rows->pluck('matched_id')->filter()->unique()->values()->all();
+            $artistById = !empty($ids)
+                ? DB::table('products')->whereIn('id', $ids)->pluck('artist', 'id')->toArray()
+                : [];
+
+            $rows = $rows->map(function ($r) use ($artistById) {
+                $pid = $r['matched_id'] ?? null;
+                $artist = ($pid && !empty($artistById[$pid])) ? trim((string) $artistById[$pid]) : '';
+                if ($artist === '') {
+                    // Legacy "Title / Artist": take the segment after the last " / ".
+                    $name = (string) ($r['product'] ?? '');
+                    if (strpos($name, ' / ') !== false) {
+                        $artist = trim((string) substr($name, strrpos($name, ' / ') + 3));
+                    }
+                }
+                $r['artist'] = $artist;
+                return $r;
+            })->values();
+
             return Datatables::of($rows)->make(true);
         }
 
