@@ -54,16 +54,25 @@ class DailyChecklistController extends Controller
             'ams_orders'  => 'Check and place AMS orders for customer special orders.',
             'cameras'     => 'Check the cameras — staff are working, not on their phones.',
         ],
+        'Other' => [
+            'payroll'     => 'Run payroll — every other Thursday.',
+        ],
     ];
 
     /** Optional helper links shown next to a task (an "Open ->" jump to the ERP screen). */
     const LINKS = [
+        // ERP screens
         'sales_feed'     => '/pos/recent-feed',
         'register_recon' => '/reports/clover-eod-reconciliation',
         'events_cal'     => '/events',
         'events_ready'   => '/events',
         'ams_orders'     => '/customer-pickups',
         'onboarding'     => '/employee-checklist',
+        // External tools
+        'sling_week'     => 'https://app.getsling.com',
+        'discogs'        => 'https://www.discogs.com/sell/orders',
+        'whatsapp'       => 'https://web.whatsapp.com',
+        'accounting'     => 'https://qbo.intuit.com',
     ];
 
     /* ---------- access ---------- */
