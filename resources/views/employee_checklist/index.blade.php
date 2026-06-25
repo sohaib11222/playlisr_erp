@@ -143,10 +143,93 @@
 </style>
 
 <div class="open-shell">
-    <div class="open-header">
-        <h1>{{ $heading }}</h1>
-        <p>{{ $intro }}</p>
+    @php
+        // "Pin to my sidebar" — saves this page to the current user's personal
+        // Favorites group (top of the left menu). Per-account; nobody else sees
+        // it, and it stays out of the shared menu. See SidebarFavoriteController.
+        $pinUrl     = url('/employee-checklist');
+        $pinLabel   = 'Onboarding / Offboarding';
+        $pinAlready = \App\Http\Controllers\SidebarFavoriteController::isPinned(
+            session()->get('user.business_id'),
+            session()->get('user.id'),
+            $pinUrl
+        );
+    @endphp
+    <div class="open-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;">
+        <div>
+            <h1>{{ $heading }}</h1>
+            <p>{{ $intro }}</p>
+        </div>
+        <button type="button" class="pin-btn {{ $pinAlready ? 'is-on' : '' }}"
+                data-pin-url="{{ $pinUrl }}" data-pin-label="{{ $pinLabel }}"
+                title="{{ $pinAlready ? 'Pinned to your sidebar' : 'Pin this page to your sidebar' }}">
+            <i class="fa {{ $pinAlready ? 'fa-star' : 'fa-star-o' }}"></i>
+            <span class="pin-text">{{ $pinAlready ? 'Pinned' : 'Pin to my sidebar' }}</span>
+        </button>
     </div>
+
+    <style>
+    .open-shell .pin-btn {
+        flex: 0 0 auto; display: inline-flex; align-items: center; gap: 7px;
+        white-space: nowrap; cursor: pointer; font: inherit; font-size: 13px;
+        font-weight: 700; color: var(--d-accent-text);
+        background: var(--d-accent-soft); border: 1px solid var(--d-accent-deep);
+        border-radius: 999px; padding: 8px 14px; line-height: 1;
+        transition: background .12s ease, box-shadow .12s ease;
+    }
+    .open-shell .pin-btn:hover { background: var(--d-accent); }
+    .open-shell .pin-btn.is-on { background: var(--d-accent); box-shadow: inset 0 0 0 1px var(--d-accent-deep); }
+    .open-shell .pin-btn .fa { color: var(--d-accent-deep); }
+    .open-shell .pin-btn.is-on .fa { color: #C99A12; }
+    </style>
+    <script>
+    (function () {
+        function ready(fn) {
+            if (document.readyState !== 'loading') { fn(); }
+            else { document.addEventListener('DOMContentLoaded', fn); }
+        }
+        ready(function () {
+            var btn = document.querySelector('.pin-btn[data-pin-url]');
+            if (!btn) { return; }
+            var url = btn.getAttribute('data-pin-url');
+            var label = btn.getAttribute('data-pin-label');
+
+            function paint(on) {
+                btn.classList.toggle('is-on', on);
+                var ic = btn.querySelector('.fa');
+                if (ic) { ic.className = 'fa ' + (on ? 'fa-star' : 'fa-star-o'); }
+                var t = btn.querySelector('.pin-text');
+                if (t) { t.textContent = on ? 'Pinned' : 'Pin to my sidebar'; }
+                btn.title = on ? 'Pinned to your sidebar' : 'Pin this page to your sidebar';
+            }
+
+            btn.addEventListener('click', function () {
+                // Reuse the sidebar helper so the left-menu Favorites group updates live.
+                if (window.NivessaSidebarFav && window.NivessaSidebarFav.toggle) {
+                    var willBeOn = !window.NivessaSidebarFav.isPinned(url);
+                    window.NivessaSidebarFav.toggle(url, label);
+                    paint(willBeOn);
+                    return;
+                }
+                // Fallback: post directly if the sidebar script isn't present.
+                var tokenEl = document.querySelector('meta[name="csrf-token"]');
+                var body = new FormData();
+                body.append('url', url);
+                body.append('label', label);
+                fetch('{{ url('/sidebar-favorites/toggle') }}', {
+                    method: 'POST', credentials: 'same-origin',
+                    headers: {
+                        'X-CSRF-TOKEN': tokenEl ? tokenEl.getAttribute('content') : '',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: body
+                }).then(function (r) { return r.json(); }).then(function (d) {
+                    if (d && d.ok) { paint(d.starred); }
+                }).catch(function () {});
+            });
+        });
+    })();
+    </script>
 
     @if(session('status') && !empty(session('status')['msg']))
         <div class="flash {{ (session('status')['success'] ?? 1) ? 'ok' : 'warn' }}">{{ session('status')['msg'] }}</div>

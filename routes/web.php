@@ -868,6 +868,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/employee-checklist', 'EmployeeChecklistController@index')->name('employee-checklist.index');
     Route::post('/employee-checklist', 'EmployeeChecklistController@complete')->name('employee-checklist.complete');
 
+    // Per-employee starred sidebar links. Each user can pin any left-menu link
+    // (or a whole page, via a page's "Pin to my sidebar" button) to a personal
+    // Favorites group at the top of the sidebar. Per-user JSON sidecar, no
+    // migration; nobody else sees your stars. See SidebarFavoriteController.
+    Route::post('/sidebar-favorites/toggle', 'SidebarFavoriteController@toggle')->name('sidebar-favorites.toggle');
+
     // Listing commissions owed to staff for items they listed. Derived live
     // from products.created_by + users.cmmsn_percent × sell price; "paid" is
     // tracked in storage/app/listing-commission-payouts.json (no migration).
