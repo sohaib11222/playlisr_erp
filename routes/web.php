@@ -168,15 +168,6 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/help/{slug}', 'HelpController@show')->name('help.show')->where('slug', '[a-z0-9\\-]+');
     Route::get('/reports/help-searches', 'HelpReportController@index')->name('reports.help-searches');
 
-    // AMS Orders — store restock log (what we ordered from AMS, what's coming)
-    Route::get('/ams-orders', 'AmsOrderController@index')->name('ams-orders.index');
-    Route::get('/ams-orders/create', 'AmsOrderController@create')->name('ams-orders.create');
-    Route::post('/ams-orders', 'AmsOrderController@store')->name('ams-orders.store');
-    Route::get('/ams-orders/{id}/edit', 'AmsOrderController@edit')->name('ams-orders.edit');
-    Route::put('/ams-orders/{id}', 'AmsOrderController@update')->name('ams-orders.update');
-    Route::post('/ams-orders/{id}/status', 'AmsOrderController@setStatus')->name('ams-orders.status');
-    Route::delete('/ams-orders/{id}', 'AmsOrderController@destroy')->name('ams-orders.destroy');
-
     // Customer Pickups
     Route::resource('customer-pickups', 'CustomerPickupController');
     Route::get('/customer-pickups/customer/{contact_id}', 'CustomerPickupController@getCustomerPickups');
@@ -1048,6 +1039,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // Snapshot/undo via admin-action-history ('nivessa-sheet-import').
     Route::get('/admin/import-parked-sheets', 'ImportParkedSheetsController@index');
     Route::get('/admin/baseline-breakdown', 'BaselineBreakdownController@index');
+    Route::get('/admin/live-pos-timeline', 'LivePosTimelineController@index');
     Route::post('/admin/import-parked-sheets/run', 'ImportParkedSheetsController@run');
 
     // Store-wide scan for duplicate label print runs (double-logged
