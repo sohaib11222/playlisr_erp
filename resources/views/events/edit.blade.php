@@ -12,6 +12,15 @@
   $checklist = (array) ($event['prepChecklist'] ?? []);
   $details   = (array) ($event['prepDetails'] ?? []);
   $host      = trim((string) ($details['eventHost'] ?? ''));
+  // Per-store event lead when the party runs at both stores.
+  $evLocs     = array_filter((array) ($event['location'] ?? []));
+  $multiStore = count($evLocs) > 1;
+  $hostHw     = trim((string) ($details['eventHostHollywood'] ?? ''));
+  $hostPico   = trim((string) ($details['eventHostPico'] ?? ''));
+  // Name used to personalize the prep checklist labels (combined when split).
+  $hostForLabel = $multiStore
+    ? implode(' / ', array_filter([$hostHw !== '' ? 'HW: ' . $hostHw : '', $hostPico !== '' ? 'Pico: ' . $hostPico : '']))
+    : $host;
 @endphp
 
 <div class="ev-wrap">
@@ -51,10 +60,25 @@
       {{ csrf_field() }}
 
       <div class="ev-row">
-        <div class="ev-field" style="flex:1 1 220px;">
-          <label>Event host</label>
-          <input type="text" name="details[eventHost]" value="{{ $details['eventHost'] ?? '' }}" placeholder="Who is running it">
-        </div>
+        @if($multiStore)
+          @if(in_array('hollywood', $evLocs, true))
+            <div class="ev-field" style="flex:1 1 200px;">
+              <label>Event lead — Hollywood</label>
+              <input type="text" name="details[eventHostHollywood]" value="{{ $hostHw }}" placeholder="Who's running Hollywood">
+            </div>
+          @endif
+          @if(in_array('pico', $evLocs, true))
+            <div class="ev-field" style="flex:1 1 200px;">
+              <label>Event lead — Pico</label>
+              <input type="text" name="details[eventHostPico]" value="{{ $hostPico }}" placeholder="Who's running Pico">
+            </div>
+          @endif
+        @else
+          <div class="ev-field" style="flex:1 1 220px;">
+            <label>Event host</label>
+            <input type="text" name="details[eventHost]" value="{{ $details['eventHost'] ?? '' }}" placeholder="Who is running it">
+          </div>
+        @endif
         <div class="ev-field" style="flex:2 1 280px;">
           <label>Playback / event link</label>
           <input type="text" name="details[eventLink]" value="{{ $details['eventLink'] ?? '' }}" placeholder="Stream / playback link">
@@ -77,8 +101,8 @@
             $state = (array) ($checklist[$pi['id']] ?? []);
             $done = !empty($state['done']);
             $label = $pi['label'];
-            if ($host !== '' && in_array($pi['id'], ['rules_confirmed_with_host','link_shared_with_host','link_confirmed_working'], true)) {
-              $label = str_replace(['the person hosting', 'the designated employee'], $host, $label);
+            if ($hostForLabel !== '' && in_array($pi['id'], ['rules_confirmed_with_host','link_shared_with_host','link_confirmed_working'], true)) {
+              $label = str_replace(['the person hosting', 'the designated employee'], $hostForLabel, $label);
             }
           @endphp
           <li class="{{ $done ? 'is-done' : '' }}">

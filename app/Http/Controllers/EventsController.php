@@ -312,7 +312,6 @@ class EventsController extends Controller
      */
     protected function toOrderList(array $upcoming, array $storeDemand): array
     {
-        $BASELINE_VINYL = 2;
         $storeLabels = ['hollywood' => 'Hollywood', 'pico' => 'Pico'];
         $lines = [];
         foreach ($upcoming as $ev) {
@@ -329,12 +328,12 @@ class EventsController extends Controller
                 $wantC = (int) ($dem[$sk]['cd'] ?? 0);
                 $hosting = in_array($sk, $locs, true);
 
+                // Only hosting stores need stock; a non-hosting store carries 0
+                // of an event title, so there's nothing to order there.
                 $needs = [];
                 if ($hosting) {
                     if ($wantV > $ordV) { $needs[] = ($wantV - $ordV) . ' vinyl'; }
                     if ($wantC > $ordC) { $needs[] = ($wantC - $ordC) . ' CD'; }
-                } else {
-                    if ($ordV < $BASELINE_VINYL) { $needs[] = ($BASELINE_VINYL - $ordV) . ' indie/deluxe (baseline)'; }
                 }
                 if ($needs) {
                     $lines[] = [
@@ -1077,9 +1076,10 @@ class EventsController extends Controller
             ];
         }
 
-        // Details: only the four known keys.
+        // Details: only the known keys. eventHostHollywood/eventHostPico hold
+        // the per-store event lead when a party runs at both stores.
         $incomingDetails = (array) $request->input('details', []);
-        foreach (['eventHost', 'eventLink', 'boxTracking', 'boxLocation'] as $k) {
+        foreach (['eventHost', 'eventHostHollywood', 'eventHostPico', 'eventLink', 'boxTracking', 'boxLocation'] as $k) {
             if (array_key_exists($k, $incomingDetails)) {
                 $details[$k] = mb_substr(trim((string) $incomingDetails[$k]), 0, 2000);
             }

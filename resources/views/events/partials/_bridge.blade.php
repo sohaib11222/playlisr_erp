@@ -243,7 +243,6 @@
   @php
     $ord = (array) ($event['ordered'] ?? []);
     $eventLocs = (array) ($event['location'] ?? []);
-    $BASELINE_VINYL = 2; // stock a couple (indie/deluxe — sells better) even where there's no party
     $planRows = [];
     foreach (['hollywood' => 'Hollywood', 'pico' => 'Pico'] as $sk => $slabel) {
       $wantV = (int) ($byStore[$sk]['vinyl'] ?? 0);
@@ -253,14 +252,15 @@
       $ordC = (int) ($row['stdCd'] ?? 0) + (int) ($row['deluxeCd'] ?? 0);
       $hosting = in_array($sk, $eventLocs, true);
 
-      // Vinyl directive
+      // Vinyl directive. A non-hosting store should carry 0 of this title, so
+      // anything ordered there is flagged as over (no baseline pre-stock).
       if ($hosting) {
         if ($ordV < $wantV)      { $vMsg = 'order ' . ($wantV - $ordV) . ' more'; $vTone = 'need'; }
         elseif ($ordV > $wantV)  { $vMsg = ($ordV - $wantV) . ' over'; $vTone = 'over'; }
         else                     { $vMsg = $wantV > 0 ? 'covered' : 'no requests yet'; $vTone = 'ok'; }
       } else {
-        if ($ordV < $BASELINE_VINYL) { $vMsg = 'stock ' . ($BASELINE_VINYL - $ordV) . ' indie/deluxe'; $vTone = 'need'; }
-        else                         { $vMsg = 'covered'; $vTone = 'ok'; }
+        if ($ordV > 0) { $vMsg = $ordV . ' over'; $vTone = 'over'; }
+        else           { $vMsg = '—'; $vTone = 'ok'; }
       }
       // CD directive (baseline 0 when not hosting)
       if ($ordC < $wantC)      { $cMsg = 'order ' . ($wantC - $ordC) . ' more'; $cTone = 'need'; }

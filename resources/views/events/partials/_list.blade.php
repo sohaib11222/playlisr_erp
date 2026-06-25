@@ -76,8 +76,17 @@
         }
         $pubMap = $publishedMap ?? [];
         $isLive = array_key_exists($ev['id'] ?? '', $pubMap) ? $pubMap[$ev['id']] : null;
-        // Event lead = the prep "Event host" for the party (set on the dashboard).
-        $eventLead = trim((string) (((array) ($ev['prepDetails'] ?? []))['eventHost'] ?? ''));
+        // Event lead = the prep "Event host". Multi-store parties get a lead per
+        // store (HW / Pico); single-store falls back to the one host field.
+        $pd = (array) ($ev['prepDetails'] ?? []);
+        if ($isMultiStore) {
+          $leadParts = [];
+          if (in_array('hollywood', (array) ($ev['location'] ?? []), true) && trim((string) ($pd['eventHostHollywood'] ?? '')) !== '') { $leadParts[] = 'HW: ' . trim($pd['eventHostHollywood']); }
+          if (in_array('pico', (array) ($ev['location'] ?? []), true) && trim((string) ($pd['eventHostPico'] ?? '')) !== '') { $leadParts[] = 'Pico: ' . trim($pd['eventHostPico']); }
+          $eventLead = $leadParts ? implode(' · ', $leadParts) : trim((string) ($pd['eventHost'] ?? ''));
+        } else {
+          $eventLead = trim((string) ($pd['eventHost'] ?? ''));
+        }
       @endphp
       <tr>
         <td>
