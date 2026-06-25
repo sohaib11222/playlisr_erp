@@ -130,7 +130,7 @@
                     <thead>
                         <tr>
                             <th>Person</th>
-                            <th style="text-align:right; background:#FFF3C4;" title="Listing earned + sales earned (total commission earned)">Total commission</th>
+                            <th style="text-align:right;" title="Listing earned + sales earned (total commission earned)">Total commission</th>
                             <th style="text-align:right;" title="Items this person has listed since {{ $from }}"># Listings</th>
                             <th style="text-align:right;" title="Listing commission earned since {{ $from }}">Listing earned</th>
                             <th style="text-align:right;" title="Listing commission already paid out">Listing paid</th>
@@ -149,7 +149,7 @@
                         @foreach ($people as $p)
                             <tr>
                                 <td><a href="{{ url('/my-earnings') }}?user_id={{ $p->user_id }}" title="See {{ $p->name }}'s full earnings page (what they see)">{{ $p->name }}</a></td>
-                                <td style="text-align:right; background:#FFF3C4;">@if($p->total_comm > 0)${{ number_format($p->total_comm, 2) }}@else <span class="text-muted">—</span>@endif</td>
+                                <td style="text-align:right;">@if($p->total_comm > 0)${{ number_format($p->total_comm, 2) }}@else <span class="text-muted">—</span>@endif</td>
                                 <td style="text-align:right;">@if($p->listed_count > 0)<a href="{{ url('/my-earnings/items') }}?user_id={{ $p->user_id }}">{{ number_format($p->listed_count) }}</a>@else <span class="text-muted">—</span>@endif</td>
                                 <td style="text-align:right;">@if($p->earned > 0)${{ number_format($p->earned, 2) }}@else <span class="text-muted">—</span>@endif</td>
                                 <td style="text-align:right;">@if($p->paid > 0)<span class="text-muted">${{ number_format($p->paid, 2) }}</span>@else <span class="text-muted">—</span>@endif</td>
