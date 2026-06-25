@@ -252,20 +252,27 @@
       $ordC = (int) ($row['stdCd'] ?? 0) + (int) ($row['deluxeCd'] ?? 0);
       $hosting = in_array($sk, $eventLocs, true);
 
-      // Vinyl directive. A non-hosting store should carry 0 of this title, so
-      // anything ordered there is flagged as over (no baseline pre-stock).
+      // Vinyl directive. "Want" is a floor, so a HOSTING store ordering above
+      // it is healthy buffer (covered, not a warning). A NON-hosting store
+      // should carry 0 of this title, so anything ordered there is flagged over.
       if ($hosting) {
         if ($ordV < $wantV)      { $vMsg = 'order ' . ($wantV - $ordV) . ' more'; $vTone = 'need'; }
-        elseif ($ordV > $wantV)  { $vMsg = ($ordV - $wantV) . ' over'; $vTone = 'over'; }
+        elseif ($ordV > $wantV)  { $vMsg = 'covered (+' . ($ordV - $wantV) . ' buffer)'; $vTone = 'ok'; }
         else                     { $vMsg = $wantV > 0 ? 'covered' : 'no requests yet'; $vTone = 'ok'; }
       } else {
         if ($ordV > 0) { $vMsg = $ordV . ' over'; $vTone = 'over'; }
         else           { $vMsg = '—'; $vTone = 'ok'; }
       }
-      // CD directive (baseline 0 when not hosting)
-      if ($ordC < $wantC)      { $cMsg = 'order ' . ($wantC - $ordC) . ' more'; $cTone = 'need'; }
-      elseif ($ordC > $wantC)  { $cMsg = ($ordC - $wantC) . ' over'; $cTone = 'over'; }
-      else                     { $cMsg = $wantC > 0 ? 'covered' : ($hosting ? 'no requests yet' : '—'); $cTone = 'ok'; }
+      // CD directive — same logic. Hosting over the floor = buffer; non-hosting
+      // (want is 0) over = flagged.
+      if ($ordC < $wantC) {
+        $cMsg = 'order ' . ($wantC - $ordC) . ' more'; $cTone = 'need';
+      } elseif ($ordC > $wantC) {
+        if ($hosting) { $cMsg = 'covered (+' . ($ordC - $wantC) . ' buffer)'; $cTone = 'ok'; }
+        else          { $cMsg = ($ordC - $wantC) . ' over'; $cTone = 'over'; }
+      } else {
+        $cMsg = $wantC > 0 ? 'covered' : ($hosting ? 'no requests yet' : '—'); $cTone = 'ok';
+      }
 
       $planRows[] = compact('slabel', 'hosting', 'wantV', 'ordV', 'vMsg', 'vTone', 'wantC', 'ordC', 'cMsg', 'cTone');
     }

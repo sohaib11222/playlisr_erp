@@ -21,6 +21,11 @@
   $hostForLabel = $multiStore
     ? implode(' / ', array_filter([$hostHw !== '' ? 'HW: ' . $hostHw : '', $hostPico !== '' ? 'Pico: ' . $hostPico : '']))
     : $host;
+  // Prep progress flag — how many checklist items are still open.
+  $prepTotal = count($prepItems);
+  $prepDone  = 0;
+  foreach ($prepItems as $pi) { if (!empty($checklist[$pi['id']]['done'])) { $prepDone++; } }
+  $prepLeft  = $prepTotal - $prepDone;
 @endphp
 
 <div class="ev-wrap">
@@ -55,7 +60,13 @@
 
   {{-- ---------- Listening-party prep / task list (collapsed by default) ---------- --}}
   <details class="ev-card">
-    <summary class="ev-create-summary">Listening-party prep</summary>
+    <summary class="ev-create-summary">Listening-party prep
+      @if($prepLeft > 0)
+        <span class="prep-badge todo" style="margin-left:8px;vertical-align:middle;">{{ $prepLeft }} of {{ $prepTotal }} left</span>
+      @else
+        <span class="prep-badge done" style="margin-left:8px;vertical-align:middle;">All done</span>
+      @endif
+    </summary>
     <form method="POST" action="{{ route('events.prep', ['id' => $event['id']]) }}" style="margin-top:14px;">
       {{ csrf_field() }}
 

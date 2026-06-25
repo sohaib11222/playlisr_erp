@@ -136,7 +136,7 @@
             <span class="prep-badge na">—</span>
           @endif
         </td>
-        <td style="text-align:right;white-space:nowrap;">
+        <td style="text-align:left;white-space:nowrap;">
           <a class="btn-accent" href="{{ route('events.edit', ['id' => $ev['id']]) }}" style="display:inline-block;padding:7px 14px;font-size:13px;text-decoration:none;">View dashboard</a>
         </td>
       </tr>

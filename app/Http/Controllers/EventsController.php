@@ -1165,13 +1165,19 @@ class EventsController extends Controller
                 'image'            => $e['image'] ?? null,
                 'location'         => array_values(array_intersect((array) ($e['location'] ?? []), ['hollywood', 'pico'])),
                 'locationDetail'   => $e['locationDetail'] ?? null,
-                'preorderEnabled'  => filter_var($e['preorderEnabled'] ?? false, FILTER_VALIDATE_BOOLEAN),
-                // ERP-managed; the website feed doesn't carry the products list.
+                // Preorder settings are ERP-owned now (ERP is the source of
+                // truth). For an event that already exists here, KEEP the local
+                // values so a re-import never reverts a preorder Sarah enabled.
+                'preorderEnabled'  => array_key_exists('preorderEnabled', $existing)
+                    ? filter_var($existing['preorderEnabled'], FILTER_VALIDATE_BOOLEAN)
+                    : filter_var($e['preorderEnabled'] ?? false, FILTER_VALIDATE_BOOLEAN),
                 'preorderProducts' => array_values((array) ($existing['preorderProducts'] ?? $e['preorderProducts'] ?? [])),
-                'preorderTitle'    => (string) ($e['preorderTitle'] ?? ''),
-                'preorderPrice'    => isset($e['preorderPrice']) && $e['preorderPrice'] !== null ? round((float) $e['preorderPrice'], 2) : null,
-                'preorderPickupDate' => $e['preorderPickupDate'] ?? null,
-                'preorderNote'     => (string) ($e['preorderNote'] ?? ''),
+                'preorderTitle'    => array_key_exists('preorderTitle', $existing) ? (string) $existing['preorderTitle'] : (string) ($e['preorderTitle'] ?? ''),
+                'preorderPrice'    => array_key_exists('preorderPrice', $existing)
+                    ? ($existing['preorderPrice'] !== null ? round((float) $existing['preorderPrice'], 2) : null)
+                    : (isset($e['preorderPrice']) && $e['preorderPrice'] !== null ? round((float) $e['preorderPrice'], 2) : null),
+                'preorderPickupDate' => array_key_exists('preorderPickupDate', $existing) ? $existing['preorderPickupDate'] : ($e['preorderPickupDate'] ?? null),
+                'preorderNote'     => array_key_exists('preorderNote', $existing) ? (string) $existing['preorderNote'] : (string) ($e['preorderNote'] ?? ''),
                 'prepChecklist'    => $prepChecklist ?: new \stdClass(),
                 'prepDetails'      => $prepDetails ?: new \stdClass(),
                 'createdBy'        => $existing['createdBy'] ?? ($e['createdBy'] ?? 'website'),

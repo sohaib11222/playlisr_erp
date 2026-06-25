@@ -19,12 +19,14 @@
         <a href="{{ route('events.index', ['type' => 'all']) }}" style="{{ $tabBase }}{{ $filterType === null ? $tabOn : $tabOff }}">All events</a>
       </div>
     </div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+    <div style="display:flex;flex-direction:column;gap:8px;align-items:stretch;">
       <form method="POST" action="{{ route('events.import') }}"
-            onsubmit="return confirm('Pull the latest events from nivessa.com into the ERP? Existing prep-checklist progress entered here is preserved.');">
+            onsubmit="return confirm('Pull the latest events from nivessa.com into the ERP? Your prep progress and preorder settings entered here are preserved.');">
         {{ csrf_field() }}
-        <button type="submit" class="btn-ghost">Import from nivessa.com</button>
+        <button type="submit" class="btn-ghost" style="width:100%;">Import from nivessa.com</button>
       </form>
+      <button type="button" class="btn-accent"
+              onclick="var c=document.getElementById('create-block'); var willOpen=(c.style.display==='none'); c.style.display=willOpen?'block':'none'; if(willOpen){c.scrollIntoView({behavior:'smooth',block:'start'});}">+ New event</button>
     </div>
   </div>
 
@@ -86,17 +88,17 @@
   </div>
   @endif
 
-  {{-- ---------- Create ---------- --}}
-  <details class="ev-card" id="create-block">
-    <summary class="ev-create-summary">+ New event</summary>
-    <form method="POST" action="{{ route('events.store') }}" style="margin-top:14px;">
+  {{-- ---------- Create (opened by the "+ New event" button up top) ---------- --}}
+  <div class="ev-card" id="create-block" style="display:{{ $errors->any() ? 'block' : 'none' }};">
+    <h2 style="margin:0 0 6px;">+ New event</h2>
+    <form method="POST" action="{{ route('events.store') }}" style="margin-top:6px;">
       {{ csrf_field() }}
       @include('events.partials._form', ['event' => null, 'eventTypes' => $eventTypes, 'genres' => $genres])
       <div style="margin-top:14px;">
         <button type="submit" class="btn-accent">Create event</button>
       </div>
     </form>
-  </details>
+  </div>
 
   {{-- ---------- Upcoming ---------- --}}
   <div class="ev-card">
