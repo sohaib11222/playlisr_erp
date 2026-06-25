@@ -4859,19 +4859,49 @@ class ReportController extends Controller
      * undercounts the prior-year LFL baseline by ~80% and inflates every % to
      * +1,000%. Whatnot livestream sales are still excluded (store-floor only).
      */
-    private function lflRevAndCount($business_id, $location_id, $start, $end)
+    private function lflRevAndCount($business_id, $location_id, $start, $end, $excludeLivePos = false)
     {
-        return DB::table('transactions')
+        $q = DB::table('transactions')
             ->where('business_id', $business_id)
             ->where('location_id', $location_id)
             ->where('type', 'sell')
             ->where('status', 'final')
-            ->where(function ($q) {
-                $q->where('is_whatnot', 0)->orWhereNull('is_whatnot');
+            ->where(function ($w) {
+                $w->where('is_whatnot', 0)->orWhereNull('is_whatnot');
             })
-            ->whereBetween('transaction_date', [$start, $end])
-            ->selectRaw('COALESCE(SUM(final_total), 0) as revenue, COUNT(*) as tx_count')
+            ->whereBetween('transaction_date', [$start, $end]);
+        // For a few early months the ERP register was brand-new and only caught a
+        // fraction of sales already fully recorded in the imported spreadsheet, so
+        // counting both double-counts. For those store/months we count the
+        // complete spreadsheet (import_source set) and skip the redundant live-POS
+        // (import_source NULL) register rows. Non-destructive: nothing is deleted,
+        // the rows still exist; see lflSheetAuthoritativeCells().
+        if ($excludeLivePos) {
+            $q->whereNotNull('import_source');
+        }
+        return $q->selectRaw('COALESCE(SUM(final_total), 0) as revenue, COUNT(*) as tx_count')
             ->first();
+    }
+
+    // Store/months where the imported spreadsheet is the complete record and the
+    // (then brand-new) register rows are redundant duplicates to skip in LFL.
+    // Keyed by location_id -> [Y-m, ...], resolved by store name. Editing/clearing
+    // this reverses the adjustment — no data is touched.
+    private function lflSheetAuthoritativeCells($business_id)
+    {
+        $byName = [
+            'hollywood' => ['2024-11', '2025-01'],
+            'pico'      => ['2025-04', '2025-05'],
+        ];
+        $out = [];
+        foreach ($byName as $needle => $months) {
+            $loc = DB::table('business_locations')
+                ->where('business_id', $business_id)
+                ->where('name', 'like', '%' . $needle . '%')
+                ->orderBy('id')->first(['id']);
+            if ($loc) { $out[(int) $loc->id] = $months; }
+        }
+        return $out;
     }
 
     /**
@@ -5247,6 +5277,10 @@ class ReportController extends Controller
 
         $store_ids = $locations->keys()->all();
 
+        // Cells where the imported spreadsheet is authoritative and the brand-new
+        // register rows are redundant (skip live-POS there). Non-destructive.
+        $sheet_auth_cells = $this->lflSheetAuthoritativeCells($business_id);
+
         $months = [];
         $span_this = array_fill_keys($store_ids, 0.0);
         $span_ly   = array_fill_keys($store_ids, 0.0);
@@ -5274,8 +5308,11 @@ class ReportController extends Controller
             $mo_this_all = $mo_ly_all = 0.0;
 
             foreach ($store_ids as $loc_id) {
-                $this_rev = (float) $this->lflRevAndCount($business_id, $loc_id, $ms, $me)->revenue;
-                $ly_rev   = (float) $this->lflRevAndCount($business_id, $loc_id, $ly_ms, $ly_me)->revenue;
+                $auth = $sheet_auth_cells[$loc_id] ?? [];
+                $this_excl = in_array($ms->format('Y-m'), $auth, true);
+                $ly_excl   = in_array($ly_ms->format('Y-m'), $auth, true);
+                $this_rev = (float) $this->lflRevAndCount($business_id, $loc_id, $ms, $me, $this_excl)->revenue;
+                $ly_rev   = (float) $this->lflRevAndCount($business_id, $loc_id, $ly_ms, $ly_me, $ly_excl)->revenue;
 
                 $cells[$loc_id] = [
                     'this_rev' => $this_rev,
