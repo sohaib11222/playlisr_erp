@@ -868,6 +868,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/employee-checklist', 'EmployeeChecklistController@index')->name('employee-checklist.index');
     Route::post('/employee-checklist', 'EmployeeChecklistController@complete')->name('employee-checklist.complete');
 
+    // Fatteen's daily checklist. Recurring tasks that reset each day; auto-saves
+    // per checkbox. Admin + Fatteen only — gated in the controller. JSON-backed
+    // (storage/app/daily_checklist.json).
+    Route::get('/daily-checklist', 'DailyChecklistController@index')->name('daily-checklist.index');
+    Route::post('/daily-checklist/toggle', 'DailyChecklistController@toggle')->name('daily-checklist.toggle');
+
     // Per-employee starred sidebar links. Each user can pin any left-menu link
     // (or a whole page, via a page's "Pin to my sidebar" button) to a personal
     // Favorites group at the top of the sidebar. Per-user JSON sidecar, no
