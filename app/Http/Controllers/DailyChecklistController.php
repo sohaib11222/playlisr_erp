@@ -29,6 +29,9 @@ class DailyChecklistController extends Controller
      * the mapping.
      */
     const GROUPS = [
+        'Start of day' => [
+            'sling_week' => 'Check Sling first — make sure we\'re covered and good for the whole week.',
+        ],
         'Phones, messages & email — keep these going while you work (answer calls as they come in)' => [
             'phone_texts' => 'Check the store phone and texts — start after 9am, not before (watch for the overcharges).',
             'whatsapp'    => 'Check WhatsApp and reply.',
