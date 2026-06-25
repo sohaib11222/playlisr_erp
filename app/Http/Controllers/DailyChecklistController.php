@@ -31,12 +31,12 @@ class DailyChecklistController extends Controller
     const GROUPS = [
         'Start of day' => [
             'sling_week' => 'Check Sling first — make sure we\'re covered and good for the whole week.',
+            'discogs'    => 'Check Discogs orders and messages.',
         ],
         'Phones, messages & email — keep these going while you work (answer calls as they come in)' => [
             'phone_texts' => 'Check Quo texts and calls — start at 9:30 AM, not before (watch for the overcharges).',
             'whatsapp'    => 'Check WhatsApp and reply — start at 9:30 AM.',
             'hello_email' => 'Reply to the hello@nivessa.com emails.',
-            'discogs'     => 'Check Discogs orders and messages.',
         ],
         'Sales & accounting' => [
             'sales_feed'  => 'Daily sales feed: make sure every transaction is in BOTH the ERP and Clover, and DM anyone whose sale is missing.',
