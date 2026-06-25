@@ -13022,8 +13022,21 @@ class ReportController extends Controller
         $live_data_url = action('StorePerformanceController@data');
         $listed_items_url = action('ReportController@employeeLeaderboardListedItems');
 
+        // Cumulative sales-commission summary (earned/paid/owed since go-live),
+        // keyed by user_id, so the board's commission columns reconcile with the
+        // Pay Commissions page exactly — same source, same numbers. The period
+        // selector only scopes the performance columns, not payables (listing
+        // already behaves this way via summaryByUser).
+        $salesSummary = collect();
+        try {
+            $salesSummary = app(\App\Http\Controllers\ListingCommissionController::class)
+                ->salesSummaryByUser($business_id);
+        } catch (\Throwable $e) {
+            \Log::warning('leaderboard sales summary pull failed: ' . $e->getMessage());
+        }
+
         return view('report.employee_leaderboard')->with(compact(
-            'stores', 'period', 'start', 'end', 'live_data_url', 'listed_items_url'
+            'stores', 'period', 'start', 'end', 'live_data_url', 'listed_items_url', 'salesSummary'
         ));
     }
 

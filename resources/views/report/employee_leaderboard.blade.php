@@ -247,10 +247,15 @@
                                         </td>
                                         @php
                                             $listedAttrs = 'data-listed="1" data-user="'.$r->user_id.'" data-name="'.e($r->employee).'" data-loc="'.$store['id'].'" data-store="'.e($store['name']).'"';
-                                            $sales_comm = ($r->sales_bonus_live ? (float) $r->goal_bonus : 0.0);
-                                            $total_comm = round((float) $r->listing_earned + $sales_comm, 2);
-                                            $comm_paid  = round((float) $r->listing_paid, 2);
-                                            $comm_owed  = round((float) $r->listing_owed + $sales_comm, 2);
+                                            // Cumulative sales commission (since go-live) from the same
+                                            // source as the Pay Commissions page, so the two reconcile.
+                                            $ss = $salesSummary->get($r->user_id);
+                                            $sales_earned = $ss ? (float) $ss->earned : 0.0;
+                                            $sales_paid   = $ss ? (float) $ss->paid   : 0.0;
+                                            $sales_owed   = $ss ? (float) $ss->owed   : 0.0;
+                                            $total_comm = round((float) $r->listing_earned + $sales_earned, 2);
+                                            $comm_paid  = round((float) $r->listing_paid + $sales_paid, 2);
+                                            $comm_owed  = round((float) $r->listing_owed + $sales_owed, 2);
                                         @endphp
                                         <td class="text-right g-list g-first">@if($r->priced_count > 0)<a href="#" class="lb-listed-link" {!! $listedAttrs !!}>{{ number_format($r->priced_count, 0) }}</a>@else <span class="text-muted">—</span>@endif</td>
                                         <td class="text-right g-list">@if($r->priced_revenue > 0)<a href="#" class="lb-listed-link" {!! $listedAttrs !!}>${{ number_format($r->priced_revenue, 0) }}</a>@else ${{ number_format($r->priced_revenue, 0) }}@endif</td>
@@ -263,18 +268,7 @@
                                                 <span class="text-muted">—</span>
                                             @endif
                                         </td>
-                                        <td class="text-right g-sales">
-                                            @if($r->sales_bonus_live)
-                                                @if($r->goal_bonus > 0)${{ number_format($r->goal_bonus, 2) }}@else <span class="text-muted">—</span>@endif
-                                            @else
-                                                @if($r->goal_bonus > 0)
-                                                    <span class="text-muted">${{ number_format($r->goal_bonus, 2) }}</span>
-                                                    <div class="lb-sub">projected · from Jun 15</div>
-                                                @else
-                                                    <span class="lb-soon-badge">From Jun 15</span>
-                                                @endif
-                                            @endif
-                                        </td>
+                                        <td class="text-right g-sales">@if($sales_earned > 0)${{ number_format($sales_earned, 2) }}@else <span class="text-muted">—</span>@endif</td>
                                         <td class="text-right g-total">@if($total_comm > 0)<strong>${{ number_format($total_comm, 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>
                                         <td class="text-right">@if($comm_paid > 0)<span class="text-muted">${{ number_format($comm_paid, 2) }}</span>@else <span class="text-muted">—</span>@endif</td>
                                         <td class="text-right">@if($comm_owed > 0)<strong>${{ number_format($comm_owed, 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>

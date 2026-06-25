@@ -24,6 +24,7 @@ use Illuminate\Support\Facades\Storage;
 class ListingCommissionController extends Controller
 {
     const PAYOUTS_FILE = 'listing-commission-payouts.json';
+    const SALES_PAYOUTS_FILE = 'sales-commission-payouts.json';
     const DEFAULT_FROM = '2026-05-15';
     const SALES_BONUS_FROM = '2026-06-15'; // sales-goal bonus go-live (matches leaderboard)
     const RATE = 0.02; // flat 2%, matches barcodingCommissionByUser
@@ -106,23 +107,17 @@ class ListingCommissionController extends Controller
                 $people[$uid]->count++;
             }
         }
-        // Sales-goal bonus per employee (since it went live 2026-06-15), pulled
-        // straight from the leaderboard math so this page shows BOTH commission
-        // types per person. There's no payout ledger for the bonus yet, so we
-        // only show "earned" (paid manually outside the app).
-        $salesBonus = collect();
-        try {
-            $salesBonus = app(\App\Http\Controllers\ReportController::class)
-                ->salesBonusByUser($businessId, self::SALES_BONUS_FROM, now()->toDateString());
-        } catch (\Throwable $e) {
-            \Log::warning('listing-commissions sales bonus pull failed: ' . $e->getMessage());
-        }
+        // Sales-goal bonus per employee (cumulative since it went live
+        // 2026-06-15), now with its own payout ledger so sales commission can be
+        // marked paid just like listing. Earned reuses the exact leaderboard
+        // math, so it reconciles with the Employee Leaderboard to the penny.
+        $salesSummary = $this->salesSummaryByUser($businessId);
 
         // Make sure people who earned a sales bonus but have no listing lines
         // still appear on the page.
         $byId = [];
         foreach ($people as $p) { $byId[(int) $p->user_id] = $p; }
-        foreach ($salesBonus as $uid => $bonus) {
+        foreach ($salesSummary as $uid => $s) {
             $uid = (int) $uid;
             if (!isset($byId[$uid])) {
                 $u = DB::table('users')->where('id', $uid)->first();
@@ -135,28 +130,142 @@ class ListingCommissionController extends Controller
             }
         }
         foreach ($byId as $uid => $p) {
-            $p->sales_bonus = round((float) ($salesBonus[$uid] ?? 0), 2);
-            // What you still owe this person right now = unpaid listing + bonus.
-            $p->total_owed_now = round($p->owed + $p->sales_bonus, 2);
+            $s = $salesSummary->get($uid);
+            $p->sales_earned = $s ? (float) $s->earned : 0.0;
+            $p->sales_paid   = $s ? (float) $s->paid   : 0.0;
+            $p->sales_owed   = $s ? (float) $s->owed   : 0.0;
+            // Combined cumulative commission across both types.
+            $p->total_comm     = round($p->earned + $p->sales_earned, 2);
+            $p->total_paid_all = round($p->paid + $p->sales_paid, 2);
+            // What you still owe this person right now = unpaid listing + unpaid sales.
+            $p->total_owed_now = round($p->owed + $p->sales_owed, 2);
         }
 
         $people = collect($byId)->values()->sortByDesc('total_owed_now')->values();
 
         $history = collect($paid)->sortByDesc('marked_at')->values();
+        $salesHistory = collect($this->loadSalesPayouts())->sortByDesc('marked_at')->values();
 
         return view('admin.listing_commissions', [
             'from'        => $from,
             'rate_pct'    => self::RATE * 100,
             'people'      => $people,
             'history'     => $history,
+            'sales_history' => $salesHistory,
             'total_owed'  => $people->sum('owed'),
             'total_earned'=> $people->sum('earned'),
             'total_paid_window' => $people->sum('paid'),
             'total_paid'  => $history->sum('amount'),
-            'total_sales_bonus' => $people->sum('sales_bonus'),
-            'total_owed_now'    => $people->sum('total_owed_now'),
-            'sales_bonus_from'  => self::SALES_BONUS_FROM,
+            'total_sales_earned' => $people->sum('sales_earned'),
+            'total_sales_paid'   => $people->sum('sales_paid'),
+            'total_sales_owed'   => $people->sum('sales_owed'),
+            'total_sales_paid_all' => $salesHistory->sum('amount'),
+            'total_commission'   => $people->sum('total_comm'),
+            'total_paid_all'     => $people->sum('total_paid_all'),
+            'total_owed_now'     => $people->sum('total_owed_now'),
+            'sales_bonus_from'   => self::SALES_BONUS_FROM,
         ]);
+    }
+
+    // Sales-goal bonus per user: earned (cumulative since go-live, from the
+    // leaderboard math), paid (from the sales payout ledger), owed = earned −
+    // paid. Keyed by user_id. Mirrors summaryByUser() for listing so both
+    // commission types behave the same and reconcile across the two reports.
+    public function salesSummaryByUser($businessId)
+    {
+        $earned = collect();
+        try {
+            $earned = app(\App\Http\Controllers\ReportController::class)
+                ->salesBonusByUser($businessId, self::SALES_BONUS_FROM, now()->toDateString());
+        } catch (\Throwable $e) {
+            \Log::warning('salesSummaryByUser earned pull failed: ' . $e->getMessage());
+        }
+
+        $paidByUser = [];
+        foreach ($this->loadSalesPayouts() as $p) {
+            $uid = (int) ($p['user_id'] ?? 0);
+            if ($uid > 0) { $paidByUser[$uid] = ($paidByUser[$uid] ?? 0) + (float) ($p['amount'] ?? 0); }
+        }
+
+        $out = [];
+        foreach (array_unique(array_merge(array_map('intval', $earned->keys()->all()), array_keys($paidByUser))) as $uid) {
+            $uid = (int) $uid;
+            $e  = round((float) ($earned[$uid] ?? 0), 2);
+            $pd = round((float) ($paidByUser[$uid] ?? 0), 2);
+            $out[$uid] = (object) ['earned' => $e, 'paid' => $pd, 'owed' => round(max(0, $e - $pd), 2)];
+        }
+        return collect($out);
+    }
+
+    // Snapshot the person's currently-owed sales commission as a payout. Running
+    // balance: owed always = cumulative earned − total paid, so marking paid
+    // again only covers what's accrued since the last payout.
+    public function markSalesPaid(Request $request)
+    {
+        $userId = (int) $request->input('user_id');
+        $businessId = $request->session()->get('user.business_id');
+
+        if ($userId <= 0) {
+            return redirect('/admin/listing-commissions')
+                ->with('status', ['success' => 0, 'msg' => 'Missing person.']);
+        }
+
+        $summary = $this->salesSummaryByUser($businessId)->get($userId);
+        $owed = $summary ? (float) $summary->owed : 0.0;
+        if ($owed <= 0) {
+            return redirect('/admin/listing-commissions')
+                ->with('status', ['success' => 0, 'msg' => 'No sales commission outstanding for that person.']);
+        }
+
+        $u = DB::table('users')->where('id', $userId)->first();
+        $payouts = $this->loadSalesPayouts();
+        $payouts[] = [
+            'id'        => bin2hex(random_bytes(8)),
+            'user_id'   => $userId,
+            'name'      => $u ? (trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->surname ?? ('User #' . $userId))) : ('User #' . $userId),
+            'amount'    => round($owed, 2),
+            'from_date' => self::SALES_BONUS_FROM,
+            'to_date'   => now()->toDateString(),
+            'marked_by' => $request->session()->get('user.id'),
+            'marked_at' => now()->toDateTimeString(),
+        ];
+        $this->saveSalesPayouts($payouts);
+
+        return redirect('/admin/listing-commissions')->with('status', [
+            'success' => 1,
+            'msg'     => 'Marked $' . number_format($owed, 2) . ' sales commission paid for ' . ($u->first_name ?? 'that person') . '.',
+        ]);
+    }
+
+    public function undoSalesPayout(Request $request)
+    {
+        $id = preg_replace('/[^a-f0-9]/', '', (string) $request->input('id'));
+        $payouts = $this->loadSalesPayouts();
+        $before = count($payouts);
+        $payouts = array_values(array_filter($payouts, function ($p) use ($id) {
+            return ($p['id'] ?? '') !== $id;
+        }));
+        if (count($payouts) === $before) {
+            return redirect('/admin/listing-commissions')
+                ->with('status', ['success' => 0, 'msg' => 'Sales payout not found.']);
+        }
+        $this->saveSalesPayouts($payouts);
+        return redirect('/admin/listing-commissions')
+            ->with('status', ['success' => 1, 'msg' => 'Sales payout undone — that commission is owed again.']);
+    }
+
+    private function loadSalesPayouts()
+    {
+        if (!Storage::disk('local')->exists(self::SALES_PAYOUTS_FILE)) {
+            return [];
+        }
+        $data = json_decode(Storage::disk('local')->get(self::SALES_PAYOUTS_FILE), true);
+        return is_array($data) ? $data : [];
+    }
+
+    private function saveSalesPayouts(array $payouts)
+    {
+        Storage::disk('local')->put(self::SALES_PAYOUTS_FILE, json_encode(array_values($payouts), JSON_PRETTY_PRINT));
     }
 
     public function markPaid(Request $request)

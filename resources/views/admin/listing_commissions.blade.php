@@ -110,9 +110,9 @@
         <div class="box box-solid">
             <div class="box-body">
                 <div class="form-inline">
-                    <span><strong>Total owed now</strong> = unpaid listing commission + sales bonus, across everyone.</span>
+                    <span><strong>Total owed now</strong> = unpaid listing commission + unpaid sales commission, across everyone.</span>
                     <span class="pull-right" style="font-size:16px;">
-                        Listing owed <strong>${{ number_format($total_owed, 2) }}</strong> &nbsp;·&nbsp; Sales bonus <strong>${{ number_format($total_sales_bonus, 2) }}</strong> &nbsp;·&nbsp; Total owed now <strong>${{ number_format($total_owed_now, 2) }}</strong>
+                        Total commission <strong>${{ number_format($total_commission, 2) }}</strong> &nbsp;·&nbsp; Paid <strong>${{ number_format($total_paid_all, 2) }}</strong> &nbsp;·&nbsp; Total owed now <strong>${{ number_format($total_owed_now, 2) }}</strong>
                     </span>
                 </div>
             </div>
@@ -133,8 +133,11 @@
                             <th style="text-align:right;" title="Listing commission earned since {{ $from }}">Listing earned</th>
                             <th style="text-align:right;" title="Listing commission already paid out">Listing paid</th>
                             <th style="text-align:right;" title="Listing commission still owed">Listing owed</th>
-                            <th style="text-align:right; border-left:1px solid #eee;" title="Sales-goal bonus earned since {{ $sales_bonus_from }} (same as the leaderboard)">Sales commission</th>
-                            <th style="text-align:right; border-left:1px solid #eee;" title="Unpaid listing + sales bonus = what you owe this person now">Total owed now</th>
+                            <th style="text-align:right; border-left:1px solid #ddd;" title="Sales-goal bonus earned since {{ $sales_bonus_from }} (same as the leaderboard)">Sales earned</th>
+                            <th style="text-align:right;" title="Sales commission already paid out">Sales paid</th>
+                            <th style="text-align:right;" title="Sales commission still owed">Sales owed</th>
+                            <th style="text-align:right; border-left:1px solid #ddd;" title="Listing earned + sales earned">Total commission</th>
+                            <th style="text-align:right;" title="Unpaid listing + unpaid sales = what you owe this person now">Total owed now</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -145,19 +148,32 @@
                                 <td style="text-align:right;">@if($p->earned > 0)${{ number_format($p->earned, 2) }}@else <span class="text-muted">—</span>@endif</td>
                                 <td style="text-align:right;">@if($p->paid > 0)<span class="text-muted">${{ number_format($p->paid, 2) }}</span>@else <span class="text-muted">—</span>@endif</td>
                                 <td style="text-align:right;">@if($p->owed > 0)<strong>${{ number_format($p->owed, 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>
-                                <td style="text-align:right; border-left:1px solid #eee;">@if($p->sales_bonus > 0)${{ number_format($p->sales_bonus, 2) }}@else <span class="text-muted">—</span>@endif</td>
-                                <td style="text-align:right; border-left:1px solid #eee;">@if($p->total_owed_now > 0)<strong>${{ number_format($p->total_owed_now, 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>
-                                <td style="text-align:right;">
+                                <td style="text-align:right; border-left:1px solid #ddd;">@if($p->sales_earned > 0)${{ number_format($p->sales_earned, 2) }}@else <span class="text-muted">—</span>@endif</td>
+                                <td style="text-align:right;">@if($p->sales_paid > 0)<span class="text-muted">${{ number_format($p->sales_paid, 2) }}</span>@else <span class="text-muted">—</span>@endif</td>
+                                <td style="text-align:right;">@if($p->sales_owed > 0)<strong>${{ number_format($p->sales_owed, 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>
+                                <td style="text-align:right; border-left:1px solid #ddd;">@if($p->total_comm > 0)${{ number_format($p->total_comm, 2) }}@else <span class="text-muted">—</span>@endif</td>
+                                <td style="text-align:right;">@if($p->total_owed_now > 0)<strong>${{ number_format($p->total_owed_now, 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>
+                                <td style="text-align:right; white-space:nowrap;">
                                     @if($p->owed > 0)
                                     <form method="POST" action="{{ url('/admin/listing-commissions/mark-paid') }}"
-                                          onsubmit="return confirm('Mark {{ $p->count }} sold item(s) for {{ $p->name }} as paid (${{ number_format($p->owed, 2) }})?');"
-                                          style="margin:0;">
+                                          onsubmit="return confirm('Mark {{ $p->count }} sold item(s) for {{ $p->name }} listing-paid (${{ number_format($p->owed, 2) }})?');"
+                                          style="margin:0 0 3px;">
                                         @csrf
                                         <input type="hidden" name="user_id" value="{{ $p->user_id }}">
                                         <input type="hidden" name="from" value="{{ $from }}">
-                                        <button type="submit" class="btn btn-success btn-xs">Mark paid</button>
+                                        <button type="submit" class="btn btn-success btn-xs">Mark listing paid</button>
                                     </form>
-                                    @else
+                                    @endif
+                                    @if($p->sales_owed > 0)
+                                    <form method="POST" action="{{ url('/admin/listing-commissions/mark-sales-paid') }}"
+                                          onsubmit="return confirm('Mark {{ $p->name }} sales commission paid (${{ number_format($p->sales_owed, 2) }})?');"
+                                          style="margin:0;">
+                                        @csrf
+                                        <input type="hidden" name="user_id" value="{{ $p->user_id }}">
+                                        <button type="submit" class="btn btn-primary btn-xs">Mark sales paid</button>
+                                    </form>
+                                    @endif
+                                    @if($p->owed <= 0 && $p->sales_owed <= 0)
                                         <span class="text-muted">paid up</span>
                                     @endif
                                 </td>
@@ -172,7 +188,7 @@
 
 <div class="row">
     <div class="col-md-12">
-        @component('components.widget', ['title' => 'Paid history'])
+        @component('components.widget', ['title' => 'Listing commission — paid history'])
             @if ($history->isEmpty())
                 <p class="text-muted">No payouts recorded yet. Total paid: $0.00</p>
             @else
@@ -203,6 +219,48 @@
                                         @csrf
                                         <input type="hidden" name="id" value="{{ $h['id'] ?? '' }}">
                                         <input type="hidden" name="from" value="{{ $from }}">
+                                        <button type="submit" class="btn btn-warning btn-xs">Undo</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            @endif
+        @endcomponent
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        @component('components.widget', ['title' => 'Sales commission — paid history'])
+            @if ($sales_history->isEmpty())
+                <p class="text-muted">No sales commission payouts recorded yet. Total paid: $0.00</p>
+            @else
+                <p class="text-muted">Total paid to date: <strong>${{ number_format($total_sales_paid_all, 2) }}</strong></p>
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Paid on</th>
+                            <th>Person</th>
+                            <th style="text-align:right;">Amount</th>
+                            <th>Covered</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($sales_history as $h)
+                            <tr>
+                                <td>{{ $h['marked_at'] ?? '—' }}</td>
+                                <td>{{ $h['name'] ?? ('User #' . ($h['user_id'] ?? '?')) }}</td>
+                                <td style="text-align:right;">${{ number_format($h['amount'] ?? 0, 2) }}</td>
+                                <td>{{ $h['from_date'] ?? '?' }} → {{ $h['to_date'] ?? '?' }}</td>
+                                <td style="text-align:right;">
+                                    <form method="POST" action="{{ url('/admin/listing-commissions/undo-sales-payout') }}"
+                                          onsubmit="return confirm('Undo this sales payout? That commission will be owed again.');"
+                                          style="margin:0;">
+                                        @csrf
+                                        <input type="hidden" name="id" value="{{ $h['id'] ?? '' }}">
                                         <button type="submit" class="btn btn-warning btn-xs">Undo</button>
                                     </form>
                                 </td>
