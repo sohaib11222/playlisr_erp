@@ -61,7 +61,6 @@ class DailyChecklistController extends Controller
         'register_recon' => '/reports/clover-eod-reconciliation',
         'events_cal'     => '/events',
         'events_ready'   => '/events',
-        'purchasing'     => '/reports/inventory-check-assistant',
         'onboarding'     => '/employee-checklist',
     ];
 
