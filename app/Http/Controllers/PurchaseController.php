@@ -148,7 +148,11 @@ class PurchaseController extends Controller
                         '" data-status="' . $row->status . '" class="update_status"><i class="fas fa-edit" aria-hidden="true" ></i>' . __("lang_v1.update_status") . '</a></li>';
                     }
 
-
+                    // Add Payment — opens the standard payment modal (already on the
+                    // index). Only when there's still a balance due.
+                    if (auth()->user()->can("purchase.update") && $row->payment_status != 'paid') {
+                        $html .= '<li><a href="#" class="btn-modal" data-href="' . action('TransactionPaymentController@addPayment', [$row->id]) . '" data-container=".payment_modal"><i class="fas fa-money-bill-alt" aria-hidden="true"></i> ' . __("purchase.add_payment") . '</a></li>';
+                    }
 
                     $html .=  '</ul></div>';
                     return $html;
