@@ -34,8 +34,8 @@ class DailyChecklistController extends Controller
         ],
         'Phones, messages & email — keep these going while you work (answer calls as they come in)' => [
             'phone_texts' => 'Check Quo texts and calls — start at 9:30 AM, not before (watch for the overcharges).',
-            'whatsapp'    => 'Check WhatsApp and reply.',
-            'hello_email' => 'Reply to hello@nivessa.com.',
+            'whatsapp'    => 'Check WhatsApp and reply — start at 9:30 AM.',
+            'hello_email' => 'Reply to the hello@nivessa.com emails.',
             'discogs'     => 'Check Discogs orders and messages.',
         ],
         'Sales & accounting' => [
