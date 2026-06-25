@@ -13074,12 +13074,39 @@ class ReportController extends Controller
             foreach ($rows as $r) {
                 if (empty($r->sales_bonus_live)) { continue; }
                 $uid = (int) $r->user_id;
+                if ($uid <= 0) { continue; }
                 $bonus = (float) ($r->goal_bonus ?? 0);
-                if ($uid <= 0 || $bonus <= 0) { continue; }
-                $out[$uid] = round(($out[$uid] ?? 0) + $bonus, 2);
+                // Cumulative goal (target) and achieved (sold) over the window —
+                // summed from the same per-day breakdown that drives the bonus so
+                // the three numbers stay consistent.
+                $goal = 0.0; $achieved = 0.0;
+                if (!empty($r->daily) && is_array($r->daily)) {
+                    foreach ($r->daily as $d) {
+                        $goal     += (float) ($d['target'] ?? 0);
+                        $achieved += (float) ($d['sold'] ?? 0);
+                    }
+                } else {
+                    $goal     = (float) ($r->hour_target ?? 0);
+                    $achieved = (float) ($r->non_whatnot_revenue ?? 0);
+                }
+                if (!isset($out[$uid])) { $out[$uid] = ['bonus' => 0.0, 'goal' => 0.0, 'achieved' => 0.0]; }
+                $out[$uid]['bonus']    += $bonus;
+                $out[$uid]['goal']     += $goal;
+                $out[$uid]['achieved'] += $achieved;
             }
         }
-        return collect($out);
+        // Keep only people who actually earned a bonus (same set as before), now
+        // carrying goal + achieved alongside the bonus.
+        $res = [];
+        foreach ($out as $uid => $v) {
+            if ($v['bonus'] <= 0) { continue; }
+            $res[$uid] = (object) [
+                'bonus'    => round($v['bonus'], 2),
+                'goal'     => round($v['goal'], 2),
+                'achieved' => round($v['achieved'], 2),
+            ];
+        }
+        return collect($res);
     }
 
     /**

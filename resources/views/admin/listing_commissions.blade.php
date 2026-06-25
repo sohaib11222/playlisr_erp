@@ -133,7 +133,9 @@
                             <th style="text-align:right;" title="Items this person has listed since {{ $from }}"># Listings</th>
                             <th style="text-align:right;" title="Listing commission earned since {{ $from }}">Listing earned</th>
                             <th style="text-align:right;" title="Listing commission already paid out">Listing paid</th>
-                            <th style="text-align:right; border-left:1px solid #ddd;" title="Sales-goal bonus earned since {{ $sales_bonus_from }} (same as the leaderboard)">Sales earned</th>
+                            <th style="text-align:right; border-left:1px solid #ddd;" title="Actual sales rung by this person since {{ $sales_bonus_from }} (Whatnot excluded)">Sales achieved</th>
+                            <th style="text-align:right;" title="Sales target for this person since {{ $sales_bonus_from }}">Sales goal</th>
+                            <th style="text-align:right;" title="Sales-goal bonus earned since {{ $sales_bonus_from }} (same as the leaderboard)">Sales earned</th>
                             <th style="text-align:right;" title="Sales commission already paid out">Sales paid</th>
                             <th style="text-align:right; background:#FFF3C4; border-left:2px solid #E6CE5A;" title="Listing commission still owed">Listing owed</th>
                             <th style="text-align:right; background:#FFF3C4;" title="Sales commission still owed">Sales owed</th>
@@ -149,7 +151,9 @@
                                 <td style="text-align:right;">@if($p->listed_count > 0)<a href="{{ url('/my-earnings/items') }}?user_id={{ $p->user_id }}">{{ number_format($p->listed_count) }}</a>@else <span class="text-muted">—</span>@endif</td>
                                 <td style="text-align:right;">@if($p->earned > 0)${{ number_format($p->earned, 2) }}@else <span class="text-muted">—</span>@endif</td>
                                 <td style="text-align:right;">@if($p->paid > 0)<span class="text-muted">${{ number_format($p->paid, 2) }}</span>@else <span class="text-muted">—</span>@endif</td>
-                                <td style="text-align:right; border-left:1px solid #ddd;">@if($p->sales_earned > 0)${{ number_format($p->sales_earned, 2) }}@else <span class="text-muted">—</span>@endif</td>
+                                <td style="text-align:right; border-left:1px solid #ddd;">@if($p->sales_achieved > 0)${{ number_format($p->sales_achieved, 0) }}@else <span class="text-muted">—</span>@endif</td>
+                                <td style="text-align:right;">@if($p->sales_goal > 0)<span class="text-muted">${{ number_format($p->sales_goal, 0) }}</span>@else <span class="text-muted">—</span>@endif</td>
+                                <td style="text-align:right;">@if($p->sales_earned > 0)${{ number_format($p->sales_earned, 2) }}@else <span class="text-muted">—</span>@endif</td>
                                 <td style="text-align:right;">@if($p->sales_paid > 0)<span class="text-muted">${{ number_format($p->sales_paid, 2) }}</span>@else <span class="text-muted">—</span>@endif</td>
                                 <td style="text-align:right; background:#FFF3C4; border-left:2px solid #E6CE5A;">@if($p->owed > 0)${{ number_format($p->owed, 2) }}@else <span class="text-muted">—</span>@endif</td>
                                 <td style="text-align:right; background:#FFF3C4;">@if($p->sales_owed > 0)${{ number_format($p->sales_owed, 2) }}@else <span class="text-muted">—</span>@endif</td>

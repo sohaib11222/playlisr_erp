@@ -131,9 +131,11 @@ class ListingCommissionController extends Controller
         }
         foreach ($byId as $uid => $p) {
             $s = $salesSummary->get($uid);
-            $p->sales_earned = $s ? (float) $s->earned : 0.0;
-            $p->sales_paid   = $s ? (float) $s->paid   : 0.0;
-            $p->sales_owed   = $s ? (float) $s->owed   : 0.0;
+            $p->sales_earned   = $s ? (float) $s->earned   : 0.0;
+            $p->sales_paid     = $s ? (float) $s->paid     : 0.0;
+            $p->sales_owed     = $s ? (float) $s->owed     : 0.0;
+            $p->sales_goal     = $s ? (float) $s->goal     : 0.0;
+            $p->sales_achieved = $s ? (float) $s->achieved : 0.0;
             // Combined cumulative commission across both types.
             $p->total_comm     = round($p->earned + $p->sales_earned, 2);
             $p->total_paid_all = round($p->paid + $p->sales_paid, 2);
@@ -190,9 +192,16 @@ class ListingCommissionController extends Controller
         $out = [];
         foreach (array_unique(array_merge(array_map('intval', $earned->keys()->all()), array_keys($paidByUser))) as $uid) {
             $uid = (int) $uid;
-            $e  = round((float) ($earned[$uid] ?? 0), 2);
+            $en = $earned->get($uid); // object {bonus, goal, achieved} or null
+            $e  = round((float) ($en->bonus ?? 0), 2);
             $pd = round((float) ($paidByUser[$uid] ?? 0), 2);
-            $out[$uid] = (object) ['earned' => $e, 'paid' => $pd, 'owed' => round(max(0, $e - $pd), 2)];
+            $out[$uid] = (object) [
+                'earned'   => $e,
+                'paid'     => $pd,
+                'owed'     => round(max(0, $e - $pd), 2),
+                'goal'     => round((float) ($en->goal ?? 0), 2),
+                'achieved' => round((float) ($en->achieved ?? 0), 2),
+            ];
         }
         return collect($out);
     }
