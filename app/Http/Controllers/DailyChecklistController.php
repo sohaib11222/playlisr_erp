@@ -49,14 +49,16 @@ class DailyChecklistController extends Controller
         ],
         'People & operations' => [
             'onboarding'  => 'Handle any onboarding / offboarding for new or departing employees.',
-            'purchasing'  => 'Help with purchasing.',
+            'purchasing'  => 'Help with purchasing — ask Jon what the priority is to purchase.',
             'cameras'     => 'Check the cameras — staff are working, not on their phones.',
         ],
     ];
 
-    /** Optional helper links shown next to a task. */
+    /** Optional helper links shown next to a task (an "Open ->" jump to the ERP screen). */
     const LINKS = [
         'sales_feed' => '/pos/recent-feed',
+        'purchasing' => '/reports/inventory-check-assistant',
+        'onboarding' => '/employee-checklist',
     ];
 
     /* ---------- access ---------- */
