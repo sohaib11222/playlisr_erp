@@ -54,6 +54,19 @@
 		@else
 			<span style="color:#2b1e16; font-weight:600;">{!! $product_name !!}</span>
 		@endif
+		@php
+			// Category › Sub-category, so the associate can confirm at a glance
+			// they grabbed/scanned the right item during checkout.
+			$cat_trail = implode(' › ', array_filter([
+				$product->category_name ?? null,
+				$product->sub_category_name ?? null,
+			]));
+		@endphp
+		@if(!empty($cat_trail))
+			<div class="pos-row-category" style="font-size:11px; color:#8a6d3b; margin-top:3px;">
+				<i class="fa fa-tag" style="opacity:0.7; margin-right:3px;"></i>{{ $cat_trail }}
+			</div>
+		@endif
 		<input type="hidden" class="enable_sr_no" value="{{$product->enable_sr_no}}">
 		<input type="hidden" 
 			class="product_type" 

@@ -5023,6 +5023,20 @@ class SellPosController extends Controller
             $product->quantity_ordered = $quantity;
         }
 
+        // Surface the product's Category / Sub-category in the cart row so the
+        // associate can confirm at a glance that the item they scanned/clicked
+        // is the right one. getDetailsFromVariation already carries category_id;
+        // resolve the names here (and the sub-category, which it doesn't select).
+        $product->category_name = null;
+        $product->sub_category_name = null;
+        if (!empty($product->category_id)) {
+            $product->category_name = Category::where('id', $product->category_id)->value('name');
+        }
+        $sub_category_id = Product::where('id', $product->product_id)->value('sub_category_id');
+        if (!empty($sub_category_id)) {
+            $product->sub_category_name = Category::where('id', $sub_category_id)->value('name');
+        }
+
         $product->secondary_unit_quantity = !isset($product->secondary_unit_quantity) ? 0 : $product->secondary_unit_quantity;
 
         $product->formatted_qty_available = $this->productUtil->num_f($product->qty_available, false, null, true);

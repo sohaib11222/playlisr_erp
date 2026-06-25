@@ -43,7 +43,7 @@
 </style>
 <div id="pos_recommendations" style="display:none;">
     <div id="pos_rec_same" style="display:none;">
-        <div class="pos-rec-title">More From These Artists — In Stock</div>
+        <div class="pos-rec-title">Recommend these to customers during checkout</div>
         <div id="pos_rec_same_body"></div>
     </div>
     <div id="pos_rec_new" style="display:none;">
