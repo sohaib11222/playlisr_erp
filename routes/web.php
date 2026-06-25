@@ -883,6 +883,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // Sales-goal bonus payouts (own ledger: storage/app/sales-commission-payouts.json).
     Route::post('/admin/listing-commissions/mark-sales-paid', 'ListingCommissionController@markSalesPaid');
     Route::post('/admin/listing-commissions/undo-sales-payout', 'ListingCommissionController@undoSalesPayout');
+    // One-click: mark listing + sales commission paid together.
+    Route::post('/admin/listing-commissions/mark-all-paid', 'ListingCommissionController@markAllPaid');
 
     // One-shot cleanup: historical xlsx import wrote some transactions with
     // future dates (typos / no-year rows defaulting to 2026). Rewrites them

@@ -141,6 +141,13 @@ class ListingCommissionController extends Controller
             $p->total_paid_all = round($p->paid + $p->sales_paid, 2);
             // What you still owe this person right now = unpaid listing + unpaid sales.
             $p->total_owed_now = round($p->owed + $p->sales_owed, 2);
+
+            // Plain-English payroll memo so whoever pays them knows what the
+            // money is for (and the person can see it on their pay stub).
+            $memo = [];
+            if ($p->owed > 0)       { $memo[] = 'Listing commission $' . number_format($p->owed, 2) . ' (' . number_format($p->count) . ' sold item' . ($p->count == 1 ? '' : 's') . ')'; }
+            if ($p->sales_owed > 0) { $memo[] = 'Sales bonus $' . number_format($p->sales_owed, 2); }
+            $p->payroll_memo = implode('  +  ', $memo);
         }
 
         $people = collect($byId)->values()->sortByDesc('total_owed_now')->values();
@@ -204,6 +211,83 @@ class ListingCommissionController extends Controller
             ];
         }
         return collect($out);
+    }
+
+    // One-click payout: marks BOTH the person's unpaid listing commission and
+    // their unpaid sales commission paid in a single action (each still lands in
+    // its own ledger so the histories/undo stay separate). Powers the single
+    // "Mark paid" button on the page.
+    public function markAllPaid(Request $request)
+    {
+        $from = $this->normalizeFrom($request->input('from'));
+        $userId = (int) $request->input('user_id');
+        $businessId = $request->session()->get('user.business_id');
+
+        if ($userId <= 0) {
+            return redirect('/admin/listing-commissions')
+                ->with('status', ['success' => 0, 'msg' => 'Missing person.']);
+        }
+
+        $parts = [];
+        $total = 0.0;
+        $name = null;
+
+        // Listing commission.
+        $paid = $this->loadPayouts();
+        $lines = $this->ownedSoldLines($businessId, $from, $this->paidLineIds($paid))
+            ->where('user_id', $userId)->values();
+        if ($lines->isNotEmpty()) {
+            $amount = 0.0; $lineIds = [];
+            foreach ($lines as $row) { $amount += (float) $row->sale_amount * self::RATE; $lineIds[] = (int) $row->line_id; }
+            $name = $this->personName($lines->first());
+            $paid[] = [
+                'id'        => bin2hex(random_bytes(8)),
+                'user_id'   => $userId,
+                'name'      => $name,
+                'count'     => count($lineIds),
+                'amount'    => round($amount, 2),
+                'line_ids'  => $lineIds,
+                'from_date' => $from,
+                'to_date'   => now()->toDateString(),
+                'marked_by' => $request->session()->get('user.id'),
+                'marked_at' => now()->toDateTimeString(),
+            ];
+            $this->savePayouts($paid);
+            $parts[] = 'listing $' . number_format($amount, 2);
+            $total += $amount;
+        }
+
+        // Sales commission.
+        $summary = $this->salesSummaryByUser($businessId)->get($userId);
+        $owedSales = $summary ? (float) $summary->owed : 0.0;
+        if ($owedSales > 0) {
+            $u = DB::table('users')->where('id', $userId)->first();
+            $name = $name ?: ($u ? (trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->surname ?? ('User #' . $userId))) : ('User #' . $userId));
+            $sp = $this->loadSalesPayouts();
+            $sp[] = [
+                'id'        => bin2hex(random_bytes(8)),
+                'user_id'   => $userId,
+                'name'      => $name,
+                'amount'    => round($owedSales, 2),
+                'from_date' => self::SALES_BONUS_FROM,
+                'to_date'   => now()->toDateString(),
+                'marked_by' => $request->session()->get('user.id'),
+                'marked_at' => now()->toDateTimeString(),
+            ];
+            $this->saveSalesPayouts($sp);
+            $parts[] = 'sales $' . number_format($owedSales, 2);
+            $total += $owedSales;
+        }
+
+        if (empty($parts)) {
+            return redirect('/admin/listing-commissions')
+                ->with('status', ['success' => 0, 'msg' => 'Nothing outstanding for that person.']);
+        }
+
+        return redirect('/admin/listing-commissions')->with('status', [
+            'success' => 1,
+            'msg'     => 'Marked paid for ' . ($name ?: 'that person') . ': ' . implode(' + ', $parts) . ' = $' . number_format($total, 2) . '.',
+        ]);
     }
 
     // Snapshot the person's currently-owed sales commission as a payout. Running

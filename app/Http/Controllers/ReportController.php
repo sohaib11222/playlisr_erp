@@ -13064,8 +13064,14 @@ class ReportController extends Controller
         $out = [];
         foreach ($locations as $lid => $lname) {
             try {
+                // NOTE: deliberately NO applyStoreRoster() here. The roster is a
+                // per-store DISPLAY nicety for the leaderboard; for a payables
+                // total it can wrongly drop a person whose sales rang at a store
+                // the roster treats as not-theirs. /my-earnings (userSalesBonus)
+                // and the admin Daily Earnings report don't roster either, so
+                // skipping it makes the Pay Commissions page reconcile with the
+                // numbers each person already sees (Sarah 2026-06-25).
                 $rows = $this->buildLeaderboardRows($business_id, $start_str, $end_str, null, $lid, $opts);
-                $rows = $this->applyStoreRoster($rows, $lname);
                 $rows = $this->attachHourTargets($rows, $business_id, $lid, $start_str, $end_str);
             } catch (\Throwable $e) {
                 \Log::warning('salesBonusByUser failed for location ' . $lid . ': ' . $e->getMessage());
