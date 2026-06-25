@@ -119,6 +119,10 @@ body.abc-v2 .dataTables_wrapper .dataTables_paginate .paginate_button.current {
                 <input type="text" id="full_search" class="form-control" placeholder="Product, SKU, format…" autocomplete="off">
             </div>
             <div class="abc-field">
+                <label for="full_location">Store</label>
+                {!! Form::select('full_location', $business_locations, null, ['class' => 'form-control', 'id' => 'full_location']) !!}
+            </div>
+            <div class="abc-field">
                 <label for="full_scope">Scope</label>
                 {!! Form::select('full_scope', [
                     '' => 'All rows',
@@ -189,6 +193,7 @@ $(document).ready(function () {
                 d.class = $('#full_class').val();
                 d.xyz = $('#full_xyz').val();
                 d.abc_xyz = $('#full_combo').val();
+                d.location_id = $('#full_location').val();
             }
         },
         dom: 'Blrtip',
@@ -207,6 +212,7 @@ $(document).ready(function () {
                         'class': $('#full_class').val() || '',
                         xyz: $('#full_xyz').val() || '',
                         abc_xyz: $('#full_combo').val() || '',
+                        location_id: $('#full_location').val() || '',
                         search_term: $('#full_search').val() || ''
                     });
                     window.location = '{{ action("ReportController@abcFullReport") }}?' + params.toString();
@@ -228,7 +234,7 @@ $(document).ready(function () {
         ]
     });
 
-    $('#full_scope, #full_class, #full_xyz, #full_combo').change(function () {
+    $('#full_scope, #full_class, #full_xyz, #full_combo, #full_location').change(function () {
         table.ajax.reload();
     });
 

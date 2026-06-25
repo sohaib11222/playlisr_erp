@@ -6412,9 +6412,12 @@ class ReportController extends Controller
             return Datatables::of($this->abcFullReportRows($request, false))->make(true);
         }
 
+        $business_id = $request->session()->get('user.business_id');
+
         return view('report.abc_full_report', [
             'imported_meta' => $abcSvc->load(),
             'has_rows' => count($abcSvc->loadReportRows()) > 0,
+            'business_locations' => BusinessLocation::forDropdown($business_id, true),
         ]);
     }
 
@@ -6432,8 +6435,37 @@ class ReportController extends Controller
         $xyz = strtoupper(trim((string) $request->input('xyz', '')));
         $combo = strtoupper(preg_replace('/\s+/', '', (string) $request->input('abc_xyz', '')));
         $scope = (string) $request->input('scope', '');
+        $location_id = (int) $request->input('location_id', 0);
 
-        $rows = collect($abcSvc->loadReportRows())->filter(function ($r) use ($class, $xyz, $combo, $scope) {
+        // Per-store view: swap the analyzer's global class for this store's own
+        // class from the import's location_map, dropping rows the store has no
+        // sales class for. XYZ stays global (the import only keeps a global
+        // XYZ), so the combo becomes store-class + global-XYZ.
+        $locClassMap = [];
+        if ($location_id > 0) {
+            $meta = $abcSvc->load();
+            $lm = $meta['location_map'][$location_id] ?? ($meta['location_map'][(string) $location_id] ?? []);
+            foreach ((array) $lm as $pid => $cls) {
+                $locClassMap[(int) $pid] = strtoupper((string) $cls);
+            }
+        }
+        $useStore = $location_id > 0 && !empty($locClassMap);
+
+        $rows = collect($abcSvc->loadReportRows());
+        if ($useStore) {
+            $rows = $rows->map(function ($r) use ($locClassMap) {
+                $pid = isset($r['matched_id']) ? (int) $r['matched_id'] : 0;
+                $storeClass = $locClassMap[$pid] ?? '';
+                $r['class'] = $storeClass;
+                $xyzv = strtoupper((string) ($r['xyz'] ?? ''));
+                $r['abc_xyz'] = ($storeClass !== '' && $xyzv !== '') ? ($storeClass . $xyzv) : '';
+                return $r;
+            })->filter(function ($r) {
+                return ($r['class'] ?? '') !== '';
+            });
+        }
+
+        $rows = $rows->filter(function ($r) use ($class, $xyz, $combo, $scope) {
             if ($class !== '' && strtoupper((string) ($r['class'] ?? '')) !== $class) {
                 return false;
             }
