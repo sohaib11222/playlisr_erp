@@ -955,11 +955,11 @@ class EventsController extends Controller
                 if (!empty($streets[$kw])) {
                     $data['items'][$id]['streetDate'] = $streets[$kw];
                 }
-                // Store the version list for ERP reference, but keep public
-                // preorders OFF — we're not sure we're allowed to take them, so
-                // the customer-facing preorder page stays disabled until cleared.
-                if (isset($preorderSeed[$kw])) {
-                    $data['items'][$id]['preorderEnabled'] = false;
+                // Seed the version list for ERP reference ONLY when none exists
+                // yet. Never touch preorderEnabled or overwrite an existing
+                // products list — preorders are Sarah's to control in the ERP
+                // now, and this runs on every deploy (it must not revert her).
+                if (isset($preorderSeed[$kw]) && empty((array) ($data['items'][$id]['preorderProducts'] ?? []))) {
                     $data['items'][$id]['preorderProducts'] = $preorderSeed[$kw];
                 }
                 $data['items'][$id]['updatedAt'] = date('c');
