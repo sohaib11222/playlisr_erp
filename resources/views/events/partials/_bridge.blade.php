@@ -302,16 +302,13 @@
               $bd = [];
               if ((int) $r['ordV'] > 0) { $bd[] = (int) $r['ordV'] . ' vinyl'; }
               if ((int) $r['ordC'] > 0) { $bd[] = (int) $r['ordC'] . ' CD'; }
+              $overLabel = $overUnits > 0
+                ? $overUnits . ' over' . ($bd ? ' (' . implode(' · ', $bd) . ')' : '')
+                : '—';
             @endphp
             <tr>
               <td class="ev-name">{{ $r['slabel'] }}<div class="ev-meta">not hosting</div></td>
-              <td colspan="4" style="{{ $overUnits > 0 ? $tone['over'] : $tone['ok'] }}">
-                @if($overUnits > 0)
-                  {{ $overUnits }} over@if($bd) ({{ implode(' · ', $bd) }})@endif
-                @else
-                  —
-                @endif
-              </td>
+              <td colspan="4" style="{{ $overUnits > 0 ? $tone['over'] : $tone['ok'] }}">{{ $overLabel }}</td>
             </tr>
           @endif
         @endforeach
