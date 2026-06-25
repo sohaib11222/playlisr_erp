@@ -19,6 +19,9 @@ body.pos-v2 .payment_modal .input-group-addon, body.pos-v2 .edit_payment_modal .
 body.pos-v2 .payment_modal .input-group .form-control, body.pos-v2 .edit_payment_modal .input-group .form-control { border-radius:0 9px 9px 0; }
 body.pos-v2 .payment_modal .btn-primary, body.pos-v2 .edit_payment_modal .btn-primary { background:var(--pos-accent); border:1px solid var(--pos-accent-deep); color:var(--pos-accent-text); border-radius:10px; font-weight:700; }
 body.pos-v2 .payment_modal .help-block, body.pos-v2 .edit_payment_modal .help-block { font-size:11px; color:#8a8070; }
+body.pos-v2 .payment_modal .modal-body, body.pos-v2 .edit_payment_modal .modal-body { font-size:14px; }
+body.pos-v2 .payment_modal .modal-body strong, body.pos-v2 .edit_payment_modal .modal-body strong { font-size:13px !important; font-weight:700; }
+body.pos-v2 .payment_modal input[type=file], body.pos-v2 .edit_payment_modal input[type=file] { font-size:12px; max-width:100%; }
 </style>
 
 <!-- Content Header (Page header) -->
