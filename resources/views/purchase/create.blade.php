@@ -3,6 +3,8 @@
 
 @section('content')
 
+@include('purchase._posv2_skin')
+
 @php
 	$custom_labels = json_decode(session('business.custom_labels'), true);
 @endphp
