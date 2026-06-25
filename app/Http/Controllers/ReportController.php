@@ -4859,9 +4859,19 @@ class ReportController extends Controller
      * undercounts the prior-year LFL baseline by ~80% and inflates every % to
      * +1,000%. Whatnot livestream sales are still excluded (store-floor only).
      */
-    private function lflRevAndCount($business_id, $location_id, $start, $end, $excludeLivePos = false)
+    // Revenue for a store over a window. During the 2024-25 transition the store
+    // recorded sales in TWO places — the manual spreadsheets (imported as
+    // import_source 'nivessa_backend_sales_*') and the then-new ERP register
+    // (live POS, import_source NULL). One was the complete record and the other a
+    // partial duplicate: early on the spreadsheet was complete and the register
+    // caught a fraction; later the register took over and the spreadsheet became a
+    // stub. Counting both double-counts. So for in-store we take whichever source
+    // is the COMPLETE record that month (the larger of the two) and ignore the
+    // partial duplicate. Other channels (web / Discogs / rentals) are separate and
+    // added on top. Non-destructive — purely which rows the report sums.
+    private function lflRevAndCount($business_id, $location_id, $start, $end)
     {
-        $q = DB::table('transactions')
+        $r = DB::table('transactions')
             ->where('business_id', $business_id)
             ->where('location_id', $location_id)
             ->where('type', 'sell')
@@ -4869,42 +4879,16 @@ class ReportController extends Controller
             ->where(function ($w) {
                 $w->where('is_whatnot', 0)->orWhereNull('is_whatnot');
             })
-            ->whereBetween('transaction_date', [$start, $end]);
-        // For a few early months the ERP register was brand-new and only caught a
-        // fraction of sales already fully recorded in the imported spreadsheet, so
-        // counting both double-counts. For those store/months we count the
-        // complete spreadsheet (import_source set) and skip the redundant live-POS
-        // (import_source NULL) register rows. Non-destructive: nothing is deleted,
-        // the rows still exist; see lflSheetAuthoritativeCells().
-        if ($excludeLivePos) {
-            $q->whereNotNull('import_source');
-        }
-        return $q->selectRaw('COALESCE(SUM(final_total), 0) as revenue, COUNT(*) as tx_count')
+            ->whereBetween('transaction_date', [$start, $end])
+            ->selectRaw("
+                COALESCE(SUM(CASE WHEN import_source LIKE 'nivessa_backend_sales_%' THEN final_total ELSE 0 END),0) as sheet_rev,
+                COALESCE(SUM(CASE WHEN import_source IS NULL THEN final_total ELSE 0 END),0) as register_rev,
+                COALESCE(SUM(CASE WHEN import_source IS NOT NULL AND import_source NOT LIKE 'nivessa_backend_sales_%' THEN final_total ELSE 0 END),0) as other_rev,
+                COUNT(*) as tx_count
+            ")
             ->first();
-    }
-
-    // Store/months where an imported spreadsheet (the staff's complete sales log)
-    // exists. During those months the ERP register ran in parallel and only
-    // re-recorded a subset of the same sales, so counting both double-counts. For
-    // every such cell the LFL counts the complete spreadsheet (import_source =
-    // 'nivessa_backend_sales_*') and skips the redundant live-POS register rows.
-    // Data-driven straight from the rows — months after the sheets stop are
-    // register-only and unaffected. Non-destructive: nothing is deleted; this is
-    // purely which rows the report sums.
-    private function lflSheetAuthoritativeCells($business_id)
-    {
-        $rows = DB::table('transactions')
-            ->where('business_id', $business_id)
-            ->where('type', 'sell')->where('status', 'final')
-            ->where('import_source', 'like', 'nivessa_backend_sales_%')
-            ->select('location_id', DB::raw("DATE_FORMAT(transaction_date, '%Y-%m') as ym"))
-            ->groupBy('location_id', 'ym')
-            ->get();
-        $out = [];
-        foreach ($rows as $r) {
-            $out[(int) $r->location_id][] = $r->ym;
-        }
-        return $out;
+        $revenue = max((float) $r->sheet_rev, (float) $r->register_rev) + (float) $r->other_rev;
+        return (object) ['revenue' => $revenue, 'tx_count' => (int) $r->tx_count];
     }
 
     /**
@@ -5280,10 +5264,6 @@ class ReportController extends Controller
 
         $store_ids = $locations->keys()->all();
 
-        // Cells where the imported spreadsheet is authoritative and the brand-new
-        // register rows are redundant (skip live-POS there). Non-destructive.
-        $sheet_auth_cells = $this->lflSheetAuthoritativeCells($business_id);
-
         $months = [];
         $span_this = array_fill_keys($store_ids, 0.0);
         $span_ly   = array_fill_keys($store_ids, 0.0);
@@ -5311,11 +5291,8 @@ class ReportController extends Controller
             $mo_this_all = $mo_ly_all = 0.0;
 
             foreach ($store_ids as $loc_id) {
-                $auth = $sheet_auth_cells[$loc_id] ?? [];
-                $this_excl = in_array($ms->format('Y-m'), $auth, true);
-                $ly_excl   = in_array($ly_ms->format('Y-m'), $auth, true);
-                $this_rev = (float) $this->lflRevAndCount($business_id, $loc_id, $ms, $me, $this_excl)->revenue;
-                $ly_rev   = (float) $this->lflRevAndCount($business_id, $loc_id, $ly_ms, $ly_me, $ly_excl)->revenue;
+                $this_rev = (float) $this->lflRevAndCount($business_id, $loc_id, $ms, $me)->revenue;
+                $ly_rev   = (float) $this->lflRevAndCount($business_id, $loc_id, $ly_ms, $ly_me)->revenue;
 
                 $cells[$loc_id] = [
                     'this_rev' => $this_rev,
