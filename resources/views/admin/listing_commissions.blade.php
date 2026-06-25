@@ -1,5 +1,5 @@
 @extends('layouts.app')
-@section('title', 'Listing Commissions')
+@section('title', 'Commissions')
 
 @section('content')
 @php
@@ -16,15 +16,16 @@
 @endphp
 <section class="content-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;">
     <div>
-    <h1>Listing Commissions Owed</h1>
+    <h1>Commissions Owed</h1>
     <p class="text-muted">
-        What we owe each person for items they listed that have <strong>sold</strong>.
-        Commission = <strong>{{ rtrim(rtrim(number_format($rate_pct, 2), '0'), '.') }}%</strong>
-        of the actual sale price of each item they listed/barcoded on/after the start
-        date that has since sold and hasn't been paid for yet. These are the same
-        numbers each person sees as earned commission on the Employee Leaderboard.
-        Click <strong>Mark paid</strong> once you've paid someone — those sales drop
-        off the owed list.
+        Both commission types per person, in one place.
+        <strong>Listing</strong> = <strong>{{ rtrim(rtrim(number_format($rate_pct, 2), '0'), '.') }}%</strong>
+        of the sale price of each item they listed/barcoded (since {{ \Carbon::parse($from)->format('M j, Y') }})
+        that has since sold and isn't paid yet.
+        <strong>Sales</strong> = the sales-goal bonus they've earned since {{ \Carbon::parse($sales_bonus_from)->format('M j, Y') }}
+        (same number as the Employee Leaderboard).
+        Click <strong>Mark paid</strong> once you've paid someone's listing commission — those sales drop
+        off the owed list. The sales bonus is paid out manually (no ledger yet).
     </p>
     </div>
     <button type="button" class="lc-pin-btn {{ $pinAlready ? 'is-on' : '' }}"
@@ -109,9 +110,9 @@
         <div class="box box-solid">
             <div class="box-body">
                 <div class="form-inline">
-                    <span>Since <strong>{{ \Carbon::parse($from)->format('M j, Y') }}</strong> (program start). <strong>Owed</strong> = everything unpaid — the exact number each employee sees on My Earnings. <strong>Paid</strong> = total you've actually paid them. Earned = Paid + Owed.</span>
+                    <span><strong>Total owed now</strong> = unpaid listing commission + sales bonus, across everyone.</span>
                     <span class="pull-right" style="font-size:16px;">
-                        Earned <strong>${{ number_format($total_earned, 2) }}</strong> &nbsp;·&nbsp; Paid <strong>${{ number_format($total_paid_window, 2) }}</strong> &nbsp;·&nbsp; Owed <strong>${{ number_format($total_owed, 2) }}</strong>
+                        Listing owed <strong>${{ number_format($total_owed, 2) }}</strong> &nbsp;·&nbsp; Sales bonus <strong>${{ number_format($total_sales_bonus, 2) }}</strong> &nbsp;·&nbsp; Total owed now <strong>${{ number_format($total_owed_now, 2) }}</strong>
                     </span>
                 </div>
             </div>
@@ -121,21 +122,19 @@
 
 <div class="row">
     <div class="col-md-12">
-        @component('components.widget', ['title' => 'By person (listed since ' . $from . ')'])
+        @component('components.widget', ['title' => 'By person — listing + sales commission'])
             @if ($people->isEmpty())
-                <p class="text-muted">No listing commission for items listed since {{ $from }} that have sold.</p>
+                <p class="text-muted">No commission to show yet.</p>
             @else
                 <table class="table table-striped">
                     <thead>
                         <tr>
                             <th>Person</th>
-                            <th style="text-align:right;">Items listed</th>
-                            <th style="text-align:right;">Listed value</th>
-                            <th style="text-align:right;">Items sold</th>
-                            <th style="text-align:right;">Sale total</th>
-                            <th style="text-align:right;">Earned</th>
-                            <th style="text-align:right;">Paid</th>
-                            <th style="text-align:right;">Owed</th>
+                            <th style="text-align:right;" title="Listing commission earned since {{ $from }}">Listing earned</th>
+                            <th style="text-align:right;" title="Listing commission already paid out">Listing paid</th>
+                            <th style="text-align:right;" title="Listing commission still owed">Listing owed</th>
+                            <th style="text-align:right; border-left:1px solid #eee;" title="Sales-goal bonus earned since {{ $sales_bonus_from }} (same as the leaderboard)">Sales commission</th>
+                            <th style="text-align:right; border-left:1px solid #eee;" title="Unpaid listing + sales bonus = what you owe this person now">Total owed now</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -143,13 +142,11 @@
                         @foreach ($people as $p)
                             <tr>
                                 <td><a href="{{ url('/my-earnings') }}?user_id={{ $p->user_id }}" title="See {{ $p->name }}'s full earnings page (what they see)">{{ $p->name }}</a></td>
-                                <td style="text-align:right;"><a href="{{ url('/my-earnings/items') }}?user_id={{ $p->user_id }}">{{ number_format($p->listed_count) }}</a></td>
-                                <td style="text-align:right;">${{ number_format($p->listed_value, 2) }}</td>
-                                <td style="text-align:right;">{{ number_format($p->sold_count) }}</td>
-                                <td style="text-align:right;">${{ number_format($p->sale_total, 2) }}</td>
-                                <td style="text-align:right;">${{ number_format($p->earned, 2) }}</td>
-                                <td style="text-align:right;">${{ number_format($p->paid, 2) }}</td>
-                                <td style="text-align:right;"><strong>${{ number_format($p->owed, 2) }}</strong></td>
+                                <td style="text-align:right;">@if($p->earned > 0)${{ number_format($p->earned, 2) }}@else <span class="text-muted">—</span>@endif</td>
+                                <td style="text-align:right;">@if($p->paid > 0)<span class="text-muted">${{ number_format($p->paid, 2) }}</span>@else <span class="text-muted">—</span>@endif</td>
+                                <td style="text-align:right;">@if($p->owed > 0)<strong>${{ number_format($p->owed, 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>
+                                <td style="text-align:right; border-left:1px solid #eee;">@if($p->sales_bonus > 0)${{ number_format($p->sales_bonus, 2) }}@else <span class="text-muted">—</span>@endif</td>
+                                <td style="text-align:right; border-left:1px solid #eee;">@if($p->total_owed_now > 0)<strong>${{ number_format($p->total_owed_now, 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>
                                 <td style="text-align:right;">
                                     @if($p->owed > 0)
                                     <form method="POST" action="{{ url('/admin/listing-commissions/mark-paid') }}"

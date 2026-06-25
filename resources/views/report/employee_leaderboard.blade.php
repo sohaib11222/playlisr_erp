@@ -155,13 +155,13 @@
     </style>
 
     <div class="alert alert-info" style="border-left:4px solid #3c8dbc;">
-        <a href="{{ url('/admin/listing-commissions') }}" class="btn btn-primary btn-sm pull-right">Pay listing commissions</a>
+        <a href="{{ url('/admin/listing-commissions') }}" class="btn btn-primary btn-sm pull-right">Pay commissions</a>
         Each store is ranked by <strong>sales per hour</strong>. Whatnot sales don't count. <strong>Sales commission</strong> starts Jun 15.
     </div>
 
     <div class="row">
         @forelse($stores as $store)
-            <div class="col-md-6">
+            <div class="col-md-12">
                 <div class="box box-solid">
                     <div class="box-body table-responsive">
                         <p class="lb-store-head">{{ $store['name'] }}</p>

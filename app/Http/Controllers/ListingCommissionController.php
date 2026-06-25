@@ -25,6 +25,7 @@ class ListingCommissionController extends Controller
 {
     const PAYOUTS_FILE = 'listing-commission-payouts.json';
     const DEFAULT_FROM = '2026-05-15';
+    const SALES_BONUS_FROM = '2026-06-15'; // sales-goal bonus go-live (matches leaderboard)
     const RATE = 0.02; // flat 2%, matches barcodingCommissionByUser
 
     // Category exclusions copied verbatim from barcodingCommissionByUser so the
@@ -105,7 +106,41 @@ class ListingCommissionController extends Controller
                 $people[$uid]->count++;
             }
         }
-        $people = collect($people)->sortByDesc('owed')->values();
+        // Sales-goal bonus per employee (since it went live 2026-06-15), pulled
+        // straight from the leaderboard math so this page shows BOTH commission
+        // types per person. There's no payout ledger for the bonus yet, so we
+        // only show "earned" (paid manually outside the app).
+        $salesBonus = collect();
+        try {
+            $salesBonus = app(\App\Http\Controllers\ReportController::class)
+                ->salesBonusByUser($businessId, self::SALES_BONUS_FROM, now()->toDateString());
+        } catch (\Throwable $e) {
+            \Log::warning('listing-commissions sales bonus pull failed: ' . $e->getMessage());
+        }
+
+        // Make sure people who earned a sales bonus but have no listing lines
+        // still appear on the page.
+        $byId = [];
+        foreach ($people as $p) { $byId[(int) $p->user_id] = $p; }
+        foreach ($salesBonus as $uid => $bonus) {
+            $uid = (int) $uid;
+            if (!isset($byId[$uid])) {
+                $u = DB::table('users')->where('id', $uid)->first();
+                $byId[$uid] = (object) [
+                    'user_id' => $uid,
+                    'name'    => $u ? (trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->surname ?? ('User #' . $uid))) : ('User #' . $uid),
+                    'listed_count' => 0, 'listed_value' => 0.0, 'sold_count' => 0,
+                    'sale_total' => 0.0, 'earned' => 0.0, 'paid' => 0.0, 'owed' => 0.0, 'count' => 0,
+                ];
+            }
+        }
+        foreach ($byId as $uid => $p) {
+            $p->sales_bonus = round((float) ($salesBonus[$uid] ?? 0), 2);
+            // What you still owe this person right now = unpaid listing + bonus.
+            $p->total_owed_now = round($p->owed + $p->sales_bonus, 2);
+        }
+
+        $people = collect($byId)->values()->sortByDesc('total_owed_now')->values();
 
         $history = collect($paid)->sortByDesc('marked_at')->values();
 
@@ -118,6 +153,9 @@ class ListingCommissionController extends Controller
             'total_earned'=> $people->sum('earned'),
             'total_paid_window' => $people->sum('paid'),
             'total_paid'  => $history->sum('amount'),
+            'total_sales_bonus' => $people->sum('sales_bonus'),
+            'total_owed_now'    => $people->sum('total_owed_now'),
+            'sales_bonus_from'  => self::SALES_BONUS_FROM,
         ]);
     }
 

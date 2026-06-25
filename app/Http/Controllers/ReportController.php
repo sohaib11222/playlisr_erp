@@ -13028,6 +13028,48 @@ class ReportController extends Controller
     }
 
     /**
+     * Sales-goal bonus earned per employee over [$from, $to], keyed by user_id.
+     * Uses the EXACT leaderboard pipeline (buildLeaderboardRows + store roster +
+     * attachHourTargets) summed across every active location, so the number a
+     * person shows here is the same bonus they see on the Employee Leaderboard.
+     * Bonus is hour-based and tied to where each person clocked in, so summing
+     * across locations never double-counts. Returns 0s before the 2026-06-15
+     * go-live (sales_bonus_live gate). Used by the Pay Commissions page.
+     */
+    public function salesBonusByUser($business_id, $from, $to)
+    {
+        $start_str = \Carbon::parse($from)->startOfDay()->toDateTimeString();
+        $end_str   = \Carbon::parse($to)->endOfDay()->toDateTimeString();
+        $opts = ['with_commission' => true, 'exclude_owners' => true];
+
+        $locations = \DB::table('business_locations')
+            ->where('business_id', $business_id)
+            ->where('is_active', 1)
+            ->orderBy('id')
+            ->pluck('name', 'id');
+
+        $out = [];
+        foreach ($locations as $lid => $lname) {
+            try {
+                $rows = $this->buildLeaderboardRows($business_id, $start_str, $end_str, null, $lid, $opts);
+                $rows = $this->applyStoreRoster($rows, $lname);
+                $rows = $this->attachHourTargets($rows, $business_id, $lid, $start_str, $end_str);
+            } catch (\Throwable $e) {
+                \Log::warning('salesBonusByUser failed for location ' . $lid . ': ' . $e->getMessage());
+                continue;
+            }
+            foreach ($rows as $r) {
+                if (empty($r->sales_bonus_live)) { continue; }
+                $uid = (int) $r->user_id;
+                $bonus = (float) ($r->goal_bonus ?? 0);
+                if ($uid <= 0 || $bonus <= 0) { continue; }
+                $out[$uid] = round(($out[$uid] ?? 0) + $bonus, 2);
+            }
+        }
+        return collect($out);
+    }
+
+    /**
      * Per-store roster overrides. The board files people by where their sales
      * rang, which can misplace cross-location strays; these keep each store's
      * list to who actually works there. First-name match, case-insensitive, as
