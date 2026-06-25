@@ -59,14 +59,21 @@ class DailyChecklistController extends Controller
 
     /* ---------- access ---------- */
 
-    public static function canAccess()
+    /** Is the current user Jon? His ERP account is "Jonathan Hedvat". */
+    public static function isJon()
     {
         $u = auth()->user();
         if (!$u) {
             return false;
         }
-        return $u->hasRole('Admin#' . session('business.id'))
-            || EmployeeChecklistController::isFatteen();
+        return strtolower(trim((string) $u->first_name)) === 'jonathan'
+            && strtolower(trim((string) $u->last_name)) === 'hedvat';
+    }
+
+    /** Fatteen + Jon only — this is Fatteen's personal list; Jon oversees it. */
+    public static function canAccess()
+    {
+        return EmployeeChecklistController::isFatteen() || self::isJon();
     }
 
     private function guard()
