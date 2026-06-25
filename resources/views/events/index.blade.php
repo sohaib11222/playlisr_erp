@@ -35,7 +35,7 @@
   @if(!empty($toOrder))
     <div class="ev-card" style="border:1px solid var(--pos-accent,#FFE08A);">
       <h2 style="margin-top:0;">What to order</h2>
-      <p class="sub" style="margin:0 0 10px;">Gaps between customer demand (RSVP buy-interest) and what you've ordered, per store. Non-hosting stores show a stock-a-couple baseline.</p>
+      <p class="sub" style="margin:0 0 10px;">Gaps between customer demand (RSVP buy-interest) and what you've ordered, at each hosting store. A store that isn't hosting carries none of the title, so it's never listed here.</p>
       <table class="ev-tbl">
         <thead><tr><th style="width:45%;">Event</th><th style="width:20%;">Store</th><th style="width:35%;">Order</th></tr></thead>
         <tbody>
