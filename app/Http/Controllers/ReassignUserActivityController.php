@@ -32,9 +32,22 @@ class ReassignUserActivityController extends Controller
             ->orderBy('first_name')
             ->get(['id', 'first_name', 'last_name', 'username']);
 
+        // Store dropdown so a window can be scoped to one location
+        // (e.g. "Hollywood sales after 2:30 PM" — a mid-shift wrong-login
+        // handover at a single store).
+        $business_locations = \App\BusinessLocation::where('business_id', $businessId)
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
         $fromUserId = (int) $request->input('from_user_id', 0);
         $toUserId   = (int) $request->input('to_user_id', 0);
         $date       = trim((string) $request->input('date', '')) ?: now()->toDateString();
+        // Optional time-of-day window + store, so a mid-shift handover can be
+        // scoped exactly (e.g. Mica took over Manolo's login at 2:30 PM at
+        // Hollywood). Times are HH:MM in the app TZ; blank = full day.
+        $afterTime   = preg_match('/^\d{2}:\d{2}$/', (string) $request->input('after_time', ''))  ? $request->input('after_time')  : '';
+        $beforeTime  = preg_match('/^\d{2}:\d{2}$/', (string) $request->input('before_time', '')) ? $request->input('before_time') : '';
+        $locationId  = (int) $request->input('location_id', 0);
 
         $sales = collect();
         $listings = collect();
@@ -44,11 +57,15 @@ class ReassignUserActivityController extends Controller
         if ($fromUserId && $toUserId && $fromUserId !== $toUserId) {
             $previewed = true;
             [$start, $end] = $this->dayBounds($date);
+            // Narrow the day window by the optional after/before times.
+            if ($afterTime !== '')  { $start = \Carbon::parse($date . ' ' . $afterTime . ':00')->toDateTimeString(); }
+            if ($beforeTime !== '') { $end   = \Carbon::parse($date . ' ' . $beforeTime . ':00')->toDateTimeString(); }
 
             $sales = DB::table('transactions as t')
                 ->leftJoin('contacts as c', 'c.id', '=', 't.contact_id')
                 ->where('t.business_id', $businessId)
                 ->where('t.created_by', $fromUserId)
+                ->when($locationId, fn($q) => $q->where('t.location_id', $locationId))
                 ->whereBetween('t.transaction_date', [$start, $end])
                 ->orderBy('t.transaction_date')
                 ->get([
@@ -97,9 +114,13 @@ class ReassignUserActivityController extends Controller
 
         return view('admin.reassign_user_activity', [
             'users'      => $users,
+            'business_locations' => $business_locations,
             'fromUserId' => $fromUserId,
             'toUserId'   => $toUserId,
             'date'       => $date,
+            'afterTime'  => $afterTime,
+            'beforeTime' => $beforeTime,
+            'locationId' => $locationId,
             'sales'      => $sales,
             'listings'   => $listings,
             'labels'     => $labels,

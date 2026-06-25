@@ -75,8 +75,26 @@ body.role-picker .rua-pill { display:inline-block; padding:2px 8px; border-radiu
                         <label>Day</label>
                         <input type="date" name="date" value="{{ $date }}">
                     </div>
+                    <div class="rua-field">
+                        <label>Store (optional)</label>
+                        <select name="location_id">
+                            <option value="">— all stores —</option>
+                            @foreach($business_locations as $loc)
+                                <option value="{{ $loc->id }}" {{ (int)($locationId ?? 0) === (int)$loc->id ? 'selected' : '' }}>{{ $loc->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="rua-field">
+                        <label>After time (optional)</label>
+                        <input type="time" name="after_time" value="{{ $afterTime ?? '' }}">
+                    </div>
+                    <div class="rua-field">
+                        <label>Before time (optional)</label>
+                        <input type="time" name="before_time" value="{{ $beforeTime ?? '' }}">
+                    </div>
                     <button type="submit" class="rua-btn">Preview</button>
                 </div>
+                <p class="rua-muted" style="margin:10px 0 0;">Leave time fields blank for the whole day. Example: to move a mid-shift handover, set <strong>After time</strong> to when the next person took over (e.g. 2:30 PM) and pick the store — the preview then shows only those sales.</p>
             </form>
         </div>
 
