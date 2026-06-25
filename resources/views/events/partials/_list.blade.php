@@ -46,7 +46,11 @@
         $picoA = $sc ? (int) ($sc['pico']['attending'] ?? 0) : 0;
         $vinylByStore = ($sc && ($isMultiStore || $picoV > 0)) ? trim('HW ' . (int) $sc['hollywood']['vinyl'] . ' · Pico ' . $picoV) : null;
         $cdByStore = ($sc && ($isMultiStore || $picoC > 0)) ? trim('HW ' . (int) $sc['hollywood']['cd'] . ' · Pico ' . $picoC) : null;
-        $attendByStore = ($sc && ($isMultiStore || $picoA > 0))
+        // Attending is the headline metric — always break it out by store when
+        // there are RSVPs, so a Hollywood-only party (Madonna) still shows
+        // "Pico 0" rather than a bare total. (Vinyl/CD splits stay hidden when
+        // Pico is empty to avoid noise on the detail columns.)
+        $attendByStore = $sc
           ? trim('HW ' . (int) ($sc['hollywood']['attending'] ?? 0) . ' · Pico ' . $picoA)
           : null;
         $takingPreorders = !empty($ev['preorderEnabled']);
