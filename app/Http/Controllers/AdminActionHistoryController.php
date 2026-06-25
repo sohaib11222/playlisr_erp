@@ -120,7 +120,7 @@ class AdminActionHistoryController extends Controller
         // row's original owner before a wrong-login reassignment. Undo restores
         // user_id, but only if it still points at the to-user (so a later manual
         // change isn't clobbered).
-        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'reassign-register-user', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'events-update', 'events-delete', 'events-import', 'reassign-import-location'];
+        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'reassign-register-user', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'events-update', 'events-delete', 'events-import', 'reassign-import-location', 'nivessa-sheet-import'];
         if (!in_array($action, $supportedActions, true)) {
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 0, 'msg' => "Don't know how to undo action: " . $action]);
@@ -251,6 +251,33 @@ class AdminActionHistoryController extends Controller
             }
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 1, 'msg' => "Restored register #{$reg['id']} + {$restoredTxns} transaction row(s) from snapshot $key."]);
+        }
+
+        // nivessa-sheet-import: snapshot rows hold inserted transaction ids for a
+        // re-imported historical sheet (e.g. Hollywood Aug 2024). Undo deletes
+        // the sell lines then the transactions, scoped to type=sell + the
+        // batch's import_source so nothing else is touched.
+        if ($action === 'nivessa-sheet-import') {
+            $ids = array_filter(array_map(function ($r) { return $r['id'] ?? null; }, $data['rows']));
+            $src = $data['import_source'] ?? null;
+            if (empty($ids) || !$src) {
+                return redirect('/admin/admin-action-history')
+                    ->with('status', ['success' => 0, 'msg' => 'Snapshot missing ids or import_source.']);
+            }
+            $lines = 0; $txns = 0;
+            foreach (array_chunk($ids, 500) as $chunk) {
+                $lines += DB::table('transaction_sell_lines')
+                    ->whereIn('transaction_id', $chunk)
+                    ->where('import_source', $src)
+                    ->delete();
+                $txns += DB::table('transactions')
+                    ->whereIn('id', $chunk)
+                    ->where('type', 'sell')
+                    ->where('import_source', $src)
+                    ->delete();
+            }
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 1, 'msg' => "Deleted {$txns} imported sale(s) + {$lines} line(s) from snapshot {$key}."]);
         }
 
         // reassign-import-location: snapshot rows hold {id, location_id} — the

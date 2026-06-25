@@ -1028,6 +1028,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/move-import-location', 'MoveImportLocationController@index');
     Route::post('/admin/move-import-location/run', 'MoveImportLocationController@run');
 
+    // Import the one parked historical sheet (Hollywood Aug 2024) whose broken
+    // #REF! price header made the bulk importer skip it. Snapshot/undo via
+    // admin-action-history ('nivessa-sheet-import').
+    Route::get('/admin/import-aug2024-hollywood', 'ImportAug2024HollywoodController@index');
+    Route::post('/admin/import-aug2024-hollywood/run', 'ImportAug2024HollywoodController@run');
+
     // Store-wide scan for duplicate label print runs (double-logged
     // labels_printed activity_log rows) that inflate "labeled" totals and
     // commission. Review + remove checked dupes; snapshot/undo via
