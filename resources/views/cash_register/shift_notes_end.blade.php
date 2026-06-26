@@ -50,6 +50,13 @@
 		border-radius: 10px; padding: 11px 22px; cursor: pointer; margin-top: 8px;
 	}
 	.sne-btn:hover { background: #FFE98A; }
+	.sne-btn-out {
+		display: inline-block; font-family: inherit; font-size: 15px; font-weight: 700;
+		color: #5A5045; background: #fff; border: 1px solid #ECE3CF;
+		border-radius: 10px; padding: 11px 22px; cursor: pointer; margin: 8px 0 0 8px;
+		text-decoration: none;
+	}
+	.sne-btn-out:hover { background: #F7F1E3; color: #1F1B16; }
 	.sne-note {
 		margin-top: 16px; padding: 12px 14px; background: #FFF2B3;
 		border: 1px solid #E8CF68; border-radius: 10px;
@@ -142,6 +149,7 @@
 				<textarea class="sne-textarea" name="note" placeholder="Anything else from your shift"></textarea>
 			</div>
 			<button class="sne-btn" type="submit">Post to #shift-notes</button>
+			<a class="sne-btn-out" href="{{ action('Auth\LoginController@logout') }}">Sign out</a>
 		</form>
 	</div>
 </div>

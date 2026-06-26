@@ -63,6 +63,24 @@ class LoginController extends Controller
 
     public function logout()
     {
+        // Nivessa (Sarah 2026-06-25): Discogs / Warehouse staff don't close a
+        // register, so signing out is how they end their shift. Before we drop
+        // their session, route them once through the staff End Shift page so
+        // they can post their close-out comments to #shift-notes. The
+        // shift_note_prompted flag prevents a redirect loop — after they've
+        // been sent there once (or posted their note), the next sign-out
+        // completes normally.
+        $duty = session('pos_duty');
+        if (in_array($duty, ['discogs', 'warehouse'], true) && !session('shift_note_prompted')) {
+            session(['shift_note_prompted' => true]);
+
+            return redirect()->action('CashRegisterController@endShiftForm')
+                ->with('status', [
+                    'success' => 1,
+                    'msg' => 'Before you sign out — add any close-out comments and post your shift note below, then sign out again.',
+                ]);
+        }
+
         $this->businessUtil->activityLog(auth()->user(), 'logout');
 
         request()->session()->flush();
