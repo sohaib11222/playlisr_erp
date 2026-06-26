@@ -2567,7 +2567,7 @@
             sections.push(
                 `<div style="margin-bottom:3px;">`
                 + `<span class="text-muted" style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-right:6px;">`
-                + `<i class="fa fa-history"></i> Sold before</span>`
+                + `<i class="fa fa-history"></i> Sales History between stores</span>`
                 + `</div>`
             );
             sections.push(`<div style="margin-bottom:3px;">${renderLens('Artist (' + artistName + ')', sh.by_artist)}</div>`);
