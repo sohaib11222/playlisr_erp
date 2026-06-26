@@ -134,6 +134,15 @@
       </a>
       @endcan
 
+      {{-- Discogs / Warehouse duties don't close a register — End Shift is how
+           they wrap up and post their close-out shift note. Same pill style as
+           Close Register so the top-right action reads consistently. --}}
+      @if(in_array(session('pos_duty'), ['discogs', 'warehouse'], true))
+      <a href="{{ url('/shift-notes/end') }}" class="pos-close-register-btn pull-right" title="End your shift & post shift notes">
+        <i class="fas fa-clipboard-check" aria-hidden="true"></i> End Shift
+      </a>
+      @endif
+
       {{-- Remaining admin actions — less-frequent stuff stays tucked away. --}}
       <div class="dropdown pull-right" style="margin: 5px 6px 0 0;">
         <button type="button" class="btn btn-default btn-sm dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" title="Register / admin actions" style="padding: 6px 12px; font-weight: 600;">

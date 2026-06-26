@@ -55,6 +55,15 @@
 
         <div class="m-8 pull-left mt-15 hidden-xs" style="color: #fff;"><strong>{{ @format_date('now') }}</strong></div>
 
+        {{-- End Shift pill for non-register duties (Discogs / Warehouse). Sits
+             just left of the user menu so staff can post their close-out shift
+             note on demand, not only when they sign out. Sarah 2026-06-25. --}}
+        @if(in_array(session('pos_duty'), ['discogs', 'warehouse'], true))
+          <a href="{{ url('/shift-notes/end') }}" title="End your shift & post shift notes" data-toggle="tooltip" data-placement="bottom" class="btn btn-flat pull-left m-8 btn-sm mt-10 btn-warning">
+            <strong><i class="fas fa-clipboard-check"></i> &nbsp; End Shift</strong>
+          </a>
+        @endif
+
         <ul class="nav navbar-nav">
           @include('layouts.partials.header-notifications')
           <!-- User Account Menu -->
