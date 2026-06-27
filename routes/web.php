@@ -69,6 +69,78 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
 
     Route::get('testing-report', [ReportController::class, 'testingReport']);
 
+    // TEMP DEBUG: diagnose why a cashier's shift-sales reads $0. Remove after.
+    // /debug/shift-sales?name=Jacob%20Thomas
+    Route::get('/debug/shift-sales', function (\Illuminate\Http\Request $request) {
+        $authUser = \Auth::user();
+        if (!$authUser || !app(\App\Utils\BusinessUtil::class)->is_admin($authUser)) {
+            abort(403);
+        }
+        $bizId = (int) session('user.business_id');
+        $name = $request->input('name', 'Jacob Thomas');
+        $u = \App\User::where('business_id', $bizId)
+            ->whereRaw("CONCAT_WS(' ', first_name, COALESCE(surname,''), COALESCE(last_name,'')) LIKE ?", ['%' . str_replace(' ', '%', $name) . '%'])
+            ->first();
+        $out = [];
+        $out[] = 'app.timezone (in-request) = ' . config('app.timezone');
+        $out[] = 'business.time_zone        = ' . \DB::table('business')->where('id', $bizId)->value('time_zone');
+        $out[] = 'now()  = ' . now()->toDateTimeString();
+        $out[] = 'today  = ' . \Carbon\Carbon::today()->toDateTimeString();
+        if (!$u) {
+            return response('<pre>No user matched "' . e($name) . '" in business ' . $bizId . "\n" . implode("\n", $out) . '</pre>');
+        }
+        $out[] = "user = {$u->id}  {$u->first_name} {$u->surname}  business_id={$u->business_id}";
+
+        $svc = app(\App\Services\GamificationService::class);
+        $shift = $svc->currentShift($u, $bizId);
+        $out[] = '--- currentShift() ---';
+        if (!$shift) {
+            $raw = \DB::table(config('activitylog.table_name'))
+                ->where('description', 'pos_duty')->where('causer_id', $u->id)
+                ->where('created_at', '>=', \Carbon\Carbon::today()->toDateTimeString())
+                ->orderByDesc('created_at')->first();
+            $out[] = 'shift = NULL (no usable pos_duty today). raw latest pos_duty row:';
+            $out[] = '  created_at=' . ($raw->created_at ?? 'NONE') . '  props=' . ($raw->properties ?? '-');
+            return response('<pre>' . e(implode("\n", $out)) . '</pre>');
+        }
+        $start = $shift['started_at']->toDateTimeString();
+        $now = now()->toDateTimeString();
+        $loc = $shift['location_id'];
+        $out[] = "duty={$shift['duty']}  location_id=" . var_export($loc, true) . "  start={$start}  now={$now}";
+
+        $base = fn() => \DB::table('transactions')->where('business_id', $bizId)->where('type', 'sell');
+        $f = fn($q) => '$' . number_format((float) $q->sum('final_total'), 2);
+        $todayStr = \Carbon\Carbon::today()->toDateTimeString();
+        $out[] = '--- progressive sums (each line adds one filter) ---';
+        $out[] = 'A) any sell, transaction_date today.................. ' . $f($base()->whereBetween('transaction_date', [$todayStr, $now]));
+        $out[] = 'B) + status=final + import_source NULL.............. ' . $f($base()->where('status', 'final')->whereNull('import_source')->whereBetween('transaction_date', [$todayStr, $now]));
+        $out[] = 'C) + created_by = this user........................ ' . $f($base()->where('status', 'final')->whereNull('import_source')->where('created_by', $u->id)->whereBetween('transaction_date', [$todayStr, $now]));
+        $qD = $base()->where('status', 'final')->whereNull('import_source')->where('created_by', $u->id)->whereBetween('transaction_date', [$todayStr, $now]);
+        if (!empty($loc)) { $qD->where('location_id', $loc); }
+        $out[] = 'D) + location_id = shift location.................. ' . $f($qD);
+        $qE = $base()->where('status', 'final')->whereNull('import_source')->where('created_by', $u->id)->whereBetween('transaction_date', [$start, $now]);
+        if (!empty($loc)) { $qE->where('location_id', $loc); }
+        $out[] = 'E) + transaction_date in SHIFT window (=metric).... ' . $f($qE);
+
+        $out[] = '--- who rang sales today (created_by breakdown) ---';
+        foreach ($base()->whereBetween('transaction_date', [$todayStr, $now])->select('created_by', \DB::raw('count(*) c'), \DB::raw('sum(final_total) s'), \DB::raw('group_concat(distinct location_id) locs'))->groupBy('created_by')->orderByDesc('s')->get() as $r) {
+            $nm = \App\User::where('id', $r->created_by)->value('first_name');
+            $out[] = "  created_by={$r->created_by} ({$nm})  cnt={$r->c}  \$={$r->s}  locs={$r->locs}";
+        }
+        $out[] = '--- statuses of this user\'s sells today ---';
+        foreach ($base()->where('created_by', $u->id)->whereBetween('transaction_date', [$todayStr, $now])->select('status', \DB::raw('count(*) c'), \DB::raw('sum(final_total) s'))->groupBy('status')->get() as $r) {
+            $out[] = "  status={$r->status}  cnt={$r->c}  \$={$r->s}";
+        }
+        $out[] = '--- clover_payments today (employee_name LIKE name) ---';
+        $cl = \DB::table('clover_payments')->where('business_id', $bizId)
+            ->where('paid_on', \Carbon\Carbon::today()->toDateString())
+            ->where('employee_name', 'like', '%' . explode(' ', $name)[0] . '%')
+            ->selectRaw('count(*) c, sum(amount) s, group_concat(distinct employee_name) names')->first();
+        $out[] = "  cnt=" . ($cl->c ?? 0) . "  \$=" . ($cl->s ?? 0) . "  names=" . ($cl->names ?? '-');
+
+        return response('<pre>' . e(implode("\n", $out)) . '</pre>');
+    });
+
     Route::get('/sign-in-as-user/{id}', 'ManageUserController@signInAsUser')->name('sign-in-as-user');
 
     Route::get('/home', 'HomeController@index')->name('home');
