@@ -3194,6 +3194,15 @@ class ProductController extends Controller
         $category_cost_defaults = \App\Http\Controllers\CostPriceRulesController::defaultCostsByCategoryId($business_id);
         $category_cost_rules = \App\Http\Controllers\CostPriceRulesController::RULES;
 
+        // Surface this operator's saved "for next time" draft (if any) so the
+        // page can offer to restore the rows they left behind last visit.
+        $draft = \App\MassCreateDraft::where('business_id', $business_id)
+            ->where('user_id', auth()->id())
+            ->first();
+        $mass_create_draft = ($draft && is_array($draft->payload) && count($draft->payload))
+            ? ['rows' => $draft->payload, 'saved_at' => optional($draft->updated_at)->toIso8601String()]
+            : null;
+
         return view('product.mass-create')->with(compact(
             'categories',
             'category_combos',
@@ -3204,8 +3213,57 @@ class ProductController extends Controller
             'manual_item_price_rules',
             'current_pos_location_id',
             'category_cost_defaults',
-            'category_cost_rules'
+            'category_cost_rules',
+            'mass_create_draft'
         ));
+    }
+
+    /**
+     * Save (upsert) the current operator's mass-create draft so they can pick
+     * the in-progress rows back up later from any machine. One draft per user.
+     */
+    public function saveMassDraft(Request $request)
+    {
+        $business_id = $request->session()->get('user.business_id');
+
+        $rows = $request->input('rows', []);
+        if (is_string($rows)) {
+            $rows = json_decode($rows, true) ?: [];
+        }
+        if (!is_array($rows)) {
+            $rows = [];
+        }
+
+        // Nothing meaningful to keep — treat an empty save as a clear.
+        if (empty($rows)) {
+            \App\MassCreateDraft::where('business_id', $business_id)
+                ->where('user_id', auth()->id())
+                ->delete();
+
+            return ['success' => 1, 'item_count' => 0, 'cleared' => true];
+        }
+
+        \App\MassCreateDraft::updateOrCreate(
+            ['business_id' => $business_id, 'user_id' => auth()->id()],
+            ['payload' => array_values($rows), 'item_count' => count($rows)]
+        );
+
+        return ['success' => 1, 'item_count' => count($rows)];
+    }
+
+    /**
+     * Discard the current operator's mass-create draft (after they save the
+     * products, choose "leave without saving", or "discard" on restore).
+     */
+    public function deleteMassDraft(Request $request)
+    {
+        $business_id = $request->session()->get('user.business_id');
+
+        \App\MassCreateDraft::where('business_id', $business_id)
+            ->where('user_id', auth()->id())
+            ->delete();
+
+        return ['success' => 1];
     }
 
 
@@ -3451,6 +3509,12 @@ class ProductController extends Controller
             }
 
             DB::commit();
+
+            // These products are now saved for real, so drop any "save for next
+            // time" draft this operator had stashed for the mass-create form.
+            \App\MassCreateDraft::where('business_id', $businessId)
+                ->where('user_id', $userId)
+                ->delete();
 
             $output = [
                 'success' => 1,

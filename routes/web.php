@@ -225,6 +225,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/products/save_quick_product', 'ProductController@saveQuickProduct');
     Route::get('/product/mass-create', [ProductController::class, 'massCreate'])->name('product.massCreate');
     Route::get('/product/mass-create/row', [ProductController::class, 'getMassProductRow'])->name('product.getMassProductRow');
+    Route::post('/product/mass-create/draft', [ProductController::class, 'saveMassDraft'])->name('product.massDraft.save');
+    Route::delete('/product/mass-create/draft', [ProductController::class, 'deleteMassDraft'])->name('product.massDraft.delete');
     Route::get('/product/mass-create/get-products', [ProductController::class, 'massProductGetProducts'])->name('product.massCreate.getProduct');
     Route::get('/product/mass-create/get-product-price-recommendation', [ProductController::class, 'getProductPriceRecommendation']);
     Route::get('/product/mass-create/get-discogs-prices', [ProductController::class, 'getDiscogsPrices']);

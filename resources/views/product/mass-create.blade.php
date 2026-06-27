@@ -1464,6 +1464,11 @@
                 },
                 success: function(response) {
                     if(response.success) {
+                        // Products are now persisted server-side, so drop any
+                        // local "save for next time" draft and don't prompt on
+                        // the navigation that follows. (Sarah 2026-06-26)
+                        if (window.massCreateDraftClear) { window.massCreateDraftClear(); }
+                        window.__massCreateSuppressLeave = true;
                         toastr.success(response.msg);
                         // toastr.success already triggers the gentle chime via
                         // common.js — no extra .play() needed (it'd be loud).
@@ -3083,6 +3088,228 @@
             }
         }
     });
+</script>
+
+{{--
+    Mass-create draft "save for next time" (Sarah 2026-06-26).
+    When more than 3 items are loaded and the operator clicks out of the page,
+    offer to keep their in-progress rows. The draft is stored per-user on the
+    SERVER (mass_create_drafts table) — not the browser — so an employee can
+    leave and pick their rows back up later from any machine. On the next visit
+    we offer to restore the saved draft. JS lives inline here, so no public/js
+    change and no asset_version bump.
+--}}
+<script type="text/javascript">
+(function () {
+    var THRESHOLD     = 3;
+    var ROW_ROUTE     = @json(route('product.getMassProductRow'));
+    var SAVE_URL      = @json(route('product.massDraft.save'));
+    var DELETE_URL    = @json(route('product.massDraft.delete'));
+    var CSRF          = $('meta[name="csrf-token"]').attr('content');
+    // The operator's saved draft (if any), injected at render so we don't need
+    // a round-trip just to offer a restore. Shape: { rows: [...], saved_at }.
+    var INITIAL_DRAFT = @json($mass_create_draft ?? null);
+
+    // Plain ordered fields are restored before the select2/category ones so the
+    // category-change handler doesn't clobber a saved purchase price.
+    var PLAIN_FIELDS = ['[name]', '[id]', '[variation_id]', '[artist]', '[sku]',
+        '[single_dpp_inc_tax]', '[single_dsp_inc_tax]', '[bin_position]',
+        '[listing_location]', '[image_url]', '[description]'];
+
+    // products[3][sku] -> "[sku]" ; products[3][business_locations][] -> "[business_locations][]"
+    function fieldSuffix(name) {
+        var m = name && name.match(/^products\[\d+\](\[.*)$/);
+        return m ? m[1] : null;
+    }
+
+    // Count rows that actually have a product name typed in — blank starter
+    // rows don't count toward the "more than 3 items loaded" trigger.
+    function countLoadedItems() {
+        var n = 0;
+        $('#product_rows_container .product-row').each(function () {
+            var v = $(this).find('input[name$="[name]"]').first().val();
+            if (v && $.trim(v) !== '') n++;
+        });
+        return n;
+    }
+
+    // Snapshot every row that has at least one non-empty value.
+    function serializeRows() {
+        var rows = [];
+        $('#product_rows_container .product-row').each(function () {
+            var fields = {}, hasData = false;
+            $(this).find('input, select, textarea').each(function () {
+                if (!this.name || this.type === 'file') return; // files can't be stored
+                var suffix = fieldSuffix(this.name);
+                if (!suffix) return;
+                var val = $(this).val();
+                if (suffix === '[business_locations][]') {
+                    val = val || [];
+                    if (val.length) hasData = true;
+                } else if (val !== null && val !== '') {
+                    hasData = true;
+                }
+                fields[suffix] = val;
+            });
+            if (hasData) rows.push(fields);
+        });
+        return rows;
+    }
+
+    // Persist the current rows to the server. Returns a jQuery promise so the
+    // leave-handler can wait for the save before navigating away.
+    function saveDraft() {
+        var rows = serializeRows();
+        if (!rows.length) { return clearDraft(); }
+        return $.ajax({
+            url: SAVE_URL,
+            type: 'POST',
+            dataType: 'json',
+            data: { _token: CSRF, rows: JSON.stringify(rows) },
+        });
+    }
+
+    function clearDraft() {
+        return $.ajax({
+            url: DELETE_URL,
+            type: 'POST',
+            dataType: 'json',
+            data: { _token: CSRF, _method: 'DELETE' }, // Laravel method-spoofing
+        });
+    }
+    // Exposed so the save-success handler above can drop the draft after a real save.
+    window.massCreateDraftClear = clearDraft;
+
+    // Best-effort save on tab-close / refresh, where an async XHR would be
+    // killed mid-flight. sendBeacon hands the payload to the browser to deliver
+    // after the page goes away; CSRF rides along as a form field.
+    function beaconSave() {
+        var rows = serializeRows();
+        if (!rows.length || !navigator.sendBeacon) { return; }
+        var fd = new FormData();
+        fd.append('_token', CSRF);
+        fd.append('rows', JSON.stringify(rows));
+        try { navigator.sendBeacon(SAVE_URL, fd); } catch (e) {}
+    }
+
+    // ---- restore ----
+    function appendRow(index) {
+        return $.ajax({ url: ROW_ROUTE, type: 'GET', data: { index: index } }).then(function (html) {
+            $('#product_rows_container').append(html);
+            var $row = $('#product_rows_container .product-row').last();
+            $row.find('.select2').select2();
+            if (typeof window.setupProductNameSelect2 === 'function') { window.setupProductNameSelect2(); }
+            return $row;
+        });
+    }
+
+    function applyRowValues($row, fields) {
+        function set(suffix, fire) {
+            if (!(suffix in fields)) return;
+            var $el = $row.find('[name$="' + suffix + '"]').filter(function () {
+                return fieldSuffix(this.name) === suffix;
+            });
+            if (!$el.length) return;
+            $el.val(fields[suffix]);
+            if (fire) { $el.trigger('change'); }
+        }
+        PLAIN_FIELDS.forEach(function (s) { set(s, false); });
+        set('[category_combo]', true);       // syncs the hidden category ids + price defaults
+        set('[category_id]', false);         // ...then restore exactly what was saved
+        set('[sub_category_id]', false);
+        set('[business_locations][]', true); // multi-select: trigger so select2 redraws
+    }
+
+    function restoreDraft(data) {
+        $('#product_rows_container .product-row').remove(); // rebuild from a clean slate
+        var rows = data.rows, i = 0;
+        (function next() {
+            if (i >= rows.length) {
+                toastr.success('Restored ' + rows.length + ' item' + (rows.length === 1 ? '' : 's') + ' from your saved draft.');
+                window.massCreateDirty = false;
+                return;
+            }
+            appendRow(i).then(function ($row) {
+                applyRowValues($row, rows[i]);
+            }).always(function () { i++; next(); });
+        })();
+    }
+
+    // ---- dirty tracking + leave guard ----
+    window.massCreateDirty = false;
+    $(document).on('input change',
+        '#product_rows_container input, #product_rows_container select, #product_rows_container textarea',
+        function () { window.massCreateDirty = true; });
+
+    function shouldPrompt() {
+        return !window.__massCreateSuppressLeave
+            && !window.__massAddSubmitting
+            && window.massCreateDirty
+            && countLoadedItems() > THRESHOLD;
+    }
+
+    // In-app navigation (sidebar / any link out of the page): show the choice.
+    $(document).on('click', 'a[href]', function (e) {
+        var href = this.getAttribute('href');
+        if (!href || href.charAt(0) === '#' || /^javascript:/i.test(href)) return;
+        if (this.target && this.target !== '_self') return;                 // new tab / window
+        if ($(this).is('[data-toggle], [data-bs-toggle], [data-dismiss], [data-bs-dismiss]')) return;
+        if ($(this).closest('#mass_create_form').length) return;            // links inside the form
+        if (!shouldPrompt()) return;
+
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        var dest = this.href, count = countLoadedItems();
+        swal({
+            title: 'Save your work?',
+            text: 'You have ' + count + ' items loaded. Would you like us to save them as a draft so they\'re here next time you visit this page?',
+            icon: 'warning',
+            buttons: {
+                cancel: { text: 'Stay on page', visible: true, className: 'btn btn-default' },
+                leave:  { text: 'Leave without saving', value: 'leave', className: 'btn btn-danger' },
+                save:   { text: 'Save as draft', value: 'save', className: 'btn btn-primary' },
+            },
+        }).then(function (choice) {
+            if (choice !== 'save' && choice !== 'leave') { return; } // stayed on page
+            window.__massCreateSuppressLeave = true;
+            // Wait for the server write to settle, then navigate — so the draft
+            // is actually persisted (or cleared) before we leave the page.
+            var op = (choice === 'save') ? saveDraft() : clearDraft();
+            $.when(op).always(function () { window.location.href = dest; });
+        });
+    });
+
+    // Hard navigation (tab close / refresh / typed URL / back): can't show a
+    // custom dialog, so beacon the draft to the server and warn natively. Their
+    // work is kept "for next time" regardless of what they pick.
+    $(window).on('beforeunload', function (e) {
+        if (!shouldPrompt()) return;
+        beaconSave();
+        var msg = 'You have unsaved items — we\'ll keep them as a draft for next time.';
+        (e || window.event).returnValue = msg;
+        return msg;
+    });
+
+    // On arrival, offer to bring back the server-saved draft.
+    $(function () {
+        var draft = INITIAL_DRAFT;
+        if (!draft || !draft.rows || !draft.rows.length) return;
+        var n = draft.rows.length;
+        swal({
+            title: 'Restore your draft?',
+            text: 'You have ' + n + ' unsaved item' + (n === 1 ? '' : 's') + ' from a previous session on this page. Restore them?',
+            icon: 'info',
+            buttons: {
+                discard: { text: 'Discard', value: 'discard', className: 'btn btn-default' },
+                restore: { text: 'Restore ' + n + ' item' + (n === 1 ? '' : 's'), value: 'restore', className: 'btn btn-primary' },
+            },
+        }).then(function (c) {
+            if (c === 'restore') { restoreDraft(draft); }
+            else if (c === 'discard') { clearDraft(); }
+            // dismissed: leave the draft in place for later
+        });
+    });
+})();
 </script>
 @endsection
 
