@@ -159,6 +159,22 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
             ->selectRaw('count(*) c, sum(amount) s, group_concat(distinct employee_name) names')->first();
         $out[] = "  cnt=" . ($cl->c ?? 0) . "  \$=" . ($cl->s ?? 0) . "  names=" . ($cl->names ?? '-');
 
+        $out[] = '--- buildPanel() — EXACTLY what the strip renders for this user ---';
+        try {
+            $panel = $svc->buildPanel($u, $bizId);
+            $out[] = 'active=' . var_export($panel['active'], true) . '  duty=' . var_export($panel['duty'] ?? null, true)
+                . '  location=' . var_export($panel['location_name'] ?? null, true) . '  hours=' . var_export($panel['hours'] ?? null, true);
+            foreach (($panel['tasks'] ?? []) as $t) {
+                $out[] = sprintf('  task=%-16s current=%-10s target=%-10s percent=%-6s complete=%s',
+                    $t['key'] ?? '?', $t['current'] ?? '-', $t['target'] ?? '-', $t['percent'] ?? '-', var_export($t['complete'] ?? null, true));
+            }
+            if (empty($panel['tasks'])) {
+                $out[] = '  (no tasks — strip would show nothing / inactive state)';
+            }
+        } catch (\Throwable $e) {
+            $out[] = 'buildPanel THREW: ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine();
+        }
+
         return response('<pre>' . e(implode("\n", $out)) . '</pre>');
     });
 
