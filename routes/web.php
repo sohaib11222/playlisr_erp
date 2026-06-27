@@ -90,6 +90,18 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
         $out[] = 'business.time_zone        = ' . \DB::table('business')->where('id', $bizId)->value('time_zone');
         $out[] = 'now()  = ' . now()->toDateTimeString();
         $out[] = 'today  = ' . \Carbon\Carbon::today()->toDateTimeString();
+
+        $matchName = $u ? trim($u->first_name . ' ' . $u->surname) : $name;
+        $firstTok = explode(' ', trim($matchName))[0];
+        $out[] = '--- ALL accounts whose name contains "' . $firstTok . '" ---';
+        foreach (\App\User::where('business_id', $bizId)
+            ->whereRaw("CONCAT_WS(' ', first_name, COALESCE(surname,''), COALESCE(last_name,'')) LIKE ?", ['%' . $firstTok . '%'])
+            ->get(['id', 'username', 'email', 'first_name', 'surname', 'allow_login', 'status', 'created_at']) as $cand) {
+            $sales = \DB::table('transactions')->where('created_by', $cand->id)->where('type', 'sell')->where('status', 'final')->count();
+            $lastSale = \DB::table('transactions')->where('created_by', $cand->id)->where('type', 'sell')->max('transaction_date');
+            $out[] = sprintf('  id=%-4s user=%-18s email=%-26s login=%s status=%-8s sells=%-4s last_sale=%s',
+                $cand->id, $cand->username ?? '-', $cand->email ?? '-', $cand->allow_login, $cand->status ?? '-', $sales, $lastSale ?? '-');
+        }
         if (!$u) {
             return response('<pre>No user matched "' . e($name) . '" in business ' . $bizId . "\n" . implode("\n", $out) . '</pre>');
         }
