@@ -142,7 +142,25 @@ class GamificationService
             return null;
         }
 
-        $startedAt = Carbon::parse($row->created_at);
+        // activity_log.created_at is written in the BUSINESS timezone —
+        // Util::activityLog() calls date_default_timezone_set($business->time_zone)
+        // before logging — whereas sales' transaction_date and Carbon::now() are in
+        // the app timezone (config('app.timezone')). If we parse the shift start as
+        // app-tz (the old behavior), a business tz ahead of the app tz (e.g. the
+        // stock 'Asia/Kolkata' default, +12.5h vs America/Los_Angeles) pushes the
+        // start hours into the "future", the [start, now] sales window inverts, and
+        // shift sales stick at $0 even while the register is busy. Parse it in the
+        // tz it was written in, then convert to app-tz so the window lines up with
+        // transaction_date.
+        $appTz = config('app.timezone');
+        $bizTz = $this->businessTimezone($businessId ?? $user->business_id) ?: $appTz;
+        $startedAt = Carbon::parse($row->created_at, $bizTz)->setTimezone($appTz);
+        // Keep the window within today and never in the future, so it can't invert
+        // or bleed into another day if a clock/tz skew remains.
+        $startOfDay = Carbon::today();
+        if ($startedAt->lt($startOfDay) || $startedAt->isFuture()) {
+            $startedAt = $startOfDay;
+        }
         $hours = max(0, min(self::SHIFT_MAX_HOURS, $startedAt->diffInMinutes(Carbon::now()) / 60.0));
 
         return [
@@ -151,6 +169,20 @@ class GamificationService
             'location_id' => isset($props['location_id']) ? (int) $props['location_id'] : null,
             'hours' => round($hours, 2),
         ];
+    }
+
+    /**
+     * The business's configured timezone (column on the `business` table),
+     * used to interpret activity_log timestamps that were written in it.
+     * Null when unknown so the caller can fall back to the app timezone.
+     */
+    protected function businessTimezone(?int $businessId): ?string
+    {
+        if (!$businessId) {
+            return null;
+        }
+        $tz = DB::table('business')->where('id', $businessId)->value('time_zone');
+        return is_string($tz) && $tz !== '' ? $tz : null;
     }
 
     /**
