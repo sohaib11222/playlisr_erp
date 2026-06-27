@@ -78,9 +78,13 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
         }
         $bizId = (int) session('user.business_id');
         $name = $request->input('name', 'Jacob Thomas');
-        $u = \App\User::where('business_id', $bizId)
-            ->whereRaw("CONCAT_WS(' ', first_name, COALESCE(surname,''), COALESCE(last_name,'')) LIKE ?", ['%' . str_replace(' ', '%', $name) . '%'])
-            ->first();
+        if ($request->filled('id')) {
+            $u = \App\User::where('business_id', $bizId)->where('id', (int) $request->input('id'))->first();
+        } else {
+            $u = \App\User::where('business_id', $bizId)
+                ->whereRaw("CONCAT_WS(' ', first_name, COALESCE(surname,''), COALESCE(last_name,'')) LIKE ?", ['%' . str_replace(' ', '%', $name) . '%'])
+                ->first();
+        }
         $out = [];
         $out[] = 'app.timezone (in-request) = ' . config('app.timezone');
         $out[] = 'business.time_zone        = ' . \DB::table('business')->where('id', $bizId)->value('time_zone');
