@@ -91,26 +91,31 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
         }
         $out[] = "user = {$u->id}  {$u->first_name} {$u->surname}  business_id={$u->business_id}";
 
+        $now = now()->toDateTimeString();
+        $todayStr = \Carbon\Carbon::today()->toDateTimeString();
+
+        $out[] = '--- last 10 pos_duty events for this user (any day) ---';
+        foreach (\DB::table(config('activitylog.table_name'))
+            ->where('description', 'pos_duty')->where('causer_id', $u->id)
+            ->orderByDesc('created_at')->limit(10)->get() as $ev) {
+            $out[] = "  {$ev->created_at}  props={$ev->properties}";
+        }
+
         $svc = app(\App\Services\GamificationService::class);
         $shift = $svc->currentShift($u, $bizId);
         $out[] = '--- currentShift() ---';
         if (!$shift) {
-            $raw = \DB::table(config('activitylog.table_name'))
-                ->where('description', 'pos_duty')->where('causer_id', $u->id)
-                ->where('created_at', '>=', \Carbon\Carbon::today()->toDateTimeString())
-                ->orderByDesc('created_at')->first();
-            $out[] = 'shift = NULL (no usable pos_duty today). raw latest pos_duty row:';
-            $out[] = '  created_at=' . ($raw->created_at ?? 'NONE') . '  props=' . ($raw->properties ?? '-');
-            return response('<pre>' . e(implode("\n", $out)) . '</pre>');
+            $out[] = 'shift = NULL (no usable pos_duty logged TODAY). Falling back to today 00:00 for the sums below.';
+            $start = $todayStr;
+            $loc = null;
+        } else {
+            $start = $shift['started_at']->toDateTimeString();
+            $loc = $shift['location_id'];
+            $out[] = "duty={$shift['duty']}  location_id=" . var_export($loc, true) . "  start={$start}  now={$now}";
         }
-        $start = $shift['started_at']->toDateTimeString();
-        $now = now()->toDateTimeString();
-        $loc = $shift['location_id'];
-        $out[] = "duty={$shift['duty']}  location_id=" . var_export($loc, true) . "  start={$start}  now={$now}";
 
         $base = fn() => \DB::table('transactions')->where('business_id', $bizId)->where('type', 'sell');
         $f = fn($q) => '$' . number_format((float) $q->sum('final_total'), 2);
-        $todayStr = \Carbon\Carbon::today()->toDateTimeString();
         $out[] = '--- progressive sums (each line adds one filter) ---';
         $out[] = 'A) any sell, transaction_date today.................. ' . $f($base()->whereBetween('transaction_date', [$todayStr, $now]));
         $out[] = 'B) + status=final + import_source NULL.............. ' . $f($base()->where('status', 'final')->whereNull('import_source')->whereBetween('transaction_date', [$todayStr, $now]));
