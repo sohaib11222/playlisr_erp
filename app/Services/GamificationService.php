@@ -211,6 +211,18 @@ class GamificationService
             $current = $this->measureCurrent($def['key'], $user->id, $businessId, $shift);
             $stats = $this->peerStats($def['key'], $businessId, $shift);
             $peerPerHour = $stats['avg'];
+            // sales_total's peer pace is anchored to the shift's START hour.
+            // When a cashier opens the register before the store's first
+            // selling hour (e.g. clocking in at 8:57am at a store that warms
+            // up around 10–11am), that hour has no sales history, the pace —
+            // and therefore the target — come back 0, and the progress bar
+            // reads 0% even while the register is ringing. Fall back to the
+            // store's typical daily revenue prorated across shifts so the
+            // goal is sane. Only triggers when the hourly pace is empty, so
+            // shifts that start during open hours keep the existing behavior.
+            if ($def['key'] === 'sales_total' && ($peerPerHour === null || $peerPerHour <= 0)) {
+                $peerPerHour = $this->fallbackSalesPeerPerHour($businessId, $shift);
+            }
             $peerTopPerHour = $stats['top'];
             $target = $this->computeTarget($def['key'], $peerPerHour, $shift);
             $myPerHour = $shift['hours'] >= 0.25 ? $current / $shift['hours'] : null;
@@ -782,6 +794,36 @@ class GamificationService
             'avg' => $totalRev / $openHours,
             'top' => (float) $rows->max('rev'),
         ];
+    }
+
+    /**
+     * Fallback peer per-hour for sales_total when the start-hour-anchored
+     * salesPeerStats() has no data (cashier opened the register before the
+     * store's first selling hour). Derived from the store's typical DAILY
+     * revenue on this DOW spread across the store's open hours, so that
+     * computeTarget()'s `peerPerHour * expectedHours` lands at roughly
+     * "one shift's share of a normal day" instead of 0.
+     *
+     * @return ?float  null when the store has no daily history either
+     */
+    protected function fallbackSalesPeerPerHour(int $businessId, array $shift): ?float
+    {
+        $now = Carbon::now();
+        $rangeStart = $now->copy()->subDays(self::PEER_LOOKBACK_DAYS)->startOfDay()->toDateTimeString();
+        $rangeEnd = $now->copy()->subDay()->endOfDay()->toDateTimeString();
+        $dowBucket = $this->dowBucketForToday();
+
+        $daily = $this->storeDailyPeerStats($businessId, $shift['location_id'] ?? null, $dowBucket, $rangeStart, $rangeEnd);
+        if ($daily['avg'] === null || $daily['avg'] <= 0) {
+            return null;
+        }
+        // Store open-hours/day ≈ expected shift length × shifts/day (the same
+        // factors expectedShiftHours() is derived from). Dividing the daily
+        // average by it yields a per-hour pace that, multiplied back by the
+        // shift's expected hours in computeTarget(), prorates to one shift's
+        // share of a typical day (≈ dailyAvg / shiftsPerDay).
+        $openHoursPerDay = max(1.0, $this->expectedShiftHours($shift) * $this->getShiftsPerDay($shift['location_id'] ?? null));
+        return $daily['avg'] / $openHoursPerDay;
     }
 
     /**
