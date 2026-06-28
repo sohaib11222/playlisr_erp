@@ -199,9 +199,9 @@
       </div>
     @endif
 
-    {{-- Vinyl/CD order estimate — listening parties only (shown once
-         anyone has answered the "buying vinyl or CD?" RSVP question). --}}
-    @if($interestAnswered > 0)
+    {{-- Vinyl/CD order estimate — hidden per Sarah (2026-06-27). Flip back to
+         `$interestAnswered > 0` to restore. --}}
+    @if(false)
       <div style="border:1px solid var(--pos-line,#ECE3CF);border-radius:10px;padding:12px 14px;margin-bottom:14px;background:var(--pos-accent-soft,#FFF9DB);">
         <div style="font-weight:700;font-size:13px;margin-bottom:8px;">
           Vinyl / CD interest
@@ -236,9 +236,11 @@
 
     {{-- Add a walk-in RSVP (someone who didn't RSVP in advance). Always
          available, even before anyone has RSVP'd. --}}
-    <details style="margin-bottom:14px;border:1px dashed var(--pos-line,#ECE3CF);border-radius:10px;padding:10px 14px;">
-      <summary class="ev-create-summary">+ Add RSVP (walk-in)</summary>
-      <form method="POST" action="{{ route('events.rsvpAdd', ['id' => $event['id']]) }}" style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+    <details style="margin-bottom:14px;">
+      <summary style="list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:8px;background:#1c2150;color:#fff;font-weight:800;font-size:16px;padding:14px 26px;border-radius:12px;box-shadow:0 2px 6px rgba(0,0,0,.12);">
+        <span style="font-size:20px;line-height:1;">+</span> Add RSVP (walk-in)
+      </summary>
+      <form method="POST" action="{{ route('events.rsvpAdd', ['id' => $event['id']]) }}" style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;border:1px dashed var(--pos-line,#ECE3CF);border-radius:10px;padding:14px;">
         {{ csrf_field() }}
         <div class="ev-field" style="flex:1 1 130px;"><label>First name *</label><input type="text" name="firstName" required></div>
         <div class="ev-field" style="flex:1 1 130px;"><label>Last name *</label><input type="text" name="lastName" required></div>
@@ -342,8 +344,8 @@
           <th data-sort-type="text">Name</th>
           <th data-sort-type="text">Email</th>
           <th data-sort-type="text">Customer Request</th>
-          @if($preordersOn)<th data-sort-type="text">Preorder</th>@endif
           <th data-sort-type="text">Checked in</th>
+          @if($preordersOn)<th data-sort-type="text">Preorder</th>@endif
         </tr></thead>
         <tbody>
           @foreach($rsvps as $ri => $r)
@@ -359,15 +361,6 @@
                   <span class="ev-meta">—</span>
                 @endif
               </td>
-              @if($preordersOn)
-              <td>
-                @forelse($preForRsvp[$ri] ?? [] as $p)
-                  @include('events.partials._preorder_inline', ['p' => $p])
-                @empty
-                  <span class="ev-meta">—</span>
-                @endforelse
-              </td>
-              @endif
               <td>
                 @if($rid)
                 <form method="POST" action="{{ route('events.rsvpCheckIn', ['id' => $event['id'], 'rsvpId' => $rid]) }}" style="display:inline;">
@@ -379,6 +372,17 @@
                 </form>
                 @endif
               </td>
+              @if($preordersOn)
+              <td>
+                @foreach($preForRsvp[$ri] ?? [] as $p)
+                  @include('events.partials._preorder_inline', ['p' => $p])
+                @endforeach
+                <button type="button" class="btn-ghost preorder-add-btn"
+                  data-fn="{{ $r['firstName'] ?? '' }}" data-ln="{{ $r['lastName'] ?? '' }}"
+                  data-email="{{ $r['email'] ?? '' }}" data-phone="{{ $r['phone'] ?? '' }}"
+                  style="padding:5px 12px;font-size:12px;">+ Add preorder</button>
+              </td>
+              @endif
             </tr>
           @endforeach
           @if($preordersOn)
@@ -391,8 +395,8 @@
                 <td class="ev-name">{{ trim(($p['firstName'] ?? '') . ' ' . ($p['lastName'] ?? '')) ?: '—' }} <span class="ev-meta" style="font-weight:500;">(no RSVP)</span></td>
                 <td class="ev-meta">{{ $upEmail ?: ($p['phone'] ?? '') }}</td>
                 <td><span class="ev-meta">—</span></td>
-                <td>@include('events.partials._preorder_inline', ['p' => $p])</td>
                 <td><span class="ev-meta">—</span></td>
+                <td>@include('events.partials._preorder_inline', ['p' => $p])</td>
               </tr>
             @endforeach
           @endif
@@ -400,6 +404,26 @@
       </table>
       <script>
         window.__rsvpEmails = @json(array_values(array_filter(array_map(fn($r) => $r['email'] ?? '', $rsvps))));
+        // Per-row "+ Add preorder": open the top form pre-filled with that
+        // guest's name/email/phone (delegated so it works for every row).
+        (function () {
+          document.addEventListener('click', function (e) {
+            var b = e.target.closest && e.target.closest('.preorder-add-btn');
+            if (!b) return;
+            var form = document.querySelector('form[data-preorder-add]');
+            if (!form) return;
+            var det = form.closest('details');
+            if (det) det.open = true;
+            var set = function (n, v) { var el = form.querySelector('[name="' + n + '"]'); if (el) el.value = v || ''; };
+            set('firstName', b.getAttribute('data-fn'));
+            set('lastName', b.getAttribute('data-ln'));
+            set('email', b.getAttribute('data-email'));
+            set('phone', b.getAttribute('data-phone'));
+            if (det) det.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            var f = form.querySelector('[name="productTitle"]') || form.querySelector('[name="firstName"]');
+            if (f) { try { f.focus(); } catch (err) {} }
+          });
+        })();
       </script>
     @endif
   </div>
