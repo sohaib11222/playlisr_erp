@@ -103,9 +103,8 @@ class EventsController extends Controller
             ['id' => 'rules_confirmed_with_host','label' => 'Review all event rules with the designated employee.',                          'due' => 2],
             ['id' => 'link_shared_with_host',    'label' => 'Share the playback link with the person hosting.',                             'due' => 1],
             ['id' => 'link_confirmed_working',   'label' => 'Host tests the playback link at least 1 hour before the event.',                'due' => 0],
-            ['id' => 'host_stage_announcement',  'label' => 'Host announces on stage what we have available to order and pick up — all preorders are ready on street date at 10 AM.', 'due' => 0],
+            ['id' => 'host_stage_announcement',  'label' => 'Host announces on stage what we have available to order and pick up — all preorders are ready on street date at 10 AM, pickup only (no shipping).', 'due' => 0],
             ['id' => 'host_announce_used_sale',  'label' => 'Host announces 15% off all used products to drive more sales.',                  'due' => 0],
-            ['id' => 'host_pickup_only',         'label' => 'Tell the host: preorders are PICKUP ONLY — no shipping.',                        'due' => 0],
         ];
     }
 
