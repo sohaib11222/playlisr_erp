@@ -3809,6 +3809,8 @@ function reset_pos_form(){
 	$('tr.product_row').remove();
 	$('span.total_quantity, span.price_total, span#total_discount, span#order_tax, span#order_tax_display, span#total_payable, span#total_with_tax, span#shipping_charges_amount').text(0);
 	$('span.total_payable_span', 'span.total_paying', 'span.balance_due').text(0);
+	//Reset Pre-Tax → Clover hero amount — otherwise it keeps the previous sale's value
+	$('span#pre_tax_amount').text('0.00');
 
 	$('#modal_payment').find('.remove_payment_row').each( function(){
 		$(this).closest('.payment_row').remove();
