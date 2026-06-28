@@ -169,9 +169,17 @@
         if ($t !== '') { $preByTitle[$t] = ($preByTitle[$t] ?? 0) + 1; }
       }
     @endphp
+    @php
+      // Sort versions by how many we ordered, highest to lowest.
+      usort($versions, function ($a, $b) use ($orderedByFmt) {
+        $qa = (int) ($orderedByFmt[$a['format'] ?? ''] ?? 0);
+        $qb = (int) ($orderedByFmt[$b['format'] ?? ''] ?? 0);
+        return $qb <=> $qa;
+      });
+    @endphp
     <div class="ev-card">
       <h2 style="margin-top:0;">What We Ordered</h2>
-      <p class="sub" style="margin:0 0 10px;">What we ordered for this release vs. preorders claimed. "Left" is what's still available to preorder.</p>
+      <p class="sub" style="margin:0 0 10px;">What we ordered for this release vs. preorders claimed, highest to lowest. "Left" is what's still available to preorder.</p>
       <table class="ev-tbl">
         <thead><tr>
           <th style="width:42%;">Product</th>
