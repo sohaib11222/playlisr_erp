@@ -350,6 +350,39 @@
   @php $preordersOn = !empty($event['preorderEnabled']); @endphp
   <div class="ev-card">
     <h2>Preorders</h2>
+    @if($preordersOn)
+      @php $pVersions = array_values((array) ($event['preorderProducts'] ?? [])); @endphp
+      {{-- Take a preorder in person at the event. Posts to the same create
+           endpoint as the customer form, so it shows up below and updates the
+           "Versions ordered" counts. Available even before the first order. --}}
+      <details style="margin-bottom:14px;border:1px dashed var(--pos-line,#ECE3CF);border-radius:10px;padding:10px 14px;">
+        <summary class="ev-create-summary">+ Add preorder</summary>
+        <form method="POST" action="{{ route('events.preorderAdd', ['id' => $event['id']]) }}" style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+          {{ csrf_field() }}
+          <div class="ev-field" style="flex:1 1 130px;"><label>First name *</label><input type="text" name="firstName" required></div>
+          <div class="ev-field" style="flex:1 1 130px;"><label>Last name *</label><input type="text" name="lastName" required></div>
+          <div class="ev-field" style="flex:1 1 140px;"><label>Phone *</label><input type="text" name="phone" required></div>
+          <div class="ev-field" style="flex:2 1 200px;"><label>Email *</label><input type="email" name="email" required></div>
+          @if(count($pVersions) > 1)
+            <div class="ev-field" style="flex:2 1 240px;"><label>Version *</label>
+              <select name="productTitle" required>
+                <option value="">Choose a version…</option>
+                @foreach($pVersions as $pv)
+                  @php $pvt = trim((string) ($pv['title'] ?? '')); @endphp
+                  @if($pvt !== '')
+                    <option value="{{ $pvt }}">{{ $pvt }}@if(isset($pv['price'])) — ${{ number_format((float) $pv['price'], 2) }}@endif</option>
+                  @endif
+                @endforeach
+              </select>
+            </div>
+          @elseif(count($pVersions) === 1)
+            <input type="hidden" name="productTitle" value="{{ trim((string) ($pVersions[0]['title'] ?? '')) }}">
+          @endif
+          <div class="ev-field" style="flex:2 1 200px;"><label>Notes</label><input type="text" name="notes" placeholder="Signed copy, color variant, etc."></div>
+          <button type="submit" class="btn-accent">Add preorder</button>
+        </form>
+      </details>
+    @endif
     @if(!$preordersOn)
       <div class="empty">Preorders aren't enabled for this event. Check "Enable preorder for this event" in the details above if this is an advance listening party.</div>
     @elseif(empty($preorders))

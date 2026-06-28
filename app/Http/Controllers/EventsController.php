@@ -601,6 +601,74 @@ class EventsController extends Controller
             ->with($resp === null ? 'error' : 'status', $msg);
     }
 
+    /**
+     * Add a preorder at the event for a customer who's ordering in person.
+     * Posts to the website's PUBLIC create endpoint (the same one the customer
+     * form uses) so the record, the internal notify, and the POS draft-sale
+     * sync all fire identically — no website-side changes needed.
+     */
+    public function preorderAdd(Request $request, string $id)
+    {
+        if (!auth()->user()->can('product.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $business_id = $this->businessId($request);
+        $items = self::load($business_id)['items'];
+        if (!isset($items[$id])) {
+            return redirect()->route('events.index')->with('error', 'Event not found.');
+        }
+        $event = $items[$id];
+
+        if (empty($event['preorderEnabled'])) {
+            return redirect()->route('events.edit', ['id' => $id])
+                ->with('error', 'Preorders aren\'t enabled for this event.');
+        }
+
+        $request->validate([
+            'firstName'    => 'required|string|max:100',
+            'lastName'     => 'required|string|max:100',
+            'email'        => 'required|email|max:191',
+            'phone'        => 'required|string|max:40',
+            'productTitle' => 'nullable|string|max:191',
+            'notes'        => 'nullable|string|max:1000',
+        ], [
+            'firstName.required' => 'First name is required.',
+            'lastName.required'  => 'Last name is required.',
+            'email.required'     => 'Email is required.',
+            'phone.required'     => 'Phone is required.',
+        ]);
+
+        // If the release has more than one version, a version must be chosen so
+        // the preorder lands against the right line in "Versions ordered".
+        $versions = array_values((array) ($event['preorderProducts'] ?? []));
+        $productTitle = trim((string) $request->input('productTitle', ''));
+        if (count($versions) > 1 && $productTitle === '') {
+            return redirect()->route('events.edit', ['id' => $id])
+                ->with('error', 'Choose which version this preorder is for.');
+        }
+
+        $payload = [
+            'eventId'      => $event['id'] ?? null,
+            'firstName'    => trim($request->input('firstName')),
+            'lastName'     => trim($request->input('lastName')),
+            'email'        => trim($request->input('email')),
+            'phone'        => trim($request->input('phone')),
+            'notes'        => $request->input('notes') ?: null,
+            'productTitle' => $productTitle !== '' ? $productTitle : null,
+        ];
+
+        // PUBLIC create endpoint (/api/v1/preorders), not the /erp/* bridge —
+        // it already exists, so this stays entirely an ERP-side change.
+        $resp = $this->websiteApi('POST', '/preorders', $payload);
+        if ($resp === null || empty($resp['success'])) {
+            $why = is_array($resp) ? ($resp['message'] ?? '') : '';
+            return redirect()->route('events.edit', ['id' => $id])
+                ->with('error', 'Could not add the preorder' . ($why !== '' ? ': ' . $why : '.') . '');
+        }
+        return redirect()->route('events.edit', ['id' => $id])
+            ->with('status', 'Preorder added for ' . $payload['firstName'] . ' ' . $payload['lastName'] . '.');
+    }
+
     /** Change a preorder's status via the website bridge (fires pickup email/SMS). */
     public function preorderStatus(Request $request, string $id, string $preorderId)
     {
