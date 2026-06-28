@@ -170,11 +170,9 @@
       }
     @endphp
     @php
-      // Sort versions by how many we ordered, highest to lowest.
-      usort($versions, function ($a, $b) use ($orderedByFmt) {
-        $qa = (int) ($orderedByFmt[$a['format'] ?? ''] ?? 0);
-        $qb = (int) ($orderedByFmt[$b['format'] ?? ''] ?? 0);
-        return $qb <=> $qa;
+      // Sort versions by price, highest to lowest.
+      usort($versions, function ($a, $b) {
+        return (float) ($b['price'] ?? 0) <=> (float) ($a['price'] ?? 0);
       });
     @endphp
     <div class="ev-card">
@@ -184,7 +182,7 @@
         <thead><tr>
           <th style="width:42%;">Product</th>
           <th style="width:16%;">Format</th>
-          <th style="width:12%;">MSRP</th>
+          <th style="width:12%;">Price</th>
           <th style="width:10%;">Ordered</th>
           <th style="width:10%;">Preordered</th>
           <th style="width:10%;">Left</th>
