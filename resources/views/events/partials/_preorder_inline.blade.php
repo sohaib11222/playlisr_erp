@@ -3,11 +3,9 @@
      preorder) and $event in scope (Blade @include inherits parent vars). --}}
 @php
   $st = $p['status'] ?? 'pending';
-  $isPaid = !empty($p['paid']);
-  if ($st === 'picked_up')    { $ptxt = 'picked up';     $pcls = 'sold'; }
-  elseif ($st === 'ready')    { $ptxt = $isPaid ? 'ready · paid' : 'ready'; $pcls = 'sold'; }
-  elseif ($isPaid)            { $ptxt = 'paid at event';  $pcls = 'sold'; }
-  else                        { $ptxt = str_replace('_', ' ', $st); $pcls = ''; }
+  if ($st === 'picked_up')    { $ptxt = 'picked up';        $pcls = 'sold'; }
+  elseif ($st === 'ready')    { $ptxt = 'ready';            $pcls = 'sold'; }
+  else                        { $ptxt = 'paid for at event'; $pcls = 'sold'; }
   $pid = $p['_id'] ?? $p['id'] ?? '';
 @endphp
 <div style="margin-bottom:6px;">

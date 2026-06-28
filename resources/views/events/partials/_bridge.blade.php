@@ -188,7 +188,38 @@
 
   {{-- ---------- RSVPs ---------- --}}
   <div class="ev-card">
-    <h2>RSVPs</h2>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:6px;">
+      <h2 style="margin:0;">RSVPs</h2>
+      {{-- Add a walk-in RSVP — top-right of the box. --}}
+      <details style="flex:1 1 340px;display:flex;flex-direction:column;align-items:flex-end;">
+        <summary style="list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:8px;background:#1c2150;color:#fff;font-weight:800;font-size:16px;padding:14px 26px;border-radius:12px;box-shadow:0 2px 6px rgba(0,0,0,.12);">
+          <span style="font-size:20px;line-height:1;">+</span> Add RSVP (walk-in)
+        </summary>
+        <form method="POST" action="{{ route('events.rsvpAdd', ['id' => $event['id']]) }}" style="align-self:stretch;margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;border:1px dashed var(--pos-line,#ECE3CF);border-radius:10px;padding:14px;">
+          {{ csrf_field() }}
+          <div class="ev-field" style="flex:1 1 130px;"><label>First name *</label><input type="text" name="firstName" required></div>
+          <div class="ev-field" style="flex:1 1 130px;"><label>Last name *</label><input type="text" name="lastName" required></div>
+          <div class="ev-field" style="flex:2 1 220px;"><label>Email *</label><input type="email" name="email" required></div>
+          <div class="ev-field" style="flex:1 1 130px;"><label>Phone</label><input type="text" name="phone"></div>
+          <div class="ev-field" style="flex:0 1 80px;"><label>Guests</label><input type="number" name="guests" min="0" value="0"></div>
+          <div class="ev-field" style="flex:1 1 240px;"><label>Would you like to purchase the new release today?</label>
+            <select name="interestedInPurchase">
+              <option value="">—</option>
+              <option value="vinyl">Vinyl</option>
+              <option value="cd">CD</option>
+              <option value="both">Both</option>
+              <option value="not_sure">Not sure</option>
+              <option value="no">No</option>
+            </select>
+          </div>
+          <label class="ev-meta" style="display:flex;align-items:center;gap:6px;padding-bottom:9px;">
+            <input type="hidden" name="checkedIn" value="0">
+            <input type="checkbox" name="checkedIn" value="1" checked> Check in now
+          </label>
+          <button type="submit" class="btn-accent">Add RSVP</button>
+        </form>
+      </details>
+    </div>
     @if($stats)
       <div class="total-owed" style="margin-bottom:12px;">
         {{ $stats['attendingCount'] ?? $stats['totalAttendees'] ?? count($rsvps) }} attending
@@ -233,37 +264,6 @@
         @endif
       </div>
     @endif
-
-    {{-- Add a walk-in RSVP (someone who didn't RSVP in advance). Always
-         available, even before anyone has RSVP'd. --}}
-    <details style="margin-bottom:14px;">
-      <summary style="list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:8px;background:#1c2150;color:#fff;font-weight:800;font-size:16px;padding:14px 26px;border-radius:12px;box-shadow:0 2px 6px rgba(0,0,0,.12);">
-        <span style="font-size:20px;line-height:1;">+</span> Add RSVP (walk-in)
-      </summary>
-      <form method="POST" action="{{ route('events.rsvpAdd', ['id' => $event['id']]) }}" style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;border:1px dashed var(--pos-line,#ECE3CF);border-radius:10px;padding:14px;">
-        {{ csrf_field() }}
-        <div class="ev-field" style="flex:1 1 130px;"><label>First name *</label><input type="text" name="firstName" required></div>
-        <div class="ev-field" style="flex:1 1 130px;"><label>Last name *</label><input type="text" name="lastName" required></div>
-        <div class="ev-field" style="flex:2 1 220px;"><label>Email *</label><input type="email" name="email" required></div>
-        <div class="ev-field" style="flex:1 1 130px;"><label>Phone</label><input type="text" name="phone"></div>
-        <div class="ev-field" style="flex:0 1 80px;"><label>Guests</label><input type="number" name="guests" min="0" value="0"></div>
-        <div class="ev-field" style="flex:1 1 240px;"><label>Would you like to purchase the new release today?</label>
-          <select name="interestedInPurchase">
-            <option value="">—</option>
-            <option value="vinyl">Vinyl</option>
-            <option value="cd">CD</option>
-            <option value="both">Both</option>
-            <option value="not_sure">Not sure</option>
-            <option value="no">No</option>
-          </select>
-        </div>
-        <label class="ev-meta" style="display:flex;align-items:center;gap:6px;padding-bottom:9px;">
-          <input type="hidden" name="checkedIn" value="0">
-          <input type="checkbox" name="checkedIn" value="1" checked> Check in now
-        </label>
-        <button type="submit" class="btn-accent">Add RSVP</button>
-      </form>
-    </details>
 
     @if($preordersOn)
       {{-- Take a preorder in person. Posts to the same create endpoint as the
@@ -335,14 +335,13 @@
       <div class="empty">No RSVPs yet.</div>
     @else
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
-        <button type="button" class="btn-ghost" id="copy-emails">Copy all emails</button>
         <input type="search" id="rsvp-search" placeholder="Search name or email" autocomplete="off"
                style="flex:1 1 220px;max-width:320px;padding:8px 10px;border:1px solid var(--pos-line,#ECE3CF);border-radius:8px;">
       </div>
       <table class="ev-tbl" id="rsvp-table">
         <thead><tr>
           <th data-sort-type="text">Name</th>
-          <th data-sort-type="text">Email</th>
+          <th data-sort-type="text">Email &amp; phone</th>
           <th data-sort-type="text">Customer Request</th>
           <th data-sort-type="text">Checked in</th>
           @if($preordersOn)<th data-sort-type="text">Preorder</th>@endif
@@ -352,7 +351,7 @@
             @php $rid = $r['_id'] ?? $r['id'] ?? ''; $ci = !empty($r['checkedIn']); @endphp
             <tr>
               <td class="ev-name">{{ trim(($r['firstName'] ?? '') . ' ' . ($r['lastName'] ?? '')) ?: ($r['name'] ?? '—') }}</td>
-              <td class="ev-meta">{{ $r['email'] ?? '' }}</td>
+              <td class="ev-meta">{{ $r['email'] ?? '' }}@if(!empty($r['phone']))<div>{{ $r['phone'] }}</div>@endif</td>
               <td>
                 @php $vi = $r['interestedInPurchase'] ?? null; @endphp
                 @if($vi && isset($interestLabels[$vi]))
@@ -366,7 +365,7 @@
                 <form method="POST" action="{{ route('events.rsvpCheckIn', ['id' => $event['id'], 'rsvpId' => $rid]) }}" style="display:inline;">
                   {{ csrf_field() }}
                   <input type="hidden" name="checkedIn" value="{{ $ci ? '0' : '1' }}">
-                  <button type="submit" class="{{ $ci ? 'btn-accent' : 'btn-ghost' }}" style="padding:5px 12px;font-size:12px;">
+                  <button type="submit" class="btn-ghost" style="padding:5px 12px;font-size:12px;{{ $ci ? 'background:#2e7d32;color:#fff;border-color:#2e7d32;' : '' }}">
                     {{ $ci ? 'Checked in' : 'Check in' }}
                   </button>
                 </form>
@@ -458,52 +457,8 @@
     @endif
   </div>
 
-  {{-- ---------- Preorders (canceled archive) ---------- --}}
-  {{-- Active preorders now show inline in the guest list above. This card just
-       keeps the not-enabled note and a collapsed list of canceled preorders so
-       no record is lost. --}}
-  <div class="ev-card">
-    <h2>Preorders</h2>
-    @if(!$preordersOn)
-      <div class="empty">Preorders aren't enabled for this event. Check "Enable preorder for this event" in the details above if this is an advance listening party.</div>
-    @else
-      <p class="sub" style="margin-top:0;">Preorders show in the guest list above. Use <strong>+ Add preorder</strong> at the top to add one in person. Marking a preorder "Ready" sends the customer the pickup email/SMS.</p>
-      @if(!empty($canceledPreorders))
-        <details style="margin-top:14px;">
-          <summary class="ev-create-summary" style="color:#8a8170;">Canceled ({{ count($canceledPreorders) }})</summary>
-          <table class="ev-tbl" style="margin-top:10px;opacity:.75;">
-            <thead><tr><th>Customer</th><th>Item</th><th>Price</th><th></th></tr></thead>
-            <tbody>
-              @foreach($canceledPreorders as $p)
-                @php
-                  $pid = $p['_id'] ?? $p['id'] ?? '';
-                  $pEmail = (string) ($p['email'] ?? '');
-                  if (strpos($pEmail, '@noemail.nivessa.com') !== false) { $pEmail = ''; }
-                @endphp
-                <tr>
-                  <td>
-                    <span class="ev-name">{{ trim(($p['firstName'] ?? '') . ' ' . ($p['lastName'] ?? '')) }}</span>
-                    <div class="ev-meta">{{ $pEmail }}@if($pEmail !== '' && !empty($p['phone'])) &middot; @endif{{ $p['phone'] ?? '' }}</div>
-                  </td>
-                  <td>{{ $p['preorderTitle'] ?? '' }}</td>
-                  <td>@if(isset($p['preorderPrice'])){{ '$' . number_format((float) $p['preorderPrice'], 2) }}@endif</td>
-                  <td style="text-align:right;white-space:nowrap;">
-                    @if($pid)
-                    <form method="POST" action="{{ route('events.preorderStatus', ['id' => $event['id'], 'preorderId' => $pid]) }}" style="display:inline-block;">
-                      {{ csrf_field() }}
-                      <input type="hidden" name="status" value="pending">
-                      <button type="submit" class="btn-link" style="color:#5a5145;">Restore</button>
-                    </form>
-                    @endif
-                  </td>
-                </tr>
-              @endforeach
-            </tbody>
-          </table>
-        </details>
-      @endif
-    @endif
-  </div>
+  {{-- Preorders now live entirely in the guest list above (active inline,
+       canceled hidden). The standalone Preorders card was removed per Sarah. --}}
 
   <script>
   (function () {
