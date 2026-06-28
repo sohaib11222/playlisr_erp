@@ -48,6 +48,69 @@
     $rsvps = $bridge['rsvps'] ?? [];
     $stats = $bridge['stats'] ?? null;
     $preorders = $bridge['preorders'] ?? [];
+
+    // ---- Preorders: shown inline in the guest table below. Split active vs
+    //      canceled, then match each active preorder to an RSVP row by email /
+    //      phone / name so it appears on that person's row. Anything that
+    //      doesn't match an RSVP gets its OWN row further down — so no preorder
+    //      is ever hidden, regardless of whether the buyer also RSVP'd.
+    $preordersOn = !empty($event['preorderEnabled']);
+    $pVersions = array_values((array) ($event['preorderProducts'] ?? []));
+    $activePreorders = [];
+    $canceledPreorders = [];
+    foreach ($preorders as $p) {
+      if (($p['status'] ?? 'pending') === 'canceled') { $canceledPreorders[] = $p; }
+      else { $activePreorders[] = $p; }
+    }
+    $matchKeys = function ($email, $phone, $first, $last, $name = '') {
+      $keys = [];
+      $e = strtolower(trim((string) $email));
+      if ($e !== '' && strpos($e, '@noemail.nivessa.com') === false) { $keys[] = 'e:' . $e; }
+      $ph = preg_replace('/\D/', '', (string) $phone);
+      if (strlen($ph) >= 7) { $keys[] = 'p:' . substr($ph, -10); }
+      $nm = strtolower(trim(trim((string) $first . ' ' . (string) $last) ?: (string) $name));
+      if ($nm !== '') { $keys[] = 'n:' . $nm; }
+      return $keys;
+    };
+    // Index active preorders by every key (remember their position).
+    $preByKey = [];
+    foreach ($activePreorders as $i => $p) {
+      foreach ($matchKeys($p['email'] ?? '', $p['phone'] ?? '', $p['firstName'] ?? '', $p['lastName'] ?? '') as $k) {
+        $preByKey[$k][] = $i;
+      }
+    }
+    // Claim each preorder for the first RSVP it matches (shown once only).
+    $preForRsvp = [];   // rsvp index => [preorder, ...]
+    $claimedPre = [];   // preorder index => true
+    foreach ($rsvps as $ri => $r) {
+      foreach ($matchKeys($r['email'] ?? '', $r['phone'] ?? '', $r['firstName'] ?? '', $r['lastName'] ?? '', $r['name'] ?? '') as $k) {
+        foreach ($preByKey[$k] ?? [] as $pi) {
+          if (!empty($claimedPre[$pi])) { continue; }
+          $claimedPre[$pi] = true;
+          $preForRsvp[$ri][] = $activePreorders[$pi];
+        }
+      }
+    }
+    // Active preorders with no matching RSVP — listed as their own rows.
+    $unmatchedPre = [];
+    foreach ($activePreorders as $i => $p) {
+      if (empty($claimedPre[$i])) { $unmatchedPre[] = $p; }
+    }
+
+    // Checked-in guests offered in the "+ Add preorder" picker (auto-fill).
+    $checkedInGuests = [];
+    foreach ($rsvps as $r) {
+      if (empty($r['checkedIn'])) { continue; }
+      $gn = trim(($r['firstName'] ?? '') . ' ' . ($r['lastName'] ?? '')) ?: ($r['name'] ?? '');
+      if ($gn === '') { continue; }
+      $checkedInGuests[] = [
+        'firstName' => $r['firstName'] ?? '',
+        'lastName'  => $r['lastName'] ?? '',
+        'email'     => $r['email'] ?? '',
+        'phone'     => $r['phone'] ?? '',
+        'label'     => $gn . (!empty($r['phone']) ? ' · ' . $r['phone'] : ''),
+      ];
+    }
     // Build the wheel pool: de-dupe by email, keep checked-in flag.
     $pool = [];
     foreach ($rsvps as $r) {
@@ -185,7 +248,71 @@
       </form>
     </details>
 
-    @if(empty($rsvps))
+    @if($preordersOn)
+      {{-- Take a preorder in person. Posts to the same create endpoint as the
+           customer form, then auto-marks it paid (paid at the event). Shows in
+           the guest table below and updates the "Versions ordered" counts. --}}
+      <details style="margin-bottom:14px;border:1px dashed var(--pos-line,#ECE3CF);border-radius:10px;padding:10px 14px;">
+        <summary class="ev-create-summary">+ Add preorder</summary>
+        <form method="POST" action="{{ route('events.preorderAdd', ['id' => $event['id']]) }}" data-preorder-add style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+          {{ csrf_field() }}
+          @if(count($checkedInGuests))
+            <div class="ev-field" style="flex:1 1 100%;"><label>Checked-in guest (optional — fills the fields below)</label>
+              <select data-guest-picker>
+                <option value="">— Type a new customer, or pick a checked-in guest —</option>
+                @foreach($checkedInGuests as $gi => $g)
+                  <option value="{{ $gi }}">{{ $g['label'] }}</option>
+                @endforeach
+              </select>
+            </div>
+            <script>window.__preorderGuests = @json(array_values($checkedInGuests));</script>
+          @endif
+          <div class="ev-field" style="flex:1 1 130px;"><label>First name *</label><input type="text" name="firstName" required></div>
+          <div class="ev-field" style="flex:1 1 130px;"><label>Last name *</label><input type="text" name="lastName" required></div>
+          <div class="ev-field" style="flex:1 1 140px;"><label>Phone *</label><input type="text" name="phone" required></div>
+          <div class="ev-field" style="flex:2 1 200px;"><label>Email</label><input type="email" name="email"></div>
+          @if(count($pVersions) > 1)
+            <div class="ev-field" style="flex:2 1 240px;"><label>Version *</label>
+              <select name="productTitle" required>
+                <option value="">Choose a version…</option>
+                @foreach($pVersions as $pv)
+                  @php $pvt = trim((string) ($pv['title'] ?? '')); @endphp
+                  @if($pvt !== '')
+                    <option value="{{ $pvt }}">{{ $pvt }}@if(isset($pv['price'])) — ${{ number_format((float) $pv['price'], 2) }}@endif</option>
+                  @endif
+                @endforeach
+              </select>
+            </div>
+          @elseif(count($pVersions) === 1)
+            <input type="hidden" name="productTitle" value="{{ trim((string) ($pVersions[0]['title'] ?? '')) }}">
+          @endif
+          <div class="ev-field" style="flex:2 1 200px;"><label>Notes</label><input type="text" name="notes" placeholder="Signed copy, color variant, etc."></div>
+          <button type="submit" class="btn-accent">Add preorder</button>
+        </form>
+      </details>
+      <script>
+      (function () {
+        var form = document.querySelector('form[data-preorder-add]');
+        if (!form) return;
+        var picker = form.querySelector('[data-guest-picker]');
+        if (!picker) return;
+        picker.addEventListener('change', function () {
+          var g = (window.__preorderGuests || [])[this.value];
+          if (!g) return;
+          var set = function (name, val) {
+            var el = form.querySelector('[name="' + name + '"]');
+            if (el) el.value = val || '';
+          };
+          set('firstName', g.firstName);
+          set('lastName', g.lastName);
+          set('email', g.email);
+          set('phone', g.phone);
+        });
+      })();
+      </script>
+    @endif
+
+    @if(empty($rsvps) && empty($unmatchedPre))
       <div class="empty">No RSVPs yet.</div>
     @else
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
@@ -198,10 +325,11 @@
           <th data-sort-type="text">Name</th>
           <th data-sort-type="text">Email</th>
           <th data-sort-type="text">Customer Request</th>
+          @if($preordersOn)<th data-sort-type="text">Preorder</th>@endif
           <th data-sort-type="text">Checked in</th>
         </tr></thead>
         <tbody>
-          @foreach($rsvps as $r)
+          @foreach($rsvps as $ri => $r)
             @php $rid = $r['_id'] ?? $r['id'] ?? ''; $ci = !empty($r['checkedIn']); @endphp
             <tr>
               <td class="ev-name">{{ trim(($r['firstName'] ?? '') . ' ' . ($r['lastName'] ?? '')) ?: ($r['name'] ?? '—') }}</td>
@@ -214,6 +342,15 @@
                   <span class="ev-meta">—</span>
                 @endif
               </td>
+              @if($preordersOn)
+              <td>
+                @forelse($preForRsvp[$ri] ?? [] as $p)
+                  @include('events.partials._preorder_inline', ['p' => $p])
+                @empty
+                  <span class="ev-meta">—</span>
+                @endforelse
+              </td>
+              @endif
               <td>
                 @if($rid)
                 <form method="POST" action="{{ route('events.rsvpCheckIn', ['id' => $event['id'], 'rsvpId' => $rid]) }}" style="display:inline;">
@@ -227,6 +364,21 @@
               </td>
             </tr>
           @endforeach
+          @if($preordersOn)
+            @foreach($unmatchedPre as $p)
+              @php
+                $upEmail = (string) ($p['email'] ?? '');
+                if (strpos($upEmail, '@noemail.nivessa.com') !== false) { $upEmail = ''; }
+              @endphp
+              <tr>
+                <td class="ev-name">{{ trim(($p['firstName'] ?? '') . ' ' . ($p['lastName'] ?? '')) ?: '—' }} <span class="ev-meta" style="font-weight:500;">(no RSVP)</span></td>
+                <td class="ev-meta">{{ $upEmail ?: ($p['phone'] ?? '') }}</td>
+                <td><span class="ev-meta">—</span></td>
+                <td>@include('events.partials._preorder_inline', ['p' => $p])</td>
+                <td><span class="ev-meta">—</span></td>
+              </tr>
+            @endforeach
+          @endif
         </tbody>
       </table>
       <script>
@@ -339,161 +491,27 @@
     @endif
   </div>
 
-  {{-- ---------- Preorders ---------- --}}
-  {{-- Only advance listening parties take preorders. For events without it
-       enabled, show a muted note instead of an ordering link (which would
-       wrongly imply customers can preorder). --}}
-  @php $preordersOn = !empty($event['preorderEnabled']); @endphp
+  {{-- ---------- Preorders (canceled archive) ---------- --}}
+  {{-- Active preorders now show inline in the guest list above. This card just
+       keeps the not-enabled note and a collapsed list of canceled preorders so
+       no record is lost. --}}
   <div class="ev-card">
     <h2>Preorders</h2>
-    @if($preordersOn)
-      @php $pVersions = array_values((array) ($event['preorderProducts'] ?? [])); @endphp
-      {{-- Take a preorder in person at the event. Posts to the same create
-           endpoint as the customer form, so it shows up below and updates the
-           "Versions ordered" counts. Available even before the first order. --}}
-      @php
-        $checkedInGuests = [];
-        foreach ($rsvps as $r) {
-          if (empty($r['checkedIn'])) continue;
-          $gn = trim(($r['firstName'] ?? '') . ' ' . ($r['lastName'] ?? '')) ?: ($r['name'] ?? '');
-          if ($gn === '') continue;
-          $checkedInGuests[] = [
-            'firstName' => $r['firstName'] ?? '',
-            'lastName'  => $r['lastName'] ?? '',
-            'email'     => $r['email'] ?? '',
-            'phone'     => $r['phone'] ?? '',
-            'label'     => $gn . (!empty($r['phone']) ? ' · ' . $r['phone'] : ''),
-          ];
-        }
-      @endphp
-      <details style="margin-bottom:14px;border:1px dashed var(--pos-line,#ECE3CF);border-radius:10px;padding:10px 14px;">
-        <summary class="ev-create-summary">+ Add preorder</summary>
-        <form method="POST" action="{{ route('events.preorderAdd', ['id' => $event['id']]) }}" data-preorder-add style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
-          {{ csrf_field() }}
-          @if(count($checkedInGuests))
-            <div class="ev-field" style="flex:1 1 100%;"><label>Checked-in guest (optional — fills the fields below)</label>
-              <select data-guest-picker>
-                <option value="">— Type a new customer, or pick a checked-in guest —</option>
-                @foreach($checkedInGuests as $gi => $g)
-                  <option value="{{ $gi }}">{{ $g['label'] }}</option>
-                @endforeach
-              </select>
-            </div>
-            <script>window.__preorderGuests = @json(array_values($checkedInGuests));</script>
-          @endif
-          <div class="ev-field" style="flex:1 1 130px;"><label>First name *</label><input type="text" name="firstName" required></div>
-          <div class="ev-field" style="flex:1 1 130px;"><label>Last name *</label><input type="text" name="lastName" required></div>
-          <div class="ev-field" style="flex:1 1 140px;"><label>Phone *</label><input type="text" name="phone" required></div>
-          <div class="ev-field" style="flex:2 1 200px;"><label>Email</label><input type="email" name="email"></div>
-          @if(count($pVersions) > 1)
-            <div class="ev-field" style="flex:2 1 240px;"><label>Version *</label>
-              <select name="productTitle" required>
-                <option value="">Choose a version…</option>
-                @foreach($pVersions as $pv)
-                  @php $pvt = trim((string) ($pv['title'] ?? '')); @endphp
-                  @if($pvt !== '')
-                    <option value="{{ $pvt }}">{{ $pvt }}@if(isset($pv['price'])) — ${{ number_format((float) $pv['price'], 2) }}@endif</option>
-                  @endif
-                @endforeach
-              </select>
-            </div>
-          @elseif(count($pVersions) === 1)
-            <input type="hidden" name="productTitle" value="{{ trim((string) ($pVersions[0]['title'] ?? '')) }}">
-          @endif
-          <div class="ev-field" style="flex:2 1 200px;"><label>Notes</label><input type="text" name="notes" placeholder="Signed copy, color variant, etc."></div>
-          <button type="submit" class="btn-accent">Add preorder</button>
-        </form>
-      </details>
-      <script>
-      (function () {
-        var form = document.querySelector('form[data-preorder-add]');
-        if (!form) return;
-        var picker = form.querySelector('[data-guest-picker]');
-        if (!picker) return;
-        picker.addEventListener('change', function () {
-          var g = (window.__preorderGuests || [])[this.value];
-          if (!g) return;
-          var set = function (name, val) {
-            var el = form.querySelector('[name="' + name + '"]');
-            if (el) el.value = val || '';
-          };
-          set('firstName', g.firstName);
-          set('lastName', g.lastName);
-          set('email', g.email);
-          set('phone', g.phone);
-        });
-      })();
-      </script>
-    @endif
     @if(!$preordersOn)
       <div class="empty">Preorders aren't enabled for this event. Check "Enable preorder for this event" in the details above if this is an advance listening party.</div>
-    @elseif(empty($preorders))
-      <div class="empty">No preorders yet. Customers order at nivessa.com/preorder?eventId={{ $event['id'] }}.</div>
     @else
-      @php
-        // Canceled preorders drop out of the main list into a collapsed
-        // section below — the record is kept, just out of the way.
-        $activePre = array_values(array_filter($preorders, fn($p) => ($p['status'] ?? 'pending') !== 'canceled'));
-        $canceledPre = array_values(array_filter($preorders, fn($p) => ($p['status'] ?? 'pending') === 'canceled'));
-      @endphp
-      @if(empty($activePre))
-        <div class="empty">No active preorders yet.</div>
-      @else
-      <table class="ev-tbl">
-        <thead><tr><th>Customer</th><th>Item</th><th>Price</th><th>Status</th><th></th></tr></thead>
-        <tbody>
-          @foreach($activePre as $p)
-            @php
-              $pid = $p['_id'] ?? $p['id'] ?? '';
-              $st = $p['status'] ?? 'pending';
-              $isPaid = !empty($p['paid']);
-              // Placeholder emails (no email given in person) shouldn't show.
-              $pEmail = (string) ($p['email'] ?? '');
-              if (strpos($pEmail, '@noemail.nivessa.com') !== false) $pEmail = '';
-              if ($st === 'picked_up')      { $pillTxt = 'picked up';    $pillCls = 'sold'; }
-              elseif ($st === 'canceled')   { $pillTxt = 'canceled';     $pillCls = 'paid'; }
-              elseif ($st === 'ready')      { $pillTxt = $isPaid ? 'ready · paid' : 'ready'; $pillCls = 'sold'; }
-              elseif ($isPaid)              { $pillTxt = 'paid at event'; $pillCls = 'sold'; }
-              else                          { $pillTxt = str_replace('_', ' ', $st); $pillCls = ''; }
-            @endphp
-            <tr>
-              <td>
-                <span class="ev-name">{{ trim(($p['firstName'] ?? '') . ' ' . ($p['lastName'] ?? '')) }}</span>
-                <div class="ev-meta">{{ $pEmail }}@if($pEmail !== '' && !empty($p['phone'])) &middot; @endif{{ $p['phone'] ?? '' }}</div>
-              </td>
-              <td>{{ $p['preorderTitle'] ?? '' }}</td>
-              <td>@if(isset($p['preorderPrice'])){{ '$' . number_format((float) $p['preorderPrice'], 2) }}@endif</td>
-              <td><span class="pill {{ $pillCls }}">{{ $pillTxt }}</span></td>
-              <td style="text-align:right;white-space:nowrap;">
-                @if($pid)
-                  @foreach(['ready' => 'Ready', 'picked_up' => 'Picked up', 'canceled' => 'Cancel'] as $sval => $slabel)
-                    @if($st !== $sval)
-                    <form method="POST" action="{{ route('events.preorderStatus', ['id' => $event['id'], 'preorderId' => $pid]) }}" style="display:inline-block;margin-left:6px;">
-                      {{ csrf_field() }}
-                      <input type="hidden" name="status" value="{{ $sval }}">
-                      <button type="submit" class="{{ $sval === 'canceled' ? 'btn-ghost' : 'btn-accent' }}" style="padding:5px 12px;font-size:12px;">{{ $slabel }}</button>
-                    </form>
-                    @endif
-                  @endforeach
-                @endif
-              </td>
-            </tr>
-          @endforeach
-        </tbody>
-      </table>
-      <p class="sub" style="margin-top:10px;margin-bottom:0;">Marking a preorder "Ready" sends the customer the pickup email/SMS (handled on the website).</p>
-      @endif
-      @if(!empty($canceledPre))
+      <p class="sub" style="margin-top:0;">Preorders show in the guest list above. Use <strong>+ Add preorder</strong> at the top to add one in person. Marking a preorder "Ready" sends the customer the pickup email/SMS.</p>
+      @if(!empty($canceledPreorders))
         <details style="margin-top:14px;">
-          <summary class="ev-create-summary" style="color:#8a8170;">Canceled ({{ count($canceledPre) }})</summary>
+          <summary class="ev-create-summary" style="color:#8a8170;">Canceled ({{ count($canceledPreorders) }})</summary>
           <table class="ev-tbl" style="margin-top:10px;opacity:.75;">
             <thead><tr><th>Customer</th><th>Item</th><th>Price</th><th></th></tr></thead>
             <tbody>
-              @foreach($canceledPre as $p)
+              @foreach($canceledPreorders as $p)
                 @php
                   $pid = $p['_id'] ?? $p['id'] ?? '';
                   $pEmail = (string) ($p['email'] ?? '');
-                  if (strpos($pEmail, '@noemail.nivessa.com') !== false) $pEmail = '';
+                  if (strpos($pEmail, '@noemail.nivessa.com') !== false) { $pEmail = ''; }
                 @endphp
                 <tr>
                   <td>
