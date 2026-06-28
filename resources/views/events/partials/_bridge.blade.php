@@ -97,20 +97,35 @@
       if (empty($claimedPre[$i])) { $unmatchedPre[] = $p; }
     }
 
-    // Checked-in guests offered in the "+ Add preorder" picker (auto-fill).
-    $checkedInGuests = [];
+    // Everyone on the RSVP list, offered in the "+ Add preorder" picker so we
+    // reuse the email/phone we already have instead of retyping. De-duped by
+    // email (then name); checked-in guests float to the top and are tagged.
+    $rsvpGuests = [];
+    $seenGuest = [];
     foreach ($rsvps as $r) {
-      if (empty($r['checkedIn'])) { continue; }
       $gn = trim(($r['firstName'] ?? '') . ' ' . ($r['lastName'] ?? '')) ?: ($r['name'] ?? '');
       if ($gn === '') { continue; }
-      $checkedInGuests[] = [
+      $dedupe = strtolower(trim($r['email'] ?? '')) ?: strtolower($gn);
+      if (isset($seenGuest[$dedupe])) { continue; }
+      $seenGuest[$dedupe] = true;
+      $ciG = !empty($r['checkedIn']);
+      $rsvpGuests[] = [
         'firstName' => $r['firstName'] ?? '',
         'lastName'  => $r['lastName'] ?? '',
         'email'     => $r['email'] ?? '',
         'phone'     => $r['phone'] ?? '',
-        'label'     => $gn . (!empty($r['phone']) ? ' · ' . $r['phone'] : ''),
+        'checkedIn' => $ciG,
+        'label'     => $gn
+          . (!empty($r['phone']) ? ' · ' . $r['phone'] : '')
+          . (!empty($r['email']) ? ' · ' . $r['email'] : '')
+          . ($ciG ? '  (checked in)' : ''),
       ];
     }
+    // Checked-in first, then alphabetical by label.
+    usort($rsvpGuests, function ($a, $b) {
+      if ($a['checkedIn'] !== $b['checkedIn']) { return $a['checkedIn'] ? -1 : 1; }
+      return strcasecmp($a['label'], $b['label']);
+    });
     // Build the wheel pool: de-dupe by email, keep checked-in flag.
     $pool = [];
     foreach ($rsvps as $r) {
@@ -256,16 +271,16 @@
         <summary class="ev-create-summary">+ Add preorder</summary>
         <form method="POST" action="{{ route('events.preorderAdd', ['id' => $event['id']]) }}" data-preorder-add style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
           {{ csrf_field() }}
-          @if(count($checkedInGuests))
-            <div class="ev-field" style="flex:1 1 100%;"><label>Checked-in guest (optional — fills the fields below)</label>
+          @if(count($rsvpGuests))
+            <div class="ev-field" style="flex:1 1 100%;"><label>Pick from RSVP list (optional — fills name, email &amp; phone)</label>
               <select data-guest-picker>
-                <option value="">— Type a new customer, or pick a checked-in guest —</option>
-                @foreach($checkedInGuests as $gi => $g)
+                <option value="">— Type a new customer, or pick someone who RSVP'd —</option>
+                @foreach($rsvpGuests as $gi => $g)
                   <option value="{{ $gi }}">{{ $g['label'] }}</option>
                 @endforeach
               </select>
             </div>
-            <script>window.__preorderGuests = @json(array_values($checkedInGuests));</script>
+            <script>window.__preorderGuests = @json(array_values($rsvpGuests));</script>
           @endif
           <div class="ev-field" style="flex:1 1 130px;"><label>First name *</label><input type="text" name="firstName" required></div>
           <div class="ev-field" style="flex:1 1 130px;"><label>Last name *</label><input type="text" name="lastName" required></div>
