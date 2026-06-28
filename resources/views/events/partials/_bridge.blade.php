@@ -197,9 +197,7 @@
         <thead><tr>
           <th data-sort-type="text">Name</th>
           <th data-sort-type="text">Email</th>
-          <th data-sort-type="text">Going</th>
-          <th data-sort-type="num">Guests</th>
-          <th data-sort-type="text">Vinyl/CD</th>
+          <th data-sort-type="text">Customer Request</th>
           <th data-sort-type="text">Checked in</th>
         </tr></thead>
         <tbody>
@@ -208,8 +206,6 @@
             <tr>
               <td class="ev-name">{{ trim(($r['firstName'] ?? '') . ' ' . ($r['lastName'] ?? '')) ?: ($r['name'] ?? '—') }}</td>
               <td class="ev-meta">{{ $r['email'] ?? '' }}</td>
-              <td>{{ ucfirst($r['attendance'] ?? '') }}</td>
-              <td>{{ (int) ($r['guests'] ?? 0) }}</td>
               <td>
                 @php $vi = $r['interestedInPurchase'] ?? null; @endphp
                 @if($vi && isset($interestLabels[$vi]))
@@ -434,10 +430,19 @@
     @elseif(empty($preorders))
       <div class="empty">No preorders yet. Customers order at nivessa.com/preorder?eventId={{ $event['id'] }}.</div>
     @else
+      @php
+        // Canceled preorders drop out of the main list into a collapsed
+        // section below — the record is kept, just out of the way.
+        $activePre = array_values(array_filter($preorders, fn($p) => ($p['status'] ?? 'pending') !== 'canceled'));
+        $canceledPre = array_values(array_filter($preorders, fn($p) => ($p['status'] ?? 'pending') === 'canceled'));
+      @endphp
+      @if(empty($activePre))
+        <div class="empty">No active preorders yet.</div>
+      @else
       <table class="ev-tbl">
         <thead><tr><th>Customer</th><th>Item</th><th>Price</th><th>Status</th><th></th></tr></thead>
         <tbody>
-          @foreach($preorders as $p)
+          @foreach($activePre as $p)
             @php
               $pid = $p['_id'] ?? $p['id'] ?? '';
               $st = $p['status'] ?? 'pending';
@@ -463,10 +468,10 @@
                 @if($pid)
                   @foreach(['ready' => 'Ready', 'picked_up' => 'Picked up', 'canceled' => 'Cancel'] as $sval => $slabel)
                     @if($st !== $sval)
-                    <form method="POST" action="{{ route('events.preorderStatus', ['id' => $event['id'], 'preorderId' => $pid]) }}" style="display:inline;">
+                    <form method="POST" action="{{ route('events.preorderStatus', ['id' => $event['id'], 'preorderId' => $pid]) }}" style="display:inline-block;margin-left:6px;">
                       {{ csrf_field() }}
                       <input type="hidden" name="status" value="{{ $sval }}">
-                      <button type="submit" class="btn-link" style="color:#5a5145;">{{ $slabel }}</button>
+                      <button type="submit" class="{{ $sval === 'canceled' ? 'btn-ghost' : 'btn-accent' }}" style="padding:5px 12px;font-size:12px;">{{ $slabel }}</button>
                     </form>
                     @endif
                   @endforeach
@@ -477,6 +482,41 @@
         </tbody>
       </table>
       <p class="sub" style="margin-top:10px;margin-bottom:0;">Marking a preorder "Ready" sends the customer the pickup email/SMS (handled on the website).</p>
+      @endif
+      @if(!empty($canceledPre))
+        <details style="margin-top:14px;">
+          <summary class="ev-create-summary" style="color:#8a8170;">Canceled ({{ count($canceledPre) }})</summary>
+          <table class="ev-tbl" style="margin-top:10px;opacity:.75;">
+            <thead><tr><th>Customer</th><th>Item</th><th>Price</th><th></th></tr></thead>
+            <tbody>
+              @foreach($canceledPre as $p)
+                @php
+                  $pid = $p['_id'] ?? $p['id'] ?? '';
+                  $pEmail = (string) ($p['email'] ?? '');
+                  if (strpos($pEmail, '@noemail.nivessa.com') !== false) $pEmail = '';
+                @endphp
+                <tr>
+                  <td>
+                    <span class="ev-name">{{ trim(($p['firstName'] ?? '') . ' ' . ($p['lastName'] ?? '')) }}</span>
+                    <div class="ev-meta">{{ $pEmail }}@if($pEmail !== '' && !empty($p['phone'])) &middot; @endif{{ $p['phone'] ?? '' }}</div>
+                  </td>
+                  <td>{{ $p['preorderTitle'] ?? '' }}</td>
+                  <td>@if(isset($p['preorderPrice'])){{ '$' . number_format((float) $p['preorderPrice'], 2) }}@endif</td>
+                  <td style="text-align:right;white-space:nowrap;">
+                    @if($pid)
+                    <form method="POST" action="{{ route('events.preorderStatus', ['id' => $event['id'], 'preorderId' => $pid]) }}" style="display:inline-block;">
+                      {{ csrf_field() }}
+                      <input type="hidden" name="status" value="pending">
+                      <button type="submit" class="btn-link" style="color:#5a5145;">Restore</button>
+                    </form>
+                    @endif
+                  </td>
+                </tr>
+              @endforeach
+            </tbody>
+          </table>
+        </details>
+      @endif
     @endif
   </div>
 
@@ -554,6 +594,8 @@
           th.textContent = stripArrow(th.textContent) + (asc ? ' ▲' : ' ▼');
         });
       });
+      // Default to A–Z by Name on load.
+      if (ths[0] && ths[0].dataset.sortType) ths[0].click();
     }
   })();
   </script>
