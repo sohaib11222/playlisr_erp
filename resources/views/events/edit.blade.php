@@ -136,6 +136,9 @@
         <button type="submit" class="btn-accent">Save prep</button>
       </div>
     </form>
+
+    {{-- Order plan (want vs. ordered, per store) — collapsed inside prep. --}}
+    @include('events.partials._order_plan')
   </details>
 
   {{-- Versions ordered — read-only reference (the products we ordered for this
