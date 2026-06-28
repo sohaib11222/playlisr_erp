@@ -181,12 +181,14 @@
           <th style="width:10%;">Preordered</th>
           <th style="width:10%;">Left</th>
         </tr></thead>
+        @php $totOrdered = 0; $totPre = 0; $totLeft = 0; @endphp
         <tbody>
           @foreach($versions as $v)
             @php
               $qty = (int) ($orderedByFmt[$v['format'] ?? ''] ?? 0);
               $pre = (int) ($preByTitle[trim((string) ($v['title'] ?? ''))] ?? 0);
               $left = $qty - $pre;
+              $totOrdered += $qty; $totPre += $pre; $totLeft += $left;
             @endphp
             <tr>
               <td class="ev-name">{{ $v['title'] ?? '' }}</td>
@@ -198,6 +200,16 @@
             </tr>
           @endforeach
         </tbody>
+        <tfoot>
+          <tr style="font-weight:800;border-top:2px solid var(--pos-line,#ECE3CF);">
+            <td class="ev-name">Total</td>
+            <td></td>
+            <td></td>
+            <td>{{ $totOrdered }}</td>
+            <td>{{ $totPre }}</td>
+            <td>{{ $totLeft }}</td>
+          </tr>
+        </tfoot>
       </table>
     </div>
   @endif
