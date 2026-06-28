@@ -187,15 +187,16 @@
   @endphp
 
   {{-- ---------- RSVPs ---------- --}}
+  <style>.rsvp-add-details[open]{ flex:1 1 100%; }</style>
   <div class="ev-card">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:6px;">
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:6px;">
       <h2 style="margin:0;">RSVPs</h2>
-      {{-- Add a walk-in RSVP — top-right of the box. --}}
-      <details style="flex:1 1 340px;display:flex;flex-direction:column;align-items:flex-end;">
-        <summary style="list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:8px;background:#1c2150;color:#fff;font-weight:800;font-size:16px;padding:14px 26px;border-radius:12px;box-shadow:0 2px 6px rgba(0,0,0,.12);">
+      {{-- Add a walk-in RSVP — sits right next to the heading. --}}
+      <details class="rsvp-add-details" style="margin:0;flex:0 1 auto;">
+        <summary style="list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:8px;background:#1c2150;color:#fff;font-weight:800;font-size:16px;padding:12px 22px;border-radius:12px;box-shadow:0 2px 6px rgba(0,0,0,.12);">
           <span style="font-size:20px;line-height:1;">+</span> Add RSVP (walk-in)
         </summary>
-        <form method="POST" action="{{ route('events.rsvpAdd', ['id' => $event['id']]) }}" style="align-self:stretch;margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;border:1px dashed var(--pos-line,#ECE3CF);border-radius:10px;padding:14px;">
+        <form method="POST" action="{{ route('events.rsvpAdd', ['id' => $event['id']]) }}" style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;border:1px dashed var(--pos-line,#ECE3CF);border-radius:10px;padding:14px;">
           {{ csrf_field() }}
           <div class="ev-field" style="flex:1 1 130px;"><label>First name *</label><input type="text" name="firstName" required></div>
           <div class="ev-field" style="flex:1 1 130px;"><label>Last name *</label><input type="text" name="lastName" required></div>
@@ -266,14 +267,15 @@
     @endif
 
     @if($preordersOn)
-      {{-- Take a preorder in person. Posts to the same create endpoint as the
-           customer form, then auto-marks it paid (paid at the event). Shows in
-           the guest table below and updates the "Versions ordered" counts. --}}
-      <details style="margin-bottom:14px;">
-        <summary style="list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:8px;background:var(--pos-accent,#FFF2B3);color:#1c2150;font-weight:800;font-size:16px;padding:14px 26px;border-radius:12px;box-shadow:0 2px 6px rgba(0,0,0,.12);">
-          <span style="font-size:20px;line-height:1;">+</span> Add preorder
-        </summary>
-        <form method="POST" action="{{ route('events.preorderAdd', ['id' => $event['id']]) }}" data-preorder-add style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;border:1px dashed var(--pos-line,#ECE3CF);border-radius:10px;padding:14px;">
+      {{-- Hidden by default — opened (pre-filled) by the "+ Add preorder"
+           button on each guest row. Posts to the same create endpoint as the
+           customer form and auto-marks it paid (paid at the event). --}}
+      <div id="preorder-add-wrap" style="display:none;margin-bottom:14px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <strong style="font-size:15px;">Add preorder</strong>
+          <button type="button" id="preorder-add-close" class="btn-link" style="color:#5a5145;">Close</button>
+        </div>
+        <form method="POST" action="{{ route('events.preorderAdd', ['id' => $event['id']]) }}" data-preorder-add style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;border:1px dashed var(--pos-line,#ECE3CF);border-radius:10px;padding:14px;">
           {{ csrf_field() }}
           @if(count($rsvpGuests))
             <div class="ev-field" style="flex:1 1 100%;"><label>Pick from RSVP list (optional — fills name, email &amp; phone)</label>
@@ -308,14 +310,13 @@
           <div class="ev-field" style="flex:2 1 200px;"><label>Notes</label><input type="text" name="notes" placeholder="Signed copy, color variant, etc."></div>
           <button type="submit" class="btn-accent">Add preorder</button>
         </form>
-      </details>
+      </div>
       <script>
       (function () {
         var form = document.querySelector('form[data-preorder-add]');
         if (!form) return;
         var picker = form.querySelector('[data-guest-picker]');
-        if (!picker) return;
-        picker.addEventListener('change', function () {
+        if (picker) picker.addEventListener('change', function () {
           var g = (window.__preorderGuests || [])[this.value];
           if (!g) return;
           var set = function (name, val) {
@@ -327,6 +328,11 @@
           set('email', g.email);
           set('phone', g.phone);
         });
+        var closeBtn = document.getElementById('preorder-add-close');
+        if (closeBtn) closeBtn.addEventListener('click', function () {
+          var wrap = document.getElementById('preorder-add-wrap');
+          if (wrap) wrap.style.display = 'none';
+        });
       })();
       </script>
     @endif
@@ -335,7 +341,7 @@
       <div class="empty">No RSVPs yet.</div>
     @else
       <div style="margin-bottom:12px;">
-        <input type="search" id="rsvp-search" placeholder="Type a name to check in or add a preorder…" autocomplete="off"
+        <input type="search" id="rsvp-search" placeholder="Type in a name to check in a guest or to add a preorder…" autocomplete="off"
                style="width:100%;max-width:520px;padding:14px 16px;font-size:16px;border:2px solid var(--pos-line,#ECE3CF);border-radius:12px;">
         <div style="margin-top:6px;"><button type="button" id="rsvp-show-all" class="btn-link" style="color:#5a5145;font-size:13px;">Show full list</button></div>
       </div>
@@ -413,14 +419,14 @@
             if (!b) return;
             var form = document.querySelector('form[data-preorder-add]');
             if (!form) return;
-            var det = form.closest('details');
-            if (det) det.open = true;
+            var wrap = document.getElementById('preorder-add-wrap');
+            if (wrap) wrap.style.display = '';
             var set = function (n, v) { var el = form.querySelector('[name="' + n + '"]'); if (el) el.value = v || ''; };
             set('firstName', b.getAttribute('data-fn'));
             set('lastName', b.getAttribute('data-ln'));
             set('email', b.getAttribute('data-email'));
             set('phone', b.getAttribute('data-phone'));
-            if (det) det.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            if (wrap) wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
             var f = form.querySelector('[name="productTitle"]') || form.querySelector('[name="firstName"]');
             if (f) { try { f.focus(); } catch (err) {} }
           });
