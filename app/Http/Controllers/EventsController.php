@@ -627,14 +627,13 @@ class EventsController extends Controller
         $request->validate([
             'firstName'    => 'required|string|max:100',
             'lastName'     => 'required|string|max:100',
-            'email'        => 'required|email|max:191',
+            'email'        => 'nullable|email|max:191',
             'phone'        => 'required|string|max:40',
             'productTitle' => 'nullable|string|max:191',
             'notes'        => 'nullable|string|max:1000',
         ], [
             'firstName.required' => 'First name is required.',
             'lastName.required'  => 'Last name is required.',
-            'email.required'     => 'Email is required.',
             'phone.required'     => 'Phone is required.',
         ]);
 
@@ -647,12 +646,23 @@ class EventsController extends Controller
                 ->with('error', 'Choose which version this preorder is for.');
         }
 
+        // Email is optional for in-person preorders. The website's create
+        // endpoint requires one, so synthesize an obvious placeholder when the
+        // customer doesn't give an email — keyed on their phone so it's stable
+        // and easy to spot/filter later (@noemail.nivessa.com).
+        $phone = trim($request->input('phone'));
+        $email = trim((string) $request->input('email', ''));
+        if ($email === '') {
+            $digits = preg_replace('/\D/', '', $phone);
+            $email = 'walkin.' . ($digits !== '' ? $digits : 'nophone') . '@noemail.nivessa.com';
+        }
+
         $payload = [
             'eventId'      => $event['id'] ?? null,
             'firstName'    => trim($request->input('firstName')),
             'lastName'     => trim($request->input('lastName')),
-            'email'        => trim($request->input('email')),
-            'phone'        => trim($request->input('phone')),
+            'email'        => $email,
+            'phone'        => $phone,
             'notes'        => $request->input('notes') ?: null,
             'productTitle' => $productTitle !== '' ? $productTitle : null,
         ];
@@ -665,8 +675,17 @@ class EventsController extends Controller
             return redirect()->route('events.edit', ['id' => $id])
                 ->with('error', 'Could not add the preorder' . ($why !== '' ? ': ' . $why : '.') . '');
         }
+
+        // In-person preorders are paid for at the event — mark paid right away
+        // (also flips any linked POS sale to final/paid). Best-effort: a failure
+        // here doesn't undo the preorder, which already saved.
+        $newId = $resp['data']['_id'] ?? $resp['data']['id'] ?? null;
+        if ($newId) {
+            $this->websiteApi('PATCH', '/erp/preorders/' . rawurlencode($newId) . '/paid', ['paid' => true]);
+        }
+
         return redirect()->route('events.edit', ['id' => $id])
-            ->with('status', 'Preorder added for ' . $payload['firstName'] . ' ' . $payload['lastName'] . '.');
+            ->with('status', 'Preorder added for ' . $payload['firstName'] . ' ' . $payload['lastName'] . ' (paid at event).');
     }
 
     /** Change a preorder's status via the website bridge (fires pickup email/SMS). */

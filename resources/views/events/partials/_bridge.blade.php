@@ -355,14 +355,40 @@
       {{-- Take a preorder in person at the event. Posts to the same create
            endpoint as the customer form, so it shows up below and updates the
            "Versions ordered" counts. Available even before the first order. --}}
+      @php
+        $checkedInGuests = [];
+        foreach ($rsvps as $r) {
+          if (empty($r['checkedIn'])) continue;
+          $gn = trim(($r['firstName'] ?? '') . ' ' . ($r['lastName'] ?? '')) ?: ($r['name'] ?? '');
+          if ($gn === '') continue;
+          $checkedInGuests[] = [
+            'firstName' => $r['firstName'] ?? '',
+            'lastName'  => $r['lastName'] ?? '',
+            'email'     => $r['email'] ?? '',
+            'phone'     => $r['phone'] ?? '',
+            'label'     => $gn . (!empty($r['phone']) ? ' · ' . $r['phone'] : ''),
+          ];
+        }
+      @endphp
       <details style="margin-bottom:14px;border:1px dashed var(--pos-line,#ECE3CF);border-radius:10px;padding:10px 14px;">
         <summary class="ev-create-summary">+ Add preorder</summary>
-        <form method="POST" action="{{ route('events.preorderAdd', ['id' => $event['id']]) }}" style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+        <form method="POST" action="{{ route('events.preorderAdd', ['id' => $event['id']]) }}" data-preorder-add style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
           {{ csrf_field() }}
+          @if(count($checkedInGuests))
+            <div class="ev-field" style="flex:1 1 100%;"><label>Checked-in guest (optional — fills the fields below)</label>
+              <select data-guest-picker>
+                <option value="">— Type a new customer, or pick a checked-in guest —</option>
+                @foreach($checkedInGuests as $gi => $g)
+                  <option value="{{ $gi }}">{{ $g['label'] }}</option>
+                @endforeach
+              </select>
+            </div>
+            <script>window.__preorderGuests = @json(array_values($checkedInGuests));</script>
+          @endif
           <div class="ev-field" style="flex:1 1 130px;"><label>First name *</label><input type="text" name="firstName" required></div>
           <div class="ev-field" style="flex:1 1 130px;"><label>Last name *</label><input type="text" name="lastName" required></div>
           <div class="ev-field" style="flex:1 1 140px;"><label>Phone *</label><input type="text" name="phone" required></div>
-          <div class="ev-field" style="flex:2 1 200px;"><label>Email *</label><input type="email" name="email" required></div>
+          <div class="ev-field" style="flex:2 1 200px;"><label>Email</label><input type="email" name="email"></div>
           @if(count($pVersions) > 1)
             <div class="ev-field" style="flex:2 1 240px;"><label>Version *</label>
               <select name="productTitle" required>
@@ -382,6 +408,26 @@
           <button type="submit" class="btn-accent">Add preorder</button>
         </form>
       </details>
+      <script>
+      (function () {
+        var form = document.querySelector('form[data-preorder-add]');
+        if (!form) return;
+        var picker = form.querySelector('[data-guest-picker]');
+        if (!picker) return;
+        picker.addEventListener('change', function () {
+          var g = (window.__preorderGuests || [])[this.value];
+          if (!g) return;
+          var set = function (name, val) {
+            var el = form.querySelector('[name="' + name + '"]');
+            if (el) el.value = val || '';
+          };
+          set('firstName', g.firstName);
+          set('lastName', g.lastName);
+          set('email', g.email);
+          set('phone', g.phone);
+        });
+      })();
+      </script>
     @endif
     @if(!$preordersOn)
       <div class="empty">Preorders aren't enabled for this event. Check "Enable preorder for this event" in the details above if this is an advance listening party.</div>
@@ -392,15 +438,27 @@
         <thead><tr><th>Customer</th><th>Item</th><th>Price</th><th>Status</th><th></th></tr></thead>
         <tbody>
           @foreach($preorders as $p)
-            @php $pid = $p['_id'] ?? $p['id'] ?? ''; $st = $p['status'] ?? 'pending'; @endphp
+            @php
+              $pid = $p['_id'] ?? $p['id'] ?? '';
+              $st = $p['status'] ?? 'pending';
+              $isPaid = !empty($p['paid']);
+              // Placeholder emails (no email given in person) shouldn't show.
+              $pEmail = (string) ($p['email'] ?? '');
+              if (strpos($pEmail, '@noemail.nivessa.com') !== false) $pEmail = '';
+              if ($st === 'picked_up')      { $pillTxt = 'picked up';    $pillCls = 'sold'; }
+              elseif ($st === 'canceled')   { $pillTxt = 'canceled';     $pillCls = 'paid'; }
+              elseif ($st === 'ready')      { $pillTxt = $isPaid ? 'ready · paid' : 'ready'; $pillCls = 'sold'; }
+              elseif ($isPaid)              { $pillTxt = 'paid at event'; $pillCls = 'sold'; }
+              else                          { $pillTxt = str_replace('_', ' ', $st); $pillCls = ''; }
+            @endphp
             <tr>
               <td>
                 <span class="ev-name">{{ trim(($p['firstName'] ?? '') . ' ' . ($p['lastName'] ?? '')) }}</span>
-                <div class="ev-meta">{{ $p['email'] ?? '' }}@if(!empty($p['phone'])) &middot; {{ $p['phone'] }}@endif</div>
+                <div class="ev-meta">{{ $pEmail }}@if($pEmail !== '' && !empty($p['phone'])) &middot; @endif{{ $p['phone'] ?? '' }}</div>
               </td>
               <td>{{ $p['preorderTitle'] ?? '' }}</td>
               <td>@if(isset($p['preorderPrice'])){{ '$' . number_format((float) $p['preorderPrice'], 2) }}@endif</td>
-              <td><span class="pill {{ $st === 'picked_up' ? 'sold' : ($st === 'canceled' ? 'paid' : '') }}">{{ str_replace('_', ' ', $st) }}</span></td>
+              <td><span class="pill {{ $pillCls }}">{{ $pillTxt }}</span></td>
               <td style="text-align:right;white-space:nowrap;">
                 @if($pid)
                   @foreach(['ready' => 'Ready', 'picked_up' => 'Picked up', 'canceled' => 'Cancel'] as $sval => $slabel)
