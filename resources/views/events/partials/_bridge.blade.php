@@ -267,9 +267,11 @@
       {{-- Take a preorder in person. Posts to the same create endpoint as the
            customer form, then auto-marks it paid (paid at the event). Shows in
            the guest table below and updates the "Versions ordered" counts. --}}
-      <details style="margin-bottom:14px;border:1px dashed var(--pos-line,#ECE3CF);border-radius:10px;padding:10px 14px;">
-        <summary class="ev-create-summary">+ Add preorder</summary>
-        <form method="POST" action="{{ route('events.preorderAdd', ['id' => $event['id']]) }}" data-preorder-add style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+      <details style="margin-bottom:14px;">
+        <summary style="list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:8px;background:var(--pos-accent,#FFF2B3);color:#1c2150;font-weight:800;font-size:16px;padding:14px 26px;border-radius:12px;box-shadow:0 2px 6px rgba(0,0,0,.12);">
+          <span style="font-size:20px;line-height:1;">+</span> Add preorder
+        </summary>
+        <form method="POST" action="{{ route('events.preorderAdd', ['id' => $event['id']]) }}" data-preorder-add style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;border:1px dashed var(--pos-line,#ECE3CF);border-radius:10px;padding:14px;">
           {{ csrf_field() }}
           @if(count($rsvpGuests))
             <div class="ev-field" style="flex:1 1 100%;"><label>Pick from RSVP list (optional — fills name, email &amp; phone)</label>
