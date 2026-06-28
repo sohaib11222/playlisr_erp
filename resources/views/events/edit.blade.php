@@ -39,6 +39,11 @@
       @if($evWhen)
         <p style="font-size:16px;font-weight:700;margin:2px 0 4px;color:var(--pos-ink);">{{ $evWhen }}</p>
       @endif
+      @if(!empty($event['streetDate']))
+        <div style="display:inline-block;margin:6px 0 8px;background:var(--pos-accent,#FFF2B3);color:#1c2150;font-weight:800;font-size:22px;padding:10px 22px;border-radius:14px;box-shadow:0 2px 6px rgba(0,0,0,.1);">
+          Street date — {{ date('l, F j, Y', strtotime($event['streetDate'])) }}
+        </div>
+      @endif
       <p class="sub"><a class="ev-edit" href="{{ route('events.index') }}">&larr; All events</a></p>
     </div>
   </div>
@@ -162,7 +167,7 @@
       }
     @endphp
     <div class="ev-card">
-      <h2 style="margin-top:0;">Versions ordered</h2>
+      <h2 style="margin-top:0;">What We Ordered</h2>
       <p class="sub" style="margin:0 0 10px;">What we ordered for this release vs. preorders claimed. "Left" is what's still available to preorder.</p>
       <table class="ev-tbl">
         <thead><tr>

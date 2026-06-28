@@ -334,11 +334,13 @@
     @if(empty($rsvps) && empty($unmatchedPre))
       <div class="empty">No RSVPs yet.</div>
     @else
-      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
-        <input type="search" id="rsvp-search" placeholder="Search name or email" autocomplete="off"
-               style="flex:1 1 220px;max-width:320px;padding:8px 10px;border:1px solid var(--pos-line,#ECE3CF);border-radius:8px;">
+      <div style="margin-bottom:12px;">
+        <input type="search" id="rsvp-search" placeholder="Type a name to check in or add a preorder…" autocomplete="off"
+               style="width:100%;max-width:520px;padding:14px 16px;font-size:16px;border:2px solid var(--pos-line,#ECE3CF);border-radius:12px;">
+        <div style="margin-top:6px;"><button type="button" id="rsvp-show-all" class="btn-link" style="color:#5a5145;font-size:13px;">Show full list</button></div>
       </div>
-      <table class="ev-tbl" id="rsvp-table">
+      <div id="rsvp-hint" class="empty">Start typing a name above to pull someone up — then check them in or add their preorder.</div>
+      <table class="ev-tbl" id="rsvp-table" style="display:none;">
         <thead><tr>
           <th data-sort-type="text">Name</th>
           <th data-sort-type="text">Email &amp; phone</th>
@@ -502,15 +504,33 @@
       var tbody = rt.querySelector('tbody');
       var getRows = function () { return Array.prototype.slice.call(tbody.querySelectorAll('tr')); };
 
+      // The list stays collapsed (hidden) until you type a name — or click
+      // "Show full list". Typing reveals only the matching guests.
       var search = document.getElementById('rsvp-search');
+      var hint = document.getElementById('rsvp-hint');
+      var showAll = document.getElementById('rsvp-show-all');
+      var applyFilter = function (q, forceShow) {
+        q = (q || '').trim().toLowerCase();
+        if (!q && !forceShow) {
+          rt.style.display = 'none';
+          if (hint) hint.style.display = '';
+          return;
+        }
+        rt.style.display = '';
+        if (hint) hint.style.display = 'none';
+        getRows().forEach(function (tr) {
+          var hay = ((tr.cells[0] ? tr.cells[0].textContent : '') + ' ' +
+                     (tr.cells[1] ? tr.cells[1].textContent : '')).toLowerCase();
+          tr.style.display = (!q || hay.indexOf(q) !== -1) ? '' : 'none';
+        });
+      };
       if (search) {
-        search.addEventListener('input', function () {
-          var q = search.value.trim().toLowerCase();
-          getRows().forEach(function (tr) {
-            var hay = ((tr.cells[0] ? tr.cells[0].textContent : '') + ' ' +
-                       (tr.cells[1] ? tr.cells[1].textContent : '')).toLowerCase();
-            tr.style.display = (!q || hay.indexOf(q) !== -1) ? '' : 'none';
-          });
+        search.addEventListener('input', function () { applyFilter(search.value, false); });
+      }
+      if (showAll) {
+        showAll.addEventListener('click', function () {
+          if (search) search.value = '';
+          applyFilter('', true);
         });
       }
 
