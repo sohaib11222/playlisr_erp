@@ -6,9 +6,9 @@
     <h1>Import AMS Invoice (PDF)</h1>
     <p class="text-muted" style="max-width:900px;">
         Drop an AMS (All Media Supply) invoice PDF below. It's read in your browser, each UPC is matched
-        to a product, and you review before anything is saved. Confirming creates one Purchase Order
-        ("what's coming") on <a href="/purchase-order">Purchase Orders</a> &mdash; no stock or costs are
-        changed. Every import is undoable at <a href="/admin/admin-action-history">admin-action-history</a>.
+        to a product, and you review before anything is saved. Confirming logs one purchase on the
+        <a href="/purchases">Purchases</a> list &mdash; no stock or costs are changed (received separately).
+        Every import is undoable at <a href="/admin/admin-action-history">admin-action-history</a>.
     </p>
 </section>
 

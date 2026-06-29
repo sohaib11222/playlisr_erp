@@ -88,26 +88,32 @@ class AdminActionHistoryController extends Controller
             return $this->undoMergeCategories($data, $key);
         }
 
-        // ams-invoice-import: snapshot holds the purchase_order transaction id
-        // created from an AMS PDF (no 'rows'). Undo deletes its purchase lines
-        // then the transaction, scoped to type=purchase_order so nothing else
-        // is touched, and clears the invoice's already-imported sidecar so it
-        // can be re-imported. Skips if the PO is already gone.
+        // ams-invoice-import: snapshot holds the purchase transaction id created
+        // from an AMS PDF (no 'rows'). These are logged at status=ordered (never
+        // received), so there's no stock to reverse — undo just deletes the
+        // purchase lines then the transaction, scoped to type=purchase, and
+        // clears the invoice's already-imported sidecar so it can be re-imported.
+        // Skips if the purchase is already gone, and refuses if it was somehow
+        // received since (stock would be involved — delete it from Purchases).
         if ($action === 'ams-invoice-import') {
             $txId = $data['transaction_id'] ?? null;
             if (!$txId) {
                 return redirect('/admin/admin-action-history')
                     ->with('status', ['success' => 0, 'msg' => 'Snapshot missing transaction id.']);
             }
-            $po = DB::table('transactions')->where('id', $txId)->where('type', 'purchase_order')->first();
-            if (!$po) {
+            $purchase = DB::table('transactions')->where('id', $txId)->where('type', 'purchase')->first();
+            if (!$purchase) {
                 return redirect('/admin/admin-action-history')
-                    ->with('status', ['success' => 0, 'msg' => "PO #{$txId} already gone — nothing to undo."]);
+                    ->with('status', ['success' => 0, 'msg' => "Purchase #{$txId} already gone — nothing to undo."]);
+            }
+            if (($purchase->status ?? '') === 'received') {
+                return redirect('/admin/admin-action-history')
+                    ->with('status', ['success' => 0, 'msg' => "Purchase #{$txId} was received (stock involved) — delete it from the Purchases page instead."]);
             }
             DB::beginTransaction();
             try {
                 $lines = DB::table('purchase_lines')->where('transaction_id', $txId)->delete();
-                DB::table('transactions')->where('id', $txId)->where('type', 'purchase_order')->delete();
+                DB::table('transactions')->where('id', $txId)->where('type', 'purchase')->delete();
                 DB::commit();
             } catch (\Throwable $e) {
                 DB::rollBack();
@@ -119,7 +125,7 @@ class AdminActionHistoryController extends Controller
                 Storage::disk('local')->delete("ams-imports/{$invoice}.json");
             }
             return redirect('/admin/admin-action-history')
-                ->with('status', ['success' => 1, 'msg' => "Deleted PO #{$txId} + {$lines} line(s) from AMS import (snapshot {$key})."]);
+                ->with('status', ['success' => 1, 'msg' => "Deleted purchase #{$txId} + {$lines} line(s) from AMS import (snapshot {$key})."]);
         }
 
         if (empty($data['rows'])) {

@@ -263,15 +263,18 @@ class AmsInvoiceImportController extends Controller
 
         DB::beginTransaction();
         try {
-            $ref_count = $this->productUtil->setAndGetReferenceCount('purchase_order');
+            $ref_count = $this->productUtil->setAndGetReferenceCount('purchase');
             if (empty($ref_no)) {
-                $ref_no = $this->productUtil->generateReferenceNumber('purchase_order', $ref_count);
+                $ref_no = $this->productUtil->generateReferenceNumber('purchase', $ref_count);
             }
 
+            // type=purchase so it lands on the Purchases list (where the desk
+            // works), status=ordered so it does NOT receive stock — this just
+            // logs the invoice; inventory is received separately.
             $transaction = Transaction::create([
                 'business_id' => $business_id,
                 'location_id' => $location_id,
-                'type' => 'purchase_order',
+                'type' => 'purchase',
                 'status' => 'ordered',
                 'payment_status' => 'due',
                 'contact_id' => $contact_id,
@@ -314,7 +317,7 @@ class AmsInvoiceImportController extends Controller
         Storage::disk('local')->put("admin-snapshots/ams-invoice-import_{$invoice}_{$ts}.json", json_encode([
             'action' => 'ams-invoice-import',
             'timestamp' => $stamp,
-            'direction' => "AMS invoice {$invoice} → PO #{$transaction->id} (" . count($clean) . ' lines)',
+            'direction' => "AMS invoice {$invoice} → purchase #{$transaction->id} (" . count($clean) . ' lines)',
             'business_id' => $business_id,
             'invoice' => $invoice,
             'transaction_id' => $transaction->id,
@@ -337,8 +340,8 @@ class AmsInvoiceImportController extends Controller
             'transaction_id' => $transaction->id,
             'lines' => count($clean),
             'total' => $total,
-            'view_url' => action('PurchaseOrderController@show', [$transaction->id]),
-            'msg' => 'Created PO #' . $transaction->id . ' with ' . count($clean) . ' line(s), total $' . number_format($total, 2) . '.',
+            'view_url' => action('PurchaseController@show', [$transaction->id]),
+            'msg' => 'Created purchase #' . $transaction->id . ' with ' . count($clean) . ' line(s), total $' . number_format($total, 2) . '.',
         ]);
     }
 
