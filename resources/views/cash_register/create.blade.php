@@ -247,7 +247,7 @@
                 next to the cash box, then write this on the envelope:
               </div>
               <div style="margin-top:10px; background:#FFF7E8; border:1.5px dashed #E8A07A;
-                  border-radius:10px; padding:12px 14px;">
+                  border-radius:10px; padding:12px 14px; max-width:2in; width:2in;">
                 <div style="font-size:11px; font-weight:800; letter-spacing:.12em;
                     text-transform:uppercase; color:#8A3A2E; margin-bottom:8px;">Deposit slip</div>
                 <div style="display:flex; justify-content:space-between; align-items:baseline;
