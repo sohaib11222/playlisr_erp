@@ -88,6 +88,40 @@ class AdminActionHistoryController extends Controller
             return $this->undoMergeCategories($data, $key);
         }
 
+        // ams-invoice-import: snapshot holds the purchase_order transaction id
+        // created from an AMS PDF (no 'rows'). Undo deletes its purchase lines
+        // then the transaction, scoped to type=purchase_order so nothing else
+        // is touched, and clears the invoice's already-imported sidecar so it
+        // can be re-imported. Skips if the PO is already gone.
+        if ($action === 'ams-invoice-import') {
+            $txId = $data['transaction_id'] ?? null;
+            if (!$txId) {
+                return redirect('/admin/admin-action-history')
+                    ->with('status', ['success' => 0, 'msg' => 'Snapshot missing transaction id.']);
+            }
+            $po = DB::table('transactions')->where('id', $txId)->where('type', 'purchase_order')->first();
+            if (!$po) {
+                return redirect('/admin/admin-action-history')
+                    ->with('status', ['success' => 0, 'msg' => "PO #{$txId} already gone — nothing to undo."]);
+            }
+            DB::beginTransaction();
+            try {
+                $lines = DB::table('purchase_lines')->where('transaction_id', $txId)->delete();
+                DB::table('transactions')->where('id', $txId)->where('type', 'purchase_order')->delete();
+                DB::commit();
+            } catch (\Throwable $e) {
+                DB::rollBack();
+                return redirect('/admin/admin-action-history')
+                    ->with('status', ['success' => 0, 'msg' => 'Undo failed, nothing changed: ' . $e->getMessage()]);
+            }
+            $invoice = $data['invoice'] ?? '';
+            if ($invoice !== '' && Storage::disk('local')->exists("ams-imports/{$invoice}.json")) {
+                Storage::disk('local')->delete("ams-imports/{$invoice}.json");
+            }
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 1, 'msg' => "Deleted PO #{$txId} + {$lines} line(s) from AMS import (snapshot {$key})."]);
+        }
+
         if (empty($data['rows'])) {
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 0, 'msg' => 'Snapshot empty / unreadable.']);
@@ -120,7 +154,7 @@ class AdminActionHistoryController extends Controller
         // row's original owner before a wrong-login reassignment. Undo restores
         // user_id, but only if it still points at the to-user (so a later manual
         // change isn't clobbered).
-        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'reassign-register-user', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'events-update', 'events-delete', 'events-import', 'reassign-import-location', 'nivessa-sheet-import'];
+        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'reassign-register-user', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'events-update', 'events-delete', 'events-import', 'reassign-import-location', 'nivessa-sheet-import', 'remove-register-overlap'];
         if (!in_array($action, $supportedActions, true)) {
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 0, 'msg' => "Don't know how to undo action: " . $action]);
@@ -251,6 +285,27 @@ class AdminActionHistoryController extends Controller
             }
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 1, 'msg' => "Restored register #{$reg['id']} + {$restoredTxns} transaction row(s) from snapshot $key."]);
+        }
+
+        // remove-register-overlap: snapshot holds the FULL transactions +
+        // sell_lines + payments rows that were deleted. Undo re-inserts them
+        // verbatim (skips any id that already exists).
+        if ($action === 'remove-register-overlap') {
+            $tx = 0; $ln = 0; $pm = 0;
+            foreach (($data['transactions'] ?? []) as $row) {
+                if (empty($row['id']) || DB::table('transactions')->where('id', $row['id'])->exists()) { continue; }
+                DB::table('transactions')->insert($row); $tx++;
+            }
+            foreach (($data['sell_lines'] ?? []) as $row) {
+                if (empty($row['id']) || DB::table('transaction_sell_lines')->where('id', $row['id'])->exists()) { continue; }
+                DB::table('transaction_sell_lines')->insert($row); $ln++;
+            }
+            foreach (($data['payments'] ?? []) as $row) {
+                if (empty($row['id']) || DB::table('transaction_payments')->where('id', $row['id'])->exists()) { continue; }
+                DB::table('transaction_payments')->insert($row); $pm++;
+            }
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 1, 'msg' => "Restored {$tx} register sale(s), {$ln} line(s), {$pm} payment(s) from snapshot {$key}."]);
         }
 
         // nivessa-sheet-import: snapshot rows hold inserted transaction ids for a

@@ -1098,6 +1098,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/admin/pos-quick-receives/undo', 'PosQuickReceiveController@undo');
     Route::post('/sells/pos/quick-receive', 'PosQuickReceiveController@store');
 
+    // AMS invoice importer: drop the AMS PDF, match UPCs, create a purchase order.
+    Route::get('/admin/ams-invoice-import', 'AmsInvoiceImportController@index');
+    Route::post('/admin/ams-invoice-import/preview', 'AmsInvoiceImportController@preview');
+    Route::post('/admin/ams-invoice-import/apply', 'AmsInvoiceImportController@apply');
+
     // Diagnose why a specific staff member can't open POS. Lists every staff
     // user with the four POS gates (status, allow_login, user_type,
     // sell.create) + open-register status. Hit /admin/staff-pos-access?user=luis

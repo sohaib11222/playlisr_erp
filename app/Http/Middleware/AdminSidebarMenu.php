@@ -260,6 +260,13 @@ class AdminSidebarMenu
                                 ['icon' => 'fa fas fa-list', 'active' => request()->segment(1) == 'purchase-order']
                             );
                         }
+                        if (auth()->user()->can('purchase_order.create')) {
+                            $sub->url(
+                                action('AmsInvoiceImportController@index'),
+                                'Import AMS Invoice',
+                                ['icon' => 'fa fas fa-file-pdf-o', 'active' => request()->segment(2) == 'ams-invoice-import']
+                            );
+                        }
                         if (auth()->user()->can('purchase.view') || auth()->user()->can('view_own_purchase')) {
                             $sub->url(
                                 action('PurchaseController@index'),
