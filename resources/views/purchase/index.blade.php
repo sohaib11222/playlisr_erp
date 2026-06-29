@@ -64,6 +64,12 @@ body.pos-v2 .payment_modal input[type=file], body.pos-v2 .edit_payment_modal inp
         </div>
         <div class="col-md-3">
             <div class="form-group">
+                {!! Form::label('purchase_list_filter_created_by',  __('lang_v1.added_by') . ':') !!}
+                {!! Form::select('purchase_list_filter_created_by', $users, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'placeholder' => __('lang_v1.all')]); !!}
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="form-group">
                 {!! Form::label('purchase_list_filter_date_range', __('report.date_range') . ':') !!}
                 {!! Form::text('purchase_list_filter_date_range', null, ['placeholder' => __('lang_v1.select_a_date_range'), 'class' => 'form-control', 'readonly']); !!}
             </div>

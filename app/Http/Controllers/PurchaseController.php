@@ -89,7 +89,11 @@ class PurchaseController extends Controller
             if (!empty(request()->status)) {
                 $purchases->where('transactions.status', request()->status);
             }
-            
+
+            if (!empty(request()->created_by)) {
+                $purchases->where('transactions.created_by', request()->created_by);
+            }
+
             if (!empty(request()->start_date) && !empty(request()->end_date)) {
                 $start = request()->start_date;
                 $end =  request()->end_date;
@@ -204,9 +208,10 @@ class PurchaseController extends Controller
         $business_locations = BusinessLocation::forDropdown($business_id);
         $suppliers = Contact::suppliersDropdown($business_id, false);
         $orderStatuses = $this->productUtil->orderStatuses();
+        $users = User::forDropdown($business_id, false);
 
         return view('purchase.index')
-            ->with(compact('business_locations', 'suppliers', 'orderStatuses'));
+            ->with(compact('business_locations', 'suppliers', 'orderStatuses', 'users'));
     }
 
     /**

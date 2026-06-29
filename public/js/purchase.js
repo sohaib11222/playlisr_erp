@@ -569,6 +569,9 @@ $(document).ready(function() {
                 if ($('#purchase_list_filter_status').length) {
                     d.status = $('#purchase_list_filter_status').val();
                 }
+                if ($('#purchase_list_filter_created_by').length) {
+                    d.created_by = $('#purchase_list_filter_created_by').val();
+                }
 
                 var start = '';
                 var end = '';
@@ -688,7 +691,7 @@ $(document).ready(function() {
         'change',
         '#purchase_list_filter_location_id, \
                     #purchase_list_filter_supplier_id, #purchase_list_filter_payment_status,\
-                     #purchase_list_filter_status',
+                     #purchase_list_filter_status, #purchase_list_filter_created_by',
         function() {
             purchase_table.ajax.reload();
         }
