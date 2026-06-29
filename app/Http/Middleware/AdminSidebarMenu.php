@@ -39,8 +39,7 @@ class AdminSidebarMenu
             // they're reached via the dashboard prompt/links. Routes still live.
 
             //Events / Listening Parties (top-level — its own thing, not under Products)
-            // Fatteen runs the events desk but lacks product.create; let him in too.
-            if (auth()->user()->can('product.create') || \App\Http\Controllers\EmployeeChecklistController::isFatteen()) {
+            if (auth()->user()->can('product.create')) {
                 $menu->url(
                     route('events.index'),
                     'Events',
