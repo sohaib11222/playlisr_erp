@@ -56,6 +56,8 @@
         @can('purchase_order.create')
             @slot('tool')
                 <div class="box-tools">
+                    <a class="btn btn-block btn-default" href="{{action('AmsInvoiceImportController@index')}}" style="margin-bottom:5px;">
+                    <i class="fa fa-file-pdf-o"></i> Import AMS Invoice</a>
                     <a class="btn btn-block btn-primary" href="{{action('PurchaseOrderController@create')}}">
                     <i class="fa fa-plus"></i> @lang('messages.add')</a>
                 </div>
