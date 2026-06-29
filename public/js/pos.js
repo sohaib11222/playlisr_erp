@@ -3812,6 +3812,20 @@ function reset_pos_form(){
 	//Reset Pre-Tax → Clover hero amount — otherwise it keeps the previous sale's value
 	$('span#pre_tax_amount').text('0.00');
 
+	// Re-arm the bag fee for the next sale. The bag-fee row carries
+	// class="product_row", so the $('tr.product_row').remove() above strips
+	// it; and form.reset() restores #add_plastic_bag to its default (checked)
+	// WITHOUT firing a change event. Net effect: the toggle still looks on
+	// but the hidden bag line that feeds the subtotal is gone, so every sale
+	// after the first silently drops the $0.12 until a full page reload.
+	// Re-trigger through the visible toggle so the chip count + hidden cart
+	// row both come back (mirrors the on-load trigger near pos.js init).
+	if ($('#bag-toggle-checkbox').length && $('#bag-toggle-checkbox').is(':checked')) {
+		$('#bag-toggle-checkbox').trigger('change');
+	} else if ($('#add_plastic_bag').length && $('#add_plastic_bag').is(':checked')) {
+		$('#add_plastic_bag').trigger('change');
+	}
+
 	$('#modal_payment').find('.remove_payment_row').each( function(){
 		$(this).closest('.payment_row').remove();
 	});
