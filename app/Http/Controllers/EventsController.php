@@ -174,13 +174,26 @@ class EventsController extends Controller
         return trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->username ?? 'staff');
     }
 
+    /**
+     * Who may author/edit events. Mirrors the menu gate, plus Fatteen — he
+     * runs the events desk but his role lacks product.create (a sales-floor
+     * permission), so the bare can('product.create') gate was 403-ing every
+     * add and date edit for him. isFatteen() is the same identity check used
+     * for his daily checklist; this only ADDS him, no one loses access.
+     */
+    protected function canManageEvents(): bool
+    {
+        return auth()->user()->can('product.create')
+            || EmployeeChecklistController::isFatteen();
+    }
+
     // --------------------------------------------------------------------
     // Screens
     // --------------------------------------------------------------------
 
     public function index(Request $request)
     {
-        if (!auth()->user()->can('product.create')) {
+        if (!$this->canManageEvents()) {
             abort(403, 'Unauthorized action.');
         }
 
@@ -236,7 +249,7 @@ class EventsController extends Controller
 
     public function edit(Request $request, string $id)
     {
-        if (!auth()->user()->can('product.create')) {
+        if (!$this->canManageEvents()) {
             abort(403, 'Unauthorized action.');
         }
         $business_id = $this->businessId($request);
@@ -538,7 +551,7 @@ class EventsController extends Controller
     /** Add a walk-in RSVP at the event (someone who didn't RSVP in advance). */
     public function rsvpAdd(Request $request, string $id)
     {
-        if (!auth()->user()->can('product.create')) {
+        if (!$this->canManageEvents()) {
             abort(403, 'Unauthorized action.');
         }
         $business_id = $this->businessId($request);
@@ -592,7 +605,7 @@ class EventsController extends Controller
     /** Toggle an RSVP's check-in state via the website bridge. */
     public function rsvpCheckIn(Request $request, string $id, string $rsvpId)
     {
-        if (!auth()->user()->can('product.create')) {
+        if (!$this->canManageEvents()) {
             abort(403, 'Unauthorized action.');
         }
         $checkedIn = filter_var($request->input('checkedIn'), FILTER_VALIDATE_BOOLEAN);
@@ -611,7 +624,7 @@ class EventsController extends Controller
      */
     public function preorderAdd(Request $request, string $id)
     {
-        if (!auth()->user()->can('product.create')) {
+        if (!$this->canManageEvents()) {
             abort(403, 'Unauthorized action.');
         }
         $business_id = $this->businessId($request);
@@ -693,7 +706,7 @@ class EventsController extends Controller
     /** Change a preorder's status via the website bridge (fires pickup email/SMS). */
     public function preorderStatus(Request $request, string $id, string $preorderId)
     {
-        if (!auth()->user()->can('product.create')) {
+        if (!$this->canManageEvents()) {
             abort(403, 'Unauthorized action.');
         }
         $status = (string) $request->input('status');
@@ -858,7 +871,7 @@ class EventsController extends Controller
 
     public function store(Request $request)
     {
-        if (!auth()->user()->can('product.create')) {
+        if (!$this->canManageEvents()) {
             abort(403, 'Unauthorized action.');
         }
         $business_id = $this->businessId($request);
@@ -886,7 +899,7 @@ class EventsController extends Controller
 
     public function update(Request $request, string $id)
     {
-        if (!auth()->user()->can('product.create')) {
+        if (!$this->canManageEvents()) {
             abort(403, 'Unauthorized action.');
         }
         $business_id = $this->businessId($request);
@@ -918,7 +931,7 @@ class EventsController extends Controller
      */
     public function bridgeKeySave(Request $request)
     {
-        if (!auth()->user()->can('product.create')) {
+        if (!$this->canManageEvents()) {
             abort(403, 'Unauthorized action.');
         }
         $request->validate(['erp_api_key' => 'nullable|string|max:255']);
@@ -1064,7 +1077,7 @@ class EventsController extends Controller
 
     public function seedOrders(Request $request)
     {
-        if (!auth()->user()->can('product.create')) {
+        if (!$this->canManageEvents()) {
             abort(403, 'Unauthorized action.');
         }
         $matched = self::applyOrderSeed($this->businessId($request));
@@ -1074,7 +1087,7 @@ class EventsController extends Controller
 
     public function destroy(Request $request, string $id)
     {
-        if (!auth()->user()->can('product.create')) {
+        if (!$this->canManageEvents()) {
             abort(403, 'Unauthorized action.');
         }
         $business_id = $this->businessId($request);
@@ -1097,7 +1110,7 @@ class EventsController extends Controller
      */
     public function tidyLocations(Request $request)
     {
-        if (!auth()->user()->can('product.create')) {
+        if (!$this->canManageEvents()) {
             abort(403, 'Unauthorized action.');
         }
         $business_id = $this->businessId($request);
@@ -1133,7 +1146,7 @@ class EventsController extends Controller
      */
     public function updatePrep(Request $request, string $id)
     {
-        if (!auth()->user()->can('product.create')) {
+        if (!$this->canManageEvents()) {
             abort(403, 'Unauthorized action.');
         }
         $business_id = $this->businessId($request);
@@ -1195,7 +1208,7 @@ class EventsController extends Controller
      */
     public function import(Request $request)
     {
-        if (!auth()->user()->can('product.create')) {
+        if (!$this->canManageEvents()) {
             abort(403, 'Unauthorized action.');
         }
         $business_id = $this->businessId($request);
