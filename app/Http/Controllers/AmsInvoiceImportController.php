@@ -38,7 +38,10 @@ class AmsInvoiceImportController extends Controller
 
     private function canAccess()
     {
-        return auth()->user()->can('purchase_order.create');
+        // Anyone who can add a purchase or a purchase order can import — this is
+        // the import entry point for the purchases desk (Insha), not just PO admins.
+        return auth()->user()->can('purchase_order.create')
+            || auth()->user()->can('purchase.create');
     }
 
     public function index()

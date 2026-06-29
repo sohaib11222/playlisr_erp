@@ -260,7 +260,7 @@ class AdminSidebarMenu
                                 ['icon' => 'fa fas fa-list', 'active' => request()->segment(1) == 'purchase-order']
                             );
                         }
-                        if (auth()->user()->can('purchase_order.create')) {
+                        if (auth()->user()->can('purchase_order.create') || auth()->user()->can('purchase.create')) {
                             $sub->url(
                                 action('AmsInvoiceImportController@index'),
                                 'Import AMS Invoice',
