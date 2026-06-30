@@ -131,7 +131,7 @@
                              buttons below toggle this checkbox programmatically. --}}
                         <span class="input-group-addon" id="product_list_filter_all_time_wrap">
                             <label style="margin:0; font-weight:400;">
-                                <input type="checkbox" id="product_list_filter_all_time"> @lang('lang_v1.all')
+                                <input type="checkbox" id="product_list_filter_all_time" checked> @lang('lang_v1.all')
                             </label>
                         </span>
                     </div>
@@ -139,8 +139,8 @@
                         <button type="button" class="date-preset-btn" data-preset="today">Today</button>
                         <button type="button" class="date-preset-btn" data-preset="7">7 days</button>
                         <button type="button" class="date-preset-btn" data-preset="30">30 days</button>
-                        <button type="button" class="date-preset-btn is-active" data-preset="ytd">This Year</button>
-                        <button type="button" class="date-preset-btn" data-preset="all" title="Slow on large catalogs — searches the entire database">
+                        <button type="button" class="date-preset-btn" data-preset="ytd">This Year</button>
+                        <button type="button" class="date-preset-btn is-active" data-preset="all" title="Slow on large catalogs — searches the entire database">
                             <i class="fa fa-globe" aria-hidden="true"></i> All Time
                         </button>
                     </div>
@@ -944,6 +944,9 @@
                         product_table.ajax.reload();
                     }
                 });
+                // Default to All Time: the picker auto-fills the financial-year range on
+                // init, so clear it back to empty so no created-date filter is applied.
+                $('#product_list_filter_created_date_range').val('');
             }
 
             // Show/hide bulk update buttons based on uncategorized filter
