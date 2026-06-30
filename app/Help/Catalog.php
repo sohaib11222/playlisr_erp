@@ -272,24 +272,25 @@ HTML,
 </div>
 <ul>
     <li><strong>Card sales:</strong> run the card on Clover. Wait for the <strong>approved</strong> screen before you hand anything back.</li>
+    <li><strong>Cash sales:</strong> still ring it on Clover so the day balances. A cash sale that never touches Clover looks like missing money at close.</li>
+    <li>After ringing, glance at the Clover screen and confirm the amount matches the POS total before moving on.</li>
 </ul>
 <div class="help-critical">
-    <strong>Clover and the ERP must always match.</strong> If the amount or the sale itself doesn't line up between the two, fix it before you move on — never leave them out of sync.
+    <strong>Clover and the ERP must always match.</strong> If the amount or the sale itself doesn't line up between the two, please fix it before you move on. If you can't, <strong>ping Sarah</strong> — she will do it.
 </div>
 
 <h3>If Someone Wants to Sell Us a Collection</h3>
 <ul>
     <li>Be friendly, take a look, and get a rough sense of size and condition.</li>
     <li>Anything large or that you're unsure about — check with Jon. <strong>Don't quote big numbers on your own.</strong></li>
-    <li>For what you can handle, use the buy calculator (below) to work out a fair offer.</li>
-    <li>We pay the seller; we don't "discount" buys. The number the calculator gives is the number.</li>
+    <li>Always use the <strong><a href="/buy-from-customer" target="_blank">buy calculator</a></strong> to work out a fair offer.</li>
 </ul>
 
 <h3>Using the Buy Calculator</h3>
 <p>The buy form lives at <a href="/buy-from-customer" target="_blank"><code>playlist.nivessa.com/buy-from-customer</code></a>.</p>
 <ol>
     <li>Open <strong><a href="/buy-from-customer" target="_blank">Buy from Customer</a></strong>.</li>
-    <li>Add each item the customer is selling (scan the barcode or search the title).</li>
+    <li>Add each item the customer is selling.</li>
     <li>The form figures the buy price per item — confirm condition is set right, since that moves the number.</li>
     <li>Review the total offer with the customer before you commit.</li>
     <li>Once they agree, complete the buy so it's recorded against inventory. Pay them out the way they chose (cash or store credit).</li>
@@ -298,23 +299,18 @@ HTML,
 <hr>
 
 <h3>How to List Products</h3>
-<p>Listing is how product gets priced, located, and made sellable — and it's how you earn listing commission. The two detailed walkthroughs live in their own articles; here's the short version:</p>
+<p>Listing is how product gets priced, located, and made sellable — and it's how you earn listing commission.</p>
 <ul>
-    <li><strong>Floor items:</strong> price it, then write <strong>genre AND price</strong> on the sticker (e.g. <code>$14 ROCK</code>) so a misplaced item can always be put back. See <a href="/help/pricing-in-store" target="_blank">Pricing Items for the Store Floor</a>.</li>
-    <li><strong>Online (Discogs):</strong> match the <em>exact</em> pressing (fonts, label, mono/stereo, color), grade media and sleeve, set the <strong>location</strong> (FL bin → matching Kallax), price competitively, then list and physically place the record. See <a href="/help/list-on-discogs" target="_blank">How to List an Item on Discogs</a>.</li>
+    <li><strong>Floor items:</strong> <strong>barcode every item — never hand-write the price.</strong> See <a href="/help/pricing-in-store" target="_blank">Pricing Items for the Store Floor</a>.</li>
 </ul>
-<div class="help-must-do">
-    <strong>Always set the location and match it to where the record physically goes.</strong> Wrong or missing locations are how records get lost.
-</div>
 
 <h3>Sales &amp; Listing Commissions — How We Reward Both</h3>
-<p>You get paid for two different things, and they stack. We reward the person who <strong>listed</strong> the item and the person who <strong>sells</strong> on the floor — so it pays to do both well.</p>
 <ul>
-    <li><strong>Listing commission:</strong> you earn <strong>2% on items that you sell in store</strong>. The more you're on the floor moving product, the more this adds up.</li>
-    <li><strong>Sales goal bonus:</strong> hit your <strong>daily</strong> sales goal on the floor and you earn a bonus on top. This rewards selling well in the moment, not just listing.</li>
+    <li><strong>Sales goal bonus:</strong> hit your <strong>daily</strong> sales goal on the floor and you earn a bonus on top of that — <strong>2% or 4%</strong> depending on the goal you hit. This rewards selling well in the moment, not just listing.</li>
+    <li><strong>Listing commission:</strong> you earn <strong>2% of the sale price on items you listed that sell in store</strong>. The more great products you list, the more this grows over time as it sells.</li>
 </ul>
 <div class="help-tip">
-    The "labeled / put-out" count is a stat we track — it is <strong>not</strong> paid. You're paid on listing commission + sales goal bonus.
+    The "labeled / put-out" count is a stat we track. You're paid on listing commission + sales goal bonus.
 </div>
 <div class="help-tip">
     <strong>See your own numbers anytime at <a href="/my-earnings" target="_blank">My Earnings</a>.</strong>
