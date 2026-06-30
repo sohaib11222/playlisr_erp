@@ -621,10 +621,10 @@ class EventsController extends Controller
         }
         $event = $items[$id];
 
-        if (empty($event['preorderEnabled'])) {
-            return redirect()->route('events.edit', ['id' => $id])
-                ->with('error', 'Preorders aren\'t enabled for this event.');
-        }
+        // No preorderEnabled gate here on purpose: staff add preorders
+        // after-the-fact (someone DMs once the party's over, or for an event
+        // that never had public preorders turned on). The key-gated bridge
+        // create endpoint accepts a free-typed item title + price for those.
 
         $request->validate([
             'firstName'    => 'required|string|max:100',
@@ -632,6 +632,7 @@ class EventsController extends Controller
             'email'        => 'nullable|email|max:191',
             'phone'        => 'required|string|max:40',
             'productTitle' => 'nullable|string|max:191',
+            'price'        => 'nullable|numeric|min:0',
             'notes'        => 'nullable|string|max:1000',
         ], [
             'firstName.required' => 'First name is required.',
@@ -639,13 +640,18 @@ class EventsController extends Controller
             'phone.required'     => 'Phone is required.',
         ]);
 
-        // If the release has more than one version, a version must be chosen so
-        // the preorder lands against the right line in "Versions ordered".
+        // If the release has more than one configured version, a version must
+        // be chosen so the preorder lands against the right line in "Versions
+        // ordered". Events without configured versions take a free-typed item.
         $versions = array_values((array) ($event['preorderProducts'] ?? []));
         $productTitle = trim((string) $request->input('productTitle', ''));
         if (count($versions) > 1 && $productTitle === '') {
             return redirect()->route('events.edit', ['id' => $id])
                 ->with('error', 'Choose which version this preorder is for.');
+        }
+        if (empty($versions) && $productTitle === '') {
+            return redirect()->route('events.edit', ['id' => $id])
+                ->with('error', 'Enter what the customer is preordering.');
         }
 
         // Email is optional for in-person preorders. The website's create
@@ -659,6 +665,7 @@ class EventsController extends Controller
             $email = 'walkin.' . ($digits !== '' ? $digits : 'nophone') . '@noemail.nivessa.com';
         }
 
+        $priceRaw = $request->input('price');
         $payload = [
             'eventId'      => $event['id'] ?? null,
             'firstName'    => trim($request->input('firstName')),
@@ -667,11 +674,15 @@ class EventsController extends Controller
             'phone'        => $phone,
             'notes'        => $request->input('notes') ?: null,
             'productTitle' => $productTitle !== '' ? $productTitle : null,
+            // Manual price for after-the-fact / no-configured-version events.
+            // Ignored when the chosen version already carries a price.
+            'price'        => ($priceRaw === null || $priceRaw === '') ? null : (float) $priceRaw,
         ];
 
-        // PUBLIC create endpoint (/api/v1/preorders), not the /erp/* bridge —
-        // it already exists, so this stays entirely an ERP-side change.
-        $resp = $this->websiteApi('POST', '/preorders', $payload);
+        // Key-gated ERP bridge create (/api/v1/erp/preorders) — staff-only, so
+        // it skips the preorderEnabled gate the public form enforces and lets
+        // us pass a typed item title + price for after-the-fact preorders.
+        $resp = $this->websiteApi('POST', '/erp/preorders', $payload);
         if ($resp === null || empty($resp['success'])) {
             $why = is_array($resp) ? ($resp['message'] ?? '') : '';
             return redirect()->route('events.edit', ['id' => $id])

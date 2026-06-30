@@ -54,7 +54,11 @@
     //      phone / name so it appears on that person's row. Anything that
     //      doesn't match an RSVP gets its OWN row further down — so no preorder
     //      is ever hidden, regardless of whether the buyer also RSVP'd.
-    $preordersOn = !empty($event['preorderEnabled']);
+    // Preorder column + add form are always available once the bridge is
+    // connected (we're already inside the bridge-ready branch). Staff can add
+    // a preorder after the fact even when public preorders were never turned
+    // on — the bridge create endpoint accepts a free-typed item + price.
+    $preordersOn = true;
     $pVersions = array_values((array) ($event['preorderProducts'] ?? []));
     $activePreorders = [];
     $canceledPreorders = [];
@@ -220,6 +224,15 @@
           <button type="submit" class="btn-accent">Add RSVP</button>
         </form>
       </details>
+      {{-- Standalone "+ Add preorder" — opens the blank add form below. Works
+           when the customer never RSVP'd (e.g. a DM after the event), so it
+           doesn't depend on a guest row's per-row button. --}}
+      @if($preordersOn)
+        <button type="button" class="preorder-add-btn" data-fn="" data-ln="" data-email="" data-phone=""
+          style="margin:0;flex:0 1 auto;display:inline-flex;align-items:center;gap:8px;background:#fff;color:#1c2150;border:2px solid #1c2150;font-weight:800;font-size:16px;padding:10px 20px;border-radius:12px;cursor:pointer;">
+          <span style="font-size:20px;line-height:1;">+</span> Add preorder
+        </button>
+      @endif
     </div>
     @if($stats)
       <div class="total-owed" style="margin-bottom:12px;">
@@ -306,6 +319,11 @@
             </div>
           @elseif(count($pVersions) === 1)
             <input type="hidden" name="productTitle" value="{{ trim((string) ($pVersions[0]['title'] ?? '')) }}">
+          @else
+            {{-- No configured versions (preorders were never set up for this
+                 event) — let staff type what was reserved and its price. --}}
+            <div class="ev-field" style="flex:2 1 240px;"><label>Item *</label><input type="text" name="productTitle" required placeholder="e.g. Artist – Album (vinyl)"></div>
+            <div class="ev-field" style="flex:1 1 120px;"><label>Price</label><input type="number" step="0.01" min="0" name="price" placeholder="0.00"></div>
           @endif
           <div class="ev-field" style="flex:2 1 200px;"><label>Notes</label><input type="text" name="notes" placeholder="Signed copy, color variant, etc."></div>
           <button type="submit" class="btn-accent">Add preorder</button>
@@ -332,6 +350,23 @@
         if (closeBtn) closeBtn.addEventListener('click', function () {
           var wrap = document.getElementById('preorder-add-wrap');
           if (wrap) wrap.style.display = 'none';
+        });
+        // Any "+ Add preorder" trigger (the standalone button or a per-row
+        // button) opens this form, pre-filled from its data-* attributes.
+        // Delegated here so it works even when there are zero RSVP rows.
+        document.addEventListener('click', function (e) {
+          var b = e.target.closest && e.target.closest('.preorder-add-btn');
+          if (!b) return;
+          var wrap = document.getElementById('preorder-add-wrap');
+          if (wrap) wrap.style.display = '';
+          var set = function (n, v) { var el = form.querySelector('[name="' + n + '"]'); if (el) el.value = v || ''; };
+          set('firstName', b.getAttribute('data-fn'));
+          set('lastName', b.getAttribute('data-ln'));
+          set('email', b.getAttribute('data-email'));
+          set('phone', b.getAttribute('data-phone'));
+          if (wrap) wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          var f = form.querySelector('[name="productTitle"]') || form.querySelector('[name="firstName"]');
+          if (f) { try { f.focus(); } catch (err) {} }
         });
       })();
       </script>
@@ -410,27 +445,10 @@
         </tbody>
       </table>
       <script>
+        // Per-row "+ Add preorder" buttons are handled by the delegated
+        // listener in the add-form script above (always present), so it works
+        // whether or not the RSVP table rendered.
         window.__rsvpEmails = @json(array_values(array_filter(array_map(fn($r) => $r['email'] ?? '', $rsvps))));
-        // Per-row "+ Add preorder": open the top form pre-filled with that
-        // guest's name/email/phone (delegated so it works for every row).
-        (function () {
-          document.addEventListener('click', function (e) {
-            var b = e.target.closest && e.target.closest('.preorder-add-btn');
-            if (!b) return;
-            var form = document.querySelector('form[data-preorder-add]');
-            if (!form) return;
-            var wrap = document.getElementById('preorder-add-wrap');
-            if (wrap) wrap.style.display = '';
-            var set = function (n, v) { var el = form.querySelector('[name="' + n + '"]'); if (el) el.value = v || ''; };
-            set('firstName', b.getAttribute('data-fn'));
-            set('lastName', b.getAttribute('data-ln'));
-            set('email', b.getAttribute('data-email'));
-            set('phone', b.getAttribute('data-phone'));
-            if (wrap) wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            var f = form.querySelector('[name="productTitle"]') || form.querySelector('[name="firstName"]');
-            if (f) { try { f.focus(); } catch (err) {} }
-          });
-        })();
       </script>
     @endif
   </div>
