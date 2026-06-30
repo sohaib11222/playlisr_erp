@@ -248,7 +248,7 @@ HTML,
 <p>Jon sets the focus each week — specific categories, genres, or items to promote to customers. Watch Slack for that callout at the start of the week. If you're not sure what's prioritized, check in with Jon.</p>
 
 <div class="help-tip">
-    <strong>How you're paid to sell:</strong> you earn <strong>2% listing commission</strong> on items you listed that sell (online or in-store, net of returns), plus a <strong>sales goal bonus</strong> when you hit your goal for the period. See your own numbers anytime at <a href="/my-earnings" target="_blank">My Earnings</a>. (See <a href="/help/earning-at-nivessa" target="_blank">Earning at Nivessa</a> for the full breakdown.)
+    <strong>How you're paid to sell:</strong> you earn <strong>2% listing commission</strong> on items that you sell in store, plus a <strong>sales goal bonus</strong> when you hit your goal for the period. See your own numbers anytime at <a href="/my-earnings" target="_blank">My Earnings</a>. (See <a href="/help/earning-at-nivessa" target="_blank">Earning at Nivessa</a> for the full breakdown.)
 </div>
 
 <hr>
@@ -311,7 +311,7 @@ HTML,
 <h3>Sales &amp; Listing Commissions — How We Reward Both</h3>
 <p>You get paid for two different things, and they stack. We reward the person who <strong>listed</strong> the item and the person who <strong>sells</strong> on the floor — so it pays to do both well.</p>
 <ul>
-    <li><strong>Listing commission:</strong> you earn <strong>2% of the sale price on items you listed that sell</strong> — online or in-store, net of returns. The more good product you list, the more this grows over time as it sells.</li>
+    <li><strong>Listing commission:</strong> you earn <strong>2% on items that you sell in store</strong>. The more you're on the floor moving product, the more this adds up.</li>
     <li><strong>Sales goal bonus:</strong> hit your <strong>daily</strong> sales goal on the floor and you earn a bonus on top. This rewards selling well in the moment, not just listing.</li>
 </ul>
 <div class="help-tip">
