@@ -272,7 +272,7 @@ HTML,
     <li>After ringing, glance at the Clover screen and confirm the amount matches the POS total before moving on.</li>
 </ul>
 <div class="help-critical">
-    If Clover and the POS ever disagree, stop and grab a manager — don't keep selling.
+    <strong>Clover and the ERP must always match.</strong> If the amount or the sale itself doesn't line up between the two, fix it before you move on — never leave them out of sync.
 </div>
 
 <h3>If Someone Wants to Sell Us a Collection</h3>
@@ -315,7 +315,7 @@ HTML,
     The "labeled / put-out" count is a stat we track — it is <strong>not</strong> paid. You're paid on listing commission + sales goal bonus.
 </div>
 <div class="help-tip">
-    <strong>See your own numbers anytime at <a href="/my-earnings" target="_blank">My Earnings</a>.</strong> (Managers can review payouts at <a href="/admin/listing-commissions" target="_blank">Listing Commissions</a>.) See <a href="/help/earning-at-nivessa" target="_blank">Earning at Nivessa</a> for the full breakdown.
+    <strong>See your own numbers anytime at <a href="/my-earnings" target="_blank">My Earnings</a>.</strong>
 </div>
 HTML,
             ],
