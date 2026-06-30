@@ -256,23 +256,22 @@ HTML,
 <h3>Ringing Up a Sale</h3>
 <ol>
     <li>Open the <strong><a href="/pos/create" target="_blank">POS</a></strong> and start a new sale.</li>
+    <li>Ask the customer if they have an account with us. If not, ask if they'd like to join our rewards program — it's <strong>free</strong>.</li>
     <li>Scan or search each item. Confirm the title and price match the sticker.</li>
-    <li>If the sticker price doesn't match what pops up, you can edit the unit price inline — but it needs <strong>Jon's OK</strong>, and you'll be asked to type a reason. <strong>Don't discount on your own.</strong></li>
-    <li>The only standing discount is <strong>10% off orders of $300 or more</strong> — approved by Jon. <strong>No cash discounts, ever.</strong></li>
-    <li>Take payment, hand over the receipt, done.</li>
+    <li><strong>Cashiers do not give discounts — only Jon.</strong> The only standing discount is <strong>10% off orders of $300 or more</strong>, approved by Jon. <strong>No cash discounts, ever.</strong></li>
+    <li>Make sure the sale is rung up in the <strong>ERP</strong>, then type the total amount into <strong>Clover</strong>. Make sure the Clover transaction goes through — <strong>very important</strong>. Cash sales get recorded in Clover too.</li>
+    <li>Hand over the receipt, done.</li>
 </ol>
 <div class="help-critical">
-    <strong>Refunds:</strong> all refunds need Jon's approval — he's the only one who can process one. Don't promise or process a refund yourself; check with Jon first.
+    <strong>Refunds need Jon's approval — he's the only one who can process one.</strong> Don't promise or process a refund yourself; check with Jon first.
 </div>
 
 <h3>Make SURE the Sale Hits the Clover Device</h3>
 <div class="help-must-do">
-    This is the part people skip, and it causes problems. <strong>Every sale — cash AND card — has to be entered on the Clover device too.</strong>
+    <strong>Every sale — cash AND card — has to be entered on the Clover device too.</strong>
 </div>
 <ul>
-    <li><strong>Card sales:</strong> run the card on Clover. Wait for the <strong>approved</strong> screen before you hand anything back. If Clover times out or declines, the sale did NOT go through — re-run it, don't assume.</li>
-    <li><strong>Cash sales:</strong> still ring it on Clover so the day balances. A cash sale that never touches Clover looks like missing money at close.</li>
-    <li>After ringing, glance at the Clover screen and confirm the amount matches the POS total before moving on.</li>
+    <li><strong>Card sales:</strong> run the card on Clover. Wait for the <strong>approved</strong> screen before you hand anything back.</li>
 </ul>
 <div class="help-critical">
     <strong>Clover and the ERP must always match.</strong> If the amount or the sale itself doesn't line up between the two, fix it before you move on — never leave them out of sync.
