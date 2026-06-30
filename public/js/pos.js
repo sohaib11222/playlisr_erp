@@ -1721,18 +1721,25 @@ $(document).ready(function() {
                             $('#modal_payment').modal('hide');
                             toastr.success(result.msg);
 
-                            var doResetAndReceipt = function() {
-                                reset_pos_form();
-                                if (result.receipt.is_enabled) {
-                                    pos_print(result.receipt);
-                                }
-                            };
+                            // Clear the cart IMMEDIATELY so the register is ready for
+                            // the next customer. This used to be deferred inside
+                            // refresh_customer_credit_after_sale's callback whenever
+                            // store credit / a customer balance was involved — if that
+                            // balance-refresh GET stalled or its callback chain broke,
+                            // reset_pos_form() never ran and the cashier had to remove
+                            // each line by hand (Mica, 2026-06-30). Resetting up-front
+                            // decouples the visible cart from that network call.
+                            reset_pos_form();
+                            if (result.receipt && result.receipt.is_enabled) {
+                                pos_print(result.receipt);
+                            }
 
+                            // Refresh the customer's stored-credit balance in the
+                            // background (balance display + Select2 option). No longer
+                            // gates the cart reset above.
                             var credit_deducted = advance_used_for_sale > 0 ? advance_used_for_sale : store_credit_used_amount;
                             if (selected_customer_id_before_submit && credit_deducted > 0) {
-                                refresh_customer_credit_after_sale(selected_customer_id_before_submit, credit_deducted, doResetAndReceipt);
-                            } else {
-                                doResetAndReceipt();
+                                refresh_customer_credit_after_sale(selected_customer_id_before_submit, credit_deducted);
                             }
                         } else {
                             toastr.error(result.msg);
@@ -2996,6 +3003,7 @@ function refresh_customer_credit_after_sale(contact_id, advance_used_for_sale, o
         type: 'GET',
         data: { contact_id: contact_id },
         dataType: 'json',
+        timeout: 8000,
         success: function(response) {
             if (response && response.success && response.data && response.data.contact) {
                 var latest_balance = parseFloat(response.data.contact.balance || 0) || 0;
@@ -3783,6 +3791,11 @@ function isValidPosForm() {
 
 function reset_pos_form(){
     window.pos_submit_in_progress = false;
+
+	// Clear the cart lines FIRST — before the form.reset()/customer/location
+	// rebuilds below. If any of those throw, the just-completed sale is already
+	// gone from the cart rather than left on screen for the cashier to X out.
+	$('tr.product_row').remove();
 
 	//If on edit page then redirect to Add POS page
 	if($('form#edit_pos_sell_form').length > 0){
