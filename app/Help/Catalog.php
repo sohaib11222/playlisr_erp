@@ -257,10 +257,13 @@ HTML,
 <ol>
     <li>Open the <strong><a href="/pos/create" target="_blank">POS</a></strong> and start a new sale.</li>
     <li>Scan or search each item. Confirm the title and price match the sticker.</li>
-    <li>If the sticker price doesn't match what pops up, you can edit the unit price inline — but a manager has to OK it, and you'll be asked to type a reason. <strong>Don't discount on your own.</strong></li>
-    <li>The only standing discount is <strong>10% off orders of $300 or more</strong> — manager-approved. <strong>No cash discounts, ever.</strong></li>
+    <li>If the sticker price doesn't match what pops up, you can edit the unit price inline — but it needs <strong>Jon's OK</strong>, and you'll be asked to type a reason. <strong>Don't discount on your own.</strong></li>
+    <li>The only standing discount is <strong>10% off orders of $300 or more</strong> — approved by Jon. <strong>No cash discounts, ever.</strong></li>
     <li>Take payment, hand over the receipt, done.</li>
 </ol>
+<div class="help-critical">
+    <strong>Refunds:</strong> all refunds need Jon's approval — he's the only one who can process one. Don't promise or process a refund yourself; check with Jon first.
+</div>
 
 <h3>Make SURE the Sale Hits the Clover Device</h3>
 <div class="help-must-do">
@@ -278,7 +281,7 @@ HTML,
 <h3>If Someone Wants to Sell Us a Collection</h3>
 <ul>
     <li>Be friendly, take a look, and get a rough sense of size and condition.</li>
-    <li>Anything large or that you're unsure about — get a manager/buyer. <strong>Don't quote big numbers on your own.</strong></li>
+    <li>Anything large or that you're unsure about — check with Jon. <strong>Don't quote big numbers on your own.</strong></li>
     <li>For what you can handle, use the buy calculator (below) to work out a fair offer.</li>
     <li>We pay the seller; we don't "discount" buys. The number the calculator gives is the number.</li>
 </ul>
