@@ -228,7 +228,7 @@
            when the customer never RSVP'd (e.g. a DM after the event), so it
            doesn't depend on a guest row's per-row button. --}}
       @if($preordersOn)
-        <button type="button" class="preorder-add-btn" data-fn="" data-ln="" data-email="" data-phone=""
+        <button type="button" class="preorder-add-btn" data-fn="" data-ln="" data-email="" data-phone="" data-paid="0"
           style="margin:0;flex:0 1 auto;display:inline-flex;align-items:center;gap:8px;background:#fff;color:#1c2150;border:2px solid #1c2150;font-weight:800;font-size:16px;padding:10px 20px;border-radius:12px;cursor:pointer;">
           <span style="font-size:20px;line-height:1;">+</span> Add preorder
         </button>
@@ -326,6 +326,12 @@
             <div class="ev-field" style="flex:1 1 120px;"><label>Price</label><input type="number" step="0.01" min="0" name="price" placeholder="0.00"></div>
           @endif
           <div class="ev-field" style="flex:2 1 200px;"><label>Notes</label><input type="text" name="notes" placeholder="Signed copy, color variant, etc."></div>
+          {{-- Paid = the card was run at the event. Off for after-the-fact
+               preorders (e.g. an IG DM) — those pay at pickup. --}}
+          <label class="ev-meta" style="display:flex;align-items:center;gap:6px;padding-bottom:9px;flex:0 1 auto;">
+            <input type="hidden" name="markPaid" value="0">
+            <input type="checkbox" name="markPaid" value="1" data-paid-checkbox checked> Paid (card run at event)
+          </label>
           <button type="submit" class="btn-accent">Add preorder</button>
         </form>
       </div>
@@ -364,6 +370,10 @@
           set('lastName', b.getAttribute('data-ln'));
           set('email', b.getAttribute('data-email'));
           set('phone', b.getAttribute('data-phone'));
+          // Default paid on for at-event walk-ins, off for the after-the-fact
+          // standalone button (data-paid="0"). Staff can still toggle it.
+          var paidBox = form.querySelector('[data-paid-checkbox]');
+          if (paidBox) paidBox.checked = b.getAttribute('data-paid') !== '0';
           if (wrap) wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
           var f = form.querySelector('[name="productTitle"]') || form.querySelector('[name="firstName"]');
           if (f) { try { f.focus(); } catch (err) {} }
@@ -421,7 +431,7 @@
                 @endforeach
                 <button type="button" class="btn-ghost preorder-add-btn"
                   data-fn="{{ $r['firstName'] ?? '' }}" data-ln="{{ $r['lastName'] ?? '' }}"
-                  data-email="{{ $r['email'] ?? '' }}" data-phone="{{ $r['phone'] ?? '' }}"
+                  data-email="{{ $r['email'] ?? '' }}" data-phone="{{ $r['phone'] ?? '' }}" data-paid="1"
                   style="padding:5px 12px;font-size:12px;">+ Add preorder</button>
               </td>
               @endif

@@ -262,6 +262,76 @@ class EventsController extends Controller
     }
 
     /**
+     * Overview of preorders across every event — one place to see who reserved
+     * what, which party they placed it at, when they placed it, the pickup
+     * (street) date, and whether they've paid. Defaults to active preorders
+     * (pending + ready) sorted by pickup date so the soonest pickups are on
+     * top; ?status=all includes picked-up and canceled. Reads through the
+     * key-gated website bridge (records live on nivessa.com).
+     */
+    public function preordersOverview(Request $request)
+    {
+        if (!auth()->user()->can('product.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = $this->businessId($request);
+        $events = self::load($business_id)['items'];
+
+        // eventId => [name, streetDate] for linking each preorder back to its
+        // event edit page and filling a pickup date when the snapshot is empty.
+        $eventById = [];
+        foreach ($events as $eid => $ev) {
+            $eventById[(string) $eid] = [
+                'name'       => $ev['name'] ?? '',
+                'streetDate' => $ev['streetDate'] ?? null,
+            ];
+        }
+
+        $keySet = $this->erpApiKey() !== '';
+        $showAll = $request->input('status') === 'all';
+
+        $preorders = [];
+        $reachable = false;
+        if ($keySet) {
+            $resp = $this->websiteApi('GET', '/erp/preorders?limit=500');
+            if ($resp !== null) {
+                $reachable = true;
+                $rows = $resp['data'] ?? $resp['preorders'] ?? [];
+                foreach ((array) $rows as $p) {
+                    $status = $p['status'] ?? 'pending';
+                    if (!$showAll && !in_array($status, ['pending', 'ready'], true)) {
+                        continue;
+                    }
+                    $eid = (string) ($p['eventId'] ?? '');
+                    // Pickup date: prefer the snapshot, else the event's street date.
+                    $pickup = $p['preorderPickupDate'] ?? null;
+                    if (!$pickup && isset($eventById[$eid])) {
+                        $pickup = $eventById[$eid]['streetDate'];
+                    }
+                    $p['_pickup']   = $pickup;
+                    $p['_eventKnown'] = isset($eventById[$eid]) ? $eid : null;
+                    $preorders[] = $p;
+                }
+                // Soonest pickup first; undated pickups sink to the bottom.
+                usort($preorders, function ($a, $b) {
+                    $pa = $a['_pickup'] ?: '9999-12-31';
+                    $pb = $b['_pickup'] ?: '9999-12-31';
+                    if ($pa !== $pb) { return strcmp($pa, $pb); }
+                    return strcmp((string) ($b['createdAt'] ?? ''), (string) ($a['createdAt'] ?? ''));
+                });
+            }
+        }
+
+        return view('events.preorders', [
+            'preorders' => $preorders,
+            'keySet'    => $keySet,
+            'reachable' => $reachable,
+            'showAll'   => $showAll,
+        ]);
+    }
+
+    /**
      * Per-event RSVP count plus vinyl/CD request counts for the index list,
      * keyed by exact event name. One stats call total (not per-event). The
      * vinyl/CD numbers come from the listening-party RSVP "buying vinyl or
@@ -689,16 +759,19 @@ class EventsController extends Controller
                 ->with('error', 'Could not add the preorder' . ($why !== '' ? ': ' . $why : '.') . '');
         }
 
-        // In-person preorders are paid for at the event — mark paid right away
-        // (also flips any linked POS sale to final/paid). Best-effort: a failure
-        // here doesn't undo the preorder, which already saved.
+        // Mark paid only when the card was actually run (walk-ins paid at the
+        // event). After-the-fact preorders — e.g. an Instagram DM once the
+        // party's over — stay unpaid; they pay at pickup. Best-effort: a
+        // failure here doesn't undo the preorder, which already saved.
+        $markPaid = filter_var($request->input('markPaid'), FILTER_VALIDATE_BOOLEAN);
         $newId = $resp['data']['_id'] ?? $resp['data']['id'] ?? null;
-        if ($newId) {
+        if ($markPaid && $newId) {
             $this->websiteApi('PATCH', '/erp/preorders/' . rawurlencode($newId) . '/paid', ['paid' => true]);
         }
 
         return redirect()->route('events.edit', ['id' => $id])
-            ->with('status', 'Preorder added for ' . $payload['firstName'] . ' ' . $payload['lastName'] . ' (paid at event).');
+            ->with('status', 'Preorder added for ' . $payload['firstName'] . ' ' . $payload['lastName']
+                . ($markPaid ? ' (paid at event).' : ' (unpaid — pays at pickup).'));
     }
 
     /** Change a preorder's status via the website bridge (fires pickup email/SMS). */
