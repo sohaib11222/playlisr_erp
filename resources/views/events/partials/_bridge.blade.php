@@ -330,6 +330,7 @@
           <div class="ev-field" style="flex:1 1 150px;"><label>Source</label>
             <select name="source" data-source-select>
               <option value="">At event</option>
+              <option value="Website order">Website order</option>
               <option value="Instagram DM">Instagram DM</option>
               <option value="Phone">Phone</option>
               <option value="Email">Email</option>

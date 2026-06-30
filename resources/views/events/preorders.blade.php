@@ -59,7 +59,7 @@
           <span class="ev-meta">&middot; {{ $unpaidCount }} unpaid{{ $unpaidTotal > 0 ? ' ($' . number_format($unpaidTotal, 2) . ' to collect at pickup)' : '' }}</span>
         @endif
       </div>
-      @php $sourceOpts = ['Instagram DM', 'Phone', 'Email', 'Walk-in']; @endphp
+      @php $sourceOpts = ['Website order', 'Instagram DM', 'Phone', 'Email', 'Walk-in']; @endphp
       <table class="ev-tbl">
         <thead><tr>
           <th>Customer</th>
