@@ -69,7 +69,7 @@
           <th>Placed</th>
           <th>Pickup</th>
           <th>Paid</th>
-          <th>Status</th>
+          @if($showAll)<th>Status</th>@endif
           <th></th>
         </tr></thead>
         <tbody>
@@ -120,7 +120,7 @@
                   <span class="pill" style="background:#fdeaea;color:#a23;border-color:#f3cccc;">Unpaid</span>
                 @endif
               </td>
-              <td><span class="pill">{{ $p['statusLabel'] }}</span></td>
+              @if($showAll)<td><span class="pill">{{ $p['statusLabel'] }}</span></td>@endif
               <td style="white-space:nowrap;">
                 @if(!empty($p['active']))
                   {{-- Mark paid: only for unpaid listening-party preorders. --}}
