@@ -200,7 +200,7 @@ HTML,
 <p>Great customer service at Nivessa starts with being present, approachable, and genuinely interested in helping people discover music. This sheet is how we sell on the floor.</p>
 
 <h3>Approach Customers Naturally</h3>
-<p>When someone is digging through the bins, many are searching for something specific and simply don't know if we have it. A simple <em>"Looking for anything specific today?"</em> can start a great conversation and help us guide them to exactly what they want. If they'd rather be left alone, of course we respect that.</p>
+<p>When someone is digging through the bins, many are searching for something specific and simply don't know if we have it. A simple <em>"Looking for anything specific today?"</em> can start a great conversation and help us guide them to exactly what they want. A low-pressure <em>"I'm here if you need anything"</em> works just as well — it lets them know you're available without crowding them. And if you see them stop on something interesting, <em>"Did you ever hear of this one?"</em> is a natural way to open up a conversation about the record. If they'd rather be left alone, of course we respect that.</p>
 
 <h3>Stay Visible &amp; Approachable</h3>
 <ul>
