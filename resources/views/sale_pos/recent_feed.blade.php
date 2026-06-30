@@ -71,6 +71,7 @@
     .rf-tender.tender-card { background: #E0EAF7; border: 1px solid #A8C0DD; color: #2E4A8A; }
     .rf-tender.tender-other { background: #F2EAE0; border: 1px solid #DDC8A8; color: #8B6A1A; }
     .rf-tender.tender-mixed { background: #F0E0F2; border: 1px solid #D5A8DD; color: #5E2E80; }
+    .rf-tender.tender-credit { background: #FCE8C8; border: 1px solid #E6C079; color: #8A5A0A; }
     .rf-store-badge { display: inline-block; padding: 1px 7px; border-radius: 999px;
         background: #F7F1E3; border: 1px solid #DFD2B3; color: #5A5045;
         font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
@@ -1144,16 +1145,33 @@
                 // cashier *chose*, which is mostly 'Cash'; the Clover column
                 // tells you what actually ran.
                 $methods = $sale->payment_lines->pluck('method')->filter()->unique()->values();
+                // Friendly label for a single method. 'advance' is the ERP tender
+                // for store credit (the customer's advance balance), so surface it
+                // as "Store Credit" rather than the raw "Advance".
+                $labelFor = function ($m) {
+                    if ($m === 'cash') return 'Cash';
+                    if ($m === 'card') return 'Card';
+                    if ($m === 'advance') return 'Store Credit';
+                    return ucfirst(str_replace('_', ' ', $m));
+                };
                 $tenderClass = 'tender-other';
                 $tenderLabel = '—';
-                if ($methods->count() > 1) {
+                if ($methods->contains('advance')) {
+                    // Any store-credit use wins the badge so it's never hidden inside
+                    // a "Split". Show what it was combined with, if anything.
+                    $tenderClass = 'tender-credit';
+                    $others = $methods->reject(fn($m) => $m === 'advance')->map($labelFor);
+                    $tenderLabel = $others->isEmpty()
+                        ? 'Store Credit'
+                        : 'Store Credit + ' . $others->implode(' + ');
+                } elseif ($methods->count() > 1) {
                     $tenderClass = 'tender-mixed';
                     $tenderLabel = 'Split';
                 } elseif ($methods->count() === 1) {
                     $m = $methods->first();
                     if ($m === 'cash') { $tenderClass = 'tender-cash'; $tenderLabel = 'Cash'; }
                     elseif ($m === 'card') { $tenderClass = 'tender-card'; $tenderLabel = 'Card'; }
-                    else { $tenderLabel = ucfirst(str_replace('_', ' ', $m)); }
+                    else { $tenderLabel = $labelFor($m); }
                 }
             @endphp
             <div class="rf-card">
