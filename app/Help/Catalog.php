@@ -248,14 +248,14 @@ HTML,
 <p>Jon sets the focus each week — specific categories, genres, or items to promote to customers. Watch Slack for that callout at the start of the week. If you're not sure what's prioritized, check in with Jon.</p>
 
 <div class="help-tip">
-    <strong>How you're paid to sell:</strong> you earn <strong>2% listing commission</strong> on items you listed that sell (online or in-store, net of returns), plus a <strong>sales goal bonus</strong> when you hit your goal for the period. See your own numbers anytime at <code>/my-earnings</code>. (See <em>Earning at Nivessa</em> for the full breakdown.)
+    <strong>How you're paid to sell:</strong> you earn <strong>2% listing commission</strong> on items you listed that sell (online or in-store, net of returns), plus a <strong>sales goal bonus</strong> when you hit your goal for the period. See your own numbers anytime at <a href="/my-earnings" target="_blank">My Earnings</a>. (See <a href="/help/earning-at-nivessa" target="_blank">Earning at Nivessa</a> for the full breakdown.)
 </div>
 
 <hr>
 
 <h3>Ringing Up a Sale</h3>
 <ol>
-    <li>Open the <strong>POS</strong> and start a new sale.</li>
+    <li>Open the <strong><a href="/pos/create" target="_blank">POS</a></strong> and start a new sale.</li>
     <li>Scan or search each item. Confirm the title and price match the sticker.</li>
     <li>If the sticker price doesn't match what pops up, you can edit the unit price inline — but a manager has to OK it, and you'll be asked to type a reason. <strong>Don't discount on your own.</strong></li>
     <li>The only standing discount is <strong>10% off orders of $300 or more</strong> — manager-approved. <strong>No cash discounts, ever.</strong></li>
@@ -284,9 +284,9 @@ HTML,
 </ul>
 
 <h3>Using the Buy Calculator</h3>
-<p>The buy form lives at <code>playlist.nivessa.com/buy-from-customer</code>.</p>
+<p>The buy form lives at <a href="/buy-from-customer" target="_blank"><code>playlist.nivessa.com/buy-from-customer</code></a>.</p>
 <ol>
-    <li>Open <strong>/buy-from-customer</strong>.</li>
+    <li>Open <strong><a href="/buy-from-customer" target="_blank">Buy from Customer</a></strong>.</li>
     <li>Add each item the customer is selling (scan the barcode or search the title).</li>
     <li>The form figures the buy price per item — confirm condition is set right, since that moves the number.</li>
     <li>Review the total offer with the customer before you commit.</li>
@@ -298,8 +298,8 @@ HTML,
 <h3>How to List Products</h3>
 <p>Listing is how product gets priced, located, and made sellable — and it's how you earn listing commission. The two detailed walkthroughs live in their own articles; here's the short version:</p>
 <ul>
-    <li><strong>Floor items:</strong> price it, then write <strong>genre AND price</strong> on the sticker (e.g. <code>$14 ROCK</code>) so a misplaced item can always be put back. See <em>Pricing Items for the Store Floor</em>.</li>
-    <li><strong>Online (Discogs):</strong> match the <em>exact</em> pressing (fonts, label, mono/stereo, color), grade media and sleeve, set the <strong>location</strong> (FL bin → matching Kallax), price competitively, then list and physically place the record. See <em>How to List an Item on Discogs</em>.</li>
+    <li><strong>Floor items:</strong> price it, then write <strong>genre AND price</strong> on the sticker (e.g. <code>$14 ROCK</code>) so a misplaced item can always be put back. See <a href="/help/pricing-in-store" target="_blank">Pricing Items for the Store Floor</a>.</li>
+    <li><strong>Online (Discogs):</strong> match the <em>exact</em> pressing (fonts, label, mono/stereo, color), grade media and sleeve, set the <strong>location</strong> (FL bin → matching Kallax), price competitively, then list and physically place the record. See <a href="/help/list-on-discogs" target="_blank">How to List an Item on Discogs</a>.</li>
 </ul>
 <div class="help-must-do">
     <strong>Always set the location and match it to where the record physically goes.</strong> Wrong or missing locations are how records get lost.
@@ -315,7 +315,7 @@ HTML,
     The "labeled / put-out" count is a stat we track — it is <strong>not</strong> paid. You're paid on listing commission + sales goal bonus.
 </div>
 <div class="help-tip">
-    <strong>See your own numbers anytime at <code>/my-earnings</code>.</strong> (Managers can review payouts at <code>/admin/listing-commissions</code>.) See <em>Earning at Nivessa</em> for the full breakdown.
+    <strong>See your own numbers anytime at <a href="/my-earnings" target="_blank">My Earnings</a>.</strong> (Managers can review payouts at <a href="/admin/listing-commissions" target="_blank">Listing Commissions</a>.) See <a href="/help/earning-at-nivessa" target="_blank">Earning at Nivessa</a> for the full breakdown.
 </div>
 HTML,
             ],
