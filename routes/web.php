@@ -357,6 +357,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // Preorders across all events + in-store special orders (where, pickup date)
     Route::get('/events-preorders', 'EventsController@preordersOverview')->name('events.preordersOverview');
     Route::post('/events-preorders/event/{preorderId}/pickup', 'EventsController@overviewMarkEventPickedUp')->name('events.overviewEventPickup');
+    Route::post('/events-preorders/event/{preorderId}/paid', 'EventsController@overviewMarkEventPaid')->name('events.overviewEventPaid');
+    Route::post('/events-preorders/event/{preorderId}/source', 'EventsController@overviewSetEventSource')->name('events.overviewEventSource');
     Route::post('/events-preorders/special/{id}/pickup', 'EventsController@overviewMarkSpecialPickedUp')->name('events.overviewSpecialPickup');
     Route::post('/events', 'EventsController@store')->name('events.store');
     Route::get('/events/{id}/edit', 'EventsController@edit')->name('events.edit');

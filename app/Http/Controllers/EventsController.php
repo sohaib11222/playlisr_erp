@@ -318,7 +318,10 @@ class EventsController extends Controller
                         'phone'       => (string) ($p['phone'] ?? ''),
                         'item'        => $p['preorderTitle'] ?? '—',
                         'price'       => isset($p['preorderPrice']) && $p['preorderPrice'] !== null ? (float) $p['preorderPrice'] : null,
-                        'source'      => $p['eventName'] ?? 'Listening party',
+                        'eventName'   => $p['eventName'] ?? 'Listening party',
+                        // Stored source (empty = placed at the event). When set,
+                        // it's what the overview shows instead of the party name.
+                        'source'      => trim((string) ($p['source'] ?? '')),
                         'sourceTag'   => 'Listening party',
                         'placed'      => $p['createdAt'] ?? null,
                         'pickup'      => $pickup,
@@ -367,7 +370,8 @@ class EventsController extends Controller
                     'phone'       => (string) ($s->customer_mobile ?? ''),
                     'item'        => $item,
                     'price'       => null,
-                    'source'      => 'Special order',
+                    'eventName'   => null,
+                    'source'      => '',
                     'sourceTag'   => 'Special order',
                     'placed'      => $s->order_date,
                     'pickup'      => $s->expected_date,
@@ -430,6 +434,31 @@ class EventsController extends Controller
             }
         }
         return $this->overviewRedirect($request, 'status', 'Special order marked picked up.');
+    }
+
+    /** Mark a listening-party preorder paid (e.g. card run on Clover). */
+    public function overviewMarkEventPaid(Request $request, string $preorderId)
+    {
+        if (!auth()->user()->can('product.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $resp = $this->websiteApi('PATCH', '/erp/preorders/' . rawurlencode($preorderId) . '/paid', ['paid' => true]);
+        return $resp === null
+            ? $this->overviewRedirect($request, 'error', 'Could not reach the website to mark it paid.')
+            : $this->overviewRedirect($request, 'status', 'Preorder marked paid.');
+    }
+
+    /** Set/correct where a listening-party preorder came in (empty = at event). */
+    public function overviewSetEventSource(Request $request, string $preorderId)
+    {
+        if (!auth()->user()->can('product.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $source = trim((string) $request->input('source', ''));
+        $resp = $this->websiteApi('PATCH', '/erp/preorders/' . rawurlencode($preorderId) . '/source', ['source' => $source]);
+        return $resp === null
+            ? $this->overviewRedirect($request, 'error', 'Could not reach the website to set the source.')
+            : $this->overviewRedirect($request, 'status', 'Source updated.');
     }
 
     /**
@@ -804,6 +833,7 @@ class EventsController extends Controller
             'phone'        => 'required|string|max:40',
             'productTitle' => 'nullable|string|max:191',
             'price'        => 'nullable|numeric|min:0',
+            'source'       => 'nullable|string|max:100',
             'notes'        => 'nullable|string|max:1000',
         ], [
             'firstName.required' => 'First name is required.',
@@ -848,6 +878,8 @@ class EventsController extends Controller
             // Manual price for after-the-fact / no-configured-version events.
             // Ignored when the chosen version already carries a price.
             'price'        => ($priceRaw === null || $priceRaw === '') ? null : (float) $priceRaw,
+            // Where it came in (empty = at the event). Set for DM/phone adds.
+            'source'       => trim((string) $request->input('source', '')) ?: null,
         ];
 
         // Key-gated ERP bridge create (/api/v1/erp/preorders) — staff-only, so

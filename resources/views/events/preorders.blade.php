@@ -59,10 +59,12 @@
           <span class="ev-meta">&middot; {{ $unpaidCount }} unpaid{{ $unpaidTotal > 0 ? ' ($' . number_format($unpaidTotal, 2) . ' to collect at pickup)' : '' }}</span>
         @endif
       </div>
+      @php $sourceOpts = ['Instagram DM', 'Phone', 'Email', 'Walk-in']; @endphp
       <table class="ev-tbl">
         <thead><tr>
           <th>Customer</th>
           <th>Item</th>
+          <th>Price</th>
           <th>Where placed</th>
           <th>Placed</th>
           <th>Pickup</th>
@@ -75,19 +77,37 @@
             @php
               $placed = !empty($p['placed']) ? date('M j, Y', strtotime($p['placed'])) : '—';
               $pickup = !empty($p['pickup']) ? date('l, M j, Y', strtotime($p['pickup'])) : '—';
+              $filterVal = $showAll ? 'all' : '';
             @endphp
             <tr>
               <td class="ev-name">{{ $p['name'] }}
                 <div class="ev-meta">{{ $p['email'] }}@if(!empty($p['phone']))@if(!empty($p['email'])) · @endif{{ $p['phone'] }}@endif</div>
               </td>
-              <td>{{ $p['item'] }}@if($p['price'] !== null) <span class="ev-meta">${{ number_format((float) $p['price'], 2) }}</span>@endif</td>
+              <td>{{ $p['item'] }}</td>
+              <td>{{ $p['price'] !== null ? '$' . number_format((float) $p['price'], 2) : '—' }}</td>
               <td>
-                @if($p['type'] === 'event' && !empty($p['eventId']))
-                  <a class="ev-edit" href="{{ route('events.edit', ['id' => $p['eventId']]) }}">{{ $p['source'] }}</a>
+                @if($p['type'] === 'event')
+                  {{-- Source doubles as display + editor; changing it saves.
+                       Empty = placed at the event itself. --}}
+                  <form method="POST" action="{{ route('events.overviewEventSource', ['preorderId' => $p['id']]) }}" style="margin:0;">
+                    {{ csrf_field() }}
+                    <input type="hidden" name="filter" value="{{ $filterVal }}">
+                    <select name="source" onchange="this.form.submit()" style="font-size:12px;padding:4px 6px;border:1px solid var(--pos-line,#ECE3CF);border-radius:8px;max-width:180px;">
+                      <option value="" {{ $p['source'] === '' ? 'selected' : '' }}>At event{{ $p['eventName'] ? ' — ' . $p['eventName'] : '' }}</option>
+                      @foreach($sourceOpts as $opt)
+                        <option value="{{ $opt }}" {{ $p['source'] === $opt ? 'selected' : '' }}>{{ $opt }}</option>
+                      @endforeach
+                      @if($p['source'] !== '' && !in_array($p['source'], $sourceOpts, true))
+                        <option value="{{ $p['source'] }}" selected>{{ $p['source'] }}</option>
+                      @endif
+                    </select>
+                  </form>
+                  @if(!empty($p['eventId']))
+                    <div style="margin-top:3px;"><a class="ev-edit" href="{{ route('events.edit', ['id' => $p['eventId']]) }}">Open event</a></div>
+                  @endif
                 @else
-                  {{ $p['source'] }}
+                  <span class="pill lp">{{ $p['sourceTag'] }}</span>
                 @endif
-                <div><span class="pill lp">{{ $p['sourceTag'] }}</span></div>
               </td>
               <td class="ev-meta">{{ $placed }}</td>
               <td>{{ $pickup }}</td>
@@ -103,16 +123,24 @@
               <td><span class="pill">{{ $p['statusLabel'] }}</span></td>
               <td style="white-space:nowrap;">
                 @if(!empty($p['active']))
+                  {{-- Mark paid: only for unpaid listening-party preorders. --}}
+                  @if($p['type'] === 'event' && $p['paidKnown'] && empty($p['paid']))
+                    <form method="POST" action="{{ route('events.overviewEventPaid', ['preorderId' => $p['id']]) }}" style="display:inline;">
+                      {{ csrf_field() }}
+                      <input type="hidden" name="filter" value="{{ $filterVal }}">
+                      <button type="submit" class="btn-ghost" style="padding:5px 12px;font-size:12px;">Mark paid</button>
+                    </form>
+                  @endif
                   @if($p['type'] === 'event')
                     <form method="POST" action="{{ route('events.overviewEventPickup', ['preorderId' => $p['id']]) }}" style="display:inline;">
                       {{ csrf_field() }}
-                      <input type="hidden" name="filter" value="{{ $showAll ? 'all' : '' }}">
+                      <input type="hidden" name="filter" value="{{ $filterVal }}">
                       <button type="submit" class="btn-accent" style="padding:5px 12px;font-size:12px;">Mark picked up</button>
                     </form>
                   @else
                     <form method="POST" action="{{ route('events.overviewSpecialPickup', ['id' => $p['id']]) }}" style="display:inline;">
                       {{ csrf_field() }}
-                      <input type="hidden" name="filter" value="{{ $showAll ? 'all' : '' }}">
+                      <input type="hidden" name="filter" value="{{ $filterVal }}">
                       <button type="submit" class="btn-accent" style="padding:5px 12px;font-size:12px;">Mark picked up</button>
                     </form>
                   @endif

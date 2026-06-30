@@ -228,7 +228,7 @@
            when the customer never RSVP'd (e.g. a DM after the event), so it
            doesn't depend on a guest row's per-row button. --}}
       @if($preordersOn)
-        <button type="button" class="preorder-add-btn" data-fn="" data-ln="" data-email="" data-phone="" data-paid="0"
+        <button type="button" class="preorder-add-btn" data-fn="" data-ln="" data-email="" data-phone="" data-paid="0" data-source="Instagram DM"
           style="margin:0;flex:0 1 auto;display:inline-flex;align-items:center;gap:8px;background:#fff;color:#1c2150;border:2px solid #1c2150;font-weight:800;font-size:16px;padding:10px 20px;border-radius:12px;cursor:pointer;">
           <span style="font-size:20px;line-height:1;">+</span> Add preorder
         </button>
@@ -325,6 +325,17 @@
             <div class="ev-field" style="flex:2 1 240px;"><label>Item *</label><input type="text" name="productTitle" required placeholder="e.g. Artist – Album (vinyl)"></div>
             <div class="ev-field" style="flex:1 1 120px;"><label>Price</label><input type="number" step="0.01" min="0" name="price" placeholder="0.00"></div>
           @endif
+          {{-- Where it came in. Empty (At event) for walk-ins; the standalone
+               "+ Add preorder" button defaults this to Instagram DM. --}}
+          <div class="ev-field" style="flex:1 1 150px;"><label>Source</label>
+            <select name="source" data-source-select>
+              <option value="">At event</option>
+              <option value="Instagram DM">Instagram DM</option>
+              <option value="Phone">Phone</option>
+              <option value="Email">Email</option>
+              <option value="Walk-in">Walk-in</option>
+            </select>
+          </div>
           <div class="ev-field" style="flex:2 1 200px;"><label>Notes</label><input type="text" name="notes" placeholder="Signed copy, color variant, etc."></div>
           {{-- Paid = the card was run at the event. Off for after-the-fact
                preorders (e.g. an IG DM) — those pay at pickup. --}}
@@ -374,6 +385,10 @@
           // standalone button (data-paid="0"). Staff can still toggle it.
           var paidBox = form.querySelector('[data-paid-checkbox]');
           if (paidBox) paidBox.checked = b.getAttribute('data-paid') !== '0';
+          // Default source: "Instagram DM" for the standalone button, "At
+          // event" (empty) for a per-row button.
+          var srcSel = form.querySelector('[data-source-select]');
+          if (srcSel) srcSel.value = b.getAttribute('data-source') || '';
           if (wrap) wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
           var f = form.querySelector('[name="productTitle"]') || form.querySelector('[name="firstName"]');
           if (f) { try { f.focus(); } catch (err) {} }
