@@ -146,7 +146,17 @@
     // website's /admin/rsvps tally + suggested-order math so the numbers
     // match exactly: units to order = anyone who said vinyl/cd/both, with
     // the "not sure" crowd as an upper-bound buffer.
-    $interestLabels = ['vinyl' => 'Vinyl', 'cd' => 'CD', 'both' => 'Both', 'not_sure' => 'Not sure', 'no' => 'No'];
+    $interestLabels = ['vinyl' => 'Vinyl', 'cd' => 'CD', 'cassette' => 'Cassette', 'both' => 'Both', 'not_sure' => 'Not sure', 'no' => 'No'];
+    // interestedInPurchase is a comma-joined multi-select; split it into the
+    // labels we know (legacy single values still work).
+    $interestPills = function ($v) use ($interestLabels) {
+        $out = [];
+        foreach (explode(',', (string) $v) as $tok) {
+            $tok = trim($tok);
+            if ($tok !== '' && isset($interestLabels[$tok])) { $out[] = $interestLabels[$tok]; }
+        }
+        return $out;
+    };
     $interestCounts = ['vinyl' => 0, 'cd' => 0, 'both' => 0, 'not_sure' => 0, 'no' => 0];
     $interestAnswered = 0;
     foreach ($rsvps as $r) {
@@ -212,7 +222,8 @@
               <option value="">—</option>
               <option value="vinyl">Vinyl</option>
               <option value="cd">CD</option>
-              <option value="both">Both</option>
+              <option value="cassette">Cassette</option>
+              <option value="both">Both (vinyl + CD)</option>
               <option value="not_sure">Not sure</option>
               <option value="no">No</option>
             </select>
@@ -422,12 +433,12 @@
               <td class="ev-name">{{ trim(($r['firstName'] ?? '') . ' ' . ($r['lastName'] ?? '')) ?: ($r['name'] ?? '—') }}</td>
               <td class="ev-meta">{{ $r['email'] ?? '' }}@if(!empty($r['phone']))<div>{{ $r['phone'] }}</div>@endif</td>
               <td>
-                @php $vi = $r['interestedInPurchase'] ?? null; @endphp
-                @if($vi && isset($interestLabels[$vi]))
-                  <span class="pill">{{ $interestLabels[$vi] }}</span>
-                @else
+                @php $vpills = $interestPills($r['interestedInPurchase'] ?? null); @endphp
+                @forelse($vpills as $vp)
+                  <span class="pill">{{ $vp }}</span>
+                @empty
                   <span class="ev-meta">—</span>
-                @endif
+                @endforelse
               </td>
               <td>
                 @if($rid)
