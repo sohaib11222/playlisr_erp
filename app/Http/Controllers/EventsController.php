@@ -262,12 +262,14 @@ class EventsController extends Controller
     }
 
     /**
-     * Overview of preorders across every event — one place to see who reserved
-     * what, which party they placed it at, when they placed it, the pickup
-     * (street) date, and whether they've paid. Defaults to active preorders
-     * (pending + ready) sorted by pickup date so the soonest pickups are on
-     * top; ?status=all includes picked-up and canceled. Reads through the
-     * key-gated website bridge (records live on nivessa.com).
+     * Overview of ALL preorders — both listening-party reservations (which
+     * live on nivessa.com, read via the bridge) and in-store special orders
+     * (the ERP `preorders` table). One place to see who reserved what, where
+     * they placed it, when, the pickup date, and whether they've paid; each
+     * active row has a "Mark picked up" button. Defaults to active preorders
+     * sorted by pickup date (soonest first); ?status=all includes picked-up
+     * and canceled. Rows are normalized to one shape so both sources render
+     * in a single table.
      */
     public function preordersOverview(Request $request)
     {
@@ -288,47 +290,146 @@ class EventsController extends Controller
             ];
         }
 
-        $keySet = $this->erpApiKey() !== '';
+        $keySet  = $this->erpApiKey() !== '';
         $showAll = $request->input('status') === 'all';
-
-        $preorders = [];
+        $rows = [];
         $reachable = false;
+
+        // ---- Listening-party preorders (website bridge) ----
         if ($keySet) {
             $resp = $this->websiteApi('GET', '/erp/preorders?limit=500');
             if ($resp !== null) {
                 $reachable = true;
-                $rows = $resp['data'] ?? $resp['preorders'] ?? [];
-                foreach ((array) $rows as $p) {
+                foreach ((array) ($resp['data'] ?? $resp['preorders'] ?? []) as $p) {
                     $status = $p['status'] ?? 'pending';
-                    if (!$showAll && !in_array($status, ['pending', 'ready'], true)) {
-                        continue;
-                    }
+                    $active = in_array($status, ['pending', 'ready'], true);
+                    if (!$showAll && !$active) { continue; }
                     $eid = (string) ($p['eventId'] ?? '');
-                    // Pickup date: prefer the snapshot, else the event's street date.
                     $pickup = $p['preorderPickupDate'] ?? null;
                     if (!$pickup && isset($eventById[$eid])) {
                         $pickup = $eventById[$eid]['streetDate'];
                     }
-                    $p['_pickup']   = $pickup;
-                    $p['_eventKnown'] = isset($eventById[$eid]) ? $eid : null;
-                    $preorders[] = $p;
+                    $rows[] = [
+                        'type'        => 'event',
+                        'id'          => (string) ($p['_id'] ?? $p['id'] ?? ''),
+                        'eventId'     => isset($eventById[$eid]) ? $eid : null,
+                        'name'        => trim(($p['firstName'] ?? '') . ' ' . ($p['lastName'] ?? '')) ?: '—',
+                        'email'       => (strpos((string) ($p['email'] ?? ''), '@noemail.nivessa.com') !== false) ? '' : (string) ($p['email'] ?? ''),
+                        'phone'       => (string) ($p['phone'] ?? ''),
+                        'item'        => $p['preorderTitle'] ?? '—',
+                        'price'       => isset($p['preorderPrice']) && $p['preorderPrice'] !== null ? (float) $p['preorderPrice'] : null,
+                        'source'      => $p['eventName'] ?? 'Listening party',
+                        'sourceTag'   => 'Listening party',
+                        'placed'      => $p['createdAt'] ?? null,
+                        'pickup'      => $pickup,
+                        'paid'        => !empty($p['paid']),
+                        'paidKnown'   => true,
+                        'status'      => $status,
+                        'statusLabel' => str_replace('_', ' ', $status),
+                        'active'      => $active,
+                    ];
                 }
-                // Soonest pickup first; undated pickups sink to the bottom.
-                usort($preorders, function ($a, $b) {
-                    $pa = $a['_pickup'] ?: '9999-12-31';
-                    $pb = $b['_pickup'] ?: '9999-12-31';
-                    if ($pa !== $pb) { return strcmp($pa, $pb); }
-                    return strcmp((string) ($b['createdAt'] ?? ''), (string) ($a['createdAt'] ?? ''));
-                });
             }
         }
 
+        // ---- In-store special orders (ERP `preorders` table) ----
+        // Guarded: the table may not exist on a box where the migration never
+        // ran, so check first rather than risk a 500 on the whole page.
+        if (auth()->user()->can('preorder.view') && \Schema::hasTable('preorders')) {
+            $special = \App\Preorder::where('preorders.business_id', $business_id)
+                ->leftJoin('contacts', 'preorders.contact_id', '=', 'contacts.id')
+                ->leftJoin('products', 'preorders.product_id', '=', 'products.id')
+                ->leftJoin('variations', 'preorders.variation_id', '=', 'variations.id')
+                ->select(
+                    'preorders.*',
+                    'contacts.name as customer_name',
+                    'contacts.mobile as customer_mobile',
+                    'products.name as product_name',
+                    'variations.sub_sku'
+                )
+                ->orderByRaw('COALESCE(preorders.expected_date, preorders.order_date) asc')
+                ->get();
+            foreach ($special as $s) {
+                $active = $s->status === 'pending';
+                if (!$showAll && !$active) { continue; }
+                // Map the special-order vocabulary onto the shared one.
+                $label = $s->status === 'fulfilled' ? 'picked up'
+                       : ($s->status === 'cancelled' ? 'canceled' : 'pending');
+                $item = $s->product_name ?: '—';
+                if ($s->sub_sku) { $item .= ' (' . $s->sub_sku . ')'; }
+                if ((float) $s->quantity > 1) { $item .= ' ×' . rtrim(rtrim(number_format((float) $s->quantity, 2), '0'), '.'); }
+                $rows[] = [
+                    'type'        => 'special',
+                    'id'          => (string) $s->id,
+                    'eventId'     => null,
+                    'name'        => $s->customer_name ?: '—',
+                    'email'       => '',
+                    'phone'       => (string) ($s->customer_mobile ?? ''),
+                    'item'        => $item,
+                    'price'       => null,
+                    'source'      => 'Special order',
+                    'sourceTag'   => 'Special order',
+                    'placed'      => $s->order_date,
+                    'pickup'      => $s->expected_date,
+                    'paid'        => null,
+                    'paidKnown'   => false,
+                    'status'      => $s->status,
+                    'statusLabel' => $label,
+                    'active'      => $active,
+                ];
+            }
+        }
+
+        // Soonest pickup first; undated pickups sink to the bottom.
+        usort($rows, function ($a, $b) {
+            $pa = $a['pickup'] ?: '9999-12-31';
+            $pb = $b['pickup'] ?: '9999-12-31';
+            if ($pa !== $pb) { return strcmp($pa, $pb); }
+            return strcmp((string) ($b['placed'] ?? ''), (string) ($a['placed'] ?? ''));
+        });
+
         return view('events.preorders', [
-            'preorders' => $preorders,
+            'preorders' => $rows,
             'keySet'    => $keySet,
             'reachable' => $reachable,
             'showAll'   => $showAll,
         ]);
+    }
+
+    /** Return to the overview keeping the Active/All filter the form carried. */
+    protected function overviewRedirect(Request $request, string $key, string $msg)
+    {
+        $params = $request->input('filter') === 'all' ? ['status' => 'all'] : [];
+        return redirect()->route('events.preordersOverview', $params)->with($key, $msg);
+    }
+
+    /** Mark a listening-party preorder picked up (from the overview page). */
+    public function overviewMarkEventPickedUp(Request $request, string $preorderId)
+    {
+        if (!auth()->user()->can('product.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $resp = $this->websiteApi('PATCH', '/erp/preorders/' . rawurlencode($preorderId) . '/status', ['status' => 'picked_up']);
+        return $resp === null
+            ? $this->overviewRedirect($request, 'error', 'Could not reach the website to update the preorder.')
+            : $this->overviewRedirect($request, 'status', 'Preorder marked picked up.');
+    }
+
+    /** Mark an in-store special-order preorder picked up (fulfilled). */
+    public function overviewMarkSpecialPickedUp(Request $request, int $id)
+    {
+        if (!auth()->user()->can('preorder.update')) {
+            abort(403, 'Unauthorized action.');
+        }
+        if (\Schema::hasTable('preorders')) {
+            $business_id = $this->businessId($request);
+            $preorder = \App\Preorder::where('business_id', $business_id)->find($id);
+            if ($preorder && $preorder->status === 'pending') {
+                $preorder->status = 'fulfilled';
+                $preorder->save();
+            }
+        }
+        return $this->overviewRedirect($request, 'status', 'Special order marked picked up.');
     }
 
     /**

@@ -354,8 +354,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // Events / Listening Parties — ERP is the source of truth; data lives in
     // a JSON sidecar (storage/app/events-{business_id}.json), website reads it.
     Route::get('/events', 'EventsController@index')->name('events.index');
-    // Preorders across all events (who reserved what, where, pickup date)
+    // Preorders across all events + in-store special orders (where, pickup date)
     Route::get('/events-preorders', 'EventsController@preordersOverview')->name('events.preordersOverview');
+    Route::post('/events-preorders/event/{preorderId}/pickup', 'EventsController@overviewMarkEventPickedUp')->name('events.overviewEventPickup');
+    Route::post('/events-preorders/special/{id}/pickup', 'EventsController@overviewMarkSpecialPickedUp')->name('events.overviewSpecialPickup');
     Route::post('/events', 'EventsController@store')->name('events.store');
     Route::get('/events/{id}/edit', 'EventsController@edit')->name('events.edit');
     Route::post('/events/{id}', 'EventsController@update')->name('events.update');

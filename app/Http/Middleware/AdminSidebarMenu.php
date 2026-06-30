@@ -45,6 +45,12 @@ class AdminSidebarMenu
                     'Events',
                     ['icon' => 'fa fas fa-music', 'active' => request()->segment(1) == 'events']
                 )->order(7);
+                //Preorders — all customer pickups (listening-party + special orders)
+                $menu->url(
+                    route('events.preordersOverview'),
+                    'Preorders',
+                    ['icon' => 'fa fas fa-box', 'active' => request()->segment(1) == 'events-preorders']
+                )->order(8);
             }
 
             //Discounts (top-level for quick access)

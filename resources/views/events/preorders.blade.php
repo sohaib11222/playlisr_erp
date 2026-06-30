@@ -12,7 +12,7 @@
   <div class="ev-head" style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;">
     <div>
       <h1>Preorders</h1>
-      <p class="sub">Everyone who reserved a record — which party they placed it at, when, the pickup (street) date, and whether they've paid.</p>
+      <p class="sub">Everything a customer is waiting to pick up — listening-party reservations and in-store special orders. Shows who reserved what, where they placed it, when, the pickup date, and whether they've paid.</p>
       <p class="sub"><a class="ev-edit" href="{{ route('events.index') }}">&larr; All events</a></p>
     </div>
     <div style="text-align:right;flex:0 1 auto;">
@@ -22,29 +22,33 @@
     </div>
   </div>
 
+  @if(session('status'))<div class="alert-ok">{{ session('status') }}</div>@endif
+  @if(session('error'))<div class="alert-err">{{ session('error') }}</div>@endif
+
   @if(!$keySet)
     <div class="ev-card" style="border:1px solid var(--pos-accent,#FFE08A);">
-      <h2 style="margin-top:0;">Connect the bridge to load preorders</h2>
-      <p class="sub" style="margin:0 0 10px;">Preorder records live on nivessa.com. Set the <code>ERP_API_KEY</code> from any event's edit page to pull them in here.</p>
+      <h2 style="margin-top:0;">Connect the bridge to load listening-party preorders</h2>
+      <p class="sub" style="margin:0 0 10px;">Listening-party preorders live on nivessa.com. Set the <code>ERP_API_KEY</code> from any event's edit page to pull them in here. (In-store special orders still show below.)</p>
       <a class="btn-accent" href="{{ route('events.index') }}">Go to events</a>
     </div>
   @elseif(!$reachable)
     <div class="ev-card" style="border:1px solid #f0c2c2;">
-      <h2 style="margin-top:0;">Couldn't reach the website</h2>
-      <p class="sub" style="margin:0;">A key is set, but nivessa.com rejected it or was unreachable. Try again, or re-check the key from an event's edit page.</p>
+      <h2 style="margin-top:0;">Couldn't reach the website for listening-party preorders</h2>
+      <p class="sub" style="margin:0;">A key is set, but nivessa.com rejected it or was unreachable. In-store special orders still show below; re-check the key from an event's edit page.</p>
     </div>
-  @elseif(empty($preorders))
+  @endif
+
+  @if(empty($preorders))
     <div class="ev-card"><div class="empty">{{ $showAll ? 'No preorders yet.' : 'No active preorders — everything has been picked up or canceled.' }}</div></div>
   @else
     @php
-      // Soonest pickup is on top. Count what's still owed so Sarah sees the
-      // money outstanding at a glance.
+      // Unpaid total only applies to listening-party preorders (special orders
+      // don't track payment here). Soonest pickup is already on top.
       $unpaidCount = 0; $unpaidTotal = 0.0;
       foreach ($preorders as $p) {
-        $st = $p['status'] ?? 'pending';
-        if (empty($p['paid']) && in_array($st, ['pending', 'ready'], true)) {
+        if (!empty($p['active']) && !empty($p['paidKnown']) && empty($p['paid'])) {
           $unpaidCount++;
-          $unpaidTotal += (float) ($p['preorderPrice'] ?? 0);
+          $unpaidTotal += (float) ($p['price'] ?? 0);
         }
       }
     @endphp
@@ -52,54 +56,68 @@
       <div class="total-owed" style="margin-bottom:12px;">
         {{ count($preorders) }} {{ $showAll ? 'total' : 'active' }}
         @if($unpaidCount > 0)
-          <span class="ev-meta">&middot; {{ $unpaidCount }} unpaid{{ $unpaidTotal > 0 ? ' (' . '$' . number_format($unpaidTotal, 2) . ' to collect at pickup)' : '' }}</span>
+          <span class="ev-meta">&middot; {{ $unpaidCount }} unpaid{{ $unpaidTotal > 0 ? ' ($' . number_format($unpaidTotal, 2) . ' to collect at pickup)' : '' }}</span>
         @endif
       </div>
       <table class="ev-tbl">
         <thead><tr>
           <th>Customer</th>
           <th>Item</th>
-          <th>Event</th>
+          <th>Where placed</th>
           <th>Placed</th>
           <th>Pickup</th>
           <th>Paid</th>
           <th>Status</th>
+          <th></th>
         </tr></thead>
         <tbody>
           @foreach($preorders as $p)
             @php
-              $name = trim(($p['firstName'] ?? '') . ' ' . ($p['lastName'] ?? '')) ?: '—';
-              $email = (string) ($p['email'] ?? '');
-              if (strpos($email, '@noemail.nivessa.com') !== false) { $email = ''; }
-              $status = $p['status'] ?? 'pending';
-              $statusLabel = str_replace('_', ' ', $status);
-              $paid = !empty($p['paid']);
-              $placed = !empty($p['createdAt']) ? date('M j, Y', strtotime($p['createdAt'])) : '—';
-              $pickup = !empty($p['_pickup']) ? date('l, M j, Y', strtotime($p['_pickup'])) : '—';
-              $eid = $p['_eventKnown'] ?? null;
+              $placed = !empty($p['placed']) ? date('M j, Y', strtotime($p['placed'])) : '—';
+              $pickup = !empty($p['pickup']) ? date('l, M j, Y', strtotime($p['pickup'])) : '—';
             @endphp
             <tr>
-              <td class="ev-name">{{ $name }}
-                <div class="ev-meta">{{ $email }}@if(!empty($p['phone'])) @if($email) · @endif{{ $p['phone'] }}@endif</div>
+              <td class="ev-name">{{ $p['name'] }}
+                <div class="ev-meta">{{ $p['email'] }}@if(!empty($p['phone']))@if(!empty($p['email'])) · @endif{{ $p['phone'] }}@endif</div>
               </td>
-              <td>{{ $p['preorderTitle'] ?? '—' }}@if(isset($p['preorderPrice']) && $p['preorderPrice'] !== null) <span class="ev-meta">${{ number_format((float) $p['preorderPrice'], 2) }}</span>@endif</td>
+              <td>{{ $p['item'] }}@if($p['price'] !== null) <span class="ev-meta">${{ number_format((float) $p['price'], 2) }}</span>@endif</td>
               <td>
-                @if($eid)
-                  <a class="ev-edit" href="{{ route('events.edit', ['id' => $eid]) }}">{{ $p['eventName'] ?? '—' }}</a>
+                @if($p['type'] === 'event' && !empty($p['eventId']))
+                  <a class="ev-edit" href="{{ route('events.edit', ['id' => $p['eventId']]) }}">{{ $p['source'] }}</a>
                 @else
-                  {{ $p['eventName'] ?? '—' }}
+                  {{ $p['source'] }}
                 @endif
+                <div><span class="pill lp">{{ $p['sourceTag'] }}</span></div>
               </td>
               <td class="ev-meta">{{ $placed }}</td>
               <td>{{ $pickup }}</td>
               <td>
-                @if($paid)
+                @if(!$p['paidKnown'])
+                  <span class="ev-meta">—</span>
+                @elseif($p['paid'])
                   <span class="pill" style="background:#e6f4ea;color:#2e7d32;border-color:#cce8d4;">Paid</span>
                 @else
                   <span class="pill" style="background:#fdeaea;color:#a23;border-color:#f3cccc;">Unpaid</span>
                 @endif
               </td>
-              <td><span class="pill">{{ $statusLabel }}</span></td>
+              <td><span class="pill">{{ $p['statusLabel'] }}</span></td>
+              <td style="white-space:nowrap;">
+                @if(!empty($p['active']))
+                  @if($p['type'] === 'event')
+                    <form method="POST" action="{{ route('events.overviewEventPickup', ['preorderId' => $p['id']]) }}" style="display:inline;">
+                      {{ csrf_field() }}
+                      <input type="hidden" name="filter" value="{{ $showAll ? 'all' : '' }}">
+                      <button type="submit" class="btn-accent" style="padding:5px 12px;font-size:12px;">Mark picked up</button>
+                    </form>
+                  @else
+                    <form method="POST" action="{{ route('events.overviewSpecialPickup', ['id' => $p['id']]) }}" style="display:inline;">
+                      {{ csrf_field() }}
+                      <input type="hidden" name="filter" value="{{ $showAll ? 'all' : '' }}">
+                      <button type="submit" class="btn-accent" style="padding:5px 12px;font-size:12px;">Mark picked up</button>
+                    </form>
+                  @endif
+                @endif
+              </td>
             </tr>
           @endforeach
         </tbody>
