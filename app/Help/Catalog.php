@@ -292,6 +292,31 @@ HTML,
     <li>Review the total offer with the customer before you commit.</li>
     <li>Once they agree, complete the buy so it's recorded against inventory. Pay them out the way they chose (cash or store credit).</li>
 </ol>
+
+<hr>
+
+<h3>How to List Products</h3>
+<p>Listing is how product gets priced, located, and made sellable — and it's how you earn listing commission. The two detailed walkthroughs live in their own articles; here's the short version:</p>
+<ul>
+    <li><strong>Floor items:</strong> price it, then write <strong>genre AND price</strong> on the sticker (e.g. <code>$14 ROCK</code>) so a misplaced item can always be put back. See <em>Pricing Items for the Store Floor</em>.</li>
+    <li><strong>Online (Discogs):</strong> match the <em>exact</em> pressing (fonts, label, mono/stereo, color), grade media and sleeve, set the <strong>location</strong> (FL bin → matching Kallax), price competitively, then list and physically place the record. See <em>How to List an Item on Discogs</em>.</li>
+</ul>
+<div class="help-must-do">
+    <strong>Always set the location and match it to where the record physically goes.</strong> Wrong or missing locations are how records get lost.
+</div>
+
+<h3>Sales &amp; Listing Commissions — How We Reward Both</h3>
+<p>You get paid for two different things, and they stack. We reward the person who <strong>listed</strong> the item and the person who <strong>sells</strong> on the floor — so it pays to do both well.</p>
+<ul>
+    <li><strong>Listing commission:</strong> you earn <strong>2% of the sale price on items you listed that sell</strong> — online or in-store, net of returns. The more good product you list, the more this grows over time as it sells.</li>
+    <li><strong>Sales goal bonus:</strong> hit your <strong>daily</strong> sales goal on the floor and you earn a bonus on top. This rewards selling well in the moment, not just listing.</li>
+</ul>
+<div class="help-tip">
+    The "labeled / put-out" count is a stat we track — it is <strong>not</strong> paid. You're paid on listing commission + sales goal bonus.
+</div>
+<div class="help-tip">
+    <strong>See your own numbers anytime at <code>/my-earnings</code>.</strong> (Managers can review payouts at <code>/admin/listing-commissions</code>.) See <em>Earning at Nivessa</em> for the full breakdown.
+</div>
 HTML,
             ],
             [
