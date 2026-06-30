@@ -890,16 +890,21 @@
                 foreach (($sales_by_store[$sid] ?? collect()) as $s) {
                     // Apply discrepancy filter at render time so a "mismatch
                     // only" filter still uses the same per-store buckets.
+                    // Store-credit-adjusted expectation (see controller):
+                    // compare Clover to the card portion, not final_total.
+                    $sExpectedCents = isset($clover_expected_cents[$s->id])
+                        ? (int) $clover_expected_cents[$s->id]
+                        : (int) round((float) $s->final_total * 100);
                     if ($discrepancy === 'mismatch') {
                         $info = $clover_by_transaction[$s->id] ?? null;
-                        $isMismatch = $info !== null && abs($info['amount_cents'] - (int) round((float) $s->final_total * 100)) > 5;
+                        $isMismatch = $info !== null && abs($info['amount_cents'] - $sExpectedCents) > 5;
                         if (!$isMismatch) continue;
                     } elseif ($discrepancy === 'no_clover') {
-                        if (isset($clover_by_transaction[$s->id])) continue;
+                        if (isset($clover_by_transaction[$s->id]) || $sExpectedCents <= 0) continue;
                     } elseif ($discrepancy === 'any') {
                         $info = $clover_by_transaction[$s->id] ?? null;
-                        $isMismatch = $info !== null && abs($info['amount_cents'] - (int) round((float) $s->final_total * 100)) > 5;
-                        $isNoClover = $info === null;
+                        $isMismatch = $info !== null && abs($info['amount_cents'] - $sExpectedCents) > 5;
+                        $isNoClover = $info === null && $sExpectedCents > 0;
                         if (!$isMismatch && !$isNoClover) continue;
                     } elseif ($discrepancy === 'no_erp') {
                         continue; // Hide all ERP rows in no_erp mode
@@ -1280,15 +1285,20 @@
                 @endif
                 @php
                     $cloverInfo = $clover_by_transaction[$sale->id] ?? null;
-                    // Mismatch = ERP total ≠ Clover gross (amount, which
-                    // already includes tax). Tip is separate so it doesn't
-                    // count as a mismatch. Compare in integer cents — float
-                    // diff of $X.20 - $X.19 is 0.0100000000231, not 0.01,
-                    // and the naive `> 0.01` test would lose 1¢ rounding.
+                    // Expected Clover charge = ERP total MINUS any store credit
+                    // (advance) applied — that's what actually hit the card.
+                    // Comparing Clover to the full final_total made store-credit
+                    // sales read as a mismatch / MISSING even when they were
+                    // entered correctly. (Mica, 2026-06-30.)
+                    $saleCents     = (int) round($total * 100);
+                    $expectedCents = isset($clover_expected_cents[$sale->id]) ? (int) $clover_expected_cents[$sale->id] : $saleCents;
+                    $storeCreditCents = max(0, $saleCents - $expectedCents);
+                    // Mismatch = Clover gross (amount, incl. tax) ≠ expected card
+                    // amount. Tip is separate so it doesn't count. Integer cents
+                    // so 1¢ float drift ($X.20 − $X.19) doesn't get lost.
                     $cloverMismatch = false;
                     if ($cloverInfo) {
-                        $saleCents = (int) round($total * 100);
-                        $cloverMismatch = abs($cloverInfo['amount_cents'] - $saleCents) > 1;
+                        $cloverMismatch = abs($cloverInfo['amount_cents'] - $expectedCents) > 1;
                     }
                 @endphp
                 <div class="rf-foot">
@@ -1304,6 +1314,11 @@
                         <div class="rf-recon-col rf-recon-erp">
                             <div class="lbl">ERP</div>
                             <div class="amt">${{ number_format($total, 2) }}</div>
+                            @if($storeCreditCents > 0)
+                                {{-- Store credit covered part of the total — only
+                                     the remainder hit the card on Clover. --}}
+                                <div class="sub" style="color:#8A7C6A;">−${{ number_format($storeCreditCents / 100, 2) }} store credit · card ${{ number_format($expectedCents / 100, 2) }}</div>
+                            @endif
                         </div>
                         <div class="rf-recon-col rf-recon-clover">
                             <div class="lbl">
@@ -1324,6 +1339,11 @@
                                         </div>
                                     @endif
                                 </div>
+                            @elseif($expectedCents <= 0)
+                                {{-- Fully covered by store credit — $0 hit the
+                                     card, so there's nothing to enter on Clover. --}}
+                                <div class="amt" style="color:#8A7C6A; font-weight:700;">—</div>
+                                <div class="sub" style="color:#8A7C6A; font-weight:600;">store credit · none due</div>
                             @else
                                 {{-- Cashiers ring EVERY sale on Clover at
                                      Nivessa — cash + card. Any ERP sale
@@ -1340,7 +1360,9 @@
                              ERP-is-ahead-by-full-amount. --}}
                         @if($cloverInfo)
                             @php
-                                $perSaleDiffCents = (int) $cloverInfo['amount_cents'] - (int) round($total * 100);
+                                // Diff against the expected card amount (total −
+                                // store credit), not the full ERP total.
+                                $perSaleDiffCents = (int) $cloverInfo['amount_cents'] - (int) $expectedCents;
                                 $perSaleDiffAbs   = number_format(abs($perSaleDiffCents) / 100, 2);
                                 if ($perSaleDiffCents === 0) {
                                     $diffColor = '#8A7C6A';

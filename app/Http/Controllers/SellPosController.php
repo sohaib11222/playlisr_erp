@@ -897,6 +897,11 @@ class SellPosController extends Controller
                 ->orderByDesc('transaction_date')
                 ->get(['id', 'invoice_no', 'final_total', 'transaction_date', 'location_id']);
 
+            // Store-credit-adjusted expectation (see advanceCentsByTx): match
+            // Clover against final_total minus any store-credit (advance) line,
+            // i.e. the amount that actually hit the card. (Mica, 2026-06-30.)
+            $advCentsMatch = self::advanceCentsByTx($matchSales->pluck('id')->all());
+
             // Match tolerance: ±5¢ amount + ±12hr time. Sarah 2026-05-08:
             // the 30-min cap was the dominant source of false orphans —
             // Clover batch-settles overnight, so a sale rung at 11:50pm
@@ -959,7 +964,7 @@ class SellPosController extends Controller
             $candidates = [];
             foreach ($matchSales as $sale) {
                 $erTs    = strtotime((string) $sale->transaction_date);
-                $erCents = $toCents($sale->final_total);
+                $erCents = max(0, $toCents($sale->final_total) - (int) ($advCentsMatch[(int) $sale->id] ?? 0));
                 $erLoc   = (int) $sale->location_id;
                 for ($d = -$matchAmountCents; $d <= $matchAmountCents; $d++) {
                     foreach (($cpByCents[$erCents + $d] ?? []) as $key) {
@@ -1380,13 +1385,27 @@ class SellPosController extends Controller
         // tolerance — tax-rounding drift up to 5¢ is now treated as a
         // legit match, not a mismatch.
         $toCentsSummary = function ($x) { return (int) round(((float) $x) * 100); };
+        // Store-credit-adjusted Clover expectation per visible sale: compare
+        // Clover against (final_total − store credit), the amount that actually
+        // hit the card. Without this, a store-credit sale that now pairs
+        // correctly would flip to a false "mismatch". (Mica, 2026-06-30.)
+        $advCentsView = self::advanceCentsByTx($sales->pluck('id')->all());
+        $clover_expected_cents = [];
+        foreach ($sales as $sale) {
+            $clover_expected_cents[$sale->id] = max(0, $toCentsSummary($sale->final_total) - (int) ($advCentsView[(int) $sale->id] ?? 0));
+        }
         $mismatch_count = 0;
         $no_clover_count = 0;
         foreach ($sales as $sale) {
             $info = $clover_by_transaction[$sale->id] ?? null;
+            $expectedCents = $clover_expected_cents[$sale->id] ?? $toCentsSummary($sale->final_total);
             if ($info === null) {
-                $no_clover_count++;
-            } elseif (abs($info['amount_cents'] - $toCentsSummary($sale->final_total)) > 5) {
+                // Fully covered by store credit → nothing was due on Clover,
+                // so the absence of a Clover entry is expected, not a gap.
+                if ($expectedCents > 0) {
+                    $no_clover_count++;
+                }
+            } elseif (abs($info['amount_cents'] - $expectedCents) > 5) {
                 $mismatch_count++;
             }
         }
@@ -1478,10 +1497,13 @@ class SellPosController extends Controller
             // ERP rows; the view will render the unclaimed Clover list.
             $sales = collect();
         } elseif ($discrepancy !== '') {
-            $sales = $sales->filter(function ($sale) use ($clover_by_transaction, $discrepancy, $toCentsSummary) {
+            $sales = $sales->filter(function ($sale) use ($clover_by_transaction, $discrepancy, $toCentsSummary, $clover_expected_cents) {
                 $info = $clover_by_transaction[$sale->id] ?? null;
-                $isNoClover = $info === null;
-                $isMismatch = $info !== null && abs($info['amount_cents'] - $toCentsSummary($sale->final_total)) > 5;
+                $expectedCents = $clover_expected_cents[$sale->id] ?? $toCentsSummary($sale->final_total);
+                // Fully store-credit-covered sales have nothing due on Clover —
+                // don't treat their (expected) absence as a no_clover gap.
+                $isNoClover = $info === null && $expectedCents > 0;
+                $isMismatch = $info !== null && abs($info['amount_cents'] - $expectedCents) > 5;
                 if ($discrepancy === 'mismatch')   return $isMismatch;
                 if ($discrepancy === 'no_clover')  return $isNoClover;
                 if ($discrepancy === 'any')        return $isMismatch || $isNoClover;
@@ -1800,7 +1822,7 @@ class SellPosController extends Controller
             \Log::warning('auto_closed detection failed: ' . $e->getMessage());
         }
 
-        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'orphan_by_loc', 'orphan_null_loc', 'orphan_refund_count', 'orphan_voided_count', 'orphan_real_count', 'orphan_nearmatch_count', 'orphan_dup_cluster_count', 'orphan_dup_cluster_rows', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'pending_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store', 'tz_debug', 'dateStr', 'day_label', 'prev_date', 'next_date', 'is_today', 'allow_next', 'dayMode', 'is_month_mode', 'month_label', 'prev_month', 'next_month', 'allow_next_month', 'monthStr', 'sales_by_store', 'orphans_by_store', 'pending_by_store', 'pending_amount_by_store', 'pending_count_by_store', 'store_order', 'orphan_duplicate_of', 'erp_only_pair_candidates', 'clover_explanations', 'employee_breakdown_by_day', 'reconciliations', 'stale_open_registers'));
+        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'clover_expected_cents', 'orphan_by_loc', 'orphan_null_loc', 'orphan_refund_count', 'orphan_voided_count', 'orphan_real_count', 'orphan_nearmatch_count', 'orphan_dup_cluster_count', 'orphan_dup_cluster_rows', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'pending_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store', 'tz_debug', 'dateStr', 'day_label', 'prev_date', 'next_date', 'is_today', 'allow_next', 'dayMode', 'is_month_mode', 'month_label', 'prev_month', 'next_month', 'allow_next_month', 'monthStr', 'sales_by_store', 'orphans_by_store', 'pending_by_store', 'pending_amount_by_store', 'pending_count_by_store', 'store_order', 'orphan_duplicate_of', 'erp_only_pair_candidates', 'clover_explanations', 'employee_breakdown_by_day', 'reconciliations', 'stale_open_registers'));
     }
 
     /**
@@ -2000,6 +2022,42 @@ class SellPosController extends Controller
         } catch (\Throwable $e) {
             return [];
         }
+    }
+
+    /**
+     * Store-credit portion (in integer cents) per transaction id.
+     *
+     * A sale paid partly with store credit records an `advance` payment line
+     * for the credit and only charges the REMAINDER to the card on Clover.
+     * Both Clover reconciliation matchers key off final_total, so these sales
+     * never paired to their (smaller) Clover swipe and surfaced as "ERP card
+     * sale not on Clover" — confusing cashiers and inflating the EOD gap.
+     * Callers subtract this from final_total to get the amount that actually
+     * hit Clover. (Mica, 2026-06-30.)
+     *
+     * Returns [transaction_id => advance_cents]; transactions with no store
+     * credit are simply absent (treat as 0).
+     */
+    public static function advanceCentsByTx(array $txIds): array
+    {
+        $map = [];
+        $txIds = array_values(array_unique(array_filter(array_map('intval', $txIds))));
+        if (empty($txIds)) return $map;
+        try {
+            $rows = \App\TransactionPayment::whereIn('transaction_id', $txIds)
+                ->where('method', 'advance')
+                ->groupBy('transaction_id')
+                ->selectRaw('transaction_id, SUM(amount) as adv')
+                ->get();
+            foreach ($rows as $r) {
+                $map[(int) $r->transaction_id] = (int) round(((float) $r->adv) * 100);
+            }
+        } catch (\Throwable $e) {
+            // Never let a reconciliation helper break the POS / feed — fall
+            // back to "no store credit" (current behaviour).
+            \Log::warning('advanceCentsByTx failed: ' . $e->getMessage());
+        }
+        return $map;
     }
 
     public static function saveCloverManualMatches(int $business_id, array $map): void
@@ -2695,6 +2753,15 @@ class SellPosController extends Controller
             $manual = self::loadCloverManualMatches($business_id);
             $existingNotes = self::loadCloverExplanations($business_id);
 
+            // Store-credit-adjusted expectation: a sale paid partly with store
+            // credit only charges the remainder to the card on Clover. Match on
+            // that remainder, not final_total, so these don't false-flag as
+            // "ERP card sale not on Clover". (Mica, 2026-06-30.)
+            $advCents = self::advanceCentsByTx($erpCardSells->pluck('id')->all());
+            $expectedCardCents = function ($tx) use ($advCents) {
+                return max(0, (int) round(((float) $tx->final_total) * 100) - (int) ($advCents[(int) $tx->id] ?? 0));
+            };
+
             // Pre-mark manually-matched Clover rows + their ERP rows.
             $claimedCp = []; // [cp_id => true]
             $claimedTx = []; // [tx_id => true]
@@ -2732,7 +2799,7 @@ class SellPosController extends Controller
                 foreach ($erpCardSells as $tx) {
                     if (isset($claimedTx[$tx->id])) continue;
                     if (!$sameLoc($cp, $tx)) continue;
-                    $txCents = (int) round($tx->final_total * 100);
+                    $txCents = $expectedCardCents($tx);
                     if (abs($cpCents - $txCents) > 1) continue;
                     $gap = abs(($cpTs[$cp->id] ?? 0) - ($txTs[$tx->id] ?? 0));
                     if ($gap < $bestGap) { $bestGap = $gap; $bestTx = $tx; }
@@ -2781,7 +2848,7 @@ class SellPosController extends Controller
                 // Grace period: skip ERP sales rung in the last 5 min —
                 // the matching Clover swipe could still be in flight.
                 if (($txTs[$tx->id] ?? 0) > $graceCutoffTs) continue;
-                $txCents = (int) round($tx->final_total * 100);
+                $txCents = $expectedCardCents($tx);
                 $bestCp = null;
                 $bestGap = PHP_INT_MAX;
                 foreach ($cps as $cp) {
@@ -2889,6 +2956,9 @@ class SellPosController extends Controller
                 if ($txStartTs && $txStartTs < $since->getTimestamp()) continue;
                 // Grace period: cashier may still be entering on Clover.
                 if ($txStartTs > $graceCutoffTs) continue;
+                // Fully covered by store credit — $0 hit the card, so there's
+                // nothing to enter on Clover. Don't nag. (Mica, 2026-06-30.)
+                if ($expectedCardCents($tx) <= 0) continue;
 
                 $locName = ($tx->location_id && \App\BusinessLocation::where('id', $tx->location_id)->exists())
                     ? \App\BusinessLocation::where('id', $tx->location_id)->value('name')
@@ -3167,6 +3237,10 @@ class SellPosController extends Controller
                 ->orderByDesc('transaction_date')
                 ->get(['id', 'final_total', 'transaction_date', 'location_id']);
 
+            // Store-credit-adjusted expectation (see advanceCentsByTx): match
+            // Clover against the card portion, not final_total. (Mica, 2026-06-30.)
+            $advCentsMatch = self::advanceCentsByTx($matchSales->pluck('id')->all());
+
             $claimedCpKeys = [];
             $matchedCpByTx = [];
             // Match tolerance: ±5¢ amount + ±12hr time. Sarah 2026-05-08:
@@ -3231,7 +3305,7 @@ class SellPosController extends Controller
             $candidates = [];
             foreach ($matchSales as $sale) {
                 $erTs    = strtotime((string) $sale->transaction_date);
-                $erCents = $toCents($sale->final_total);
+                $erCents = max(0, $toCents($sale->final_total) - (int) ($advCentsMatch[(int) $sale->id] ?? 0));
                 $erLoc   = (int) $sale->location_id;
                 for ($d = -$matchAmountCents; $d <= $matchAmountCents; $d++) {
                     foreach (($cpByCents[$erCents + $d] ?? []) as $key) {
@@ -3310,10 +3384,14 @@ class SellPosController extends Controller
             $sales = collect();
         } elseif ($discrepancy !== '') {
             $toCentsFilter = function ($x) { return (int) round(((float) $x) * 100); };
-            $sales = $sales->filter(function ($sale) use ($clover_by_transaction, $discrepancy, $toCentsFilter) {
+            // Store-credit-adjusted expectation: compare Clover to the card
+            // portion (final_total − store credit), not the full total.
+            $advCentsExport = self::advanceCentsByTx($sales->pluck('id')->all());
+            $sales = $sales->filter(function ($sale) use ($clover_by_transaction, $discrepancy, $toCentsFilter, $advCentsExport) {
                 $info = $clover_by_transaction[$sale->id] ?? null;
-                $isNoClover = $info === null;
-                $isMismatch = $info !== null && abs($info['amount_cents'] - $toCentsFilter($sale->final_total)) > 1;
+                $expectedCents = max(0, $toCentsFilter($sale->final_total) - (int) ($advCentsExport[(int) $sale->id] ?? 0));
+                $isNoClover = $info === null && $expectedCents > 0;
+                $isMismatch = $info !== null && abs($info['amount_cents'] - $expectedCents) > 1;
                 if ($discrepancy === 'mismatch')   return $isMismatch;
                 if ($discrepancy === 'no_clover')  return $isNoClover;
                 if ($discrepancy === 'any')        return $isMismatch || $isNoClover;
