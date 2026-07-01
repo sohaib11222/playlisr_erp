@@ -944,10 +944,25 @@ class SellPosController extends Controller
             // visits only the ±5¢ neighborhood, not every Clover row.
             // Manually-claimed rows are filtered out so they don't also
             // get considered by the auto-matcher.
+            // Index each Clover row under BOTH its gross amount AND its
+            // net-of-tax amount. Hollywood rings sticker PRE-TAX in ERP and
+            // Clover adds tax on top (see buildCloverBuckets' $useNet), so a
+            // pre-tax ERP total pairs to the Clover NET, while Pico (tax-
+            // inclusive, tax_cents≈0) still pairs on gross. Indexing both means
+            // the candidate scan finds the swipe on whichever basis matches —
+            // never removes a working gross match, only adds net ones.
+            // (Mica, 2026-06-30 — #22447: ERP card $40.70 vs Clover $44.67 gross
+            // / $40.70 net.)
             $cpByCents = [];
             foreach ($cpRows as $key => $cp) {
                 if (isset($claimedCpKeys[$key])) continue;
-                $cpByCents[$toCents($cp->amount)][] = $key;
+                $grossC = $toCents($cp->amount);
+                $cpByCents[$grossC][] = $key;
+                $taxC = (int) ($cp->tax_cents ?? 0);
+                if ($taxC > 0) {
+                    $netC = $grossC - $taxC;
+                    if ($netC !== $grossC) { $cpByCents[$netC][] = $key; }
+                }
             }
 
             // Pre-compute LA-correct epochs for every Clover row once.
@@ -1394,6 +1409,14 @@ class SellPosController extends Controller
         foreach ($sales as $sale) {
             $clover_expected_cents[$sale->id] = max(0, $toCentsSummary($sale->final_total) - (int) ($advCentsView[(int) $sale->id] ?? 0));
         }
+        // A paired Clover swipe reconciles if the expected (card) amount is
+        // within tolerance of EITHER its gross OR its net-of-tax value — HW is
+        // pre-tax (net), Pico is gross. Shared with the filter + view below.
+        $cloverGapCents = function ($info, $expectedCents) {
+            $gross = (int) ($info['amount_cents'] ?? 0);
+            $net   = $gross - (int) ($info['tax_cents'] ?? 0);
+            return min(abs($gross - $expectedCents), abs($net - $expectedCents));
+        };
         $mismatch_count = 0;
         $no_clover_count = 0;
         foreach ($sales as $sale) {
@@ -1405,7 +1428,7 @@ class SellPosController extends Controller
                 if ($expectedCents > 0) {
                     $no_clover_count++;
                 }
-            } elseif (abs($info['amount_cents'] - $expectedCents) > 5) {
+            } elseif ($cloverGapCents($info, $expectedCents) > 5) {
                 $mismatch_count++;
             }
         }
@@ -1497,13 +1520,13 @@ class SellPosController extends Controller
             // ERP rows; the view will render the unclaimed Clover list.
             $sales = collect();
         } elseif ($discrepancy !== '') {
-            $sales = $sales->filter(function ($sale) use ($clover_by_transaction, $discrepancy, $toCentsSummary, $clover_expected_cents) {
+            $sales = $sales->filter(function ($sale) use ($clover_by_transaction, $discrepancy, $toCentsSummary, $clover_expected_cents, $cloverGapCents) {
                 $info = $clover_by_transaction[$sale->id] ?? null;
                 $expectedCents = $clover_expected_cents[$sale->id] ?? $toCentsSummary($sale->final_total);
                 // Fully store-credit-covered sales have nothing due on Clover —
                 // don't treat their (expected) absence as a no_clover gap.
                 $isNoClover = $info === null && $expectedCents > 0;
-                $isMismatch = $info !== null && abs($info['amount_cents'] - $expectedCents) > 5;
+                $isMismatch = $info !== null && $cloverGapCents($info, $expectedCents) > 5;
                 if ($discrepancy === 'mismatch')   return $isMismatch;
                 if ($discrepancy === 'no_clover')  return $isNoClover;
                 if ($discrepancy === 'any')        return $isMismatch || $isNoClover;
@@ -2794,13 +2817,17 @@ class SellPosController extends Controller
             foreach ($cps as $cp) {
                 if (isset($claimedCp[$cp->id])) continue;
                 $cpCents = (int) round($cp->amount * 100);
+                // Net-of-tax alternative: HW rings pre-tax, Clover adds tax on
+                // top, so the ERP card amount pairs to the Clover NET. Pico
+                // (tax-inclusive, tax≈0) still pairs on gross. (Mica, 2026-06-30.)
+                $cpNetCents = $cpCents - (int) ($cp->tax_cents ?? 0);
                 $bestTx = null;
                 $bestGap = PHP_INT_MAX;
                 foreach ($erpCardSells as $tx) {
                     if (isset($claimedTx[$tx->id])) continue;
                     if (!$sameLoc($cp, $tx)) continue;
                     $txCents = $expectedCardCents($tx);
-                    if (abs($cpCents - $txCents) > 1) continue;
+                    if (abs($cpCents - $txCents) > 1 && abs($cpNetCents - $txCents) > 1) continue;
                     $gap = abs(($cpTs[$cp->id] ?? 0) - ($txTs[$tx->id] ?? 0));
                     if ($gap < $bestGap) { $bestGap = $gap; $bestTx = $tx; }
                 }
@@ -2855,7 +2882,9 @@ class SellPosController extends Controller
                     if (isset($claimedCp[$cp->id])) continue;
                     if (!$sameLoc($cp, $tx)) continue;
                     $cpCents = (int) round($cp->amount * 100);
-                    $delta = abs($cpCents - $txCents);
+                    // Gross vs net-of-tax (HW pre-tax) — whichever is closer.
+                    $cpNetCents = $cpCents - (int) ($cp->tax_cents ?? 0);
+                    $delta = min(abs($cpCents - $txCents), abs($cpNetCents - $txCents));
                     if ($delta <= 1 || $delta > 500) continue;
                     $gap = abs(($cpTs[$cp->id] ?? 0) - ($txTs[$tx->id] ?? 0));
                     // Time-proximity guard: don't claim a Clover swipe
@@ -2869,9 +2898,13 @@ class SellPosController extends Controller
 
                 // Known bag-fee gap (ERP rang the bag, Clover didn't).
                 // Claim the pair so neither side leaks into orphans, but
-                // don't surface it as a cashier-error mismatch.
+                // don't surface it as a cashier-error mismatch. Use the closer
+                // of gross / net-of-tax so the HW tax-on-top isn't mistaken for
+                // a bag-fee-sized gap.
                 $bestCpCents = (int) round($bestCp->amount * 100);
-                if ($isBagFeeGap(abs($bestCpCents - $txCents))) {
+                $bestCpNetCents = $bestCpCents - (int) ($bestCp->tax_cents ?? 0);
+                $bestDelta = min(abs($bestCpCents - $txCents), abs($bestCpNetCents - $txCents));
+                if ($isBagFeeGap($bestDelta)) {
                     $claimedTx[$tx->id] = true;
                     $claimedCp[$bestCp->id] = true;
                     continue;
@@ -3285,10 +3318,25 @@ class SellPosController extends Controller
             // visits only the ±5¢ neighborhood, not every Clover row.
             // Manually-claimed rows are filtered out so they don't also
             // get considered by the auto-matcher.
+            // Index each Clover row under BOTH its gross amount AND its
+            // net-of-tax amount. Hollywood rings sticker PRE-TAX in ERP and
+            // Clover adds tax on top (see buildCloverBuckets' $useNet), so a
+            // pre-tax ERP total pairs to the Clover NET, while Pico (tax-
+            // inclusive, tax_cents≈0) still pairs on gross. Indexing both means
+            // the candidate scan finds the swipe on whichever basis matches —
+            // never removes a working gross match, only adds net ones.
+            // (Mica, 2026-06-30 — #22447: ERP card $40.70 vs Clover $44.67 gross
+            // / $40.70 net.)
             $cpByCents = [];
             foreach ($cpRows as $key => $cp) {
                 if (isset($claimedCpKeys[$key])) continue;
-                $cpByCents[$toCents($cp->amount)][] = $key;
+                $grossC = $toCents($cp->amount);
+                $cpByCents[$grossC][] = $key;
+                $taxC = (int) ($cp->tax_cents ?? 0);
+                if ($taxC > 0) {
+                    $netC = $grossC - $taxC;
+                    if ($netC !== $grossC) { $cpByCents[$netC][] = $key; }
+                }
             }
 
             // Pre-compute LA-correct epochs for every Clover row once.
@@ -3391,7 +3439,12 @@ class SellPosController extends Controller
                 $info = $clover_by_transaction[$sale->id] ?? null;
                 $expectedCents = max(0, $toCentsFilter($sale->final_total) - (int) ($advCentsExport[(int) $sale->id] ?? 0));
                 $isNoClover = $info === null && $expectedCents > 0;
-                $isMismatch = $info !== null && abs($info['amount_cents'] - $expectedCents) > 1;
+                // Compare against gross OR net-of-tax (HW pre-tax), whichever fits.
+                $gapCents = $info === null ? PHP_INT_MAX : min(
+                    abs((int) $info['amount_cents'] - $expectedCents),
+                    abs(((int) $info['amount_cents'] - (int) ($info['tax_cents'] ?? 0)) - $expectedCents)
+                );
+                $isMismatch = $info !== null && $gapCents > 1;
                 if ($discrepancy === 'mismatch')   return $isMismatch;
                 if ($discrepancy === 'no_clover')  return $isNoClover;
                 if ($discrepancy === 'any')        return $isMismatch || $isNoClover;
@@ -3411,7 +3464,12 @@ class SellPosController extends Controller
             'Content-Disposition' => "attachment; filename=\"{$filename}\"",
         ];
 
-        return response()->stream(function () use ($sales, $clover_by_transaction, $orphanCloverForExport, $business_locations, $cashier_for_orphan, $cashierNameById) {
+        // Store-credit-adjusted Clover expectation per exported sale (see the
+        // page matcher). Used for the clover_mismatch column so store-credit
+        // and HW pre-tax sales don't read as bogus mismatches.
+        $advCentsCsv = self::advanceCentsByTx($sales->pluck('id')->all());
+
+        return response()->stream(function () use ($sales, $clover_by_transaction, $orphanCloverForExport, $business_locations, $cashier_for_orphan, $cashierNameById, $advCentsCsv) {
             $out = fopen('php://output', 'w');
             fputcsv($out, [
                 'date', 'time', 'invoice_no', 'store', 'customer', 'cashier',
@@ -3440,9 +3498,14 @@ class SellPosController extends Controller
                 $cloverCards = $cloverInfo ? implode(' / ', $cloverInfo['cards']) : '';
                 $cloverMismatch = '';
                 if ($cloverInfo) {
-                    // Integer-cent comparison — same tolerance as the matcher.
-                    $saleCents = (int) round($saleTotal * 100);
-                    $cloverMismatch = abs($cloverInfo['amount_cents'] - $saleCents) > 1 ? 'yes' : 'no';
+                    // Integer-cent comparison — same basis as the page matcher:
+                    // expected = final_total − store credit, compared to gross OR
+                    // net-of-tax (HW pre-tax), whichever is closer.
+                    $expectedCents = max(0, (int) round($saleTotal * 100) - (int) ($advCentsCsv[(int) $sale->id] ?? 0));
+                    $grossCents = (int) $cloverInfo['amount_cents'];
+                    $netCents   = $grossCents - (int) ($cloverInfo['tax_cents'] ?? 0);
+                    $gap = min(abs($grossCents - $expectedCents), abs($netCents - $expectedCents));
+                    $cloverMismatch = $gap > 1 ? 'yes' : 'no';
                 }
 
                 $lines = $sale->sell_lines;
