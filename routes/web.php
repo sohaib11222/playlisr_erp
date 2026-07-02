@@ -329,6 +329,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
         Route::post('/pos/clover-sync-now', 'SellPosController@cloverSyncNow')->name('pos.cloverSyncNow');
         Route::post('/pos/clover-manual-match', 'SellPosController@cloverManualMatch')->name('pos.cloverManualMatch');
         Route::post('/pos/clover-manual-unmatch', 'SellPosController@cloverManualUnmatch')->name('pos.cloverManualUnmatch');
+        Route::post('/pos/clover-mark-reconciled', 'SellPosController@cloverMarkReconciled')->name('pos.cloverMarkReconciled');
         Route::post('/pos/ring-from-clover', 'SellPosController@createRingFromOrphan')->name('pos.ringFromClover');
         Route::get('/pos/mismatch-pending', 'SellPosController@mismatchPending')->name('pos.mismatchPending');
         Route::post('/pos/mismatch-explain', 'SellPosController@mismatchExplain')->name('pos.mismatchExplain');

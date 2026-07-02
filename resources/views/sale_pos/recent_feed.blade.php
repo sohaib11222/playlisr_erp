@@ -1406,6 +1406,36 @@
                     </div>
                 </div>
 
+                {{-- Mark-reconciled: for a MISSING / mismatch row that Sarah has
+                     already squared away, one click acknowledges it so it drops
+                     out of the discrepancy filter (and the banner counts).
+                     Reversible — reconciled rows show a green badge + undo in
+                     the default view. Admin-only. --}}
+                @php
+                    $isReconciled     = isset($clover_reconciled) && isset($clover_reconciled[$sale->id]);
+                    $isNoCloverRow    = !$cloverInfo && $expectedCents > 0;
+                    $isMismatchRow    = $cloverInfo && $cloverMismatch;
+                    $isDiscrepancyRow = $isNoCloverRow || $isMismatchRow;
+                @endphp
+                @if(($can_see_reconciliation ?? false) && ($isDiscrepancyRow || $isReconciled))
+                    <div style="margin:0 16px 8px 16px; display:flex; align-items:center; gap:10px;">
+                        @if($isReconciled)
+                            <span style="display:inline-flex; align-items:center; gap:5px; font-size:12px; color:#1F5A2E; font-weight:700;">✓ Reconciled</span>
+                            <form method="POST" action="{{ route('pos.cloverMarkReconciled') }}" style="margin:0;" onsubmit="return confirm('Reopen #{{ $sale->invoice_no }} as a discrepancy?');">
+                                @csrf
+                                <input type="hidden" name="transaction_id" value="{{ $sale->id }}">
+                                <button type="submit" style="padding:2px 6px; background:none; border:none; color:#8A7C6A; font-size:11px; text-decoration:underline; cursor:pointer;">undo</button>
+                            </form>
+                        @else
+                            <form method="POST" action="{{ route('pos.cloverMarkReconciled') }}" style="margin:0;" onsubmit="return confirm('Mark #{{ $sale->invoice_no }} as reconciled? It will drop out of the discrepancy filter.');">
+                                @csrf
+                                <input type="hidden" name="transaction_id" value="{{ $sale->id }}">
+                                <button type="submit" style="padding:5px 12px; background:#1F5A2E; color:#fff; border:none; border-radius:5px; font-size:11px; font-weight:700; cursor:pointer;">✓ Mark reconciled</button>
+                            </form>
+                        @endif
+                    </div>
+                @endif
+
                 {{-- Admin-only "Fix sale" controls for reconciling backfilled
                      rings — set the right transaction date (so the sale
                      lands on the day the Clover swipe happened) and override

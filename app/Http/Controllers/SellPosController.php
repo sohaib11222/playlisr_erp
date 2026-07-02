@@ -1417,9 +1417,15 @@ class SellPosController extends Controller
             $net   = $gross - (int) ($info['tax_cents'] ?? 0);
             return min(abs($gross - $expectedCents), abs($net - $expectedCents));
         };
+        // Rows Sarah has hand-acknowledged as reconciled — excluded from the
+        // discrepancy counts + filter below so they stop nagging. (JSON
+        // sidecar; toggled from the feed via cloverMarkReconciled.)
+        $clover_reconciled = self::loadCloverReconciled((int) $business_id);
+
         $mismatch_count = 0;
         $no_clover_count = 0;
         foreach ($sales as $sale) {
+            if (isset($clover_reconciled[$sale->id])) continue;
             $info = $clover_by_transaction[$sale->id] ?? null;
             $expectedCents = $clover_expected_cents[$sale->id] ?? $toCentsSummary($sale->final_total);
             if ($info === null) {
@@ -1520,7 +1526,9 @@ class SellPosController extends Controller
             // ERP rows; the view will render the unclaimed Clover list.
             $sales = collect();
         } elseif ($discrepancy !== '') {
-            $sales = $sales->filter(function ($sale) use ($clover_by_transaction, $discrepancy, $toCentsSummary, $clover_expected_cents, $cloverGapCents) {
+            $sales = $sales->filter(function ($sale) use ($clover_by_transaction, $discrepancy, $toCentsSummary, $clover_expected_cents, $cloverGapCents, $clover_reconciled) {
+                // Hand-acknowledged rows never appear under a discrepancy filter.
+                if (isset($clover_reconciled[$sale->id])) return false;
                 $info = $clover_by_transaction[$sale->id] ?? null;
                 $expectedCents = $clover_expected_cents[$sale->id] ?? $toCentsSummary($sale->final_total);
                 // Fully store-credit-covered sales have nothing due on Clover —
@@ -1845,7 +1853,7 @@ class SellPosController extends Controller
             \Log::warning('auto_closed detection failed: ' . $e->getMessage());
         }
 
-        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'clover_expected_cents', 'orphan_by_loc', 'orphan_null_loc', 'orphan_refund_count', 'orphan_voided_count', 'orphan_real_count', 'orphan_nearmatch_count', 'orphan_dup_cluster_count', 'orphan_dup_cluster_rows', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'pending_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store', 'tz_debug', 'dateStr', 'day_label', 'prev_date', 'next_date', 'is_today', 'allow_next', 'dayMode', 'is_month_mode', 'month_label', 'prev_month', 'next_month', 'allow_next_month', 'monthStr', 'sales_by_store', 'orphans_by_store', 'pending_by_store', 'pending_amount_by_store', 'pending_count_by_store', 'store_order', 'orphan_duplicate_of', 'erp_only_pair_candidates', 'clover_explanations', 'employee_breakdown_by_day', 'reconciliations', 'stale_open_registers'));
+        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'clover_expected_cents', 'orphan_by_loc', 'orphan_null_loc', 'orphan_refund_count', 'orphan_voided_count', 'orphan_real_count', 'orphan_nearmatch_count', 'orphan_dup_cluster_count', 'orphan_dup_cluster_rows', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'pending_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store', 'tz_debug', 'dateStr', 'day_label', 'prev_date', 'next_date', 'is_today', 'allow_next', 'dayMode', 'is_month_mode', 'month_label', 'prev_month', 'next_month', 'allow_next_month', 'monthStr', 'sales_by_store', 'orphans_by_store', 'pending_by_store', 'pending_amount_by_store', 'pending_count_by_store', 'store_order', 'orphan_duplicate_of', 'erp_only_pair_candidates', 'clover_explanations', 'employee_breakdown_by_day', 'reconciliations', 'stale_open_registers', 'clover_reconciled', 'can_see_reconciliation'));
     }
 
     /**
@@ -2324,6 +2332,79 @@ class SellPosController extends Controller
         self::saveCloverManualMatches($business_id, $map);
 
         return redirect($back)->with('status', '✓ Cleared manual pairing.');
+    }
+
+    /**
+     * Per-transaction "reconciled" acknowledgement for the recent feed's
+     * discrepancy filter. Sometimes a MISSING / mismatch row is a known,
+     * explained gap (e.g. the cashier ran a different amount, a refund, a
+     * hand-checked entry) that Sarah has already squared away — she just
+     * wants it to stop showing up under the discrepancy filter. This stores
+     * a flat list of acknowledged transaction ids in a JSON sidecar (the
+     * cloverManualMatch pattern — no migration). Reconciled rows are dropped
+     * from the discrepancy counts + filtered views but still render (with a
+     * green "Reconciled" badge) in the default all-sales view.
+     */
+    protected static function cloverReconciledPath(int $business_id): string
+    {
+        return storage_path('app/clover-reconciled-' . $business_id . '.json');
+    }
+
+    /** [transaction_id => true]; missing file returns empty. */
+    public static function loadCloverReconciled(int $business_id): array
+    {
+        $path = self::cloverReconciledPath($business_id);
+        if (!is_file($path)) return [];
+        try {
+            $json = json_decode((string) file_get_contents($path), true);
+            if (!is_array($json)) return [];
+            $out = [];
+            foreach ($json as $txId) { $out[(int) $txId] = true; }
+            return $out;
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    /** Persist the reconciled set as a flat list of transaction ids. */
+    public static function saveCloverReconciled(int $business_id, array $set): void
+    {
+        $path = self::cloverReconciledPath($business_id);
+        $dir = dirname($path);
+        if (!is_dir($dir)) { @mkdir($dir, 0775, true); }
+        $ids = array_values(array_unique(array_map('intval', array_keys($set))));
+        $tmp = $path . '.tmp';
+        file_put_contents($tmp, json_encode($ids, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        @rename($tmp, $path);
+    }
+
+    /**
+     * Toggle a sale's reconciled flag from the recent-feed discrepancy view.
+     * Admin-only (same gate as the other reconciliation controls). Idempotent
+     * and reversible — clicking again reopens the row as a discrepancy.
+     */
+    public function cloverMarkReconciled(Request $request)
+    {
+        if (!$this->businessUtil->is_admin(auth()->user())) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $txId = (int) $request->input('transaction_id');
+        $back = $request->headers->get('referer') ?: route('pos.recentFeed');
+        if ($txId <= 0) {
+            return redirect($back)->with('error', 'No sale specified.');
+        }
+
+        $business_id = (int) $request->session()->get('user.business_id');
+        $set = self::loadCloverReconciled($business_id);
+        if (isset($set[$txId])) {
+            unset($set[$txId]);
+            self::saveCloverReconciled($business_id, $set);
+            return redirect($back)->with('status', 'Reopened #' . $txId . ' as a discrepancy.');
+        }
+        $set[$txId] = true;
+        self::saveCloverReconciled($business_id, $set);
+        return redirect($back)->with('status', '✓ Marked #' . $txId . ' reconciled.');
     }
 
     /** Path of the JSON file holding all reconciliation notes for a business. */
