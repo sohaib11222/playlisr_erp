@@ -1328,6 +1328,14 @@
                         <div class="rf-recon-col rf-recon-erp">
                             <div class="lbl">ERP</div>
                             <div class="amt">${{ number_format($total, 2) }}</div>
+                            @php $saleTax = (float) ($sale->tax_amount ?? 0); @endphp
+                            @if($saleTax > 0.005)
+                                {{-- Show the sales tax baked into the ERP total so
+                                     the number reconciles: subtotal + this tax =
+                                     total. Stickers are pre-tax; tax is added at
+                                     the register. --}}
+                                <div class="sub" style="color:#8A7C6A;">incl. ${{ number_format($saleTax, 2) }} tax</div>
+                            @endif
                             @if($storeCreditCents > 0)
                                 {{-- Store credit covered part of the total — only
                                      the remainder hit the card on Clover. --}}
