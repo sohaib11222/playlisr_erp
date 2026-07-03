@@ -286,6 +286,61 @@
         <script>setTimeout(function(){var el=document.getElementById('rf-sync-flash');if(el)el.style.display='none';},8000);</script>
     @endif
 
+    {{-- Daily reconciliation guide — for whoever is reconciling the feed
+         (Fatteen). Collapsible so it stays out of the way once known.
+         Goal: every sale ends up in BOTH ERP (inventory) and Clover (money). --}}
+    <details style="margin-bottom:12px; background:#FFFBF2; border:1px solid #E8DCB8; border-radius:10px;">
+        <summary style="cursor:pointer; padding:12px 16px; font-size:14px; font-weight:700; color:#1F1B16; list-style:none;">
+            How to reconcile the feed — daily guide
+            <span style="font-weight:500; color:#8A7C6A; font-size:12px;">· click to expand</span>
+        </summary>
+        <div style="padding:4px 18px 16px 18px; font-size:13px; color:#3A3128; line-height:1.55;">
+            <p style="margin:0 0 12px 0;">
+                <strong>Goal:</strong> every sale should end up in <strong>both</strong> systems —
+                <strong>ERP</strong> (so the inventory tracker is right) and <strong>Clover</strong> (so we actually
+                collected the money). The feed pairs each ERP sale to its Clover charge; your job is to catch the
+                ones that only landed in one place and fix them.
+            </p>
+            <p style="margin:0 0 12px 0; padding:8px 10px; background:#F3ECD9; border-radius:6px;">
+                <strong>Do it once a day</strong> — check today and yesterday (use ← Previous day).
+                <strong>Ignore a few cents</strong> of difference between ERP and Clover — that's bag fees / tax
+                rounding, not a problem. Use the <strong>Discrepancy filter</strong> below to walk the three cases:
+            </p>
+
+            <div style="margin:0 0 10px 0;">
+                <div style="font-weight:700; color:#1F1B16;">1. In ERP but NOT in Clover — and it was cash</div>
+                <div style="color:#5A5045;">Row shows an ERP total but "no Clover match." The cashier rang the cash
+                    in the ERP but never entered it on Clover.
+                    <em>Action:</em> remind that employee every <strong>cash</strong> sale still has to be rung on
+                    <strong>Clover too</strong> — that's how we track the drawer.</div>
+            </div>
+            <div style="margin:0 0 10px 0;">
+                <div style="font-weight:700; color:#1F1B16;">2. In ERP but NOT in Clover — should have been a card</div>
+                <div style="color:#5A5045;">Same "no Clover match" row, but the customer paid by card so it should
+                    have hit the terminal.
+                    <em>Action:</em> ask the cashier what happened — did the card actually run? Did Clover fail, or
+                    was it run on another terminal? Troubleshoot until you know where the money is.</div>
+            </div>
+            <div style="margin:0 0 10px 0;">
+                <div style="font-weight:700; color:#1F1B16;">3. In Clover but NOT in ERP</div>
+                <div style="color:#5A5045;">The purple cards — a Clover charge with no ERP sale. We collected the
+                    money but inventory was never decremented.
+                    <em>Action:</em> ask the cashier <strong>what items were sold</strong> on that charge, then enter
+                    the sale in the ERP so inventory updates.</div>
+            </div>
+
+            <p style="margin:12px 0 0 0; padding-top:10px; border-top:1px solid #E8DCB8; color:#5A5045;">
+                <strong>Wrong tender (card rang as cash, or vice-versa)?</strong> Open
+                "Fix sale (date / method)" under that sale and set the right method.
+                Only <strong>Sarah, Jon, or Fatteen</strong> can change the method — everyone else is blocked.
+                Every change is snapshotted and undoable at /admin/admin-action-history.
+            </p>
+            <p style="margin:10px 0 0 0; color:#2E6F40; font-weight:600;">
+                Done for the day when nothing is left under the discrepancy filter except sub-dollar cent differences.
+            </p>
+        </div>
+    </details>
+
     {{-- Date navigation: prev / today / next day + Sync Now button in day
          mode, or prev / this-month / next month in month mode. Always
          visible so the user can step back through periods even when the
