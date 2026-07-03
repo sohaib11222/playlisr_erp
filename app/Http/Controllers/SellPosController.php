@@ -4512,45 +4512,62 @@ class SellPosController extends Controller
 
                 DB::commit();
 
-                if ($request->input('is_save_and_print') == 1) {
-                    $url = $this->transactionUtil->getInvoiceUrl($transaction->id, $business_id);
-                    return redirect()->to($url . '?print_on_load=true');
-                }
+                // Nivessa (Jon 2026-07-03): the sale is COMMITTED now.
+                // Everything below — receipt render, print redirect,
+                // whatsapp link — is post-commit garnish. Previously a
+                // throw in any of it (e.g. a Blade render error in
+                // receiptContent) fell into the shared catch() below and
+                // returned success:0, so the cashier saw "something went
+                // wrong" on a sale that had ALREADY saved, refreshed, and
+                // re-rang it — creating a duplicate ERP sale that then
+                // reads as "ERP card sale not on Clover". Guard it so a
+                // post-commit failure never reports the sale as failed.
+                $output = ['success' => 1, 'msg' => trans("sale.pos_sale_added"), 'receipt' => ''];
+                try {
+                    if ($request->input('is_save_and_print') == 1) {
+                        $url = $this->transactionUtil->getInvoiceUrl($transaction->id, $business_id);
+                        return redirect()->to($url . '?print_on_load=true');
+                    }
 
-                $msg = trans("sale.pos_sale_added");
-                $receipt = '';
-                $invoice_layout_id = $request->input('invoice_layout_id');
-                $print_invoice = false;
+                    $msg = trans("sale.pos_sale_added");
+                    $receipt = '';
+                    $invoice_layout_id = $request->input('invoice_layout_id');
+                    $print_invoice = false;
 
-                if (!$is_direct_sale) {
-                    if ($input['status'] == 'draft') {
-                        $msg = trans("sale.draft_added");
+                    if (!$is_direct_sale) {
+                        if ($input['status'] == 'draft') {
+                            $msg = trans("sale.draft_added");
 
-                        if ($input['is_quotation'] == 1) {
-                            $msg = trans("lang_v1.quotation_added");
+                            if ($input['is_quotation'] == 1) {
+                                $msg = trans("lang_v1.quotation_added");
+                                $print_invoice = true;
+                            }
+                        } elseif ($input['status'] == 'final') {
                             $print_invoice = true;
                         }
-                    } elseif ($input['status'] == 'final') {
-                        $print_invoice = true;
                     }
-                }
 
-                if ($transaction->is_suspend == 1 && empty($pos_settings['print_on_suspend'])) {
-                    $print_invoice = false;
-                }
+                    if ($transaction->is_suspend == 1 && empty($pos_settings['print_on_suspend'])) {
+                        $print_invoice = false;
+                    }
 
-                if (!auth()->user()->can("print_invoice")) {
-                    $print_invoice = false;
-                }
-                
-                if ($print_invoice) {
-                    $receipt = $this->receiptContent($business_id, $input['location_id'], $transaction->id, null, false, true, $invoice_layout_id);
-                }
+                    if (!auth()->user()->can("print_invoice")) {
+                        $print_invoice = false;
+                    }
 
-                $output = ['success' => 1, 'msg' => $msg, 'receipt' => $receipt ];
+                    if ($print_invoice) {
+                        $receipt = $this->receiptContent($business_id, $input['location_id'], $transaction->id, null, false, true, $invoice_layout_id);
+                    }
 
-                if (!empty($whatsapp_link)) {
-                    $output['whatsapp_link'] = $whatsapp_link;
+                    $output = ['success' => 1, 'msg' => $msg, 'receipt' => $receipt ];
+
+                    if (!empty($whatsapp_link)) {
+                        $output['whatsapp_link'] = $whatsapp_link;
+                    }
+                } catch (\Throwable $post) {
+                    // Sale is saved; just couldn't build the receipt/print.
+                    // Return success so the cashier does NOT re-ring.
+                    \Log::warning('POS post-commit step failed (sale #' . ($transaction->id ?? '?') . ' already saved): ' . $post->getMessage());
                 }
             } else {
                 $output = [
