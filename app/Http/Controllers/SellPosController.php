@@ -1030,6 +1030,73 @@ class SellPosController extends Controller
                 $matchedCpByTx[$c['sale_id']][] = $cpRows[$c['cp_key']];
             }
 
+            // Sarah 2026-07-02: split-payment second pass. A single ERP sale
+            // paid across TWO Clover swipes (customer split the tab over two
+            // cards, or a re-swipe after a decline) never matches the single-
+            // charge greedy pass above — no one charge equals final_total — so
+            // it surfaces as "MISSING / not in Clover" even though both halves
+            // are sitting on the terminal. For each still-unmatched sale that
+            // ERP records as a card split (≥2 card payment lines), look for a
+            // PAIR of unclaimed Clover charges at the same store, within the
+            // time window, whose combined amount hits the expected card total
+            // (±5¢, gross or net-of-tax — same basis the view reconciles on).
+            // Gating on a genuine ERP card split + requiring the pair to sum to
+            // the exact total keeps this from false-pairing two unrelated
+            // customers. 3+ way splits stay MISSING for manual match.
+            $splitCardCount = self::cardLineCountByTx($matchSales->pluck('id')->all());
+            foreach ($matchSales as $sale) {
+                $sid = (int) $sale->id;
+                if (isset($claimedSaleIds[$sid])) continue;
+                if ((int) ($splitCardCount[$sid] ?? 0) < 2) continue;
+
+                $erLoc   = (int) $sale->location_id;
+                $erTs    = strtotime((string) $sale->transaction_date);
+                $erCents = max(0, $toCents($sale->final_total) - (int) ($advCentsMatch[$sid] ?? 0));
+
+                // Unclaimed Clover charges for this sale's store within the
+                // match window — the only pool a valid split pair can come from.
+                $pool = [];
+                foreach ($cpRows as $key => $cp) {
+                    if (isset($claimedCpKeys[$key])) continue;
+                    if ((int) ($cp->location_id ?? 0) !== $erLoc) continue;
+                    if (abs(($cpTsByKey[$key] ?? 0) - $erTs) > $matchTimeWindow) continue;
+                    $pool[] = $key;
+                }
+                if (count($pool) < 2) continue;
+
+                // Find the pair whose gross- or net-sum is closest to the
+                // expected card total; accept only within ±5¢.
+                $bestPair = null;
+                $bestGap  = 6;
+                for ($i = 0; $i < count($pool); $i++) {
+                    $ki = $pool[$i];
+                    $ci = $cpRows[$ki];
+                    $grossI = $toCents($ci->amount);
+                    $netI   = $grossI - (int) ($ci->tax_cents ?? 0);
+                    for ($j = $i + 1; $j < count($pool); $j++) {
+                        $kj = $pool[$j];
+                        $cj = $cpRows[$kj];
+                        $grossJ = $toCents($cj->amount);
+                        $netJ   = $grossJ - (int) ($cj->tax_cents ?? 0);
+                        $gap = min(
+                            abs(($grossI + $grossJ) - $erCents),
+                            abs(($netI + $netJ) - $erCents)
+                        );
+                        if ($gap < $bestGap) {
+                            $bestGap  = $gap;
+                            $bestPair = [$ki, $kj];
+                        }
+                    }
+                }
+                if ($bestPair === null) continue;
+
+                foreach ($bestPair as $key) {
+                    $claimedCpKeys[$key] = true;
+                    $matchedCpByTx[$sid][] = $cpRows[$key];
+                }
+                $claimedSaleIds[$sid] = true;
+            }
+
             // Aggregate Clover data per matched transaction. Clover's
             // payment.amount is what the cashier typed in (the charge);
             // taxAmount is informational about that amount; tipAmount is
@@ -2112,6 +2179,43 @@ class SellPosController extends Controller
             // Never let a reconciliation helper break the POS / feed — fall
             // back to "no store credit" (current behaviour).
             \Log::warning('advanceCentsByTx failed: ' . $e->getMessage());
+        }
+        return $map;
+    }
+
+    /**
+     * Count of card-tender payment lines per transaction — used to detect
+     * ERP-recorded card splits (a sale paid across two card swipes) so the
+     * Clover matcher can pair it to multiple charges instead of flagging it
+     * MISSING. Only card methods count; cash / store-credit (advance) lines
+     * are ignored. Transactions with fewer than one card line are absent.
+     * (Sarah 2026-07-02.)
+     *
+     * Returns [transaction_id => card_line_count].
+     */
+    public static function cardLineCountByTx(array $txIds): array
+    {
+        $map = [];
+        $txIds = array_values(array_unique(array_filter(array_map('intval', $txIds))));
+        if (empty($txIds)) return $map;
+        // Same card-tender list the reconciliation/EOD pages use.
+        $card_methods = [
+            'clover', 'card', 'credit_card', 'credit_sale',
+            'custom_pay_1', 'custom_pay_2', 'custom_pay_3', 'custom_pay_4',
+            'custom_pay_5', 'custom_pay_6', 'custom_pay_7',
+        ];
+        try {
+            $rows = \App\TransactionPayment::whereIn('transaction_id', $txIds)
+                ->whereIn('method', $card_methods)
+                ->groupBy('transaction_id')
+                ->selectRaw('transaction_id, COUNT(*) as n')
+                ->get();
+            foreach ($rows as $r) {
+                $map[(int) $r->transaction_id] = (int) $r->n;
+            }
+        } catch (\Throwable $e) {
+            // Never let a reconciliation helper break the POS / feed.
+            \Log::warning('cardLineCountByTx failed: ' . $e->getMessage());
         }
         return $map;
     }
@@ -3508,6 +3612,59 @@ class SellPosController extends Controller
                 $claimedCpKeys[$c['cp_key']]    = true;
                 $claimedSaleIds[$c['sale_id']]  = true;
                 $matchedCpByTx[$c['sale_id']][] = $cpRows[$c['cp_key']];
+            }
+
+            // Split-payment second pass — mirror of recentSalesFeed so the CSV
+            // reconciles split sales (two Clover swipes on one ERP ring) the
+            // same way the page does. See the page's block for the rationale.
+            $splitCardCount = self::cardLineCountByTx($matchSales->pluck('id')->all());
+            foreach ($matchSales as $sale) {
+                $sid = (int) $sale->id;
+                if (isset($claimedSaleIds[$sid])) continue;
+                if ((int) ($splitCardCount[$sid] ?? 0) < 2) continue;
+
+                $erLoc   = (int) $sale->location_id;
+                $erTs    = strtotime((string) $sale->transaction_date);
+                $erCents = max(0, $toCents($sale->final_total) - (int) ($advCentsMatch[$sid] ?? 0));
+
+                $pool = [];
+                foreach ($cpRows as $key => $cp) {
+                    if (isset($claimedCpKeys[$key])) continue;
+                    if ((int) ($cp->location_id ?? 0) !== $erLoc) continue;
+                    if (abs(($cpTsByKey[$key] ?? 0) - $erTs) > $matchTimeWindow) continue;
+                    $pool[] = $key;
+                }
+                if (count($pool) < 2) continue;
+
+                $bestPair = null;
+                $bestGap  = 6;
+                for ($i = 0; $i < count($pool); $i++) {
+                    $ki = $pool[$i];
+                    $ci = $cpRows[$ki];
+                    $grossI = $toCents($ci->amount);
+                    $netI   = $grossI - (int) ($ci->tax_cents ?? 0);
+                    for ($j = $i + 1; $j < count($pool); $j++) {
+                        $kj = $pool[$j];
+                        $cj = $cpRows[$kj];
+                        $grossJ = $toCents($cj->amount);
+                        $netJ   = $grossJ - (int) ($cj->tax_cents ?? 0);
+                        $gap = min(
+                            abs(($grossI + $grossJ) - $erCents),
+                            abs(($netI + $netJ) - $erCents)
+                        );
+                        if ($gap < $bestGap) {
+                            $bestGap  = $gap;
+                            $bestPair = [$ki, $kj];
+                        }
+                    }
+                }
+                if ($bestPair === null) continue;
+
+                foreach ($bestPair as $key) {
+                    $claimedCpKeys[$key] = true;
+                    $matchedCpByTx[$sid][] = $cpRows[$key];
+                }
+                $claimedSaleIds[$sid] = true;
             }
 
             foreach ($matchedCpByTx as $txId => $payments) {
