@@ -1708,12 +1708,26 @@ $(document).ready(function() {
                 var data = $(form).serialize();
                 data = data + '&status=final';
                 var url = $(form).attr('action');
+                var doPosSubmit = function(extra) {
                 $.ajax({
                     method: 'POST',
                     url: url,
-                    data: data,
+                    data: data + (extra || ''),
                     dataType: 'json',
                     success: function(result) {
+                        // Duplicate-ring guard: server thinks this cashier just
+                        // rang an identical sale. Ask once; if the cashier says
+                        // yes, resubmit with dup_ok=1 so it goes through.
+                        if (result && result.duplicate_confirm) {
+                            enable_pos_form_actions();
+                            window.pos_submit_in_progress = false;
+                            if (confirm(result.msg)) {
+                                window.pos_submit_in_progress = true;
+                                disable_pos_form_actions();
+                                doPosSubmit('&dup_ok=1');
+                            }
+                            return;
+                        }
                         if (result.success == 1) {
                             if (result.whatsapp_link) {
                                 window.open(result.whatsapp_link);
@@ -1753,6 +1767,8 @@ $(document).ready(function() {
                         enable_pos_form_actions();
                     }
                 });
+                };
+                doPosSubmit('');
             }
             if (!cnf) {
                 window.pos_submit_in_progress = false;

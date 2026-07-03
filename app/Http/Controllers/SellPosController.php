@@ -4255,6 +4255,41 @@ class SellPosController extends Controller
 
                 $invoice_total = $this->productUtil->calculateInvoiceTotal($input['products'], $input['tax_rate_id'], $discount);
 
+                // Duplicate-ring guard (Sarah 2026-07-03): if this cashier
+                // already rang an identical-total FINAL sale at this location
+                // in the last 60s and hasn't confirmed, ask "you just rang
+                // this — ring it again?" instead of silently making a second
+                // one. Soft confirm, NOT a block: two customers can each buy
+                // the same $6 record within a minute, so the cashier can
+                // always say yes. The front-end resubmits with dup_ok=1.
+                try {
+                    if (!$is_direct_sale
+                        && ($input['status'] ?? '') === 'final'
+                        && empty($request->input('dup_ok'))) {
+                        $dup_cents = (int) round(((float) $invoice_total['final_total']) * 100);
+                        $dup_exists = Transaction::where('business_id', $business_id)
+                            ->where('type', 'sell')
+                            ->where('status', 'final')
+                            ->where('created_by', $user_id)
+                            ->where('location_id', $input['location_id'])
+                            ->where('created_at', '>=', \Carbon\Carbon::now()->subSeconds(60))
+                            ->whereRaw('ROUND(final_total * 100) = ?', [$dup_cents])
+                            ->exists();
+                        if ($dup_exists) {
+                            return [
+                                'success' => 0,
+                                'duplicate_confirm' => 1,
+                                'msg' => 'You just rang an identical sale ('
+                                    . $this->transactionUtil->num_f($invoice_total['final_total'], true)
+                                    . ') less than a minute ago. Ring it again?',
+                            ];
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    // Guard must never block a sale — log and continue.
+                    \Log::warning('POS duplicate-ring guard skipped: ' . $e->getMessage());
+                }
+
                 DB::beginTransaction();
 
                 if (empty($request->input('transaction_date'))) {
