@@ -270,7 +270,13 @@
             <p class="say">We don't have that one here, but we may have it at our other store or the warehouse.</p>
             <div class="label" style="margin-top:10px"><span class="chan text">Text</span> The &ldquo;no, but&hellip;&rdquo;</div>
             <p class="say">No copy on CD right now, but we've got it on vinyl! Want me to hold it under your name, or order the CD in for you?</p>
+            <div class="label" style="margin-top:14px"><span class="chan call">Call</span> / <span class="chan text">Text</span> &nbsp;Price, UPC, or move it to the other store</div>
+            <p class="say">Pulling it up in our system right now! It's $[price], UPC [number] &mdash; and yes, I can have it moved to the Hollywood store for you. Want me to set it aside there?</p>
+            <div class="label" style="margin-top:10px"><span class="chan text">Text</span> They were told it's set aside for them</div>
+            <p class="say">You're all set &mdash; it's tucked to the side with your name on it. See you at open!</p>
         </div>
+
+        <div class="callout"><strong>Look it up before you promise.</strong> For price, UPC, or &ldquo;do you have it,&rdquo; open the ERP first and tell them you're checking &mdash; never &ldquo;we'll check and get back to you.&rdquo; Give them the real number.</div>
 
         <div class="callout"><strong>Always offer an alternative.</strong> Before you say no, check every format for that artist (vinyl, CD, cassette) and their other titles. No One Direction CD but we have the vinyl? Say so. Nothing in stock? Offer to order it or take their number. A &ldquo;no&rdquo; with an option beats a flat &ldquo;no.&rdquo;</div>
     </section>
