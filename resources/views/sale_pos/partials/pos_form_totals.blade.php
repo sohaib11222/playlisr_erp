@@ -232,6 +232,24 @@
     .pos-pay-btn.pay-more { background: #fff; color: #1F1B16; border: 1px solid #DFD2B3; }
     .pos-pay-btn.pay-more:hover, .pos-pay-btn.pay-more:focus { background: #F7F1E3; color: #1F1B16; }
     .pos-pay-more { display: inline-block; }
+
+    /* Zak/Sarah 2026-07-03: Whatnot & Discogs sales are paid off-register
+       (those platforms collect the money), so finalizing them as "Cash"
+       wrote phantom cash into the drawer and inflated the deposit count.
+       For those channels we swap the Cash / Card / More trio for a single
+       "Complete" button that finalizes as pay_method "other" — bucketed
+       out of the cash drawer. Toggled by the .channel-offregister class
+       that the channel-picker JS adds below. Hidden by default; we use a
+       dedicated display rule (not Bootstrap .hide) so we never fight the
+       server-side hide on the Cash/Card buttons. */
+    .pos-complete-btn { display: none; }
+    .pos-pay-btn.pay-complete { background: #2F6B3E; color: #fff; grid-column: 1 / -1; }
+    .pos-pay-btn.pay-complete:hover, .pos-pay-btn.pay-complete:focus { background: #235530; color: #fff; }
+    .pos-pay-row.channel-offregister { grid-template-columns: 1fr; }
+    .pos-pay-row.channel-offregister .pay-cash,
+    .pos-pay-row.channel-offregister .pay-card,
+    .pos-pay-row.channel-offregister .pos-pay-more { display: none !important; }
+    .pos-pay-row.channel-offregister .pos-complete-btn { display: inline-flex !important; }
     .pos-pay-more .dropdown-menu { min-width: 220px; padding: 4px; }
     .pos-pay-more .dropdown-menu .btn-link {
         display: block; width: 100%; text-align: left;
@@ -628,6 +646,20 @@
                     @endif
                 </ul>
             </div>
+
+            {{-- Off-register "Complete" button — shown only for Whatnot /
+                 Discogs channel sales (see .channel-offregister toggle in the
+                 script below). Finalizes as pay_method "other" so the sale
+                 stays out of the cashier's cash drawer / deposit math. Not
+                 intercepted by the cash/card cashier-confirm modals since its
+                 data-pay_method is neither "cash" nor "card". --}}
+            <button type="button"
+                class="pos-pay-btn pay-complete pos-complete-btn pos-express-finalize"
+                id="pos-complete-offregister"
+                data-pay_method="other"
+                title="Complete this off-register sale (Whatnot / Discogs)">
+                <i class="fas fa-check"></i> Complete
+            </button>
         </div>
 
         @if(empty($edit))
@@ -973,6 +1005,30 @@
                 }
                 bindCashierIntercept();
                 $(document).on('invoice_total_calculated', bindCashierIntercept);
+
+                // Zak/Sarah 2026-07-03: swap Cash / Card / More for a single
+                // "Complete" button on Whatnot & Discogs sales. Those channels
+                // are paid off-register, so completing them as Cash inflated
+                // the drawer/deposit count. The Complete button finalizes as
+                // pay_method "other" (see markup above), which the register
+                // close math buckets separately from cash.
+                function currentPosChannel() {
+                    var v = $('.pos-channel-picker input[name="channel"]:checked').val();
+                    if (v) return v;
+                    // Fallback for older markup that only kept #is_whatnot.
+                    return String($('#is_whatnot').val()) === '1' ? 'whatnot' : 'in_store';
+                }
+                function syncPayModeForChannel() {
+                    var offRegister = ['whatnot', 'discogs'].indexOf(currentPosChannel()) !== -1;
+                    $('.pos-pay-row').toggleClass('channel-offregister', offRegister);
+                }
+                syncPayModeForChannel();
+                $(document).on('change', '.pos-channel-picker input[name="channel"]', syncPayModeForChannel);
+                // The channel chips flip the radio in their own click handler
+                // (pos_form.blade.php); read after that runs.
+                $(document).on('click', '.pos-channel-chip', function () {
+                    setTimeout(syncPayModeForChannel, 0);
+                });
             });
         })(0);
         </script>
