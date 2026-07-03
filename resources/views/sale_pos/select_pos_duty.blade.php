@@ -369,7 +369,7 @@
                     </label>
                     <label class="duty-option">
                         <input type="radio" name="duty" value="warehouse" id="duty_warehouse">
-                        <span class="opt-title">Warehouse</span>
+                        <span class="opt-title">Shipping</span>
                     </label>
                     <label class="duty-option">
                         <input type="radio" name="duty" value="discogs" id="duty_discogs">
