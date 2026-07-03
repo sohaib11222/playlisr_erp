@@ -137,6 +137,29 @@
 @media (max-width: 560px) { .pp-shell .quick-list li { grid-template-columns: 1fr; gap: 3px; } }
 
 .pp-shell a { color: var(--d-accent-text); }
+
+/* decision tree / router */
+.pp-shell section { scroll-margin-top: 14px; }
+.pp-shell .pp-tree { background: var(--d-surface); border: 1px solid var(--d-line-2); border-radius: var(--d-radius); box-shadow: 0 1px 2px rgba(31,27,22,.06); padding: 18px 20px; margin: 0 0 8px; }
+.pp-shell .pp-tree .tree-head h2 { font-size: 19px; font-weight: 800; margin: 0; letter-spacing: -.01em; }
+.pp-shell .pp-tree .tree-head p { font-size: 13.5px; color: var(--d-ink-2); margin: 4px 0 14px; }
+.pp-shell .tree-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 560px) { .pp-shell .tree-grid { grid-template-columns: 1fr; } }
+.pp-shell .branch-card { display: flex; flex-direction: column; gap: 3px; padding: 13px 16px; border-radius: var(--d-radius-sm); border: 1px solid var(--d-line); text-decoration: none; color: var(--d-ink); transition: transform .1s ease, box-shadow .1s ease; }
+.pp-shell .branch-card:hover { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(31,27,22,.09); }
+.pp-shell .branch-card.hot { background: var(--d-accent-soft); border-color: var(--d-accent-deep); }
+.pp-shell .branch-card.calm { background: var(--d-calm-bg); border-color: var(--d-calm-line); }
+.pp-shell .branch-card .bc-q { font-weight: 700; font-size: 15px; line-height: 1.3; }
+.pp-shell .branch-card .bc-go { font-size: 12.5px; font-weight: 800; color: var(--d-accent-text); text-transform: uppercase; letter-spacing: .03em; }
+.pp-shell .branch-card.calm .bc-go { color: var(--d-calm); }
+.pp-shell .tree-foot { font-size: 13.5px; color: var(--d-ink-2); margin: 14px 0 0; line-height: 1.55; }
+
+/* channel tag on script labels (call vs text) */
+.pp-shell .script .label { display: inline-flex; align-items: center; gap: 6px; }
+.pp-shell .chan { font-size: 10px; font-weight: 800; letter-spacing: .06em; padding: 2px 7px; border-radius: 999px; }
+.pp-shell .chan.call { background: var(--d-accent); color: var(--d-accent-text); border: 1px solid var(--d-accent-deep); }
+.pp-shell .chan.text { background: var(--d-calm-bg); color: var(--d-calm); border: 1px solid var(--d-calm-line); }
+
 .pp-shell .pp-foot { margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--d-line); font-size: 12.5px; color: var(--d-ink-3); }
 </style>
 
@@ -146,17 +169,46 @@
         <p class="pp-eyebrow">Nivessa Records &middot; Front-of-House Guide</p>
         <h1>Answering the Phone &amp; Finding Records</h1>
         <p>A step-by-step handbook for taking calls, tracking down a record across both stores, and reaching the right coworker &mdash; without leaving a customer hanging.</p>
-        <p class="who">Written for Fatteen. Keep it open at the counter. When in doubt, follow the tree top to bottom.</p>
+        <p class="who">Written for Fatteen. Keep it open at the counter. Tap what the caller needs and jump straight to the script.</p>
     </header>
 
+    {{-- decision tree / router --}}
+    <nav class="pp-tree" aria-label="Jump to the right script">
+        <div class="tree-head">
+            <h2>Start here &mdash; what are they asking?</h2>
+            <p>Call or text, tap the one that fits and go straight to the words to use.</p>
+        </div>
+        <div class="tree-grid">
+            <a class="branch-card hot" href="#record">
+                <span class="bc-q">&ldquo;Do you have this record?&rdquo;</span>
+                <span class="bc-go">Find &amp; confirm it &rarr;</span>
+            </a>
+            <a class="branch-card hot" href="#collection">
+                <span class="bc-q">&ldquo;I want to sell my collection&rdquo;</span>
+                <span class="bc-go">Get them in the door &rarr;</span>
+            </a>
+            <a class="branch-card calm" href="#quick">
+                <span class="bc-q">Hours, parking, event, hiring?</span>
+                <span class="bc-go">Quick answer &rarr;</span>
+            </a>
+            <a class="branch-card calm" href="#coworker">
+                <span class="bc-q">&ldquo;Can I speak to someone?&rdquo;</span>
+                <span class="bc-go">Reach a coworker &rarr;</span>
+            </a>
+        </div>
+        <p class="tree-foot">However it ends, <a href="#visit">invite them into the store</a>. New to the phones? Start with <a href="#tone">how to sound</a> and <a href="#flow">the call, step by step</a>.</p>
+    </nav>
+
     {{-- 1 --}}
-    <section>
+    <section id="tone">
         <div class="sec-head"><span class="sec-num">1</span><h2>How to sound on the phone</h2></div>
         <p class="lede">Every call is the first impression of the store. Treat each one as a chance to connect and leave a lasting impression &mdash; not a task to get off the phone. The goal is warm, easygoing, and genuinely trying to help. Talk like a friendly neighbor who happens to know records.</p>
 
         <div class="script">
-            <div class="label">Standard greeting</div>
+            <div class="label"><span class="chan call">Call</span> Standard greeting</div>
             <p class="say">Thanks for calling Nivessa Records, this is Fatteen. How can I help you?</p>
+            <div class="label" style="margin-top:10px"><span class="chan text">Text</span> Opening a text back</div>
+            <p class="say">Hey, this is Fatteen at Nivessa Records &mdash; happy to help! What are you looking for?</p>
         </div>
 
         <h3>The tone in three words</h3>
@@ -182,7 +234,7 @@
     </section>
 
     {{-- 2 --}}
-    <section>
+    <section id="triage">
         <div class="sec-head"><span class="sec-num">2</span><h2>Know which call you're on</h2></div>
         <p class="lede">The first thing to figure out on any call: is this a high-value call that deserves your full effort, or a quick question you should resolve in under a minute? Both matter &mdash; but they get handled differently.</p>
 
@@ -220,7 +272,7 @@
     </section>
 
     {{-- 3 --}}
-    <section>
+    <section id="flow">
         <div class="sec-head"><span class="sec-num">3</span><h2>The call, start to finish</h2></div>
         <p class="lede">Run every call through these five steps. Most calls are someone looking for a record, someone wanting to sell, or a quick question.</p>
         <ol class="flow">
@@ -234,7 +286,7 @@
     </section>
 
     {{-- 4 --}}
-    <section>
+    <section id="record">
         <div class="sec-head"><span class="sec-num">4</span><h2>Important call: &ldquo;Do you have this record?&rdquo;</h2></div>
         <p class="lede">This is a sale waiting to happen, so reply quickly &mdash; but the system tells you what <em>should</em> be there, and only your eyes confirm what <em>is</em> there. Follow this in order.</p>
 
@@ -258,15 +310,19 @@
         <div class="callout"><strong>Always offer an alternative.</strong> If we don't have the One Direction CD but we do have it on vinyl &mdash; say so. No copy in stock? Offer to order it, take their number, or point them to something close. A &ldquo;no&rdquo; with an option beats a flat &ldquo;no.&rdquo;</div>
 
         <div class="script">
-            <div class="label">While you check</div>
+            <div class="label"><span class="chan call">Call</span> While you check</div>
             <p class="say">Let me look that up and have someone confirm it's actually on the shelf &mdash; one quick minute.</p>
-            <div class="label" style="margin-top:10px">The &ldquo;no, but&hellip;&rdquo;</div>
+            <div class="label" style="margin-top:10px"><span class="chan text">Text</span> While you check</div>
+            <p class="say">Great choice! Let me check the shelf and I'll text you right back to confirm.</p>
+            <div class="label" style="margin-top:14px"><span class="chan call">Call</span> The &ldquo;no, but&hellip;&rdquo;</div>
             <p class="say">We don't have that one on CD right now &mdash; but we do have it on vinyl. Want me to hold that for you, or I can order the CD in?</p>
+            <div class="label" style="margin-top:10px"><span class="chan text">Text</span> The &ldquo;no, but&hellip;&rdquo;</div>
+            <p class="say">No CD in stock right now, but we've got it on vinyl! Want me to hold it under your name, or order the CD in for you?</p>
         </div>
     </section>
 
     {{-- 5 --}}
-    <section>
+    <section id="collection">
         <div class="sec-head"><span class="sec-num">5</span><h2>Important call: &ldquo;I want to sell my collection.&rdquo;</h2></div>
         <p class="lede">This can be a huge buy for the store, so it's one of the most important calls you'll take. Your job is to make them feel great about calling us and get it to the right person &mdash; not to price anything yourself.</p>
 
@@ -280,15 +336,19 @@
         <div class="callout"><strong>Don't lose this call.</strong> A big collection is real money for the store. Even if the buyer isn't in, take full details and promise a callback &mdash; then make sure it happens.</div>
 
         <div class="script">
-            <div class="label">Opening</div>
+            <div class="label"><span class="chan call">Call</span> Opening</div>
             <p class="say">That's great &mdash; we're always interested in good collections. Roughly how many records are we talking, and what kind of stuff?</p>
-            <div class="label" style="margin-top:10px">On price</div>
+            <div class="label" style="margin-top:10px"><span class="chan text">Text</span> Opening</div>
+            <p class="say">Love that &mdash; we'd be glad to take a look! Roughly how many records, and what kind of music?</p>
+            <div class="label" style="margin-top:14px"><span class="chan call">Call</span> On price</div>
             <p class="say">I can't give you a number over the phone &mdash; it really depends on the titles and condition. Let's get someone to look at it. Can I grab your name and number?</p>
+            <div class="label" style="margin-top:10px"><span class="chan text">Text</span> On price</div>
+            <p class="say">Hard to price without seeing them &mdash; it comes down to the titles and condition. Best is to bring them by. Can I get your name and number to set it up?</p>
         </div>
     </section>
 
     {{-- 6 --}}
-    <section>
+    <section id="quick">
         <div class="sec-head"><span class="sec-num">6</span><h2>Quick calls &mdash; under a minute</h2></div>
         <p class="lede">These have a simple, known answer. Give it warmly and wrap up &mdash; don't overthink them. Fast and friendly is the whole game here.</p>
 
@@ -305,7 +365,7 @@
     </section>
 
     {{-- 7 --}}
-    <section>
+    <section id="visit">
         <div class="sec-head"><span class="sec-num">7</span><h2>Turn every call into a visit</h2></div>
         <p class="lede">The best outcome of almost any call is a customer walking through the door. On every call, look for a natural reason to invite them in &mdash; and give them a reason to come <em>today</em>. Getting people into the store is one of the most valuable things you can do on the phone.</p>
 
@@ -326,7 +386,7 @@
     </section>
 
     {{-- 8 --}}
-    <section>
+    <section id="coworker">
         <div class="sec-head"><span class="sec-num">8</span><h2>Reaching a coworker</h2></div>
         <p class="lede">Whether you're confirming a record or a caller needs a specific person, the path is the same: Slack first, cell if no answer, and only ever reach someone who is actually on shift.</p>
 
@@ -341,7 +401,7 @@
     </section>
 
     {{-- 9 --}}
-    <section>
+    <section id="reference">
         <div class="sec-head"><span class="sec-num">9</span><h2>Quick reference</h2></div>
         <p class="lede">The whole guide in one glance. Read this before every shift until it's second nature.</p>
         <div class="dd">
