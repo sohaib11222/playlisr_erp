@@ -329,6 +329,14 @@
                     the sale in the ERP so inventory updates.</div>
             </div>
 
+            <div style="margin:0 0 10px 0;">
+                <div style="font-weight:700; color:#1F1B16;">4. Cash drawer — opening must match yesterday's close</div>
+                <div style="color:#5A5045;">In the <strong>per-cashier reconciliation</strong> below, check each
+                    register's <strong>opening cash</strong> against what it was <strong>closed with the day before</strong>.
+                    They should be the same. If today's opening doesn't match yesterday's closing count, cash went
+                    missing overnight — <strong>this is how we catch theft.</strong> Flag it and investigate.</div>
+            </div>
+
             <p style="margin:12px 0 0 0; padding-top:10px; border-top:1px solid #E8DCB8; color:#5A5045;">
                 <strong>Wrong tender (card rang as cash, or vice-versa)?</strong> Open
                 "Fix sale (date / method)" under that sale and set the right method.
