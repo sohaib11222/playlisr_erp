@@ -400,7 +400,7 @@
                     <li>Answer warm: &ldquo;Thanks for calling Nivessa Records!&rdquo;</li>
                     <li>Handle high-priority calls (records, buying) with full effort</li>
                     <li>Keep quick calls short and friendly</li>
-                    <li>For records: check nivessa.com/ERP, then confirm it's on the shelf</li>
+                    <li>For records: check <a href="https://nivessa.com" target="_blank" rel="noopener">nivessa.com</a> and the ERP, then confirm it's on the shelf</li>
                     <li>Not at one store? Check the other and the warehouse</li>
                     <li>Update the ERP when the count is wrong</li>
                     <li>Always end with a yes, or a no plus an alternative</li>
