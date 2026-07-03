@@ -191,9 +191,30 @@
     };
 @endphp
 
-<section class="content-header">
-    <h1>Recent Sales Feed</h1>
+<section class="content-header" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+    <h1 style="margin:0;">Recent Sales Feed</h1>
+    {{-- Sarah 2026-07-03: let me hide the global shift-progress strip on this
+         page when I want to. Per-browser preference (localStorage), no server. --}}
+    <button type="button" id="rf-toggle-shift-strip"
+            style="padding:6px 12px; background:#fff; border:1px solid #DFD2B3; border-radius:7px; color:#5A5045; font-size:12px; font-weight:600; cursor:pointer;">Hide shift bar</button>
 </section>
+<script>
+(function(){
+    var KEY = 'rf_hide_shift_strip';
+    var btn = document.getElementById('rf-toggle-shift-strip');
+    function apply(){
+        var strip = document.querySelector('.st-strip');
+        var hidden = localStorage.getItem(KEY) === '1';
+        if (strip) strip.style.display = hidden ? 'none' : '';
+        if (btn) btn.textContent = hidden ? 'Show shift bar' : 'Hide shift bar';
+    }
+    if (btn) btn.addEventListener('click', function(){
+        localStorage.setItem(KEY, localStorage.getItem(KEY) === '1' ? '0' : '1');
+        apply();
+    });
+    apply(); // strip is rendered by the layout above this point, so it exists now
+})();
+</script>
 
 @if(!empty($tz_debug))
 <section class="content">
@@ -346,6 +367,17 @@
                     register's <strong>opening cash</strong> against what it was <strong>closed with the day before</strong>.
                     They should be the same. If today's opening doesn't match yesterday's closing count, cash went
                     missing overnight — <strong>this is how we catch theft.</strong> Flag it and investigate.</div>
+            </div>
+
+            <div style="margin:12px 0 0 0; padding:10px 12px; background:#F3ECD9; border-radius:6px;">
+                <div style="font-weight:800; color:#1F1B16; margin-bottom:4px;">Reading the per-cashier rows (below)</div>
+                <div style="color:#5A5045;">
+                    <strong>ERP</strong> = what the cashier rang up · <strong>Clover</strong> = what actually swiped —
+                    they should match. <strong>Diff / Over-swipe</strong> = Clover collected more than was rung
+                    (the theft tell). <strong>Drawer</strong> compares opening + cash − buys to what was counted at
+                    close. The <strong>⚑ flags</strong> call out anything weird — over-swipes, drawer shorts,
+                    missing Clover, or a safe drop logged at a store with no safe. Click a row to expand it.
+                </div>
             </div>
 
             <p style="margin:12px 0 0 0; padding-top:10px; border-top:1px solid #E8DCB8; color:#5A5045;">
@@ -707,7 +739,6 @@
     <div class="rf-wrap">
         <div style="margin-bottom:10px;">
             <h3 style="margin:0; font-size:18px; font-weight:700; color:#1F1B16;">Per-cashier reconciliation</h3>
-            <div style="font-size:12px; color:#5A5045; margin-top:2px;">One card per cashier · Cash drawer + card check + ✓ sign-off. Replaces the old /reports/clover-eod-reconciliation page.</div>
         </div>
         @include('report._eod_per_cashier_cards')
     </div>

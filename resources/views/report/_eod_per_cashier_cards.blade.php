@@ -411,7 +411,4 @@
             </div>
         </div>
     @endforeach
-    <p class="help-block" style="margin-top:-6px; margin-bottom:18px;">
-        One row per cashier — click to expand. <strong>ERP</strong> is the gross total (final_total) they rang up; <strong>Clover</strong> = gross Clover swipes attributed to them; both match the per-store banner above. <strong>Diff</strong> / <strong>Over swipe</strong> = Clover collected more than rung (the theft tell). <strong>Drawer</strong> compares opening + cash − buys to what was counted at close. The <strong>⚑ flags</strong> call out anything weird — over-swipes, drawer shorts, missing Clover, or a safe drop logged at a store with no safe.
-    </p>
 @endif
