@@ -280,7 +280,7 @@
 
         <div class="script">
             <div class="label"><span class="chan call">Call</span> / <span class="chan text">Text</span> &nbsp;Do you buy records?</div>
-            <p class="say">Yes! Bring your vinyl, CDs, tapes, or even collectibles into either store and we'll give you a fair quote. Or send me what you've got &mdash; format, how many, a few titles, and any pics &mdash; and I'll get a quote from a Nivessa buyer.</p>
+            <p class="say">Yes! Please bring your collection into either store and we'll give you a fair quote. Do you need the address?</p>
             <div class="label" style="margin-top:12px"><span class="chan call">Call</span> / <span class="chan text">Text</span> &nbsp;Big collection</div>
             <p class="say">No appointment needed &mdash; just bring it by either store. For a large collection, 10 boxes or more, we can even arrange a house pickup.</p>
         </div>
