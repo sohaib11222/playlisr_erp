@@ -57,7 +57,6 @@ class DailyChecklistController extends Controller
         ],
         'Sales & accounting' => [
             'sales_feed'    => 'Daily sales feed: make sure every transaction is in both the ERP and Clover. If it\'s not, DM the cashier to fix it.',
-            'register_recon' => 'Do the daily reconciliation on the registers.',
             'accounting'    => 'Review recent accounting transactions in QuickBooks and categorize them.',
         ],
         'Events & social' => [
@@ -79,7 +78,6 @@ class DailyChecklistController extends Controller
     const LINKS = [
         // ERP screens
         'sales_feed'     => '/pos/recent-feed',
-        'register_recon' => '/reports/clover-eod-reconciliation',
         'events_cal'     => '/events',
         'events_ready'   => '/events',
         'ams_orders'     => '/purchases/create',
