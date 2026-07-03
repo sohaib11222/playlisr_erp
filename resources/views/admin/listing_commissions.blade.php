@@ -134,11 +134,11 @@
                 @endif
             </form>
             <p class="text-muted" style="margin-bottom:10px;">
-                Sales-goal bonus earned on <strong>{{ \Carbon::parse($bonus_day)->format('D, M j, Y') }}</strong>@if($bonus_person !== ''), filtered to "<strong>{{ $bonus_person }}</strong>"@endif.
+                Sales-goal bonus earned on <strong>{{ \Carbon::parse($bonus_day)->format('D, M j, Y') }}</strong>{!! $bonus_person !== '' ? ', filtered to "<strong>' . e($bonus_person) . '</strong>"' : '' !!}.
                 Same math as the Employee Leaderboard, scoped to that single day.
             </p>
             @if ($day_rows->isEmpty())
-                <p class="text-muted">No sales bonus for that day@if($bonus_person !== '') matching "{{ $bonus_person }}"@endif.</p>
+                <p class="text-muted">No sales bonus for that day{{ $bonus_person !== '' ? ' matching "' . $bonus_person . '"' : '' }}.</p>
             @else
                 <table class="table table-striped">
                     <thead>
@@ -153,8 +153,8 @@
                         @foreach ($day_rows as $r)
                             <tr>
                                 <td><a href="{{ url('/my-earnings') }}?user_id={{ $r->user_id }}" target="_blank">{{ $r->name }}</a></td>
-                                <td style="text-align:right;">@if($r->achieved > 0)${{ number_format($r->achieved, 0) }}@else <span class="text-muted">—</span>@endif</td>
-                                <td style="text-align:right;"><span class="text-muted">@if($r->goal > 0)${{ number_format($r->goal, 0) }}@else — @endif</span></td>
+                                <td style="text-align:right;">@if($r->achieved > 0)${{ number_format($r->achieved, 0) }}@else <span class="text-muted">-</span>@endif</td>
+                                <td style="text-align:right;"><span class="text-muted">@if($r->goal > 0)${{ number_format($r->goal, 0) }}@else - @endif</span></td>
                                 <td style="text-align:right;">@if($r->bonus > 0)<strong>${{ number_format($r->bonus, 2) }}</strong>@else <span class="text-muted">$0.00</span>@endif</td>
                             </tr>
                         @endforeach
