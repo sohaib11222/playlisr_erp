@@ -336,7 +336,7 @@
             <h3 style="margin-top:0">Events &amp; venue</h3>
             <div class="qa">
                 <p class="q">&ldquo;How do I perform / book a show?&rdquo;</p>
-                <span class="say">Excited to host your show! You can book it right here: nivessa.com/events.</span>
+                <span class="say">Excited to host your show! You can book it at: nivessa.com/venues.</span>
             </div>
             <div class="qa">
                 <p class="q">&ldquo;Can I rent the space?&rdquo;</p>
