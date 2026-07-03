@@ -1795,10 +1795,13 @@ class SellPosController extends Controller
         // they're working from.
         $employee_breakdown_by_day = [];
         $reconciliations = [];
-        $can_see_reconciliation = $this->businessUtil->is_admin(auth()->user());
         // Sarah 2026-07-03: the tender fix (cash↔card) is locked to Sarah /
         // Jon / Fatteen even among admins — it rewrites paid payment rows.
         $can_fix_payment_method = self::canFixPaymentMethod();
+        // Reconciliation view (guide + per-cashier cards) = admins OR the named
+        // reconcilers. Jon's account isn't flagged with the Admin# role, so the
+        // is_admin check alone was hiding the whole section from him.
+        $can_see_reconciliation = $this->businessUtil->is_admin(auth()->user()) || $can_fix_payment_method;
         if ($can_see_reconciliation && !$is_month_mode) {
             try {
                 $card_methods = [
