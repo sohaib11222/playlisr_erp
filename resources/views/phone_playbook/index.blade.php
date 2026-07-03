@@ -158,6 +158,9 @@
 .pp-shell .dd li { margin: 6px 0; font-size: 14px; }
 
 .pp-shell a { color: var(--d-accent-text); }
+.pp-shell .say a, .pp-shell .note a, .pp-shell .lede a, .pp-shell .facts a, .pp-shell .flow a, .pp-shell .dd a, .pp-shell .pp-foot a { color: var(--d-high); font-weight: 700; text-decoration: underline; text-decoration-color: var(--d-high-line); text-underline-offset: 2px; }
+.pp-shell .say a:hover, .pp-shell .note a:hover, .pp-shell .lede a:hover, .pp-shell .facts a:hover, .pp-shell .flow a:hover, .pp-shell .dd a:hover, .pp-shell .pp-foot a:hover { text-decoration-color: var(--d-high); }
+.pp-shell .branch-card { text-decoration: none; }
 .pp-shell .pp-foot { margin-top: 36px; padding-top: 16px; border-top: 1px solid var(--d-line); font-size: 12.5px; color: var(--d-ink-3); }
 </style>
 
@@ -218,7 +221,7 @@
     {{-- 1 --}}
     <section id="tone">
         <div class="sec-head"><span class="sec-num">1</span><h2>How to talk on the phone</h2></div>
-        <p class="lede">Short, warm, top customer service. Sound glad they called and genuinely happy to help. Point people to nivessa.com whenever it answers their question.</p>
+        <p class="lede">Short, warm, top customer service. Sound glad they called and genuinely happy to help. Point people to <a href="https://nivessa.com" target="_blank" rel="noopener">nivessa.com</a> whenever it answers their question.</p>
 
         <div class="script">
             <div class="label"><span class="chan call">Call</span> Standard greeting</div>
@@ -252,7 +255,7 @@
         <p class="lede">A sale on the line &mdash; reply fast. The system tells you what <em>should</em> be there; only someone's eyes confirm what <em>is</em>. Always finish with a yes, or a no plus an alternative.</p>
 
         <ol class="flow">
-            <li><strong>Check nivessa.com and the ERP first.</strong><span class="sub">Search the title by artist and album. See which store it shows at &mdash; Pico or Hollywood.</span></li>
+            <li><strong>Check <a href="https://nivessa.com" target="_blank" rel="noopener">nivessa.com</a> and the ERP first.</strong><span class="sub">Search the title by artist and album. See which store it shows at &mdash; Pico or Hollywood.</span></li>
             <li><strong>Have someone lay eyes on it.</strong><span class="sub">DM whoever's on shift at that store on Slack to confirm the copy is really on the shelf. No Slack answer? Call their cell (on-shift only &mdash; see Section 6).</span></li>
             <li><strong>Not at one store? Check the other and the warehouse.</strong><span class="sub">If it's not at Pico, check Hollywood, and the warehouse, before you ever say we don't have it.</span></li>
             <li><strong>Fix the ERP if the count is wrong.</strong><span class="sub">If the shelf didn't match the system &mdash; none there, or extras &mdash; update the true inventory so the next person isn't misled.</span></li>
@@ -263,7 +266,7 @@
             <div class="label"><span class="chan call">Call</span> While you check</div>
             <p class="say">Looking this up for you!</p>
             <div class="label" style="margin-top:10px"><span class="chan text">Text</span> Not sure / not online yet</div>
-            <p class="say">Let me check for you! We get new and used records in every day, so if you don't see it on nivessa.com, we're happy to dig &mdash; I'll get right back to you.</p>
+            <p class="say">Let me check for you! We get new and used records in every day, so if you don't see it on <a href="https://nivessa.com" target="_blank" rel="noopener">nivessa.com</a>, we're happy to dig &mdash; I'll get right back to you.</p>
             <div class="label" style="margin-top:14px"><span class="chan call">Call</span> Not here right now</div>
             <p class="say">We don't have that one here, but let me check our other store and warehouse &mdash; maybe we can find it there.</p>
             <div class="label" style="margin-top:10px"><span class="chan text">Text</span> The &ldquo;no, but&hellip;&rdquo;</div>
@@ -291,13 +294,13 @@
     {{-- 4 --}}
     <section id="quick">
         <div class="sec-head"><span class="sec-num">4</span><h2>Quick answers</h2><span class="prio low">Quick &mdash; under a minute</span></div>
-        <p class="lede">These have a known answer. Give it warmly, point to nivessa.com when it helps, and wrap up.</p>
+        <p class="lede">These have a known answer. Give it warmly, point to <a href="https://nivessa.com" target="_blank" rel="noopener">nivessa.com</a> when it helps, and wrap up.</p>
 
         <div class="card" id="hours">
             <h3 style="margin-top:0">Hours &amp; locations</h3>
             <div class="facts">
-                <div class="row"><span class="store">Hollywood</span><span class="val">Mon&ndash;Thu 9:30am&ndash;11pm &middot; Fri &amp; Sat 9:30am&ndash;1am &middot; Sun 9am&ndash;11pm<br>6434 Hollywood Blvd, Los Angeles, CA 90028</span></div>
-                <div class="row"><span class="store">Pico</span><span class="val">Sun&ndash;Wed 10am&ndash;7pm &middot; Thu&ndash;Sat 10am&ndash;8pm<br>5770 W Pico Blvd, Los Angeles, CA 90019</span></div>
+                <div class="row"><span class="store">Hollywood</span><span class="val">Mon&ndash;Thu 9:30am&ndash;11pm &middot; Fri &amp; Sat 9:30am&ndash;1am &middot; Sun 9am&ndash;11pm<br><a href="https://www.google.com/maps/search/?api=1&amp;query=6434+Hollywood+Blvd+Los+Angeles+CA+90028" target="_blank" rel="noopener">6434 Hollywood Blvd, Los Angeles, CA 90028</a></span></div>
+                <div class="row"><span class="store">Pico</span><span class="val">Sun&ndash;Wed 10am&ndash;7pm &middot; Thu&ndash;Sat 10am&ndash;8pm<br><a href="https://www.google.com/maps/search/?api=1&amp;query=5770+W+Pico+Blvd+Los+Angeles+CA+90019" target="_blank" rel="noopener">5770 W Pico Blvd, Los Angeles, CA 90019</a></span></div>
             </div>
             <div class="qa">
                 <p class="q">&ldquo;What are your hours?&rdquo;</p>
@@ -311,8 +314,8 @@
             </div>
             <div class="qa">
                 <p class="q">&ldquo;Where are you located?&rdquo;</p>
-                <span class="say">Hollywood: 6434 Hollywood Blvd, LA 90028. Pico: 5770 W Pico Blvd, LA 90019. See you there!</span>
-                <p class="note">Maps and directions: nivessa.com/locations</p>
+                <span class="say"><a href="https://www.google.com/maps/search/?api=1&amp;query=6434+Hollywood+Blvd+Los+Angeles+CA+90028" target="_blank" rel="noopener">Hollywood: 6434 Hollywood Blvd, LA 90028</a>. <a href="https://www.google.com/maps/search/?api=1&amp;query=5770+W+Pico+Blvd+Los+Angeles+CA+90019" target="_blank" rel="noopener">Pico: 5770 W Pico Blvd, LA 90019</a>. See you there!</span>
+                <p class="note">Maps and directions: <a href="https://nivessa.com/locations" target="_blank" rel="noopener">nivessa.com/locations</a></p>
             </div>
         </div>
 
@@ -320,7 +323,7 @@
             <h3 style="margin-top:0">Online orders &amp; shipping</h3>
             <div class="qa">
                 <p class="q">&ldquo;Do you ship?&rdquo;</p>
-                <span class="say">Yes, we ship worldwide! You can order through nivessa.com.</span>
+                <span class="say">Yes, we ship worldwide! You can order through <a href="https://nivessa.com" target="_blank" rel="noopener">nivessa.com</a>.</span>
             </div>
             <div class="qa">
                 <p class="q">&ldquo;How long does shipping take?&rdquo;</p>
@@ -337,11 +340,11 @@
             <h3 style="margin-top:0">Events &amp; venue</h3>
             <div class="qa">
                 <p class="q">&ldquo;How do I perform / book a show?&rdquo;</p>
-                <span class="say">Excited to host your show! You can book it at: nivessa.com/venues.</span>
+                <span class="say">Excited to host your show! You can book it at: <a href="https://nivessa.com/venues" target="_blank" rel="noopener">nivessa.com/venues</a>.</span>
             </div>
             <div class="qa">
                 <p class="q">&ldquo;Can I rent the space?&rdquo;</p>
-                <span class="say">Yes, you can book the space at nivessa.com/venues.</span>
+                <span class="say">Yes, you can book the space at <a href="https://nivessa.com/venues" target="_blank" rel="noopener">nivessa.com/venues</a>.</span>
             </div>
         </div>
 
@@ -349,7 +352,7 @@
             <h3 style="margin-top:0">Hiring</h3>
             <div class="qa">
                 <p class="q">&ldquo;Are you hiring?&rdquo;</p>
-                <span class="say">Check out nivessa.com/careers and you can apply there.</span>
+                <span class="say">Check out <a href="https://nivessa.com/careers" target="_blank" rel="noopener">nivessa.com/careers</a> and you can apply there.</span>
             </div>
             <div class="qa">
                 <p class="q">&ldquo;I applied but no one replied.&rdquo;</p>
@@ -401,7 +404,7 @@
                     <li>Not at one store? Check the other and the warehouse</li>
                     <li>Update the ERP when the count is wrong</li>
                     <li>Always end with a yes, or a no plus an alternative</li>
-                    <li>Point people to nivessa.com when it answers them</li>
+                    <li>Point people to <a href="https://nivessa.com" target="_blank" rel="noopener">nivessa.com</a> when it answers them</li>
                     <li>Not sure? &ldquo;Let me double-check and get right back to you&rdquo;</li>
                     <li>Invite every caller into the store</li>
                 </ul>
@@ -422,7 +425,7 @@
         </div>
     </section>
 
-    <div class="pp-foot">Nivessa Records front-of-house phone guide &middot; Hollywood &amp; Pico &middot; nivessa.com &middot; Keep at the counter.</div>
+    <div class="pp-foot">Nivessa Records front-of-house phone guide &middot; Hollywood &amp; Pico &middot; <a href="https://nivessa.com" target="_blank" rel="noopener">nivessa.com</a> &middot; Keep at the counter.</div>
 
 </div>
 @endsection
