@@ -3010,10 +3010,23 @@ class SellPosController extends Controller
                 return (int) $cp->location_id === (int) $tx->location_id;
             };
 
-            // Pass 1 — EXACT 1-to-1 pairing. For each Clover (newest
-            // first), claim the unclaimed ERP same-loc within ±1¢
-            // closest in time. Closest-time tiebreaker matches the
-            // recentSalesFeed matcher's rule.
+            // Pass 1 — clean 1-to-1 pairing. For each Clover (newest
+            // first), claim the unclaimed ERP same-loc within the tax
+            // slop below, closest in time. Closest-time tiebreaker
+            // matches the recentSalesFeed matcher's rule.
+            //
+            // Sarah 2026-07-03: ±1¢ was too tight. ERP and Clover compute
+            // sales tax slightly differently (per-line vs per-total
+            // rounding), so a real pair routinely drifts 2-3¢ apart even
+            // when the customer's grand total is identical. At ±1¢ that
+            // drift fell through to Pass 2 and nagged the cashier as a
+            // "mismatch" — or, if the closest Clover row got claimed
+            // elsewhere, surfaced as "ERP card sale not on Clover" for a
+            // sale that WAS run on Clover. Align to the ±5¢ the EOD
+            // reconciliation report already treats as a clean match
+            // (recent_feed's mismatch threshold). Bag-fee gaps (12¢) stay
+            // above this and are still handled by Pass 2's bag-fee logic.
+            $taxSlopCents = 5;
             $cpTs = [];
             foreach ($cps as $cp) {
                 $cpTs[$cp->id] = strtotime((string) $cp->paid_at);
@@ -3037,7 +3050,7 @@ class SellPosController extends Controller
                     if (isset($claimedTx[$tx->id])) continue;
                     if (!$sameLoc($cp, $tx)) continue;
                     $txCents = $expectedCardCents($tx);
-                    if (abs($cpCents - $txCents) > 1 && abs($cpNetCents - $txCents) > 1) continue;
+                    if (abs($cpCents - $txCents) > $taxSlopCents && abs($cpNetCents - $txCents) > $taxSlopCents) continue;
                     $gap = abs(($cpTs[$cp->id] ?? 0) - ($txTs[$tx->id] ?? 0));
                     if ($gap < $bestGap) { $bestGap = $gap; $bestTx = $tx; }
                 }
@@ -3095,7 +3108,11 @@ class SellPosController extends Controller
                     // Gross vs net-of-tax (HW pre-tax) — whichever is closer.
                     $cpNetCents = $cpCents - (int) ($cp->tax_cents ?? 0);
                     $delta = min(abs($cpCents - $txCents), abs($cpNetCents - $txCents));
-                    if ($delta <= 1 || $delta > 500) continue;
+                    // Below the tax slop is a clean pair, not a mismatch —
+                    // keep this lower bound in step with Pass 1 so a 2-3¢
+                    // tax-rounding drift never nags the cashier. (Sarah
+                    // 2026-07-03.)
+                    if ($delta <= $taxSlopCents || $delta > 500) continue;
                     $gap = abs(($cpTs[$cp->id] ?? 0) - ($txTs[$tx->id] ?? 0));
                     // Time-proximity guard: don't claim a Clover swipe
                     // from a totally different hour as a "mismatch" for
