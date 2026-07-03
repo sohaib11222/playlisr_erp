@@ -282,7 +282,7 @@
             <div class="label"><span class="chan call">Call</span> / <span class="chan text">Text</span> &nbsp;Do you buy records?</div>
             <p class="say">Yes! Please bring your collection into either store and we'll give you a fair quote. Do you need the address?</p>
             <div class="label" style="margin-top:12px"><span class="chan call">Call</span> / <span class="chan text">Text</span> &nbsp;Big collection</div>
-            <p class="say">No appointment needed &mdash; just bring it by either store. For a large collection, 10 boxes or more, we can even arrange a house pickup.</p>
+            <p class="say">No appointment needed &mdash; just bring it by either store. For a large estate collection, 10 boxes or more, we can arrange a house pickup. Please share some details about what you have (genres, collection size, some titles) and we'll have a buyer get back to you.</p>
         </div>
 
         <div class="callout"><strong>Get the details, not a price.</strong> Collect format, quantity, a few titles, and photos, plus their name and number, and pass it to a buyer. Never put a dollar figure on it over the phone.</div>
