@@ -214,7 +214,7 @@
             <span><span class="prio high">High priority</span> A sale or a buy on the line &mdash; give it full effort.</span>
             <span><span class="prio low">Quick</span> Fast info &mdash; answer warmly in under a minute.</span>
         </div>
-        <p class="tree-foot">Not sure of an answer? Say: &ldquo;Great question &mdash; let me double-check and get right back to you,&rdquo; take their number, and follow up. Need a person? See <a href="#coworker">reaching a coworker</a>. However it ends, <a href="#visit">invite them into the store</a>.</p>
+        <p class="tree-foot">Not sure of an answer? Say &ldquo;Checking in with the cashiers at the store&hellip;&rdquo;, find out, and give them a real answer before you hang up. Need a person? See <a href="#coworker">reaching a coworker</a>. However it ends, <a href="#visit">invite them into the store</a>.</p>
     </nav>
 
     {{-- 1 --}}
@@ -229,7 +229,7 @@
             <p class="say">Hi! Thanks for reaching out to Nivessa Records. What are you looking for?</p>
         </div>
 
-        <div class="callout"><strong>If you don't know the answer, never guess.</strong> Say: &ldquo;Great question &mdash; let me double-check and get right back to you,&rdquo; take their name and number, and make sure someone follows up. Nothing gets ignored.</div>
+        <div class="callout"><strong>If you don't know the answer, never guess.</strong> Say &ldquo;Checking in with the cashiers at the store&hellip;&rdquo;, find out, and give them a real answer. If it truly needs a follow-up, take their name and number and make sure someone handles it. Nothing gets ignored.</div>
 
         <h3>Words &amp; the way you say them</h3>
         <div class="word-swap">
@@ -239,7 +239,7 @@
             <div class="cell no"><s>Buddy</s>, bro, pal, boss, my friend, brother</div>
             <div class="cell yes">Sure, what can I help you find?</div>
             <div class="cell no">Yeah&hellip; what do you want?</div>
-            <div class="cell yes">We don't have that one here &mdash; let me check our other store and warehouse.</div>
+            <div class="cell yes">We don't have that one here &mdash; but we may have it at our other store or the warehouse.</div>
             <div class="cell no">We don't have it. (and stop)</div>
             <div class="cell yes">Looking this up for you!</div>
             <div class="cell no">Hold on. (silence)</div>
@@ -265,9 +265,9 @@
             <div class="label"><span class="chan call">Call</span> While you check</div>
             <p class="say">Looking this up for you!</p>
             <div class="label" style="margin-top:10px"><span class="chan text">Text</span> Not sure / not online yet</div>
-            <p class="say">Let me check for you! We get new and used records in every day, so if you don't see it on <a href="https://nivessa.com" target="_blank" rel="noopener">nivessa.com</a>, we're happy to dig &mdash; I'll get right back to you.</p>
+            <p class="say">We get new and used records in every day! If you don't see it on <a href="https://nivessa.com" target="_blank" rel="noopener">nivessa.com</a>, we're happy to dig for you.</p>
             <div class="label" style="margin-top:14px"><span class="chan call">Call</span> Not here right now</div>
-            <p class="say">We don't have that one here, but let me check our other store and warehouse &mdash; maybe we can find it there.</p>
+            <p class="say">We don't have that one here, but we may have it at our other store or the warehouse.</p>
             <div class="label" style="margin-top:10px"><span class="chan text">Text</span> The &ldquo;no, but&hellip;&rdquo;</div>
             <p class="say">No copy on CD right now, but we've got it on vinyl! Want me to hold it under your name, or order the CD in for you?</p>
         </div>
@@ -284,7 +284,7 @@
             <div class="label"><span class="chan call">Call</span> / <span class="chan text">Text</span> &nbsp;Do you buy records?</div>
             <p class="say">Yes! Please bring your collection into either store and we'll give you a fair quote. Do you need the address?</p>
             <div class="label" style="margin-top:12px"><span class="chan call">Call</span> / <span class="chan text">Text</span> &nbsp;Big collection</div>
-            <p class="say">No appointment needed &mdash; just bring it by either store. For a large estate collection, 10 boxes or more, we can arrange a house pickup. Please share some details about what you have (genres, collection size, some titles) and we'll have a buyer get back to you.</p>
+            <p class="say">No appointment needed &mdash; just bring it by either store. For a large estate collection, 10 boxes or more, we can arrange a house pickup. Please share some details about what you have (genres, collection size, some titles) and a Nivessa buyer will reach out with a quote.</p>
         </div>
 
         <div class="callout"><strong>Get the details, not a price.</strong> Collect format, quantity, a few titles, and photos, plus their name and number, and pass it to a buyer. Never put a dollar figure on it over the phone.</div>
@@ -330,7 +330,7 @@
             </div>
             <div class="qa">
                 <p class="q">&ldquo;Where's my order?&rdquo;</p>
-                <span class="say">Let me get that looked up for you &mdash; what's your name and order number? I'll have our shipping team follow up.</span>
+                <span class="say">What's your name and order number? Our shipping team will look it up and reach out to you.</span>
                 <p class="note">Take name + order number and pass it to the shipping team.</p>
             </div>
         </div>
@@ -416,7 +416,7 @@
                     <li>Say &ldquo;we don't have it&rdquo; before checking the other store + warehouse</li>
                     <li>Give a flat &ldquo;no&rdquo; with no alternative</li>
                     <li>Quote a price on a collection over the phone</li>
-                    <li>Guess at an answer &mdash; double-check instead</li>
+                    <li>Guess at an answer &mdash; find out for sure instead</li>
                     <li>Leave someone with no direct reply</li>
                     <li>Contact a coworker who's off today</li>
                 </ul>
