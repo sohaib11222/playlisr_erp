@@ -233,16 +233,16 @@
 
         <h3>Words &amp; the way you say them</h3>
         <div class="word-swap">
-            <div class="h no">Skip these</div>
-            <div class="h yes">Say this instead</div>
-            <div class="cell no"><s>Buddy</s>, bro, pal, boss, my friend, brother</div>
+            <div class="h yes">What we say</div>
+            <div class="h no">What we don't say</div>
             <div class="cell yes">Their name if you have it, otherwise just talk to them</div>
-            <div class="cell no">Yeah&hellip; what do you want?</div>
+            <div class="cell no"><s>Buddy</s>, bro, pal, boss, my friend, brother</div>
             <div class="cell yes">Sure, what can I help you find?</div>
-            <div class="cell no">We don't have it. (and stop)</div>
+            <div class="cell no">Yeah&hellip; what do you want?</div>
             <div class="cell yes">We don't have that one here &mdash; let me check our other store and warehouse.</div>
-            <div class="cell no">Hold on. (silence)</div>
+            <div class="cell no">We don't have it. (and stop)</div>
             <div class="cell yes">Looking this up for you!</div>
+            <div class="cell no">Hold on. (silence)</div>
         </div>
 
         <div class="callout"><strong>Never call a customer &ldquo;buddy&rdquo; or &ldquo;bro.&rdquo;</strong> Use their name if they gave it, or just speak to them directly. Please, thank you, and no problem go a long way.</div>
@@ -404,7 +404,7 @@
                     <li>Update the ERP when the count is wrong</li>
                     <li>Always end with a yes, or a no plus an alternative</li>
                     <li>Point people to <a href="https://nivessa.com" target="_blank" rel="noopener">nivessa.com</a> when it answers them</li>
-                    <li>Not sure? &ldquo;Let me double-check and get right back to you&rdquo;</li>
+                    <li>Not sure? &ldquo;Checking in with the cashiers at the store&hellip;&rdquo;</li>
                     <li>Invite every caller into the store</li>
                 </ul>
             </div>
@@ -417,7 +417,7 @@
                     <li>Give a flat &ldquo;no&rdquo; with no alternative</li>
                     <li>Quote a price on a collection over the phone</li>
                     <li>Guess at an answer &mdash; double-check instead</li>
-                    <li>Leave someone on a silent hold</li>
+                    <li>Leave someone with no direct reply</li>
                     <li>Contact a coworker who's off today</li>
                 </ul>
             </div>
