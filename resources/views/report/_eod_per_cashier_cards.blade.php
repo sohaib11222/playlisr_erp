@@ -1,4 +1,4 @@
-{{-- Per-cashier daily reconciliation — one compact ROW per cashier.
+{{-- Per-cashier daily reconciliation - one compact ROW per cashier.
 
      Shared between /reports/clover-eod-reconciliation and
      /pos/recent-feed (Sarah 2026-05-13: moved the daily-cash flow onto
@@ -8,7 +8,7 @@
 
      Sarah 2026-07-03: collapsed from full cards to one line per
      cashier. The always-visible row carries the money (ERP / Clover /
-     diff / drawer) plus a FLAGS cluster that calls out anything weird —
+     diff / drawer) plus a FLAGS cluster that calls out anything weird -
      e.g. a safe drop logged at a store with no safe (Pico). Click the
      row to expand the full breakdown, notes and ✓ sign-off.
 
@@ -51,7 +51,7 @@
         /* Reconciled rows read muted (JS toggles .cc-collapsed on sign-off). */
         .cc-card.cc-collapsed { opacity:.65; }
 
-        /* Flags cluster — the "anything weird" callouts. */
+        /* Flags cluster - the "anything weird" callouts. */
         .cc-flags { display:inline-flex; flex-wrap:wrap; gap:5px; }
         .cc-flag { display:inline-block; padding:1px 6px; border-radius:10px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
         .cc-flag.ok { background:#dcfce7; color:#166534; }
@@ -147,13 +147,13 @@
                             // ---- FLAGS: anything weird worth a manager's eye ----
                             $flags = [];
                             if ($safeDrop > 0 && !$storeHasSafe) {
-                                $flags[] = ['bad', 'Safe drop $' . number_format($safeDrop, 0) . ' — ' . $locNameDisplay . ' has no safe', 'Cash logged as dropped to a safe, but this store has no safe. Find out where the money actually went.'];
+                                $flags[] = ['bad', 'Safe drop $' . number_format($safeDrop, 0) . ' - ' . $locNameDisplay . ' has no safe', 'Cash logged as dropped to a safe, but this store has no safe. Find out where the money actually went.'];
                             }
                             if ($overSwipe >= 10) {
-                                $flags[] = ['bad', 'Over-swipe +$' . number_format($overSwipe, 2), 'Clover collected more than was rung into the POS — the classic theft tell.'];
+                                $flags[] = ['bad', 'Over-swipe +$' . number_format($overSwipe, 2), 'Clover collected more than was rung into the POS - the classic theft tell.'];
                             }
                             if ($missingClover) {
-                                $flags[] = ['warn', 'No Clover match', 'Cashier rang sales but no Clover swipes matched — either all cash, or the sync is stale.'];
+                                $flags[] = ['warn', 'No Clover match', 'Cashier rang sales but no Clover swipes matched - either all cash, or the sync is stale.'];
                             }
                             if ($cashVar !== null && abs($cashVar) >= 5) {
                                 $flags[] = ['bad', 'Drawer ' . ($cashVar < 0 ? 'short' : 'over') . ' $' . number_format(abs($cashVar), 2), 'Counted cash is off from expected by more than $5.'];
@@ -185,7 +185,7 @@
                             if (!empty($e['shift_start'])) {
                                 $a = $fmt($e['shift_start']);
                                 $b = $shiftStatus === 'open' ? 'open' : $fmt($e['shift_end']);
-                                if ($a) $shiftLabel = $a . ' → ' . ($b ?: '—');
+                                if ($a) $shiftLabel = $a . ' → ' . ($b ?: '-');
                             }
                             $txnCount = (int) ($e['txn_count'] ?? 0);
                             $diffOk = abs($overSwipe) < 0.01;
@@ -219,12 +219,12 @@
                             <div class="cc-body">
                             <div class="cc-section">
                                 <div class="cc-sec-h">What they sold @if($txnCount)<span style="font-weight:500; color:#9ca3af;">· {{ $txnCount }} sale{{ $txnCount === 1 ? '' : 's' }}</span>@endif</div>
-                                <div class="cc-line sum"><span class="cc-label" title="ERP Sales (gross) = sum of final_total — what customers actually paid for this cashier's sales. Matches per-store and Day Totals.">ERP Sales</span><span class="cc-val">${{ number_format($totalSold, 2) }}</span></div>
+                                <div class="cc-line sum"><span class="cc-label" title="ERP Sales (gross) = sum of final_total - what customers actually paid for this cashier's sales. Matches per-store and Day Totals.">ERP Sales</span><span class="cc-val">${{ number_format($totalSold, 2) }}</span></div>
                                 <div class="cc-line"><span class="cc-label minor" title="Clover swipes attributed to this cashier (gross, customer-paid). Matches the per-store banner.">Clover Sales (this cashier)</span><span class="cc-val">${{ number_format($cardClover, 2) }}</span></div>
                                 <div class="cc-line"><span class="cc-label minor" style="color:{{ $diffOk ? '#2E6F40' : '#8B2C2C' }};">Diff (Clover − ERP)</span><span class="cc-val" style="color:{{ $diffOk ? '#2E6F40' : '#8B2C2C' }}; font-weight:700;">{{ $diffOk ? '$0.00 ✓' : (($overSwipe > 0 ? '+' : '') . '$' . number_format($overSwipe, 2)) }}</span></div>
-                                <div class="cc-line"><span class="cc-label minor" style="color:#8A7C6A; font-size:11px;" title="Net (pre-tax) — same sales without tax + fees. Useful for cross-checking Clover's Net Sales dashboard.">Net (pre-tax, both sides)</span><span class="cc-val" style="color:#8A7C6A; font-size:11px;">${{ number_format($totalSoldNet, 2) }} / ${{ number_format($cardCloverNet, 2) }}</span></div>
+                                <div class="cc-line"><span class="cc-label minor" style="color:#8A7C6A; font-size:11px;" title="Net (pre-tax) - same sales without tax + fees. Useful for cross-checking Clover's Net Sales dashboard.">Net (pre-tax, both sides)</span><span class="cc-val" style="color:#8A7C6A; font-size:11px;">${{ number_format($totalSoldNet, 2) }} / ${{ number_format($cardCloverNet, 2) }}</span></div>
                                 @if($missingClover)
-                                    <div class="cc-line"><span class="cc-label" style="color:#92400e;">⚠ No Clover swipes matched — sync may be stale</span><span class="cc-val"></span></div>
+                                    <div class="cc-line"><span class="cc-label" style="color:#92400e;">⚠ No Clover swipes matched - sync may be stale</span><span class="cc-val"></span></div>
                                 @endif
                                 @if($overSwipe >= 1)
                                     <div class="cc-line"><span class="cc-label" style="color:#b91c1c;">⚠ Clover collected more than rung</span><span class="cc-val bad">+${{ number_format($overSwipe, 2) }}</span></div>
@@ -234,11 +234,11 @@
                             <div class="cc-section">
                                 <div class="cc-sec-h">Cash drawer <span class="cc-flag {{ $cashCls }}">{{ $cashLabel }}</span></div>
                                 @if(!$noDrawerCounts)
-                                    <div class="cc-line"><span class="cc-label minor">Opening cash</span><span class="cc-val {{ is_null($opening) ? 'muted' : '' }}">{{ is_null($opening) ? '—' : '$' . number_format($opening, 2) }}</span></div>
+                                    <div class="cc-line"><span class="cc-label minor">Opening cash</span><span class="cc-val {{ is_null($opening) ? 'muted' : '' }}">{{ is_null($opening) ? '-' : '$' . number_format($opening, 2) }}</span></div>
                                 @endif
-                                <div class="cc-line"><span class="cc-label minor" title="Sum of transaction_payments where method='cash' for this cashier's day. Authoritative source for cash collected — not the ERP–Clover gap.">+ Cash sales (rung as cash)</span><span class="cc-val">${{ number_format($cashRung, 2) }}</span></div>
+                                <div class="cc-line"><span class="cc-label minor" title="Sum of transaction_payments where method='cash' for this cashier's day. Authoritative source for cash collected - not the ERP–Clover gap.">+ Cash sales (rung as cash)</span><span class="cc-val">${{ number_format($cashRung, 2) }}</span></div>
                                 @if($cashBuys > 0 || $hasShift)
-                                    <div class="cc-line"><span class="cc-label minor">− Collection buys (cash)</span><span class="cc-val {{ $hasShift ? '' : 'muted' }}">{{ $hasShift ? '$' . number_format($cashBuys, 2) : '—' }}</span></div>
+                                    <div class="cc-line"><span class="cc-label minor">− Collection buys (cash)</span><span class="cc-val {{ $hasShift ? '' : 'muted' }}">{{ $hasShift ? '$' . number_format($cashBuys, 2) : '-' }}</span></div>
                                 @endif
                                 @if($cashRefunds > 0)
                                     <div class="cc-line"><span class="cc-label minor">− Cash refunds</span><span class="cc-val">$ {{ number_format($cashRefunds, 2) }}</span></div>
@@ -256,16 +256,16 @@
                                     <div class="cc-line"><span class="cc-label minor">{{ $cashOtherNet >= 0 ? '+' : '−' }} Other movements</span><span class="cc-val">${{ number_format(abs($cashOtherNet), 2) }}</span></div>
                                 @endif
                                 @if($safeDrop > 0)
-                                    <div class="cc-line {{ $storeHasSafe ? '' : 'bad-line' }}"><span class="cc-label minor" title="Safe drops physically remove cash from the drawer mid-shift (Sarah's >$500 → drop excess in $100 rule). Subtracted from expected because the drawer doesn't have this cash at close.">− Safe drops{{ $storeHasSafe ? '' : ' — ' . $locNameDisplay . ' has NO safe' }}</span><span class="cc-val">${{ number_format($safeDrop, 2) }}</span></div>
+                                    <div class="cc-line {{ $storeHasSafe ? '' : 'bad-line' }}"><span class="cc-label minor" title="Safe drops physically remove cash from the drawer mid-shift (Sarah's >$500 → drop excess in $100 rule). Subtracted from expected because the drawer doesn't have this cash at close.">− Safe drops{{ $storeHasSafe ? '' : ' - ' . $locNameDisplay . ' has NO safe' }}</span><span class="cc-val">${{ number_format($safeDrop, 2) }}</span></div>
                                 @endif
                                 @if($noDrawerCounts)
                                     <div class="cc-line" style="margin-top:6px; color:#9ca3af; font-size:12px;">
-                                        <span class="cc-label minor">Register not opened/closed — no drawer to reconcile. Leave a note below if expected.</span>
+                                        <span class="cc-label minor">Register not opened/closed - no drawer to reconcile. Leave a note below if expected.</span>
                                     </div>
                                 @else
-                                    <div class="cc-line sum"><span class="cc-label">Expected in drawer</span><span class="cc-val {{ is_null($expected) ? 'muted' : '' }}">{{ is_null($expected) ? '—' : '$' . number_format($expected, 2) }}</span></div>
-                                    <div class="cc-line"><span class="cc-label">Counted at close</span><span class="cc-val {{ is_null($reported) ? 'muted' : '' }}">{{ is_null($reported) ? '—' : '$' . number_format($reported, 2) }}</span></div>
-                                    <div class="cc-line sum"><span class="cc-label">Variance</span><span class="cc-val {{ $cashCls }}">{{ is_null($cashVar) ? '—' : (($cashVar >= 0 ? '+' : '') . '$' . number_format($cashVar, 2)) }}</span></div>
+                                    <div class="cc-line sum"><span class="cc-label">Expected in drawer</span><span class="cc-val {{ is_null($expected) ? 'muted' : '' }}">{{ is_null($expected) ? '-' : '$' . number_format($expected, 2) }}</span></div>
+                                    <div class="cc-line"><span class="cc-label">Counted at close</span><span class="cc-val {{ is_null($reported) ? 'muted' : '' }}">{{ is_null($reported) ? '-' : '$' . number_format($reported, 2) }}</span></div>
+                                    <div class="cc-line sum"><span class="cc-label">Variance</span><span class="cc-val {{ $cashCls }}">{{ is_null($cashVar) ? '-' : (($cashVar >= 0 ? '+' : '') . '$' . number_format($cashVar, 2)) }}</span></div>
                                 @endif
                             </div>
 
@@ -279,9 +279,9 @@
                                 $ocCount = count($details['other_channels'] ?? []);
                                 $detailsTotal = $cuCount + $euCount + $amCount + $mcCount + $bCount + $ocCount;
                                 $tFmt = function ($t) {
-                                    if (!$t) return '—';
+                                    if (!$t) return '-';
                                     try { return \Carbon\Carbon::parse($t)->setTimezone(config('app.timezone'))->format('g:i a'); }
-                                    catch (\Exception $ex) { return '—'; }
+                                    catch (\Exception $ex) { return '-'; }
                                 };
                                 $isBagFee = function ($diffDollars) {
                                     $cents = (int) round(abs((float) $diffDollars) * 100);
@@ -333,7 +333,7 @@
                                                 <div style="display:flex; justify-content:space-between; padding:2px 0; border-bottom:1px dotted #f3f4f6;">
                                                     <span style="color:#6b7280;">
                                                         {{ $tFmt($row->ts) }}
-                                                        @if($bagHint)<span style="color:#1d4ed8; font-size:10px; font-weight:700; margin-left:4px;" title="Diff is an exact multiple of $0.12 — likely bag fee not added on Clover">· likely bag fee</span>@endif
+                                                        @if($bagHint)<span style="color:#1d4ed8; font-size:10px; font-weight:700; margin-left:4px;" title="Diff is an exact multiple of $0.12 - likely bag fee not added on Clover">· likely bag fee</span>@endif
                                                     </span>
                                                     <span style="text-align:right;">
                                                         <a href="{{ route('sell.printInvoice', $row->transaction_id) }}" target="_blank" style="color:#1f2937; font-weight:600; text-decoration:none;">

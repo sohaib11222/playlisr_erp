@@ -9,7 +9,7 @@
     // a manual reload. Pauses while the user has a focused select/input
     // (changing filters), and skips refresh when the tab is hidden so
     // background tabs don't keep hammering the server. Disabled on
-    // past-day views — yesterday's data won't change, no point reloading.
+    // past-day views - yesterday's data won't change, no point reloading.
     (function () {
         var IS_TODAY = {{ $is_today ? 'true' : 'false' }};
         if (!IS_TODAY) return;
@@ -139,7 +139,7 @@
 
     /* Clover-only card: a charge that hit the terminal but has no ERP sale.
        Distinct purple-tinted accent so it's obvious in the feed without
-       being alarming-red — these need investigation, not a fire drill. */
+       being alarming-red - these need investigation, not a fire drill. */
     .rf-card.rf-clover-orphan { border-left: 4px solid #7B3FA0; }
     .rf-card.rf-clover-orphan .rf-orphan-tag { display: inline-block; padding: 2px 8px;
         border-radius: 4px; background: #EFE0F5; color: #5E2E80;
@@ -162,7 +162,7 @@
     // Map a Nivessa category name to a CSS class for color-coding the
     // per-line category tag. Substring match (case-insensitive) so DB
     // names like "Used Vinyl", "CDs (Used)", "7\", 45 RPM" all hit the
-    // right bucket. Order matters — check sealed variants first because
+    // right bucket. Order matters - check sealed variants first because
     // "sealed cd" also contains "cd".
     $rfCatClass = function ($name) {
         $n = strtolower(trim((string) $name));
@@ -228,7 +228,7 @@
         @foreach($tz_debug['samples'] as $i => $s)
             <div style="margin-top:4px; padding-left:6px; border-left:2px solid #E6D58A;">
                 <div>#{{ $i + 1 }} paid_at = <strong>{{ $s['paid_at_raw'] }}</strong> · paid_on = <strong>{{ $s['paid_on_raw'] }}</strong> · loc={{ $s['loc_id'] ?? '(null)' }} · $${{ $s['amount'] }}</div>
-                <div style="padding-left:14px;">createdTime (Clover, UTC unix-ms) = {{ $s['createdMs'] ?: '—' }} → {{ $s['createdUtc'] ?: '—' }} → {{ $s['createdLa'] ?: '—' }}</div>
+                <div style="padding-left:14px;">createdTime (Clover, UTC unix-ms) = {{ $s['createdMs'] ?: '-' }} → {{ $s['createdUtc'] ?: '-' }} → {{ $s['createdLa'] ?: '-' }}</div>
                 <div style="padding-left:14px;">parse(paid_at, appTz) → LA = <strong>{{ $s['parsedAsAppTz'] }}</strong></div>
             </div>
         @endforeach
@@ -256,7 +256,7 @@
     @endphp
     {{-- Sarah 2026-05-13: shout when a cashier left the register open.
          Triggered when a shift was carried overnight or when a second
-         cashier opened on top at the same store. Informational only —
+         cashier opened on top at the same store. Informational only -
          no "close their register" button (typing someone else's closing
          count is a theft risk). The cashier closes their own shift; if
          they can't, the system auto-closes at 12h; admin's escape hatch
@@ -271,7 +271,7 @@
                     <strong>{{ $r['cashier'] }}</strong>
                     @if($r['reason'] === 'auto_closed')
                         opened at <strong>{{ $r['location'] }}</strong>
-                        on {{ $r['opened_at'] }} — system auto-closed at {{ $r['closed_at'] }}
+                        on {{ $r['opened_at'] }} - system auto-closed at {{ $r['closed_at'] }}
                         because the shift went past 12h with no manual close.
                         <span style="display:inline-block; margin-left:6px; padding:2px 8px; background:#F2C9C9; color:#6B1F1F; border-radius:6px; font-size:11px; font-weight:700;">
                             Count not recorded
@@ -280,9 +280,9 @@
                         opened the register at <strong>{{ $r['location'] }}</strong>
                         on {{ $r['opened_at'] }} and never closed it
                         @if($r['reason'] === 'opened_on_top')
-                            — another cashier opened on top, so this shift's closing cash + safe drop weren't recorded.
+                            - another cashier opened on top, so this shift's closing cash + safe drop weren't recorded.
                         @else
-                            — the shift was carried overnight.
+                            - the shift was carried overnight.
                         @endif
                         @if(!empty($r['auto_close_at']))
                             <span style="display:inline-block; margin-left:6px; padding:2px 8px; background:#FBE3A6; color:#5C3F08; border-radius:6px; font-size:11px; font-weight:700;">
@@ -307,7 +307,7 @@
         <script>setTimeout(function(){var el=document.getElementById('rf-sync-flash');if(el)el.style.display='none';},8000);</script>
     @endif
 
-    {{-- Daily reconciliation guide — for whoever is reconciling the feed
+    {{-- Daily reconciliation guide - for whoever is reconciling the feed
          (Fatteen / admins). Gated to the same audience as the per-cashier
          reconciliation below: it names theft signals, so cashiers working
          the feed must not see it. Collapsible so it stays out of the way
@@ -334,7 +334,7 @@
                 </div>
                 <div style="flex:1 1 240px; padding:10px 12px; background:#fff; border:1px solid #E8DCB8; border-radius:8px;">
                     <span style="font-weight:800; color:#1F1B16;">When</span><br>
-                    Every couple of hours. <strong>Under 15¢ off = fine</strong> (rounding / bag fees — it won't flag).
+                    Every couple of hours. <strong>Under 15¢ off = fine</strong> (rounding / bag fees - it won't flag).
                 </div>
             </div>
 
@@ -343,7 +343,7 @@
                 <span style="{{ $rfBadge }}">1</span>
                 <div>
                     <div style="font-weight:800; color:#1F1B16;">Set the filter to “Any discrepancy”</div>
-                    <div style="color:#5A5045;">Clean sales disappear — only rows that need attention stay. Fix each one:</div>
+                    <div style="color:#5A5045;">Clean sales disappear - only rows that need attention stay. Fix each one:</div>
                 </div>
             </div>
 
@@ -351,7 +351,7 @@
             <div style="display:flex; gap:12px; margin-bottom:12px; align-items:flex-start;">
                 <span style="{{ $rfBadge }}">2</span>
                 <div>
-                    <div style="font-weight:800; color:#1F1B16;">In ERP, not in Clover — cash sale</div>
+                    <div style="font-weight:800; color:#1F1B16;">In ERP, not in Clover - and it was a cash sale</div>
                     <div style="color:#5A5045;">Cashier rang the cash in ERP but not on Clover.</div>
                     <div><span style="{{ $rfDo }}">Do:</span> remind them every cash sale must be rung on Clover too.</div>
                 </div>
@@ -359,9 +359,9 @@
             <div style="display:flex; gap:12px; margin-bottom:12px; align-items:flex-start;">
                 <span style="{{ $rfBadge }}">3</span>
                 <div>
-                    <div style="font-weight:800; color:#1F1B16;">In ERP, not in Clover — card sale</div>
+                    <div style="font-weight:800; color:#1F1B16;">In ERP, not in Clover - card sale</div>
                     <div style="color:#5A5045;">It was a card, so it should have hit the terminal.</div>
-                    <div><span style="{{ $rfDo }}">Do:</span> ask the cashier what happened — did the card run? Find where the money is.</div>
+                    <div><span style="{{ $rfDo }}">Do:</span> ask the cashier what happened - did the card run? Find where the money is.</div>
                 </div>
             </div>
             <div style="display:flex; gap:12px; margin-bottom:12px; align-items:flex-start;">
@@ -377,24 +377,24 @@
             <div style="display:flex; gap:12px; margin-bottom:12px; align-items:flex-start;">
                 <span style="{{ $rfBadge }}; background:#B91C1C;">5</span>
                 <div>
-                    <div style="font-weight:800; color:#1F1B16;">Cash drawer — opening must match yesterday’s close</div>
+                    <div style="font-weight:800; color:#1F1B16;">Cash drawer - opening must match yesterday’s close</div>
                     <div style="color:#5A5045;">Check each register below: today’s <strong>opening cash</strong> = what it <strong>closed with yesterday</strong>.</div>
-                    <div><span style="color:#B91C1C; font-weight:800;">If it doesn’t match, cash went missing overnight — this is how we catch theft.</span> Flag it.</div>
+                    <div><span style="color:#B91C1C; font-weight:800;">If it doesn’t match, cash went missing overnight - this is how we catch theft.</span> Flag it.</div>
                 </div>
             </div>
 
             {{-- Legend for the per-cashier rows --}}
             <div style="margin-top:14px; padding:10px 12px; background:#F3ECD9; border-radius:8px; color:#5A5045;">
                 <div style="font-weight:800; color:#1F1B16; margin-bottom:4px;">Reading the rows below</div>
-                <strong>ERP</strong> = rang up · <strong>Clover</strong> = actually swiped — they should match.<br>
+                <strong>ERP</strong> = rang up · <strong>Clover</strong> = actually swiped - they should match.<br>
                 <strong>Diff / Over-swipe</strong> = Clover took more than was rung (the theft tell).<br>
                 <strong>Drawer</strong> = opening + cash − buys vs. what was counted at close.<br>
-                <strong>⚑ flags</strong> call out anything weird — over-swipes, drawer shorts, missing Clover, or a safe drop at a store with no safe.
+                <strong>⚑ flags</strong> call out anything weird - over-swipes, drawer shorts, missing Clover, or a safe drop at a store with no safe.
             </div>
 
             {{-- Tender fix + done --}}
             <div style="margin-top:12px; padding-top:10px; border-top:1px solid #E8DCB8; color:#5A5045;">
-                <strong>Wrong tender?</strong> (card rang as cash, or vice-versa) — open <strong>“Fix sale (date / method)”</strong> under the sale and set it right. Only <strong>Sarah, Jon, or Fatteen</strong> can change it; it’s undoable.
+                <strong>Wrong tender?</strong> (card rang as cash, or vice-versa) - open <strong>“Fix sale (date / method)”</strong> under the sale and set it right. Only <strong>Sarah, Jon, or Fatteen</strong> can change it; it’s undoable.
             </div>
             <div style="margin-top:10px; color:#2E6F40; font-weight:700;">
                 ✓ Done when nothing’s left under the filter except sub-dollar cent differences.
@@ -476,14 +476,14 @@
         @php
             // Sarah 2026-05-12: pre-compute per-store status tiers so the
             // banner can shout when any store is off. Tiers:
-            //   matched   $0.00 exact — green ✓
-            //   rounding  $0.01-$0.99 — yellow ◐ (tax/fee dust, low concern)
-            //   off       ≥$1.00      — RED ⚠ (real keying error, fix it)
+            //   matched   $0.00 exact - green ✓
+            //   rounding  $0.01-$0.99 - yellow ◐ (tax/fee dust, low concern)
+            //   off       ≥$1.00      - RED ⚠ (real keying error, fix it)
             // Threshold aligns with Sarah's 429d301 "≥\$1 = keying error" rule.
             //
             // Grace period: Clover charges in the last 10 min that have no
             // ERP ring yet (pending) are subtracted from the diff before
-            // tier classification — cashiers often run the card a beat
+            // tier classification - cashiers often run the card a beat
             // before they ring the sale. The raw Diff column still shows
             // the un-adjusted number so Sarah sees the live state.
             $storeStatus = [];
@@ -492,7 +492,7 @@
             $pendingStores = [];
             foreach ($byStore as $sk => $sv) {
                 // Headline Diff uses the per-store "true diff" from
-                // dayByStoreTotals — auto-picks gross-vs-gross (Pico) or
+                // dayByStoreTotals - auto-picks gross-vs-gross (Pico) or
                 // Clover-net-vs-ERP (HW) so tax-accounting differences
                 // don't fire false "STORE OFF" alarms. Falls back to the
                 // raw gross diff if the helper hasn't populated 'diff'.
@@ -528,7 +528,7 @@
 
         <div style="background:#FFFFFF; border:1px solid {{ $anyOff ? '#D94B4B' : '#ECE3CF' }}; border-width:{{ $anyOff ? '2px' : '1px' }}; border-radius:12px; padding:0; margin-bottom:16px; box-shadow:0 1px 3px rgba(31,27,22,.08); overflow:hidden;">
 
-            {{-- ALARM STRIP — only shown when ≥$1 discrepancy exists. Sized
+            {{-- ALARM STRIP - only shown when ≥$1 discrepancy exists. Sized
                  big and red so Sarah can't miss it. Lists which stores are
                  off and by how much before she reads any other number. Diff
                  used here is *after* subtracting pending Clover so the
@@ -550,19 +550,19 @@
                 </div>
             @endif
 
-            {{-- PENDING strip — shown whenever there's a Clover charge in the
+            {{-- PENDING strip - shown whenever there's a Clover charge in the
                  last 10 min with no ERP ring yet. Lives below any alarm/✓
                  strip so it's always visible. Yellow ⏱ to signal "soft hold,
                  not a problem yet". --}}
             @if($anyPending)
                 <div style="background:#FDF2D7; color:#7A5A12; padding:8px 20px; font-size:13px; font-weight:700; letter-spacing:.02em; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
                     <span style="font-size:16px;">⏱</span>
-                    <span style="text-transform:uppercase; letter-spacing:.06em;">Pending — give it a minute:</span>
+                    <span style="text-transform:uppercase; letter-spacing:.06em;">Pending - give it a minute:</span>
                     @foreach($pendingStores as $ps)
                         <span style="font-variant-numeric:tabular-nums;">{{ $ps['name'] }} ${{ number_format($ps['amount'], 2) }} ({{ $ps['count'] }})</span>
                         @if(!$loop->last)<span style="opacity:.7;">·</span>@endif
                     @endforeach
-                    <span style="opacity:.7; font-weight:600;">— last-10-min Clover, alarm held off</span>
+                    <span style="opacity:.7; font-weight:600;">- last-10-min Clover, alarm held off</span>
                 </div>
             @endif
 
@@ -637,7 +637,7 @@
                 </div>
 
                 {{-- Sarah 2026-05-12: dedicated Whatnot row(s). Same big-number
-                     layout as ERP/Clover rows but only the ERP column —
+                     layout as ERP/Clover rows but only the ERP column -
                      Whatnot doesn't hit Clover, so no Diff to compute. One
                      row per store with Whatnot activity that day. Purple
                      accent so it reads as a separate channel from the main
@@ -669,7 +669,7 @@
                                 </div>
                                 <div style="flex:1; min-width:140px;">
                                     <div style="font-size:11px; color:#5A5045; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Clover Sales</div>
-                                    <div style="font-size:20px; font-weight:600; color:#BFB096; font-variant-numeric: tabular-nums;">—</div>
+                                    <div style="font-size:20px; font-weight:600; color:#BFB096; font-variant-numeric: tabular-nums;">-</div>
                                     <div style="font-size:11px; color:#8A7C6A; font-style:italic;">paid through Whatnot</div>
                                 </div>
                                 <div style="flex:1; min-width:140px;">
@@ -723,8 +723,8 @@
                                                     <td style="padding:2px 6px; color:#5A5045;">{{ \Carbon\Carbon::parse($c['paid_at'])->format('g:i a') }}</td>
                                                     <td style="padding:2px 6px; text-align:right;">${{ number_format($c['amount'], 2) }}</td>
                                                     <td style="padding:2px 6px; text-align:right; color:#5A5045;">${{ number_format($c['net'], 2) }}</td>
-                                                    <td style="padding:2px 6px; color:#5A5045;">{{ $c['employee'] ?: '—' }}</td>
-                                                    <td style="padding:2px 6px; color:#5A5045;">{{ $c['card'] ?: '—' }}</td>
+                                                    <td style="padding:2px 6px; color:#5A5045;">{{ $c['employee'] ?: '-' }}</td>
+                                                    <td style="padding:2px 6px; color:#5A5045;">{{ $c['card'] ?: '-' }}</td>
                                                 </tr>
                                             @endforeach
                                         </tbody>
@@ -902,7 +902,7 @@
             </div>
 
             {{-- Sarah 2026-05-13: break the "Clover-only" count into the
-                 buckets that aren't actually missed sales — Clover refunds
+                 buckets that aren't actually missed sales - Clover refunds
                  pair with ERP sell_returns (not sells, so the matcher
                  misses them); voided/failed Clover rows aren't real
                  charges; rows with no location_id can never match because
@@ -915,7 +915,7 @@
                         <div style="padding:10px 12px; background:#F7F1E3; border-radius:8px;">
                             <div style="font-size:11px; color:#8A7C6A; text-transform:uppercase; letter-spacing:.04em;">Unpaired Clover charges</div>
                             <div style="font-size:22px; font-weight:700; color:#B0451A; font-variant-numeric:tabular-nums;">{{ number_format(max(0, $orphan_real_count - $orphan_null_loc)) }}</div>
-                            <div style="font-size:11px; color:#5A5045; margin-top:2px;">Includes real missed entries AND pairs the matcher couldn't reconcile (±$0.20 / ±12h thresholds). Compare to ERP-only count above — if both are non-zero, many are paired-but-not-matched.</div>
+                            <div style="font-size:11px; color:#5A5045; margin-top:2px;">Includes real missed entries AND pairs the matcher couldn't reconcile (±$0.20 / ±12h thresholds). Compare to ERP-only count above - if both are non-zero, many are paired-but-not-matched.</div>
                         </div>
                         @if($orphan_refund_count > 0)
                             <div style="padding:10px 12px; background:#F7F1E3; border-radius:8px;">
@@ -935,7 +935,7 @@
                             <div style="padding:10px 12px; background:#F7F1E3; border-radius:8px;">
                                 <div style="font-size:11px; color:#8A7C6A; text-transform:uppercase; letter-spacing:.04em;">No location stamped</div>
                                 <div style="font-size:22px; font-weight:700; color:#5A5045; font-variant-numeric:tabular-nums;">{{ number_format($orphan_null_loc) }}</div>
-                                <div style="font-size:11px; color:#8A7C6A; margin-top:2px;">historical sync — can't match</div>
+                                <div style="font-size:11px; color:#8A7C6A; margin-top:2px;">historical sync - can't match</div>
                             </div>
                         @endif
                     </div>
@@ -944,7 +944,7 @@
 
             {{-- Sarah 2026-05-13: "is this sync or matcher?" diagnostic.
                  If a big chunk of orphans have a near-match in the ERP-only
-                 pool, the matcher's ±$0.20/±12h thresholds are too tight —
+                 pool, the matcher's ±$0.20/±12h thresholds are too tight -
                  loosening them would close most of the gap without
                  touching the sync. If the cluster count is non-zero, the
                  sync is generating real near-duplicates worth checking. --}}
@@ -960,7 +960,7 @@
                         <div style="padding:10px 12px; background:#FFFFFF; border-radius:8px; border:1px solid #ECE3CF;">
                             <div style="font-size:11px; color:#8A7C6A; text-transform:uppercase; letter-spacing:.04em;">Near-duplicate clusters</div>
                             <div style="font-size:22px; font-weight:700; color:{{ $orphan_dup_cluster_count > 0 ? '#B0451A' : '#1F8B3F' }}; font-variant-numeric:tabular-nums;">{{ number_format($orphan_dup_cluster_count) }}</div>
-                            <div style="font-size:11px; color:#5A5045; margin-top:2px;">Orphan groups sharing (amount, minute, card last4). Non-zero = the sync probably is inserting dupes — {{ number_format($orphan_dup_cluster_rows) }} rows affected.</div>
+                            <div style="font-size:11px; color:#5A5045; margin-top:2px;">Orphan groups sharing (amount, minute, card last4). Non-zero = the sync probably is inserting dupes - {{ number_format($orphan_dup_cluster_rows) }} rows affected.</div>
                         </div>
                     </div>
                     <div style="margin-top:10px; font-size:12px; color:#5A5045;">
@@ -968,9 +968,9 @@
                         @if($orphan_dup_cluster_count > 0)
                             sync IS producing near-duplicates ({{ number_format($orphan_dup_cluster_rows) }} suspicious rows).
                         @elseif($orphan_nearmatch_count > ($no_erp_count / 2))
-                            sync looks fine. Most orphans have a near-match in ERP-only — the matcher is too strict.
+                            sync looks fine. Most orphans have a near-match in ERP-only - the matcher is too strict.
                         @else
-                            sync looks clean, near-match rate is low — the orphans are mostly real missed entries.
+                            sync looks clean, near-match rate is low - the orphans are mostly real missed entries.
                         @endif
                     </div>
                 </div>
@@ -978,7 +978,7 @@
         @else
         {{-- Sarah 2026-05-12: 2-column day-mode layout. Each active store
              gets its own column with its sales + Clover orphans interleaved
-             chronologically. LA-normalized epoch sort, same as before — see
+             chronologically. LA-normalized epoch sort, same as before - see
              parseCloverPaidAtLa for the mixed-TZ background. --}}
         @php
             // Build per-store $feedItems collections. Stores with no
@@ -1008,7 +1008,7 @@
                     // only" filter still uses the same per-store buckets.
                     // Store-credit-adjusted expectation (see controller):
                     // compare Clover to the card portion, not final_total, and
-                    // against gross OR net-of-tax (HW pre-tax) — whichever fits.
+                    // against gross OR net-of-tax (HW pre-tax) - whichever fits.
                     $sExpectedCents = isset($clover_expected_cents[$s->id])
                         ? (int) $clover_expected_cents[$s->id]
                         : (int) round((float) $s->final_total * 100);
@@ -1093,7 +1093,7 @@
                 $cpWhen = $cpDt->isToday() ? $cpDt->format('g:i a') : $cpDt->format('M j · g:i a');
                 $cpStore = $cp->location_id && isset($business_locations[$cp->location_id])
                     ? $business_locations[$cp->location_id]
-                    : '—';
+                    : '-';
                 $cpAmount = (float) $cp->amount;
                 $cpCardBrand = $cp->card_type ? strtoupper($cp->card_type) : '';
                 $cpCardLast4 = $cp->card_last4 ? '••' . $cp->card_last4 : '';
@@ -1121,7 +1121,7 @@
                         @if($orphanCashierName)
                             <span class="rf-cashier" title="Cashier whose pos_duty was 'cashier' at this store within 8h of the charge">· <strong>Cashier: {{ $orphanCashierName }}</strong></span>
                         @elseif(!empty($cp->employee_name))
-                            <span class="rf-cashier" style="color:#7c2d12;" title="Fell back to Clover's own employee pin — no ERP pos_duty=cashier event found for this store in the 8h before the swipe. If this name is wrong, the cashier needs to set their duty in /pos/select-duty at shift start.">· <strong>Clover clock: {{ $cp->employee_name }}</strong></span>
+                            <span class="rf-cashier" style="color:#7c2d12;" title="Fell back to Clover's own employee pin - no ERP pos_duty=cashier event found for this store in the 8h before the swipe. If this name is wrong, the cashier needs to set their duty in /pos/select-duty at shift start.">· <strong>Clover clock: {{ $cp->employee_name }}</strong></span>
                         @else
                             <span class="rf-cashier" style="color:#8A7C6A;" title="No ERP pos_duty=cashier event at this store in the 8h before the swipe, and Clover didn't record a terminal pin either.">· cashier unknown</span>
                         @endif
@@ -1129,11 +1129,11 @@
                 </div>
                 <div class="rf-orphan-note">
                     @if($isPending)
-                        Clover charged <strong>${{ number_format($cpAmount, 2) }}</strong> in the last few minutes — ERP ring not in yet. Please give it a minute.
+                        Clover charged <strong>${{ number_format($cpAmount, 2) }}</strong> in the last few minutes - ERP ring not in yet. Please give it a minute.
                     @elseif($dupOfTxId)
-                        Clover charged <strong>${{ number_format($cpAmount, 2) }}</strong> — same Clover order as paired sale <a href="{{ url('sells/' . $dupOfTxId) }}" style="color:#1F1B16;text-decoration:underline;">#{{ $dupOfTxId }}</a>. Likely a sync-side duplicate (Clover API returned 2 payment records for one logical sale). Not a missed ring-up.
+                        Clover charged <strong>${{ number_format($cpAmount, 2) }}</strong> - same Clover order as paired sale <a href="{{ url('sells/' . $dupOfTxId) }}" style="color:#1F1B16;text-decoration:underline;">#{{ $dupOfTxId }}</a>. Likely a sync-side duplicate (Clover API returned 2 payment records for one logical sale). Not a missed ring-up.
                     @else
-                        Clover charged <strong>${{ number_format($cpAmount, 2) }}</strong> — no matching ERP ring.
+                        Clover charged <strong>${{ number_format($cpAmount, 2) }}</strong> - no matching ERP ring.
                     @endif
                 </div>
                 @if(!empty($cp->clover_order_id))
@@ -1170,7 +1170,7 @@
                     @endif
 
                     {{-- One-click "create the missing ERP ring + pair it"
-                         action — covers cases where the cashier created a
+                         action - covers cases where the cashier created a
                          sales_order hold (excluded from the candidate
                          finder) or never finalized the sale at all.
                          Sarah 2026-05-15: needed for Manolo's $73.15
@@ -1191,7 +1191,7 @@
                         </div>
                     </form>
 
-                    {{-- Pair to an ERP invoice that already exists — for the
+                    {{-- Pair to an ERP invoice that already exists - for the
                          case where the cashier rang the sale (correct total,
                          maybe wrong day or method) but the auto-matcher
                          can't see it because it's outside the ±1h same-day
@@ -1213,13 +1213,13 @@
                             Clover ID <code style="background:#F7F1E3;border:1px solid #DFD2B3;border-radius:3px;padding:1px 4px;font-size:11px;">{{ $cp->clover_payment_id }}</code>
                         @endif
                         @if(!empty($cp->employee_name))
-                            <span style="color:#8A7C6A;" title="Clover time-clock / terminal pin — can differ from who was on the ERP"> · Clover clock: {{ $cp->employee_name }}</span>
+                            <span style="color:#8A7C6A;" title="Clover time-clock / terminal pin - can differ from who was on the ERP"> · Clover clock: {{ $cp->employee_name }}</span>
                         @endif
                     </div>
                     <div class="rf-recon">
                         <div class="rf-recon-col rf-recon-erp">
                             <div class="lbl">ERP</div>
-                            <div class="amt" style="color:#8A7C6A;">—</div>
+                            <div class="amt" style="color:#8A7C6A;">-</div>
                         </div>
                         <div class="rf-recon-col rf-recon-clover">
                             <div class="lbl">Clover</div>
@@ -1239,7 +1239,7 @@
                 $isToday = $dt->isToday();
                 $when = $isToday ? $dt->format('g:i a') : $dt->format('M j · g:i a');
                 $customer = optional($sale->contact)->name ?: 'Walk-In Customer';
-                $store = optional($sale->location)->name ?: '—';
+                $store = optional($sale->location)->name ?: '-';
                 // sales_person -> User via created_by (who saved the sale in ERP)
                 $cashier = optional($sale->sales_person)->user_full_name;
                 $cashier = $cashier ? trim($cashier) : null;
@@ -1253,7 +1253,7 @@
                 // Tender the cashier picked at checkout. Per-payment-row method
                 // ('cash' / 'card' / 'bank_transfer' / 'cheque' / 'custom_pay_*' /
                 // 'other'). Note (memory, 2026-04-28): Nivessa cashiers ring nearly
-                // every sale as 'cash' even when the customer paid by card —
+                // every sale as 'cash' even when the customer paid by card -
                 // they manually re-enter on Clover. So this shows what the
                 // cashier *chose*, which is mostly 'Cash'; the Clover column
                 // tells you what actually ran.
@@ -1268,7 +1268,7 @@
                     return ucfirst(str_replace('_', ' ', $m));
                 };
                 $tenderClass = 'tender-other';
-                $tenderLabel = '—';
+                $tenderLabel = '-';
                 if ($methods->contains('advance')) {
                     // Any store-credit use wins the badge so it's never hidden inside
                     // a "Split". Show what it was combined with, if anything.
@@ -1295,7 +1295,7 @@
                         </span>
                         <span class="rf-time">{{ $when }}</span>
                         <span class="rf-store-badge">{{ $store }}</span>
-                        <span class="rf-tender {{ $tenderClass }}" title="Tender the cashier selected at checkout (cashiers usually pick Cash even for card sales — see Clover column for what actually ran)">{{ $tenderLabel }}</span>
+                        <span class="rf-tender {{ $tenderClass }}" title="Tender the cashier selected at checkout (cashiers usually pick Cash even for card sales - see Clover column for what actually ran)">{{ $tenderLabel }}</span>
                         <span class="rf-customer">· {{ $customer }}</span>
                         @if($cashier)<span class="rf-cashier" title="User who created this sale in the ERP (POS)">· ERP: <strong>{{ $cashier }}</strong></span>@endif
                     </div>
@@ -1307,7 +1307,7 @@
                     @php
                         // Aggregate identical sell_lines so 5 chips quick-add
                         // clicks render as "5× Chips $7.50" instead of five
-                        // copies of "Chips $1.50" — each preset click adds a
+                        // copies of "Chips $1.50" - each preset click adds a
                         // new line at qty=1, which made it look like Mariah's
                         // $8 ring was a single $1.50 sale. Group by
                         // (product_id|name, variation_id, unit price, discount).
@@ -1335,7 +1335,7 @@
                             if (!isset($rfGroups[$key])) {
                                 $rfGroups[$key] = [
                                     'product'    => $product,
-                                    'name'       => $baseArtist ? ($baseArtist . ' — ' . $baseName) : $baseName,
+                                    'name'       => $baseArtist ? ($baseArtist . ' - ' . $baseName) : $baseName,
                                     'isManual'   => empty($product),
                                     'catName'    => optional($product)->category->name ?? null,
                                     'subCatName' => optional($product)->sub_category->name ?? null,
@@ -1379,9 +1379,9 @@
                 @php
                     // Sarah 2026-05-14: surface staff_note / additional_notes
                     // inline as small italic gray text under the line items.
-                    // No green box, no form — just the note. Lets the Apply
+                    // No green box, no form - just the note. Lets the Apply
                     // action drop contextual one-liners ("cashier rang $14
-                    // on Clover, sticker was $15", "exchange — return
+                    // on Clover, sticker was $15", "exchange - return
                     // pending", etc.) without bringing back the chip UI.
                     $saleNoteText = trim((string) ($sale->staff_note ?? ''));
                     if ($saleNoteText === '') {
@@ -1394,7 +1394,7 @@
                 @php
                     $cloverInfo = $clover_by_transaction[$sale->id] ?? null;
                     // Expected Clover charge = ERP total MINUS any store credit
-                    // (advance) applied — that's what actually hit the card.
+                    // (advance) applied - that's what actually hit the card.
                     // Comparing Clover to the full final_total made store-credit
                     // sales read as a mismatch / MISSING even when they were
                     // entered correctly. (Mica, 2026-06-30.)
@@ -1425,7 +1425,7 @@
                         @if($discount > 0) · discount −${{ number_format($discount, 2) }} @endif
                     </div>
                     {{-- Sarah 2026-05-12: always show ERP amount. When there's
-                         no Clover pair, render the Clover column as "—" so the
+                         no Clover pair, render the Clover column as "-" so the
                          layout stays consistent and "did this ring in ERP" is
                          answerable at a glance for every row. --}}
                     <div class="rf-recon {{ $cloverInfo && $cloverMismatch ? 'is-mismatch' : '' }}">
@@ -1441,7 +1441,7 @@
                                 <div class="sub" style="color:#8A7C6A;">incl. ${{ number_format($saleTax, 2) }} tax</div>
                             @endif
                             @if($storeCreditCents > 0)
-                                {{-- Store credit covered part of the total — only
+                                {{-- Store credit covered part of the total - only
                                      the remainder hit the card on Clover. --}}
                                 <div class="sub" style="color:#8A7C6A;">−${{ number_format($storeCreditCents / 100, 2) }} store credit · card ${{ number_format($expectedCents / 100, 2) }}</div>
                             @endif
@@ -1466,20 +1466,20 @@
                                     @endif
                                 </div>
                             @elseif($expectedCents <= 0)
-                                {{-- Fully covered by store credit — $0 hit the
+                                {{-- Fully covered by store credit - $0 hit the
                                      card, so there's nothing to enter on Clover. --}}
-                                <div class="amt" style="color:#8A7C6A; font-weight:700;">—</div>
+                                <div class="amt" style="color:#8A7C6A; font-weight:700;">-</div>
                                 <div class="sub" style="color:#8A7C6A; font-weight:600;">store credit · none due</div>
                             @elseif(!empty($web_paid_ids[$sale->id]))
                                 {{-- nivessa.com web order rung into POS only to
                                      decrement inventory. Paid online (Stripe),
-                                     never on Clover — so no terminal charge is
+                                     never on Clover - so no terminal charge is
                                      expected. Not a missed cashier entry. --}}
-                                <div class="amt" style="color:#8A7C6A; font-weight:700;">—</div>
+                                <div class="amt" style="color:#8A7C6A; font-weight:700;">-</div>
                                 <div class="sub" style="color:#3B6E47; font-weight:600;">website · paid online</div>
                             @else
                                 {{-- Cashiers ring EVERY sale on Clover at
-                                     Nivessa — cash + card. Any ERP sale
+                                     Nivessa - cash + card. Any ERP sale
                                      without a paired Clover swipe is a
                                      missed entry on the terminal. --}}
                                 <div class="amt" style="color:#8B2C2C; font-weight:700;">⚠ MISSING</div>
@@ -1489,20 +1489,20 @@
                         {{-- Sarah 2026-05-13: per-sale Diff column. Shows every
                              gap (including 1¢ tax-rounding) so Sarah can add
                              them up by eye against the headline. Skipped when
-                             there's no Clover pair — MISSING already conveys
+                             there's no Clover pair - MISSING already conveys
                              ERP-is-ahead-by-full-amount. --}}
                         @if($cloverInfo)
                             @php
                                 // Diff against the expected card amount (total −
                                 // store credit), on whichever basis (gross/net)
-                                // is closer — computed above as $cloverDiffCents.
+                                // is closer - computed above as $cloverDiffCents.
                                 $perSaleDiffCents = (int) $cloverDiffCents;
                                 $perSaleDiffAbs   = number_format(abs($perSaleDiffCents) / 100, 2);
                                 if ($perSaleDiffCents === 0) {
                                     $diffColor = '#8A7C6A';
                                     $diffStr   = '$0.00';
                                 } elseif (abs($perSaleDiffCents) <= 15) {
-                                    // Sarah 2026-07-03: ≤15¢ is reconciled — keep it calm/grey.
+                                    // Sarah 2026-07-03: ≤15¢ is reconciled - keep it calm/grey.
                                     $diffColor = '#8A7C6A';
                                     $diffStr   = ($perSaleDiffCents > 0 ? '+' : '−') . '$' . $perSaleDiffAbs;
                                 } else {
@@ -1521,12 +1521,12 @@
                 {{-- Mark-reconciled: for a MISSING / mismatch row that Sarah has
                      already squared away, one click acknowledges it so it drops
                      out of the discrepancy filter (and the banner counts).
-                     Reversible — reconciled rows show a green badge + undo in
+                     Reversible - reconciled rows show a green badge + undo in
                      the default view. Admin-only. --}}
                 @php
                     $isReconciled     = isset($clover_reconciled) && isset($clover_reconciled[$sale->id]);
                     $isWebPaidRow     = !empty($web_paid_ids[$sale->id]);
-                    // Web orders are paid online — never a Clover discrepancy,
+                    // Web orders are paid online - never a Clover discrepancy,
                     // so they never nag for a "Mark reconciled" acknowledgement.
                     $isNoCloverRow    = !$isWebPaidRow && !$cloverInfo && $expectedCents > 0;
                     $isMismatchRow    = $cloverInfo && $cloverMismatch;
@@ -1552,7 +1552,7 @@
                 @endif
 
                 {{-- Admin-only "Fix sale" controls for reconciling backfilled
-                     rings — set the right transaction date (so the sale
+                     rings - set the right transaction date (so the sale
                      lands on the day the Clover swipe happened) and override
                      the payment method (cash↔card) when the cashier rang
                      the wrong tender. Both routes snapshot to admin-snapshots/
@@ -1564,7 +1564,7 @@
                         $currentMethod = $methods->count() === 1 ? strtolower((string) $methods->first()) : '';
                     @endphp
                     <details style="margin:0 16px 8px 16px;">
-                        <summary style="cursor:pointer; font-size:11px; color:#6b7280; font-weight:600; text-transform:uppercase; letter-spacing:.04em; list-style:none; padding:4px 0;">▸ Fix sale (date / method) — admin</summary>
+                        <summary style="cursor:pointer; font-size:11px; color:#6b7280; font-weight:600; text-transform:uppercase; letter-spacing:.04em; list-style:none; padding:4px 0;">▸ Fix sale (date / method) - admin</summary>
                         <div style="margin-top:6px; padding:8px 10px; background:#FFFBF2; border:1px solid #E8DCB8; border-radius:6px; display:flex; flex-direction:column; gap:8px;">
                             <form method="POST" action="{{ route('pos.backdateSale') }}" style="margin:0; display:flex; gap:6px; align-items:center; flex-wrap:wrap;" onsubmit="return confirm('Move #{{ $sale->invoice_no }} to the new date? Old date will be snapshotted for undo.');">
                                 @csrf
@@ -1592,7 +1592,7 @@
                             @else
                                 <div style="font-size:11px; color:#8A7C6A;">Payment method (cash↔card) can only be changed by Sarah, Jon, or Fatteen.</div>
                             @endif
-                            <div style="font-size:11px; color:#8A7C6A;">Currently: {{ $saleDtLocal->format('M j · g:i a') }} · {{ $currentMethod ? strtoupper($currentMethod) : ($methods->count() > 1 ? 'split' : '—') }}</div>
+                            <div style="font-size:11px; color:#8A7C6A;">Currently: {{ $saleDtLocal->format('M j · g:i a') }} · {{ $currentMethod ? strtoupper($currentMethod) : ($methods->count() > 1 ? 'split' : '-') }}</div>
                         </div>
                     </details>
                 @endif
@@ -1692,7 +1692,7 @@ $(function () {
             }
         }).fail(function () {
             $lbl.text('Mark reconciled');
-            alert('Network error — try again.');
+            alert('Network error - try again.');
         });
     });
 
@@ -1702,7 +1702,7 @@ $(function () {
         $(this).removeClass('cc-collapsed');
     });
 
-    // Notes — debounced autosave on input + immediate save on blur.
+    // Notes - debounced autosave on input + immediate save on blur.
     (function () {
         var timers = new WeakMap();
         $('body').on('input', '.eod-loc-card .eod-recon-notes', function () {
@@ -1735,7 +1735,7 @@ $(function () {
             }).done(function (r) {
                 $status.text(r.success ? ('Saved ' + (r.saved_at || '')) : 'Save failed').css('color', r.success ? '#166534' : '#b91c1c');
             }).fail(function () {
-                $status.text('Save failed — will retry on blur').css('color', '#b91c1c');
+                $status.text('Save failed - will retry on blur').css('color', '#b91c1c');
             });
         }
     })();
@@ -1768,7 +1768,7 @@ $(function () {
                 $btn.prop('disabled', false).text('→ in-store');
             }
         }).fail(function () {
-            alert('Network error — try again.');
+            alert('Network error - try again.');
             $btn.prop('disabled', false).text('→ in-store');
         });
     });
